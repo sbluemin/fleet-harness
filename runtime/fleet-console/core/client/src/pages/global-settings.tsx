@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { plugins } from "virtual:fleet-plugins";
+import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setCustomTerminalFont, setTerminalFont, setTerminalFontSize, setTerminalRenderer } from "../store.js";
 import { CURATED_TERMINAL_FONTS, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontById, resolveTerminalFont } from "../terminal-font.js";
 import type { GlobalSettingsState, TerminalFontId, TerminalFontSettings, TerminalRenderer, ThemeId } from "../types.js";
@@ -89,7 +90,8 @@ export function GlobalSettings() {
   const state = settings.state;
   const saving = settings.savingField !== null;
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("appearance");
-  const pluginSections = collectPluginSettingsSections();
+  const registry = usePluginRegistry();
+  const pluginSections = collectPluginSettingsSections(registry.plugins);
   const pluginGroups = groupPluginSettingsSections(pluginSections);
 
   useEffect(() => {
@@ -162,7 +164,11 @@ export function GlobalSettings() {
 function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[]) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
-    return pluginSection?.render ? pluginSection.render() : <p className="global-settings-help">Plugin settings unavailable.</p>;
+    return pluginSection?.render ? (
+      <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin settings failed to render.</div>}>
+        {pluginSection.render()}
+      </PluginErrorBoundary>
+    ) : <p className="global-settings-help">Plugin settings unavailable.</p>;
   }
   switch (sectionId) {
     case "appearance":
@@ -174,7 +180,7 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
   }
 }
 
-function collectPluginSettingsSections(): readonly PluginSettingsNavItem[] {
+function collectPluginSettingsSections(plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: string; readonly render?: () => ReactNode }[] }[]): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
     (plugin.settingsSections ?? []).map((section) => ({
       id: `${plugin.id}:${section.id}` as const,

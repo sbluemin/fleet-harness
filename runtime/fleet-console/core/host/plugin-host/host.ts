@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { SDK_API_VERSION } from "@fleet-console/sdk/version";
+
 import { discoverFleetPlugins, type DiscoverFleetPluginsOptions } from "./discovery.js";
 import type { DiscoveredFleetPlugin, FleetPluginHostCapabilities, FleetPluginRouteModule, FleetPluginServerContext } from "./types.js";
 import type { RouteHandler, RouteRegistry } from "../route-registry/route-registry.js";
@@ -40,7 +42,7 @@ const PLUGIN_DEV_EXTERNALS = [
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHost {
-  const plugins = discoverFleetPlugins(deps);
+  const plugins = filterDiscoveredPlugins(discoverFleetPlugins(deps));
   const sensitiveFieldsByPluginId = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.manifest.sensitiveFields ?? []]));
   const importModule = deps.importModule ?? importPluginModule;
 
@@ -63,6 +65,25 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
   }
 
   return { plugins, sensitiveFieldsByPluginId, boot };
+}
+
+function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): readonly DiscoveredFleetPlugin[] {
+  const accepted: DiscoveredFleetPlugin[] = [];
+  const seen = new Set<string>();
+  for (const plugin of plugins) {
+    const id = plugin.manifest.id;
+    if (seen.has(id)) {
+      console.warn(`[fleet-console] Plugin ${id} skipped: duplicate id (${plugin.root})`);
+      continue;
+    }
+    if (plugin.external && plugin.manifest.apiVersion !== SDK_API_VERSION) {
+      console.warn(`[fleet-console] Plugin ${id} skipped: unsupported apiVersion (${String(plugin.manifest.apiVersion)})`);
+      continue;
+    }
+    seen.add(id);
+    accepted.push(plugin);
+  }
+  return accepted;
 }
 
 async function importPluginModule(entry: string): Promise<FleetPluginRouteModule> {

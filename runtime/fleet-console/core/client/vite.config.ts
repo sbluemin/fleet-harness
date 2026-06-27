@@ -35,7 +35,7 @@ function fleetPluginsVirtualModule(): Plugin {
       if (id !== RESOLVED_VIRTUAL_FLEET_PLUGINS_ID) return null;
       const terminalClientEntry = path.resolve(__dirname, "../../../fleet-plugins/terminal/client/index.tsx");
       return [
-        `export { plugins, operationKinds, settingsSections, notificationKinds } from ${JSON.stringify(terminalClientEntry)};`,
+        `export { plugins } from ${JSON.stringify(terminalClientEntry)};`,
       ].join("\n");
     },
   };

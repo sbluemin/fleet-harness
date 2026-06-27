@@ -14,10 +14,10 @@ export interface DiscoverFleetPluginsOptions {
 export function discoverFleetPlugins(options: DiscoverFleetPluginsOptions = {}): readonly DiscoveredFleetPlugin[] {
   const builtInSourceRoot = options.builtInSourceRoot ?? (options.cwd ? path.resolve(options.cwd, "runtime/fleet-plugins") : null);
   const roots = [
-    ...(builtInSourceRoot ? [{ root: builtInSourceRoot, builtInDistRoot: options.builtInDistRoot ?? null }] : []),
-    { root: path.join(options.homeDir ?? os.homedir(), ".fleet", "plugins"), builtInDistRoot: null },
+    ...(builtInSourceRoot ? [{ root: builtInSourceRoot, builtInDistRoot: options.builtInDistRoot ?? null, external: false }] : []),
+    { root: path.join(options.homeDir ?? os.homedir(), ".fleet", "plugins"), builtInDistRoot: null, external: true },
   ];
-  const sourcePlugins = roots.flatMap((root) => discoverPluginRoot(root.root, root.builtInDistRoot));
+  const sourcePlugins = roots.flatMap((root) => discoverPluginRoot(root.root, root.builtInDistRoot, root.external));
   const sourcePluginIds = new Set(sourcePlugins.map((plugin) => plugin.manifest.id));
   const distPlugins = options.builtInDistRoot ? discoverDistPluginRoot(options.builtInDistRoot).filter((plugin) => !sourcePluginIds.has(plugin.manifest.id)) : [];
   return [...sourcePlugins, ...distPlugins];
@@ -29,6 +29,7 @@ export function parseFleetPluginManifest(value: unknown): FleetPluginManifest | 
   if (!id) return null;
   return {
     id,
+    ...(typeof value.apiVersion === "number" ? { apiVersion: value.apiVersion } : {}),
     ...(typeof value.name === "string" ? { name: value.name } : {}),
     ...(typeof value.client === "string" ? { client: value.client } : {}),
     ...(typeof value.routes === "string" ? { routes: value.routes } : {}),
@@ -36,7 +37,7 @@ export function parseFleetPluginManifest(value: unknown): FleetPluginManifest | 
   };
 }
 
-function discoverPluginRoot(root: string, builtInDistRoot: string | null): readonly DiscoveredFleetPlugin[] {
+function discoverPluginRoot(root: string, builtInDistRoot: string | null, external: boolean): readonly DiscoveredFleetPlugin[] {
   if (!fs.existsSync(root)) return [];
   const entries = fs.readdirSync(root, { withFileTypes: true });
   const plugins: DiscoveredFleetPlugin[] = [];
@@ -51,7 +52,7 @@ function discoverPluginRoot(root: string, builtInDistRoot: string | null): reado
     if (clientEntry === false) continue;
     const routesEntry = resolveRoutesEntry(pluginRoot, manifest, builtInDistRoot);
     if (routesEntry === false) continue;
-    plugins.push({ root: pluginRoot, manifest, clientEntry, routesEntry });
+    plugins.push({ root: pluginRoot, manifest, clientEntry, routesEntry, external });
   }
   return plugins;
 }
@@ -70,7 +71,7 @@ function discoverDistPluginRoot(root: string): readonly DiscoveredFleetPlugin[] 
     if (clientEntry === false) continue;
     const routesEntry = resolveDistRoutesEntry(pluginRoot, manifest);
     if (!routesEntry) continue;
-    plugins.push({ root: pluginRoot, manifest, clientEntry, routesEntry });
+    plugins.push({ root: pluginRoot, manifest, clientEntry, routesEntry, external: false });
   }
   return plugins;
 }

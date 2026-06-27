@@ -528,6 +528,32 @@ describe("console static and terminal ticket boundary", () => {
     expect(await response.json()).toEqual({ terminal: false });
   });
 
+  it("serves plugin runtime manifest and shims through core routes", async () => {
+    const fixture = await startFixture();
+
+    const manifest = await fetch(`${fixture.endpoint}plugin-runtime/manifest`);
+    const shim = await fetch(`${fixture.endpoint}plugin-runtime/shim/sdk-plugin-browser.mjs`);
+    const missing = await fetch(`${fixture.endpoint}plugin-runtime/shim/missing.mjs`);
+    const manifestBody = await manifest.json() as { readonly plugins?: readonly Record<string, unknown>[] };
+    const serializedManifest = JSON.stringify(manifestBody);
+    const shimSource = await shim.text();
+
+    expect(manifest.status).toBe(200);
+    expect(Array.isArray(manifestBody.plugins)).toBe(true);
+    for (const plugin of manifestBody.plugins ?? []) {
+      expect(Object.keys(plugin).sort()).toEqual(expect.arrayContaining(["apiVersion", "clientUrl", "id"]));
+      expect(plugin.clientUrl).toMatch(/^\/plugin-runtime\/client\/[^/]+\.mjs$/u);
+    }
+    expect(serializedManifest).not.toContain("root");
+    expect(serializedManifest).not.toContain("clientEntry");
+    expect(serializedManifest).not.toContain("routesEntry");
+    expect(serializedManifest).not.toContain("sensitiveFields");
+    expect(shim.status).toBe(200);
+    expect(shim.headers.get("content-type")).toContain("text/javascript");
+    expect(shimSource).toContain("globalThis.__fleetConsoleRuntime__?.[\"@fleet-console/sdk/plugin/browser\"]");
+    expect(missing.status).toBe(404);
+  });
+
   it("awaits async plugin cleanup callbacks before server stop settles", async () => {
     const cleanupGate = createDeferred<void>();
     const cleanup = vi.fn(() => cleanupGate.promise);

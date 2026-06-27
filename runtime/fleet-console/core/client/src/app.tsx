@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { Location } from "react-router-dom";
-import { plugins } from "virtual:fleet-plugins";
 
 import { useMapFullscreen } from "./canvas/canvas-store.js";
 import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
@@ -15,6 +14,7 @@ import { Topbar } from "./components/topbar.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
+import { usePluginRegistry } from "./plugin-registry.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { CodexSurface } from "./components/codex-surface.js";
 import { GlobalSettings } from "./pages/global-settings.js";
@@ -28,6 +28,7 @@ const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 export function App() {
   const state = useConsoleState();
   const location = useLocation();
+  const registry = usePluginRegistry();
   const pathname = location.pathname;
   const navigate = useNavigate();
   const mapFullscreen = useMapFullscreen();
@@ -64,11 +65,11 @@ export function App() {
     const capabilities = createHostCapabilities(() => {
       void fetchOperations().then(hydrateOperations).catch(() => {});
     });
-    const cleanups = plugins.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
+    const cleanups = registry.plugins.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, []);
+  }, [registry.plugins]);
 
   // 비-Codex 라우트에 있을 때마다 배경 위치를 기록한다. 이후 Codex를 side로 열면 이 위치가
   // 배경으로 유지된다. effect라 다음 Codex 진입 렌더에서는 직전 비-Codex 위치가 이미 잡혀 있다.

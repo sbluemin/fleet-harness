@@ -1,5 +1,10 @@
+import type { DiscoveredFleetPlugin as SdkDiscoveredFleetPlugin } from "@fleet-console/sdk/plugin";
+
+export interface DiscoveredFleetPlugin extends SdkDiscoveredFleetPlugin {
+  readonly external: boolean;
+}
+
 export type {
-  DiscoveredFleetPlugin,
   FleetPluginDefinition,
   FleetPluginEventsHost,
   FleetPluginHostCapabilities,

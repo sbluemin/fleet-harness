@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { operationKinds, plugins as clientPlugins } from "virtual:fleet-plugins";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
+import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ConsoleTheme, OperationActivity, OperationKindDescriptor, TerminalRenderer } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor, TerminalRenderer } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations, renameOperation as renameOperationRequest } from "../api.js";
 import { hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode, TerminalFontSettings } from "../types.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasDock } from "./canvas-dock.js";
@@ -32,6 +33,21 @@ interface ContextMenuRequest {
   readonly canvasPoint: CanvasPoint;
 }
 
+interface PluginOperationRendererProps {
+  readonly active: boolean;
+  readonly capabilities: ReturnType<typeof createHostCapabilities>;
+  readonly descriptor: OperationKindDescriptor;
+  readonly geometry: OperationGeometry;
+  readonly operation: OperationNode;
+  readonly terminalFont: TerminalFontSettings;
+  readonly terminalRenderer: TerminalRenderer;
+  readonly theme: ConsoleTheme;
+  readonly viewportZoom: number;
+  readonly onActivate: () => void;
+  readonly onClose: () => void;
+  readonly onGeometryChange: (geometry: OperationGeometry) => void;
+}
+
 const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
@@ -53,6 +69,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [launchPending, setLaunchPending] = useState(false);
+  const registry = usePluginRegistry();
   // 미니맵의 뷰포트 인디케이터 계산에 필요한 캔버스 픽셀 크기를 ResizeObserver로 추적한다.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const disabled = !state.activeTheaterId || state.addingTheater;
@@ -96,7 +113,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   });
 
   const launchViaPlugin = async (pluginId: string, kind: OperationLaunchKind, theaterId: string, geometry: OperationGeometry) => {
-    const plugin = clientPlugins.find((candidate) => candidate.id === pluginId);
+    const plugin = registry.plugins.find((candidate) => candidate.id === pluginId);
     if (!plugin?.launch || kind.disabled) return;
     // 최대화 상태에서 패널을 추가하면 최대화를 풀지 않고 새 패널을 최대화로 전환한다(#105 — Dock 칩 전환과 동일 멘탈모델).
     const swapMaximized = maximizedOperationId !== null;
@@ -140,7 +157,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
 
   // 아이콘 렌더는 플러그인 소유 — 호스트는 plugin id로 찾아 위임만 한다(특정 플러그인 지식 비종속).
   const renderKindIcon = (pluginId: string, kind: OperationLaunchKind): ReactNode =>
-    clientPlugins.find((candidate) => candidate.id === pluginId)?.renderLaunchIcon?.(kind) ?? null;
+    registry.plugins.find((candidate) => candidate.id === pluginId)?.renderLaunchIcon?.(kind) ?? null;
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
     // 빈 캔버스에서만 컨텍스트 메뉴를 띄운다 — 패널/메뉴/터미널 위 우클릭은 무시(기본 동작 유지).
@@ -164,7 +181,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId);
   const pluginOperations = theaterOperations;
   const hasContent = theaterOperations.length > 0;
-  const operationKindRegistry = operationKinds;
+  const operationKindRegistry = registry.operationKinds;
   useEffect(() => {
     const localAccent = getCanvasSnapshot().operationAccent;
     for (const operation of theaterOperations) {
@@ -262,7 +279,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           onClose: () => {
             if (state.activeOperationId === operation.id) setActiveOperation(null);
             if (panelMaximized === operation.id) clearMaximizedOperationId();
-            void closePluginOperation(operation);
+            void closePluginOperation(operation, registry.plugins);
           },
           onMinimize: () => {
             if (state.activeOperationId === operation.id) setActiveOperation(null);
@@ -350,7 +367,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           if (!operation) return;
           if (state.activeOperationId === operationId) setActiveOperation(null);
           if (panelMaximized === operationId) clearMaximizedOperationId();
-          void closePluginOperation(operation);
+          void closePluginOperation(operation, registry.plugins);
         }}
         onFocus={handleDockFocus}
         onSetAccent={(operationId, accent) => {
@@ -481,31 +498,64 @@ function renderPluginOperation(operation: OperationNode, options: {
       onGeometryChange={options.onGeometryChange}
       onGeometryCommit={options.onGeometryCommit}
     >
-      {descriptor.render({
-        operationId: operation.id,
-        theaterId: operation.theaterId,
-        pluginId: operation.pluginId,
-        type: operation.type,
-        operation,
-        geometry,
-        active: options.active,
-        zoom: options.viewportZoom,
-        theme: options.theme,
-        terminalRenderer: options.terminalRenderer,
-        terminalFont: options.terminalFont,
-        api: capabilities.api,
-        lifecycle: capabilities.lifecycle,
-        terminal: capabilities.terminal,
-        notifications: capabilities.notifications,
-        operations: capabilities.operations,
-        preferences: capabilities.preferences,
-        status: capabilities.status,
-        onActivate: options.onActivate,
-        onClose: options.onClose,
-        onGeometryChange: options.onGeometryChange,
-      })}
+      <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
+        <PluginOperationRenderer
+          active={options.active}
+          capabilities={capabilities}
+          descriptor={descriptor}
+          geometry={geometry}
+          operation={operation}
+          terminalFont={options.terminalFont}
+          terminalRenderer={options.terminalRenderer}
+          theme={options.theme}
+          viewportZoom={options.viewportZoom}
+          onActivate={options.onActivate}
+          onClose={options.onClose}
+          onGeometryChange={options.onGeometryChange}
+        />
+      </PluginErrorBoundary>
     </OperationFrame>
   );
+}
+
+function PluginOperationRenderer({
+  active,
+  capabilities,
+  descriptor,
+  geometry,
+  operation,
+  terminalFont,
+  terminalRenderer,
+  theme,
+  viewportZoom,
+  onActivate,
+  onClose,
+  onGeometryChange,
+}: PluginOperationRendererProps) {
+  if (!descriptor.render) return null;
+  return descriptor.render({
+    operationId: operation.id,
+    theaterId: operation.theaterId,
+    pluginId: operation.pluginId,
+    type: operation.type,
+    operation,
+    geometry,
+    active,
+    zoom: viewportZoom,
+    theme,
+    terminalRenderer,
+    terminalFont,
+    api: capabilities.api,
+    lifecycle: capabilities.lifecycle,
+    terminal: capabilities.terminal,
+    notifications: capabilities.notifications,
+    operations: capabilities.operations,
+    preferences: capabilities.preferences,
+    status: capabilities.status,
+    onActivate,
+    onClose,
+    onGeometryChange,
+  });
 }
 
 function getOperationSubtitle(operation: OperationNode, registry: readonly OperationKindDescriptor[]): string | undefined {
@@ -565,12 +615,12 @@ async function renamePluginOperation(operationId: string, title: string): Promis
   await fetchOperations(null).then(hydrateOperations);
 }
 
-async function closePluginOperation(operation: OperationNode): Promise<void> {
+async function closePluginOperation(operation: OperationNode, plugins: readonly FleetClientPlugin[]): Promise<void> {
   // close가 진행 중인 동안 onExit 재진입은 무시한다(중복 DELETE/404 방지). operation id는 한 번 닫히면 재사용되지 않는다.
   if (closingOperationIds.has(operation.id)) return;
   closingOperationIds.add(operation.id);
   try {
-    const plugin = clientPlugins.find((candidate) => candidate.id === operation.pluginId);
+    const plugin = plugins.find((candidate) => candidate.id === operation.pluginId);
     try {
       await plugin?.closeOperation?.(operation.id);
     } finally {

@@ -20,6 +20,7 @@ import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createOperationsRouter } from "./operations/routes.js";
 import { createOperationStore } from "./operations/store.js";
 import { createConsoleDataPaths } from "./paths.js";
+import { createPluginClientAssets } from "./plugin-host/client-assets.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/types.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
@@ -350,6 +351,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
   });
+  const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
     const result: OperationCatalogPlugin[] = [];
     for (const plugin of pluginHost.plugins) {
@@ -421,6 +423,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/operations", operationsRouter);
   routeRegistry.register("/carrier-settings", carrierSettingsRouter);
   routeRegistry.register("/global-settings", globalSettingsRouter);
+  routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -480,6 +483,38 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     res.writeHead(404);
     res.end();
+  }
+
+  function handlePluginRuntimeRoute({ req, res, pathname }: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): boolean {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (pathname === "/plugin-runtime/manifest") {
+      writeJson(res, 200, pluginClientAssets.manifest());
+      return true;
+    }
+    const clientMatch = pathname.match(/^\/plugin-runtime\/client\/([^/]+)\.mjs$/u);
+    if (clientMatch) {
+      const source = pluginClientAssets.getClient(decodeURIComponent(clientMatch[1] ?? ""));
+      if (!source) {
+        writeJson(res, 404, { error: "Not found" });
+        return true;
+      }
+      writeJavaScript(res, 200, source);
+      return true;
+    }
+    const shimMatch = pathname.match(/^\/plugin-runtime\/shim\/([^/]+)\.mjs$/u);
+    if (shimMatch) {
+      const source = pluginClientAssets.getShim(decodeURIComponent(shimMatch[1] ?? ""));
+      if (!source) {
+        writeJson(res, 404, { error: "Not found" });
+        return true;
+      }
+      writeJavaScript(res, 200, source);
+      return true;
+    }
+    return false;
   }
 
   function handleHealth(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -907,6 +942,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try {
         await rehydrateDurableState();
         await pluginHost.boot();
+        await pluginClientAssets.prepare();
         const listenPlan = resolveConsolePortListenPlan();
         const result = await listenConsolePort(listenPlan);
         server = result.srv;
@@ -1132,6 +1168,11 @@ async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
 function writeJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json" }));
   res.end(JSON.stringify(body));
+}
+
+function writeJavaScript(res: http.ServerResponse, status: number, body: string): void {
+  res.writeHead(status, withSecurityHeaders({ "Content-Type": "text/javascript; charset=utf-8" }));
+  res.end(body);
 }
 
 function runAsyncHandler(handler: Promise<void>, res: http.ServerResponse): void {

@@ -71,6 +71,18 @@ describe("plugin host", () => {
     const plugins = discoverFleetPlugins({ cwd: dir, homeDir: path.join(dir, "home") });
 
     expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(["demo", "note"]);
+    expect(plugins.map((plugin) => plugin.external)).toEqual([false, true]);
+  });
+
+  it("parses plugin manifest apiVersion values", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-api-version-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "note"), "note", { apiVersion: 1 });
+
+    const plugins = discoverFleetPlugins({ cwd: dir, homeDir: path.join(dir, "home") });
+
+    expect(plugins[0]?.manifest.apiVersion).toBe(1);
+    expect(plugins[0]?.external).toBe(true);
   });
 
   it("skips malformed plugin manifests without failing discovery", () => {
@@ -176,6 +188,48 @@ describe("plugin host", () => {
     expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/demo/api" })).toBe(true);
     expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/demo/ws/stream" })).toBe(true);
     expect(host.sensitiveFieldsByPluginId.get("demo")).toEqual(["pluginSecret"]);
+  });
+
+  it("keeps the first plugin id when duplicate ids are discovered", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-dedupe-"));
+    tempDirs.push(dir);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo", {}, false);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "demo"), "demo", { apiVersion: 1 }, false);
+
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+    });
+
+    expect(host.plugins).toHaveLength(1);
+    expect(host.plugins[0]?.external).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("duplicate id"));
+  });
+
+  it("hard-skips external plugins with missing or mismatched apiVersion", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-api-gate-"));
+    tempDirs.push(dir);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "built-in"), "built-in", {}, false);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "missing"), "missing", {}, false);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "future"), "future", { apiVersion: 999 }, false);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "ok"), "ok", { apiVersion: 1 }, false);
+
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+    });
+
+    expect(host.plugins.map((plugin) => plugin.manifest.id)).toEqual(["built-in", "ok"]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin missing skipped: unsupported apiVersion"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin future skipped: unsupported apiVersion"));
   });
 
   it("injects generic host capabilities into plugin route modules", async () => {
