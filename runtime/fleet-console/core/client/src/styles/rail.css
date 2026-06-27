@@ -167,10 +167,6 @@
   background: color-mix(in oklch, var(--brass) 70%, transparent);
 }
 
-.right-rail.is-dragging .right-rail-panel-slot {
-  transition: none !important;
-}
-
 .right-rail.is-dragging {
   user-select: none;
 }

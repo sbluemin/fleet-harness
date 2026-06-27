@@ -53,6 +53,13 @@
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
+  transition: grid-template-columns var(--duration-base) var(--ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fexp-root {
+    transition-duration: 0.01ms;
+  }
 }
 
 .fexp-root.has-viewer {
