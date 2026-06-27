@@ -14,12 +14,14 @@ interface CanvasContextMenuProps {
   // Map 탭 — 기존 canvas-store 토글 함수와 영속 키를 그대로 사용한다.
   readonly mapFullscreen?: boolean;
   readonly radarEnabled?: boolean;
+  readonly perimeterEnabled?: boolean;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
   readonly onMaximizeMap?: () => void;
   readonly onToggleRadar?: () => void;
+  readonly onTogglePerimeter?: () => void;
   readonly onClose: () => void;
 }
 
@@ -48,7 +50,7 @@ const CANVAS_CONTROL_TABS: readonly CanvasControlTabDefinition[] = [
 // 대소문자 무시(i)로 두 표기를 모두 Apple 플랫폼으로 인식해야 ⌘가 올바르게 표시된다.
 const MAC_PLATFORM_PATTERN = /mac|iphone|ipad|ipod/i;
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, mapFullscreen, radarEnabled, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, mapFullscreen, radarEnabled, perimeterEnabled, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onTogglePerimeter, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null, help: null });
@@ -187,6 +189,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               <RadarGlyph />
             </SwitchRow>
           ) : null}
+          {onTogglePerimeter ? (
+            <SwitchRow checked={!!perimeterEnabled} label="Panel pulse" onClick={onTogglePerimeter}>
+              <PanelPulseGlyph />
+            </SwitchRow>
+          ) : null}
         </div>
         <div
           id="canvas-control-panel-help"
@@ -299,6 +306,18 @@ function RadarGlyph() {
       <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
       <path d="M8 8 12 5.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
       <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+// 패널 진행광 — 둥근 패널 외곽과 진행 호/점으로 running perimeter signal을 표상한다.
+function PanelPulseGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="3" y="3.2" width="10" height="9.6" rx="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M10.9 3.2H13v2.1M5.1 12.8H3v-2.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.6 5.1c.5 1.4.4 2.9-.3 4.2M3.4 10.9c-.5-1.4-.4-2.9.3-4.2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="11.7" cy="4.2" r="0.9" fill="currentColor" />
     </svg>
   );
 }

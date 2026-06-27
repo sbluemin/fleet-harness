@@ -32,6 +32,7 @@ type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
 const BACKGROUND_ANIMATION_STORAGE_KEY = "fleet-console.canvas.backgroundAnimation";
+const PERIMETER_ANIMATION_STORAGE_KEY = "fleet-console.canvas.perimeterAnimation";
 const MAXIMIZED_STORAGE_KEY = "fleet-console.canvas.maximized";
 const SAVE_DELAY_MS = 400;
 const DEFAULT_OPERATION_WIDTH = 640;
@@ -50,6 +51,7 @@ const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, o
 
 const listeners = new Set<Listener>();
 const backgroundAnimationListeners = new Set<Listener>();
+const perimeterAnimationListeners = new Set<Listener>();
 const mapFullscreenListeners = new Set<Listener>();
 const maximizedOperationListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
@@ -57,6 +59,7 @@ let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let backgroundAnimationEnabled = readStoredBackgroundAnimation();
+let perimeterAnimationEnabled = readStoredPerimeterAnimation();
 let mapFullscreen = readStoredMapFullscreen();
 let maximizedOperationId: string | null = null;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
@@ -87,6 +90,10 @@ export function useCanvasState(): CanvasState {
 
 export function useBackgroundAnimation(): boolean {
   return useSyncExternalStore(subscribeBackgroundAnimation, getBackgroundAnimationSnapshot, getBackgroundAnimationSnapshot);
+}
+
+export function usePerimeterAnimation(): boolean {
+  return useSyncExternalStore(subscribePerimeterAnimation, getPerimeterAnimationSnapshot, getPerimeterAnimationSnapshot);
 }
 
 export function useMapFullscreen(): boolean {
@@ -295,6 +302,12 @@ export function toggleBackgroundAnimation(): void {
   emitBackgroundAnimation();
 }
 
+export function togglePerimeterAnimation(): void {
+  perimeterAnimationEnabled = !perimeterAnimationEnabled;
+  writeStoredPerimeterAnimation(perimeterAnimationEnabled);
+  emitPerimeterAnimation();
+}
+
 export function toggleMapFullscreen(): void {
   setMapFullscreen(!mapFullscreen);
 }
@@ -331,12 +344,27 @@ function getBackgroundAnimationSnapshot(): boolean {
   return backgroundAnimationEnabled;
 }
 
+function subscribePerimeterAnimation(listener: Listener): () => void {
+  perimeterAnimationListeners.add(listener);
+  return () => {
+    perimeterAnimationListeners.delete(listener);
+  };
+}
+
+function getPerimeterAnimationSnapshot(): boolean {
+  return perimeterAnimationEnabled;
+}
+
 function emit(): void {
   for (const listener of listeners) listener();
 }
 
 function emitBackgroundAnimation(): void {
   for (const listener of backgroundAnimationListeners) listener();
+}
+
+function emitPerimeterAnimation(): void {
+  for (const listener of perimeterAnimationListeners) listener();
 }
 
 function subscribeMapFullscreen(listener: Listener): () => void {
@@ -474,6 +502,26 @@ function writeStoredBackgroundAnimation(value: boolean): void {
     window.localStorage.setItem(BACKGROUND_ANIMATION_STORAGE_KEY, String(value));
   } catch {
     // 배경 애니메이션 선호 저장 실패는 런타임 동작을 막지 않는다.
+  }
+}
+
+function readStoredPerimeterAnimation(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const stored = window.localStorage.getItem(PERIMETER_ANIMATION_STORAGE_KEY);
+    if (stored === null) return true;
+    return stored === "true";
+  } catch {
+    return true;
+  }
+}
+
+function writeStoredPerimeterAnimation(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PERIMETER_ANIMATION_STORAGE_KEY, String(value));
+  } catch {
+    // 진행광 애니메이션 선호 저장 실패는 런타임 동작을 막지 않는다.
   }
 }
 

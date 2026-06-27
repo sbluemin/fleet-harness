@@ -3259,6 +3259,11 @@
   animation: perimeter-orbit 2.4s linear infinite;
 }
 
+.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before {
+  animation: none;
+  background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
+}
+
 /* prefers-reduced-motion: 순환 정지, 정적 림 + 정적 글로우만 유지(색은 인디케이터 따라감) */
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation.is-running::before {

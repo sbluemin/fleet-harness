@@ -9,7 +9,7 @@ import { hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode, TerminalFontSettings } from "../types.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "./canvas-store.js";
 import { CanvasDock } from "./canvas-dock.js";
 import { CanvasContextMenu, CommandReticleIcon } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -66,6 +66,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const canvas = useCanvasState();
   const backgroundAnimationEnabled = useBackgroundAnimation();
+  const perimeterAnimationEnabled = usePerimeterAnimation();
   const mapFullscreen = useMapFullscreen();
   const maximizedOperationId = useMaximizedOperationId();
   const minimized = useMinimized();
@@ -157,6 +158,10 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     toggleBackgroundAnimation();
   };
 
+  const handleTogglePerimeter = () => {
+    togglePerimeterAnimation();
+  };
+
   // 좌하단 런처: 우클릭 컨텍스트 메뉴와 동일한 메뉴를 명시 버튼으로 연다. 다시 누르면 닫는 토글이며,
   // 메뉴는 FAB 위로(아래 Dock과 겹치지 않게) 띄운다. 클릭 지점이 없으므로 새 패널은 화면 중앙의 world 좌표에 생성한다.
   const handleOpenLauncher = () => {
@@ -237,7 +242,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${perimeterAnimationEnabled ? "" : "is-perimeter-anim-off"}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
@@ -319,11 +324,13 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           canLaunch={!!state.activeTheaterId && !launchPending}
           mapFullscreen={mapFullscreen}
           radarEnabled={backgroundAnimationEnabled}
+          perimeterEnabled={perimeterAnimationEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleLaunchKind}
           onResetView={handleResetView}
           onMaximizeMap={handleMaximizeMap}
           onToggleRadar={handleToggleRadar}
+          onTogglePerimeter={handleTogglePerimeter}
           onClose={() => setContextMenu(null)}
         />
       ) : null}
