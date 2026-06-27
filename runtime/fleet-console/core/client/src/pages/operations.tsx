@@ -73,7 +73,7 @@ export function Operations({ state }: OperationsProps) {
 
   return (
     <div
-      className={`console-body is-canvas${maximizedOperationId ? " is-map-fullscreen" : ""}`}
+      className="console-body is-canvas"
       ref={bodyRef}
     >
       <OperationsCanvas state={state} />

@@ -131,7 +131,7 @@ These guards are robustness measures on top of the trust model, not a replacemen
 
 Operation chrome (maximize, minimize, focus, and the bottom Dock) is host-owned. Plugins render only their panel body through `OperationRenderContext` and do not participate in window-state decisions.
 
-- **Per-panel maximize** (`maximizedOperationId` in `core/client/src/canvas/canvas-store.ts`) is orthogonal to **map fullscreen** (`mapFullscreen`, renamed from the earlier map-level maximize while keeping the same storage key). A maximized panel renders in a temporary full-viewport geometry over the same instance without remounting, leaving a 72 px bottom inset so the Dock remains visible. Drag, resize, and geometry persistence are blocked while maximized.
+- **Per-panel maximize** (`maximizedOperationId` in `core/client/src/canvas/canvas-store.ts`) is orthogonal to **map fullscreen** (`mapFullscreen`, renamed from the earlier map-level maximize while keeping the same storage key). A maximized panel renders in a temporary full-canvas geometry (the map canvas / column 1, which excludes the Activity Rail) over the same instance without remounting, leaving a 72 px bottom inset so the Dock remains visible. Drag, resize, and geometry persistence are blocked while maximized.
 - **Minimize preserves PTY**: minimized panels stay in the DOM with `visibility:hidden` and `inert` instead of unmounting, preserving terminal PTY / WebSocket state. Because the host chrome handles this, all plugins benefit uniformly and plugins need not be PTY-aware.
 - **Dock = all-panel taskbar** (not a collapsible tray): the bottom Dock shows every Operation in the current Theater as a chip, sorted by `OperationNode.ts.createdAt`. Chips show active highlight, minimized dim, status beacon, close button, and an overflow pager. Clicking a chip focuses the Operation (restoring it if minimized).
 - **Active Operation SSoT**: `activeOperationId` (`core/client/src/store.ts`) is the single source of truth for active highlight and for `Alt + Left / Right` cycling (createdAt order). If the active Operation is minimized, active is cleared. When a new panel is added while maximized, the maximized state is kept and the new panel becomes the maximized one.
@@ -182,8 +182,8 @@ These CSS variables are declared in `rail.css` and must not be inlined elsewhere
 
 **Layout contract**:
 
-- `.console-body.is-canvas` is `display:grid; grid-template-columns: minmax(0,1fr) auto`. The second column is the `<RightRail>` component.
-- When a panel is maximized (`maximizedOperationId !== null`), `operations.tsx` adds `is-map-fullscreen` to `.console-body.is-canvas`, forcing the second column to `0` via `layout.css`.
+- `.console-body.is-canvas` is `display:grid; grid-template-columns: minmax(0,1fr) auto` with a `column-gap` between the map and the rail. The second column is the `<RightRail>` component, which renders as a floating glass card (see RailPanel chrome below).
+- The Activity Rail and the Operations map are **independent**: per-panel maximize (`maximizedOperationId !== null`) is confined to the map canvas (column 1) and does **not** collapse the rail column. The maximized panel fills the current canvas size (column 1, which already excludes the rail and gap), so the rail stays visible and reflows the panel if it is opened/closed while a panel is maximized. `.console-body.is-canvas` no longer takes an `is-map-fullscreen` modifier; that modifier remains only on `.console-shell` for map fullscreen (topbar collapse).
 - The `canvas.tsx` `ResizeObserver` naturally reflows the canvas width when the rail opens/closes — no manual layout math is needed.
 - `.console-shell` grid (64px header + 1fr body) is immutable; only `.console-body.is-canvas` grid changes.
 
