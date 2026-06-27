@@ -2,12 +2,6 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
-import {
-  createCuratedTerminalFontSettings,
-  createCustomTerminalFontSettings,
-  parseStoredTerminalFontSettings,
-  serializeTerminalFontSettings,
-} from "./terminal-font.js";
 import type {
   ConsoleState,
   NotificationKind,
@@ -16,9 +10,6 @@ import type {
   OperationNode,
   ObserverStatus,
   ReleaseNotesResponse,
-  TerminalFontId,
-  TerminalFontSettings,
-  TerminalRenderer,
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
@@ -28,14 +19,11 @@ type Listener = () => void;
 
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
-const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
-const TERMINAL_FONT_STORAGE_KEY = "fleet-console.terminalFont";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 const NOTIFICATION_PREFERENCES_VERSION = 1;
 const DEFAULT_THEME: ThemeId = "maritime";
-const DEFAULT_RENDERER: TerminalRenderer = "webgl";
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   globalMute: false,
   dnd: false,
@@ -51,8 +39,6 @@ let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
   activeTheme: readStoredTheme(),
-  terminalRenderer: readStoredRenderer(),
-  terminalFont: readStoredTerminalFont(),
   version: "",
   updateAvailable: false,
   latestVersion: null,
@@ -115,50 +101,6 @@ export function setActiveTheme(theme: ThemeId): void {
   writeStoredTheme(theme);
   applyThemeToDocument(theme);
   setState({ activeTheme: theme });
-}
-
-export function setTerminalRenderer(renderer: TerminalRenderer): void {
-  writeStoredRenderer(renderer);
-  setState({ terminalRenderer: renderer });
-}
-
-export function setTerminalFont(fontId: TerminalFontId): void {
-  const terminalFont = createCuratedTerminalFontSettings(fontId, state.terminalFont.size);
-  writeStoredTerminalFont(terminalFont);
-  setState({ terminalFont });
-}
-
-export function setCustomTerminalFont(customName: string): void {
-  const terminalFont = createCustomTerminalFontSettings(customName, state.terminalFont.size);
-  writeStoredTerminalFont(terminalFont);
-  setState({ terminalFont });
-}
-
-export function setTerminalFontSize(size: number): void {
-  const terminalFont = state.terminalFont.source === "custom"
-    ? createCustomTerminalFontSettings(state.terminalFont.customName, size)
-    : createCuratedTerminalFontSettings(state.terminalFont.id, size);
-  writeStoredTerminalFont(terminalFont);
-  setState({ terminalFont });
-}
-
-export function readStoredRenderer(): TerminalRenderer {
-  if (typeof window === "undefined") return DEFAULT_RENDERER;
-  try {
-    const stored = window.localStorage.getItem(RENDERER_STORAGE_KEY);
-    return stored === "webgl" || stored === "dom" ? stored : DEFAULT_RENDERER;
-  } catch {
-    return DEFAULT_RENDERER;
-  }
-}
-
-export function readStoredTerminalFont(): TerminalFontSettings {
-  if (typeof window === "undefined") return parseStoredTerminalFontSettings(null);
-  try {
-    return parseStoredTerminalFontSettings(window.localStorage.getItem(TERMINAL_FONT_STORAGE_KEY));
-  } catch {
-    return parseStoredTerminalFontSettings(null);
-  }
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
@@ -605,24 +547,6 @@ function writeStoredTheme(theme: ThemeId): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
-  }
-}
-
-function writeStoredRenderer(renderer: TerminalRenderer): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(RENDERER_STORAGE_KEY, renderer);
-  } catch {
-    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
-  }
-}
-
-function writeStoredTerminalFont(settings: TerminalFontSettings): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(TERMINAL_FONT_STORAGE_KEY, serializeTerminalFontSettings(settings));
   } catch {
     // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type R
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor, TerminalRenderer } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations, renameOperation as renameOperationRequest } from "../api.js";
 import { hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import type { ConsoleState, OperationNode, TerminalFontSettings } from "../types.js";
+import type { ConsoleState, OperationNode } from "../types.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "./canvas-store.js";
 import { CanvasDock } from "./canvas-dock.js";
 import { operationAccentFromNode } from "./operation-accent.js";
@@ -41,8 +41,6 @@ interface PluginOperationRendererProps {
   readonly descriptor: OperationKindDescriptor;
   readonly geometry: OperationGeometry;
   readonly operation: OperationNode;
-  readonly terminalFont: TerminalFontSettings;
-  readonly terminalRenderer: TerminalRenderer;
   readonly theme: ConsoleTheme;
   readonly viewportZoom: number;
   readonly onActivate: () => void;
@@ -277,8 +275,6 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           operationKindRegistry,
           status: state.operationStatus[operation.id],
           theme: state.activeTheme,
-          terminalRenderer: state.terminalRenderer,
-          terminalFont: state.terminalFont,
           viewportZoom: canvas.viewport.zoom,
           minimized: minimizedSet.has(operation.id),
           maximized: operationMaximized,
@@ -438,8 +434,6 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
   readonly status?: OperationActivity;
   readonly theme: ConsoleTheme;
-  readonly terminalRenderer: TerminalRenderer;
-  readonly terminalFont: TerminalFontSettings;
   readonly viewportZoom: number;
   readonly minimized: boolean;
   readonly maximized: boolean;
@@ -487,8 +481,6 @@ function renderPluginOperation(operation: OperationNode, options: {
           descriptor={descriptor}
           geometry={geometry}
           operation={operation}
-          terminalFont={options.terminalFont}
-          terminalRenderer={options.terminalRenderer}
           theme={options.theme}
           viewportZoom={options.viewportZoom}
           onActivate={options.onActivate}
@@ -506,8 +498,6 @@ function PluginOperationRenderer({
   descriptor,
   geometry,
   operation,
-  terminalFont,
-  terminalRenderer,
   theme,
   viewportZoom,
   onActivate,
@@ -525,8 +515,6 @@ function PluginOperationRenderer({
     active,
     zoom: viewportZoom,
     theme,
-    terminalRenderer,
-    terminalFont,
     api: capabilities.api,
     lifecycle: capabilities.lifecycle,
     terminal: capabilities.terminal,

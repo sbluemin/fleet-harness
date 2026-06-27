@@ -5,7 +5,7 @@ import {
   createCustomTerminalFontSettings,
   parseStoredTerminalFontSettings,
   resolveTerminalFont,
-} from "../core/client/src/terminal-font.js";
+} from "../client/shared/terminal-font.js";
 
 describe("terminal font settings", () => {
   afterEach(() => {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries } from "../core/client/src/operation-search.js";
-import { createDefaultTerminalFontSettings } from "../core/client/src/terminal-font.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 const THEATER_ALPHA: TheaterInfo = { id: "theater-alpha", label: "Alpha Harbor", createdAt: "2026-06-16T00:00:00.000Z", lastOpenedAt: "2026-06-16T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
@@ -28,8 +27,6 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     connection: "connecting",
     connectionError: null,
     activeTheme: "maritime",
-    terminalRenderer: "webgl",
-    terminalFont: createDefaultTerminalFontSettings(),
     version: "1.8.0",
     updateAvailable: false,
     latestVersion: null,

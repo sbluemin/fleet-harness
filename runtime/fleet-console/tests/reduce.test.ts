@@ -11,7 +11,6 @@ import {
   groupNotificationsByTheater,
   splitNotificationsByVisibility,
 } from "../core/client/src/notification-reduce.js";
-import { createDefaultTerminalFontSettings } from "../core/client/src/terminal-font.js";
 import type { ObservedEvent } from "../../fleet-plugins/terminal/client/agent/types.js";
 import type { ConsoleState, NotificationPreferences, OperationNotification } from "../core/client/src/types.js";
 
@@ -41,8 +40,6 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     connection: "live",
     connectionError: null,
     activeTheme: "maritime",
-    terminalRenderer: "webgl",
-    terminalFont: createDefaultTerminalFontSettings(),
     version: "1.8.0",
     updateAvailable: false,
     latestVersion: null,
