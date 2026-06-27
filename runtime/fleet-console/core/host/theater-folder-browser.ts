@@ -245,7 +245,6 @@ async function toContentsEntry(
   dirent: fs.Dirent,
   stat: typeof fs.promises.stat,
 ): Promise<TheaterContentsEntry | null> {
-  if (dirent.name.startsWith(".")) return null;
   const entryPath = path.join(targetPath, dirent.name);
   const rel = path.relative(theaterPath, entryPath);
   if (dirent.isDirectory()) return { name: dirent.name, relativePath: rel, kind: "dir" };

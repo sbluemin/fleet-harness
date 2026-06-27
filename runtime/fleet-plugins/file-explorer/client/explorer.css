@@ -448,3 +448,26 @@
   color: var(--ink-fog);
   margin: 0;
 }
+
+/* ── 숨김 파일 토글 버튼 ── */
+.fexp-hidden-toggle {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s;
+}
+
+.fexp-hidden-toggle:hover {
+  color: var(--ink-spectral);
+}
+
+.fexp-hidden-toggle.is-active {
+  color: var(--brass);
+}

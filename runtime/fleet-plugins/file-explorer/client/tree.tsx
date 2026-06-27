@@ -20,17 +20,20 @@ interface FlatRow {
 const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
+const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
 
 function hasFilterMatch(
   entries: readonly RailFolderEntry[],
   childResults: Map<string, RailFolderListResult>,
   low: string,
+  showHidden: boolean,
 ): boolean {
   for (const e of entries) {
+    if (!showHidden && e.name.startsWith(".")) continue;
     if (e.name.toLowerCase().includes(low)) return true;
     if (e.kind === "dir") {
       const children = childResults.get(e.relativePath)?.entries;
-      if (children && hasFilterMatch(children, childResults, low)) return true;
+      if (children && hasFilterMatch(children, childResults, low, showHidden)) return true;
     }
   }
   return false;
@@ -44,15 +47,18 @@ function buildFlatRows(
   loadingDirs: Set<string>,
   childResults: Map<string, RailFolderListResult>,
   low: string,
+  showHidden: boolean,
 ): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const entry of entries) {
+    if (!showHidden && entry.name.startsWith(".")) continue;
     if (low) {
       const directMatch = entry.name.toLowerCase().includes(low);
       const childMatch = entry.kind === "dir" && hasFilterMatch(
         childResults.get(entry.relativePath)?.entries ?? [],
         childResults,
         low,
+        showHidden,
       );
       if (!directMatch && !childMatch) continue;
     }
@@ -66,7 +72,7 @@ function buildFlatRows(
     if (entry.kind === "dir" && expandedDirs.has(entry.relativePath)) {
       const children = childResults.get(entry.relativePath)?.entries;
       if (children) {
-        rows.push(...buildFlatRows(children, depth + 1, selectedPath, expandedDirs, loadingDirs, childResults, low));
+        rows.push(...buildFlatRows(children, depth + 1, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden));
       }
     }
   }
@@ -83,6 +89,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
   const [filterText, setFilterText] = useState<string>("");
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
+  const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
   const treeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -139,12 +146,26 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     setScrollTop((e.currentTarget as HTMLDivElement).scrollTop);
   }, []);
 
+  const handleToggleHidden = useCallback(() => {
+    setShowHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(PREFS_SHOW_HIDDEN, next ? "1" : "0");
+      } catch {
+        // localStorage 접근 실패 무시
+      }
+      return next;
+    });
+  }, []);
+
   const low = filterText.toLowerCase();
 
   const flatRows = useMemo(() => {
     if (!result) return [];
-    return buildFlatRows(result.entries, 0, selectedPath, expandedDirs, loadingDirs, childResults, low);
-  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low]);
+    return buildFlatRows(result.entries, 0, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden);
+  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden]);
+
+  const hasOnlyHiddenEntries = !showHidden && result !== null && result.entries.length > 0 && flatRows.length === 0 && !filterText;
 
   const shouldVirtualize = flatRows.length > VIRTUALIZE_THRESHOLD;
   const startIdx = shouldVirtualize ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN) : 0;
@@ -178,6 +199,27 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
             ✕
           </button>
         )}
+        <button
+          type="button"
+          className={`fexp-hidden-toggle${showHidden ? " is-active" : ""}`}
+          onClick={handleToggleHidden}
+          aria-pressed={showHidden}
+          aria-label={showHidden ? "숨김 파일 숨기기" : "숨김 파일 표시"}
+          title={showHidden ? "숨김 파일 숨기기" : "숨김 파일 표시"}
+        >
+          {showHidden ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <ellipse cx="8" cy="8" rx="5.5" ry="3.5" stroke="currentColor" strokeWidth="1.4"/>
+              <circle cx="8" cy="8" r="1.8" fill="currentColor"/>
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <ellipse cx="8" cy="8" rx="5.5" ry="3.5" stroke="currentColor" strokeWidth="1.4"/>
+              <circle cx="8" cy="8" r="1.8" fill="currentColor"/>
+              <line x1="3" y1="13" x2="13" y2="3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          )}
+        </button>
       </div>
       <div
         ref={treeRef}
@@ -214,6 +256,9 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
         )}
         {flatRows.length === 0 && !filterText && result.entries.length === 0 && (
           <div className="fexp-tree-empty">폴더가 비어 있습니다</div>
+        )}
+        {hasOnlyHiddenEntries && (
+          <div className="fexp-tree-empty">숨김 항목만 있습니다 — 눈 아이콘으로 표시</div>
         )}
       </div>
     </div>
@@ -262,4 +307,12 @@ function fileIcon(name: string): string {
     txt: "≡",
   };
   return icons[ext] ?? "○";
+}
+
+function readShowHidden(): boolean {
+  try {
+    return localStorage.getItem(PREFS_SHOW_HIDDEN) === "1";
+  } catch {
+    return false;
+  }
 }
