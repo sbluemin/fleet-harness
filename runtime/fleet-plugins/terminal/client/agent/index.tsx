@@ -145,7 +145,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
       {primaryJob ? (
         <button
           type="button"
-          className={`job-summary job-summary--banner ${jobSummaryModifier(primaryJob.status)}`}
+          className="job-summary job-summary--banner job-summary--live"
           aria-label={activeJobs.length > 1 ? `${activeJobs.length} carriers streaming — click to expand` : `${primaryJob.label ?? primaryJob.jobId} — click to expand`}
           onClick={() => setModalOpen(true)}
         >
@@ -439,13 +439,6 @@ function sessionFromOperation(context: OperationRenderContext): SessionInfo {
     registrationId: readPayloadString(context.operation.payload, "registrationId") ?? undefined,
     resumeAvailable: readPayloadString(context.operation.payload, "status") === "dormant",
   };
-}
-
-function jobSummaryModifier(status: string): string {
-  if (status === "done") return "job-summary--ok";
-  if (status === "error" || status === "aborted") return "job-summary--bad";
-  if (status === "running" || status === "live") return "job-summary--live";
-  return "job-summary--idle";
 }
 
 function readPayloadString(payload: Record<string, unknown>, key: string): string | null {

@@ -101,7 +101,7 @@ async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOpti
   pruneOrphanStreamingOperations(operationsSnapshot.operations, options);
 }
 
-function pruneOrphanStreamingOperations(operations: readonly OperationNode[], options: AgentConnectionOptions): void {
+export function pruneOrphanStreamingOperations(operations: readonly OperationNode[], options: AgentConnectionOptions): void {
   for (const op of operations) {
     if (op.pluginId === "terminal" && op.type === "agent.streaming") {
       void options.operations.remove(op.id).catch(() => undefined);

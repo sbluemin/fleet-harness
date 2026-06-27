@@ -19,7 +19,6 @@ export default definePlugin({
   register(ctx) {
     ctx.host.operations.registerOperationType("shell");
     ctx.host.operations.registerOperationType("agent");
-    ctx.host.operations.registerOperationType("agent.streaming");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
     const runtime = createTerminalRuntime(ctx);

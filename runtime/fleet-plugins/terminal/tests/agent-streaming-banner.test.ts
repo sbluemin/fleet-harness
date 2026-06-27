@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
 import { isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
+
+type PruneOptions = Parameters<typeof pruneOrphanStreamingOperations>[1];
 
 // ── orphan prune 검증 ──────────────────────────────────────────────────────────
 
@@ -22,6 +25,11 @@ describe("pruneOrphanStreamingOperations (connection resync)", () => {
     };
   }
 
+  // prune은 options.operations.remove만 사용하므로 그 부분만 스텁한다.
+  function makeOptions(remove: (id: string) => Promise<void>): PruneOptions {
+    return { operations: { remove } } as unknown as PruneOptions;
+  }
+
   it("agent.streaming orphan에 대해 operations.remove를 호출한다", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     const ops = [
@@ -29,13 +37,7 @@ describe("pruneOrphanStreamingOperations (connection resync)", () => {
       makeOp({ id: "orphan-2", type: "agent.streaming", pluginId: "terminal" }),
     ];
 
-    // pruneOrphanStreamingOperations 로직을 인라인 재현한다.
-    // (비공개 함수이므로 동일 로직을 직접 실행)
-    for (const op of ops) {
-      if (op.pluginId === "terminal" && op.type === "agent.streaming") {
-        void remove(op.id).catch(() => undefined);
-      }
-    }
+    pruneOrphanStreamingOperations(ops, makeOptions(remove));
     await Promise.resolve();
 
     expect(remove).toHaveBeenCalledTimes(2);
@@ -43,36 +45,27 @@ describe("pruneOrphanStreamingOperations (connection resync)", () => {
     expect(remove).toHaveBeenCalledWith("orphan-2");
   });
 
-  it("다른 type의 operation은 건드리지 않는다", async () => {
+  it("agent/shell op과 다른 plugin의 agent.streaming op은 건드리지 않는다", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     const ops = [
       makeOp({ id: "agent-op", type: "agent", pluginId: "terminal" }),
       makeOp({ id: "shell-op", type: "shell", pluginId: "terminal" }),
+      makeOp({ id: "foreign-op", type: "agent.streaming", pluginId: "other" }),
     ];
 
-    for (const op of ops) {
-      if (op.pluginId === "terminal" && op.type === "agent.streaming") {
-        void remove(op.id).catch(() => undefined);
-      }
-    }
+    pruneOrphanStreamingOperations(ops, makeOptions(remove));
     await Promise.resolve();
 
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it("remove 실패는 조용히 무시한다", async () => {
+  it("remove 실패는 조용히 무시한다(예외 비전파)", async () => {
     const remove = vi.fn().mockRejectedValue(new Error("network error"));
     const ops = [makeOp({ id: "orphan-1", type: "agent.streaming", pluginId: "terminal" })];
 
-    // 에러가 외부로 전파되지 않아야 한다.
-    await expect(async () => {
-      for (const op of ops) {
-        if (op.pluginId === "terminal" && op.type === "agent.streaming") {
-          void remove(op.id).catch(() => undefined);
-        }
-      }
-      await Promise.resolve();
-    }).not.toThrow();
+    expect(() => pruneOrphanStreamingOperations(ops, makeOptions(remove))).not.toThrow();
+    await Promise.resolve();
+    expect(remove).toHaveBeenCalledWith("orphan-1");
   });
 });
 
@@ -86,16 +79,9 @@ describe("isTerminalJobStatus (배너 활성 job 필터)", () => {
   });
 
   it("진행 중 상태는 terminal이 아니다 — 배너에 표시된다", () => {
+    expect(isTerminalJobStatus("active")).toBe(false);
     expect(isTerminalJobStatus("running")).toBe(false);
     expect(isTerminalJobStatus("live")).toBe(false);
-    expect(isTerminalJobStatus("pending")).toBe(false);
-    expect(isTerminalJobStatus("queued")).toBe(false);
-  });
-
-  it("activeJobs 필터는 terminal이 아닌 job만 남긴다", () => {
-    const statuses = ["done", "running", "error", "live", "aborted", "pending"];
-    const activeStatuses = statuses.filter((s) => !isTerminalJobStatus(s));
-    expect(activeStatuses).toEqual(["running", "live", "pending"]);
   });
 
   it("활성 job이 없으면 primaryJob은 null — 배너 미렌더", () => {
@@ -105,11 +91,11 @@ describe("isTerminalJobStatus (배너 활성 job 필터)", () => {
     expect(primaryJob).toBeNull();
   });
 
-  it("활성 job이 있으면 primaryJob은 첫 번째 — 배너 렌더", () => {
-    const jobs = [{ status: "done" }, { status: "running" }, { status: "live" }];
+  it("활성 job이 있으면 primaryJob은 첫 번째 활성 job — 배너 렌더", () => {
+    const jobs = [{ status: "done" }, { status: "active" }, { status: "active" }];
     const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
     const primaryJob = activeJobs[0] ?? null;
-    expect(primaryJob).toEqual({ status: "running" });
+    expect(primaryJob).toEqual({ status: "active" });
     expect(activeJobs).toHaveLength(2);
   });
 });

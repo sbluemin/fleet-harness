@@ -148,13 +148,6 @@ export function sessionTurnState(sessionId: string): TurnState {
   return state.turnState[sessionId] ?? state.sessions[sessionId]?.turnState ?? "none";
 }
 
-export function findSessionIdForTenant(tenantId: string): string | null {
-  for (const sessionId of state.sessionOrder) {
-    if (state.sessions[sessionId]?.tenantId === tenantId) return sessionId;
-  }
-  return null;
-}
-
 function emit(): void {
   for (const listener of listeners) listener();
 }

@@ -4616,14 +4616,6 @@
   background: color-mix(in oklch, var(--aurora) 6%, var(--surface-glass-strong));
 }
 
-.job-summary--banner.job-summary--ok {
-  border-bottom-color: color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
-}
-
-.job-summary--banner.job-summary--bad {
-  border-bottom-color: color-mix(in oklch, var(--coral) 44%, var(--surface-rim));
-}
-
 @media (prefers-reduced-motion: reduce) {
   .job-summary--banner {
     transition: none;
