@@ -1,6 +1,5 @@
 import { CARRIER_SETTINGS_API_CATALOG } from "./carrier-settings-routes.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "./global-settings-routes.js";
-import { MODEL_AUTH_API_CATALOG } from "./model-auth-routes.js";
 import { SERVER_API_CATALOG } from "./server.js";
 
 export interface ApiCatalogEntry {
@@ -19,6 +18,5 @@ export function buildApiCatalog(): ApiCatalogEntry[] {
     ...SERVER_API_CATALOG,
     ...CARRIER_SETTINGS_API_CATALOG,
     ...GLOBAL_SETTINGS_API_CATALOG,
-    ...MODEL_AUTH_API_CATALOG,
   ].slice().sort(compareApiCatalogEntries);
 }

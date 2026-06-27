@@ -54,6 +54,7 @@
 ## Settings Plugin Boundary
 
 - Core Settings owns the `Console` group and core console settings such as the console port controls.
+- Model sign-in settings are Terminal plugin-owned, not core-owned.
 - Plugin Settings sections are discovered from `plugins[].settingsSections` and rendered under the `Plugins` group. The host derives plugin ownership from the plugin registration id and normalizes plugin active ids as `${pluginId}:${sectionId}`.
 - SDK settings descriptors remain minimal: `{ id, title, render }`. Do not add grouping, ordering, plugin ownership, or sensitivity metadata to `SettingsSectionDescriptor`.
 

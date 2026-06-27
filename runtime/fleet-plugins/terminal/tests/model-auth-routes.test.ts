@@ -1,8 +1,9 @@
 import type http from "node:http";
 
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it } from "vitest";
 
-import { createModelAuthRouter } from "../core/host/model-auth-routes.js";
+import { createTerminalModelAuthRouter } from "../server/model-auth-routes.js";
 
 interface WriteJsonCall {
   readonly status: number;
@@ -23,15 +24,15 @@ interface RouterHarnessOptions {
   readonly validation?: ValidationResult;
 }
 
+const BASE_PATH = "/plugins/terminal";
 const KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
-const KIMI_PATH = "/model-auth/providers/claude-kimi";
+const KIMI_PATH = `${BASE_PATH}/model-auth/providers/claude-kimi`;
 const GLM_PROVIDER_ID = "Claude Code with ZhipuAI GLM";
-const GLM_PATH = "/model-auth/providers/claude-glm";
-
-describe("model auth routes", () => {
-  it("GET /model-auth/state reports the kimi and glm providers and reflects signed-in status", async () => {
+const GLM_PATH = `${BASE_PATH}/model-auth/providers/claude-glm`;
+describe("terminal model auth routes", () => {
+  it("GET /plugins/terminal/model-auth/state returns terminal model auth state", async () => {
     const harness = createRouterHarness({ signedIn: true });
-    const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/model-auth/state" });
+    const handled = await harness.router({ req: req("GET"), res: res(), pathname: `${BASE_PATH}/model-auth/state` });
     expect(handled).toBe(true);
     const body = harness.writes[0]?.body as { providers: Array<{ cli: string; signedIn: boolean }> };
     expect(body.providers).toHaveLength(2);
@@ -39,18 +40,18 @@ describe("model auth routes", () => {
     expect(body.providers[1]).toMatchObject({ cli: "claude-glm", signedIn: false });
   });
 
-  it("GET /model-auth/state never serializes the api key or the internal provider storage key", async () => {
+  it("GET state never serializes the api key or the internal provider storage key", async () => {
     const harness = createRouterHarness({ signedIn: true });
-    await harness.router({ req: req("GET"), res: res(), pathname: "/model-auth/state" });
+    await harness.router({ req: req("GET"), res: res(), pathname: `${BASE_PATH}/model-auth/state` });
     const serialized = JSON.stringify(harness.writes);
     expect(serialized).not.toContain("stored-key");
     expect(serialized).not.toContain(KIMI_PROVIDER_ID);
     expect(serialized).toContain("\"signedIn\":true");
   });
 
-  it("GET /model-auth/state rejects non-GET methods with 405", async () => {
+  it("GET state rejects non-GET methods with 405", async () => {
     const harness = createRouterHarness();
-    await harness.router({ req: req("POST"), res: res(), pathname: "/model-auth/state" });
+    await harness.router({ req: req("POST"), res: res(), pathname: `${BASE_PATH}/model-auth/state` });
     expect(harness.writes[0]?.status).toBe(405);
   });
 
@@ -128,6 +129,14 @@ describe("model auth routes", () => {
     expect(harness.setCalls).toBe(0);
   });
 
+  it("PUT rejects a body with extra keys beyond apiKey with 400", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { apiKey: "sk-live", providerId: "leak", detail: "x" } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.validateCalls).toBe(0);
+    expect(harness.setCalls).toBe(0);
+  });
+
   it("PUT signs in the glm provider and stores under its own provider id", async () => {
     const harness = createRouterHarness({ authorized: true, body: { apiKey: "sk-glm" } });
     const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: GLM_PATH });
@@ -137,9 +146,9 @@ describe("model auth routes", () => {
     expect(harness.store.get(GLM_PROVIDER_ID)).toBe("sk-glm");
   });
 
-  it("rejects providers outside the whitelist with 404", async () => {
+  it("rejects providers outside the terminal model auth whitelist with 404", async () => {
     const harness = createRouterHarness({ authorized: true, body: { apiKey: "x" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/model-auth/providers/claude-zai" });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: `${BASE_PATH}/model-auth/providers/claude-zai` });
     expect(harness.writes[0]?.status).toBe(404);
     expect(harness.setCalls).toBe(0);
   });
@@ -161,7 +170,7 @@ describe("model auth routes", () => {
 
   it("returns false for the bare providers path so the host can fall through", async () => {
     const harness = createRouterHarness();
-    const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/model-auth/providers" });
+    const handled = await harness.router({ req: req("GET"), res: res(), pathname: `${BASE_PATH}/model-auth/providers` });
     expect(handled).toBe(false);
     expect(harness.writes).toEqual([]);
   });
@@ -173,7 +182,12 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
   let validateCalls = 0;
   let setCalls = 0;
   let deleteCalls = 0;
-  const router = createModelAuthRouter({
+  const ctx = createContext({
+    writes,
+    authorized: options.authorized ?? true,
+    readBody: async () => (options.bodyNull ? null : (options.body ?? { apiKey: "sk-test" })),
+  });
+  const router = createTerminalModelAuthRouter(ctx, {
     authService: {
       setApiKey: async (providerId, apiKey) => { setCalls += 1; store.set(providerId, apiKey); },
       deleteApiKey: async (providerId) => { deleteCalls += 1; return store.delete(providerId); },
@@ -183,9 +197,6 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
       validateCalls += 1;
       return (options.validation ?? { providerId: KIMI_PROVIDER_ID, status: "success" }) as never;
     },
-    isAuthorized: () => options.authorized ?? true,
-    readJsonBody: async () => (options.bodyNull ? null : (options.body ?? { apiKey: "sk-test" })) as never,
-    writeJson: (_res, status, body) => { writes.push({ status, body }); },
   });
   return {
     router,
@@ -195,6 +206,28 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
     get setCalls() { return setCalls; },
     get deleteCalls() { return deleteCalls; },
   };
+}
+
+function createContext(options: {
+  readonly writes: WriteJsonCall[];
+  readonly authorized: boolean;
+  readonly readBody: () => Promise<unknown>;
+}): FleetPluginServerContext {
+  return {
+    pluginId: "terminal",
+    manifest: { id: "terminal" },
+    basePath: BASE_PATH,
+    wsBasePath: `${BASE_PATH}/ws`,
+    host: {
+      http: {
+        writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { options.writes.push({ status, body }); },
+        readJsonBody: options.readBody,
+      },
+      security: {
+        isTerminalAuthorized: () => options.authorized,
+      },
+    },
+  } as unknown as FleetPluginServerContext;
 }
 
 function req(method: string, contentType?: string): http.IncomingMessage {

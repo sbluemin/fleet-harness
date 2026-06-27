@@ -1,14 +1,35 @@
-import { ApiError } from "./api.js";
-import type { ModelAuthMutationResult, ModelAuthProviderState, ModelAuthState } from "./types.js";
+export interface ModelAuthProviderState {
+  readonly cli: string;
+  readonly displayName: string;
+  readonly signedIn: boolean;
+}
+
+export interface ModelAuthState {
+  readonly providers: readonly ModelAuthProviderState[];
+}
+
+export interface ModelAuthMutationResult {
+  readonly state: ModelAuthState;
+}
+
+export class TerminalModelAuthApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "TerminalModelAuthApiError";
+    this.status = status;
+  }
+}
 
 export async function fetchModelAuthState(signal?: AbortSignal): Promise<ModelAuthState> {
-  const response = await fetch("/model-auth/state", { signal });
+  const response = await fetch("/plugins/terminal/model-auth/state", { signal });
   await assertOk(response);
   return assertModelAuthState(await response.json(), response.status);
 }
 
 export async function signInModelProvider(cli: string, apiKey: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
-  const response = await fetch(`/model-auth/providers/${encodeURIComponent(cli)}`, {
+  const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(cli)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ apiKey }),
@@ -19,7 +40,7 @@ export async function signInModelProvider(cli: string, apiKey: string, signal?: 
 }
 
 export async function signOutModelProvider(cli: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
-  const response = await fetch(`/model-auth/providers/${encodeURIComponent(cli)}`, {
+  const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(cli)}`, {
     method: "DELETE",
     signal,
   });
@@ -36,13 +57,13 @@ async function assertOk(response: Response): Promise<void> {
   } catch {
     // 응답 본문이 JSON이 아니면 statusText를 사용한다.
   }
-  throw new ApiError(response.status, message);
+  throw new TerminalModelAuthApiError(response.status, message);
 }
 
 function assertMutationResult(value: unknown, status: number): ModelAuthMutationResult {
   const payload = value as { readonly state?: unknown };
   if (!payload || typeof payload !== "object" || !("state" in payload)) {
-    throw new ApiError(status, "Invalid model auth mutation response");
+    throw new TerminalModelAuthApiError(status, "Invalid model auth mutation response");
   }
   return { state: assertModelAuthState(payload.state, status) };
 }
@@ -50,7 +71,7 @@ function assertMutationResult(value: unknown, status: number): ModelAuthMutation
 function assertModelAuthState(value: unknown, status: number): ModelAuthState {
   const payload = value as { readonly providers?: unknown };
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.providers)) {
-    throw new ApiError(status, "Invalid model auth state response");
+    throw new TerminalModelAuthApiError(status, "Invalid model auth state response");
   }
   return { providers: payload.providers.map((provider) => assertProviderState(provider, status)) };
 }
@@ -62,7 +83,7 @@ function assertProviderState(value: unknown, status: number): ModelAuthProviderS
     typeof payload.displayName !== "string" ||
     typeof payload.signedIn !== "boolean"
   ) {
-    throw new ApiError(status, "Invalid model auth provider response");
+    throw new TerminalModelAuthApiError(status, "Invalid model auth provider response");
   }
   return {
     cli: payload.cli,

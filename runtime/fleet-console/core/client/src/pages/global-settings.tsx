@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { plugins } from "virtual:fleet-plugins";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
-import { ModelAuthSection } from "../components/model-auth-section.js";
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { setActiveTheme, setCustomTerminalFont, setTerminalFont, setTerminalFontSize, setTerminalRenderer } from "../store.js";
@@ -36,7 +35,7 @@ interface TerminalFontCardProps {
   readonly onSelect: () => void;
 }
 
-type CoreSettingsSectionId = "appearance" | "general" | "model-auth" | "backend-api";
+type CoreSettingsSectionId = "appearance" | "general" | "backend-api";
 type PluginSettingsSectionId = `${string}:${string}`;
 type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
 
@@ -82,7 +81,6 @@ const MAX_CONSOLE_STATIC_PORT = 65535;
 const CORE_SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
   { id: "appearance", label: "Appearance", eyebrow: "Theme · Renderer" },
   { id: "general", label: "General", eyebrow: "Port" },
-  { id: "model-auth", label: "Model Auth", eyebrow: "Sign-in" },
   { id: "backend-api", label: "Backend API", eyebrow: "Loopback routes" },
 ];
 
@@ -171,8 +169,6 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
       return <AppearanceCard />;
     case "general":
       return <GeneralSettingsCard state={state} saving={saving} />;
-    case "model-auth":
-      return <ModelAuthSection />;
     case "backend-api":
       return <BackendApiSection />;
   }

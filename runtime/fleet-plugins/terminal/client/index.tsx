@@ -2,14 +2,13 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, agentStreamingOperationKind } from "./agent/index.js";
 import { shellOperationKind, shellPlugin } from "./shell/index.js";
-import { systemPromptSettingsSection } from "./system-prompt/index.js";
 
 const AGENT_OPERATION_TYPES = new Set(["agent", "agent.streaming"]);
 
 export const terminalPlugin = definePlugin({
   id: "terminal",
   operationKinds: [shellOperationKind, agentOperationKind, agentStreamingOperationKind],
-  settingsSections: [agentSettingsSection, systemPromptSettingsSection],
+  settingsSections: [agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   install: (ctx) => agentPlugin.install?.(ctx),
   closeOperation: async (operationId) => {
@@ -29,7 +28,7 @@ export const terminalPlugin = definePlugin({
 });
 
 export const operationKinds = [shellOperationKind, agentOperationKind, agentStreamingOperationKind] as const;
-export const settingsSections = [agentSettingsSection, systemPromptSettingsSection] as const;
+export const settingsSections = [agentSettingsSection] as const;
 export const notificationKinds = [agentAttentionNotification] as const;
 export const plugins = [terminalPlugin] as const;
 

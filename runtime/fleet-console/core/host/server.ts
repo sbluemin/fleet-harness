@@ -9,7 +9,6 @@ import {
   registerDefaultCarriers,
 } from "@dotobokuri/fleet-carriers";
 import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
-import { validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
@@ -18,7 +17,6 @@ import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
-import { buildModelAuthState, createModelAuthRouter } from "./model-auth-routes.js";
 import { createOperationsRouter } from "./operations/routes.js";
 import { createOperationStore } from "./operations/store.js";
 import { createConsoleDataPaths } from "./paths.js";
@@ -160,6 +158,27 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "PUT",
     path: "/plugins/terminal/settings",
     summary: "Save Terminal plugin prompt settings.",
+    category: "Terminal Plugin",
+    gate: "terminal-origin",
+  },
+  {
+    method: "GET",
+    path: "/plugins/terminal/model-auth/state",
+    summary: "Get Terminal plugin model sign-in status.",
+    category: "Terminal Plugin",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/plugins/terminal/model-auth/providers/:cli",
+    summary: "Register a Terminal plugin model provider API key.",
+    category: "Terminal Plugin",
+    gate: "terminal-origin",
+  },
+  {
+    method: "DELETE",
+    path: "/plugins/terminal/model-auth/providers/:cli",
+    summary: "Remove a Terminal plugin model provider API key.",
     category: "Terminal Plugin",
     gate: "terminal-origin",
   },
@@ -318,9 +337,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       isTerminalAuthorized,
       isLockAuthorized,
     },
-    modelAuth: {
-      state: () => buildModelAuthState(infraServices.authService),
-    },
     lifecycle: {
       registerCleanup: (cleanup) => {
         pluginCleanupCallbacks.add(cleanup);
@@ -388,13 +404,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
-  const modelAuthRouter = createModelAuthRouter({
-    authService: infraServices.authService,
-    validateApiKey: (cli, apiKey) => validateAuthKeyForCli(cli, apiKey),
-    isAuthorized: isTerminalAuthorized,
-    readJsonBody,
-    writeJson,
-  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -412,7 +421,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/operations", operationsRouter);
   routeRegistry.register("/carrier-settings", carrierSettingsRouter);
   routeRegistry.register("/global-settings", globalSettingsRouter);
-  routeRegistry.register("/model-auth", modelAuthRouter);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);

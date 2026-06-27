@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import process from "node:process";
 
 import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
-import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
-import { createInfraServices } from "@dotobokuri/fleet-infra";
+import type { GlobalOptionsService } from "@dotobokuri/fleet-infra";
+import { resolveAuthEnv, type AuthService } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -20,6 +20,7 @@ import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } fro
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentTerminalSessionInfo } from "./agent-api/types.js";
+import { buildModelAuthState } from "./model-auth-state.js";
 
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type SessionPatchBody = { readonly label?: unknown };
@@ -34,13 +35,21 @@ type OperationRenamedEvent = {
   readonly title: string;
   readonly previousTitle: string;
 };
+interface AgentRouteDeps {
+  readonly authService: AuthService;
+  readonly globalOptionsService: GlobalOptionsService;
+}
 
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const TERMINAL_PLUGIN_ID = "terminal";
 
-export function registerAgentRoutes(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime): () => Promise<readonly OperationLaunchKind[]> {
-  const api = createAgentApi(ctx, terminalRuntime);
+export function registerAgentRoutes(
+  ctx: FleetPluginServerContext,
+  terminalRuntime: TerminalRuntime,
+  deps: AgentRouteDeps,
+): () => Promise<readonly OperationLaunchKind[]> {
+  const api = createAgentApi(ctx, terminalRuntime, deps);
   terminalRuntime.registerLaunchResolver(AGENT_OPERATION_TYPE, api.launch);
   terminalRuntime.onExit(async (operationId) => {
     await api.handleExit(operationId);
@@ -50,10 +59,9 @@ export function registerAgentRoutes(ctx: FleetPluginServerContext, terminalRunti
   return api.launchKinds;
 }
 
-function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime) {
-  const infraServices = createInfraServices();
+function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const dataDir = ctx.host.paths.dataDir;
-  const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
+  const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: deps.authService });
   const runtime = createFleetAgentRuntimeLifecycle({
     authEnvResolver,
     dataDir,
@@ -73,7 +81,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
     dataDir,
-    infraServices,
+    infraServices: deps,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },
@@ -418,7 +426,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     const [detected, modelAuth] = await Promise.all([
       detector.detect(),
-      ctx.host.modelAuth.state(),
+      buildModelAuthState(deps.authService),
     ]);
     return combineAgentCliLaunchMetadata(metadata, detected, modelAuth.providers);
   }

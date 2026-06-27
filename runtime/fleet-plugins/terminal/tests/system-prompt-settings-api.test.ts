@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSystemPromptSettings, saveSystemPromptSettings } from "../client/system-prompt/settings-api.js";
+import { fetchSystemPromptSettings, saveSystemPromptSettings } from "../client/agent/settings-api.js";
 
 describe("system prompt settings api", () => {
   afterEach(() => {

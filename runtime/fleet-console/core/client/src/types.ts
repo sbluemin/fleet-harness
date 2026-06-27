@@ -174,20 +174,6 @@ export interface GlobalSettingsMutationResult {
   readonly state: GlobalSettingsState;
 }
 
-export interface ModelAuthProviderState {
-  readonly cli: string;
-  readonly displayName: string;
-  readonly signedIn: boolean;
-}
-
-export interface ModelAuthState {
-  readonly providers: readonly ModelAuthProviderState[];
-}
-
-export interface ModelAuthMutationResult {
-  readonly state: ModelAuthState;
-}
-
 export interface ApiCatalogEntry {
   readonly method: string;
   readonly path: string;

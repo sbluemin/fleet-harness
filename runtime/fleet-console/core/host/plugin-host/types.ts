@@ -6,8 +6,6 @@ export type {
   FleetPluginHttpHost,
   FleetPluginLifecycleHost,
   FleetPluginManifest,
-  FleetPluginModelAuthHost,
-  FleetPluginModelAuthProviderState,
   FleetPluginOperationsHost,
   FleetPluginPathsHost,
   FleetPluginRouteExport,

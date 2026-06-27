@@ -156,7 +156,6 @@ export interface FleetPluginHostCapabilities {
   readonly storage: FleetPluginStorageHost;
   readonly http: FleetPluginHttpHost;
   readonly security: FleetPluginSecurityHost;
-  readonly modelAuth: FleetPluginModelAuthHost;
   readonly lifecycle: FleetPluginLifecycleHost;
 }
 
@@ -200,16 +199,6 @@ export interface FleetPluginSecurityHost {
   validateHost(req: http.IncomingMessage, expectedPort: number): boolean;
   isTerminalAuthorized(req: http.IncomingMessage): boolean;
   isLockAuthorized(req: http.IncomingMessage): boolean;
-}
-
-export interface FleetPluginModelAuthProviderState {
-  readonly cli: string;
-  readonly displayName: string;
-  readonly signedIn: boolean;
-}
-
-export interface FleetPluginModelAuthHost {
-  state(): Promise<{ readonly providers: readonly FleetPluginModelAuthProviderState[] }>;
 }
 
 export interface FleetPluginLifecycleHost {

@@ -37,9 +37,6 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     workspaceHash: (canonicalCwd) => canonicalCwd,
     resolveTheaterPath: () => null,
   },
-  modelAuth: {
-    state: async () => ({ providers: [] }),
-  },
   storage: {
     readJson: async () => null,
     writeJson: async () => {},
