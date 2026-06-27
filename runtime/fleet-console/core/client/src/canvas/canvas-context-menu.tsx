@@ -10,10 +10,18 @@ interface CanvasContextMenuProps {
   // Operations Control 헤더 부제 — 활성 Theater 라벨과 그 안의 Operation 수.
   readonly theaterLabel?: string;
   readonly operationCount?: number;
+  // Map 섹션 — top-right 캔버스 컨트롤과 동일 상태/동작을 메뉴에서도 노출한다.
+  readonly mapFullscreen?: boolean;
+  readonly radarEnabled?: boolean;
+  // Recover 섹션 — 최근 닫은 Operation(재오픈 가능한 것)의 표시용 목록.
+  readonly recentlyClosed?: readonly { readonly id: string; readonly title: string }[];
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
+  readonly onMaximizeMap?: () => void;
+  readonly onToggleRadar?: () => void;
+  readonly onReopen?: (id: string) => void;
   readonly onClose: () => void;
 }
 
@@ -22,7 +30,7 @@ const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 440;
 const MENU_MARGIN = 12;
 
-export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, theaterLabel, operationCount, renderKindIcon, onLaunchKind, onResetView, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, theaterLabel, operationCount, mapFullscreen, radarEnabled, recentlyClosed, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onReopen, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -91,6 +99,30 @@ export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, 
           <span className="theater-menu-check" aria-hidden="true"><ResetGlyph /></span>
           <span className="theater-menu-label">Reset view</span>
         </button>
+        {onMaximizeMap ? (
+          <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" onClick={onMaximizeMap}>
+            <span className="theater-menu-check" aria-hidden="true"><MapMaximizeGlyph /></span>
+            <span className="theater-menu-label">{mapFullscreen ? "Exit fullscreen" : "Maximize map"}</span>
+          </button>
+        ) : null}
+        {onToggleRadar ? (
+          <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" aria-pressed={!!radarEnabled} onClick={onToggleRadar}>
+            <span className="theater-menu-check" aria-hidden="true"><RadarGlyph /></span>
+            <span className="theater-menu-label">Radar sweep</span>
+            <span className="canvas-context-menu-state">{radarEnabled ? "On" : "Off"}</span>
+          </button>
+        ) : null}
+        {recentlyClosed && recentlyClosed.length > 0 ? (
+          <>
+            <p className="canvas-context-menu-section">Recover</p>
+            {recentlyClosed.map((entry) => (
+              <button key={entry.id} type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" onClick={() => onReopen?.(entry.id)}>
+                <span className="theater-menu-check" aria-hidden="true"><RecoverGlyph /></span>
+                <span className="theater-menu-label canvas-context-menu-reopen-label">{`Reopen ${entry.title}`}</span>
+              </button>
+            ))}
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -125,6 +157,36 @@ function ResetGlyph() {
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.4 7.2A4 4 0 1 1 4 9.2" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M2.4 4.6v2.8h2.8" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// 맵 전체화면 — 사방 모서리로 펼치는 확장 마크. top-right 컨트롤과 동일 의미.
+function MapMaximizeGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M9.5 3.5h3v3M12.5 3.5 9 7M6.5 12.5h-3v-3M3.5 12.5 7 9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// 레이더 스윕 — 스코프 링 + 한 방향 스윕 + 중심점. 배경 레이더 토글과 동일 의미.
+function RadarGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8 8 12 5.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+// 닫힌 Operation 재오픈 — 되돌림(반시계) 호 마크.
+function RecoverGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.4 8a4.6 4.6 0 1 0 1.5-3.4" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.4 3.4v2.8h2.8" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

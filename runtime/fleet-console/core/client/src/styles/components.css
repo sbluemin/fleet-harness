@@ -2723,6 +2723,30 @@
   color: var(--brass);
 }
 
+/* 토글 항목(Radar sweep)의 On/Off 상태 꼬리표 — 신호 채널이 아닌 중립 정보라 ink 톤으로 둔다. */
+.canvas-context-menu-state {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+}
+
+/* Launch/Map/Recover 3개 섹션이 모두 차면 메뉴가 길어질 수 있으므로, 뷰포트를 넘기지 않게 내부 스크롤로 가둔다. */
+.canvas-context-menu {
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+/* Recover 항목의 "Reopen <title>" 라벨은 길 수 있어 한 줄로 줄여 말줄임 처리한다. */
+.canvas-context-menu-reopen-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .canvas-context-menu-plugin {
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2) 0;

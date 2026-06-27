@@ -12,6 +12,7 @@ import type { ConsoleState, OperationNode, TerminalFontSettings } from "../types
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasDock } from "./canvas-dock.js";
 import { CanvasContextMenu, CommandReticleIcon } from "./canvas-context-menu.js";
+import { recordClosedOperation, removeClosedOperation, useRecentlyClosed, type ClosedOperationSnapshot } from "./recently-closed.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { MapShortcuts } from "./map-shortcuts.js";
@@ -70,6 +71,9 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [launchPending, setLaunchPending] = useState(false);
   const registry = usePluginRegistry();
+  // launch 시점에 보유한 불투명 kind를 operation별로 기억한다 — close 시 Recover 스냅샷에 담아 재오픈에 쓴다.
+  const launchKindsRef = useRef<Map<string, { readonly pluginId: string; readonly kind: OperationLaunchKind }>>(new Map());
+  const recentlyClosed = useRecentlyClosed(state.activeTheaterId);
   // 미니맵의 뷰포트 인디케이터 계산에 필요한 캔버스 픽셀 크기를 ResizeObserver로 추적한다.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const disabled = !state.activeTheaterId || state.addingTheater;
@@ -121,6 +125,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     try {
       const capabilities = createHostCapabilities();
       const created = await plugin.launch({ theaterId, kind, geometry, operations: capabilities.operations });
+      launchKindsRef.current.set(created.id, { pluginId, kind });
       setOperationGeometry(created.id, geometry);
       void updatePluginOperationGeometry(created.id, geometry);
       setActiveOperation(created.id);
@@ -142,6 +147,47 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const handleResetView = () => {
     setContextMenu(null);
     setViewport({ ...RESET_VIEWPORT });
+  };
+
+  // Map 섹션 — top-right 컨트롤과 동일 동작을 Operations Control 메뉴에서도 노출한다(이동이 아닌 surface).
+  const handleMaximizeMap = () => {
+    setContextMenu(null);
+    toggleMapFullscreen();
+  };
+
+  const handleToggleRadar = () => {
+    setContextMenu(null);
+    toggleBackgroundAnimation();
+  };
+
+  // 닫는 Operation을 Recover 스냅샷으로 기록한다 — 이번 세션에 런치돼 kind를 아는 것만 대상으로 한다
+  // (복원된 dormant 등 kind 미상 Operation은 정확히 재오픈할 수 없어 제외한다).
+  const captureClosedOperation = (operation: OperationNode) => {
+    const launched = launchKindsRef.current.get(operation.id);
+    if (!launched) return;
+    recordClosedOperation({
+      id: operation.id,
+      theaterId: operation.theaterId,
+      pluginId: launched.pluginId,
+      title: operation.renamedTitle ?? operation.title,
+      kind: launched.kind,
+      geometry: operation.geometry,
+      closedAt: Date.now(),
+    });
+    launchKindsRef.current.delete(operation.id);
+  };
+
+  const handleReopen = (snapshot: ClosedOperationSnapshot) => {
+    setContextMenu(null);
+    removeClosedOperation(snapshot.id);
+    if (!state.activeTheaterId) return;
+    // 닫힌 뒤 kind가 stale할 수 있으므로(예: sign-out) 현재 catalog에서 같은 id로 재해석한다.
+    const fresh = catalog.find((plugin) => plugin.id === snapshot.pluginId)?.kinds.find((kind) => kind.id === snapshot.kind.id) ?? snapshot.kind;
+    if (fresh.disabled) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const fallback = geometryAt(screenToCanvas({ x: (rect?.width ?? 0) / 2, y: (rect?.height ?? 0) / 2 }, canvas.viewport), DEFAULT_SHELL_WIDTH, DEFAULT_SHELL_HEIGHT);
+    const geometry = { ...(snapshot.geometry ?? fallback), zIndex: claimTopZIndex() };
+    void launchViaPlugin(snapshot.pluginId, fresh, state.activeTheaterId, geometry);
   };
 
   // 좌하단 '+' 런처: 우클릭 컨텍스트 메뉴와 동일한 메뉴를 명시 버튼으로 연다.
@@ -234,7 +280,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         className={`canvas-background-toggle canvas-map-fullscreen-toggle ${mapFullscreen ? "is-active" : ""}`}
         onClick={toggleMapFullscreen}
         data-canvas-blocker
-        aria-label={mapFullscreen ? "맵 전체화면 해제" : "맵 전체화면"}
+        aria-label={mapFullscreen ? "Exit fullscreen" : "Maximize map"}
         aria-pressed={mapFullscreen}
         title={mapFullscreen ? "Exit fullscreen" : "Maximize map"}
       >
@@ -245,8 +291,9 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         className={`canvas-background-toggle ${backgroundAnimationEnabled ? "is-active" : ""}`}
         onClick={toggleBackgroundAnimation}
         data-canvas-blocker
-        aria-label={backgroundAnimationEnabled ? "배경 애니메이션 끄기" : "배경 애니메이션 켜기"}
-        title={backgroundAnimationEnabled ? "Background animation: on" : "Background animation: off"}
+        aria-label="Radar sweep"
+        aria-pressed={backgroundAnimationEnabled}
+        title={backgroundAnimationEnabled ? "Radar sweep: on" : "Radar sweep: off"}
       >
         <RadarToggleIcon />
       </button>
@@ -279,6 +326,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           onClose: () => {
             if (state.activeOperationId === operation.id) setActiveOperation(null);
             if (panelMaximized === operation.id) clearMaximizedOperationId();
+            captureClosedOperation(operation);
             void closePluginOperation(operation, registry.plugins);
           },
           onMinimize: () => {
@@ -321,9 +369,18 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           canLaunch={!!state.activeTheaterId && !launchPending}
           theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label}
           operationCount={theaterOperations.length}
+          mapFullscreen={mapFullscreen}
+          radarEnabled={backgroundAnimationEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleLaunchKind}
+          recentlyClosed={recentlyClosed.map((entry) => ({ id: entry.id, title: entry.title }))}
           onResetView={handleResetView}
+          onMaximizeMap={handleMaximizeMap}
+          onToggleRadar={handleToggleRadar}
+          onReopen={(id) => {
+            const entry = recentlyClosed.find((candidate) => candidate.id === id);
+            if (entry) handleReopen(entry);
+          }}
           onClose={() => setContextMenu(null)}
         />
       ) : null}
@@ -369,6 +426,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           if (!operation) return;
           if (state.activeOperationId === operationId) setActiveOperation(null);
           if (panelMaximized === operationId) clearMaximizedOperationId();
+          captureClosedOperation(operation);
           void closePluginOperation(operation, registry.plugins);
         }}
         onFocus={handleDockFocus}
