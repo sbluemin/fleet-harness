@@ -9,7 +9,7 @@
 }
 
 .diff-root.has-hunk {
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(130px, 1fr) 4px minmax(100px, auto);
 }
 
 .diff-tree-pane {
@@ -24,6 +24,23 @@
   grid-template-rows: 46px 1fr;
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
+}
+
+/* ── hunk↔tree 디바이더 ── */
+.diff-divider {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--surface-rim);
+  transition: background 140ms;
+  flex-shrink: 0;
+}
+
+.diff-divider:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.diff-divider:active {
+  background: color-mix(in oklch, var(--brass) 80%, transparent);
 }
 
 /* ── 모드 탭 ── */
