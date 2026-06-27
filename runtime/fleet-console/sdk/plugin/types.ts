@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { LaunchContext } from "../launch/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
+import type { RailPanelDescriptor } from "../rail/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
@@ -22,6 +23,7 @@ export interface FleetClientPlugin {
   readonly operationKinds?: readonly OperationKindDescriptor[];
   readonly settingsSections?: readonly SettingsSectionDescriptor[];
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
+  readonly railPanels?: readonly RailPanelDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;
@@ -217,5 +219,6 @@ export type {
   OperationLaunchKind,
   OperationNode,
   OperationPatchInput,
+  RailPanelDescriptor,
   SettingsSectionDescriptor,
 };

@@ -1,0 +1,172 @@
+/* ── Right Rail chrome ───────────────────────────────────────────── */
+
+/* z-index 계층 — 우현 3개 핸들 충돌 방지 SSoT */
+:root {
+  --z-rail: 10;
+  --z-codex-side: 20;
+  --z-alerts-dropdown: 30;
+}
+
+.right-rail {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  min-height: 0;
+  z-index: var(--z-rail);
+}
+
+/* ── 패널 슬롯 ─────────────────────────────────────────────────────
+   overflow:hidden + width 전환으로 spring 펼침/접힘을 구현한다.
+   min-width는 애니메이션 중 내부 레이아웃 흔들림을 방지한다.        */
+.right-rail-panel-slot {
+  position: relative;
+  width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-left: 1px solid var(--surface-rim);
+  transition: width var(--duration-base) var(--ease-spring);
+}
+
+.right-rail.is-open .right-rail-panel-slot {
+  width: 312px;
+}
+
+.right-rail-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--surface-rim);
+  min-height: 46px;
+  min-width: 312px;
+}
+
+.right-rail-panel-title {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right-rail-close-btn {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: none;
+  border: none;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: color 140ms, background 140ms;
+}
+
+.right-rail-close-btn:hover {
+  color: var(--ink-pearl);
+  background: var(--surface-glass);
+}
+
+.right-rail-panel-body {
+  overflow: hidden;
+  min-height: 0;
+  min-width: 312px;
+}
+
+/* ── 아이콘 레일 ────────────────────────────────────────────────── */
+.right-rail-icons {
+  width: 48px;
+  flex-shrink: 0;
+  background: var(--surface-pillar);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-left: 1px solid var(--surface-rim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  list-style: none;
+  margin: 0;
+}
+
+.right-rail-ico {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: none;
+  border: 1px solid transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  position: relative;
+  font-size: 14px;
+  transition: color 140ms, background 140ms, border-color 140ms;
+}
+
+.right-rail-ico:hover {
+  color: var(--ink-spectral);
+  background: var(--surface-glass);
+}
+
+.right-rail-ico.is-active {
+  color: var(--brass);
+  border-color: var(--surface-rim-strong);
+  background: var(--ink-deep);
+}
+
+/* 활성 아이콘 좌측 2px brass bar */
+.right-rail-ico.is-active::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--brass);
+}
+
+/* ── 레일 패널 리사이즈 핸들 ────────────────────────────────────── */
+.right-rail-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 140ms;
+  z-index: 1;
+}
+
+.right-rail-resize-handle:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.right-rail.is-dragging .right-rail-resize-handle {
+  background: color-mix(in oklch, var(--brass) 70%, transparent);
+}
+
+.right-rail.is-dragging .right-rail-panel-slot {
+  transition: none !important;
+}
+
+.right-rail.is-dragging {
+  user-select: none;
+}
+
+/* ── prefers-reduced-motion 단락 ───────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .right-rail-panel-slot {
+    transition-duration: 0.01ms !important;
+  }
+}

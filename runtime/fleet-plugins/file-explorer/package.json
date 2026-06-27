@@ -1,0 +1,14 @@
+{
+  "name": "@fleet-plugins/file-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fleet-console/sdk": "workspace:*",
+    "react": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "typescript": "^6.0.2"
+  }
+}

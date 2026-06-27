@@ -56,7 +56,7 @@ Replace each `<placeholder>` before running. Optional inputs default as noted.
      PORT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/fleet-console-e2e/console.lock')).port)")
      ```
 
-     `FLEET_CONSOLE_DIR` gives the instance its own lock and OS-assigned random port. Confirm it serves your bundle before driving it, then stop only that isolated instance:
+     `FLEET_CONSOLE_DIR` gives the instance its own lock and OS-assigned random port. Note that `start` (above) opens the OS default browser at the isolated URL — a stray tab on the user's screen; since you drive the instance with `agent-browser` anyway, boot the server **without opening any browser** by using the daemon's `serve` subcommand instead of `start`: `FLEET_CONSOLE_DIR=/tmp/fleet-console-e2e node runtime/fleet-console/dist/cli.mjs serve` (not listed in `--help`, but it is the subcommand the running daemon uses). Confirm it serves your bundle before driving it, then stop only that isolated instance:
 
      ```bash
      FLEET_CONSOLE_DIR=/tmp/fleet-console-e2e node runtime/fleet-console/dist/cli.mjs stop

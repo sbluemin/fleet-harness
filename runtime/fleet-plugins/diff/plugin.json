@@ -1,0 +1,6 @@
+{
+  "id": "diff",
+  "name": "Diff",
+  "apiVersion": 2,
+  "client": "client/index.tsx"
+}

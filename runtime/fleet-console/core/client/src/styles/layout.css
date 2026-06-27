@@ -33,8 +33,14 @@
 }
 
 .console-body.is-canvas {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   overflow: hidden;
+}
+
+/* Operation 패널 최대화 시 우현 레일 column을 0으로 잠근다 */
+.console-body.is-canvas.is-map-fullscreen {
+  grid-template-columns: minmax(0, 1fr) 0;
 }
 
 .codex-host {
