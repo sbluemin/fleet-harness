@@ -3259,8 +3259,17 @@
   animation: perimeter-orbit 2.4s linear infinite;
 }
 
-.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before {
+.operations-canvas.is-perimeter-anim-off .operations-radar-sweep,
+.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
+.operations-canvas.is-perimeter-anim-off .canvas-dock-chip--underway-ring::before,
+.operations-canvas.is-perimeter-anim-off .status-dot--live,
+.operations-canvas.is-perimeter-anim-off .tenant-beacon.is-live,
+.operations-canvas.is-perimeter-anim-off .tool-chip--live .tool-chip-glyph {
   animation: none;
+}
+
+.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
+.operations-canvas.is-perimeter-anim-off .canvas-dock-chip--underway-ring::before {
   background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
 }
 

@@ -321,9 +321,12 @@ export function setMapFullscreen(value: boolean): void {
 
 export function setMaximizedOperationId(operationId: string): void {
   if (activeTheaterId) maximizedOperationIdsByTheater.set(activeTheaterId, operationId);
-  if (maximizedOperationId === operationId) return;
-  maximizedOperationId = operationId;
-  emitMaximizedOperation();
+  const minimized = minimizedForMaximizedOperation(operationId);
+  const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
+  const maximizedChanged = maximizedOperationId !== operationId;
+  if (maximizedChanged) maximizedOperationId = operationId;
+  if (minimizedChanged) setState({ minimized });
+  if (maximizedChanged) emitMaximizedOperation();
 }
 
 export function clearMaximizedOperationId(): void {
@@ -408,6 +411,14 @@ function saveMaximizedOperationForActiveTheater(): void {
   } else {
     maximizedOperationIdsByTheater.delete(activeTheaterId);
   }
+}
+
+function minimizedForMaximizedOperation(operationId: string): readonly string[] {
+  return Object.keys(state.operations).filter((sessionId) => sessionId !== operationId);
+}
+
+function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 // 줌 보간 한 프레임: current를 target 쪽으로 ZOOM_TWEEN_FACTOR만큼 당기고, 임계치 안이면 스냅 후 정지한다.

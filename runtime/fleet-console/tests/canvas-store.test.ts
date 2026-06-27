@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearMaximizedOperationId, getMaximizedOperationId, getSnapshot, loadForTheater, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { clearMaximizedOperationId, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -54,6 +54,28 @@ describe("canvas store", () => {
 
     loadForTheater("theater-a");
     expect(getMaximizedOperationId()).toBe("op-a");
+  });
+
+  it("minimizes non-maximized Operations when a panel is maximized", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    setOperationGeometry("op-c", { ...GEOMETRY });
+
+    setMaximizedOperationId("op-b");
+
+    expect(getMaximizedOperationId()).toBe("op-b");
+    expect(getSnapshot().minimized).toEqual(["op-a", "op-c"]);
+  });
+
+  it("restores a minimized Operation when it becomes maximized", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-b");
+
+    setMaximizedOperationId("op-b");
+
+    expect(getMaximizedOperationId()).toBe("op-b");
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
   });
 
   it("stores explicit Operation order and prunes stale Operation ids", () => {
