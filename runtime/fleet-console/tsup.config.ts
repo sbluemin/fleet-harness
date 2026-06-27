@@ -9,7 +9,7 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([
   {
-    entry: { cli: "core/host/cli.ts", "cli-bin": "core/host/cli-bin.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts" },
+    entry: { cli: "core/host/cli.ts", "cli-bin": "core/host/cli-bin.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/diff/routes": "../fleet-plugins/diff/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts" },
     format: ["esm"],
     banner: { js: "#!/usr/bin/env node" },
     // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli/cli-bin 엔트리에만 생성한다.

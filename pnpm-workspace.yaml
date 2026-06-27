@@ -9,6 +9,8 @@ packages:
   - "runtime/fleet-console/sdk"
   - "runtime/fleet-cli"
   - "runtime/fleet-plugins/terminal"
+  - "runtime/fleet-plugins/diff"
+  - "runtime/fleet-plugins/file-explorer"
 allowBuilds:
   esbuild: true
   node-pty: true
