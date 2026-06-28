@@ -9,31 +9,12 @@ import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
 import { MarkdownViewer } from "./viewer/markdown.js";
-
-type ViewState =
-  | { kind: "none" }
-  | { kind: "loading" }
-  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean }
-  | { kind: "image"; relativePath: string; name: string; src: string }
-  | { kind: "binary"; name: string }
-  | { kind: "error"; message: string };
+import { setSelectedPath, setSplitRatio, setViewState, useFileExplorerViewState } from "./view-store.js";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
-const PREFS_SPLIT_RATIO = "fleet-console.fileExplorer.splitRatio";
 const MIN_VIEWER_PX = 200;
 const MIN_TREE_PX = 160;
-const DEFAULT_SPLIT_RATIO = 0.55;
-
-function readSplitRatio(): number {
-  try {
-    const v = localStorage.getItem(PREFS_SPLIT_RATIO);
-    if (v !== null) {
-      const n = parseFloat(v);
-      if (!isNaN(n) && n > 0 && n < 1) return n;
-    }
-  } catch { /* ignore */ }
-  return DEFAULT_SPLIT_RATIO;
-}
+const PREFERRED_EXTRA_WIDTH = 360;
 
 function makeFilesClient(theaterId: string | null): PluginFilesClient {
   return {
@@ -54,10 +35,9 @@ function makeFilesClient(theaterId: string | null): PluginFilesClient {
 }
 
 function FileExplorerPanel({ theaterId }: RailPanelContext) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [viewState, setViewState] = useState<ViewState>({ kind: "none" });
-  const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
+  const { selectedPath, viewState, splitRatio } = useFileExplorerViewState(theaterId);
   const splitRatioRef = useRef(splitRatio);
+  splitRatioRef.current = splitRatio;
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -66,7 +46,7 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
 
   const handleSelect = useCallback(async (entry: FolderEntry) => {
     if (entry.kind !== "file") return;
-    setSelectedPath(entry.relativePath);
+    setSelectedPath(theaterId, entry.relativePath);
     const name = entry.name;
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
@@ -74,11 +54,11 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
       const src = theaterId
         ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(entry.relativePath)}`
         : "";
-      setViewState({ kind: "image", relativePath: entry.relativePath, name, src });
+      setViewState(theaterId, { kind: "image", relativePath: entry.relativePath, name, src });
       return;
     }
 
-    setViewState({ kind: "loading" });
+    setViewState(theaterId, { kind: "loading" });
     try {
       // files/read는 422(binary_file)를 error 바디로 반환하므로 raw fetch로 직접 처리한다.
       const res = await fetch("/plugins/file-explorer/files/read", {
@@ -92,24 +72,25 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
       }
       const result = await res.json() as FileReadResult;
       if (result.binary) {
-        setViewState({ kind: "binary", name });
+        setViewState(theaterId, { kind: "binary", name });
         return;
       }
-      setViewState({ kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
+      setViewState(theaterId, { kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "파일을 불러올 수 없습니다";
       if (msg === "binary_file") {
-        setViewState({ kind: "binary", name });
+        setViewState(theaterId, { kind: "binary", name });
       } else {
-        setViewState({ kind: "error", message: msg });
+        setViewState(theaterId, { kind: "error", message: msg });
       }
     }
   }, [theaterId]);
 
+  // 닫기는 미리보기만 클리어 — 2-Pane 레이아웃은 유지한다.
   const handleCloseViewer = useCallback(() => {
-    setViewState({ kind: "none" });
-    setSelectedPath(null);
-  }, []);
+    setViewState(theaterId, { kind: "none" });
+    setSelectedPath(theaterId, null);
+  }, [theaterId]);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -127,67 +108,67 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
         Math.min(1 - MIN_TREE_PX / containerWidth, startRatio + dx / containerWidth),
       );
       splitRatioRef.current = newRatio;
-      setSplitRatioState(newRatio);
+      setSplitRatio(theaterId, newRatio);
     };
 
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       setIsDragging(false);
-      try { localStorage.setItem(PREFS_SPLIT_RATIO, String(splitRatioRef.current)); } catch { /* ignore */ }
     };
 
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
-  }, []);
+  }, [theaterId]);
 
-  const hasViewer = viewState.kind !== "none";
+  const isViewerActive = viewState.kind !== "none";
 
   return (
     <div
       ref={rootRef}
-      className={`fexp-root${hasViewer ? " has-viewer" : ""}${isDragging ? " is-dragging" : ""}`}
-      style={hasViewer ? {
+      className={`fexp-root${isDragging ? " is-dragging" : ""}`}
+      style={{
         gridTemplateColumns: `minmax(${MIN_VIEWER_PX}px, ${splitRatio}fr) 4px minmax(${MIN_TREE_PX}px, ${1 - splitRatio}fr)`,
-      } : undefined}
+      }}
     >
-      {hasViewer && (
-        <div className="fexp-viewer-pane">
-          <div className="fexp-viewer-head">
-            <span className="fexp-viewer-filename">
-              {viewState.kind !== "none" && viewState.kind !== "loading" && viewState.kind !== "error"
-                ? "relativePath" in viewState ? viewState.relativePath : viewState.name
-                : ""}
-            </span>
+      <div className="fexp-viewer-pane">
+        <div className="fexp-viewer-head">
+          <span className="fexp-viewer-filename">
+            {isViewerActive && viewState.kind !== "loading" && viewState.kind !== "error"
+              ? "relativePath" in viewState ? viewState.relativePath : viewState.name
+              : ""}
+          </span>
+          {isViewerActive && (
             <button className="fexp-viewer-close" type="button" onClick={handleCloseViewer} aria-label="뷰어 닫기">
               ✕
             </button>
-          </div>
-          <div className="fexp-viewer-body">
-            {viewState.kind === "loading" && <div className="fexp-viewer-loading">로딩 중…</div>}
-            {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
-            {viewState.kind === "code" && viewState.lang === "markdown" && (
-              <MarkdownViewer content={viewState.content} truncated={viewState.truncated} />
-            )}
-            {viewState.kind === "code" && viewState.lang !== "markdown" && (
-              <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} />
-            )}
-            {viewState.kind === "image" && (
-              <ImageViewer src={viewState.src} name={viewState.name} />
-            )}
-            {viewState.kind === "binary" && (
-              <BinaryViewer name={viewState.name} />
-            )}
-          </div>
+          )}
         </div>
-      )}
-      {hasViewer && (
-        <div
-          className="fexp-divider"
-          onPointerDown={handleDividerDown}
-          aria-hidden="true"
-        />
-      )}
+        <div className="fexp-viewer-body">
+          {viewState.kind === "none" && (
+            <div className="fexp-viewer-empty">파일 트리에서 항목을 선택하면 여기서 내용을 미리 볼 수 있습니다.</div>
+          )}
+          {viewState.kind === "loading" && <div className="fexp-viewer-loading">로딩 중…</div>}
+          {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
+          {viewState.kind === "code" && viewState.lang === "markdown" && (
+            <MarkdownViewer content={viewState.content} truncated={viewState.truncated} />
+          )}
+          {viewState.kind === "code" && viewState.lang !== "markdown" && (
+            <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} />
+          )}
+          {viewState.kind === "image" && (
+            <ImageViewer src={viewState.src} name={viewState.name} />
+          )}
+          {viewState.kind === "binary" && (
+            <BinaryViewer name={viewState.name} />
+          )}
+        </div>
+      </div>
+      <div
+        className="fexp-divider"
+        onPointerDown={handleDividerDown}
+        aria-hidden="true"
+      />
       <div className="fexp-tree-pane">
         <FileTree
           files={files}
@@ -213,4 +194,5 @@ export const fileExplorerPanel: RailPanelDescriptor = {
   title: "Files",
   icon: FileExplorerIcon,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
+  preferredExtraWidth: PREFERRED_EXTRA_WIDTH,
 };

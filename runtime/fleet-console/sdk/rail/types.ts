@@ -13,4 +13,5 @@ export interface RailPanelDescriptor {
   readonly icon: ReactNode | (() => ReactNode);
   readonly render: (ctx: RailPanelContext) => ReactNode;
   readonly side?: "right";
+  readonly preferredExtraWidth?: number;
 }

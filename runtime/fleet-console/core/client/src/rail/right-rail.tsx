@@ -37,7 +37,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
 
-  const extraWidth = useCodexSplitExtraWidth(activeId);
+  const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0);
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
 

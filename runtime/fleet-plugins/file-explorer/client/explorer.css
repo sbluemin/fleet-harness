@@ -47,10 +47,10 @@
   --fexp-ic-default: oklch(67% 0.005 250);
 }
 
-/* ── 루트 레이아웃 ── */
+/* ── 루트 레이아웃 — 상시 2-Pane (뷰어 + 디바이더 + 트리) ── */
 .fexp-root {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(200px, 0.55fr) 4px minmax(160px, 0.45fr);
   height: 100%;
   overflow: hidden;
   transition: grid-template-columns var(--duration-base) var(--ease-spring);
@@ -62,13 +62,7 @@
   }
 }
 
-.fexp-root.has-viewer {
-  grid-template-columns: minmax(200px, 1fr) 4px minmax(160px, auto);
-}
-
-/* 드래그 중에는 grid-template-columns transition을 끈다. 살려두면 split이 커서를 ease로
-   지연 추적해 멈춰야 따라잡는다(우측 Rail 폭 드래그와 동일 원인). 열림 spring(has-viewer
-   toggle)은 is-dragging이 아닐 때만 적용되어 유지된다. */
+/* 드래그 중에는 transition을 끈다 — 커서 추적 지연 방지. */
 .fexp-root.is-dragging {
   transition: none;
 }
@@ -145,6 +139,19 @@
 .fexp-viewer-body {
   overflow: hidden;
   position: relative;
+}
+
+.fexp-viewer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px 16px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-fog);
+  text-align: center;
+  line-height: 1.5;
 }
 
 .fexp-viewer-loading,
