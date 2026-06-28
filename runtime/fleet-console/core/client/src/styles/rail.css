@@ -167,6 +167,14 @@
   background: color-mix(in oklch, var(--brass) 70%, transparent);
 }
 
+/* 드래그 중에는 패널 슬롯의 폭 transition을 끈다. 살려두면 width가 커서를 ease로 지연
+   추적해(실측 lag ~21px steady) 드래그를 멈춰야 잔여 거리를 완주한다("마우스를 멈춰야
+   따라잡음"). 열기/닫기 toggle의 spring(.is-open: width 0↔312)은 is-dragging이 아닐 때만
+   적용되므로 그대로 유지된다. */
+.right-rail.is-dragging .right-rail-panel-slot {
+  transition: none;
+}
+
 .right-rail.is-dragging {
   user-select: none;
 }
