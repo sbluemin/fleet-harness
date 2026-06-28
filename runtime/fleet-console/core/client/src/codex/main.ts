@@ -3,7 +3,6 @@ import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";
 
-import { installDiagramHydrator } from "./markdown/diagrams.js";
 import { mountNavigatorInto } from "./components/navigator.js";
 import type { NavigatorController, NavigatorRequest } from "./components/navigator.js";
 import { loadInitialData, setCurrentWorkspaceId, subscribeState } from "./state.js";
@@ -23,8 +22,8 @@ export function mountNavigatorApp(
   root: HTMLElement,
   options: MountNavigatorOptions,
 ): NavigatorController {
-  installDiagramHydrator(root);
-
+  // Navigator(검색 + 엔트리 리스트)는 mermaid diagram을 렌더하지 않으므로 hydrator를 설치하지
+  // 않는다. diagram hydrator는 reader 컨테이너에서만 reading-controller가 설치한다.
   if (options.initialTheaterId) {
     setCurrentWorkspaceId(options.initialTheaterId);
   }

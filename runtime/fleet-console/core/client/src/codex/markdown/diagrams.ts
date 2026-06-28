@@ -79,7 +79,10 @@ const PIE_THEME_SLOT_NAMES = [
 ] as const;
 
 let mermaidLoader: Promise<MermaidApi> | null = null;
-let observerInstalled = false;
+// root별로 hydrator를 1회만 설치한다. navigator 컨테이너와 reader 컨테이너는 rail 재개편으로
+// 분리된 별도 DOM 트리이므로, 단일 전역 플래그로는 먼저 마운트된 navigator root가 플래그를
+// 소진해 정작 diagram을 가진 reader root에 MutationObserver가 붙지 못한다(=mermaid가 pending에 정지).
+const hydratedRoots = new WeakSet<ParentNode>();
 let renderCounter = 0;
 let lightboxCounter = 0;
 let activeLightbox: ActiveLightbox | null = null;
@@ -93,8 +96,8 @@ export function cssColorToHex(value: string): string {
 }
 
 export function installDiagramHydrator(root: ParentNode): void {
-  if (observerInstalled) return;
-  observerInstalled = true;
+  if (hydratedRoots.has(root)) return;
+  hydratedRoots.add(root);
   scan(root);
   const target = root instanceof Node ? root : document.body;
   const observer = new MutationObserver((mutations) => {
