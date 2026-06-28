@@ -18,7 +18,6 @@ export function CodexReadingSheet() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
 
   // 안정적인 effect key: kind + 진입 식별자
   const readerKey = reader
@@ -31,9 +30,21 @@ export function CodexReadingSheet() {
       }`
     : null;
 
-  // 시트 열기/닫기 1회 effect: trigger 저장, body attr, inert, keydown
+  // 시트는 operations.tsx에 상시 마운트되므로 reader 유무로 열기/닫기를 추적한다.
+  // (`[]` deps면 cleanup이 닫힘 시점에 발화하지 않아 inert 미해제·focus 미복귀)
+  const isOpen = reader != null;
+
+  // 시트 열기/닫기 effect: reader가 열릴 때만 trigger 저장·inert·keydown, 닫힐 때 복원
   useEffect(() => {
-    triggerRef.current = document.activeElement as HTMLElement | null;
+    if (!isOpen) return;
+    // 복귀 대상은 노드 참조가 아니라 셀렉터로 잡는다 — Vanilla Navigator가 entry 클릭 시
+    // 리스트를 재렌더(navList.innerHTML)해 trigger 노드를 교체(detach)하므로
+    // activeElement 참조는 BODY로 새기 때문이다.
+    const opener = reader;
+    const restoreSelector =
+      opener?.kind === "entry"
+        ? `.codex-nav-entry[data-entry-id="${opener.entryId}"]`
+        : null;
     document.body.setAttribute("data-codex-reading", "true");
 
     const canvas = document.querySelector<HTMLElement>(".operations-canvas");
@@ -65,10 +76,15 @@ export function CodexReadingSheet() {
       document.body.removeAttribute("data-codex-reading");
       canvas?.removeAttribute("inert");
       sidebar?.removeAttribute("inert");
-      triggerRef.current?.focus();
-      triggerRef.current = null;
+      const restore =
+        (restoreSelector && document.querySelector<HTMLElement>(restoreSelector)) ||
+        document.querySelector<HTMLElement>(
+          ".codex-navigator .codex-nav-search-input",
+        );
+      restore?.focus();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- opener는 열림 시점 1회 캡처
+  }, [isOpen]);
 
   // 콘텐츠 교체 effect: readerKey 변화마다 reader 마운트/교체
   useEffect(() => {
