@@ -1,6 +1,4 @@
 ---
-name: diff-panel-accordion-sections
-description: Diff panel accordion sections with untracked file visibility and List/Tree toggle
 section: Changed
 ---
 
