@@ -34,7 +34,8 @@ export function runGit(
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn("git", args as string[], { cwd: opts.cwd, shell: false });
+      // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
+      child = spawn("git", args as string[], { cwd: opts.cwd, shell: false, windowsHide: true });
     } catch (error) {
       reject(new GitExecutorError("spawn_failed", String(error)));
       return;
