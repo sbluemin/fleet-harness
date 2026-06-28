@@ -11,7 +11,6 @@ import { createDiagnosticsPanel } from "./menu/diagnostics-panel.js";
 import { createInputModal } from "./menu/input-modal.js";
 import { createPanelStack, type MenuPanel, type PanelStack } from "./menu/panel-stack.js";
 import { createSectionedListPanel, type SectionedListRow } from "./menu/sectioned-list-panel.js";
-import { createWikiPanel } from "./menu/wiki-panel.js";
 import { MISSION_CONTROL_THEME, renderMissionControl } from "./renderer.js";
 import type {
   CreateMissionControlControllerOptions,
@@ -51,7 +50,6 @@ interface SystemMenuPanelOptions {
   readonly getRelease: () => CreateMissionControlControllerOptions["release"];
   readonly getStack: () => PanelStack;
   readonly onRenderRequest: () => void;
-  readonly wikiController: CreateMissionControlControllerOptions["wikiController"];
 }
 
 type MissionControlControllerWithReleaseSetter = MissionControlController & {
@@ -339,7 +337,6 @@ export function createMissionControlController(options: CreateMissionControlCont
           getRelease: () => release,
           getStack: () => stack,
           onRenderRequest: options.onRenderRequest,
-          wikiController: options.wikiController,
         }));
       },
       onExitFleet: options.onExitFleet,
@@ -626,19 +623,6 @@ function createSystemMenuPanel(options: SystemMenuPanelOptions): MenuPanel {
             authService: options.authService,
             onRenderRequest: options.onRenderRequest,
             stack,
-          }));
-        },
-      },
-      {
-        id: "wiki",
-        label: "Wiki Server",
-        run: () => {
-          const stack = options.getStack();
-          stack.push(createWikiPanel({
-            cwd: options.cwd,
-            onRenderRequest: options.onRenderRequest,
-            stack,
-            wiki: options.wikiController,
           }));
         },
       },

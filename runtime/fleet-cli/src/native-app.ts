@@ -26,7 +26,6 @@ import {
 } from "./controls/index.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
-import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
 import type { MissionControlLaunchProfile, MissionControlLaunchProfileOptions } from "./mission-control/types.js";
 import { readFleetCliRelease } from "./release.js";
@@ -112,10 +111,6 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     env: process.env,
     invocationCwd,
   });
-  const wikiController = createWikiProcessController({
-    cwd: invocationCwd,
-    onChange: scheduleRender,
-  });
   const release = readFleetCliRelease();
   const onStdinData = (data: Buffer | string) => {
     const text = Buffer.isBuffer(data) ? data.toString("utf8") : data;
@@ -182,7 +177,6 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     invocationCwd,
     release,
     sessionOptions: sessionOptionsRuntime,
-    wikiController,
   });
   missionControlDispose = missionControl.dispose;
   disposeCarrierReminderSubscription = createOnce(createCarrierResultReminderRouter({
