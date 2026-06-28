@@ -1,8 +1,10 @@
-export type DiffMode = "workdir" | "staged" | "commit";
+export type DiffMode = "workdir" | "staged" | "commit" | "untracked";
+
+export type DiffSection = "staged" | "workdir";
 
 export interface DiffFileEntry {
   readonly path: string;
-  readonly status: "M" | "A" | "D" | "R";
+  readonly status: "M" | "A" | "D" | "R" | "U";
   readonly additions: number;
   readonly deletions: number;
 }

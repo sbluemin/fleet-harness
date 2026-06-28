@@ -26,7 +26,7 @@ const DEFAULT_MAX_BUFFER = 8 * 1024 * 1024;
 
 export function runGit(
   args: readonly string[],
-  opts: { readonly cwd: string; readonly timeoutMs?: number; readonly maxBuffer?: number },
+  opts: { readonly cwd: string; readonly timeoutMs?: number; readonly maxBuffer?: number; readonly allowExitCodes?: readonly number[] },
 ): Promise<GitRunResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
@@ -80,6 +80,11 @@ export function runGit(
       if (timedOut) return;
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       if (code !== 0) {
+        if (code !== null && (opts.allowExitCodes?.includes(code) ?? false)) {
+          const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+          resolve({ stdout, truncated });
+          return;
+        }
         const isNoRepo = stderr.includes("not a git repository");
         reject(new GitExecutorError(isNoRepo ? "no_git_repo" : "non_zero_exit", stderr, code ?? undefined));
         return;

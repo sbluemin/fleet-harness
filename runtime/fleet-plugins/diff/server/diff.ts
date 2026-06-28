@@ -47,6 +47,37 @@ function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): Dif
   return files;
 }
 
+// git diff --no-index --numstat -- /dev/null <file> 로 추가 줄 수를 구한다.
+// --no-index는 항상 exit code 1을 반환하므로 allowExitCodes: [1] 적용.
+// 바이너리 파일은 "-\t-\t..." 를 반환해 parseInt가 NaN → 0 으로 폴백.
+async function countUntrackedAdditions(filePath: string, cwd: string): Promise<number> {
+  try {
+    const result = await runGit(
+      ["diff", "--no-index", "--numstat", "--", "/dev/null", filePath],
+      { cwd, allowExitCodes: [1] },
+    );
+    const firstLine = result.stdout.trim().split("\n")[0] ?? "";
+    const parts = firstLine.split("\t");
+    const parsed = parseInt(parts[0] ?? "0", 10);
+    return isNaN(parsed) ? 0 : parsed;
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchUntrackedFiles(cwd: string): Promise<DiffFileEntry[]> {
+  const result = await runGit(["ls-files", "--others", "--exclude-standard"], { cwd });
+  const paths = result.stdout.split("\n").filter((p) => p.trim());
+  return Promise.all(
+    paths.map(async (p): Promise<DiffFileEntry> => ({
+      path: p,
+      status: "U",
+      additions: await countUntrackedAdditions(p, cwd),
+      deletions: 0,
+    })),
+  );
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -89,6 +120,16 @@ export async function handleDiffChanged(
       runGit(numstatArgs, { cwd: theaterPath }),
     ]);
     const files = parseDiffFileList(nameStatusResult.stdout, numstatResult.stdout);
+
+    if (mode === "workdir") {
+      try {
+        const untrackedFiles = await fetchUntrackedFiles(theaterPath);
+        files.push(...untrackedFiles);
+      } catch {
+        // untracked 열거 실패 시 조용히 생략 — 기본 diff는 이미 반환됨
+      }
+    }
+
     ctx.host.http.writeJson(res, 200, { files, truncated: nameStatusResult.truncated || numstatResult.truncated });
   } catch (error) {
     if (error instanceof GitExecutorError) {
@@ -115,7 +156,7 @@ export async function handleDiffFile(
   }
 
   const mode = body.mode;
-  if (mode !== "workdir" && mode !== "staged" && mode !== "commit") {
+  if (mode !== "workdir" && mode !== "staged" && mode !== "commit" && mode !== "untracked") {
     ctx.host.http.writeJson(res, 400, { error: "invalid_mode" });
     return;
   }
@@ -143,6 +184,18 @@ export async function handleDiffFile(
   }
 
   try {
+    // untracked 파일은 git에 추적되지 않으므로 --no-index로 /dev/null과 비교.
+    // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용.
+    // relativePath는 이미 경로 포함 검증 완료; /dev/null은 고정 리터럴.
+    if (mode === "untracked") {
+      const result = await runGit(
+        ["diff", "--no-index", "--unified=3", "--", "/dev/null", relativePath],
+        { cwd: theaterPath, allowExitCodes: [1] },
+      );
+      ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
+      return;
+    }
+
     const diffArgs = [...buildDiffArgs(mode, rawRef), "--unified=3", "--", relativePath];
     const result = await runGit(diffArgs, { cwd: theaterPath });
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });

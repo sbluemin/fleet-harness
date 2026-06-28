@@ -4,7 +4,7 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffHunkResult } from "../server/types.js";
 
-type DiffMode = "workdir" | "staged" | "commit";
+type DiffMode = "workdir" | "staged" | "commit" | "untracked";
 
 interface HunkViewProps {
   readonly ctx: RailPanelContext;

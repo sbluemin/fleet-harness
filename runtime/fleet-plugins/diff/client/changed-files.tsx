@@ -2,39 +2,67 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffListResult } from "../server/types.js";
+import type { DiffFileEntry, DiffListResult, DiffSection } from "../server/types.js";
+import { DiffTreeView } from "./diff-tree.js";
 
-type DiffMode = "workdir" | "staged" | "commit";
+// ─── types ───────────────────────────────────────────────────────────────────
+
+type PairLoadState =
+  | { readonly kind: "loading" }
+  | { readonly kind: "ok"; readonly staged: readonly DiffFileEntry[]; readonly changes: readonly DiffFileEntry[] }
+  | { readonly kind: "error"; readonly message: string };
 
 interface ChangedFilesProps {
   readonly ctx: RailPanelContext;
-  readonly mode: DiffMode;
+  readonly viewMode: "list" | "tree";
   readonly selectedPath: string | null;
-  readonly onSelect: (entry: DiffFileEntry | null) => void;
+  readonly selectedSection: DiffSection | null;
+  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
 }
 
-type LoadState =
-  | { readonly kind: "idle" }
-  | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly result: DiffListResult }
-  | { readonly kind: "error"; readonly message: string };
+interface SectionProps {
+  readonly name: string;
+  readonly files: readonly DiffFileEntry[];
+  readonly isCollapsed: boolean;
+  readonly onToggle: () => void;
+  readonly viewMode: "list" | "tree";
+  readonly section: DiffSection;
+  readonly selectedPath: string | null;
+  readonly selectedSection: DiffSection | null;
+  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
+}
 
-const STATUS_GLYPH: Record<DiffFileEntry["status"], string> = {
-  M: "M",
-  A: "A",
-  D: "D",
-  R: "R",
-};
+interface ListFileRowProps {
+  readonly entry: DiffFileEntry;
+  readonly section: DiffSection;
+  readonly isSelected: boolean;
+  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
+}
 
-const STATUS_LABEL: Record<DiffFileEntry["status"], string> = {
+// ─── constants ───────────────────────────────────────────────────────────────
+
+const PREFS_STAGED_COLLAPSED = "fleet-console.diff.stagedCollapsed";
+const PREFS_CHANGES_COLLAPSED = "fleet-console.diff.changesCollapsed";
+
+const STATUS_LABEL: { [key: string]: string } = {
   M: "modified",
   A: "added",
   D: "deleted",
   R: "renamed",
+  U: "untracked",
 };
 
-export function ChangedFiles({ ctx, mode, selectedPath, onSelect }: ChangedFilesProps) {
-  const [state, setState] = useState<LoadState>({ kind: "idle" });
+// ─── ChangedFiles (export) ────────────────────────────────────────────────────
+
+function readCollapsed(key: string): boolean {
+  try { return localStorage.getItem(key) === "1"; } catch { return false; }
+}
+
+export function ChangedFiles({ ctx, viewMode, selectedPath, selectedSection, onSelect }: ChangedFilesProps) {
+  const [state, setState] = useState<PairLoadState>({ kind: "loading" });
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [stagedCollapsed, setStagedCollapsed] = useState(() => readCollapsed(PREFS_STAGED_COLLAPSED));
+  const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
 
   useEffect(() => {
     if (!ctx.theaterId) {
@@ -43,84 +71,150 @@ export function ChangedFiles({ ctx, mode, selectedPath, onSelect }: ChangedFiles
     }
     let cancelled = false;
     setState({ kind: "loading" });
-    ctx.api.fetch("diff", "changed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, mode }),
-    }).then(async (res) => {
-      const result = await res.json() as DiffListResult;
-      if (!cancelled) setState({ kind: "ok", result });
+
+    const fetchMode = (mode: "workdir" | "staged") =>
+      ctx.api.fetch("diff", "changed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId: ctx.theaterId, mode }),
+      }).then(async (res) => (await res.json()) as DiffListResult);
+
+    Promise.all([fetchMode("workdir"), fetchMode("staged")]).then(([workdir, staged]) => {
+      if (!cancelled) setState({ kind: "ok", staged: staged.files, changes: workdir.files });
     }).catch((err: unknown) => {
       if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
     });
-    return () => { cancelled = true; };
-  }, [ctx.api, mode, ctx.theaterId]);
 
-  const handleRefresh = useCallback(() => {
-    setState({ kind: "idle" });
+    return () => { cancelled = true; };
+  }, [ctx.api, ctx.theaterId, refreshToken]);
+
+  const handleRetry = useCallback(() => setRefreshToken((t) => t + 1), []);
+
+  const handleToggleStaged = useCallback(() => {
+    setStagedCollapsed((v) => {
+      const next = !v;
+      try { localStorage.setItem(PREFS_STAGED_COLLAPSED, next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
   }, []);
 
-  if (state.kind === "loading" || state.kind === "idle") {
-    return <div className="diff-tree-loading">Loading…</div>;
+  const handleToggleChanges = useCallback(() => {
+    setChangesCollapsed((v) => {
+      const next = !v;
+      try { localStorage.setItem(PREFS_CHANGES_COLLAPSED, next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  if (state.kind === "loading") {
+    return <div className="diff-sections-loading">Loading…</div>;
   }
 
   if (state.kind === "error") {
     return (
-      <div className="diff-tree-error">
+      <div className="diff-sections-error">
         <span>{state.message}</span>
-        <button type="button" className="diff-refresh-btn" onClick={handleRefresh}>Retry</button>
+        <button type="button" className="diff-refresh-btn" onClick={handleRetry}>Retry</button>
       </div>
     );
   }
 
-  const { files, truncated } = state.result;
-
-  if (files.length === 0) {
-    return <div className="diff-tree-empty">No changes</div>;
-  }
-
   return (
-    <div className="diff-tree">
-      {truncated && <div className="diff-truncated-badge">Results truncated</div>}
-      {files.map((entry) => (
-        <FileRow
-          key={entry.path}
-          entry={entry}
-          isSelected={entry.path === selectedPath}
-          onSelect={onSelect}
-        />
-      ))}
+    <div className="diff-sections">
+      <AccordionSection
+        name="Staged Changes"
+        files={state.staged}
+        isCollapsed={stagedCollapsed}
+        onToggle={handleToggleStaged}
+        viewMode={viewMode}
+        section="staged"
+        selectedPath={selectedPath}
+        selectedSection={selectedSection}
+        onSelect={onSelect}
+      />
+      <AccordionSection
+        name="Changes"
+        files={state.changes}
+        isCollapsed={changesCollapsed}
+        onToggle={handleToggleChanges}
+        viewMode={viewMode}
+        section="workdir"
+        selectedPath={selectedPath}
+        selectedSection={selectedSection}
+        onSelect={onSelect}
+      />
     </div>
   );
 }
 
-interface FileRowProps {
-  readonly entry: DiffFileEntry;
-  readonly isSelected: boolean;
-  readonly onSelect: (entry: DiffFileEntry) => void;
+// ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
+
+function AccordionSection({ name, files, isCollapsed, onToggle, viewMode, section, selectedPath, selectedSection, onSelect }: SectionProps) {
+  return (
+    <div className={`diff-section${isCollapsed ? " is-collapsed" : ""}`}>
+      <button type="button" className="diff-section-head" onClick={onToggle}>
+        <svg className="diff-section-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="diff-section-name">{name}</span>
+        <span className="diff-count-badge">{files.length}</span>
+      </button>
+      {!isCollapsed && (
+        <div className="diff-section-rows">
+          {files.length === 0 ? (
+            <div className="diff-empty-row">No changes</div>
+          ) : viewMode === "tree" ? (
+            <DiffTreeView
+              files={files}
+              section={section}
+              selectedPath={selectedPath}
+              selectedSection={selectedSection}
+              onSelect={onSelect}
+            />
+          ) : (
+            files.map((entry) => (
+              <ListFileRow
+                key={entry.path}
+                entry={entry}
+                section={section}
+                isSelected={entry.path === selectedPath && section === selectedSection}
+                onSelect={onSelect}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function FileRow({ entry, isSelected, onSelect }: FileRowProps) {
-  const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
-  const filename = entry.path.split("/").pop() ?? entry.path;
+function ListFileRow({ entry, section, isSelected, onSelect }: ListFileRowProps) {
+  const handleClick = useCallback(() => onSelect(entry, section), [entry, section, onSelect]);
+  const lastSlash = entry.path.lastIndexOf("/");
+  const dir = lastSlash >= 0 ? entry.path.slice(0, lastSlash + 1) : "";
+  const name = lastSlash >= 0 ? entry.path.slice(lastSlash + 1) : entry.path;
 
   return (
     <button
       type="button"
       className={`diff-file-row${isSelected ? " is-cur" : ""}`}
-      onClick={handleClick}
       title={entry.path}
+      onClick={handleClick}
     >
       <span
         className={`diff-status-glyph diff-status-${entry.status.toLowerCase()}`}
-        aria-label={STATUS_LABEL[entry.status]}
+        aria-label={STATUS_LABEL[entry.status] ?? entry.status}
       >
-        {STATUS_GLYPH[entry.status]}
+        {entry.status}
       </span>
-      <span className="diff-file-name">{filename}</span>
-      <span className="diff-file-path">{entry.path}</span>
-      <span className="diff-additions">+{entry.additions}</span>
-      <span className="diff-deletions">-{entry.deletions}</span>
+      <span className="diff-file-name">
+        {dir && <span className="diff-file-dir">{dir}</span>}
+        {name}
+      </span>
+      <span className="diff-nums">
+        {entry.additions > 0 && <span className="diff-additions">+{entry.additions}</span>}
+        {entry.deletions > 0 && <span className="diff-deletions">−{entry.deletions}</span>}
+      </span>
     </button>
   );
 }

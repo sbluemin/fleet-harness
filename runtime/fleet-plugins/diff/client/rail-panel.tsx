@@ -2,32 +2,44 @@ import { useCallback, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry } from "../server/types.js";
+import type { DiffFileEntry, DiffSection } from "../server/types.js";
 import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+type ViewMode = "list" | "tree";
+
+type HunkMode = "workdir" | "staged" | "commit" | "untracked";
+
+interface SelectedFile {
+  readonly entry: DiffFileEntry;
+  readonly section: DiffSection;
+}
 
 interface DiffPanelProps {
   readonly ctx: RailPanelContext;
 }
 
-type DiffMode = "workdir" | "staged" | "commit";
+// ─── constants ───────────────────────────────────────────────────────────────
 
-const PREFS_DIFF_MODE = "fleet-console.diff.mode";
+const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
 const PREFS_SPLIT_RATIO = "fleet-console.diff.splitRatio";
 // 레일 패널 기본 폭(312px)·최소 폭(240px) 안에서 미리보기+리스트가 나란히 들어가도록
-// 두 최소폭 합(130+100=230)을 레일 최소폭 이하로 잡는다. 합이 레일 폭을 넘으면
-// grid minmax의 min이 컨테이너를 초과해 overflow가 나고 드래그 여유공간이 사라진다.
+// 두 최소폭 합(130+100=230)을 레일 최소폭 이하로 잡는다.
 const MIN_HUNK_PX = 130;
 const MIN_TREE_PX = 100;
 const DEFAULT_SPLIT_RATIO = 0.55;
 
-function readDiffMode(): DiffMode {
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+function readViewMode(): ViewMode {
   try {
-    const v = localStorage.getItem(PREFS_DIFF_MODE);
-    if (v === "workdir" || v === "staged") return v;
+    const v = localStorage.getItem(PREFS_VIEW_MODE);
+    if (v === "list" || v === "tree") return v;
   } catch { /* ignore */ }
-  return "workdir";
+  return "list";
 }
 
 function readSplitRatio(): number {
@@ -41,22 +53,34 @@ function readSplitRatio(): number {
   return DEFAULT_SPLIT_RATIO;
 }
 
+// 섹션+상태에서 HunkView가 사용할 git diff 모드 결정
+function getHunkMode(selected: SelectedFile): HunkMode {
+  if (selected.section === "staged") return "staged";
+  if (selected.entry.status === "U") return "untracked";
+  return "workdir";
+}
+
+// ─── DiffPanel ───────────────────────────────────────────────────────────────
+
 function DiffPanel({ ctx }: DiffPanelProps) {
-  const [mode, setMode] = useState<DiffMode>(readDiffMode);
-  const [selectedFile, setSelectedFile] = useState<DiffFileEntry | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleSelectFile = useCallback((entry: DiffFileEntry | null) => {
-    setSelectedFile(entry);
+  const handleSelectFile = useCallback((entry: DiffFileEntry, section: DiffSection) => {
+    setSelectedFile({ entry, section });
   }, []);
 
-  const handleModeChange = useCallback((next: DiffMode) => {
-    setMode(next);
+  const handleCloseHunk = useCallback(() => {
     setSelectedFile(null);
-    try { localStorage.setItem(PREFS_DIFF_MODE, next); } catch { /* ignore */ }
+  }, []);
+
+  const handleViewMode = useCallback((next: ViewMode) => {
+    setViewMode(next);
+    try { localStorage.setItem(PREFS_VIEW_MODE, next); } catch { /* ignore */ }
   }, []);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -74,7 +98,6 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       const upper = 1 - MIN_TREE_PX / containerWidth;
       const raw = startRatio + dx / containerWidth;
       // 컨테이너가 두 최소폭 합보다 좁으면 lower > upper로 클램프 범위가 역전된다.
-      // 그 경우 비율을 고정해 NaN/역전 클램핑을 막는다.
       const newRatio = lower <= upper ? Math.max(lower, Math.min(upper, raw)) : startRatio;
       splitRatioRef.current = newRatio;
       setSplitRatioState(newRatio);
@@ -91,6 +114,8 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
+  const hunkMode: HunkMode = selectedFile ? getHunkMode(selectedFile) : "workdir";
+
   return (
     <div
       ref={rootRef}
@@ -102,18 +127,18 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       {selectedFile && (
         <div className="diff-hunk-pane">
           <div className="diff-hunk-head">
-            <span className="diff-hunk-filename">{selectedFile.path}</span>
+            <span className="diff-hunk-filename">{selectedFile.entry.path}</span>
             <button
               type="button"
               className="diff-hunk-close"
               aria-label="Close diff"
-              onClick={() => handleSelectFile(null)}
+              onClick={handleCloseHunk}
             >
               ✕
             </button>
           </div>
           <div className="diff-hunk-body">
-            <HunkView ctx={ctx} file={selectedFile} mode={mode} />
+            <HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} />
           </div>
         </div>
       )}
@@ -125,28 +150,51 @@ function DiffPanel({ ctx }: DiffPanelProps) {
         />
       )}
       <div className="diff-tree-pane">
-        <div className="diff-mode-bar">
-          {(["workdir", "staged"] as const).map((m) => (
+        <div className="diff-plugin-toolbar">
+          <span className="diff-toolbar-label">Working tree</span>
+          <div className="diff-view-toggle">
             <button
-              key={m}
               type="button"
-              className={`diff-mode-btn${mode === m ? " is-active" : ""}`}
-              onClick={() => handleModeChange(m)}
+              className={`diff-toggle-btn${viewMode === "list" ? " is-active" : ""}`}
+              title="List view"
+              aria-pressed={viewMode === "list"}
+              onClick={() => handleViewMode("list")}
             >
-              {m === "workdir" ? "Changes" : "Staged"}
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
             </button>
-          ))}
+            <button
+              type="button"
+              className={`diff-toggle-btn${viewMode === "tree" ? " is-active" : ""}`}
+              title="Tree view"
+              aria-pressed={viewMode === "tree"}
+              onClick={() => handleViewMode("tree")}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+                <rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+                <rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+                <rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+              </svg>
+            </button>
+          </div>
         </div>
         <ChangedFiles
           ctx={ctx}
-          mode={mode}
-          selectedPath={selectedFile?.path ?? null}
+          viewMode={viewMode}
+          selectedPath={selectedFile?.entry.path ?? null}
+          selectedSection={selectedFile?.section ?? null}
           onSelect={handleSelectFile}
         />
       </div>
     </div>
   );
 }
+
+// ─── DiffIcon ────────────────────────────────────────────────────────────────
 
 function DiffIcon() {
   return (
