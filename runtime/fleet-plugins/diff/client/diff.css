@@ -63,7 +63,7 @@
   gap: 6px;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: oklch(24% 0.04 248 / 40%);
+  background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
 }
 
 .diff-toolbar-label {
@@ -77,7 +77,7 @@
 
 .diff-view-toggle {
   display: inline-flex;
-  background: oklch(20% 0.05 248 / 80%);
+  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   padding: 2px;
@@ -103,7 +103,7 @@
 
 .diff-toggle-btn.is-active {
   color: var(--brass);
-  background: oklch(78% 0.13 75 / 14%);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
 }
 
 /* ── 섹션 스크롤 컨테이너 ── */
@@ -147,7 +147,7 @@
 }
 
 .diff-section-head:hover {
-  background: oklch(70% 0.03 248 / 9%);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
 .diff-section-chevron {
@@ -183,7 +183,7 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--ink-fog);
-  background: oklch(64% 0.04 248 / 16%);
+  background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
   border-radius: 999px;
   padding: 1px 8px;
   min-width: 20px;
@@ -218,11 +218,11 @@
 }
 
 .diff-file-row:hover {
-  background: oklch(70% 0.03 248 / 9%);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
 .diff-file-row.is-cur {
-  background: oklch(78% 0.13 75 / 14%);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
 }
 
 .diff-status-glyph {
@@ -286,7 +286,7 @@
 }
 
 .diff-folder-row:hover {
-  background: oklch(70% 0.03 248 / 9%);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
 .diff-folder-chevron {

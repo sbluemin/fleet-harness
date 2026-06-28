@@ -5,6 +5,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { DiffFileEntry, DiffSection } from "../server/types.js";
 import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
+import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./diff-view-store.js";
 import { HunkView } from "./hunk-view.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -12,11 +13,6 @@ import { HunkView } from "./hunk-view.js";
 type ViewMode = "list" | "tree";
 
 type HunkMode = "workdir" | "staged" | "commit" | "untracked";
-
-interface SelectedFile {
-  readonly entry: DiffFileEntry;
-  readonly section: DiffSection;
-}
 
 interface DiffPanelProps {
   readonly ctx: RailPanelContext;
@@ -64,18 +60,19 @@ function getHunkMode(selected: SelectedFile): HunkMode {
 
 function DiffPanel({ ctx }: DiffPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
-  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
+  const selectedFile = useSelectedFile(ctx.theaterId ?? null);
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const handleSelectFile = useCallback((entry: DiffFileEntry, section: DiffSection) => {
-    setSelectedFile({ entry, section });
-  }, []);
+    if (!ctx.theaterId) return;
+    setSelectedFile(entry, section, ctx.theaterId);
+  }, [ctx.theaterId]);
 
   const handleCloseHunk = useCallback(() => {
-    setSelectedFile(null);
+    clearSelectedFile();
   }, []);
 
   const handleViewMode = useCallback((next: ViewMode) => {
