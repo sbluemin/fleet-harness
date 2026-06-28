@@ -1,4 +1,5 @@
 ---
 section: Changed
 ---
-- [fleet-console] Codex API consolidated from 14 endpoints to 4 REST resources: `GET /api/search` (full index when query is empty, briefingQuery otherwise), `GET /api/entry/:id` (with optional `?include=raw` to embed raw source content inline), `GET|POST /api/drydock[/:id[/decision]]` replacing the former queue actions surface, and `GET /api/conflicts[/:id]` unchanged; all deprecated paths (`/api/health`, `/api/workspaces`, `/api/index`, `/api/index-md`, `/api/log`, `/api/raw`, `/api/queue*`) now return 404/405.
+- [fleet-console] Redesigned the Codex knowledge panel for the right rail: a compact single-column navigator (search, entry list, Drydock badge, conflicts) replaces the cramped three-pane layout, and selecting an entry now opens it in a centered reading overlay that restores a comfortable reading width with a table-of-contents rail. The Codex markdown reading style is preserved.
+- [fleet-console] Streamlined the Codex backend to four REST resources (search, entry, drydock, conflicts); raw source is now embedded in the entry response and the retired endpoints return 404.
