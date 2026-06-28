@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -85,26 +85,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <>
-            <div className="right-rail-panel-head">
-              <span className="right-rail-panel-title">{activePanel.title}</span>
-              <button
-                className="right-rail-close-btn"
-                type="button"
-                aria-label={`Close ${activePanel.title}`}
-                onClick={closeRailPanel}
-              >
-                ✕
-              </button>
-            </div>
-            <div
-              className="right-rail-panel-body"
-              role="tabpanel"
-              aria-labelledby={`rail-tab-${activeId}`}
-            >
-              {activePanel.render(ctx)}
-            </div>
-          </>
+          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} />
         )}
       </div>
       <nav className="right-rail-icons" role="tablist" aria-label="Activity tools">
@@ -121,6 +102,36 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     </div>
   );
 }
+
+interface RailPanelContentProps {
+  readonly activePanel: RailPanelDescriptor;
+  readonly activeId: string | null;
+  readonly ctx: RailPanelContext;
+}
+
+// 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
+// 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
+// (activePanel·ctx·activeId) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
+const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx }: RailPanelContentProps) {
+  return (
+    <>
+      <div className="right-rail-panel-head">
+        <span className="right-rail-panel-title">{activePanel.title}</span>
+        <button
+          className="right-rail-close-btn"
+          type="button"
+          aria-label={`Close ${activePanel.title}`}
+          onClick={closeRailPanel}
+        >
+          ✕
+        </button>
+      </div>
+      <div className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
+        {activePanel.render(ctx)}
+      </div>
+    </>
+  );
+});
 
 interface RailIconProps {
   readonly panel: RailPanelDescriptor;
