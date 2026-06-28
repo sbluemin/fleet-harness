@@ -18,6 +18,7 @@ export function CodexReadingSheet() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   // 안정적인 effect key: kind + 진입 식별자
   const readerKey = reader
@@ -30,25 +31,15 @@ export function CodexReadingSheet() {
       }`
     : null;
 
+  // 시트 열기/닫기 1회 effect: trigger 저장, body attr, inert, keydown
   useEffect(() => {
-    if (!reader || !readRef.current || !tocRef.current) return;
-
-    const trigger = document.activeElement as HTMLElement | null;
+    triggerRef.current = document.activeElement as HTMLElement | null;
     document.body.setAttribute("data-codex-reading", "true");
 
-    const kind = reader.kind;
-    const subId =
-      kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
-
-    mountReaderInto(readRef.current, {
-      initialEntryId: kind === "entry" ? reader.entryId : "",
-      kind,
-      subId,
-      theaterId,
-      onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
-      onClose: () => closeCodexReader(),
-      tocContainer: tocRef.current!,
-    });
+    const canvas = document.querySelector<HTMLElement>(".operations-canvas");
+    const sidebar = document.querySelector<HTMLElement>(".operations-side-bar");
+    canvas?.setAttribute("inert", "");
+    sidebar?.setAttribute("inert", "");
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -69,6 +60,34 @@ export function CodexReadingSheet() {
 
     window.addEventListener("keydown", onKey, true);
 
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.body.removeAttribute("data-codex-reading");
+      canvas?.removeAttribute("inert");
+      sidebar?.removeAttribute("inert");
+      triggerRef.current?.focus();
+      triggerRef.current = null;
+    };
+  }, []);
+
+  // 콘텐츠 교체 effect: readerKey 변화마다 reader 마운트/교체
+  useEffect(() => {
+    if (!reader || !readRef.current || !tocRef.current) return;
+
+    const kind = reader.kind;
+    const subId =
+      kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
+
+    mountReaderInto(readRef.current, {
+      initialEntryId: kind === "entry" ? reader.entryId : "",
+      kind,
+      subId,
+      theaterId,
+      onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
+      onClose: () => closeCodexReader(),
+      tocContainer: tocRef.current!,
+    });
+
     requestAnimationFrame(() => {
       sheetRef.current
         ?.querySelector<HTMLElement>("[data-sheet-initial-focus]")
@@ -77,9 +96,6 @@ export function CodexReadingSheet() {
 
     return () => {
       teardownReader();
-      window.removeEventListener("keydown", onKey, true);
-      document.body.removeAttribute("data-codex-reading");
-      trigger?.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readerKey]);

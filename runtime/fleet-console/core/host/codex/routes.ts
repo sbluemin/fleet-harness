@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import net from "node:net";
-import { join, relative as relativePath, resolve as resolvePath } from "node:path";
+import { join, relative as relativePath, resolve as resolvePath, sep } from "node:path";
 
 import {
   approvePatch,
@@ -100,10 +100,8 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
         sendJson(response, 400, { error: "bad request" });
         return true;
       }
-      sendJson(response, 500, {
-        error: "internal_error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      process.stderr.write(`[fleet-console-codex] request error: ${error instanceof Error ? error.message : String(error)}\n`);
+      sendJson(response, 500, { error: "internal_error" });
     }
     return true;
   }
@@ -121,10 +119,8 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
       sendJson(response, 400, { error: "bad request" });
       return true;
     }
-    sendJson(response, 500, {
-      error: "internal_error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    process.stderr.write(`[fleet-console-codex] request error: ${error instanceof Error ? error.message : String(error)}\n`);
+    sendJson(response, 500, { error: "internal_error" });
   }
   return true;
 }
@@ -295,7 +291,7 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
     ];
     if (refs.length > 0) {
       const resolved = await Promise.all(refs.map(async (ref) => {
-        const absolute = resolveSafeRawPath(ref, context.paths);
+        const absolute = await resolveSafeRawPath(ref, context.paths);
         if (!absolute) return null;
         try {
           return { ref, content: await readFile(absolute, "utf8") } satisfies RawSourceItem;
@@ -382,8 +378,8 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
     sendJson(response, 400, { error: "invalid_patch_id" });
     return;
   }
-  const queueEntryDir = resolveSafeQueuePath(patchId, context.paths.queueDir);
-  const archiveEntryDir = resolveSafeQueuePath(patchId, context.paths.archiveDir);
+  const queueEntryDir = await resolveSafeQueuePath(patchId, context.paths.queueDir);
+  const archiveEntryDir = await resolveSafeQueuePath(patchId, context.paths.archiveDir);
   let source: "queue" | "archive" | null = null;
   if (queueEntryDir && await dirExists(queueEntryDir)) {
     source = "queue";
@@ -588,16 +584,23 @@ function stripIpv6Brackets(host: string): string {
   return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 }
 
-function resolveSafeConflictDir(id: string, paths: MemoryPaths): string | null {
+async function resolveSafeConflictDir(id: string, paths: MemoryPaths): Promise<string | null> {
   if (!isSafeConflictId(id)) return null;
   const absolute = resolvePath(paths.conflictsDir, id);
   const relative = relativePath(paths.conflictsDir, absolute);
   if (relative === "" || relative.startsWith("..") || relative.includes("\0")) return null;
   if (relative.startsWith("/") || /^[A-Za-z]:/.test(relative)) return null;
+  try {
+    const real = await realpath(absolute);
+    const realRoot = await realpath(paths.conflictsDir);
+    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;
+  }
   return absolute;
 }
 
-function resolveSafeRawPath(ref: string, paths: MemoryPaths): string | null {
+async function resolveSafeRawPath(ref: string, paths: MemoryPaths): Promise<string | null> {
   if (!ref || ref.length > MAX_RAW_REF_LENGTH) return null;
   if (ref.includes("\0") || ref.includes("\\")) return null;
   if (!ref.startsWith("raw/")) return null;
@@ -606,15 +609,29 @@ function resolveSafeRawPath(ref: string, paths: MemoryPaths): string | null {
   const relative = relativePath(paths.rawDir, absolute);
   if (relative === "" || relative.startsWith("..") || relative.includes("\0")) return null;
   if (relative.startsWith("/") || /^[A-Za-z]:/.test(relative)) return null;
+  try {
+    const real = await realpath(absolute);
+    const realRoot = await realpath(paths.rawDir);
+    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;
+  }
   return absolute;
 }
 
-function resolveSafeQueuePath(patchId: string, dir: string): string | null {
+async function resolveSafeQueuePath(patchId: string, dir: string): Promise<string | null> {
   if (!SAFE_PATCH_ID.test(patchId)) return null;
   const absolute = resolvePath(dir, patchId);
   const relative = relativePath(dir, absolute);
   if (relative === "" || relative.startsWith("..") || relative.includes("\0")) return null;
   if (relative.startsWith("/") || /^[A-Za-z]:/.test(relative)) return null;
+  try {
+    const real = await realpath(absolute);
+    const realRoot = await realpath(dir);
+    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;
+  }
   return absolute;
 }
 
@@ -671,8 +688,8 @@ async function readPatchSetResponse(patchSetId: string, paths: MemoryPaths): Pro
 }
 
 async function readPatchSetMember(paths: MemoryPaths, patchId: string): Promise<DrydockPatchSetMember> {
-  const queueDir = resolveSafeQueuePath(patchId, paths.queueDir);
-  const archiveDir = resolveSafeQueuePath(patchId, paths.archiveDir);
+  const queueDir = await resolveSafeQueuePath(patchId, paths.queueDir);
+  const archiveDir = await resolveSafeQueuePath(patchId, paths.archiveDir);
   if (queueDir && await dirExists(queueDir)) {
     return readPatchSetMemberFromDir(queueDir, patchId, "queue");
   }
@@ -707,7 +724,7 @@ async function listConflictSummaries(paths: MemoryPaths): Promise<ConflictListIt
   for (const entry of await readdir(paths.conflictsDir, { withFileTypes: true }).catch(() => [])) {
     if (!entry.isDirectory()) continue;
     const id = entry.name;
-    const conflictDir = resolveSafeConflictDir(id, paths);
+    const conflictDir = await resolveSafeConflictDir(id, paths);
     if (!conflictDir) continue;
     try {
       const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
@@ -737,7 +754,7 @@ async function listConflictSummaries(paths: MemoryPaths): Promise<ConflictListIt
 }
 
 async function readConflictDetail(id: string, paths: MemoryPaths): Promise<ConflictDetailResponse | null> {
-  const conflictDir = resolveSafeConflictDir(id, paths);
+  const conflictDir = await resolveSafeConflictDir(id, paths);
   if (!conflictDir) return null;
   try {
     const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
