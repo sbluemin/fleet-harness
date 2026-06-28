@@ -8,6 +8,7 @@ import { AccentPopover } from "../canvas/accent-popover.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { setOperationOrder, useCanvasState } from "../canvas/canvas-store.js";
+import { sortOperationsByOrder } from "../store.js";
 import { dropIndexFromPoint } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, tierFromWidth, useSideBarState } from "./operations-side-bar-store.js";
@@ -91,7 +92,7 @@ export function OperationsSideBar({
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
 
   const minimizedSet = new Set(minimized);
-  const entries: SideBarEntry[] = sortOperations(operations, canvas.operationOrder).map((operation) => {
+  const entries: SideBarEntry[] = sortOperationsByOrder(operations, canvas.operationOrder).map((operation) => {
     const kind = catalog.find((p) => p.id === operation.pluginId)?.kinds.find((k) => k.type === operation.type) ?? null;
     const icon = kind ? renderKindIcon(operation.pluginId, kind) : null;
     return {
@@ -406,23 +407,6 @@ export function OperationsSideBar({
       ) : null}
     </aside>
   );
-}
-
-function sortOperations(operations: readonly OperationNode[], operationOrder: readonly string[]): readonly OperationNode[] {
-  if (operationOrder.length === 0) return [...operations].sort(compareOperationCreatedAt);
-  const explicitOrder = new Map(operationOrder.map((id, index) => [id, index]));
-  return [...operations].sort((left, right) => {
-    const leftIndex = explicitOrder.get(left.id);
-    const rightIndex = explicitOrder.get(right.id);
-    if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex - rightIndex;
-    if (leftIndex !== undefined) return -1;
-    if (rightIndex !== undefined) return 1;
-    return compareOperationCreatedAt(left, right);
-  });
-}
-
-function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
-  return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 }
 
 function reorderIds(orderedIds: readonly string[], sourceId: string, dropIndex: number): string[] {

@@ -13,7 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { consumeOperationFocus, focusOperation, hydrateOperations, nextOperationId, setActiveOperation } from "../store.js";
+import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -61,10 +61,12 @@ export function Operations({ state }: OperationsProps) {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
-      const order = stateRef.current.operations
-        .filter((operation) => operation.theaterId === stateRef.current.activeTheaterId)
-        .sort(compareOperationCreatedAt)
-        .map((operation) => operation.id);
+      // Alt 순환 순서를 Left SideBar 표시 순서(드래그 재정렬 반영)와 정확히 일치시킨다.
+      const snapshot = stateRef.current;
+      const order = sortOperationsByOrder(
+        snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId),
+        getCanvasSnapshot().operationOrder,
+      ).map((operation) => operation.id);
       if (order.length === 0) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -227,10 +229,6 @@ function sortedTheaterOperations(state: ConsoleState): readonly OperationNode[] 
   return state.operations
     .filter((operation) => operation.theaterId === state.activeTheaterId)
     .sort(compareOperationCreatedAt);
-}
-
-function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
-  return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 }
 
 function viewportSizeFor(element: HTMLElement | null): { readonly width: number; readonly height: number } | null {

@@ -280,6 +280,28 @@ export function nextOperationId(order: readonly string[], currentId: string | nu
   return order[nextIndex] ?? null;
 }
 
+// SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Operation 정렬을 이 한 함수로 단일화한다.
+// operationOrder(드래그 재정렬 SSoT)에 있는 항목은 그 순서를 따르고, 없는 항목은 createdAt 순으로 뒤에 붙인다.
+export function sortOperationsByOrder(
+  operations: readonly OperationNode[],
+  operationOrder: readonly string[],
+): readonly OperationNode[] {
+  if (operationOrder.length === 0) return [...operations].sort(compareOperationCreatedAt);
+  const explicitOrder = new Map(operationOrder.map((id, index) => [id, index]));
+  return [...operations].sort((left, right) => {
+    const leftIndex = explicitOrder.get(left.id);
+    const rightIndex = explicitOrder.get(right.id);
+    if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex - rightIndex;
+    if (leftIndex !== undefined) return -1;
+    if (rightIndex !== undefined) return 1;
+    return compareOperationCreatedAt(left, right);
+  });
+}
+
+export function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
+  return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
+}
+
 export function openOperationSearch(): void {
   setState({ operationSearchOpen: true });
 }
