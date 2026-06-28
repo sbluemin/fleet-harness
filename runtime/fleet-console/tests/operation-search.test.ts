@@ -59,6 +59,7 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     codexReader: null,
+    codexReaderExpanded: false,
   };
 }
 

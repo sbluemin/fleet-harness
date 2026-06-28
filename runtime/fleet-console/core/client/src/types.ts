@@ -231,4 +231,5 @@ export interface ConsoleState {
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;
   readonly codexReader: CodexReaderRequest | null;
+  readonly codexReaderExpanded: boolean;
 }

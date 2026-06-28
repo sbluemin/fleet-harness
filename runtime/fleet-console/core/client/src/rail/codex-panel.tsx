@@ -9,7 +9,7 @@ import {
   setOnRequestOpenReader,
   teardownCodex,
 } from "../codex-host.js";
-import { openCodexReader } from "../store.js";
+import { closeCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 
 // ─── Rail panel descriptor ────────────────────────────────────────────────────
 
@@ -24,8 +24,10 @@ export const codexPanel: RailPanelDescriptor = {
 
 function CodexRailPanel() {
   const state = useConsoleState();
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLDivElement>(null);
 
+  const reader = state.codexReader;
+  const hasReader = reader !== null;
   const activeTheater = state.theaters.find((t) => t.id === state.activeTheaterId) ?? null;
   const activeTheaterId = activeTheater?.id ?? null;
   const shouldMountCodex = Boolean(activeTheater?.hasWiki);
@@ -42,10 +44,12 @@ function CodexRailPanel() {
     };
   }, [shouldMountCodex]);
 
-  // shouldMountCodex true이고 activeTheaterId 있을 때 마운트 + no-op onRequest 등록
+  // navigator 마운트 + onRequest 등록 — hasReader 전환 시 navRef 컨테이너가 바뀌므로 재배치
   useEffect(() => {
-    if (!shouldMountCodex || !bodyRef.current || !activeTheaterId) return;
-    mountNavigatorInto(bodyRef.current, activeTheaterId);
+    if (!shouldMountCodex || !activeTheaterId) return;
+    const node = navRef.current;
+    if (!node) return;
+    mountNavigatorInto(node, activeTheaterId);
     setOnRequestOpenReader((r) => {
       if (r.kind === "entry") openCodexReader({ kind: "entry", entryId: r.id });
       else if (r.kind === "drydock") openCodexReader({ kind: "drydock", patchId: r.patchId });
@@ -54,7 +58,7 @@ function CodexRailPanel() {
     return () => {
       setOnRequestOpenReader(null);
     };
-  }, [shouldMountCodex, activeTheaterId]);
+  }, [shouldMountCodex, activeTheaterId, hasReader]);
 
   // Theater 전환 시 navigator theater 업데이트
   useEffect(() => {
@@ -67,7 +71,40 @@ function CodexRailPanel() {
     return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
   }
 
-  return <div ref={bodyRef} className="codex-rail-host" />;
+  if (!hasReader) {
+    return <div ref={navRef} className="codex-rail-host" />;
+  }
+
+  return (
+    <div className="codex-rail-host is-split">
+      <div className="codex-doc-pane">
+        <div className="codex-doc-pane-head">
+          <button
+            className="codex-doc-expand"
+            type="button"
+            aria-label="Expand reading sheet"
+            data-codex-expand="true"
+            onClick={expandCodexReader}
+          >
+            ⤢ Expand
+          </button>
+          <button
+            className="codex-reading-sheet-close"
+            type="button"
+            aria-label="Close document pane"
+            onClick={closeCodexReader}
+          >
+            ✕
+          </button>
+        </div>
+        {/* W1: placeholder stub — W2에서 실 reader 마운트로 교체 */}
+        <div className="codex-doc-scroll">
+          <p className="codex-reader-loading">문서를 여는 중…</p>
+        </div>
+      </div>
+      <div ref={navRef} className="codex-nav-pane" />
+    </div>
+  );
 }
 
 function CodexEmpty({

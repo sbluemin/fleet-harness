@@ -7,6 +7,7 @@ import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { closeRailPanel, toggleRailPanel, useActiveRailPanelId } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
+import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -36,6 +37,10 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
 
+  const extraWidth = useCodexSplitExtraWidth(activeId);
+  const extraWidthRef = useRef(extraWidth);
+  extraWidthRef.current = extraWidth;
+
   const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
@@ -48,7 +53,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
     const onMove = (ev: PointerEvent) => {
       const dx = startX - ev.clientX;
-      const maxWidth = window.innerWidth - 148;
+      const maxWidth = window.innerWidth - 148 - extraWidthRef.current;
       const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, startWidth + dx));
       panelWidthRef.current = next;
       setPanelWidthState(next);
@@ -75,7 +80,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     >
       <div
         className="right-rail-panel-slot"
-        style={hasPanel ? { width: panelWidth } : undefined}
+        style={hasPanel ? { width: panelWidth + extraWidth } : undefined}
       >
         {hasPanel && (
           <div

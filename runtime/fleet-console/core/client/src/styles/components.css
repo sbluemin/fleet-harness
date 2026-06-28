@@ -3435,7 +3435,6 @@
 /* ── SideBar Chip ──────────────────────────────────────────────────────────────── */
 
 .side-bar-chip {
-  --uw-tint: var(--aurora);
   position: relative;
   display: flex;
   align-items: center;
@@ -3499,51 +3498,7 @@
   box-shadow: var(--shadow-soft);
 }
 
-/* underway status: ::before conic ride — 최소화 상태에서는 ring으로 축소 */
-.side-bar-chip--underway {
-  --uw-tint: var(--aurora);
-}
-
-.side-bar-chip--underway-turn {
-  --uw-tint: var(--warn);
-}
-
-.side-bar-chip--underway-awaiting {
-  --uw-tint: var(--warn);
-}
-
-.side-bar-chip--underway-ring::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 2px;
-  background: conic-gradient(from 0deg, transparent 70%, var(--uw-tint) 100%);
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  animation: perimeter-orbit 2.4s linear infinite;
-}
-
-.operations-canvas.is-perimeter-anim-off .side-bar-chip--underway-ring::before {
-  animation: none;
-}
-
-.operations-canvas.is-perimeter-anim-off .side-bar-chip--underway-ring::before {
-  background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .side-bar-chip--underway-ring::before {
-    animation: none;
-    background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-  }
-
   .side-bar-chip--dragging {
     transform: translateY(var(--drag-dy, 0));
   }
@@ -7915,4 +7870,74 @@ body[data-codex-side="true"] .command-card {
 body[data-codex-reading="true"] .operations-canvas,
 body[data-codex-reading="true"] .operations-side-bar {
   pointer-events: none;
+}
+
+/* ─── Codex Rail v2 — 2-pane split shell (W1) ───────────────────────────────── */
+
+.codex-rail-host.is-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 248px;
+  min-height: 0;
+  height: 100%;
+}
+
+.codex-doc-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--surface-rim);
+}
+
+.codex-doc-pane-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.codex-doc-expand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 1px solid var(--brass-deep);
+  border-radius: var(--radius-xs);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background var(--duration-base);
+}
+
+.codex-doc-expand:hover,
+.codex-doc-expand:focus-visible {
+  background: oklch(from var(--brass) l c h / 0.08);
+}
+
+.codex-doc-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-6) var(--space-10);
+}
+
+.codex-doc-scroll .markdown-body,
+.codex-doc-scroll .document-header {
+  max-inline-size: 46ch;
+}
+
+.codex-doc-toc-inline {
+  padding: var(--space-3) 0;
+}
+
+.codex-nav-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }

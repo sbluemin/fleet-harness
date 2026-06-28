@@ -73,6 +73,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     ...patch,
     codexReader: patch.codexReader ?? null,
+    codexReaderExpanded: patch.codexReaderExpanded ?? false,
   };
 }
 

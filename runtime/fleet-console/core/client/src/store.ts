@@ -73,6 +73,7 @@ let state: ConsoleState = {
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
   codexReader: null,
+  codexReaderExpanded: false,
 };
 
 export function getState(): ConsoleState {
@@ -319,11 +320,20 @@ export function closeOnboarding(): void {
 }
 
 export function openCodexReader(req: CodexReaderRequest): void {
-  setState({ codexReader: req });
+  setState({ codexReader: req, codexReaderExpanded: false });
+}
+
+export function expandCodexReader(): void {
+  if (state.codexReader === null) return;
+  setState({ codexReaderExpanded: true });
+}
+
+export function collapseCodexReader(): void {
+  setState({ codexReaderExpanded: false });
 }
 
 export function closeCodexReader(): void {
-  setState({ codexReader: null });
+  setState({ codexReader: null, codexReaderExpanded: false });
 }
 
 export function resolveOnboardingOnBootstrap(): void {
