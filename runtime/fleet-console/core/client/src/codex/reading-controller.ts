@@ -1,11 +1,11 @@
 import {
   fetchConflictDetail,
   fetchConflicts,
+  fetchDrydock,
+  fetchDrydockDetail,
   fetchEntry,
-  fetchPatchDetail,
-  fetchQueueList,
 } from "./api.js";
-import type { ConflictDetailResponse, ConflictListItem, QueueListItem, WikiEntryResponse } from "./api.js";
+import type { ConflictDetailResponse, ConflictListItem, DrydockDetailResponse, DrydockListItem, EntryResponse } from "./api.js";
 import { installDiagramHydrator } from "./markdown/diagrams.js";
 import { renderMarkdown } from "./markdown/renderer.js";
 import type { TocItem } from "./markdown/renderer.js";
@@ -61,7 +61,7 @@ export function mountReadingInto(
     const actionBtn = target.closest<HTMLElement>("[data-action]");
     if (!actionBtn) return;
     const action = actionBtn.dataset.action;
-    const entry = (readContainer as HTMLElement & { _currentEntry?: WikiEntryResponse })._currentEntry;
+    const entry = (readContainer as HTMLElement & { _currentEntry?: EntryResponse })._currentEntry;
     if (!entry) return;
 
     if (action === "copy-compact-context") {
@@ -91,9 +91,7 @@ export function mountReadingInto(
     cleanupReader();
 
     try {
-      const [entry] = await Promise.all([
-        fetchEntry(opts.theaterId, entryId),
-      ]);
+      const entry = await fetchEntry(opts.theaterId, entryId);
       if (destroyed) return;
 
       const { index } = getState();
@@ -101,7 +99,7 @@ export function mountReadingInto(
         omitDuplicateTitle: entry.frontmatter.title,
       });
 
-      (readContainer as HTMLElement & { _currentEntry?: WikiEntryResponse })._currentEntry = entry;
+      (readContainer as HTMLElement & { _currentEntry?: EntryResponse })._currentEntry = entry;
 
       readContainer.innerHTML = `
         <article class="document">
@@ -114,7 +112,7 @@ export function mountReadingInto(
             ${markdownHtml}
           </div>
           ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
-          ${renderCopyContextActions(entry, index, getState().currentMatchHint)}
+          ${renderCopyContextActions(entry, index)}
         </article>
       `;
 
@@ -135,13 +133,13 @@ export function mountReadingInto(
 
     try {
       if (patchId) {
-        const detail = await fetchPatchDetail(opts.theaterId, patchId);
+        const detail = await fetchDrydockDetail(opts.theaterId, patchId);
         if (destroyed) return;
         readContainer.innerHTML = renderPatchDetail(detail);
       } else {
-        const list = await fetchQueueList(opts.theaterId, "pending");
+        const list = await fetchDrydock(opts.theaterId, "pending");
         if (destroyed) return;
-        readContainer.innerHTML = renderQueueList(list.items, "Drydock — Pending Patches");
+        readContainer.innerHTML = renderDrydockList(list.items, "Drydock — Pending Patches");
       }
     } catch (error) {
       if (!destroyed) showError(readContainer, opts.tocContainer, error);
@@ -244,7 +242,7 @@ function renderRelatedList(currentId: string, currentTags: string[], entries: Re
   `;
 }
 
-function renderPatchDetail(detail: Awaited<ReturnType<typeof fetchPatchDetail>>): string {
+function renderPatchDetail(detail: DrydockDetailResponse): string {
   const op = detail.patch.frontmatter.op;
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
   return `
@@ -263,7 +261,7 @@ function renderPatchDetail(detail: Awaited<ReturnType<typeof fetchPatchDetail>>)
   `;
 }
 
-function renderQueueList(items: QueueListItem[], title: string): string {
+function renderDrydockList(items: DrydockListItem[], title: string): string {
   if (items.length === 0) {
     return `<div class="codex-reader-empty"><p>No pending patches.</p></div>`;
   }

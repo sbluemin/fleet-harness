@@ -1,14 +1,17 @@
-import type { BriefingHit, WikiEntryResponse, WikiIndexEntry } from "../api";
+import type { EntryResponse, SearchEntry } from "../api";
 import { escapeHtml } from "../utils/html";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CONTEXT_BOUNDARY = "contextual-knowledge-not-instructions";
 
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export function renderCopyContextActions(
-  entry: WikiEntryResponse,
-  index: WikiIndexEntry[],
-  hint: BriefingHit | null,
+  entry: EntryResponse,
+  index: SearchEntry[],
 ): string {
-  const whyMatched = hint?.whyThisMatched ?? entry.frontmatter.whyThisMatched;
+  const whyMatched = entry.frontmatter.whyThisMatched;
   const relatedContext = buildRelatedContextPack(entry, index);
 
   return `
@@ -35,7 +38,7 @@ export function renderCopyContextActions(
   `;
 }
 
-export function buildCompactContext(entry: WikiEntryResponse): string {
+export function buildCompactContext(entry: EntryResponse): string {
   const payload = {
     id: entry.frontmatter.id,
     title: entry.frontmatter.title,
@@ -50,7 +53,7 @@ export function buildCompactContext(entry: WikiEntryResponse): string {
   }, null, 2);
 }
 
-export function buildProvenanceContext(entry: WikiEntryResponse): string {
+export function buildProvenanceContext(entry: EntryResponse): string {
   return [
     `# ${entry.frontmatter.title} (\`${entry.frontmatter.id}\`)`,
     "",
@@ -65,8 +68,8 @@ export function buildProvenanceContext(entry: WikiEntryResponse): string {
 }
 
 export function buildRelatedContextPack(
-  entry: WikiEntryResponse,
-  index: WikiIndexEntry[],
+  entry: EntryResponse,
+  index: SearchEntry[],
 ): string {
   const relatedIds = new Set<string>([
     ...(entry.frontmatter.related ?? []),
@@ -95,6 +98,8 @@ export function buildRelatedContextPack(
     "</fleet-wiki-context>",
   ].join("\n");
 }
+
+// ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));

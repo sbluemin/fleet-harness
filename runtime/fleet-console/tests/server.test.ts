@@ -1090,11 +1090,11 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture();
     const theater = await createTheater(fixture, dir);
 
-    // 등록 직후에는 codex 워크스페이스 라우트가 위키 health를 200으로 서빙한다.
-    const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/health`, { redirect: "manual" });
+    // 등록 직후에는 codex 워크스페이스 라우트가 conflicts API를 200으로 서빙한다.
+    const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/conflicts`, { redirect: "manual" });
     const deleted = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
     // forget 후에는 워크스페이스가 해제되어 같은 라우트가 codex 홈으로 302 리다이렉트된다.
-    const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/health`, { redirect: "manual" });
+    const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/conflicts`, { redirect: "manual" });
     const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}theaters`);
 
     expect(beforeForget.status).toBe(200);
@@ -1107,8 +1107,11 @@ describe("console static and terminal ticket boundary", () => {
     const dirA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-mru-a-"));
     const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-mru-b-"));
     tempDirs.push(dirA, dirB);
-    fs.mkdirSync(path.join(dirA, ".fleet", "knowledge"), { recursive: true });
-    fs.mkdirSync(path.join(dirB, ".fleet", "knowledge"), { recursive: true });
+    createWikiRoot(dirA);
+    createWikiRoot(dirB);
+    // 각 워크스페이스에 고유 항목을 추가해 MRU를 search 결과로 식별한다.
+    fs.writeFileSync(path.join(dirA, ".fleet", "knowledge", "wiki", "entry-mru-a.md"), makeWikiEntryMd("entry-mru-a"));
+    fs.writeFileSync(path.join(dirB, ".fleet", "knowledge", "wiki", "entry-mru-b.md"), makeWikiEntryMd("entry-mru-b"));
     const fixture = await startFixture();
     await createTheater(fixture, dirA);
     const theaterB = await createTheater(fixture, dirB); // 마지막 등록 = MRU
@@ -1116,20 +1119,24 @@ describe("console static and terminal ticket boundary", () => {
     // MRU(B)를 forget하면 남은 A가 MRU로 승격되어, getMru() 기반 비프리픽스 라우트가
     // deps.cwd 폴백이 아니라 A의 위키를 서빙해야 한다.
     const deleted = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theaterB.id)}`, { method: "DELETE" });
-    const health = await fetch(`${fixture.endpoint}console/codex/api/health`, { redirect: "manual" });
-    const body = await health.json() as { readonly knowledgeRoot?: string };
+    const search = await fetch(`${fixture.endpoint}console/codex/api/search`);
+    const body = await search.json() as { readonly entries: ReadonlyArray<{ readonly id: string }> };
 
     expect(deleted.status).toBe(200);
-    expect(health.status).toBe(200);
-    expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirA), ".fleet", "knowledge"));
+    expect(search.status).toBe(200);
+    expect(body.entries.some((e) => e.id === "entry-mru-a")).toBe(true);
+    expect(body.entries.some((e) => e.id === "entry-mru-b")).toBe(false);
   });
 
   it("restores the most-recently-opened Codex workspace as MRU after a restart", async () => {
     const dirA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-a-"));
     const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-b-"));
     tempDirs.push(dirA, dirB);
-    fs.mkdirSync(path.join(dirA, ".fleet", "knowledge"), { recursive: true });
-    fs.mkdirSync(path.join(dirB, ".fleet", "knowledge"), { recursive: true });
+    createWikiRoot(dirA);
+    createWikiRoot(dirB);
+    // 각 워크스페이스에 고유 항목을 추가해 MRU를 search 결과로 식별한다.
+    fs.writeFileSync(path.join(dirA, ".fleet", "knowledge", "wiki", "entry-restart-a.md"), makeWikiEntryMd("entry-restart-a"));
+    fs.writeFileSync(path.join(dirB, ".fleet", "knowledge", "wiki", "entry-restart-b.md"), makeWikiEntryMd("entry-restart-b"));
     const fixture = await startFixture();
     await createTheater(fixture, dirA);
     const theaterB = await createTheater(fixture, dirB);
@@ -1149,12 +1156,13 @@ describe("console static and terminal ticket boundary", () => {
     servers.push(restartedServer);
     const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
 
-    // 재시작 후 codex MRU는 가장 최근에 열린 B여야 하므로 비프리픽스 health가 B의 knowledgeRoot를 서빙한다.
-    const health = await fetch(`${restartedEndpoint}console/codex/api/health`, { redirect: "manual" });
-    const body = await health.json() as { readonly knowledgeRoot?: string };
+    // 재시작 후 codex MRU는 가장 최근에 열린 B여야 하므로 비프리픽스 search가 B의 항목을 서빙한다.
+    const search = await fetch(`${restartedEndpoint}console/codex/api/search`);
+    const body = await search.json() as { readonly entries: ReadonlyArray<{ readonly id: string }> };
 
-    expect(health.status).toBe(200);
-    expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirB), ".fleet", "knowledge"));
+    expect(search.status).toBe(200);
+    expect(body.entries.some((e) => e.id === "entry-restart-b")).toBe(true);
+    expect(body.entries.some((e) => e.id === "entry-restart-a")).toBe(false);
   });
 
   it("restores a symlinked Theater's Codex workspace from the durable realpath", async () => {
@@ -1817,11 +1825,12 @@ describe("console static and terminal ticket boundary", () => {
     const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
     const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as { readonly id: string; readonly hasWiki: boolean };
-    const health = await fetch(`${fixture.endpoint}console/codex/w/${payload.id}/api/health`);
+    // 등록된 codex 워크스페이스 라우트가 접근 가능한지 확인.
+    const search = await fetch(`${fixture.endpoint}console/codex/w/${payload.id}/api/conflicts`);
 
     expect(created.status).toBe(200);
     expect(payload).toMatchObject({ id: workspaceHash(fs.realpathSync.native(dir)), hasWiki: true });
-    expect(health.status).toBe(200);
+    expect(search.status).toBe(200);
   });
 
   it("serves sanitized observer status with active Theater wiki availability", async () => {
@@ -2472,4 +2481,18 @@ function createWikiRoot(cwd: string): void {
   fs.mkdirSync(path.join(knowledgeRoot, "conflicts"), { recursive: true });
   fs.writeFileSync(path.join(knowledgeRoot, "wiki", "index.md"), "# Index\n");
   fs.writeFileSync(path.join(knowledgeRoot, "log.md"), "## Log\n");
+}
+
+function makeWikiEntryMd(id: string): string {
+  return [
+    "---",
+    `id: "${id}"`,
+    `title: "Entry ${id}"`,
+    "tags: []",
+    'created: "2026-01-01T00:00:00.000Z"',
+    'updated: "2026-01-01T00:00:00.000Z"',
+    "version: 1",
+    "---",
+    "Test content",
+  ].join("\n");
 }

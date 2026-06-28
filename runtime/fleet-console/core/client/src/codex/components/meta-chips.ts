@@ -1,4 +1,4 @@
-import type { WikiEntryFrontmatter, WikiIndexEntry } from "../api";
+import type { EntryFrontmatter, SearchEntry } from "../api";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
 export interface EntryStatusBadge {
@@ -7,7 +7,7 @@ export interface EntryStatusBadge {
   title: string;
 }
 
-export function renderMetaChips(frontmatter: WikiEntryFrontmatter | WikiIndexEntry): string {
+export function renderMetaChips(frontmatter: EntryFrontmatter | SearchEntry): string {
   const tags = frontmatter.tags.map((tag) => `<span class="chip chip-tag">${escapeHtml(tag)}</span>`).join("");
   const badge = renderStatusBadge(frontmatter);
   return `
@@ -33,13 +33,13 @@ function formatDate(value: string): string {
   });
 }
 
-function renderStatusBadge(frontmatter: WikiEntryFrontmatter | WikiIndexEntry): string {
+function renderStatusBadge(frontmatter: EntryFrontmatter | SearchEntry): string {
   const badge = getEntryStatusBadge(frontmatter);
   if (!badge) return "";
   return `<span class="chip ${badge.tone === "deprecated" ? "chip-coral" : badge.tone === "stale" ? "chip-stale" : ""}" title="${escapeAttribute(badge.title)}">${escapeHtml(badge.label)}</span>`;
 }
 
-function getEntryStatusBadge(frontmatter: WikiEntryFrontmatter | WikiIndexEntry, now: Date = new Date()): EntryStatusBadge | null {
+function getEntryStatusBadge(frontmatter: EntryFrontmatter | SearchEntry, now: Date = new Date()): EntryStatusBadge | null {
   const status = frontmatter.status;
   const stale = typeof frontmatter.revalidateAfter === "string"
     && !Number.isNaN(Date.parse(frontmatter.revalidateAfter))

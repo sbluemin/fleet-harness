@@ -6,8 +6,6 @@ import { join, relative as relativePath, resolve as resolvePath } from "node:pat
 import {
   approvePatch,
   briefingQuery,
-  getIndexMarkdownFile,
-  getLogFile,
   listQueue,
   listWiki,
   parsePatch,
@@ -22,31 +20,39 @@ import type { MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@d
 import type {
   ConflictDetailResponse,
   ConflictListItem,
-  LogResponse,
-  QueuePatchSetMember,
-  QueuePatchSetResponse,
+  DrydockDetailResponse,
+  DrydockListItem,
+  DrydockListResponse,
+  DrydockMeta,
+  DrydockPatch,
+  DrydockPatchSetMember,
+  DrydockPatchSetResponse,
+  DrydockWikiEntry,
+  EntryFrontmatter,
+  EntryResponse,
+  RawSourceItem,
+  SearchEntry,
+  SearchResponse,
 } from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
-import type { WorkspaceRegistry } from "./workspaces.js";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RouteContext {
   cwd: string;
   knowledgeRoot: string;
   paths: MemoryPaths;
-  version: string;
   port: number;
   host: string;
   workspaceId: string;
   allowedOrigins: Set<string>;
   externalMode: boolean;
-  workspaces?: WorkspaceRegistry;
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
-};
-const MARKDOWN_HEADERS = {
-  "content-type": "text/markdown; charset=utf-8",
 };
 const SAFE_ENTRY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_PATCH_ID = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{3}Z-[0-9a-f]{8}$/;
@@ -54,11 +60,11 @@ const SAFE_CONFLICT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_SEARCH_QUERY_LENGTH = 256;
 const MAX_SEARCH_TAGS = 16;
 const MAX_SEARCH_TAG_LENGTH = 64;
+const MAX_SEARCH_LIMIT = 200;
+const DEFAULT_SEARCH_LIMIT = 50;
 const MAX_RAW_REF_LENGTH = 256;
 const MAX_POST_BODY_BYTES = 1024;
 const MAX_REASON_LENGTH = 256;
-const MAX_LOG_LIMIT = 100;
-const DEFAULT_LOG_LIMIT = 20;
 const BODY_TOO_LARGE = Symbol("too_large");
 
 const PATCH_ERROR_MAP: ReadonlyArray<[string | ((m: string) => boolean), number, string]> = [
@@ -78,6 +84,8 @@ const PATCH_ERROR_MAP: ReadonlyArray<[string | ((m: string) => boolean), number,
 ];
 
 const patchActionLocks = new Map<string, Promise<unknown>>();
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function handleApiRequest(request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<boolean> {
   if (!request.url) return false;
@@ -126,248 +134,54 @@ export function isLoopbackRemoteAddress(address: string | undefined): boolean {
   return normalized === "127.0.0.1" || normalized === "::1";
 }
 
+// ─── Route dispatchers ────────────────────────────────────────────────────────
+
 async function routeGet(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
-  if (url.pathname === "/api/health") {
-    sendJson(response, 200, {
-      ok: true,
-      version: context.version,
-      ...(context.externalMode ? {} : {
-        cwd: context.cwd,
-        knowledgeRoot: context.knowledgeRoot,
-      }),
-    });
-    return;
-  }
-
-  if (url.pathname === "/api/workspaces") {
-    sendJson(response, 200, {
-      currentWorkspaceId: context.workspaceId ?? null,
-      workspaces: context.workspaces?.list() ?? [],
-    });
-    return;
-  }
-
-  if (url.pathname === "/api/index") {
-    const entries = await listWiki(context.paths);
-    sendJson(response, 200, entries.map((entry) => ({
-      id: entry.id,
-      title: entry.title,
-      tags: entry.tags,
-      updated: entry.updated,
-      path: `wiki/${entry.id}.md`,
-      status: entry.status,
-      revalidateAfter: entry.revalidateAfter,
-      rawSourceRef: entry.rawSourceRef,
-      rawSourceRefs: entry.rawSourceRefs?.map((item) => item.ref),
-    })));
-    return;
-  }
-
-  if (url.pathname === "/api/index-md") {
-    try {
-      const content = await readIndexMarkdown(context.paths);
-      sendMarkdown(response, 200, content);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        sendJson(response, 404, { error: "index_md_not_found" });
-        return;
-      }
-      throw error;
-    }
-    return;
-  }
-
-  if (url.pathname === "/api/log") {
-    const rawLimit = Number(url.searchParams.get("limit") ?? DEFAULT_LOG_LIMIT);
-    const limit = Number.isInteger(rawLimit) ? rawLimit : DEFAULT_LOG_LIMIT;
-    sendJson(response, 200, await readLogTail(context.paths, limit));
-    return;
-  }
-
   if (url.pathname === "/api/search") {
-    const query = url.searchParams.get("q") ?? "";
-    const tags = (url.searchParams.get("tags") ?? "")
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    const enhanced = url.searchParams.get("enhanced") === "true";
-    if (!validSearch(query, tags)) {
-      sendJson(response, 400, { error: "invalid search query" });
-      return;
-    }
-    const hits = await briefingQuery(context.paths, {
-      topic: query,
-      tags,
-      limit: 50,
-      enhanced,
-    });
-    sendJson(response, 200, hits);
-    return;
+    return handleSearch(url, response, context);
   }
-
-  if (url.pathname === "/api/raw") {
-    const ref = url.searchParams.get("ref") ?? "";
-    const absolute = resolveSafeRawPath(ref, context.paths);
-    if (!absolute) {
-      sendJson(response, 400, { error: "invalid_raw_ref" });
-      return;
-    }
-    try {
-      sendMarkdown(response, 200, await readFile(absolute, "utf8"));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        sendJson(response, 404, { error: "raw_not_found", ref });
-        return;
-      }
-      throw error;
-    }
-    return;
-  }
-
-  if (url.pathname === "/api/conflicts") {
-    sendJson(response, 200, await listConflictSummaries(context.paths));
-    return;
-  }
-
-  const conflictMatch = url.pathname.match(/^\/api\/conflicts\/([^/]+)$/);
-  if (conflictMatch) {
-    const rawSegment = conflictMatch[1] ?? "";
-    const conflictId = decodePathSegment(rawSegment);
-    const detail = await readConflictDetail(conflictId, context.paths);
-    if (!detail) {
-      sendJson(response, isSafeConflictId(conflictId) ? 404 : 400, { error: isSafeConflictId(conflictId) ? "not_found" : "invalid_conflict_id" });
-      return;
-    }
-    sendJson(response, 200, detail);
-    return;
-  }
-  if (url.pathname.startsWith("/api/conflicts/")) {
-    sendJson(response, 400, { error: "invalid_conflict_id" });
-    return;
-  }
-
-  if (url.pathname === "/api/queue") {
-    const status = url.searchParams.get("status") ?? "pending";
-    if (!["pending", "archived", "all"].includes(status)) {
-      sendJson(response, 400, { error: "invalid_status" });
-      return;
-    }
-    const [pendingRaw, archivedRaw] = await Promise.all([
-      listQueue(context.paths),
-      listArchive(context.paths),
-    ]);
-    const pendingItems = pendingRaw.map((item) => ({ ...item, source: "queue" as const }));
-    const archivedItems = archivedRaw.map((item) => ({ ...item, source: "archive" as const }));
-    let items: Array<{ id: string; meta: PatchMeta; source: "queue" | "archive" }>;
-    if (status === "all") {
-      items = [...pendingItems, ...archivedItems].sort(
-        (a, b) => new Date(b.meta.createdAt).getTime() - new Date(a.meta.createdAt).getTime(),
-      );
-    } else if (status === "pending") {
-      items = pendingItems;
-    } else {
-      items = archivedItems;
-    }
-    const enriched = await Promise.all(items.map(async (item) => {
-      if (!SAFE_PATCH_ID.test(item.id)) return item;
-      try {
-        const dir = item.source === "queue" ? context.paths.queueDir : context.paths.archiveDir;
-        const patch = await parsePatch(await readFile(join(dir, item.id, PATCH_FILENAME), "utf8"));
-        return { ...item, summary: patch.frontmatter.summary, op: patch.frontmatter.op, target: patch.frontmatter.target };
-      } catch {
-        return item;
-      }
-    }));
-    sendJson(response, 200, {
-      items: enriched,
-      pendingCount: pendingItems.length,
-      archivedCount: archivedItems.length,
-    });
-    return;
-  }
-
-  const queueDetailMatch = url.pathname.match(/^\/api\/queue\/([^/]+)$/);
-  if (queueDetailMatch) {
-    const rawSegment = queueDetailMatch[1] ?? "";
-    const patchId = decodePathSegment(rawSegment);
-    if (!SAFE_PATCH_ID.test(patchId)) {
-      sendJson(response, 400, { error: "invalid_patch_id" });
-      return;
-    }
-    const queueEntryDir = resolveSafeQueuePath(patchId, context.paths.queueDir);
-    const archiveEntryDir = resolveSafeQueuePath(patchId, context.paths.archiveDir);
-    let source: "queue" | "archive" | null = null;
-    if (queueEntryDir && await dirExists(queueEntryDir)) {
-      source = "queue";
-    } else if (archiveEntryDir && await dirExists(archiveEntryDir)) {
-      source = "archive";
-    }
-    if (!source) {
-      sendJson(response, 404, { error: "patch_not_found" });
-      return;
-    }
-    try {
-      let patch: Awaited<ReturnType<typeof parsePatch>>;
-      let meta: PatchMeta;
-      if (source === "queue") {
-        const result = await showQueue(patchId, context.paths);
-        patch = result.patch;
-        meta = result.meta;
-      } else {
-        const entryDir = archiveEntryDir!;
-        patch = await parsePatch(await readFile(join(entryDir, PATCH_FILENAME), "utf8"));
-        meta = JSON.parse(await readFile(join(entryDir, PATCH_META_FILENAME), "utf8")) as PatchMeta;
-      }
-      const wikiEntry = parsePatchWikiEntry(patch);
-      const targetPath = resolvePatchTargetPath(patch.frontmatter.target, context.paths);
-      const targetExists = await fileExists(targetPath);
-      const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
-      sendJson(response, 200, { source, patch, meta, wikiEntry, targetExists, patchSet });
-    } catch {
-      sendJson(response, 400, { error: "malformed_patch" });
-    }
-    return;
-  }
-  if (url.pathname.startsWith("/api/queue/")) {
-    sendJson(response, 400, { error: "invalid_patch_id" });
-    return;
-  }
-
   const entryMatch = url.pathname.match(/^\/api\/entry\/([^/]+)$/);
   if (entryMatch) {
-    const id = decodePathSegment(entryMatch[1] ?? "");
-    if (!isSafeEntryId(id)) {
-      sendJson(response, 400, { error: "invalid entry id" });
-      return;
-    }
-    const entry = await readWikiEntry(id, context.paths);
-    if (!entry) {
-      sendJson(response, 404, { error: "not_found", id });
-      return;
-    }
-    const { body, ...frontmatter } = entry;
-    sendJson(response, 200, { frontmatter: frontmatter satisfies WikiEntryFrontmatter, body });
-    return;
+    return handleEntry(entryMatch[1] ?? "", url, response, context);
   }
   if (url.pathname.startsWith("/api/entry/")) {
     sendJson(response, 400, { error: "invalid entry id" });
     return;
   }
-
+  if (url.pathname === "/api/drydock") {
+    return handleDrydockList(url, response, context);
+  }
+  const drydockMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)$/);
+  if (drydockMatch) {
+    return handleDrydockDetail(drydockMatch[1] ?? "", response, context);
+  }
+  if (url.pathname.startsWith("/api/drydock/")) {
+    sendJson(response, 400, { error: "invalid_patch_id" });
+    return;
+  }
+  if (url.pathname === "/api/conflicts") {
+    return handleConflictList(response, context);
+  }
+  const conflictMatch = url.pathname.match(/^\/api\/conflicts\/([^/]+)$/);
+  if (conflictMatch) {
+    return handleConflictDetail(conflictMatch[1] ?? "", response, context);
+  }
+  if (url.pathname.startsWith("/api/conflicts/")) {
+    sendJson(response, 400, { error: "invalid_conflict_id" });
+    return;
+  }
   sendJson(response, 404, { error: "not_found" });
 }
 
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
-  const approveMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/approve$/);
-  const rejectMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/reject$/);
-
-  if (!approveMatch && !rejectMatch) {
+  const decisionMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)\/decision$/);
+  if (!decisionMatch) {
     response.writeHead(405, withSecurityHeaders({ ...JSON_HEADERS, allow: "GET, HEAD" }));
     response.end(JSON.stringify({ error: "method_not_allowed" }));
     return;
   }
 
-  const rawSegment = (approveMatch ?? rejectMatch)?.[1] ?? "";
+  const rawSegment = decisionMatch[1] ?? "";
   const patchId = decodePathSegment(rawSegment);
   if (!SAFE_PATCH_ID.test(patchId)) {
     sendJson(response, 400, { error: "invalid_patch_id" });
@@ -397,7 +211,7 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
-  const actionPromise = runPatchAction(patchId, Boolean(approveMatch), request, response, context);
+  const actionPromise = runDecisionAction(patchId, request, response, context);
   patchActionLocks.set(lockKey, actionPromise);
   try {
     await actionPromise;
@@ -406,9 +220,229 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
   }
 }
 
-async function runPatchAction(
+// ─── Route handlers ───────────────────────────────────────────────────────────
+
+async function handleSearch(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
+  const query = url.searchParams.get("q") ?? "";
+  const tags = (url.searchParams.get("tags") ?? "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  const limitRaw = Number(url.searchParams.get("limit") ?? DEFAULT_SEARCH_LIMIT);
+  const limit = Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, MAX_SEARCH_LIMIT) : DEFAULT_SEARCH_LIMIT;
+
+  if (!validSearch(query, tags)) {
+    sendJson(response, 400, { error: "invalid search query" });
+    return;
+  }
+
+  let entries: SearchEntry[];
+  if (!query && tags.length === 0) {
+    const all = await listWiki(context.paths);
+    entries = all.map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      tags: entry.tags,
+      updated: entry.updated,
+      path: `wiki/${entry.id}.md`,
+      status: entry.status,
+      revalidateAfter: entry.revalidateAfter,
+      rawSourceRef: entry.rawSourceRef,
+      rawSourceRefs: entry.rawSourceRefs?.map((item) => item.ref),
+    }));
+  } else {
+    const hits = await briefingQuery(context.paths, { topic: query, tags, limit, enhanced: false });
+    entries = hits.map((hit) => ({
+      id: hit.id,
+      title: hit.title,
+      tags: hit.tags,
+      updated: hit.updated,
+      path: `wiki/${hit.id}.md`,
+      status: hit.status,
+      rawSourceRef: hit.rawSourceRef,
+      rawSourceRefs: hit.rawSourceRefs,
+      score: hit.score,
+      excerpt: hit.excerpt,
+      reason: hit.reason,
+      aliases: hit.aliases,
+      type: hit.type,
+      matchedFields: hit.matchedFields,
+      whyThisMatched: hit.whyThisMatched,
+    }));
+  }
+
+  sendJson(response, 200, { entries, total: entries.length } satisfies SearchResponse);
+}
+
+async function handleEntry(rawSegment: string, url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
+  const id = decodePathSegment(rawSegment);
+  if (!isSafeEntryId(id)) {
+    sendJson(response, 400, { error: "invalid entry id" });
+    return;
+  }
+  const entry = await readWikiEntry(id, context.paths);
+  if (!entry) {
+    sendJson(response, 404, { error: "not_found", id });
+    return;
+  }
+  const { body, ...frontmatter } = entry;
+
+  let raw: RawSourceItem[] | undefined;
+  if (url.searchParams.get("include") === "raw") {
+    const refs = [
+      ...(frontmatter.rawSourceRef ? [frontmatter.rawSourceRef] : []),
+      ...(frontmatter.rawSourceRefs?.map((item) => item.ref) ?? []),
+    ];
+    if (refs.length > 0) {
+      const resolved = await Promise.all(refs.map(async (ref) => {
+        const absolute = resolveSafeRawPath(ref, context.paths);
+        if (!absolute) return null;
+        try {
+          return { ref, content: await readFile(absolute, "utf8") } satisfies RawSourceItem;
+        } catch {
+          return null;
+        }
+      }));
+      raw = resolved.filter((item): item is RawSourceItem => item !== null);
+    }
+  }
+
+  const responseBody: EntryResponse = {
+    frontmatter: {
+      id: frontmatter.id,
+      title: frontmatter.title,
+      tags: frontmatter.tags,
+      created: frontmatter.created,
+      updated: frontmatter.updated,
+      version: frontmatter.version,
+      rawSourceRef: frontmatter.rawSourceRef,
+      rawSourceRefs: frontmatter.rawSourceRefs?.map((item) => item.ref),
+      aliases: frontmatter.aliases,
+      status: frontmatter.status,
+      confidence: frontmatter.confidence,
+      type: frontmatter.type,
+      revalidateAfter: frontmatter.revalidateAfter,
+      related: frontmatter.related,
+      supersedes: frontmatter.supersedes,
+    } satisfies EntryFrontmatter,
+    body,
+    ...(raw !== undefined ? { raw } : {}),
+  };
+  sendJson(response, 200, responseBody);
+}
+
+async function handleDrydockList(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
+  const status = url.searchParams.get("status") ?? "pending";
+  if (!["pending", "archived", "all"].includes(status)) {
+    sendJson(response, 400, { error: "invalid_status" });
+    return;
+  }
+  const [pendingRaw, archivedRaw] = await Promise.all([
+    listQueue(context.paths),
+    listArchive(context.paths),
+  ]);
+  const pendingItems = pendingRaw.map((item) => ({ ...item, source: "queue" as const }));
+  const archivedItems = archivedRaw.map((item) => ({ ...item, source: "archive" as const }));
+  let items: Array<{ id: string; meta: PatchMeta; source: "queue" | "archive" }>;
+  if (status === "all") {
+    items = [...pendingItems, ...archivedItems].sort(
+      (a, b) => new Date(b.meta.createdAt).getTime() - new Date(a.meta.createdAt).getTime(),
+    );
+  } else if (status === "pending") {
+    items = pendingItems;
+  } else {
+    items = archivedItems;
+  }
+  const enriched = await Promise.all(items.map(async (item): Promise<DrydockListItem> => {
+    if (!SAFE_PATCH_ID.test(item.id)) return { ...item, meta: item.meta as DrydockMeta };
+    try {
+      const dir = item.source === "queue" ? context.paths.queueDir : context.paths.archiveDir;
+      const patch = await parsePatch(await readFile(join(dir, item.id, PATCH_FILENAME), "utf8"));
+      return {
+        ...item,
+        meta: item.meta as DrydockMeta,
+        summary: patch.frontmatter.summary,
+        op: patch.frontmatter.op as "create_wiki" | "update_wiki",
+        target: patch.frontmatter.target,
+      };
+    } catch {
+      return { ...item, meta: item.meta as DrydockMeta };
+    }
+  }));
+  sendJson(response, 200, {
+    items: enriched,
+    pendingCount: pendingItems.length,
+    archivedCount: archivedItems.length,
+  } satisfies DrydockListResponse);
+}
+
+async function handleDrydockDetail(rawSegment: string, response: ServerResponse, context: RouteContext): Promise<void> {
+  const patchId = decodePathSegment(rawSegment);
+  if (!SAFE_PATCH_ID.test(patchId)) {
+    sendJson(response, 400, { error: "invalid_patch_id" });
+    return;
+  }
+  const queueEntryDir = resolveSafeQueuePath(patchId, context.paths.queueDir);
+  const archiveEntryDir = resolveSafeQueuePath(patchId, context.paths.archiveDir);
+  let source: "queue" | "archive" | null = null;
+  if (queueEntryDir && await dirExists(queueEntryDir)) {
+    source = "queue";
+  } else if (archiveEntryDir && await dirExists(archiveEntryDir)) {
+    source = "archive";
+  }
+  if (!source) {
+    sendJson(response, 404, { error: "patch_not_found" });
+    return;
+  }
+  try {
+    let patch: Awaited<ReturnType<typeof parsePatch>>;
+    let meta: PatchMeta;
+    if (source === "queue") {
+      const result = await showQueue(patchId, context.paths);
+      patch = result.patch;
+      meta = result.meta;
+    } else {
+      const entryDir = archiveEntryDir!;
+      patch = await parsePatch(await readFile(join(entryDir, PATCH_FILENAME), "utf8"));
+      meta = JSON.parse(await readFile(join(entryDir, PATCH_META_FILENAME), "utf8")) as PatchMeta;
+    }
+    const wikiEntry = parsePatchWikiEntry(patch);
+    const targetPath = resolvePatchTargetPath(patch.frontmatter.target, context.paths);
+    const targetExists = await fileExists(targetPath);
+    const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
+    sendJson(response, 200, {
+      source,
+      patch: patch as DrydockPatch,
+      meta: meta as DrydockMeta,
+      wikiEntry,
+      targetExists,
+      patchSet,
+    } satisfies DrydockDetailResponse);
+  } catch {
+    sendJson(response, 400, { error: "malformed_patch" });
+  }
+}
+
+async function handleConflictList(response: ServerResponse, context: RouteContext): Promise<void> {
+  sendJson(response, 200, await listConflictSummaries(context.paths));
+}
+
+async function handleConflictDetail(rawSegment: string, response: ServerResponse, context: RouteContext): Promise<void> {
+  const conflictId = decodePathSegment(rawSegment);
+  const detail = await readConflictDetail(conflictId, context.paths);
+  if (!detail) {
+    sendJson(
+      response,
+      isSafeConflictId(conflictId) ? 404 : 400,
+      { error: isSafeConflictId(conflictId) ? "not_found" : "invalid_conflict_id" },
+    );
+    return;
+  }
+  sendJson(response, 200, detail);
+}
+
+async function runDecisionAction(
   patchId: string,
-  isApprove: boolean,
   request: IncomingMessage,
   response: ServerResponse,
   context: RouteContext,
@@ -431,8 +465,14 @@ async function runPatchAction(
     return;
   }
 
+  const action = body.action;
+  if (action !== "approve" && action !== "reject") {
+    sendJson(response, 400, { error: "invalid_action" });
+    return;
+  }
+
   try {
-    if (isApprove) {
+    if (action === "approve") {
       sendJson(response, 200, { ok: true, meta: await approvePatch(patchId, context.paths) });
       return;
     }
@@ -457,6 +497,8 @@ async function runPatchAction(
     sendJson(response, 500, { error: "internal_error" });
   }
 }
+
+// ─── Internal helpers ─────────────────────────────────────────────────────────
 
 async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {
   return new Promise((resolve) => {
@@ -501,11 +543,6 @@ function isOriginAllowed(origin: string, allowedOrigins: Set<string>, serverPort
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, withSecurityHeaders(JSON_HEADERS));
   response.end(JSON.stringify(body));
-}
-
-function sendMarkdown(response: ServerResponse, statusCode: number, body: string): void {
-  response.writeHead(statusCode, withSecurityHeaders(MARKDOWN_HEADERS));
-  response.end(body);
 }
 
 function decodePathSegment(segment: string): string {
@@ -558,113 +595,6 @@ function resolveSafeConflictDir(id: string, paths: MemoryPaths): string | null {
   if (relative === "" || relative.startsWith("..") || relative.includes("\0")) return null;
   if (relative.startsWith("/") || /^[A-Za-z]:/.test(relative)) return null;
   return absolute;
-}
-
-async function listConflictSummaries(paths: MemoryPaths): Promise<ConflictListItem[]> {
-  const items: ConflictListItem[] = [];
-  for (const entry of await readdir(paths.conflictsDir, { withFileTypes: true }).catch(() => [])) {
-    if (!entry.isDirectory()) continue;
-    const id = entry.name;
-    const conflictDir = resolveSafeConflictDir(id, paths);
-    if (!conflictDir) continue;
-    try {
-      const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
-      const status = meta.status === "resolved" ? "resolved" : meta.status === "unresolved" ? "open" : "unknown";
-      const updated = typeof meta.resolvedAt === "string"
-        ? meta.resolvedAt
-        : typeof meta.createdAt === "string"
-          ? meta.createdAt
-          : "";
-      const title = typeof meta.title === "string"
-        ? meta.title
-        : typeof meta.wikiId === "string"
-          ? meta.wikiId
-          : typeof meta.target === "string"
-            ? meta.target
-            : id;
-      items.push({
-        id,
-        title,
-        updated,
-        status,
-        path: `conflicts/${id}`,
-      });
-    } catch {
-      continue;
-    }
-  }
-  return items.sort((left, right) =>
-    statusRank(left.status) - statusRank(right.status)
-    || right.updated.localeCompare(left.updated)
-    || left.id.localeCompare(right.id),
-  );
-}
-
-async function readConflictDetail(id: string, paths: MemoryPaths): Promise<ConflictDetailResponse | null> {
-  const conflictDir = resolveSafeConflictDir(id, paths);
-  if (!conflictDir) return null;
-  try {
-    const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
-    const current = await readOptionalFile(join(conflictDir, "current.md"));
-    const proposed = await readOptionalFile(join(conflictDir, "proposed.md"));
-    const rawSource = await readOptionalFile(join(conflictDir, "raw-source.md"));
-    return {
-      id,
-      meta,
-      current,
-      proposed,
-      rawSource,
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  }
-}
-
-async function readIndexMarkdown(paths: MemoryPaths): Promise<string> {
-  return readFile(getIndexMarkdownFile(paths), "utf8");
-}
-
-async function readLogTail(paths: MemoryPaths, limitInput: number): Promise<LogResponse> {
-  const limit = clampLogLimit(limitInput);
-  const logFile = getLogFile(paths);
-  try {
-    const content = await readFile(logFile, "utf8");
-    const entries = splitLogEntries(content);
-    const latestFirst = [...entries].reverse();
-    return {
-      limit,
-      entries: latestFirst.slice(0, limit),
-      totalEntries: entries.length,
-      truncated: entries.length > limit,
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {
-        limit,
-        entries: [],
-        totalEntries: 0,
-        truncated: false,
-      };
-    }
-    throw error;
-  }
-}
-
-function splitLogEntries(content: string): string[] {
-  const normalized = content.replace(/\r\n/g, "\n").trim();
-  if (!normalized) return [];
-  const entries = normalized.split(/^## /m).filter(Boolean).map((entry) => `## ${entry}`.trim());
-  return entries.filter((entry) => entry.length > 0);
-}
-
-function clampLogLimit(value: number): number {
-  if (!Number.isInteger(value)) return DEFAULT_LOG_LIMIT;
-  if (value < 1) return 1;
-  if (value > MAX_LOG_LIMIT) return MAX_LOG_LIMIT;
-  return value;
 }
 
 function resolveSafeRawPath(ref: string, paths: MemoryPaths): string | null {
@@ -726,7 +656,7 @@ async function listArchive(paths: MemoryPaths): Promise<Array<{ id: string; meta
   }
 }
 
-async function readPatchSetResponse(patchSetId: string, paths: MemoryPaths): Promise<QueuePatchSetResponse | null> {
+async function readPatchSetResponse(patchSetId: string, paths: MemoryPaths): Promise<DrydockPatchSetResponse | null> {
   try {
     const patchSet = await readPatchSet(paths, patchSetId);
     return {
@@ -740,7 +670,7 @@ async function readPatchSetResponse(patchSetId: string, paths: MemoryPaths): Pro
   }
 }
 
-async function readPatchSetMember(paths: MemoryPaths, patchId: string): Promise<QueuePatchSetMember> {
+async function readPatchSetMember(paths: MemoryPaths, patchId: string): Promise<DrydockPatchSetMember> {
   const queueDir = resolveSafeQueuePath(patchId, paths.queueDir);
   const archiveDir = resolveSafeQueuePath(patchId, paths.archiveDir);
   if (queueDir && await dirExists(queueDir)) {
@@ -756,7 +686,7 @@ async function readPatchSetMemberFromDir(
   dir: string,
   patchId: string,
   source: "queue" | "archive",
-): Promise<QueuePatchSetMember> {
+): Promise<DrydockPatchSetMember> {
   try {
     const meta = JSON.parse(await readFile(join(dir, PATCH_META_FILENAME), "utf8")) as PatchMeta;
     const patch = await parsePatch(await readFile(join(dir, PATCH_FILENAME), "utf8"));
@@ -772,15 +702,64 @@ async function readPatchSetMemberFromDir(
   }
 }
 
-function parsePatchWikiEntry(patch: Awaited<ReturnType<typeof parsePatch>>): WikiEntry {
+async function listConflictSummaries(paths: MemoryPaths): Promise<ConflictListItem[]> {
+  const items: ConflictListItem[] = [];
+  for (const entry of await readdir(paths.conflictsDir, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory()) continue;
+    const id = entry.name;
+    const conflictDir = resolveSafeConflictDir(id, paths);
+    if (!conflictDir) continue;
+    try {
+      const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
+      const status = meta.status === "resolved" ? "resolved" : meta.status === "unresolved" ? "open" : "unknown";
+      const updated = typeof meta.resolvedAt === "string"
+        ? meta.resolvedAt
+        : typeof meta.createdAt === "string"
+          ? meta.createdAt
+          : "";
+      const title = typeof meta.title === "string"
+        ? meta.title
+        : typeof meta.wikiId === "string"
+          ? meta.wikiId
+          : typeof meta.target === "string"
+            ? meta.target
+            : id;
+      items.push({ id, title, updated, status, path: `conflicts/${id}` });
+    } catch {
+      continue;
+    }
+  }
+  return items.sort((left, right) =>
+    statusRank(left.status) - statusRank(right.status)
+    || right.updated.localeCompare(left.updated)
+    || left.id.localeCompare(right.id),
+  );
+}
+
+async function readConflictDetail(id: string, paths: MemoryPaths): Promise<ConflictDetailResponse | null> {
+  const conflictDir = resolveSafeConflictDir(id, paths);
+  if (!conflictDir) return null;
+  try {
+    const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
+    const current = await readOptionalFile(join(conflictDir, "current.md"));
+    const proposed = await readOptionalFile(join(conflictDir, "proposed.md"));
+    const rawSource = await readOptionalFile(join(conflictDir, "raw-source.md"));
+    return { id, meta, current, proposed, rawSource };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function parsePatchWikiEntry(patch: Awaited<ReturnType<typeof parsePatch>>): DrydockWikiEntry {
   try {
     const parsed = JSON.parse(patch.body);
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
       && typeof parsed.id === "string" && typeof parsed.body === "string") {
-      return parsed as WikiEntry;
+      return parsed as DrydockWikiEntry;
     }
   } catch {
-    // not valid JSON — fall through to raw preview
+    // JSON이 아니면 raw preview로 fallback
   }
   const id = derivePatchTargetId(patch.frontmatter.target);
   return {
@@ -816,9 +795,7 @@ async function readOptionalFile(filePath: string): Promise<string | null> {
   try {
     return await readFile(filePath, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return null;
-    }
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 }

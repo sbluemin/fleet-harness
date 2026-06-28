@@ -90,11 +90,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       cwd: workspace.cwd,
       knowledgeRoot: workspace.paths.root,
       paths: workspace.paths,
-      version: deps.version,
       host: deps.host,
       port,
       workspaceId: workspace.id,
-      workspaces,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
     });
@@ -166,9 +164,6 @@ function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd:
     return { kind: "workspace", workspace, rewrittenUrl: `${url.pathname}${url.search}` };
   }
   if (url.pathname.startsWith("/api/")) {
-    if (url.pathname === "/api/health") {
-      return { kind: "workspace", workspace: workspaces.getMru(), rewrittenUrl: `${url.pathname}${url.search}` };
-    }
     const workspace = workspaces.getMru();
     return { kind: "workspace", workspace, rewrittenUrl: `${url.pathname}${url.search}` };
   }
@@ -212,13 +207,8 @@ function legacyWorkspacePath(url: URL): string | null {
   const pathname = url.pathname;
   if (
     pathname.startsWith("/entry/")
-    || pathname.startsWith("/raw/")
-    || pathname === "/queue"
-    || pathname.startsWith("/queue/")
     || pathname === "/conflicts"
     || pathname.startsWith("/conflicts/")
-    || pathname === "/index-md"
-    || pathname === "/log"
   ) {
     return `${pathname}${url.search}`;
   }

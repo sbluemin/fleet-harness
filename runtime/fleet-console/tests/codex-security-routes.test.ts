@@ -32,7 +32,7 @@ describe("security routes", () => {
     await mkdir(path.join(queueDir, VALID_PATCH_ID), { recursive: true });
     await mkdir(path.join(archiveDir, VALID_PATCH_ID), { recursive: true });
     await mkdir(path.join(conflictsDir, "conflict-alpha"), { recursive: true });
-    await writeEntry(wikiDir, "valid-id", "Valid Entry", "Body");
+    await writeEntry(wikiDir, "valid-id", "Valid Entry", "Body", "raw/sample.md");
     await writeFile(path.join(rawDir, "sample.md"), "raw content body", "utf8");
     await writeFile(path.join(conflictsDir, "conflict-alpha", "meta.json"), JSON.stringify({
       id: "conflict-alpha",
@@ -92,14 +92,14 @@ describe("security routes", () => {
   });
 
   it("rejects requests with a Host header outside the allowlist", async () => {
-    const response = await requestWithHost("/api/health", "attacker.example:3737");
+    const response = await requestWithHost("/api/search", "attacker.example:3737");
     expect(response.statusCode).toBe(403);
     expect(response.body).toContain("host_mismatch");
   });
 
   it("rejects absolute-form request targets before routing", async () => {
     const response = await rawHttpRequest([
-      "GET http://attacker.example/console/codex/api/health HTTP/1.1",
+      "GET http://attacker.example/console/codex/api/search HTTP/1.1",
       `Host: 127.0.0.1:${new URL(baseUrl).port}`,
       "Connection: close",
       "",
@@ -111,7 +111,7 @@ describe("security routes", () => {
 
   it("rejects duplicate Host headers", async () => {
     const response = await rawHttpRequest([
-      "GET /console/codex/api/health HTTP/1.1",
+      "GET /console/codex/api/search HTTP/1.1",
       `Host: 127.0.0.1:${new URL(baseUrl).port}`,
       `Host: localhost:${new URL(baseUrl).port}`,
       "Connection: close",
@@ -124,7 +124,7 @@ describe("security routes", () => {
 
   it("rejects IPv4-mapped Host headers", async () => {
     const response = await rawHttpRequest([
-      "GET /console/codex/api/health HTTP/1.1",
+      "GET /console/codex/api/search HTTP/1.1",
       `Host: [::ffff:127.0.0.1]:${new URL(baseUrl).port}`,
       "Connection: close",
       "",
@@ -140,59 +140,43 @@ describe("security routes", () => {
     expect(response.status).toBe(400);
   });
 
-  it("serves raw source content when ref is contained inside the raw dir", async () => {
-    const response = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("raw/sample.md")}`);
+  it("embeds raw source content in entry response via ?include=raw", async () => {
+    const response = await fetch(`${baseUrl}/api/entry/valid-id?include=raw`);
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toMatch(/text\/markdown/);
-    await expect(response.text()).resolves.toBe("raw content body");
+    const data = await response.json() as { frontmatter: { id: string }; raw?: Array<{ ref: string; content: string }> };
+    expect(data.frontmatter.id).toBe("valid-id");
+    expect(Array.isArray(data.raw)).toBe(true);
+    expect(data.raw?.[0]).toMatchObject({ ref: "raw/sample.md", content: "raw content body" });
   });
 
-  it("returns 404 for missing raw source ref", async () => {
-    const response = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("raw/missing.md")}`);
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toMatchObject({ error: "raw_not_found" });
+  it("deprecated /api/raw endpoint returns 404", async () => {
+    const valid = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("raw/sample.md")}`);
+    const invalid = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("etc/passwd")}`);
+    expect(valid.status).toBe(404);
+    expect(invalid.status).toBe(404);
   });
 
-  it("rejects raw refs without raw/ prefix", async () => {
-    const response = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("etc/passwd")}`);
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ error: "invalid_raw_ref" });
-  });
-
-  it("rejects raw refs that escape the raw dir", async () => {
-    const response = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("raw/../wiki/valid-id.md")}`);
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ error: "invalid_raw_ref" });
-  });
-
-  it("rejects empty and oversized raw refs", async () => {
-    const empty = await fetch(`${baseUrl}/api/raw?ref=`);
-    expect(empty.status).toBe(400);
-    const oversized = await fetch(`${baseUrl}/api/raw?ref=${encodeURIComponent("raw/" + "a".repeat(300) + ".md")}`);
-    expect(oversized.status).toBe(400);
-  });
-
-  it("rejects queue patchId that does not match SAFE_PATCH_ID", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/..%2Fwiki%2Fvalid-id`);
+  it("rejects drydock patchId that does not match SAFE_PATCH_ID", async () => {
+    const response = await fetch(`${baseUrl}/api/drydock/..%2Fwiki%2Fvalid-id`);
     await expect(response.json()).resolves.toMatchObject({ error: "invalid_patch_id" });
     expect(response.status).toBe(400);
   });
 
-  it("rejects queue patchId with directory traversal", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent("2026-05-04T03-15-55-143Z-51756575/../../../etc/passwd")}`);
+  it("rejects drydock patchId with directory traversal", async () => {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent("2026-05-04T03-15-55-143Z-51756575/../../../etc/passwd")}`);
     await expect(response.json()).resolves.toMatchObject({ error: "invalid_patch_id" });
     expect(response.status).toBe(400);
   });
 
   it("returns 404 for non-existent patchId with valid format", async () => {
     const missingId = "2099-01-01T00-00-00-000Z-00000000";
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(missingId)}`);
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(missingId)}`);
     await expect(response.json()).resolves.toMatchObject({ error: "patch_not_found" });
     expect(response.status).toBe(404);
   });
 
   it("returns 200 for a pending patch in queueDir", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(VALID_PATCH_ID)}`);
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(VALID_PATCH_ID)}`);
     expect(response.status).toBe(200);
     const data = await response.json() as { source: string; meta: { status: string } };
     expect(data.source).toBe("queue");
@@ -220,7 +204,7 @@ describe("security routes", () => {
       createdAt: "2026-05-04T04:00:00.000Z",
     }), "utf8");
 
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(malformedBodyPatchId)}`);
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(malformedBodyPatchId)}`);
 
     expect(response.status).toBe(200);
     const data = await response.json() as { wikiEntry: { id: string; body: string }; targetExists: boolean };
@@ -250,7 +234,7 @@ describe("security routes", () => {
       createdAt: "2026-05-04T05:00:00.000Z",
     }), "utf8");
 
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(malformedJsonPatchId)}`);
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(malformedJsonPatchId)}`);
 
     expect(response.status).toBe(200);
     const data = await response.json() as { wikiEntry: { id: string; body: string }; targetExists: boolean };
@@ -280,7 +264,7 @@ describe("security routes", () => {
       createdAt: "2026-05-04T06:00:00.000Z",
     }), "utf8");
 
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(nullBodyPatchId)}`);
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(nullBodyPatchId)}`);
 
     expect(response.status).toBe(200);
     const data = await response.json() as { wikiEntry: { id: string; body: string } };
@@ -309,7 +293,7 @@ describe("security routes", () => {
       createdAt: "2026-05-04T07:00:00.000Z",
     }), "utf8");
 
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(partialBodyPatchId)}`);
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(partialBodyPatchId)}`);
 
     expect(response.status).toBe(200);
     const data = await response.json() as { wikiEntry: { id: string; body: string } };
@@ -317,8 +301,8 @@ describe("security routes", () => {
     expect(data.wikiEntry.body).toBe(`{"title": "no id or body"}`);
   });
 
-  it("returns queue list with correct pendingCount", async () => {
-    const response = await fetch(`${baseUrl}/api/queue?status=pending`);
+  it("returns drydock list with correct pendingCount", async () => {
+    const response = await fetch(`${baseUrl}/api/drydock?status=pending`);
     expect(response.status).toBe(200);
     const data = await response.json() as { items: unknown[]; pendingCount: number };
     expect(data.pendingCount).toBeGreaterThanOrEqual(1);
@@ -326,7 +310,7 @@ describe("security routes", () => {
   });
 
   it("always returns archivedCount even when status=pending", async () => {
-    const response = await fetch(`${baseUrl}/api/queue?status=pending`);
+    const response = await fetch(`${baseUrl}/api/drydock?status=pending`);
     expect(response.status).toBe(200);
     const data = await response.json() as { items: unknown[]; pendingCount: number; archivedCount: number };
     expect(data.pendingCount).toBeGreaterThanOrEqual(1);
@@ -334,26 +318,18 @@ describe("security routes", () => {
   });
 
   it("always returns pendingCount even when status=archived", async () => {
-    const response = await fetch(`${baseUrl}/api/queue?status=archived`);
+    const response = await fetch(`${baseUrl}/api/drydock?status=archived`);
     expect(response.status).toBe(200);
     const data = await response.json() as { items: unknown[]; pendingCount: number; archivedCount: number };
     expect(data.archivedCount).toBeGreaterThanOrEqual(1);
     expect(data.pendingCount).toBeGreaterThanOrEqual(1);
   });
 
-  it("serves index.md and log routes safely", async () => {
-    const indexPath = path.join(tempDir, ".fleet", "knowledge", "wiki", "index.md");
-    const logPath = path.join(tempDir, ".fleet", "knowledge", "log.md");
-    await writeFile(indexPath, "# Fleet Wiki Index\n", "utf8");
-    await writeFile(logPath, "## 2026-05-05T00:00:00.000Z — drydock run\n- ok: `true`\n", "utf8");
-
+  it("deprecated index-md and log endpoints return 404", async () => {
     const indexResponse = await fetch(`${baseUrl}/api/index-md`);
     const logResponse = await fetch(`${baseUrl}/api/log?limit=1`);
-
-    expect(indexResponse.status).toBe(200);
-    expect(await indexResponse.text()).toContain("# Fleet Wiki Index");
-    expect(logResponse.status).toBe(200);
-    await expect(logResponse.json()).resolves.toMatchObject({ limit: 1, totalEntries: 1, truncated: false });
+    expect(indexResponse.status).toBe(404);
+    expect(logResponse.status).toBe(404);
   });
 
   it("rejects traversal-like conflict ids and returns detail for valid ids", async () => {
@@ -367,16 +343,13 @@ describe("security routes", () => {
     await expect(good.json()).resolves.toMatchObject({ id: "conflict-alpha" });
   });
 
-  it("lists conflicts and returns empty log when missing", async () => {
+  it("lists conflicts", async () => {
     const conflictsResponse = await fetch(`${baseUrl}/api/conflicts`);
-    const logResponse = await fetch(`${baseUrl}/api/log?limit=200`);
 
     expect(conflictsResponse.status).toBe(200);
     await expect(conflictsResponse.json()).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "conflict-alpha", status: "open" }),
     ]));
-    expect(logResponse.status).toBe(200);
-    await expect(logResponse.json()).resolves.toMatchObject({ limit: 100 });
   });
 });
 
@@ -387,10 +360,14 @@ describe("loopback-only origin check", () => {
 
   function postWithOrigin(origin: string | undefined, patchId: string): Promise<{ statusCode: number }> {
     return new Promise((resolve, reject) => {
-      const headers: Record<string, string> = { "Content-Type": "application/json", "Content-Length": "2" };
+      const requestBody = JSON.stringify({ action: "approve" });
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Content-Length": String(Buffer.byteLength(requestBody)),
+      };
       if (origin !== undefined) headers["Origin"] = origin;
       const req = http.request(
-        { hostname: "127.0.0.1", port: loopbackPort, path: codexPath(`/api/queue/${patchId}/approve`), method: "POST", headers },
+        { hostname: "127.0.0.1", port: loopbackPort, path: codexPath(`/api/drydock/${patchId}/decision`), method: "POST", headers },
         (res) => {
           let body = "";
           res.on("data", (chunk) => { body += chunk; });
@@ -399,7 +376,7 @@ describe("loopback-only origin check", () => {
         },
       );
       req.on("error", reject);
-      req.write("{}");
+      req.write(requestBody);
       req.end();
     });
   }
@@ -475,7 +452,7 @@ describe("loopback-only origin check", () => {
     expect(statusCode).toBe(403);
   });
 
-  it("allows external host configuration and redacts health paths", async () => {
+  it("allows external host configuration", async () => {
     const external = await startCodexTestServer({
       cwd: loopbackTempDir,
       lockPath: path.join(loopbackTempDir, "wildcard.lock"),
@@ -485,10 +462,10 @@ describe("loopback-only origin check", () => {
     try {
       const address = external.address();
       const port = typeof address === "object" && address ? address.port : 0;
-      const response = await fetch(`http://127.0.0.1:${port}${codexPath("/api/health")}`);
+      const response = await fetch(`http://127.0.0.1:${port}${codexPath("/api/search")}`);
       expect(response.status).toBe(200);
       const body = await response.json() as Record<string, unknown>;
-      expect(body).toEqual({ ok: true, version: "0.0.0" });
+      expect(body).toMatchObject({ entries: expect.any(Array) });
     } finally {
       await new Promise<void>((resolve) => external.close(() => resolve()));
     }
@@ -506,8 +483,8 @@ describe("loopback-only origin check", () => {
     try {
       const address = external.address();
       const port = typeof address === "object" && address ? address.port : 0;
-      const primary = await fetch(`http://${explicitHost}:${port}${codexPath("/api/health")}`);
-      const loopback = await fetch(`http://127.0.0.1:${port}${codexPath("/api/health")}`);
+      const primary = await fetch(`http://${explicitHost}:${port}${codexPath("/api/search")}`);
+      const loopback = await fetch(`http://127.0.0.1:${port}${codexPath("/api/search")}`);
       const mismatchedHost = await requestRawHost(port, "203.0.113.10");
 
       expect(primary.status).toBe(200);
@@ -560,10 +537,10 @@ describe("loopback-only origin check", () => {
     expect(isLoopbackRemoteAddress("::ffff:192.168.1.10")).toBe(false);
   });
 
-  it("rejects non-loopback queue writes before Origin validation", async () => {
+  it("rejects non-loopback drydock writes before Origin validation", async () => {
     const response = createResponseRecorder();
     await handleApiRequest(
-      createRouteRequest(`/api/queue/${VALID_PATCH_ID}/approve`, "POST", "192.168.1.10"),
+      createRouteRequest(`/api/drydock/${VALID_PATCH_ID}/decision`, "POST", "192.168.1.10"),
       response.response,
       createMinimalRouteContext(),
     );
@@ -572,22 +549,19 @@ describe("loopback-only origin check", () => {
   });
 });
 
-async function writeEntry(wikiDir: string, id: string, title: string, body: string): Promise<void> {
-  await writeFile(
-    path.join(wikiDir, `${id}.md`),
-    [
-      "---",
-      `id: "${id}"`,
-      `title: "${title}"`,
-      "tags: []",
-      "created: \"2026-05-04T00:00:00.000Z\"",
-      "updated: \"2026-05-04T00:00:00.000Z\"",
-      "version: 1",
-      "---",
-      body,
-    ].join("\n"),
-    "utf8",
-  );
+async function writeEntry(wikiDir: string, id: string, title: string, body: string, rawSourceRef?: string): Promise<void> {
+  const lines = [
+    "---",
+    `id: "${id}"`,
+    `title: "${title}"`,
+    "tags: []",
+    "created: \"2026-05-04T00:00:00.000Z\"",
+    "updated: \"2026-05-04T00:00:00.000Z\"",
+    "version: 1",
+  ];
+  if (rawSourceRef) lines.push(`rawSourceRef: "${rawSourceRef}"`);
+  lines.push("---", body);
+  await writeFile(path.join(wikiDir, `${id}.md`), lines.join("\n"), "utf8");
 }
 
 function requestWithHost(requestPath: string, hostHeader: string): Promise<{ statusCode: number; body: string }> {
@@ -636,7 +610,7 @@ function requestRawHost(port: number, hostHeader: string): Promise<{ statusCode:
       {
         hostname: "127.0.0.1",
         port,
-        path: codexPath("/api/health"),
+        path: codexPath("/api/search"),
         method: "GET",
         headers: { Host: `${hostHeader}:${port}` },
       },
@@ -677,13 +651,11 @@ function createMinimalRouteContext(): Parameters<typeof handleApiRequest>[2] {
       conflictsDir: "",
       indexFile: "",
     },
-    version: "0.0.0",
     port: 3737,
     host: "127.0.0.1",
     workspaceId: "test-workspace",
     allowedOrigins: new Set(["http://127.0.0.1:3737"]),
     externalMode: false,
-    workspaces: {} as never,
   };
 }
 
