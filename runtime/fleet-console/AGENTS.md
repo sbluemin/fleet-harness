@@ -181,6 +181,7 @@ These CSS variables are declared in `rail.css` and must not be inlined elsewhere
 - Plugins — both statically-resolved built-in plugins (File Explorer, Diff) and external plugins — register rail panels via `FleetClientPlugin.railPanels[]`, which flow through `rail-registry.ts` → `useRailPanels()` and render **after** the divider. `right-rail.tsx` resolves the active panel against the combined `[...builtInPanels, ...pluginPanels]` set.
 - Rail panel id deduplication is enforced in `plugin-registry.ts#createPluginRegistry`; the first plugin wins and subsequent duplicates are warned and skipped.
 - `apiVersion` compatibility gate applies to external plugins only (enforced in `plugin-registry.ts#loadExternalPlugin`).
+- `RailPanelDescriptor.preferredExtraWidth?: number` — when set, the host adds this many px to the active panel slot width; the host reads only the declared value and remains panel-id-agnostic (same mechanism as `useCodexSplitExtraWidth`, additive).
 
 **Layout contract**:
 
