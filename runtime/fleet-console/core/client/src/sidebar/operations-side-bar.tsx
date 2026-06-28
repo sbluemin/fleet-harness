@@ -89,7 +89,6 @@ export function OperationsSideBar({
   const [accentPopover, setAccentPopover] = useState<AccentPopoverState | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
-  const [statusMessage, setStatusMessage] = useState("");
 
   const minimizedSet = new Set(minimized);
   const entries: SideBarEntry[] = sortOperations(operations, canvas.operationOrder).map((operation) => {
@@ -141,13 +140,6 @@ export function OperationsSideBar({
     ? entries.find((entry) => entry.operation.id === accentPopover.operationId)?.operation ?? null
     : null;
 
-  const announceOrder = (operationId: string, targetIndex: number) => {
-    const entry = entries.find((item) => item.operation.id === operationId);
-    setStatusMessage(
-      `${entry ? (entry.operation.renamedTitle ?? entry.operation.title) : "Operation"} moved to position ${targetIndex + 1} of ${entries.length}.`,
-    );
-  };
-
   const keyboardMove = (operationId: string, direction: -1 | 1) => {
     const index = currentOrder.indexOf(operationId);
     if (index === -1) return;
@@ -158,7 +150,6 @@ export function OperationsSideBar({
     if (moved === undefined) return;
     nextOrder.splice(targetIndex, 0, moved);
     setOperationOrder(nextOrder);
-    announceOrder(operationId, targetIndex);
   };
 
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
@@ -197,7 +188,6 @@ export function OperationsSideBar({
     if (sourceIndex === -1 || dropIndex === sourceIndex) return;
     const nextOrder = reorderIds(currentOrder, sourceId, dropIndex);
     setOperationOrder(nextOrder);
-    announceOrder(sourceId, nextOrder.indexOf(sourceId));
   };
 
   const cancelPointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
@@ -414,8 +404,6 @@ export function OperationsSideBar({
           onClose={() => setAccentPopover(null)}
         />
       ) : null}
-
-      <span className="sr-only" aria-live="polite">{statusMessage}</span>
     </aside>
   );
 }
