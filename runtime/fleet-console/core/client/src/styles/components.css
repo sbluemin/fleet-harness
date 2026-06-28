@@ -2613,15 +2613,6 @@
   animation-play-state: paused;
 }
 
-/* 패널 최대화 시: 캔버스 자체의 둥근 모서리 클립을 펴서(0) 최대화 패널이 col2의 네 코너까지
-   꽉 채우도록 한다. 캔버스의 radius-xl + overflow:hidden 클립이 남아 있으면 패널이 24px 곡선으로
-   잘려 accent 외곽선이 코너에서 끊기고 그 안쪽으로 심해 배경(--canvas-abyss)이 드러난다.
-   overflow:hidden은 유지(사각 모서리에서 클리핑만) — 패널 자체 radius는 .canvas-operation.is-maximized
-   에서 이미 0으로 펴 두 사각 모서리가 일치하므로 누출 없이 accent가 코너를 감는다. */
-.operations-canvas.is-panel-maximized {
-  border-radius: 0;
-}
-
 .operations-canvas.is-panel-maximized .canvas-minimap,
 .operations-canvas.is-panel-maximized .canvas-minimap-fab {
   display: none;
@@ -3203,12 +3194,14 @@
 }
 
 /* 최대화: 패널이 캔버스(col2)를 가장자리까지 채운다.
-   자체 둥근 모서리(radius-lg)를 남기면 네 모서리에 심해 배경(--canvas-abyss, 명도 ~7%)이 드러나
-   검은 노치가 생기고 accent 외곽선이 끊긴다. 모서리를 펴서(0) 캔버스의 overflow:hidden + radius-xl
-   클립이 바깥 모서리를 대신 둥글게 처리하도록 한다 — 검은 갭 없이 accent가 가장자리를 두른다.
+   패널 기본 radius(radius-lg=18px)가 부모 캔버스의 클립 반경보다 작으면, 둘 사이 고리만큼 패널이
+   비어 그 안으로 심해 배경(--canvas-abyss, 명도 ~7%)이 드러나 검은 노치가 되고 accent 외곽선이
+   코너에서 끊긴다. 부모 .operations-canvas는 radius-xl(24px) + 보더 1px이라 overflow:hidden 클립
+   반경이 23px(=radius-xl − 보더). 패널 radius를 이 클립 반경에 정확히 맞추면 패널의 둥근 코너가
+   클립과 일치해 검은 갭 없이 accent가 둥근 모서리를 그대로 감싼다.
    드래그/리사이즈가 차단된 상태이므로 타이틀바의 grab 어포던스 커서도 기본값으로 되돌린다. */
 .canvas-operation.is-maximized {
-  border-radius: 0;
+  border-radius: calc(var(--radius-xl) - 1px);
 }
 
 .canvas-operation.is-maximized .canvas-operation-titlebar {
