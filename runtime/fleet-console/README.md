@@ -54,8 +54,6 @@ fleet console        # via fleet-cli
 fleet-console        # standalone binary
 fleet-console status
 fleet-console stop
-fleet wiki           # opens the console-owned Codex surface
-fleet-wiki           # standalone compatibility binary from this package
 ```
 
 The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.

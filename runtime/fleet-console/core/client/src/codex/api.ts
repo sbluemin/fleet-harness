@@ -149,73 +149,72 @@ export interface PatchDetailResponse {
   patchSet: QueuePatchSetResponse | null;
 }
 
-export async function fetchHealth(): Promise<HealthResponse> {
-  return fetchJson<HealthResponse>(apiPath("/health"));
+export async function fetchHealth(theaterId: string | null): Promise<HealthResponse> {
+  return fetchJson<HealthResponse>(apiPath(theaterId, "/health"));
 }
 
-export async function fetchWorkspaces(): Promise<WorkspacesResponse> {
-  return fetchJson<WorkspacesResponse>(apiPath("/workspaces"));
+export async function fetchWorkspaces(theaterId: string | null): Promise<WorkspacesResponse> {
+  return fetchJson<WorkspacesResponse>(apiPath(theaterId, "/workspaces"));
 }
 
-export async function fetchIndex(): Promise<WikiIndexEntry[]> {
-  return fetchJson<WikiIndexEntry[]>(apiPath("/index"));
+export async function fetchIndex(theaterId: string | null): Promise<WikiIndexEntry[]> {
+  return fetchJson<WikiIndexEntry[]>(apiPath(theaterId, "/index"));
 }
 
-export async function fetchIndexMarkdown(): Promise<string> {
-  return fetchText(apiPath("/index-md"));
+export async function fetchIndexMarkdown(theaterId: string | null): Promise<string> {
+  return fetchText(apiPath(theaterId, "/index-md"));
 }
 
-export async function fetchEntry(id: string): Promise<WikiEntryResponse> {
-  return fetchJson<WikiEntryResponse>(apiPath(`/entry/${encodeURIComponent(id)}`));
+export async function fetchEntry(theaterId: string | null, id: string): Promise<WikiEntryResponse> {
+  return fetchJson<WikiEntryResponse>(apiPath(theaterId, `/entry/${encodeURIComponent(id)}`));
 }
 
-export async function fetchSearch(query: string, tags: string[] = [], enhanced = false): Promise<BriefingHit[]> {
+export async function fetchSearch(theaterId: string | null, query: string, tags: string[] = [], enhanced = false): Promise<BriefingHit[]> {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   if (tags.length > 0) params.set("tags", tags.join(","));
   if (enhanced) params.set("enhanced", "true");
   const suffix = params.toString();
-  return fetchJson<BriefingHit[]>(apiPath(`/search${suffix ? `?${suffix}` : ""}`));
+  return fetchJson<BriefingHit[]>(apiPath(theaterId, `/search${suffix ? `?${suffix}` : ""}`));
 }
 
-export async function fetchRaw(ref: string): Promise<string> {
-  return fetchText(apiPath(`/raw?ref=${encodeURIComponent(ref)}`));
+export async function fetchRaw(theaterId: string | null, ref: string): Promise<string> {
+  return fetchText(apiPath(theaterId, `/raw?ref=${encodeURIComponent(ref)}`));
 }
 
-export async function fetchQueueList(status: "pending" | "archived" | "all"): Promise<QueueListResponse> {
-  return fetchJson<QueueListResponse>(apiPath(`/queue?status=${encodeURIComponent(status)}`));
+export async function fetchQueueList(theaterId: string | null, status: "pending" | "archived" | "all"): Promise<QueueListResponse> {
+  return fetchJson<QueueListResponse>(apiPath(theaterId, `/queue?status=${encodeURIComponent(status)}`));
 }
 
-export async function fetchPatchDetail(patchId: string): Promise<PatchDetailResponse> {
-  return fetchJson<PatchDetailResponse>(apiPath(`/queue/${encodeURIComponent(patchId)}`));
+export async function fetchPatchDetail(theaterId: string | null, patchId: string): Promise<PatchDetailResponse> {
+  return fetchJson<PatchDetailResponse>(apiPath(theaterId, `/queue/${encodeURIComponent(patchId)}`));
 }
 
-export async function approveQueuePatch(patchId: string): Promise<{ ok: true; meta: PatchMetaData }> {
-  return postJson<{ ok: true; meta: PatchMetaData }>(apiPath(`/queue/${encodeURIComponent(patchId)}/approve`), {});
+export async function approveQueuePatch(theaterId: string | null, patchId: string): Promise<{ ok: true; meta: PatchMetaData }> {
+  return postJson<{ ok: true; meta: PatchMetaData }>(apiPath(theaterId, `/queue/${encodeURIComponent(patchId)}/approve`), {});
 }
 
-export async function rejectQueuePatch(patchId: string, reason: string): Promise<{ ok: true; meta: PatchMetaData }> {
-  return postJson<{ ok: true; meta: PatchMetaData }>(apiPath(`/queue/${encodeURIComponent(patchId)}/reject`), { reason });
+export async function rejectQueuePatch(theaterId: string | null, patchId: string, reason: string): Promise<{ ok: true; meta: PatchMetaData }> {
+  return postJson<{ ok: true; meta: PatchMetaData }>(apiPath(theaterId, `/queue/${encodeURIComponent(patchId)}/reject`), { reason });
 }
 
-export async function fetchConflicts(): Promise<ConflictListItem[]> {
-  return fetchJson<ConflictListItem[]>(apiPath("/conflicts"));
+export async function fetchConflicts(theaterId: string | null): Promise<ConflictListItem[]> {
+  return fetchJson<ConflictListItem[]>(apiPath(theaterId, "/conflicts"));
 }
 
-export async function fetchConflictDetail(id: string): Promise<ConflictDetailResponse> {
-  return fetchJson<ConflictDetailResponse>(apiPath(`/conflicts/${encodeURIComponent(id)}`));
+export async function fetchConflictDetail(theaterId: string | null, id: string): Promise<ConflictDetailResponse> {
+  return fetchJson<ConflictDetailResponse>(apiPath(theaterId, `/conflicts/${encodeURIComponent(id)}`));
 }
 
-export async function fetchLog(limit?: number): Promise<LogResponse> {
+export async function fetchLog(theaterId: string | null, limit?: number): Promise<LogResponse> {
   const suffix = typeof limit === "number" ? `?limit=${encodeURIComponent(String(limit))}` : "";
-  return fetchJson<LogResponse>(apiPath(`/log${suffix}`));
+  return fetchJson<LogResponse>(apiPath(theaterId, `/log${suffix}`));
 }
 
-function apiPath(path: string): string {
-  const match = window.location.pathname.match(/^\/console\/codex\/w\/([^/]+)(?:\/|$)/);
+function apiPath(theaterId: string | null, path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return match
-    ? `/console/codex/w/${encodeURIComponent(decodeURIComponent(match[1] ?? ""))}/api${normalized}`
+  return theaterId
+    ? `/console/codex/w/${encodeURIComponent(theaterId)}/api${normalized}`
     : `/console/codex/api${normalized}`;
 }
 

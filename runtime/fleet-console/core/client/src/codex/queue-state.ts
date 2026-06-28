@@ -1,7 +1,7 @@
 import { approveQueuePatch, fetchPatchDetail, fetchQueueList, rejectQueuePatch } from "./api";
 import type { PatchDetailResponse, QueueListItem } from "./api";
 import { navigate, queuePath } from "./router";
-import { setPendingPatchCount } from "./state";
+import { getState, setPendingPatchCount } from "./state";
 
 export interface QueueState {
   tab: "pending" | "archived";
@@ -42,7 +42,7 @@ export function subscribeQueueState(listener: QueueStateListener): () => void {
 export async function loadQueueList(tab: "pending" | "archived"): Promise<void> {
   setQueueState({ tab, loading: true, error: null, current: null });
   try {
-    const data = await fetchQueueList(tab);
+    const data = await fetchQueueList(getState().currentWorkspaceId, tab);
     setQueueState({
       items: data.items,
       pendingCount: data.pendingCount,
@@ -58,7 +58,7 @@ export async function loadQueueList(tab: "pending" | "archived"): Promise<void> 
 export async function loadPatchDetail(patchId: string): Promise<void> {
   setQueueState({ loading: true, error: null, current: null });
   try {
-    const data = await fetchPatchDetail(patchId);
+    const data = await fetchPatchDetail(getState().currentWorkspaceId, patchId);
     setQueueState({ current: data, loading: false });
   } catch (error) {
     setQueueState({ loading: false, error: errorMessage(error) });
@@ -75,8 +75,9 @@ export async function approveCurrentPatch(): Promise<void> {
   if (!patchId) return;
   setQueueState({ actionPending: true, actionError: null });
   try {
-    await approveQueuePatch(patchId);
-    const data = await fetchQueueList("pending");
+    const theaterId = getState().currentWorkspaceId;
+    await approveQueuePatch(theaterId, patchId);
+    const data = await fetchQueueList(theaterId, "pending");
     setQueueState({ actionPending: false, pendingCount: data.pendingCount, archivedCount: data.archivedCount });
     setPendingPatchCount(data.pendingCount);
     navigate(queuePath("archived"));
@@ -96,8 +97,9 @@ export async function rejectCurrentPatch(reason: string): Promise<void> {
   }
   setQueueState({ actionPending: true, actionError: null });
   try {
-    await rejectQueuePatch(patchId, trimmed);
-    const data = await fetchQueueList("pending");
+    const theaterId = getState().currentWorkspaceId;
+    await rejectQueuePatch(theaterId, patchId, trimmed);
+    const data = await fetchQueueList(theaterId, "pending");
     setQueueState({ actionPending: false, pendingCount: data.pendingCount, archivedCount: data.archivedCount });
     setPendingPatchCount(data.pendingCount);
     navigate(queuePath("archived"));

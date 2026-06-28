@@ -254,3 +254,17 @@
     display: none;
   }
 }
+
+/* 312px Rail 슬롯에서 본문-only 단열 — nav/rail 모두 숨김, padding 최소화. */
+@container codex-host (max-width: 380px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
+    padding: var(--space-4) var(--space-3) var(--space-6);
+  }
+
+  .app-shell > .sidebar,
+  .app-shell > .rail {
+    display: none;
+  }
+}

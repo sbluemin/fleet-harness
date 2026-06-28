@@ -67,22 +67,28 @@ export function subscribeState(listener: StateListener): () => void {
   return () => listeners.delete(listener);
 }
 
+// currentWorkspaceId 권위 SSoT — mount 시 initialWorkspaceId로 설정하며 서버 응답으로 덮어쓰지 않는다
+export function setCurrentWorkspaceId(id: string | null): void {
+  setState({ currentWorkspaceId: id });
+}
+
 export async function loadInitialData(): Promise<void> {
   setState({ loading: true, error: null });
   try {
+    const theaterId = state.currentWorkspaceId;
     const [health, index, queueList, workspaces] = await Promise.all([
-      fetchHealth(),
-      fetchIndex(),
-      fetchQueueList("pending").catch(() => null),
-      fetchWorkspaces().catch(() => null),
+      fetchHealth(theaterId),
+      fetchIndex(theaterId),
+      fetchQueueList(theaterId, "pending").catch(() => null),
+      fetchWorkspaces(theaterId).catch(() => null),
     ]);
     setState({
       health,
       index,
       pendingPatchCount: queueList?.pendingCount ?? 0,
-      currentWorkspaceId: workspaces?.currentWorkspaceId ?? null,
       workspaces: workspaces?.workspaces ?? [],
       loading: false,
+      // currentWorkspaceId는 setCurrentWorkspaceId()로만 설정 — 서버 응답으로 덮어쓰지 않음
     });
   } catch (error) {
     setState({ loading: false, error: errorMessage(error) });
@@ -100,7 +106,7 @@ export async function loadEntry(id: string): Promise<void> {
     log: null,
   });
   try {
-    const currentEntry = await fetchEntry(id);
+    const currentEntry = await fetchEntry(state.currentWorkspaceId, id);
     const recentIds = updateRecentIds(id);
     setState({
       currentEntry,
@@ -119,7 +125,7 @@ export async function loadIndexMarkdownView(): Promise<void> {
   setState({ loading: true, error: null, currentEntry: null, currentConflict: null, log: null });
   try {
     setState({
-      indexMarkdown: await fetchIndexMarkdown(),
+      indexMarkdown: await fetchIndexMarkdown(state.currentWorkspaceId),
       loading: false,
     });
   } catch (error) {
@@ -131,7 +137,7 @@ export async function loadLogView(limit: number): Promise<void> {
   setState({ loading: true, error: null, currentEntry: null, currentConflict: null, indexMarkdown: null });
   try {
     setState({
-      log: await fetchLog(limit),
+      log: await fetchLog(state.currentWorkspaceId, limit),
       loading: false,
     });
   } catch (error) {
@@ -143,7 +149,7 @@ export async function loadConflictsView(): Promise<void> {
   setState({ loading: true, error: null, currentEntry: null, currentConflict: null, indexMarkdown: null, log: null });
   try {
     setState({
-      conflicts: await fetchConflicts(),
+      conflicts: await fetchConflicts(state.currentWorkspaceId),
       loading: false,
     });
   } catch (error) {
@@ -155,8 +161,8 @@ export async function loadConflictDetailView(id: string): Promise<void> {
   setState({ loading: true, error: null, currentEntry: null, indexMarkdown: null, log: null });
   try {
     const [currentConflict, conflicts] = await Promise.all([
-      fetchConflictDetail(id),
-      fetchConflicts().catch(() => state.conflicts),
+      fetchConflictDetail(state.currentWorkspaceId, id),
+      fetchConflicts(state.currentWorkspaceId).catch(() => state.conflicts),
     ]);
     setState({
       currentConflict,

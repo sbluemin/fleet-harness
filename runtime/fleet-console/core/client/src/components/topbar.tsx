@@ -41,9 +41,7 @@ export function Topbar({ state }: TopbarProps) {
   const alert = state.connectionError !== null;
   // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다. 그 외 라우트는 기본 Fleet 시질을 유지한다.
   const pathname = useLocation().pathname;
-  const sigil = pathname.startsWith("/codex")
-    ? <CodexIcon />
-    : pathname.startsWith("/carrier-settings")
+  const sigil = pathname.startsWith("/carrier-settings")
       ? <CarriersIcon />
     : pathname.startsWith("/settings")
       ? <SettingsIcon />
@@ -519,18 +517,6 @@ function OperationsIcon() {
       <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
       <path d="M8 3.7v2.1M8 10.2v2.1M3.7 8h2.1M10.2 8h2.1M8 8l3.1-2.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
       <circle cx="8" cy="8" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function CodexIcon() {
-  // Codex 시그니처 — 나침반 마크. GNB nav 아이콘과 Codex 라우트 브랜드 시질이 같은 도형을 공유한다(Codex 좌측 Pane에서 끌어올린 원본).
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" opacity="0.16" />
-      <path d="M12 3v3.6M12 17.4V21M3 12h3.6M17.4 12H21" />
-      <path d="M12 8.6 14.2 12 12 15.4 9.8 12Z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

@@ -560,17 +560,6 @@ describe("loopback-only origin check", () => {
     expect(isLoopbackRemoteAddress("::ffff:192.168.1.10")).toBe(false);
   });
 
-  it("rejects non-loopback admin registration before bearer auth", async () => {
-    const response = createResponseRecorder();
-    await handleApiRequest(
-      createRouteRequest("/api/admin/workspaces", "POST", "192.168.1.10"),
-      response.response,
-      createMinimalRouteContext(),
-    );
-    expect(response.statusCode).toBe(403);
-    expect(response.body).toContain("admin_loopback_only");
-  });
-
   it("rejects non-loopback queue writes before Origin validation", async () => {
     const response = createResponseRecorder();
     await handleApiRequest(
@@ -694,7 +683,6 @@ function createMinimalRouteContext(): Parameters<typeof handleApiRequest>[2] {
     workspaceId: "test-workspace",
     allowedOrigins: new Set(["http://127.0.0.1:3737"]),
     externalMode: false,
-    adminToken: "secret-token",
     workspaces: {} as never,
   };
 }

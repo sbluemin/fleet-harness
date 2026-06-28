@@ -563,6 +563,21 @@ kbd {
   margin-inline: auto;
 }
 
+/* 312px Rail 슬롯에서 78ch clamp(≈540px min)가 슬롯을 벗어나므로 본문 폭을 100%로 강제한다. */
+@container codex-host (max-width: 380px) {
+  .markdown-body,
+  .document:not(.welcome) > .document-header,
+  .document:not(.welcome) > .related-list {
+    max-inline-size: 100%;
+    line-height: 1.7;
+  }
+
+  /* 312px 슬롯에서 display-2xl(≈2.6rem) h1이 넘치므로 display-md로 축소한다. */
+  .document h1 {
+    font-size: var(--font-size-display-md);
+  }
+}
+
 .markdown-body > * + * {
   margin-top: var(--space-5);
 }

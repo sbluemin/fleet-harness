@@ -1,4 +1,5 @@
 import { fetchRaw } from "./api";
+import { getState } from "./state";
 
 export interface RawSourceState {
   ref: string | null;
@@ -30,7 +31,7 @@ export async function loadRawSource(ref: string): Promise<void> {
   if (state.ref === ref && state.content !== null && !state.error) return;
   setState({ ref, content: null, loading: true, error: null });
   try {
-    const content = await fetchRaw(ref);
+    const content = await fetchRaw(getState().currentWorkspaceId, ref);
     if (state.ref !== ref) return;
     setState({ content, loading: false });
   } catch (error) {

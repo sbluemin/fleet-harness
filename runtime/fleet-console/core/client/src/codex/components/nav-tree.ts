@@ -1,4 +1,4 @@
-import { CODEX_BASE_PATH, conflictsPath, entryPath, indexMdPath, logPath, queuePath } from "../router";
+import { conflictsPath, entryPath, indexMdPath, logPath, queuePath } from "../router";
 import type { WikiIndexEntry } from "../api";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
@@ -61,7 +61,7 @@ export function renderNavTree(
   const navClass = navMode === "tags" ? "tag-tree" : "entry-list";
   const navAriaLabel = navMode === "tags" ? "Entries by tag" : "All entries";
 
-  const pathname = stripWorkspacePath(currentPathname ?? (typeof window !== "undefined" ? window.location.pathname : ""));
+  const pathname = stripWorkspacePath(currentPathname ?? "");
   const isDrydockActive = pathname.startsWith("/queue");
   const isIndexActive = pathname === "/index";
   const isLogActive = pathname === "/log";
@@ -208,11 +208,12 @@ function renderEntry(entry: WikiIndexEntry, currentId: string | null): string {
 }
 
 function stripWorkspacePath(pathname: string): string {
+  const codexBase = "/console/codex";
   const withoutBase =
-    pathname === CODEX_BASE_PATH || pathname === `${CODEX_BASE_PATH}/`
+    pathname === codexBase || pathname === `${codexBase}/`
       ? "/"
-      : pathname.startsWith(`${CODEX_BASE_PATH}/`)
-        ? pathname.slice(CODEX_BASE_PATH.length) || "/"
+      : pathname.startsWith(`${codexBase}/`)
+        ? pathname.slice(codexBase.length) || "/"
         : pathname;
   const match = withoutBase.match(/^\/w\/[^/]+(\/.*)?$/);
   return match ? match[1] ?? "/" : withoutBase;

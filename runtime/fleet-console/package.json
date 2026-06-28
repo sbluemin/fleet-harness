@@ -16,16 +16,12 @@
   "main": "./dist/cli.mjs",
   "types": "./dist/cli.d.ts",
   "bin": {
-    "fleet-console": "./dist/cli.mjs",
-    "fleet-wiki": "./dist/cli-bin.mjs"
+    "fleet-console": "./dist/cli.mjs"
   },
   "exports": {
     "./cli": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.mjs"
-    },
-    "./cli-bin": {
-      "default": "./dist/cli-bin.mjs"
     }
   },
   "files": [

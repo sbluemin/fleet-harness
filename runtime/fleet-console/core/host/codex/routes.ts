@@ -27,9 +27,7 @@ import type {
   QueuePatchSetResponse,
 } from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
-import { hasAdminBearer } from "./admin-auth.js";
 import type { WorkspaceRegistry } from "./workspaces.js";
-import { toMetadata } from "./workspaces.js";
 
 interface RouteContext {
   cwd: string;
@@ -42,7 +40,6 @@ interface RouteContext {
   allowedOrigins: Set<string>;
   externalMode: boolean;
   workspaces?: WorkspaceRegistry;
-  adminToken?: string;
 }
 
 const JSON_HEADERS = {
@@ -361,11 +358,6 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
 }
 
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
-  if (url.pathname === "/api/admin/workspaces") {
-    await routeAdminWorkspaceRegistration(request, response, context);
-    return;
-  }
-
   const approveMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/approve$/);
   const rejectMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/reject$/);
 
@@ -411,59 +403,6 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     await actionPromise;
   } finally {
     patchActionLocks.delete(lockKey);
-  }
-}
-
-async function routeAdminWorkspaceRegistration(
-  request: IncomingMessage,
-  response: ServerResponse,
-  context: RouteContext,
-): Promise<void> {
-  if (!context.workspaces || !context.adminToken) {
-    sendJson(response, 404, { error: "not_found" });
-    return;
-  }
-  if (!isLoopbackRemoteAddress(request.socket.remoteAddress)) {
-    sendJson(response, 403, { error: "admin_loopback_only" });
-    return;
-  }
-  if (!hasAdminBearer(request, context.adminToken)) {
-    sendJson(response, 401, { error: "unauthorized" });
-    return;
-  }
-  const contentType = (request.headers["content-type"] ?? "").toLowerCase();
-  if (!contentType.startsWith("application/json")) {
-    sendJson(response, 415, { error: "unsupported_media_type" });
-    return;
-  }
-  const bodyResult = await readRequestBody(request);
-  if (bodyResult === BODY_TOO_LARGE) {
-    sendJson(response, 413, { error: "payload_too_large" });
-    return;
-  }
-  if (bodyResult === null) {
-    sendJson(response, 400, { error: "invalid_body" });
-    return;
-  }
-  let body: Record<string, unknown>;
-  try {
-    body = JSON.parse(bodyResult) as Record<string, unknown>;
-  } catch {
-    sendJson(response, 400, { error: "invalid_body" });
-    return;
-  }
-  const cwd = typeof body.cwd === "string" ? body.cwd : "";
-  if (!cwd) {
-    sendJson(response, 400, { error: "cwd_required" });
-    return;
-  }
-  try {
-    const workspace = await context.workspaces.register(cwd);
-    sendJson(response, 200, { workspace: toMetadata(workspace) });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = message === "knowledge_root_missing" ? 400 : 500;
-    sendJson(response, status, { error: message });
   }
 }
 

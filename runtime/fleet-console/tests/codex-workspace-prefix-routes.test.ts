@@ -16,7 +16,6 @@ let workspaceB = "";
 let baseUrl = "";
 let wsA = "";
 let wsB = "";
-let lockToken = "";
 
 const SHARED_PATCH_ID = "2026-05-19T00-00-00-000Z-0abc1234";
 const SHARED_CONFLICT_ID = "conflict-shared";
@@ -32,11 +31,10 @@ describe("workspace-prefixed routes", () => {
     await createWorkspace(workspaceB, "shared", "Workspace B", "raw B");
     const lockPath = path.join(rootDir, "daemon.lock");
     server = await startCodexTestServer({ cwd: workspaceA, lockPath, port: 0, host: "127.0.0.1" });
-    const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number; token: string };
+    const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
     baseUrl = `http://127.0.0.1:${lock.port}/console/codex`;
-    lockToken = lock.token;
     wsA = await currentWorkspaceId();
-    wsB = await registerWorkspace(workspaceB);
+    wsB = await server.registerWorkspace(workspaceB);
   });
 
   afterEach(async () => {
@@ -114,19 +112,6 @@ describe("workspace-prefixed routes", () => {
 async function currentWorkspaceId(): Promise<string> {
   const body = await fetchJson<{ currentWorkspaceId: string }>("/api/workspaces");
   return body.currentWorkspaceId;
-}
-
-async function registerWorkspace(cwd: string): Promise<string> {
-  const response = await fetch(`${baseUrl}/api/admin/workspaces`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${lockToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ cwd }),
-  });
-  const body = await response.json() as { workspace: { id: string } };
-  return body.workspace.id;
 }
 
 async function fetchJson<T>(pathOrUrl: string): Promise<T> {

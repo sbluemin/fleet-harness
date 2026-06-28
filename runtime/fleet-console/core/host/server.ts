@@ -57,6 +57,7 @@ export interface ConsoleServer {
   readonly port: number;
   start(lockPaths: { readonly dir: string; readonly lockFile: string }): Promise<string>;
   stop(): Promise<void>;
+  registerCodexWorkspace(cwd: string): Promise<string>;
 }
 
 type TheaterFolderListBody = { readonly path?: unknown };
@@ -243,7 +244,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host,
     version,
     getPort: () => lockHandle?.payload.port ?? port,
-    getAdminToken: () => lockHandle?.payload.token ?? null,
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
@@ -960,6 +960,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     async stop() {
       await stopServer();
+    },
+    async registerCodexWorkspace(cwd: string) {
+      const workspace = await codex.registerWorkspace(cwd);
+      return workspace.id;
     },
   };
 

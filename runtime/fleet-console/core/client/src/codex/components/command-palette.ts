@@ -1,6 +1,6 @@
 import { fetchSearch } from "../api";
 import { entryPath, navigate } from "../router";
-import { rememberMatchHint } from "../state";
+import { getState, rememberMatchHint } from "../state";
 import type { BriefingHit, WikiIndexEntry } from "../api";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
@@ -187,7 +187,7 @@ async function runSearch(query: string): Promise<void> {
   }
   let results: BriefingHit[];
   try {
-    results = await fetchSearch(query);
+    results = await fetchSearch(getState().currentWorkspaceId, query);
   } catch {
     results = [];
   }

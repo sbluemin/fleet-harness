@@ -14,7 +14,6 @@ interface CodexGatewayDeps {
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
-  readonly getAdminToken: () => string | null;
 }
 
 interface ParsedHostHeader {
@@ -96,7 +95,6 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       port,
       workspaceId: workspace.id,
       workspaces,
-      adminToken: deps.getAdminToken() ?? undefined,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
     });
@@ -168,7 +166,7 @@ function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd:
     return { kind: "workspace", workspace, rewrittenUrl: `${url.pathname}${url.search}` };
   }
   if (url.pathname.startsWith("/api/")) {
-    if (url.pathname === "/api/health" || url.pathname === "/api/admin/workspaces") {
+    if (url.pathname === "/api/health") {
       return { kind: "workspace", workspace: workspaces.getMru(), rewrittenUrl: `${url.pathname}${url.search}` };
     }
     const workspace = workspaces.getMru();

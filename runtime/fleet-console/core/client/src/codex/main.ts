@@ -26,7 +26,6 @@ import { clearQueueState, getQueueState, loadPatchDetail, loadQueueList, rejectC
 import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
 import {
   conflictDetailPath,
-  currentWorkspaceId,
   currentRoute,
   entryPath,
   destroyRouter,
@@ -34,9 +33,7 @@ import {
   initRouter,
   logPath,
   navigate,
-  replace,
   subscribeRoute,
-  workspaceHomePath,
 } from "./router";
 import type { Route } from "./router";
 import {
@@ -48,6 +45,7 @@ import {
   loadIndexMarkdownView,
   loadInitialData,
   loadLogView,
+  setCurrentWorkspaceId,
   subscribeState,
 } from "./state";
 import type { AppState } from "./state";
@@ -93,14 +91,17 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
   document.addEventListener("submit", handleDocumentSubmit);
   window.addEventListener("keydown", handleDocumentKeydown, true);
   installDiagramHydrator(root);
-  if (options.initialWorkspaceId && currentWorkspaceId() !== options.initialWorkspaceId) {
-    replace(workspaceHomePath(options.initialWorkspaceId));
+  if (options.initialWorkspaceId) {
+    setCurrentWorkspaceId(options.initialWorkspaceId);
   }
   void boot();
 
   return {
     navigateToWorkspace(workspaceId: string): void {
-      if (currentWorkspaceId() !== workspaceId) navigate(workspaceHomePath(workspaceId));
+      if (getState().currentWorkspaceId !== workspaceId) {
+        setCurrentWorkspaceId(workspaceId);
+        navigate(homePath());
+      }
     },
     destroy(): void {
       unsubscribeState();
@@ -131,7 +132,7 @@ export function getCodexPaneCollapsed(pane: "nav" | "rail"): boolean {
   return pane === "nav" ? navCollapsed : railCollapsed;
 }
 
-// React 측 CodexSurface가 표현 모드를 알린다 — Side일 때만 pane 접힘을 화면에 반영한다.
+// codex-host.ts의 mountCodexInto가 항상 "side"로 호출 — Rail 패널 마운트 시 pane 접힘 판단에 사용한다.
 export function setCodexPresentationMode(mode: "route" | "side"): void {
   if (currentPresentationMode === mode) return;
   currentPresentationMode = mode;
@@ -232,6 +233,8 @@ function renderAppShell(state: AppState, route: Route): void {
   const paneCollapseClass = currentPresentationMode === "side"
     ? `${navCollapsed ? " app-shell--nav-collapsed" : ""}${railCollapsed ? " app-shell--rail-collapsed" : ""}`
     : "";
+  // route 기반 active 경로 — URL 의존 없이 nav active 상태 결정
+  const activeNavPath = routeToNavPath(route);
   destroyTocScrollSpy();
   closeTocDrawer(false);
   app.innerHTML = `
@@ -241,7 +244,7 @@ function renderAppShell(state: AppState, route: Route): void {
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
       </button>
-      ${shouldRenderSidebar ? renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname) : ""}
+      ${shouldRenderSidebar ? renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, activeNavPath) : ""}
       <main class="content">
         ${renderMainContent(state, route, renderedEntry)}
       </main>
@@ -527,6 +530,14 @@ function showToast(message: string): void {
 
 function shouldUseBrowserDefault(event: MouseEvent): boolean {
   return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
+}
+
+function routeToNavPath(route: Route): string {
+  if (route.name === "queue" || route.name === "queue-detail") return "/queue";
+  if (route.name === "index-md") return "/index";
+  if (route.name === "log") return "/log";
+  if (route.name === "conflicts" || route.name === "conflict-detail") return "/conflicts";
+  return "";
 }
 
 function internalSpaPath(anchor: HTMLAnchorElement): string | null {

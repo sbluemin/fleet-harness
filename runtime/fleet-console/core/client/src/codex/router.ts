@@ -1,3 +1,5 @@
+import { getState } from "./state";
+
 // patchId 클라이언트 측 검증 — 서버 SAFE_PATCH_ID와 동일
 const SAFE_PATCH_ID = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{3}Z-[0-9a-f]{8}$/;
 
@@ -14,36 +16,23 @@ export type Route =
 
 type RouteListener = (route: Route) => void;
 
-export const CODEX_BASE_PATH = "/console/codex";
-
 const listeners = new Set<RouteListener>();
-// popstate 핸들러는 mount당 한 번만 설치하고 destroy에서 해제한다 — /codex 진입/이탈(특히 오버레이
-// 빈번 토글)에서 핸들러가 누적되면 Back/Forward 시 동일 라우트 처리·데이터 로드가 중복된다.
-let popstateHandler: (() => void) | null = null;
+let activeRoute: Route = { name: "home" };
 
 export function currentRoute(): Route {
-  const route = parseRoute(stripWorkspacePrefix(stripCodexBasePath(window.location.pathname)).pathname);
-  // /queue 라우트의 tab은 search params에서 결정
-  if (route.name === "queue") {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    return { name: "queue", tab: tab === "archived" ? "archived" : "pending" };
-  }
-  return route;
-}
-
-export function currentWorkspaceId(): string | null {
-  return workspacePrefix(stripCodexBasePath(window.location.pathname))?.wsId ?? null;
+  return activeRoute;
 }
 
 export function navigate(path: string): void {
-  if (path === window.location.pathname + window.location.search) return;
-  window.history.pushState({}, "", path);
-  emit(currentRoute());
+  const route = parsePath(path);
+  if (routeKey(activeRoute) === routeKey(route)) return;
+  activeRoute = route;
+  emit(activeRoute);
 }
 
 export function replace(path: string): void {
-  window.history.replaceState({}, "", path);
-  emit(currentRoute());
+  activeRoute = parsePath(path);
+  emit(activeRoute);
 }
 
 export function subscribeRoute(listener: RouteListener): () => void {
@@ -52,15 +41,12 @@ export function subscribeRoute(listener: RouteListener): () => void {
 }
 
 export function initRouter(): void {
-  if (popstateHandler) return;
-  popstateHandler = () => emit(currentRoute());
-  window.addEventListener("popstate", popstateHandler);
+  activeRoute = { name: "home" };
 }
 
 export function destroyRouter(): void {
-  if (!popstateHandler) return;
-  window.removeEventListener("popstate", popstateHandler);
-  popstateHandler = null;
+  activeRoute = { name: "home" };
+  listeners.clear();
 }
 
 export function entryPath(id: string): string {
@@ -100,16 +86,26 @@ export function homePath(): string {
   return withWorkspace("/");
 }
 
-export function workspaceHomePath(wsId: string): string {
-  return `${CODEX_BASE_PATH}/w/${encodeURIComponent(wsId)}/`;
+function parsePath(rawPath: string): Route {
+  const url = new URL(rawPath, "http://x");
+  let { pathname } = url;
+  // /console/codex 접두사 제거 — Full route URL 호환성(W3 라우트 제거 전 단계)
+  const codexBase = "/console/codex";
+  if (pathname === codexBase || pathname === `${codexBase}/`) {
+    pathname = "/";
+  } else if (pathname.startsWith(`${codexBase}/`)) {
+    pathname = pathname.slice(codexBase.length);
+  }
+  const { pathname: innerPath } = stripWorkspacePrefix(pathname);
+  return parseRoute(innerPath, url.searchParams);
 }
 
-function parseRoute(pathname: string): Route {
+function parseRoute(pathname: string, searchParams: URLSearchParams): Route {
   if (pathname === "/index" || pathname === "/index-md") {
     return { name: "index-md" };
   }
   if (pathname === "/log") {
-    const limit = new URLSearchParams(window.location.search).get("limit");
+    const limit = searchParams.get("limit");
     const parsed = Number(limit ?? 20);
     return { name: "log", limit: Number.isInteger(parsed) ? parsed : 20 };
   }
@@ -129,8 +125,8 @@ function parseRoute(pathname: string): Route {
     return { name: "raw", ref: decodeURIComponent(rawMatch[1] ?? "") };
   }
   if (pathname === "/queue") {
-    // tab은 currentRoute()에서 search params로 결정됨
-    return { name: "queue", tab: "pending" };
+    const tab = searchParams.get("tab");
+    return { name: "queue", tab: tab === "archived" ? "archived" : "pending" };
   }
   const queueDetailMatch = pathname.match(/^\/queue\/([^/]+)$/);
   if (queueDetailMatch) {
@@ -144,8 +140,8 @@ function parseRoute(pathname: string): Route {
 }
 
 function withWorkspace(path: string): string {
-  const wsId = currentWorkspaceId();
-  return wsId ? `${CODEX_BASE_PATH}/w/${encodeURIComponent(wsId)}${path}` : `${CODEX_BASE_PATH}${path}`;
+  const wsId = getState().currentWorkspaceId;
+  return wsId ? `/w/${encodeURIComponent(wsId)}${path}` : path;
 }
 
 function stripWorkspacePrefix(pathname: string): { pathname: string; wsId: string | null } {
@@ -162,10 +158,14 @@ function workspacePrefix(pathname: string): { wsId: string; pathname: string } |
   };
 }
 
-function stripCodexBasePath(pathname: string): string {
-  if (pathname === CODEX_BASE_PATH || pathname === `${CODEX_BASE_PATH}/`) return "/";
-  if (pathname.startsWith(`${CODEX_BASE_PATH}/`)) return pathname.slice(CODEX_BASE_PATH.length) || "/";
-  return pathname;
+function routeKey(route: Route): string {
+  if (route.name === "entry") return `entry:${route.id}`;
+  if (route.name === "raw") return `raw:${route.ref}`;
+  if (route.name === "queue") return `queue:${route.tab}`;
+  if (route.name === "queue-detail") return `queue-detail:${route.patchId}`;
+  if (route.name === "conflict-detail") return `conflict-detail:${route.id}`;
+  if (route.name === "log") return `log:${route.limit}`;
+  return route.name;
 }
 
 function emit(route: Route): void {

@@ -9,13 +9,13 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([
   {
-    entry: { cli: "core/host/cli.ts", "cli-bin": "core/host/cli-bin.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/diff/routes": "../fleet-plugins/diff/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts" },
+    entry: { cli: "core/host/cli.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/diff/routes": "../fleet-plugins/diff/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts" },
     format: ["esm"],
     banner: { js: "#!/usr/bin/env node" },
-    // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli/cli-bin 엔트리에만 생성한다.
+    // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli 엔트리에만 생성한다.
     // 빌트인 플러그인 라우트 번들은 런타임 산출물일 뿐 타입 소비 대상이 아니며,
     // tsconfig include 밖이라 source-only @fleet-console/sdk(.ts) 타입을 DTS 패스에서 해석하지 못한다.
-    dts: { entry: { cli: "core/host/cli.ts", "cli-bin": "core/host/cli-bin.ts" } },
+    dts: { entry: { cli: "core/host/cli.ts" } },
     sourcemap: false,
     clean: false,
     // workspace 패키지(@dotobokuri/*)는 npm에 개별 발행하지 않으므로 번들에 인라인한다.
