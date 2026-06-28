@@ -2981,3 +2981,15 @@ kbd {
 .codex-nav-error {
   color: var(--coral);
 }
+
+/* ─── Reading Sheet scope overrides ─────────────────────────────────────────── */
+
+/* 시트 안에서 마크다운 본문 측정(72ch)으로 좁혀 읽기 편의 제공 */
+.codex-reading-sheet .markdown-body {
+  max-inline-size: 72ch;
+  margin-inline: auto;
+}
+
+.codex-reading-sheet .document-header h1 {
+  font-size: var(--font-size-display-md);
+}

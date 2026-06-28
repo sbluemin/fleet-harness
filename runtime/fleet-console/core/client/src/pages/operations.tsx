@@ -12,6 +12,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
+import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { consumeOperationFocus, focusOperation, hydrateOperations, nextOperationId, setActiveOperation } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
@@ -218,6 +219,7 @@ export function Operations({ state }: OperationsProps) {
         onSetAccent={handleSetAccent}
       />
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
+      <CodexReadingSheet />
     </div>
   );
 }

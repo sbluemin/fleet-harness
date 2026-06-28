@@ -9,6 +9,7 @@ import {
   setOnRequestOpenReader,
   teardownCodex,
 } from "../codex-host.js";
+import { openCodexReader } from "../store.js";
 
 // ─── Rail panel descriptor ────────────────────────────────────────────────────
 
@@ -45,8 +46,11 @@ function CodexRailPanel() {
   useEffect(() => {
     if (!shouldMountCodex || !bodyRef.current || !activeTheaterId) return;
     mountNavigatorInto(bodyRef.current, activeTheaterId);
-    // W2에서 store action(openCodexReader)으로 연결 예정
-    setOnRequestOpenReader((_r) => { /* W2에서 연결 */ });
+    setOnRequestOpenReader((r) => {
+      if (r.kind === "entry") openCodexReader({ kind: "entry", entryId: r.id });
+      else if (r.kind === "drydock") openCodexReader({ kind: "drydock", patchId: r.patchId });
+      else if (r.kind === "conflicts") openCodexReader({ kind: "conflicts", id: r.id });
+    });
     return () => {
       setOnRequestOpenReader(null);
     };

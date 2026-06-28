@@ -4,6 +4,7 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { applyChannelAnimationDefaults } from "./canvas/canvas-store.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import type {
+  CodexReaderRequest,
   ConsoleState,
   NotificationKind,
   NotificationPreferences,
@@ -71,6 +72,7 @@ let state: ConsoleState = {
   pendingOperationFocus: null,
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
+  codexReader: null,
 };
 
 export function getState(): ConsoleState {
@@ -314,6 +316,14 @@ export function closeOnboarding(): void {
   writeStoredCommissioningSeen(true);
   if (!state.onboardingOpen) return;
   setState({ onboardingOpen: false });
+}
+
+export function openCodexReader(req: CodexReaderRequest): void {
+  setState({ codexReader: req });
+}
+
+export function closeCodexReader(): void {
+  setState({ codexReader: null });
 }
 
 export function resolveOnboardingOnBootstrap(): void {

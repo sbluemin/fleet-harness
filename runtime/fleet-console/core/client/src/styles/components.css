@@ -7758,3 +7758,161 @@ body[data-codex-side="true"] .command-card {
     padding: 15px;
   }
 }
+
+/* ─── Codex Reading Sheet ────────────────────────────────────────────────────── */
+
+:root {
+  --z-codex-reading-scrim: 50;
+  --z-codex-reading-sheet: 51;
+}
+
+.codex-reading-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-codex-reading-scrim);
+  background: oklch(10% 0.03 250 / 55%);
+  backdrop-filter: blur(3px);
+}
+
+.codex-reading-sheet {
+  position: fixed;
+  z-index: var(--z-codex-reading-sheet);
+  top: var(--space-6);
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 120px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: linear-gradient(180deg, oklch(21% 0.045 248 / 94%), oklch(17% 0.04 250 / 96%));
+  box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
+  animation: codex-rise 400ms var(--ease-spring) both;
+}
+
+.codex-reading-sheet.is-wide {
+  width: min(960px, calc(100vw - 120px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-reading-sheet {
+    animation-duration: 0.01ms;
+  }
+}
+
+.codex-reading-sheet-head {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.codex-reading-sheet-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass-bright);
+}
+
+.codex-reading-sheet-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-rim);
+}
+
+.codex-reading-sheet-close {
+  border: 1px solid var(--surface-rim);
+  background: transparent;
+  color: var(--ink-fog);
+  border-radius: var(--radius-md);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.codex-reading-sheet-close:hover {
+  color: var(--ink-pearl);
+  border-color: var(--surface-rim-strong);
+}
+
+.codex-reading-sheet-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+}
+
+.codex-reading-sheet-read {
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-7) var(--space-10);
+}
+
+.codex-reading-sheet-toc {
+  border-left: 1px solid var(--surface-rim);
+  padding: var(--space-5) var(--space-4);
+  overflow-y: auto;
+}
+
+/* ToC sheet link styles */
+.codex-reading-sheet-toc .ti {
+  display: block;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-label-sm);
+  color: var(--ink-fog);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: color var(--duration-base) var(--ease-spring);
+}
+
+.codex-reading-sheet-toc .ti:hover {
+  color: var(--ink-spectral);
+}
+
+.codex-reading-sheet-toc .ti.active {
+  color: var(--brass-bright);
+  border-left-color: var(--brass);
+}
+
+.codex-reading-sheet-toc .toc-level-3 {
+  padding-left: calc(var(--space-3) + var(--space-4));
+}
+
+.codex-reading-sheet-toc .toc-empty {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-label-sm);
+  color: var(--ink-fog);
+  padding: var(--space-2);
+}
+
+/* Reader state messages */
+.codex-reader-loading,
+.codex-reader-empty {
+  padding: var(--space-6) var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body-sm);
+  color: var(--ink-fog);
+  text-align: center;
+}
+
+.codex-reader-error {
+  padding: var(--space-4) var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body-sm);
+  color: var(--coral);
+}
+
+/* Operations 캔버스/SideBar inert — 시트 활성 동안 배경 상호작용 차단 */
+body[data-codex-reading="true"] .operations-canvas,
+body[data-codex-reading="true"] .operations-side-bar {
+  pointer-events: none;
+}

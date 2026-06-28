@@ -190,6 +190,11 @@ export interface NotificationPreferences {
   readonly mutedTheaterIds: Readonly<Record<string, true>>;
 }
 
+export type CodexReaderRequest =
+  | { readonly kind: "entry"; readonly entryId: string }
+  | { readonly kind: "drydock"; readonly patchId?: string }
+  | { readonly kind: "conflicts"; readonly id?: string };
+
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
@@ -225,4 +230,5 @@ export interface ConsoleState {
   readonly pendingOperationFocus: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;
+  readonly codexReader: CodexReaderRequest | null;
 }

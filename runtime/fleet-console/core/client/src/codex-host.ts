@@ -1,11 +1,17 @@
 import { mountNavigatorApp } from "./codex/main.js";
 import type { NavigatorController, NavigatorRequest } from "./codex/main.js";
+import { mountReadingInto } from "./codex/reading-controller.js";
+import type { MountReadingOptions, ReadingController } from "./codex/reading-controller.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type { NavigatorRequest } from "./codex/main.js";
+export type { MountReadingOptions } from "./codex/reading-controller.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+// Reader 싱글톤 — Navigator와 별개 controller. 시트가 제공한 DOM에 마운트된다.
+let readerController: ReadingController | null = null;
 
 // Vanilla Codex는 모듈 싱글톤이라 동시에 한 인스턴스만 안전하다.
 // mount host(`<div class="codex-host">`)와 controller를 이 모듈이 단독 소유하고,
@@ -41,6 +47,23 @@ export function mountNavigatorInto(
 
 export function setNavigatorTheater(theaterId: string | null): void {
   navigatorController?.setTheater(theaterId);
+}
+
+export function mountReaderInto(
+  container: HTMLElement,
+  opts: MountReadingOptions,
+): void {
+  readerController?.destroy();
+  readerController = mountReadingInto(container, opts);
+}
+
+export function setReaderEntry(entryId: string): void {
+  void readerController?.setEntry(entryId);
+}
+
+export function teardownReader(): void {
+  readerController?.destroy();
+  readerController = null;
 }
 
 export function teardownCodex(): void {
