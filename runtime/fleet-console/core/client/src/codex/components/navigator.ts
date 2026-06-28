@@ -60,6 +60,7 @@ function renderEntry(entry: WikiIndexEntry, query: string, isCurrent: boolean): 
     class="codex-nav-entry${isCurrent ? " is-current" : ""}"
     data-entry-id="${escapeHtml(entry.id)}"
     type="button"
+    ${isCurrent ? 'aria-current="page"' : ""}
     title="${escapeHtml(entry.title)}"
   >
     <span class="t">${highlightMatch(entry.title, tagMatches ? "" : query)}</span>

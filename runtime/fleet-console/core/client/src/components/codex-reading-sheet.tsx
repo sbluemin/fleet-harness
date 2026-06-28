@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
-import { mountReaderInto } from "../codex-host.js";
+import { mountReaderInto, saveReaderScroll } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { collapseCodexReader, openCodexReader } from "../store.js";
+import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -36,6 +36,12 @@ export function CodexReadingSheet() {
   // W2: expand 전용 — reader != null && expanded의 경우에만 시트 표시
   const isOpen = reader !== null && expanded;
 
+  // 닫기 = 스크롤 위치 저장(언마운트 전 동기) 후 split 복귀.
+  const closeReading = useCallback(() => {
+    saveReaderScroll();
+    collapseCodexReader();
+  }, []);
+
   // 시트 열기/닫기 effect: inert·keydown(Esc·Tab)·focus 복귀
   useEffect(() => {
     if (!isOpen) return;
@@ -51,7 +57,7 @@ export function CodexReadingSheet() {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        collapseCodexReader();
+        closeReading();
         return;
       }
       if (e.key === "Tab") {
@@ -94,8 +100,14 @@ export function CodexReadingSheet() {
       kind,
       subId,
       theaterId,
-      onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
-      onClose: () => collapseCodexReader(),
+      // 오버레이(크게 보기) 안에서 related 링크 클릭은 오버레이를 유지한 채 문서만 교체한다
+      // (split의 onRelatedClick은 split에 머문다 — codex-panel.tsx). expandCodexReader가
+      // openCodexReader의 expanded:false를 즉시 true로 되돌려 같은 read 모드를 유지.
+      onRelatedClick: (id) => {
+        openCodexReader({ kind: "entry", entryId: id });
+        expandCodexReader();
+      },
+      onClose: closeReading,
     });
 
     requestAnimationFrame(() => {
@@ -111,7 +123,7 @@ export function CodexReadingSheet() {
     <>
       <div
         className="codex-reading-scrim"
-        onClick={collapseCodexReader}
+        onClick={closeReading}
         aria-hidden="true"
       />
       <div
@@ -128,7 +140,7 @@ export function CodexReadingSheet() {
             className="codex-reading-sheet-close"
             type="button"
             aria-label="Close reading"
-            onClick={collapseCodexReader}
+            onClick={closeReading}
           >
             ✕
           </button>
