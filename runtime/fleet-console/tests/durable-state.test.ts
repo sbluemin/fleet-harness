@@ -1,19 +1,13 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createConsoleDurableStateStore,
-  cleanupProviderSessionCaptures,
-  mergeProviderSessionCaptures,
-  readProviderSessionCapture,
   sanitizeDurableConsoleState,
-  unlinkProviderSessionCapture,
-  type DurableConsoleState,
-} from "../src/durable-state.js";
-import type { ConsoleDataPaths } from "../src/paths.js";
+} from "../core/host/durable-state.js";
+import type { ConsoleDataPaths } from "../core/host/paths.js";
 
 const tempDirs: string[] = [];
 
@@ -23,8 +17,58 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [], operations: [] })).toEqual({ version: 1, theaters: [], operations: [] });
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [{ id: "" }], operations: [{ sessionId: "missing" }] })).toEqual({ version: 1, theaters: [], operations: [] });
+    expect(sanitizeDurableConsoleState({ version: 3, theaters: [], operations: [] })).toEqual({ version: 2, theaters: [], operations: [], operationNodes: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ sessionId: "missing" }], operationNodes: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], operationNodes: [] });
+  });
+
+  it("migrates v1 durable operations into v2 OperationNodes one-way", () => {
+    const migrated = sanitizeDurableConsoleState({
+      version: 1,
+      theaters: [],
+      operations: [{
+        sessionId: "session-a",
+        theaterId: "theater-a",
+        cwd: "/secret/project",
+        cwdLabel: "project",
+        sequence: 1,
+        label: "Bridge Watch",
+        cliId: "claude",
+        cliLabel: "Claude",
+        createdAt: 1,
+      }],
+    });
+
+    expect(migrated.version).toBe(2);
+    expect(migrated.operationNodes[0]).toMatchObject({
+      id: "session-a",
+      theaterId: "theater-a",
+      type: "shell",
+      pluginId: "terminal",
+      title: "Bridge Watch",
+    });
+  });
+
+  it("remaps persisted terminal plugin ids without changing operation type or id", () => {
+    const sanitized = sanitizeDurableConsoleState({
+      version: 2,
+      theaters: [],
+      operations: [],
+      operationNodes: [
+        makeOperationNode({ id: "agent-op", pluginId: "agent", type: "agent" }),
+        makeOperationNode({ id: "shell-op", pluginId: "shell", type: "shell" }),
+        makeOperationNode({ id: "demo-op", pluginId: "demo", type: "demo" }),
+      ],
+    });
+
+    expect(sanitized.operationNodes.map((operation) => ({
+      id: operation.id,
+      pluginId: operation.pluginId,
+      type: operation.type,
+    }))).toEqual([
+      { id: "agent-op", pluginId: "terminal", type: "agent" },
+      { id: "shell-op", pluginId: "terminal", type: "shell" },
+      { id: "demo-op", pluginId: "demo", type: "demo" },
+    ]);
   });
 
   it("preserves valid auto-name metadata and drops malformed values without dropping the operation", () => {
@@ -106,78 +150,19 @@ describe("durable console state", () => {
     });
   });
 
-  it("reads provider capture files and merges them into matching dormant operations only", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-captures-"));
-    const capturesDir = path.join(dir, "captures");
-    tempDirs.push(dir);
-    fs.mkdirSync(capturesDir, { recursive: true });
-    fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
-      provider: "claude",
-      sessionId: "provider-session-secret",
-      transcriptPath: "/secret/transcript.jsonl",
-      source: "startup",
-      capturedAt: "2026-06-16T00:00:00.000Z",
-    }));
-
-    const state: DurableConsoleState = {
-      version: 1,
-      theaters: [],
-      operations: [{
-        sessionId: "session-a",
-        theaterId: "theater-a",
-        cwd: "/secret/project",
-        cwdLabel: "project",
-        sequence: 1,
-        createdAt: 1,
-      }],
-    };
-    const capture = readProviderSessionCapture("session-a", { capturesDir });
-    const merged = mergeProviderSessionCaptures(state, { capturesDir });
-
-    expect(capture).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    expect(merged.operations[0]?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-  });
-
-  it("unlinks provider capture files only through safe capture ids", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-unlink-"));
-    const capturesDir = path.join(dir, "captures");
-    tempDirs.push(dir);
-    fs.mkdirSync(capturesDir, { recursive: true });
-    const capturePath = path.join(capturesDir, "session-a.json");
-    fs.writeFileSync(capturePath, "{}");
-
-    expect(unlinkProviderSessionCapture("../session-a", { capturesDir })).toBe(false);
-    expect(fs.existsSync(capturePath)).toBe(true);
-    expect(unlinkProviderSessionCapture("session-a", { capturesDir })).toBe(true);
-    expect(fs.existsSync(capturePath)).toBe(false);
-  });
-
-  it("cleans up captures that have already been persisted into durable operations", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cleanup-"));
-    const capturesDir = path.join(dir, "captures");
-    tempDirs.push(dir);
-    fs.mkdirSync(capturesDir, { recursive: true });
-    const capturePath = path.join(capturesDir, "session-a.json");
-    fs.writeFileSync(capturePath, "{}");
-
-    cleanupProviderSessionCaptures({
-      version: 1,
-      theaters: [],
-      operations: [{
-        sessionId: "session-a",
-        theaterId: "theater-a",
-        cwd: "/secret/project",
-        cwdLabel: "project",
-        sequence: 1,
-        createdAt: 1,
-        providerSession: {
-          provider: "claude",
-          sessionId: "provider-session-secret",
-          capturedAt: "2026-06-16T00:00:00.000Z",
-        },
-      }],
-    }, { capturesDir });
-
-    expect(fs.existsSync(capturePath)).toBe(false);
-  });
 });
+
+function makeOperationNode(input: { readonly id: string; readonly pluginId: string; readonly type: string }) {
+  return {
+    id: input.id,
+    theaterId: "theater",
+    parentId: null,
+    type: input.type,
+    pluginId: input.pluginId,
+    title: input.id,
+    payload: {},
+    geometry: null,
+    state: {},
+    ts: { createdAt: 1, updatedAt: 1 },
+  };
+}

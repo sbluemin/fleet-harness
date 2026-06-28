@@ -16,7 +16,6 @@ let workspaceB = "";
 let baseUrl = "";
 let wsA = "";
 let wsB = "";
-let lockToken = "";
 
 const SHARED_PATCH_ID = "2026-05-19T00-00-00-000Z-0abc1234";
 const SHARED_CONFLICT_ID = "conflict-shared";
@@ -32,11 +31,10 @@ describe("workspace-prefixed routes", () => {
     await createWorkspace(workspaceB, "shared", "Workspace B", "raw B");
     const lockPath = path.join(rootDir, "daemon.lock");
     server = await startCodexTestServer({ cwd: workspaceA, lockPath, port: 0, host: "127.0.0.1" });
-    const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number; token: string };
+    const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
     baseUrl = `http://127.0.0.1:${lock.port}/console/codex`;
-    lockToken = lock.token;
-    wsA = await currentWorkspaceId();
-    wsB = await registerWorkspace(workspaceB);
+    wsA = await server.registerWorkspace(workspaceA);
+    wsB = await server.registerWorkspace(workspaceB);
   });
 
   afterEach(async () => {
@@ -45,31 +43,22 @@ describe("workspace-prefixed routes", () => {
     if (rootDir) await rm(rootDir, { recursive: true, force: true });
   });
 
-  it("serves selected workspace data through /w/:ws/api routes", async () => {
+  it("serves selected workspace entry data through /w/:ws/api routes", async () => {
     const entryA = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsA}/api/entry/shared`);
     const entryB = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsB}/api/entry/shared`);
     expect(entryA.frontmatter.title).toBe("Workspace A");
     expect(entryB.frontmatter.title).toBe("Workspace B");
-
-    const rawA = await fetch(`${baseUrl}/w/${wsA}/api/raw?ref=${encodeURIComponent("raw/sample.md")}`);
-    const rawB = await fetch(`${baseUrl}/w/${wsB}/api/raw?ref=${encodeURIComponent("raw/sample.md")}`);
-    await expect(rawA.text()).resolves.toBe("raw A");
-    await expect(rawB.text()).resolves.toBe("raw B");
   });
 
   it("serves selected workspace drydock data through /w/:ws/api routes", async () => {
-    await expectWorkspaceBody(`/w/${wsA}/api/queue`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/queue`, MARKER_B, MARKER_A);
-    await expectWorkspaceBody(`/w/${wsA}/api/queue/${SHARED_PATCH_ID}`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/queue/${SHARED_PATCH_ID}`, MARKER_B, MARKER_A);
+    await expectWorkspaceBody(`/w/${wsA}/api/drydock`, MARKER_A, MARKER_B);
+    await expectWorkspaceBody(`/w/${wsB}/api/drydock`, MARKER_B, MARKER_A);
+    await expectWorkspaceBody(`/w/${wsA}/api/drydock/${SHARED_PATCH_ID}`, MARKER_A, MARKER_B);
+    await expectWorkspaceBody(`/w/${wsB}/api/drydock/${SHARED_PATCH_ID}`, MARKER_B, MARKER_A);
     await expectWorkspaceBody(`/w/${wsA}/api/conflicts`, MARKER_A, MARKER_B);
     await expectWorkspaceBody(`/w/${wsB}/api/conflicts`, MARKER_B, MARKER_A);
     await expectWorkspaceBody(`/w/${wsA}/api/conflicts/${SHARED_CONFLICT_ID}`, MARKER_A, MARKER_B);
     await expectWorkspaceBody(`/w/${wsB}/api/conflicts/${SHARED_CONFLICT_ID}`, MARKER_B, MARKER_A);
-    await expectWorkspaceBody(`/w/${wsA}/api/index-md`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/index-md`, MARKER_B, MARKER_A);
-    await expectWorkspaceBody(`/w/${wsA}/api/log`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/log`, MARKER_B, MARKER_A);
   });
 
   it("redirects legacy SPA routes to the MRU workspace", async () => {
@@ -83,14 +72,14 @@ describe("workspace-prefixed routes", () => {
     expect(entry.frontmatter.title).toBe("Workspace B");
   });
 
-  it("scopes concurrent queue action locks by workspace id", async () => {
-    const slowApproveA = startSlowApprove(`/w/${wsA}/api/queue/${encodeURIComponent(SHARED_PATCH_ID)}/approve`);
+  it("scopes concurrent drydock action locks by workspace id", async () => {
+    const slowApproveA = startSlowApprove(`/w/${wsA}/api/drydock/${encodeURIComponent(SHARED_PATCH_ID)}/decision`);
     await delay(100);
 
-    const approveB = await fetch(`${baseUrl}/w/${wsB}/api/queue/${encodeURIComponent(SHARED_PATCH_ID)}/approve`, {
+    const approveB = await fetch(`${baseUrl}/w/${wsB}/api/drydock/${encodeURIComponent(SHARED_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(approveB.status).toBe(200);
 
@@ -110,24 +99,6 @@ describe("workspace-prefixed routes", () => {
     await expect(response.json()).resolves.toMatchObject({ error: "not_found" });
   });
 });
-
-async function currentWorkspaceId(): Promise<string> {
-  const body = await fetchJson<{ currentWorkspaceId: string }>("/api/workspaces");
-  return body.currentWorkspaceId;
-}
-
-async function registerWorkspace(cwd: string): Promise<string> {
-  const response = await fetch(`${baseUrl}/api/admin/workspaces`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${lockToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ cwd }),
-  });
-  const body = await response.json() as { workspace: { id: string } };
-  return body.workspace.id;
-}
 
 async function fetchJson<T>(pathOrUrl: string): Promise<T> {
   const response = await fetch(pathOrUrl.startsWith("http") ? pathOrUrl : `${baseUrl}${pathOrUrl}`);
@@ -263,12 +234,12 @@ function startSlowApprove(pathname: string): { finish: () => Promise<{ status: n
       });
     });
     clientRequest.on("error", reject);
-    clientRequest.write("{");
+    clientRequest.write('{"action":');
   });
 
   return {
     finish: async () => {
-      clientRequest?.end("}");
+      clientRequest?.end('"approve"}');
       return responsePromise;
     },
   };

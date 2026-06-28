@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createConsoleReleaseNotesService } from "../src/release-notes/service.js";
-import { ConsoleReleaseNotesUnavailableError } from "../src/release-notes/types.js";
+import { createConsoleReleaseNotesService } from "../core/host/release-notes/service.js";
+import { ConsoleReleaseNotesUnavailableError } from "../core/host/release-notes/types.js";
 
 const CHANGELOG = `# Changelog
 

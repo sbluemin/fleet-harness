@@ -14,8 +14,6 @@ import { createMissionControlController } from "../src/mission-control/controlle
 import { renderMissionControl } from "../src/mission-control/renderer.js";
 import { buildFleetBanner, gradientLine } from "../src/mission-control/welcome.js";
 import type { MissionControlCliOption, MissionControlLaunchProfile, MissionControlShimmerOptions, MissionControlShimmerTimer } from "../src/mission-control/types.js";
-import { createWikiProcessController } from "../src/mission-control/menu/wiki-panel.js";
-import type { WikiProcessController, WikiServerStatus } from "../src/mission-control/menu/wiki-panel.js";
 import type { FleetCliRelease, MissionControlCounts } from "../src/mission-control/types.js";
 import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../src/mission-control/options/types.js";
 
@@ -272,7 +270,7 @@ describe("Mission Control controller", () => {
 
     openSystemMenu(controller);
     const lines = stripAnsi(controller.component.render(100).join("\n")).split("\n");
-    const labels = ["Authentication", "Wiki Server", "Diagnostics", "About"];
+    const labels = ["Authentication", "Diagnostics", "About"];
     const rows = labels.map((label) => {
       const row = lines.find((line) => line.match(/[▸ ]/) && line.includes(label));
       expect(row).toBeDefined();
@@ -535,59 +533,6 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).not.toContain("Delete API Key");
   });
 
-  it("opens, stops, and edits wiki through action-list rows only", () => {
-    const wikiController = createFakeWikiController();
-    const controller = createTestController({ wikiController });
-
-    openSystemMenuItem(controller, 1);
-    let wikiOutput = controller.component.render(80).join("\n");
-    expect(stripAnsi(wikiOutput)).toContain("Wiki Server");
-    expect(stripAnsi(wikiOutput)).toContain("stopped");
-    expect(stripAnsi(wikiOutput)).toContain("Port: 4399");
-    expect(stripAnsi(wikiOutput)).toContain("▸ Actions");
-    expect(wikiOutput).toContain(SELECTED_BG);
-    expect(wikiOutput).toContain("Port: \x1b[38;2;254;188;56m4399\x1b[0m");
-
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Open Workspace");
-    controller.ptyHost.write("\r");
-    expect(wikiController.calls).toEqual(["start"]);
-    controller.ptyHost.write("\x1b");
-    wikiOutput = controller.component.render(80).join("\n");
-    expect(stripAnsi(wikiOutput)).toContain("running 127.0.0.1:4399");
-
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Reopen Workspace");
-    expect(renderPlain(controller)).toContain("Stop Server");
-    controller.ptyHost.write("\r");
-    expect(wikiController.calls).toEqual(["start", "start"]);
-    controller.ptyHost.write("\x1b");
-    expect(renderPlain(controller)).toContain("running 127.0.0.1:4399");
-
-    controller.ptyHost.write("S");
-    controller.ptyHost.write("P");
-    expect(wikiController.calls).toEqual(["start", "start"]);
-
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(wikiController.calls).toEqual(["start", "start", "stop"]);
-    expect(renderPlain(controller)).toContain("Open Workspace");
-    expect(renderPlain(controller)).not.toContain("Stop Server");
-    controller.ptyHost.write("\x1b");
-    expect(renderPlain(controller)).toContain("stopped");
-
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("\x7f");
-    controller.ptyHost.write("\x7f");
-    controller.ptyHost.write("\x7f");
-    controller.ptyHost.write("\x7f");
-    controller.ptyHost.write("70000");
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Use port 1024-65535");
-  });
 
   it("renders diagnostics safely and keeps subview Esc local", () => {
     const controller = createTestController({
@@ -598,7 +543,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\x1b[2J",
     });
 
-    openSystemMenuItem(controller, 2);
+    openSystemMenuItem(controller, 1);
     let diagnosticsOutput = controller.component.render(80).join("\n");
     expect(stripAnsi(diagnosticsOutput)).toContain("Diagnostics");
     expect(stripAnsi(diagnosticsOutput)).not.toContain(["Log", "Viewer"].join(" "));
@@ -628,7 +573,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\nspoofed-cwd",
     });
 
-    openSystemMenuItem(controller, 2);
+    openSystemMenuItem(controller, 1);
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
@@ -677,118 +622,13 @@ describe("Mission Control controller", () => {
     expect(renderRequests).toBeGreaterThan(beforeSubmit);
   });
 
-  it("detects an existing wiki daemon during controller initialization", async () => {
-    let renderRequests = 0;
-    const controller = createWikiProcessController({
-      cwd: "/tmp/wiki",
-      onChange: () => {
-        renderRequests += 1;
-      },
-      probe: async () => ({
-        host: "127.0.0.1",
-        pid: 12345,
-        port: 4400,
-        url: "http://127.0.0.1:4400",
-      }),
-    });
-
-    expect(controller.getStatus()).toEqual({ state: "stopped" });
-    await waitForAsyncLaunch();
-
-    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
-    expect(controller.getPort()).toBe(4400);
-    expect(renderRequests).toBe(1);
-  });
-
-  it("keeps wiki stopped when initial daemon probe is empty", async () => {
-    let renderRequests = 0;
-    const controller = createWikiProcessController({
-      cwd: "/tmp/wiki",
-      onChange: () => {
-        renderRequests += 1;
-      },
-      probe: async () => null,
-    });
-
-    await waitForAsyncLaunch();
-
-    expect(controller.getStatus()).toEqual({ state: "stopped" });
-    expect(renderRequests).toBe(0);
-  });
-
-  it("updates wiki running status from the helper result port", async () => {
-    let renderRequests = 0;
-    let stopCalls = 0;
-    const controller = createWikiProcessController({
-      cwd: "/tmp/wiki",
-      onChange: () => {
-        renderRequests += 1;
-      },
-      openWorkspace: async () => ({
-        host: "127.0.0.1",
-        pid: 12345,
-        port: 4400,
-        url: "http://127.0.0.1:4400/w/test/",
-      }),
-      probe: async () => null,
-      stopDaemon: async () => {
-        stopCalls += 1;
-      },
-    });
-
-    controller.start();
-    expect(controller.getStatus()).toEqual({ state: "starting", port: 37283 });
-    await waitForAsyncLaunch();
-
-    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
-    expect(controller.getPort()).toBe(4400);
-    expect(renderRequests).toBeGreaterThan(1);
-
-    controller.stop();
-    await waitForAsyncLaunch();
-
-    expect(stopCalls).toBe(1);
-    expect(controller.getStatus()).toEqual({ state: "stopped" });
-  });
-
-  it("re-invokes openWorkspace on start when already running without flickering to starting", async () => {
-    let openCalls = 0;
-    const controller = createWikiProcessController({
-      cwd: "/tmp/wiki",
-      onChange: () => {},
-      openWorkspace: async () => {
-        openCalls += 1;
-        return {
-          host: "127.0.0.1",
-          pid: 12345,
-          port: 4400,
-          url: "http://127.0.0.1:4400/w/test/",
-        };
-      },
-      probe: async () => null,
-      stopDaemon: async () => {},
-    });
-
-    controller.start();
-    await waitForAsyncLaunch();
-    expect(openCalls).toBe(1);
-    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
-
-    // running 상태에서 start()를 다시 호출 — starting으로의 깜빡임 없이 helper만 다시 invoke
-    controller.start();
-    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
-    await waitForAsyncLaunch();
-    expect(openCalls).toBe(2);
-    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
-  });
-
   it("renders about panel with counts and placeholder docs link", () => {
     const controller = createTestController({
       loadedCounts: { carriers: 8, queuedPatches: 3, wikiEntries: 17 },
       release: { channel: "stable", version: "0.22.1" },
     });
 
-    openSystemMenuItem(controller, 3);
+    openSystemMenuItem(controller, 2);
     const output = controller.component.render(80).join("\n");
 
     expect(renderPlain(controller)).toContain("Version: 0.22.1");
@@ -1280,7 +1120,6 @@ function createTestController(options: {
   readonly resolveProfile?: (cliId: AgentCliId) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;
   readonly shimmer?: MissionControlShimmerOptions;
-  readonly wikiController?: WikiProcessController;
 } = {}) {
   const controller = createMissionControlController({
     cliOptions: options.cliOptions ?? CLI_OPTIONS,
@@ -1303,7 +1142,6 @@ function createTestController(options: {
     resolveProfile: options.resolveProfile ?? ((cliId) => Promise.resolve({ ...TEST_PROFILE, id: cliId })),
     sessionOptions: options.sessionOptions,
     shimmer: options.shimmer ?? { enabled: false },
-    wikiController: options.wikiController,
   });
   controller.ptyView.resize(80, TEST_ROWS);
   return controller;
@@ -1378,28 +1216,6 @@ function createFakeAuthService(): FakeAuthService {
   };
 }
 
-function createFakeWikiController(): WikiProcessController & { readonly calls: string[] } {
-  const calls: string[] = [];
-  let port = 4399;
-  let status: WikiServerStatus = { state: "stopped" };
-  return {
-    calls,
-    getPort: () => port,
-    getStatus: () => status,
-    setPort: (nextPort) => {
-      calls.push(`setPort:${nextPort}`);
-      port = nextPort;
-    },
-    start: () => {
-      calls.push("start");
-      status = { state: "running", port };
-    },
-    stop: () => {
-      calls.push("stop");
-      status = { state: "stopped" };
-    },
-  };
-}
 
 function createFakePanel(label: string, renderedLines: readonly string[] = [label], focusLine?: number): FakePanel {
   const inputs: string[] = [];

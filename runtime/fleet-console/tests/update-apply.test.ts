@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createConsoleUpdateApplyService, emitConsoleUpdateWorkerScript, type ConsoleUpdateWorkerScriptConfig } from "../src/update-apply.js";
+import { createConsoleUpdateApplyService, emitConsoleUpdateWorkerScript, type ConsoleUpdateWorkerScriptConfig } from "../core/host/update-apply.js";
 
 describe("console update apply worker", () => {
   it("emits a standalone worker script that uses only allowed Node built-ins", () => {

@@ -2,11 +2,21 @@
 
 ## Summary
 
-- total_entries: `30`
+- total_entries: `31`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
 ## Entries
+
+### architecture-console-panel-plugin-platform
+
+- title: `Console 패널 플러그인 플랫폼 확정 아키텍처`
+- path: `wiki/architecture-console-panel-plugin-platform.md`
+- tags: `architecture, fleet-console, plugin-platform, operations, panel-tree, decision-history`
+- updated: `2026-06-21T11:36:23.857Z`
+- summary: `> **상태**: \`planned / in-progress\``
+- raw_source_ref: `raw/2026-06-21-architecture-console-panel-plugin-platform-source-fb3bce12.md`
+- raw_source_refs: `raw/2026-06-21-architecture-console-panel-plugin-platform-source-fb3bce12.md`
 
 ### decision-fleet-cli-mouse-input
 
@@ -332,6 +342,7 @@
 
 ### architecture
 
+- [[wiki:architecture-console-panel-plugin-platform]] — Console 패널 플러그인 플랫폼 확정 아키텍처
 - [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
@@ -442,6 +453,7 @@
 
 ### decision-history
 
+- [[wiki:architecture-console-panel-plugin-platform]] — Console 패널 플러그인 플랫폼 확정 아키텍처
 - [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
@@ -522,6 +534,7 @@
 
 ### fleet-console
 
+- [[wiki:architecture-console-panel-plugin-platform]] — Console 패널 플러그인 플랫폼 확정 아키텍처
 - [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 - [[wiki:synthesis-fleet-console-main-dashboard-research]] — Fleet Console 메인 대시보드 개선 조사
 
@@ -667,6 +680,10 @@
 
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
 
+### operations
+
+- [[wiki:architecture-console-panel-plugin-platform]] — Console 패널 플러그인 플랫폼 확정 아키텍처
+
 ### override-model
 
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
@@ -697,9 +714,17 @@
 
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
 
+### panel-tree
+
+- [[wiki:architecture-console-panel-plugin-platform]] — Console 패널 플러그인 플랫폼 확정 아키텍처
+
 ### persona
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### plugin-platform
+
+- [[wiki:architecture-console-panel-plugin-platform]] — Console 패널 플러그인 플랫폼 확정 아키텍처
 
 ### prd
 

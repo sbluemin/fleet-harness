@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "declaration": true,
@@ -12,7 +13,16 @@
     "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@dotobokuri/core-agent": ["../../packages/core-agent/dist/index.d.ts"],
+      "@dotobokuri/core-unified-agent": ["../../packages/core-unified-agent/dist/index.d.ts"],
+      "@dotobokuri/fleet-admiral": ["../../packages/fleet-admiral/dist/index.d.ts"],
+      "@dotobokuri/fleet-carriers": ["../../packages/fleet-carriers/dist/index.d.ts"],
+      "@dotobokuri/fleet-infra": ["../../packages/fleet-infra/dist/index.d.ts"],
+      "@dotobokuri/fleet-wiki": ["../../packages/fleet-wiki/dist/index.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "tsup.config.ts", "vitest.config.ts"]
+  "include": ["core/host/**/*.ts", "tests/**/*.ts", "tsup.config.ts", "vitest.config.ts"]
 }

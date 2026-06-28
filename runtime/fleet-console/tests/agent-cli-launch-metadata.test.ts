@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { combineAgentCliLaunchMetadata } from "../src/agent-cli-launch-metadata.js";
+import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-launch-metadata.js";
 
 const METADATA = [
   { id: "claude", label: "Claude" },

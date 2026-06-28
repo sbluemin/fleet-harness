@@ -5,9 +5,9 @@ import { Readable } from "node:stream";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runAttentionHook } from "../src/attention-hook.js";
-import { createConsoleLock } from "../src/lock.js";
-import { createConsolePaths } from "../src/paths.js";
+import { runAttentionHook } from "../../fleet-plugins/terminal/server/agent-api/attention-hook.js";
+import { createConsoleLock } from "../core/host/lock.js";
+import { createConsolePaths } from "../core/host/paths.js";
 
 const tempDirs: string[] = [];
 
@@ -61,7 +61,7 @@ describe("runAttentionHook", () => {
     await expect(runAttentionHook({ FLEET_CONSOLE_SESSION_ID: "session-x", FLEET_CONSOLE_DIR: dir }, { fetchImpl, stdin: Readable.from([]) })).resolves.toBeUndefined();
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe("http://127.0.0.1:51234/terminal/sessions/session-x/attention");
+    expect(calls[0]?.url).toBe("http://127.0.0.1:51234/plugins/terminal/agent/sessions/session-x/attention");
     expect(calls[0]?.init?.method).toBe("POST");
     expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${handle.payload.token}`);
   });

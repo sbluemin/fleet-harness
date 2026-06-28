@@ -1,0 +1,17 @@
+{
+  "id": "terminal",
+  "name": "Terminal",
+  "routes": "routes.ts",
+  "client": "client/index.tsx",
+  "sensitiveFields": [
+    "cwd",
+    "canonicalCwd",
+    "providerSession",
+    "transcriptPath",
+    "token",
+    "ticket",
+    "prompt",
+    "persona",
+    "toolAllowlist"
+  ]
+}

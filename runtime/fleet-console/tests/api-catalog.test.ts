@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
-import { buildApiCatalog, type ApiCatalogEntry } from "../src/api-catalog.js";
-import type { ConsoleLockPayload } from "../src/api-types.js";
-import type { AgentCliDetector } from "../src/agent-cli-detect.js";
-import { createConsoleLock } from "../src/lock.js";
-import { createConsoleServer, type ConsoleServer } from "../src/server.js";
+import { buildApiCatalog, type ApiCatalogEntry } from "../core/host/api-catalog.js";
+import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
+import { createConsoleLock } from "../core/host/lock.js";
+import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
 
 interface ServerFixture {
   readonly dir: string;
@@ -50,7 +50,7 @@ afterEach(async () => {
 describe("api catalog", () => {
   it("serializes only the public route catalog DTO", async () => {
     const fixture = await startFixture();
-    const response = await fetch(`${fixture.endpoint}observer/api-catalog`);
+    const response = await fetch(`${fixture.endpoint}settings/api-catalog`);
     const body = await response.json() as ApiCatalogResponse;
     const serializedRoutes = JSON.stringify(body.routes);
 

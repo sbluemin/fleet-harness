@@ -4,9 +4,9 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runAutoNameHook } from "../src/auto-name-hook.js";
-import { createConsoleLock } from "../src/lock.js";
-import { createConsolePaths } from "../src/paths.js";
+import { runAutoNameHook } from "../../fleet-plugins/terminal/server/agent-api/auto-name-hook.js";
+import { createConsoleLock } from "../core/host/lock.js";
+import { createConsolePaths } from "../core/host/paths.js";
 
 const tempDirs: string[] = [];
 
@@ -80,7 +80,7 @@ describe("runAutoNameHook", () => {
     await expect(runAutoNameHook({ FLEET_CONSOLE_SESSION_ID: "session-x", FLEET_CONSOLE_DIR: dir }, { fetchImpl, input: JSON.stringify({ prompt: "Fix the login redirect bug" }) })).resolves.toBeUndefined();
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe("http://127.0.0.1:51331/terminal/sessions/session-x/auto-name");
+    expect(calls[0]?.url).toBe("http://127.0.0.1:51331/plugins/terminal/agent/sessions/session-x/auto-name");
     expect(calls[0]?.init?.method).toBe("POST");
     expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${lock?.token}`);
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ prompt: "Fix the login redirect bug" });

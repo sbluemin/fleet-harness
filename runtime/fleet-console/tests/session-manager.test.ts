@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createTerminalSessionManager } from "../src/terminal/session-manager.js";
-import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../src/terminal/types.js";
+import { createTerminalSessionManager } from "../../fleet-plugins/terminal/server/shared/session-manager.js";
+import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 
 interface MockPty extends TerminalPtyHandle {
   readonly writes: string[];
@@ -137,7 +137,10 @@ describe("terminal session manager", () => {
 
   it("stops a session that finishes launching while server shutdown is waiting", async () => {
     const launchGate = createDeferred<void>();
+    const exitGate = createDeferred<void>();
     const ptys: MockPty[] = [];
+    const exits: string[] = [];
+    let stoppedResolved = false;
     const manager = createTerminalSessionManager({
       launch: async (cwd, context) => {
         await launchGate.promise;
@@ -148,15 +151,27 @@ describe("terminal session manager", () => {
         ptys.push(pty);
         return pty;
       },
+      onSessionExit: async (sessionId) => {
+        exits.push(sessionId);
+        await exitGate.promise;
+      },
     });
 
     const created = manager.createSession({ sessionId: "session-a", cwd: "/a" });
-    const stopped = manager.stop();
+    const stopped = manager.stop().then(() => {
+      stoppedResolved = true;
+    });
     launchGate.resolve();
-    await Promise.all([created, stopped]);
+    await created;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(ptys).toHaveLength(1);
     expect(ptys[0]?.killed()).toBe(true);
+    expect(exits).toEqual(["session-a"]);
+    expect(stoppedResolved).toBe(false);
+    exitGate.resolve();
+    await stopped;
+    expect(stoppedResolved).toBe(true);
     expect(manager.writeToSession("session-a", "after-stop")).toBe(false);
   });
 
@@ -203,6 +218,47 @@ describe("terminal session manager", () => {
 
     expect(secondA.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["alpha"]);
     expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["beta"]);
+  });
+
+  it("responds to terminal device queries without altering output delivery", async () => {
+    const ptys = new Map<string, MockPty>();
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+    });
+    const socket = createMockSocket();
+
+    await manager.attach(socket, { sessionId: "session-a", cwd: "/a" });
+    socket.emitMessage(Buffer.from(JSON.stringify({ type: "resize", cols: 120, rows: 40 }), "utf8"), false);
+    ptys.get("session-a")?.emitData(`before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`);
+
+    expect(ptys.get("session-a")?.writes).toEqual(["\x1b[40;120R", "\x1b[0n", "\x1b[?1;2c", "\x1b[?1;2c", "\x1b[>0;0;0c"]);
+    expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([`before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`]);
+  });
+
+  it("responds to terminal device queries split across pty chunks", async () => {
+    const ptys = new Map<string, MockPty>();
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    ptys.get("session-a")?.emitData("\x1b");
+    ptys.get("session-a")?.emitData("[");
+    ptys.get("session-a")?.emitData("6n");
+    ptys.get("session-a")?.emitData("\x1b[");
+    ptys.get("session-a")?.emitData(">c");
+
+    expect(ptys.get("session-a")?.writes).toEqual(["\x1b[24;80R", "\x1b[>0;0;0c"]);
   });
 
   it("terminates a session, killing the pty and notifying exit exactly once", async () => {

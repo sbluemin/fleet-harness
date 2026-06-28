@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createConsoleDataPaths, createConsolePaths } from "../src/paths.js";
+import { createConsoleDataPaths, createConsolePaths } from "../core/host/paths.js";
 
 const TEST_UID = 42;
 

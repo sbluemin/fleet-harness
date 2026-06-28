@@ -34,7 +34,6 @@ import {
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
-import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
 import type { SessionOptions } from "./mission-control/options/types.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
@@ -117,14 +116,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     env: process.env,
     invocationCwd,
   });
-  // Composition root에서 실제 Fleet Wiki daemon helper를 쓰는 기본 컨트롤러를 고정한다.
-  const wikiController = createWikiProcessController({
-    cwd: invocationCwd,
-    onChange: () => {
-      ptyManager?.requestResize("programmatic");
-      scheduleRender();
-    },
-  });
   const release = readFleetCliRelease();
   const missionControl = createMissionControlController({
     ...missionControlProfileConfig,
@@ -158,7 +149,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     invocationCwd,
     release,
     sessionOptions: sessionOptionsRuntime,
-    wikiController,
   });
   checkForUpdate(release)
     .then((latestVersion) => {

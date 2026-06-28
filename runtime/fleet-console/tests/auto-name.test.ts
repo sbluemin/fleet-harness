@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveOperationLabel } from "../src/auto-name.js";
+import { deriveOperationLabel } from "../../fleet-plugins/terminal/server/agent-api/auto-name.js";
 
 describe("deriveOperationLabel", () => {
   it("uses the first meaningful line of the prompt", () => {
