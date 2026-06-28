@@ -7738,7 +7738,14 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xl);
   overflow: hidden;
-  background: linear-gradient(180deg, oklch(21% 0.045 248 / 94%), oklch(17% 0.04 250 / 96%));
+  /* Reading 오버레이는 우현 rail 카드와 동일한 carbon glass 표면을 쓴다(별도 블루
+     그라디언트는 콘솔의 carbon dark 톤과 어긋났음): surface-glass-strong + ink-deep
+     + 우상단 brass 코너 + 단일 blur 레이어. */
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
   /* codex-rise-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
      일반 codex-rise는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
@@ -7861,9 +7868,17 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 /* ─── Codex Rail v2 — 2-pane split shell (W1) ───────────────────────────────── */
 
+/* 마운트 호스트는 패널 바디(slot grid 1fr)의 높이를 채워야 내부 navigator/reader가
+   바운드되어 스크롤된다(베이스 규칙 부재 시 content-sized로 커져 스크롤 불가). */
+.codex-rail-host {
+  height: 100%;
+  min-height: 0;
+}
+
 .codex-rail-host.is-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 248px;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
@@ -7872,6 +7887,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   border-right: 1px solid var(--surface-rim);
 }
 
@@ -7914,13 +7930,26 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: var(--space-5) var(--space-6) var(--space-10);
 }
 
+/* split 좌측 문서는 읽기 measure 캡 없이 doc-pane 폭을 채운다(베이스 .markdown-body의
+   78ch clamp도 override). 패널 드래그로 넓히면 본문·제목이 progressive하게 늘어난다. */
 .codex-doc-scroll .markdown-body,
-.codex-doc-scroll .document-header {
-  max-inline-size: 46ch;
+.codex-doc-scroll .document-header,
+.codex-doc-scroll .related-list {
+  max-inline-size: none;
 }
 
+/* .document의 reading 거터(padding-inline:48px)는 좁은 split에서 본문 폭을 과하게
+   잠식하므로 0으로 — 거터는 doc-scroll(24px)이 제공. 오버레이(.codex-reading-sheet-read
+   .document)는 48px 거터를 그대로 유지한다. */
+.codex-doc-scroll .document {
+  padding-inline: 0;
+}
+
+/* split 좌측은 문서 본문이 전체 높이를 갖고 스크롤되도록, 인라인 ToC 슬롯은 숨긴다
+   (ToC 내비게이션은 Expand 오버레이의 200px ToC rail이 담당 — 중복 슬롯이 doc 높이를
+   잠식하던 문제 제거). */
 .codex-doc-toc-inline {
-  padding: var(--space-3) 0;
+  display: none;
 }
 
 .codex-nav-pane {

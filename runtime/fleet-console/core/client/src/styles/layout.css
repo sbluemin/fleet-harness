@@ -45,6 +45,7 @@
 .codex-host {
   min-width: 0;
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   /* 사이드 패널 폭(=컨테이너)에 따라 Codex 내부 레이아웃(nav/rail)을 접기 위한 컨테이너 컨텍스트.
