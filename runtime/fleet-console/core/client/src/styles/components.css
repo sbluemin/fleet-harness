@@ -3193,6 +3193,19 @@
   pointer-events: none;
 }
 
+/* 최대화: 패널이 캔버스(col2)를 가장자리까지 채운다.
+   자체 둥근 모서리(radius-lg)를 남기면 네 모서리에 심해 배경(--canvas-abyss, 명도 ~7%)이 드러나
+   검은 노치가 생기고 accent 외곽선이 끊긴다. 모서리를 펴서(0) 캔버스의 overflow:hidden + radius-xl
+   클립이 바깥 모서리를 대신 둥글게 처리하도록 한다 — 검은 갭 없이 accent가 가장자리를 두른다.
+   드래그/리사이즈가 차단된 상태이므로 타이틀바의 grab 어포던스 커서도 기본값으로 되돌린다. */
+.canvas-operation.is-maximized {
+  border-radius: 0;
+}
+
+.canvas-operation.is-maximized .canvas-operation-titlebar {
+  cursor: default;
+}
+
 /* 포커스 = 같은 외곽 채널에 brass — accent 지정 시 accent가 우선(brass 폴백), 미지정 시 brass로 포커스 표시. */
 .canvas-operation.is-active {
   border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));

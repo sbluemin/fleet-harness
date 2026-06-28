@@ -282,7 +282,9 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
       <div className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
         {children}
       </div>
-      {RESIZE_DIRECTIONS.map((direction) => (
+      {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
+          외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다. */}
+      {!maximized && RESIZE_DIRECTIONS.map((direction) => (
         <div
           key={direction}
           className={`canvas-operation-resize canvas-operation-resize--${direction}`}
