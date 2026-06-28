@@ -7740,7 +7740,9 @@ body[data-codex-side="true"] .command-card {
   overflow: hidden;
   background: linear-gradient(180deg, oklch(21% 0.045 248 / 94%), oklch(17% 0.04 250 / 96%));
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
-  animation: codex-rise 400ms var(--ease-spring) both;
+  /* codex-rise-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
+     일반 codex-rise는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
+  animation: codex-rise-centered 400ms var(--ease-spring) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
