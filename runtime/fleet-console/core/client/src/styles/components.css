@@ -2613,6 +2613,15 @@
   animation-play-state: paused;
 }
 
+/* 패널 최대화 시: 캔버스 자체의 둥근 모서리 클립을 펴서(0) 최대화 패널이 col2의 네 코너까지
+   꽉 채우도록 한다. 캔버스의 radius-xl + overflow:hidden 클립이 남아 있으면 패널이 24px 곡선으로
+   잘려 accent 외곽선이 코너에서 끊기고 그 안쪽으로 심해 배경(--canvas-abyss)이 드러난다.
+   overflow:hidden은 유지(사각 모서리에서 클리핑만) — 패널 자체 radius는 .canvas-operation.is-maximized
+   에서 이미 0으로 펴 두 사각 모서리가 일치하므로 누출 없이 accent가 코너를 감는다. */
+.operations-canvas.is-panel-maximized {
+  border-radius: 0;
+}
+
 .operations-canvas.is-panel-maximized .canvas-minimap,
 .operations-canvas.is-panel-maximized .canvas-minimap-fab {
   display: none;
