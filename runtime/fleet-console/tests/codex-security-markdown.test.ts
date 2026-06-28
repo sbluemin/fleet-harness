@@ -2,12 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { decodeMermaidSource, renderMarkdown } from "../client/src/codex/markdown/renderer";
+import { decodeMermaidSource, renderMarkdown } from "../core/client/src/codex/markdown/renderer";
 
 describe("security markdown", () => {
   it("renders canonical wiki links as internal SPA anchors", () => {
     const rendered = renderMarkdown("See [[wiki:alpha]].");
-    expect(rendered.html).toContain("href=\"/console/codex/entry/alpha\"");
+    expect(rendered.html).toContain("href=\"/entry/alpha\"");
     expect(rendered.html).toContain("data-entry-id=\"alpha\"");
     expect(rendered.html).not.toContain("[[wiki:alpha]]");
   });

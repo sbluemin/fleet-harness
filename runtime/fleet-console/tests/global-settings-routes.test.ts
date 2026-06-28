@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter } from "../src/global-settings-routes.js";
+import { createGlobalSettingsRouter } from "../core/host/global-settings-routes.js";
 
 interface WriteJsonCall {
   readonly status: number;
@@ -13,16 +13,23 @@ interface RouterHarnessOptions {
   readonly authorized?: boolean;
   readonly body?: unknown;
   readonly bodyNull?: boolean;
-  readonly data?: { readonly replaceSystemPrompt?: boolean; readonly enableMetaphor?: boolean };
+  readonly data?: {
+    readonly replaceSystemPrompt?: boolean;
+    readonly enableMetaphor?: boolean;
+    readonly consolePortMode?: "dynamic" | "static";
+    readonly consoleStaticPort?: number;
+  };
 }
 
 describe("global settings routes", () => {
-  it("GET /global-settings/state returns the General settings surface without internal keys", async () => {
+  it("GET /global-settings/state returns the Console settings surface without internal keys", async () => {
     const harness = createRouterHarness({ data: { replaceSystemPrompt: true, enableMetaphor: false } });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/global-settings/state" });
     expect(handled).toBe(true);
-    expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "dynamic", consoleStaticPort: null } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("version");
+    expect(harness.writes[0]?.body).not.toHaveProperty("replaceSystemPrompt");
+    expect(harness.writes[0]?.body).not.toHaveProperty("enableMetaphor");
   });
 
   it("GET /global-settings/state rejects non-GET methods with 405", async () => {
@@ -31,18 +38,23 @@ describe("global settings routes", () => {
     expect(harness.writes[0]?.status).toBe(405);
   });
 
-  it("PUT /global-settings updates and returns the new state", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { replaceSystemPrompt: true, enableMetaphor: true } });
+  it("PUT /global-settings updates and returns the new port-only state", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
     const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
     expect(handled).toBe(true);
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { replaceSystemPrompt: true, enableMetaphor: true, consolePortMode: "dynamic", consoleStaticPort: null } } });
-    expect(harness.currentData()).toMatchObject({ version: 1, replaceSystemPrompt: true, enableMetaphor: true });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080 } } });
+    expect(harness.currentData()).toMatchObject({ version: 1, consolePortMode: "static", consoleStaticPort: 8080 });
   });
 
-  it("PUT /global-settings applies only the provided field", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { enableMetaphor: true }, data: { replaceSystemPrompt: true } });
+  it("PUT /global-settings ignores removed prompt fields without mutating stored prompt settings", async () => {
+    const harness = createRouterHarness({
+      authorized: true,
+      body: { replaceSystemPrompt: false, enableMetaphor: true },
+      data: { replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 },
+    });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
-    expect(harness.writes[0]?.body).toEqual({ state: { replaceSystemPrompt: true, enableMetaphor: true, consolePortMode: "dynamic", consoleStaticPort: null } });
+    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080 } });
+    expect(harness.currentData()).toEqual({ version: 1, replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 });
   });
 
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
@@ -59,13 +71,6 @@ describe("global settings routes", () => {
     expect(harness.updateCalls).toBe(0);
   });
 
-  it("PUT /global-settings rejects non-boolean fields with 400", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { enableMetaphor: "yes" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
-    expect(harness.writes[0]?.status).toBe(400);
-    expect(harness.updateCalls).toBe(0);
-  });
-
   it("PUT /global-settings rejects a missing body with 400", async () => {
     const harness = createRouterHarness({ authorized: true, bodyNull: true });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
@@ -76,7 +81,7 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores a static console port", async () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { replaceSystemPrompt: false, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080 } } });
   });
 
   it("PUT /global-settings rejects an out-of-range static port with 400", async () => {
@@ -109,7 +114,13 @@ describe("global settings routes", () => {
 
 function createRouterHarness(options: RouterHarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
-  let data: { version: 1; replaceSystemPrompt?: boolean; enableMetaphor?: boolean } = { version: 1, ...options.data };
+  let data: {
+    version: 1;
+    replaceSystemPrompt?: boolean;
+    enableMetaphor?: boolean;
+    consolePortMode?: "dynamic" | "static";
+    consoleStaticPort?: number;
+  } = { version: 1, ...options.data };
   let updateCalls = 0;
   const router = createGlobalSettingsRouter({
     globalOptionsService: {

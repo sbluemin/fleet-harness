@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAgentCliDetector } from "../src/agent-cli-detect.js";
+import { createAgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 
 interface VersionCall {
   readonly bin: string;

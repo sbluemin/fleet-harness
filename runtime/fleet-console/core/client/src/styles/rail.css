@@ -1,0 +1,197 @@
+/* ── Right Rail chrome ───────────────────────────────────────────── */
+
+/* z-index 계층 — 우현 핸들 충돌 방지 SSoT */
+:root {
+  --z-rail: 10;
+  --z-codex-side: 20;
+}
+
+.right-rail {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  min-height: 0;
+  z-index: var(--z-rail);
+  /* Glass 부유 카드 — 144df6c 이전 독립 ALERTS 도크의 함교 계기판 질감을 계승한다:
+     우상단 brass 코너 조명 + glass 본체, 둥근 모서리, 부유 그림자, 단일 blur 레이어.
+     자식(panel-slot·icons)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다. */
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--surface-rim);
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  overflow: hidden;
+}
+
+/* ── 패널 슬롯 ─────────────────────────────────────────────────────
+   overflow:hidden + width 전환으로 spring 펼침/접힘을 구현한다.
+   min-width는 애니메이션 중 내부 레이아웃 흔들림을 방지한다.        */
+.right-rail-panel-slot {
+  position: relative;
+  width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  transition: width var(--duration-base) var(--ease-spring);
+}
+
+.right-rail.is-open .right-rail-panel-slot {
+  width: 312px;
+}
+
+.right-rail-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--surface-rim);
+  min-height: 46px;
+  min-width: 312px;
+}
+
+.right-rail-panel-title {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right-rail-close-btn {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: none;
+  border: none;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: color 140ms, background 140ms;
+}
+
+.right-rail-close-btn:hover {
+  color: var(--ink-pearl);
+  background: var(--surface-glass);
+}
+
+.right-rail-panel-body {
+  overflow: hidden;
+  min-height: 0;
+  min-width: 312px;
+}
+
+/* ── 아이콘 레일 ────────────────────────────────────────────────── */
+.right-rail-icons {
+  width: 48px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  list-style: none;
+  margin: 0;
+}
+
+/* 패널이 열렸을 때만 panel-slot과 아이콘 컬럼 사이 내부 구분선을 둔다.
+   닫힌 상태(48px 카드)에선 구분선이 카드 좌측 모서리에 붙어 어색하므로 숨긴다. */
+.right-rail.is-open .right-rail-icons {
+  border-left: 1px solid var(--surface-rim);
+}
+
+.right-rail-ico {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: none;
+  border: 1px solid transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  position: relative;
+  font-size: 14px;
+  transition: color 140ms, background 140ms, border-color 140ms;
+}
+
+.right-rail-ico:hover {
+  color: var(--ink-spectral);
+  background: var(--surface-glass);
+}
+
+.right-rail-ico.is-active {
+  color: var(--brass);
+  border-color: var(--surface-rim-strong);
+  background: var(--ink-deep);
+}
+
+/* 활성 아이콘 좌측 2px brass bar */
+.right-rail-ico.is-active::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--brass);
+}
+
+/* ── 레일 패널 리사이즈 핸들 ────────────────────────────────────── */
+.right-rail-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 140ms;
+  z-index: 1;
+}
+
+.right-rail-resize-handle:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.right-rail.is-dragging .right-rail-resize-handle {
+  background: color-mix(in oklch, var(--brass) 70%, transparent);
+}
+
+/* 드래그 중에는 패널 슬롯의 폭 transition을 끈다. 살려두면 width가 커서를 ease로 지연
+   추적해(실측 lag ~21px steady) 드래그를 멈춰야 잔여 거리를 완주한다("마우스를 멈춰야
+   따라잡음"). 열기/닫기 toggle의 spring(.is-open: width 0↔312)은 is-dragging이 아닐 때만
+   적용되므로 그대로 유지된다. */
+.right-rail.is-dragging .right-rail-panel-slot {
+  transition: none;
+}
+
+.right-rail.is-dragging {
+  user-select: none;
+}
+
+/* ── 빌트인/플러그인 패널 구분선 ─────────────────────────────────
+   아이콘 컬럼 내에서 빌트인 패널과 플러그인 패널을 시각적으로 분리한다. */
+.right-rail-divider {
+  width: 28px;
+  height: 1px;
+  background: var(--surface-rim-strong);
+  margin: 4px auto;
+  align-self: center;
+}
+
+/* ── prefers-reduced-motion 단락 ───────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .right-rail-panel-slot {
+    transition-duration: 0.01ms !important;
+  }
+}

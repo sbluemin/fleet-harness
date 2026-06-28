@@ -41,10 +41,6 @@ if (argv[0] === "hook") {
   }
 }
 
-if (argv[0] === "wiki") {
-  process.exit(await relayToPackageCli(resolveWikiCliSpecifier(), argv.slice(1)));
-}
-
 if (argv[0] === "console") {
   process.exit(await relayToPackageCli("@dotobokuri/fleet-console/cli", argv.slice(1)));
 }
@@ -134,6 +130,3 @@ async function relayToPackageCli(specifier: string, args: readonly string[]): Pr
   });
 }
 
-function resolveWikiCliSpecifier(): string {
-  return "@dotobokuri/fleet-console/cli-bin";
-}

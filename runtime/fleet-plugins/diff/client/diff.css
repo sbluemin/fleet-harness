@@ -1,0 +1,452 @@
+/* Diff rail panel styles */
+
+/* ── 루트 레이아웃 ── */
+.diff-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  transition: grid-template-columns var(--duration-base) var(--ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-root {
+    transition-duration: 0.01ms;
+  }
+}
+
+.diff-root.has-hunk {
+  grid-template-columns: minmax(130px, 1fr) 4px minmax(100px, auto);
+}
+
+/* 드래그 중에는 grid-template-columns transition을 끈다. 살려두면 split이 커서를 ease로
+   지연 추적해 멈춰야 따라잡는다(우측 Rail 폭 드래그와 동일 원인). */
+.diff-root.is-dragging {
+  transition: none;
+}
+
+.diff-tree-pane {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border-left: 1px solid var(--surface-rim);
+}
+
+.diff-hunk-pane {
+  display: grid;
+  grid-template-rows: 46px 1fr;
+  overflow: hidden;
+  border-right: 1px solid var(--surface-rim);
+}
+
+/* ── hunk↔tree 디바이더 ── */
+.diff-divider {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--surface-rim);
+  transition: background 140ms;
+  flex-shrink: 0;
+}
+
+.diff-divider:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.diff-divider:active {
+  background: color-mix(in oklch, var(--brass) 80%, transparent);
+}
+
+/* ── 플러그인 툴바 (List/Tree 토글) ── */
+.diff-plugin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
+}
+
+.diff-toolbar-label {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-rim);
+}
+
+.diff-view-toggle {
+  display: inline-flex;
+  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: 2px;
+  gap: 2px;
+}
+
+.diff-toggle-btn {
+  width: 24px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  border-radius: 6px;
+  transition: color 0.14s, background 0.14s;
+}
+
+.diff-toggle-btn:hover {
+  color: var(--ink-spectral);
+}
+
+.diff-toggle-btn.is-active {
+  color: var(--brass);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+
+/* ── 섹션 스크롤 컨테이너 ── */
+.diff-sections {
+  overflow-y: auto;
+}
+
+.diff-sections-loading {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+}
+
+.diff-sections-error {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--coral);
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── 아코디언 섹션 ── */
+.diff-section {
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.diff-section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.diff-section-head:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+.diff-section-chevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--ink-fog);
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-section-chevron {
+    transition-duration: 0.01ms;
+  }
+}
+
+.diff-section.is-collapsed .diff-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.diff-section-name {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-spectral);
+}
+
+.diff-count-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-fog);
+  background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.diff-section-rows {
+  display: block;
+}
+
+/* ── 빈 상태 ── */
+.diff-empty-row {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-rim);
+}
+
+/* ── 파일 행 (리스트뷰 + 트리 리프 공유) ── */
+.diff-file-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 0 8px;
+  width: 100%;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.diff-file-row:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+.diff-file-row.is-cur {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+
+.diff-status-glyph {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.diff-status-m { color: var(--warn); }
+.diff-status-a { color: var(--positive); }
+.diff-status-d { color: var(--coral); }
+.diff-status-r { color: var(--aurora); }
+.diff-status-u { color: var(--positive); }
+
+.diff-file-name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-spectral);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-file-row.is-cur .diff-file-name {
+  color: var(--brass);
+}
+
+.diff-file-dir {
+  color: var(--ink-rim);
+}
+
+.diff-nums {
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.diff-additions {
+  color: var(--positive);
+}
+
+.diff-deletions {
+  color: var(--coral);
+}
+
+/* ── 트리 폴더 행 ── */
+.diff-folder-row {
+  display: grid;
+  grid-template-columns: 12px 15px 1fr;
+  align-items: center;
+  gap: 0 6px;
+  width: 100%;
+  padding: 4px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.diff-folder-row:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+.diff-folder-chevron {
+  width: 11px;
+  height: 11px;
+  color: var(--ink-fog);
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-folder-chevron {
+    transition-duration: 0.01ms;
+  }
+}
+
+.diff-folder.is-collapsed .diff-folder-chevron {
+  transform: rotate(-90deg);
+}
+
+.diff-folder-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--brass-deep);
+}
+
+.diff-folder-name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-fog);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 기타 공통 ── */
+.diff-refresh-btn {
+  background: none;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ink-fog);
+  padding: 3px 8px;
+}
+
+.diff-refresh-btn:hover {
+  color: var(--ink-spectral);
+}
+
+.diff-truncated-badge {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  border-bottom: 1px solid var(--surface-rim);
+  font-family: var(--font-mono);
+}
+
+/* ── Hunk 뷰어 헤더 ── */
+.diff-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  min-height: 46px;
+  background: var(--surface-glass);
+}
+
+.diff-hunk-filename {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-spectral);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-hunk-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color 0.12s;
+}
+
+.diff-hunk-close:hover {
+  color: var(--ink-spectral);
+}
+
+/* ── Hunk 본문 ── */
+.diff-hunk-body {
+  overflow: hidden;
+  position: relative;
+}
+
+.diff-hunk-loading,
+.diff-hunk-error {
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-fog);
+}
+
+.diff-hunk-error {
+  color: var(--coral);
+}
+
+.diff-hunk-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.diff-hunk-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+/* ── Hunk 테이블 ── */
+.diff-hunk-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.diff-line-code {
+  padding: 0 12px;
+  white-space: pre;
+  color: var(--ink-spectral);
+  vertical-align: top;
+  width: 100%;
+}
+
+.diff-line-header .diff-line-code {
+  color: var(--ink-fog);
+}
+
+.diff-line-add {
+  background: color-mix(in oklch, var(--positive) 12%, transparent);
+}
+
+.diff-line-add .diff-line-code {
+  color: var(--positive);
+}
+
+.diff-line-del {
+  background: color-mix(in oklch, var(--coral) 12%, transparent);
+}
+
+.diff-line-del .diff-line-code {
+  color: var(--coral);
+}

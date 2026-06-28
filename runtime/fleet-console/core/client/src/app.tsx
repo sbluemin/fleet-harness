@@ -1,0 +1,132 @@
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+
+import { useMapFullscreen } from "./canvas/canvas-store.js";
+import { fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
+import { CommissioningOverlay } from "./components/commissioning-overlay.js";
+import { OperationSearch } from "./components/operation-search.js";
+import { Toast } from "./components/toast.js";
+import { Topbar } from "./components/topbar.js";
+import { WhatsNewModal } from "./components/whatsnew-modal.js";
+import { useConsoleState } from "./hooks/use-store.js";
+import { createHostCapabilities } from "./plugin-capabilities.js";
+import { usePluginRegistry } from "./plugin-registry.js";
+import { CarrierSettings } from "./pages/carrier-settings.js";
+import { GlobalSettings } from "./pages/global-settings.js";
+import { Operations } from "./pages/operations.js";
+import { applyObserverStatus, applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+
+// 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
+// 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
+const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
+
+export function App() {
+  const state = useConsoleState();
+  const location = useLocation();
+  const registry = usePluginRegistry();
+  const pathname = location.pathname;
+  const mapFullscreen = useMapFullscreen();
+  const mapFullscreenActive = mapFullscreen && pathname.startsWith("/operations");
+  const operationsViewVisible = pathname.startsWith("/operations");
+
+  useEffect(() => {
+    const capabilities = createHostCapabilities(() => {
+      void fetchOperations().then(hydrateOperations).catch(() => {});
+    });
+    const cleanups = registry.plugins.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [registry.plugins]);
+
+  useEffect(() => {
+    setOperationsViewActive(operationsViewVisible);
+  }, [operationsViewVisible]);
+
+  useEffect(() => {
+    const topbar = document.querySelector(".topbar");
+    if (!topbar) return;
+    const sync = () => {
+      document.documentElement.style.setProperty(
+        "--console-topbar-offset",
+        `${Math.round(topbar.getBoundingClientRect().bottom)}px`,
+      );
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(topbar);
+    window.addEventListener("resize", sync);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    void fetchTheaterBootstrap(abort.signal)
+      .then((bootstrap) => {
+        hydrateTheaterBootstrap(bootstrap);
+        resolveOnboardingOnBootstrap();
+      })
+      .catch((error) => {
+        if (abort.signal.aborted) return;
+        setState({ theaterError: error instanceof Error ? error.message : String(error) });
+        resolveOnboardingOnBootstrap();
+      });
+    void fetchOperations(null, abort.signal).then(hydrateOperations).catch(() => {});
+    beginReleaseNotesFetch();
+    void fetchReleaseNotes({ signal: abort.signal })
+      .then(applyReleaseNotes)
+      .catch((error) => {
+        if (abort.signal.aborted) return;
+        failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
+      });
+    const refreshUpdateStatus = () => {
+      void fetchObserverStatus(state.activeTheaterId, abort.signal)
+        .then(applyObserverStatus)
+        .catch(() => {});
+    };
+    refreshUpdateStatus();
+    // cold-start 보정: 서버 백그라운드 refresh 완료를 기다렸다가 한 번 더 읽어 배지를 채운다.
+    const recheckTimer = window.setTimeout(refreshUpdateStatus, UPDATE_STATUS_RECHECK_DELAY_MS);
+    return () => {
+      window.clearTimeout(recheckTimer);
+      abort.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleOperationSearch();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
+
+  return (
+    <div className={`console-shell ${mapFullscreenActive ? "is-map-fullscreen" : ""}`}>
+      <Topbar state={state} />
+      <Routes>
+        <Route path="/" element={<Navigate to="/operations" replace />} />
+        <Route path="/operations" element={<Operations state={state} />} />
+        <Route path="/carrier-settings" element={<CarrierSettings />} />
+        <Route path="/settings" element={<GlobalSettings />} />
+        <Route path="*" element={<Navigate to="/operations" replace />} />
+      </Routes>
+      <OperationSearch state={state} />
+      <WhatsNewModal state={state} />
+      <CommissioningOverlay state={state} />
+      <Toast
+        open={state.connectionError !== null}
+        tone="error"
+        title="Console link interrupted"
+        message={state.connectionError ?? undefined}
+      />
+    </div>
+  );
+}

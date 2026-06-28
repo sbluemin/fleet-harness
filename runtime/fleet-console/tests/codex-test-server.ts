@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { createConsoleServer } from "../src/server.js";
+import { createConsoleServer } from "../core/host/server.js";
 
 interface StartCodexTestServerOptions {
   readonly cwd: string;
@@ -12,6 +12,7 @@ interface StartCodexTestServerOptions {
 export interface CodexTestServer {
   address(): { port: number };
   close(callback?: () => void): void;
+  registerWorkspace(cwd: string): Promise<string>;
 }
 
 export async function startCodexTestServer(options: StartCodexTestServerOptions): Promise<CodexTestServer> {
@@ -33,5 +34,6 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
     close: (callback) => {
       void server.stop().then(() => callback?.());
     },
+    registerWorkspace: (cwd) => server.registerCodexWorkspace(cwd),
   };
 }

@@ -1,0 +1,29 @@
+/* W1: .app-shell 그리드·container-query·media-query 전체 폐기 → 단일 컬럼 Navigator */
+
+.codex-navigator {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.codex-navigator-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 첫 진입 rise 모션 — prefers-reduced-motion 단락 유지 */
+.codex-navigator > * {
+  animation: codex-rise 720ms var(--ease-spring) both;
+}
+
+.is-revealed .codex-navigator > * {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-navigator > * {
+    animation-duration: 0.01ms;
+  }
+}

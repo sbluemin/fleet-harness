@@ -1,4 +1,17 @@
 {
+  "architecture-console-panel-plugin-platform": {
+    "path": "wiki/architecture-console-panel-plugin-platform.md",
+    "title": "Console 패널 플러그인 플랫폼 확정 아키텍처",
+    "tags": [
+      "architecture",
+      "fleet-console",
+      "plugin-platform",
+      "operations",
+      "panel-tree",
+      "decision-history"
+    ],
+    "updated": "2026-06-21T11:36:23.857Z"
+  },
   "decision-fleet-cli-mouse-input": {
     "path": "wiki/decision-fleet-cli-mouse-input.md",
     "title": "fleet-cli 마우스 입력 아키텍처 결정 히스토리",

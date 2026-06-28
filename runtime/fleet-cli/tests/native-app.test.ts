@@ -79,7 +79,6 @@ afterEach(() => {
   vi.doUnmock("../src/runtime/runtime.js");
   vi.doUnmock("../src/mission-control/controller.js");
   vi.doUnmock("../src/mission-control/options/runtime.js");
-  vi.doUnmock("../src/mission-control/menu/wiki-panel.js");
   vi.doUnmock("../src/mission-control/loaded-counts.js");
   vi.doUnmock("../src/tui/terminal-size.js");
   vi.doUnmock("../src/release.js");
@@ -203,9 +202,6 @@ describe("native terminal app", () => {
           },
         }),
       }),
-    }));
-    vi.doMock("../src/mission-control/menu/wiki-panel.js", () => ({
-      createWikiProcessController: () => ({}),
     }));
     vi.doMock("../src/mission-control/loaded-counts.js", () => ({
       discoverMissionControlCounts: () => ({}),
@@ -377,9 +373,6 @@ describe("native terminal app", () => {
           },
         }),
       }),
-    }));
-    vi.doMock("../src/mission-control/menu/wiki-panel.js", () => ({
-      createWikiProcessController: () => ({}),
     }));
     vi.doMock("../src/mission-control/loaded-counts.js", () => ({
       discoverMissionControlCounts: () => ({}),

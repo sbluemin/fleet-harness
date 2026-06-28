@@ -65,30 +65,30 @@ describe("queue POST actions", () => {
   });
 
   it("rejects approve with missing Origin header → 403", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: "origin_mismatch" });
   });
 
   it("rejects approve with wrong Origin header → 403", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: "http://evil.example.com" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: "origin_mismatch" });
   });
 
   it("approves a valid pending patch → 200 and moves to archive", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(200);
     const data = await response.json() as { ok: boolean; meta: { status: string } };
@@ -103,10 +103,10 @@ describe("queue POST actions", () => {
     const overwriteId = "2026-05-05T08-00-00-000Z-cafebabe";
     const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
     await writePatch(queueDir, overwriteId, "test-entry", "이미 존재하는 entry overwrite 시도", "pending", "create_wiki");
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(overwriteId)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(overwriteId)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ error: "create_target_exists" });
@@ -118,40 +118,40 @@ describe("queue POST actions", () => {
     const nonPendingId = "2026-05-04T11-00-00-000Z-deadbeef";
     const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
     await writePatch(queueDir, nonPendingId, "test-entry", "비활성 패치", "accepted", "update_wiki");
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(nonPendingId)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(nonPendingId)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ error: "patch_not_pending" });
   });
 
   it("rejects reject request with missing reason → 400", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "reject" }),
     });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ error: "reason_required" });
   });
 
   it("rejects reject request with empty reason after trim → 400", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ reason: "   " }),
+      body: JSON.stringify({ action: "reject", reason: "   " }),
     });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ error: "reason_required" });
   });
 
   it("rejects a valid pending patch with reason → 200 and moves to archive", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ reason: "테스트 거절 사유" }),
+      body: JSON.stringify({ action: "reject", reason: "테스트 거절 사유" }),
     });
     expect(response.status).toBe(200);
     const data = await response.json() as { ok: boolean; meta: { status: string } };
@@ -162,38 +162,38 @@ describe("queue POST actions", () => {
   });
 
   it("rejects invalid patch ID format → 400", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent("../etc/passwd")}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent("../etc/passwd")}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ error: "invalid_patch_id" });
   });
 
   it("rejects POST without content-type → 415", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(415);
     await expect(response.json()).resolves.toMatchObject({ error: "unsupported_media_type" });
   });
 
   it("rejects POST with wrong content-type → 415", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "text/plain", origin: baseUrl },
-      body: "{}",
+      body: '{"action":"approve"}',
     });
     expect(response.status).toBe(415);
     await expect(response.json()).resolves.toMatchObject({ error: "unsupported_media_type" });
   });
 
   it("rejects POST with oversized body → 413", async () => {
-    const hugeBody = JSON.stringify({ reason: "a".repeat(1500) });
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+    const hugeBody = JSON.stringify({ action: "reject", reason: "a".repeat(1500) });
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
       body: hugeBody,
@@ -204,10 +204,10 @@ describe("queue POST actions", () => {
 
   it("concurrent approve and approve — exactly one succeeds, one gets 409 patch_busy", async () => {
     // 같은 patchId에 대해 두 요청을 동시에 발사
-    const makeRequest = () => fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+    const makeRequest = () => fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action: "approve" }),
     });
     const [r1, r2] = await Promise.all([makeRequest(), makeRequest()]);
     const statuses = [r1.status, r2.status].sort();
@@ -219,8 +219,8 @@ describe("queue POST actions", () => {
     await expect(access(archivePath)).resolves.not.toThrow();
   });
 
-  it("includes patch set membership in queue detail when metadata exists", async () => {
-    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}`);
+  it("includes patch set membership in drydock detail when metadata exists", async () => {
+    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}`);
     expect(response.status).toBe(200);
     const data = await response.json() as { patchSet: { id: string; members: Array<{ id: string }> } | null };
     expect(data.patchSet?.id).toBe("set-alpha");

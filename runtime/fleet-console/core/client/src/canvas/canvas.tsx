@@ -1,0 +1,438 @@
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
+import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+
+import { fetchOperations, renameOperation as renameOperationRequest } from "../api.js";
+import { hydrateOperations, setActiveOperation } from "../store.js";
+import { createHostCapabilities } from "../plugin-capabilities.js";
+import { usePluginRegistry } from "../plugin-registry.js";
+import type { ConsoleState, OperationNode } from "../types.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { CanvasContextMenu } from "./canvas-context-menu.js";
+import { CanvasMinimap } from "./canvas-minimap.js";
+import { CanvasGrid } from "./canvas-grid.js";
+import { OperationFrame } from "./operation-frame.js";
+import { OperationEdges } from "./operation-edges-layer.js";
+import { computeOperationEdges, type EdgeOperationInput } from "./operation-edges.js";
+import { RubberBand } from "./rubber-band.js";
+import { useCanvasInteraction } from "./use-canvas-interaction.js";
+import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
+
+interface OperationsCanvasProps {
+  readonly state: ConsoleState;
+  readonly catalog: readonly OperationCatalogPlugin[];
+  readonly canLaunch: boolean;
+  readonly mapFullscreen: boolean;
+  readonly radarEnabled: boolean;
+  readonly perimeterEnabled: boolean;
+  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => void;
+  readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
+  readonly onResetView: () => void;
+  readonly onMaximizeMap: () => void;
+  readonly onToggleRadar: () => void;
+  readonly onTogglePerimeter: () => void;
+  readonly onClose: (operationId: string) => void;
+  readonly onFocus: (operationId: string) => void;
+  readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
+}
+
+interface ContextMenuRequest {
+  readonly anchor: CanvasPoint;
+  readonly canvasPoint: CanvasPoint;
+}
+
+interface PluginOperationRendererProps {
+  readonly active: boolean;
+  readonly capabilities: ReturnType<typeof createHostCapabilities>;
+  readonly descriptor: OperationKindDescriptor;
+  readonly geometry: OperationGeometry;
+  readonly operation: OperationNode;
+  readonly theme: ConsoleTheme;
+  readonly viewportZoom: number;
+  readonly onActivate: () => void;
+  readonly onClose: () => void;
+  readonly onGeometryChange: (geometry: OperationGeometry) => void;
+}
+
+const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
+const DEFAULT_SHELL_WIDTH = 560;
+const DEFAULT_SHELL_HEIGHT = 360;
+
+export function OperationsCanvas({
+  state,
+  catalog,
+  canLaunch,
+  mapFullscreen,
+  radarEnabled,
+  perimeterEnabled,
+  renderKindIcon,
+  onLaunchKind,
+  onLaunchAtGeometry,
+  onResetView,
+  onMaximizeMap,
+  onToggleRadar,
+  onTogglePerimeter,
+  onClose,
+  onFocus,
+  onSetAccent,
+}: OperationsCanvasProps) {
+  const canvasRef = useRef<HTMLElement | null>(null);
+  const canvas = useCanvasState();
+  const maximizedOperationId = useMaximizedOperationId();
+  const minimized = useMinimized();
+  const activePluginOperationId = state.activeOperationId;
+  const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
+  const registry = usePluginRegistry();
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const disabled = !state.activeTheaterId || state.addingTheater;
+
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const update = () => setCanvasSize({ width: element.clientWidth, height: element.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const interaction = useCanvasInteraction({
+    viewport: canvas.viewport,
+    disabled,
+    onViewportChange: setViewport,
+    onZoom: animateViewportTo,
+    onCreate: (rect) => {
+      setContextMenu(null);
+      if (state.activeTheaterId && canLaunch) {
+        const target = resolveDefaultLaunchTarget(catalog);
+        if (!target) return;
+        const geometry = { ...rectToGeometry(rect), zIndex: claimTopZIndex() };
+        onLaunchAtGeometry(target.pluginId, target.kind, geometry);
+      }
+    },
+    consumePointerDown: contextMenu !== null,
+    onConsumePointerDown: () => { setContextMenu(null); },
+    onClick: clearTerminalFocus,
+  });
+
+  const handleContextMenuLaunchKind = (pluginId: string, kind: OperationLaunchKind) => {
+    const point = contextMenu?.canvasPoint;
+    setContextMenu(null);
+    if (!point) return;
+    onLaunchKind(pluginId, kind, point);
+  };
+
+  const handleContextMenuResetView = () => {
+    setContextMenu(null);
+    onResetView();
+  };
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    if (event.target instanceof Element && event.target.closest("[data-canvas-blocker], [data-canvas-operation]")) return;
+    event.preventDefault();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const anchor: CanvasPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
+  };
+
+  const minimizedSet = new Set(minimized);
+  useEffect(() => {
+    if (state.activeOperationId && minimizedSet.has(state.activeOperationId)) setActiveOperation(null);
+  }, [minimized, state.activeOperationId]);
+
+  const visibleOperations = Object.fromEntries(
+    Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
+  );
+  const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId);
+  const pluginOperations = theaterOperations;
+  const hasContent = theaterOperations.length > 0;
+  const operationKindRegistry = registry.operationKinds;
+  const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
+  const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
+  const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
+
+  const visibleOperationIds = new Set(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id));
+  const edgeInputs: EdgeOperationInput[] = theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => ({
+    id: operation.id,
+    parentId: operation.parentId,
+    geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
+  }));
+  const operationEdges = computeOperationEdges(edgeInputs, visibleOperationIds);
+
+  return (
+    <main
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${perimeterEnabled ? "" : "is-perimeter-anim-off"}`}
+      onPointerDown={interaction.onPointerDown}
+      onPointerMove={interaction.onPointerMove}
+      onPointerUp={interaction.onPointerUp}
+      onPointerCancel={interaction.onPointerCancel}
+      onWheel={interaction.onWheel}
+      onContextMenu={handleContextMenu}
+      ref={canvasRef}
+    >
+      <CanvasGrid viewport={canvas.viewport} backgroundAnimationEnabled={radarEnabled} />
+      <div
+        className="operations-canvas-world"
+        style={{
+          transform: `translate(${canvas.viewport.x}px, ${canvas.viewport.y}px) scale(${canvas.viewport.zoom})`,
+        }}
+      >
+        <OperationEdges edges={operationEdges} zoom={canvas.viewport.zoom} />
+        {pluginOperations.map((operation) => {
+          const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
+          const operationMaximized = panelMaximized === operation.id;
+          const frameGeometry = operationMaximized ? maximizedGeometryFor(canvas.viewport, canvasSize, topPanelZIndex) : baseGeometry;
+          return renderPluginOperation(operation, {
+            active: activePluginOperationId === operation.id,
+            geometry: frameGeometry,
+            operationKindRegistry,
+            status: state.operationStatus[operation.id],
+            theme: state.activeTheme,
+            viewportZoom: canvas.viewport.zoom,
+            minimized: minimizedSet.has(operation.id),
+            maximized: operationMaximized,
+            accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
+            onActivate: () => {
+              setActiveOperation(operation.id);
+              if (!operationMaximized) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+            },
+            onClose: () => {
+              if (state.activeOperationId === operation.id) setActiveOperation(null);
+              if (panelMaximized === operation.id) clearMaximizedOperationId();
+              onClose(operation.id);
+            },
+            onMinimize: () => {
+              if (state.activeOperationId === operation.id) setActiveOperation(null);
+              minimizeOperation(operation.id);
+            },
+            onMaximize: () => {
+              if (operationMaximized) {
+                clearMaximizedOperationId();
+              } else {
+                setActiveOperation(operation.id);
+                setMaximizedOperationId(operation.id);
+              }
+            },
+            onRename: (title) => {
+              void renamePluginOperation(operation.id, title);
+            },
+            onSetAccent: (accentKey) => {
+              onSetAccent(operation.id, accentKey);
+            },
+            onGeometryChange: (geometry) => {
+              if (!operationMaximized) setOperationGeometry(operation.id, geometry);
+            },
+            onGeometryCommit: (geometry) => {
+              if (!operationMaximized) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
+            },
+          });
+        })}
+      </div>
+      {!hasContent ? (
+        <div className="operations-canvas-empty" data-canvas-blocker>
+          <span className="operations-canvas-empty-mark" aria-hidden="true" />
+          <p>{state.activeTheaterId ? EMPTY_GUIDE : "Add a Theater from the top bar to start operations."}</p>
+        </div>
+      ) : null}
+      {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={canvas.viewport} /> : null}
+      {contextMenu ? (
+        <CanvasContextMenu
+          key={`${contextMenu.anchor.x}:${contextMenu.anchor.y}`}
+          anchor={contextMenu.anchor}
+          viewportBounds={viewportBoundsFor(canvasRef.current)}
+          placement="cursor"
+          catalog={catalog}
+          canLaunch={canLaunch}
+          mapFullscreen={mapFullscreen}
+          radarEnabled={radarEnabled}
+          perimeterEnabled={perimeterEnabled}
+          renderKindIcon={renderKindIcon}
+          onLaunchKind={handleContextMenuLaunchKind}
+          onResetView={handleContextMenuResetView}
+          onMaximizeMap={onMaximizeMap}
+          onToggleRadar={onToggleRadar}
+          onTogglePerimeter={onTogglePerimeter}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
+      <CanvasMinimap
+        operations={visibleOperations}
+        pluginOperations={Object.fromEntries(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => [operation.id, {
+          theaterId: operation.theaterId,
+          geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
+        }]))}
+        viewport={canvas.viewport}
+        canvasSize={canvasSize}
+        onJump={(center) => setViewport({
+          x: canvasSize.width / 2 - center.x * canvas.viewport.zoom,
+          y: canvasSize.height / 2 - center.y * canvas.viewport.zoom,
+          zoom: canvas.viewport.zoom,
+        })}
+      />
+    </main>
+  );
+}
+
+function viewportBoundsFor(element: HTMLElement | null): { readonly width: number; readonly height: number } | undefined {
+  if (!element) return undefined;
+  const rect = element.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
+}
+
+function clearTerminalFocus(): void {
+  if (typeof document !== "undefined") {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  }
+  setActiveOperation(null);
+}
+
+function rectToGeometry(rect: CanvasRect): OperationGeometry {
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, zIndex: 0 };
+}
+
+function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
+  return operation.geometry ?? { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
+}
+
+function maximizedGeometryFor(viewport: { readonly x: number; readonly y: number; readonly zoom: number }, canvasSize: { readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {
+  return {
+    x: -viewport.x / viewport.zoom,
+    y: -viewport.y / viewport.zoom,
+    width: Math.max(320, canvasSize.width) / viewport.zoom,
+    height: Math.max(240, canvasSize.height) / viewport.zoom,
+    zIndex,
+  };
+}
+
+function maxOperationZIndex(operations: Record<string, OperationGeometry>): number {
+  return Object.values(operations).reduce((max, geometry) => Math.max(max, geometry.zIndex), 0);
+}
+
+function resolveDefaultLaunchTarget(catalog: readonly OperationCatalogPlugin[]): { readonly pluginId: string; readonly kind: OperationLaunchKind } | null {
+  const availableKinds = catalog.flatMap((plugin) =>
+    plugin.kinds.filter((kind) => kind.disabled !== true).map((kind) => ({ pluginId: plugin.id, kind })),
+  );
+  return availableKinds.find(({ kind }) => kind.type === "shell") ?? availableKinds[0] ?? null;
+}
+
+// 패널 헤더 이름 변경은 캔버스 내부에서 즉시 처리한다.
+function operationAccentFromNode(operation: OperationNode): string | null {
+  return typeof operation.accent === "string" ? operation.accent : null;
+}
+
+function renderPluginOperation(operation: OperationNode, options: {
+  readonly active: boolean;
+  readonly geometry: OperationGeometry;
+  readonly operationKindRegistry: readonly OperationKindDescriptor[];
+  readonly status?: OperationActivity;
+  readonly theme: ConsoleTheme;
+  readonly viewportZoom: number;
+  readonly minimized: boolean;
+  readonly maximized: boolean;
+  readonly accentKey: string | null;
+  readonly onActivate: () => void;
+  readonly onClose: () => void;
+  readonly onMinimize: () => void;
+  readonly onMaximize: () => void;
+  readonly onRename: (title: string) => void;
+  readonly onSetAccent: (accentKey: string | null) => void;
+  readonly onGeometryChange: (geometry: OperationGeometry) => void;
+  readonly onGeometryCommit: (geometry: OperationGeometry) => void;
+}) {
+  const descriptor = options.operationKindRegistry.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+  const geometry = options.geometry;
+  if (!descriptor?.render) return null;
+  const capabilities = createHostCapabilities(() => {
+    void fetchOperations(null).then(hydrateOperations).catch(() => {});
+  });
+  return (
+    <OperationFrame
+      key={operation.id}
+      operation={operation}
+      active={options.active}
+      geometry={geometry}
+      zoom={options.viewportZoom}
+      subtitle={descriptor.subtitle?.(operation)}
+      status={options.status}
+      minimized={options.minimized}
+      maximized={options.maximized}
+      accentKey={options.accentKey}
+      onActivate={options.onActivate}
+      onClose={options.onClose}
+      onMinimize={options.onMinimize}
+      onMaximize={options.onMaximize}
+      onRename={options.onRename}
+      onSetAccent={options.onSetAccent}
+      onGeometryChange={options.onGeometryChange}
+      onGeometryCommit={options.onGeometryCommit}
+    >
+      <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
+        <PluginOperationRenderer
+          active={options.active}
+          capabilities={capabilities}
+          descriptor={descriptor}
+          geometry={geometry}
+          operation={operation}
+          theme={options.theme}
+          viewportZoom={options.viewportZoom}
+          onActivate={options.onActivate}
+          onClose={options.onClose}
+          onGeometryChange={options.onGeometryChange}
+        />
+      </PluginErrorBoundary>
+    </OperationFrame>
+  );
+}
+
+function PluginOperationRenderer({
+  active,
+  capabilities,
+  descriptor,
+  geometry,
+  operation,
+  theme,
+  viewportZoom,
+  onActivate,
+  onClose,
+  onGeometryChange,
+}: PluginOperationRendererProps) {
+  if (!descriptor.render) return null;
+  return descriptor.render({
+    operationId: operation.id,
+    theaterId: operation.theaterId,
+    pluginId: operation.pluginId,
+    type: operation.type,
+    operation,
+    geometry,
+    active,
+    zoom: viewportZoom,
+    theme,
+    api: capabilities.api,
+    lifecycle: capabilities.lifecycle,
+    terminal: capabilities.terminal,
+    notifications: capabilities.notifications,
+    operations: capabilities.operations,
+    preferences: capabilities.preferences,
+    status: capabilities.status,
+    onActivate,
+    onClose,
+    onGeometryChange,
+  });
+}
+
+async function updatePluginOperationGeometry(operationId: string, geometry: OperationGeometry): Promise<void> {
+  await fetch(`/operations/${encodeURIComponent(operationId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ geometry }),
+  });
+}
+
+async function renamePluginOperation(operationId: string, title: string): Promise<void> {
+  await renameOperationRequest(operationId, title);
+  await fetchOperations(null).then(hydrateOperations);
+}
