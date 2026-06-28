@@ -47,6 +47,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleSelectFile = useCallback((entry: DiffFileEntry | null) => {
     setSelectedFile(entry);
@@ -65,6 +66,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     const containerWidth = container.getBoundingClientRect().width;
     const startX = e.clientX;
     const startRatio = splitRatioRef.current;
+    setIsDragging(true);
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
@@ -81,6 +83,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      setIsDragging(false);
       try { localStorage.setItem(PREFS_SPLIT_RATIO, String(splitRatioRef.current)); } catch { /* ignore */ }
     };
 
@@ -91,7 +94,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   return (
     <div
       ref={rootRef}
-      className={`diff-root${selectedFile ? " has-hunk" : ""}`}
+      className={`diff-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`}
       style={selectedFile ? {
         gridTemplateColumns: `minmax(${MIN_HUNK_PX}px, ${splitRatio}fr) 4px minmax(${MIN_TREE_PX}px, ${1 - splitRatio}fr)`,
       } : undefined}

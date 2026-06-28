@@ -66,6 +66,13 @@
   grid-template-columns: minmax(200px, 1fr) 4px minmax(160px, auto);
 }
 
+/* 드래그 중에는 grid-template-columns transition을 끈다. 살려두면 split이 커서를 ease로
+   지연 추적해 멈춰야 따라잡는다(우측 Rail 폭 드래그와 동일 원인). 열림 spring(has-viewer
+   toggle)은 is-dragging이 아닐 때만 적용되어 유지된다. */
+.fexp-root.is-dragging {
+  transition: none;
+}
+
 .fexp-tree-pane {
   display: grid;
   grid-template-rows: 1fr;

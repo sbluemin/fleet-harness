@@ -59,6 +59,7 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
@@ -117,6 +118,7 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
     const containerWidth = container.getBoundingClientRect().width;
     const startX = e.clientX;
     const startRatio = splitRatioRef.current;
+    setIsDragging(true);
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
@@ -131,6 +133,7 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      setIsDragging(false);
       try { localStorage.setItem(PREFS_SPLIT_RATIO, String(splitRatioRef.current)); } catch { /* ignore */ }
     };
 
@@ -143,7 +146,7 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
   return (
     <div
       ref={rootRef}
-      className={`fexp-root${hasViewer ? " has-viewer" : ""}`}
+      className={`fexp-root${hasViewer ? " has-viewer" : ""}${isDragging ? " is-dragging" : ""}`}
       style={hasViewer ? {
         gridTemplateColumns: `minmax(${MIN_VIEWER_PX}px, ${splitRatio}fr) 4px minmax(${MIN_TREE_PX}px, ${1 - splitRatio}fr)`,
       } : undefined}
