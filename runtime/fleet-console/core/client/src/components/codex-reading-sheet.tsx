@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
-import { mountReaderInto, teardownReader } from "../codex-host.js";
+import { mountReaderInto } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { closeCodexReader, openCodexReader } from "../store.js";
+import { collapseCodexReader, openCodexReader } from "../store.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -13,13 +13,16 @@ const FOCUSABLE =
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CodexReadingSheet() {
-  const { codexReader: reader, activeTheaterId: theaterId } = useConsoleState();
+  const {
+    codexReader: reader,
+    codexReaderExpanded: expanded,
+    activeTheaterId: theaterId,
+  } = useConsoleState();
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
 
-  // 안정적인 effect key: kind + 진입 식별자
   const readerKey = reader
     ? `${reader.kind}:${
         reader.kind === "entry"
@@ -30,21 +33,13 @@ export function CodexReadingSheet() {
       }`
     : null;
 
-  // 시트는 operations.tsx에 상시 마운트되므로 reader 유무로 열기/닫기를 추적한다.
-  // (`[]` deps면 cleanup이 닫힘 시점에 발화하지 않아 inert 미해제·focus 미복귀)
-  const isOpen = reader != null;
+  // W2: expand 전용 — reader != null && expanded의 경우에만 시트 표시
+  const isOpen = reader !== null && expanded;
 
-  // 시트 열기/닫기 effect: reader가 열릴 때만 trigger 저장·inert·keydown, 닫힐 때 복원
+  // 시트 열기/닫기 effect: inert·keydown(Esc·Tab)·focus 복귀
   useEffect(() => {
     if (!isOpen) return;
-    // 복귀 대상은 노드 참조가 아니라 셀렉터로 잡는다 — Vanilla Navigator가 entry 클릭 시
-    // 리스트를 재렌더(navList.innerHTML)해 trigger 노드를 교체(detach)하므로
-    // activeElement 참조는 BODY로 새기 때문이다.
     const opener = reader;
-    const restoreSelector =
-      opener?.kind === "entry"
-        ? `.codex-nav-entry[data-entry-id="${opener.entryId}"]`
-        : null;
     document.body.setAttribute("data-codex-reading", "true");
 
     const canvas = document.querySelector<HTMLElement>(".operations-canvas");
@@ -56,16 +51,11 @@ export function CodexReadingSheet() {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        closeCodexReader();
+        collapseCodexReader();
         return;
       }
       if (e.key === "Tab") {
         trapTab(sheetRef.current, e);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
-        e.preventDefault();
-        sheetRef.current?.classList.toggle("is-wide");
       }
     };
 
@@ -76,32 +66,36 @@ export function CodexReadingSheet() {
       document.body.removeAttribute("data-codex-reading");
       canvas?.removeAttribute("inert");
       sidebar?.removeAttribute("inert");
+      // focus 복귀: Expand 버튼 우선 → is-current entry → 검색 폴백
+      const entryId = opener?.kind === "entry" ? opener.entryId : null;
       const restore =
-        (restoreSelector && document.querySelector<HTMLElement>(restoreSelector)) ||
-        document.querySelector<HTMLElement>(
-          ".codex-navigator .codex-nav-search-input",
-        );
+        document.querySelector<HTMLElement>('[data-codex-expand="true"]') ??
+        (entryId
+          ? document.querySelector<HTMLElement>(
+              `.codex-nav-entry.is-current[data-entry-id="${entryId}"]`,
+            )
+          : null) ??
+        document.querySelector<HTMLElement>(".codex-navigator .codex-nav-search-input");
       restore?.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- opener는 열림 시점 1회 캡처
   }, [isOpen]);
 
-  // 콘텐츠 교체 effect: readerKey 변화마다 reader 마운트/교체
+  // 콘텐츠 effect: reader 호스트 노드를 시트 슬롯으로 relocate
   useEffect(() => {
-    if (!reader || !readRef.current || !tocRef.current) return;
+    if (!isOpen || !readRef.current || !tocRef.current || !reader) return;
 
     const kind = reader.kind;
     const subId =
       kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
 
-    mountReaderInto(readRef.current, {
+    mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
       theaterId,
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
-      onClose: () => closeCodexReader(),
-      tocContainer: tocRef.current!,
+      onClose: () => collapseCodexReader(),
     });
 
     requestAnimationFrame(() => {
@@ -109,20 +103,15 @@ export function CodexReadingSheet() {
         ?.querySelector<HTMLElement>("[data-sheet-initial-focus]")
         ?.focus();
     });
+  }, [isOpen, readerKey]);
 
-    return () => {
-      teardownReader();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readerKey]);
-
-  if (!reader) return null;
+  if (!isOpen) return null;
 
   return createPortal(
     <>
       <div
         className="codex-reading-scrim"
-        onClick={closeCodexReader}
+        onClick={collapseCodexReader}
         aria-hidden="true"
       />
       <div
@@ -134,13 +123,12 @@ export function CodexReadingSheet() {
       >
         <div className="codex-reading-sheet-head">
           <span className="codex-reading-sheet-eyebrow">Codex · Reading</span>
-          <span className="codex-reading-sheet-hint">Esc · ⌘\</span>
           <button
             data-sheet-initial-focus
             className="codex-reading-sheet-close"
             type="button"
             aria-label="Close reading"
-            onClick={closeCodexReader}
+            onClick={collapseCodexReader}
           >
             ✕
           </button>

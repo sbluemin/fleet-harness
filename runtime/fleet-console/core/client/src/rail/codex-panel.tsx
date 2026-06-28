@@ -5,9 +5,11 @@ import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
   mountNavigatorInto,
+  mountReaderInto,
   setNavigatorTheater,
   setOnRequestOpenReader,
   teardownCodex,
+  teardownReaderNodes,
 } from "../codex-host.js";
 import { closeCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 
@@ -25,13 +27,26 @@ export const codexPanel: RailPanelDescriptor = {
 function CodexRailPanel() {
   const state = useConsoleState();
   const navRef = useRef<HTMLDivElement>(null);
+  const readRef = useRef<HTMLDivElement>(null);
+  const tocRef = useRef<HTMLDivElement>(null);
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
+  const expanded = state.codexReaderExpanded;
   const activeTheater = state.theaters.find((t) => t.id === state.activeTheaterId) ?? null;
   const activeTheaterId = activeTheater?.id ?? null;
   const shouldMountCodex = Boolean(activeTheater?.hasWiki);
   const hasTheaters = state.theaters.length > 0;
+
+  const readerKey = reader
+    ? `${reader.kind}:${
+        reader.kind === "entry"
+          ? reader.entryId
+          : reader.kind === "drydock"
+          ? (reader.patchId ?? "")
+          : (reader.id ?? "")
+      }`
+    : null;
 
   // shouldMountCodex false 전환 시 teardown; unmount 시에도 teardown
   useEffect(() => {
@@ -67,6 +82,27 @@ function CodexRailPanel() {
     }
   }, [activeTheaterId, shouldMountCodex]);
 
+  // split reader mount — expanded=true면 오버레이가 처리 중이므로 건너뜀
+  useEffect(() => {
+    if (!shouldMountCodex || !activeTheaterId || !hasReader || expanded) return;
+    if (!readRef.current || !tocRef.current || !reader) return;
+    const kind = reader.kind;
+    const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
+    mountReaderInto(readRef.current, tocRef.current, {
+      initialEntryId: kind === "entry" ? reader.entryId : "",
+      kind,
+      subId,
+      theaterId: activeTheaterId,
+      onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
+      onClose: () => closeCodexReader(),
+    });
+  }, [shouldMountCodex, activeTheaterId, hasReader, expanded, readerKey]);
+
+  // hasReader=false 시 reader 호스트 노드 정리
+  useEffect(() => {
+    if (!hasReader) teardownReaderNodes();
+  }, [hasReader]);
+
   if (!shouldMountCodex) {
     return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
   }
@@ -97,10 +133,8 @@ function CodexRailPanel() {
             ✕
           </button>
         </div>
-        {/* W1: placeholder stub — W2에서 실 reader 마운트로 교체 */}
-        <div className="codex-doc-scroll">
-          <p className="codex-reader-loading">문서를 여는 중…</p>
-        </div>
+        <div ref={readRef} className="codex-doc-scroll" />
+        <div ref={tocRef} className="codex-doc-toc-inline" />
       </div>
       <div ref={navRef} className="codex-nav-pane" />
     </div>

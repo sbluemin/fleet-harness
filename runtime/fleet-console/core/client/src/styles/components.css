@@ -7732,7 +7732,7 @@ body[data-codex-side="true"] .command-card {
   bottom: var(--space-6);
   left: 50%;
   transform: translateX(-50%);
-  width: min(760px, calc(100vw - 120px));
+  width: min(960px, calc(100vw - 120px));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--surface-rim-strong);
@@ -7741,10 +7741,6 @@ body[data-codex-side="true"] .command-card {
   background: linear-gradient(180deg, oklch(21% 0.045 248 / 94%), oklch(17% 0.04 250 / 96%));
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
   animation: codex-rise 400ms var(--ease-spring) both;
-}
-
-.codex-reading-sheet.is-wide {
-  width: min(960px, calc(100vw - 120px));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7769,13 +7765,6 @@ body[data-codex-side="true"] .command-card {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--brass-bright);
-}
-
-.codex-reading-sheet-hint {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-rim);
 }
 
 .codex-reading-sheet-close {

@@ -8,18 +8,20 @@ import type { MountReadingOptions, ReadingController } from "./codex/reading-con
 export type { NavigatorRequest } from "./codex/main.js";
 export type { MountReadingOptions } from "./codex/reading-controller.js";
 
+export type ReaderSlotOptions = Omit<MountReadingOptions, "tocContainer">;
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Reader 싱글톤 — Navigator와 별개 controller. 시트가 제공한 DOM에 마운트된다.
-let readerController: ReadingController | null = null;
-
-// Vanilla Codex는 모듈 싱글톤이라 동시에 한 인스턴스만 안전하다.
-// mount host(`<div class="codex-host">`)와 controller를 이 모듈이 단독 소유하고,
-// appendChild로 컨테이너에 "이동"시킨다 — destroy+remount가 아니라
-// 노드 재배치라 Navigator 검색 상태 등이 보존된다.
+// Navigator 싱글톤 — appendChild 재배치로 컨테이너를 교체, destroy+remount 없음
 let hostNode: HTMLDivElement | null = null;
 let navigatorController: NavigatorController | null = null;
 let onRequestOpenReaderHandler: ((r: NavigatorRequest) => void) | null = null;
+
+// Reader 싱글톤 — split·오버레이 사이를 같은 노드로 relocate하여 콘텐츠·스크롤 보존
+let readerHostNode: HTMLDivElement | null = null;
+let tocHostNode: HTMLDivElement | null = null;
+let readerController: ReadingController | null = null;
+let activeReaderKind: "entry" | "drydock" | "conflicts" | null = null;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -50,23 +52,35 @@ export function setNavigatorTheater(theaterId: string | null): void {
 }
 
 export function mountReaderInto(
-  container: HTMLElement,
-  opts: MountReadingOptions,
+  readSlot: HTMLElement,
+  tocSlot: HTMLElement,
+  opts: ReaderSlotOptions,
 ): void {
-  readerController?.destroy();
-  readerController = mountReadingInto(container, opts);
+  const rNode = ensureReaderHostNode();
+  const tNode = ensureTocHostNode();
+  // DOM의 appendChild는 기존 부모에서 자동 detach → split·오버레이 사이를 콘텐츠 보존으로 relocate
+  if (rNode.parentElement !== readSlot) readSlot.appendChild(rNode);
+  if (tNode.parentElement !== tocSlot) tocSlot.appendChild(tNode);
+
+  if (!readerController || activeReaderKind !== opts.kind) {
+    readerController?.destroy();
+    readerController = mountReadingInto(rNode, { ...opts, tocContainer: tNode });
+    activeReaderKind = opts.kind;
+  } else if (opts.kind === "entry" && opts.initialEntryId) {
+    void readerController.setEntry(opts.initialEntryId);
+  }
 }
 
-export function setReaderEntry(entryId: string): void {
-  void readerController?.setEntry(entryId);
-}
-
-export function teardownReader(): void {
+export function teardownReaderNodes(): void {
   readerController?.destroy();
   readerController = null;
+  activeReaderKind = null;
+  if (readerHostNode?.parentElement) readerHostNode.parentElement.removeChild(readerHostNode);
+  if (tocHostNode?.parentElement) tocHostNode.parentElement.removeChild(tocHostNode);
 }
 
 export function teardownCodex(): void {
+  teardownReaderNodes();
   navigatorController?.destroy();
   navigatorController = null;
   if (hostNode?.parentElement) hostNode.parentElement.removeChild(hostNode);
@@ -80,4 +94,20 @@ function ensureHostNode(): HTMLDivElement {
     hostNode.className = "codex-host";
   }
   return hostNode;
+}
+
+function ensureReaderHostNode(): HTMLDivElement {
+  if (!readerHostNode) {
+    readerHostNode = document.createElement("div");
+    readerHostNode.className = "codex-reader-host";
+  }
+  return readerHostNode;
+}
+
+function ensureTocHostNode(): HTMLDivElement {
+  if (!tocHostNode) {
+    tocHostNode = document.createElement("div");
+    tocHostNode.className = "codex-toc-host";
+  }
+  return tocHostNode;
 }
