@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
 
@@ -47,35 +48,16 @@ function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): Dif
   return files;
 }
 
-// git diff --no-index --numstat -- /dev/null <file> 로 추가 줄 수를 구한다.
-// --no-index는 항상 exit code 1을 반환하므로 allowExitCodes: [1] 적용.
-// 바이너리 파일은 "-\t-\t..." 를 반환해 parseInt가 NaN → 0 으로 폴백.
-async function countUntrackedAdditions(filePath: string, cwd: string): Promise<number> {
-  try {
-    const result = await runGit(
-      ["diff", "--no-index", "--numstat", "--", "/dev/null", filePath],
-      { cwd, allowExitCodes: [1] },
-    );
-    const firstLine = result.stdout.trim().split("\n")[0] ?? "";
-    const parts = firstLine.split("\t");
-    const parsed = parseInt(parts[0] ?? "0", 10);
-    return isNaN(parsed) ? 0 : parsed;
-  } catch {
-    return 0;
-  }
-}
-
+// untracked 파일은 추가 줄 수를 계산하지 않는다.
+// 파일별 git spawn(프로세스 폭주 위험)과 심링크를 통한 외부 파일 크기 노출을 동시에 방지.
 async function fetchUntrackedFiles(cwd: string): Promise<DiffFileEntry[]> {
   const result = await runGit(["ls-files", "--others", "--exclude-standard"], { cwd });
-  const paths = result.stdout.split("\n").filter((p) => p.trim());
-  return Promise.all(
-    paths.map(async (p): Promise<DiffFileEntry> => ({
-      path: p,
-      status: "U",
-      additions: await countUntrackedAdditions(p, cwd),
-      deletions: 0,
-    })),
-  );
+  return result.stdout.split("\n").filter((p) => p.trim()).map((p): DiffFileEntry => ({
+    path: p,
+    status: "U",
+    additions: 0,
+    deletions: 0,
+  }));
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -188,6 +170,24 @@ export async function handleDiffFile(
     // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용.
     // relativePath는 이미 경로 포함 검증 완료; /dev/null은 고정 리터럴.
     if (mode === "untracked") {
+      // 심링크 escaping 차단: realpath로 심링크를 추적한 실제 경로를 얻어 theater 경계를 재검증.
+      // 렉시컬 검사(위의 startsWith/normalize)는 심링크를 따라가지 않으므로 방어 심층으로 유지.
+      let realTheater: string;
+      let realFile: string;
+      try {
+        [realTheater, realFile] = await Promise.all([
+          fs.realpath(theaterPath),
+          fs.realpath(resolvedPath),
+        ]);
+      } catch {
+        ctx.host.http.writeJson(res, 404, { error: "file_not_found" });
+        return;
+      }
+      if (realFile !== realTheater && !realFile.startsWith(realTheater + path.sep)) {
+        ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
+        return;
+      }
+
       const result = await runGit(
         ["diff", "--no-index", "--unified=3", "--", "/dev/null", relativePath],
         { cwd: theaterPath, allowExitCodes: [1] },
