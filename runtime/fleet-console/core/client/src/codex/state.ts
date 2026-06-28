@@ -2,13 +2,11 @@ import {
   fetchConflictDetail,
   fetchConflicts,
   fetchEntry,
-  fetchHealth,
   fetchIndex,
   fetchIndexMarkdown,
   fetchLog,
   fetchQueueList,
-  fetchWorkspaces,
-} from "./api";
+} from "./api.js";
 import type {
   BriefingHit,
   ConflictDetailResponse,
@@ -18,7 +16,7 @@ import type {
   WikiEntryResponse,
   WikiIndexEntry,
   WorkspaceMetadata,
-} from "./api";
+} from "./api.js";
 
 export interface AppState {
   health: HealthResponse | null;
@@ -72,23 +70,20 @@ export function setCurrentWorkspaceId(id: string | null): void {
   setState({ currentWorkspaceId: id });
 }
 
+// W1 임시 어댑터: fetchIndex + fetchQueueList 유지.
+// W3에서 fetchSearch(theaterId, "", []) + fetchDrydock(theaterId, "pending")으로 치환 예정.
 export async function loadInitialData(): Promise<void> {
   setState({ loading: true, error: null });
   try {
     const theaterId = state.currentWorkspaceId;
-    const [health, index, queueList, workspaces] = await Promise.all([
-      fetchHealth(theaterId),
+    const [index, queueList] = await Promise.all([
       fetchIndex(theaterId),
       fetchQueueList(theaterId, "pending").catch(() => null),
-      fetchWorkspaces(theaterId).catch(() => null),
     ]);
     setState({
-      health,
       index,
       pendingPatchCount: queueList?.pendingCount ?? 0,
-      workspaces: workspaces?.workspaces ?? [],
       loading: false,
-      // currentWorkspaceId는 setCurrentWorkspaceId()로만 설정 — 서버 응답으로 덮어쓰지 않음
     });
   } catch (error) {
     setState({ loading: false, error: errorMessage(error) });

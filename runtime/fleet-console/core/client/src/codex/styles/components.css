@@ -395,35 +395,6 @@ kbd {
   font-variation-settings: "opsz" 144;
 }
 
-.welcome {
-  padding: clamp(36px, 5vw, 64px);
-}
-
-.welcome-title {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.welcome-title h1 {
-  font-size: var(--font-size-display-hero);
-  font-style: italic;
-  font-weight: 300;
-  letter-spacing: -0.03em;
-  font-variation-settings: "opsz" 144, "SOFT" 100;
-  background: linear-gradient(180deg, var(--ink-pearl) 30%, oklch(75% 0.04 90));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.welcome-divider {
-  width: 64px;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--brass), var(--aurora));
-  margin: var(--space-2) 0 var(--space-4);
-}
-
 .lead {
   margin: 0;
   color: var(--ink-spectral);
@@ -491,53 +462,6 @@ kbd {
 
 .primary-link:hover .arrow {
   transform: translateX(3px);
-}
-
-.welcome-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-3);
-  margin-top: var(--space-8);
-}
-
-.welcome-card {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--surface-rim);
-  background: oklch(22% 0.05 248 / 60%);
-  transition:
-    transform var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.welcome-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
-  background: color-mix(in oklch, var(--ink-mid) 75%, transparent);
-}
-
-.welcome-card strong {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  font-family: var(--font-display);
-  font-size: var(--font-size-title-sm);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  color: var(--ink-pearl);
-  word-break: break-word;
-}
-
-.welcome-card .welcome-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
 }
 
 .meta-chips {
@@ -1281,124 +1205,6 @@ kbd {
   padding-left: var(--space-3);
   font-size: var(--font-size-compact);
   color: var(--ink-fog);
-}
-
-.toc-drawer-trigger {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  justify-self: start;
-  min-height: 40px;
-  padding: 8px 14px;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, var(--surface-glass));
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  cursor: pointer;
-  box-shadow: var(--shadow-anchor);
-  transition:
-    transform var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
-}
-
-.toc-drawer-trigger:hover {
-  transform: translateY(-1px);
-  border-color: var(--brass);
-}
-
-/* Side 모드에서는 codex-host 컨테이너가 좁아(layout.css의 @container 900px) rail이 숨겨지는데, trigger가 viewport
-   @media 760px로만 켜지면 데스크톱 Side 패널에서 rail도 trigger도 없어 ToC 접근이 막힌다 — 컨테이너 폭 기준으로도 노출한다. */
-@container codex-host (max-width: 900px) {
-  .toc-drawer-trigger {
-    display: inline-flex;
-  }
-}
-
-.toc-drawer {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-}
-
-.toc-drawer[hidden] {
-  display: none;
-}
-
-.toc-drawer-backdrop {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: color-mix(in oklch, var(--ink-abyss) 72%, transparent);
-  backdrop-filter: blur(var(--blur-soft));
-  -webkit-backdrop-filter: blur(var(--blur-soft));
-  cursor: pointer;
-}
-
-.toc-drawer-panel {
-  position: absolute;
-  inset: var(--space-4) var(--space-4) var(--space-4) auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  width: min(86vw, 360px);
-  padding: var(--space-5);
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--surface-rim);
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  box-shadow: var(--shadow-floating);
-  animation: codex-rise 240ms var(--ease-spring) both;
-}
-
-.toc-drawer-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--surface-rim);
-}
-
-.toc-drawer-header h2 {
-  margin: var(--space-1) 0 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: var(--font-size-display-sm);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-.toc-drawer-nav {
-  display: grid;
-  gap: var(--space-1);
-  overflow-y: auto;
-}
-
-.toc-drawer-link {
-  display: block;
-  padding: 10px 0;
-  color: var(--ink-fog);
-  font-size: var(--font-size-lg);
-  line-height: 1.45;
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-
-.toc-drawer-link:hover,
-.toc-drawer-link.active {
-  color: var(--brass-bright);
-}
-
-.toc-drawer-link.toc-level-3 {
-  padding-left: var(--space-4);
-  font-size: var(--font-size-md);
 }
 
 .related-list {
@@ -2740,10 +2546,6 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .queue-action-spinner { animation-duration: 0.01ms; }
-
-  .toc-drawer-panel {
-    animation-duration: 0.01ms;
-  }
 }
 
 @media (max-width: 1100px) {
@@ -2759,10 +2561,6 @@ kbd {
 @media (max-width: 1024px) {
   .document h1 {
     font-size: var(--font-size-display-xl);
-  }
-
-  .welcome-title h1 {
-    font-size: var(--font-size-display-hero-md);
   }
 }
 
@@ -2809,10 +2607,6 @@ kbd {
     padding: var(--space-6);
   }
 
-  .welcome {
-    padding: var(--space-6);
-  }
-
   .command-result {
     grid-template-columns: 1fr;
   }
@@ -2827,10 +2621,6 @@ kbd {
     font-size: var(--font-size-display-lg);
   }
 
-  .welcome-title h1 {
-    font-size: var(--font-size-display-hero-sm);
-  }
-
   .raw-title {
     font-size: var(--font-size-title-sm);
   }
@@ -2843,21 +2633,12 @@ kbd {
     font-size: var(--font-size-title-md);
   }
 
-  .toc-drawer-trigger {
-    display: inline-flex;
-  }
-
   .app-shell:has(.toc-panel) .rail {
     display: none;
   }
 
   .app-shell:has(.toc-panel) .content {
     padding-top: 64px;
-  }
-
-  .toc-drawer-panel {
-    inset: var(--space-3);
-    width: auto;
   }
 
   .breadcrumb a,
@@ -3016,11 +2797,6 @@ kbd {
   background: oklch(22% 0.008 252 / 85%);
 }
 
-/* carbon: Welcome 카드 청색 surface 잔존 마감 */
-:root[data-theme="carbon"] .welcome-card {
-  background: oklch(22% 0.008 252 / 60%);
-}
-
 /* carbon: Markdown 짝수 행 청색 surface 잔존 마감 */
 :root[data-theme="carbon"] .markdown-body table tr:nth-child(even) td {
   background: oklch(22% 0.008 252 / 50%);
@@ -3044,4 +2820,164 @@ kbd {
 /* carbon: 관련 카드 청색 surface 잔존 마감 */
 :root[data-theme="carbon"] .related-card {
   background: oklch(22% 0.008 252 / 70%);
+}
+
+/* ─── Codex Navigator ─────────────────────────────────────────────────────── */
+
+.codex-nav-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+  color: var(--ink-fog);
+}
+
+.codex-nav-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink-spectral);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body-sm);
+  padding: 0;
+}
+
+.codex-nav-search-input::placeholder {
+  color: var(--ink-fog);
+}
+
+.codex-nav-quick-row {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.codex-nav-quick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--ink-spectral);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-label-sm);
+  cursor: pointer;
+  transition: background var(--duration-base) var(--ease-spring);
+}
+
+.codex-nav-quick:hover {
+  background: color-mix(in oklch, var(--brass) 8%, var(--surface-glass));
+  color: var(--ink-pearl);
+}
+
+.codex-nav-quick .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--space-1);
+  background: color-mix(in oklch, var(--brass) 20%, transparent);
+  border-radius: 8px;
+  color: var(--brass-bright);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.codex-nav-list-eyebrow {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+}
+
+.codex-nav-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 50%, transparent);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-base) var(--ease-spring);
+}
+
+.codex-nav-entry:hover {
+  background: color-mix(in oklch, var(--brass) 6%, transparent);
+}
+
+.codex-nav-entry.is-current {
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  border-left: 2px solid var(--brass);
+}
+
+.codex-nav-entry .t {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body-sm);
+  color: var(--ink-spectral);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.codex-nav-entry .tg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.codex-nav-entry .meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-fog);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+
+.codex-nav-entry mark {
+  background: color-mix(in oklch, var(--brass) 22%, transparent);
+  color: var(--brass-bright);
+  border-radius: 2px;
+}
+
+.codex-nav-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-1);
+  background: color-mix(in oklch, var(--aurora) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--aurora) 25%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--aurora);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.codex-nav-loading,
+.codex-nav-error,
+.codex-nav-empty {
+  padding: var(--space-4) var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body-sm);
+  color: var(--ink-fog);
+  text-align: center;
+}
+
+.codex-nav-error {
+  color: var(--coral);
 }

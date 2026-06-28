@@ -3,7 +3,14 @@ import { useEffect, useRef } from "react";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import { useConsoleState } from "../hooks/use-store.js";
-import { mountCodexInto, setCodexWorkspace, teardownCodex } from "../codex-host.js";
+import {
+  mountNavigatorInto,
+  setNavigatorTheater,
+  setOnRequestOpenReader,
+  teardownCodex,
+} from "../codex-host.js";
+
+// ─── Rail panel descriptor ────────────────────────────────────────────────────
 
 export const codexPanel: RailPanelDescriptor = {
   id: "codex",
@@ -11,6 +18,8 @@ export const codexPanel: RailPanelDescriptor = {
   icon: () => <CodexIcon />,
   render: () => <CodexRailPanel />,
 };
+
+// ─── Components ───────────────────────────────────────────────────────────────
 
 function CodexRailPanel() {
   const state = useConsoleState();
@@ -32,16 +41,22 @@ function CodexRailPanel() {
     };
   }, [shouldMountCodex]);
 
-  // shouldMountCodex true이고 activeTheaterId 있을 때 마운트
+  // shouldMountCodex true이고 activeTheaterId 있을 때 마운트 + no-op onRequest 등록
   useEffect(() => {
     if (!shouldMountCodex || !bodyRef.current || !activeTheaterId) return;
-    mountCodexInto(bodyRef.current, activeTheaterId);
+    mountNavigatorInto(bodyRef.current, activeTheaterId);
+    // W2에서 store action(openCodexReader)으로 연결 예정
+    setOnRequestOpenReader((_r) => { /* W2에서 연결 */ });
+    return () => {
+      setOnRequestOpenReader(null);
+    };
   }, [shouldMountCodex, activeTheaterId]);
 
-  // Theater 전환 시 workspace 업데이트
+  // Theater 전환 시 navigator theater 업데이트
   useEffect(() => {
-    if (!shouldMountCodex || !activeTheaterId) return;
-    setCodexWorkspace(activeTheaterId);
+    if (shouldMountCodex && activeTheaterId) {
+      setNavigatorTheater(activeTheaterId);
+    }
   }, [activeTheaterId, shouldMountCodex]);
 
   if (!shouldMountCodex) {
