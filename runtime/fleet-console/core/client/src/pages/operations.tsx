@@ -183,7 +183,6 @@ export function Operations({ state }: OperationsProps) {
         operations={theaterOperations}
         minimized={minimized}
         activeOperationId={state.activeOperationId}
-        operationStatus={state.operationStatus}
         operationNotifications={state.operationNotifications}
         catalog={catalog}
         canLaunch={canLaunch}

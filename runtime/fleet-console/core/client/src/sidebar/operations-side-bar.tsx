@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Poin
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import type { OperationNode, OperationNotification } from "../types.js";
 import { AccentPopover } from "../canvas/accent-popover.js";
@@ -10,14 +9,13 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { setOperationOrder, useCanvasState } from "../canvas/canvas-store.js";
 import { dropIndexFromPoint } from "./operations-side-bar-hit-test.js";
-import { OperationsSideBarChip, type SideBarEntry, type SideBarUnderway } from "./operations-side-bar-chip.js";
+import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, tierFromWidth, useSideBarState } from "./operations-side-bar-store.js";
 
 interface OperationsSideBarProps {
   readonly operations: readonly OperationNode[];
   readonly minimized: readonly string[];
   readonly activeOperationId: string | null;
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
@@ -64,7 +62,6 @@ export function OperationsSideBar({
   operations,
   minimized,
   activeOperationId,
-  operationStatus,
   operationNotifications,
   catalog,
   canLaunch,
@@ -96,7 +93,6 @@ export function OperationsSideBar({
 
   const minimizedSet = new Set(minimized);
   const entries: SideBarEntry[] = sortOperations(operations, canvas.operationOrder).map((operation) => {
-    const underway = resolveUnderway(operation.id, operationStatus, operationNotifications);
     const kind = catalog.find((p) => p.id === operation.pluginId)?.kinds.find((k) => k.type === operation.type) ?? null;
     const icon = kind ? renderKindIcon(operation.pluginId, kind) : null;
     return {
@@ -104,8 +100,6 @@ export function OperationsSideBar({
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id]?.count ?? 0,
-      underway,
-      showRing: underway !== null && minimizedSet.has(operation.id),
       icon,
     };
   });
@@ -320,7 +314,7 @@ export function OperationsSideBar({
           title="New Operation"
         >
           <NewIcon />
-          {tier !== "rail" ? <span>New</span> : null}
+          {tier !== "rail" ? <span>Operation</span> : null}
         </button>
         {tier !== "rail" ? (
           <button
@@ -441,18 +435,6 @@ function sortOperations(operations: readonly OperationNode[], operationOrder: re
 
 function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
   return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
-}
-
-function resolveUnderway(
-  operationId: string,
-  operationStatus: Readonly<Record<string, OperationActivity>>,
-  operationNotifications: Readonly<Record<string, OperationNotification>>,
-): SideBarUnderway {
-  const status = operationStatus[operationId];
-  if (operationNotifications[operationId]?.kind === "input-waiting" || status === "awaiting") return "awaiting";
-  if (status === "running") return "turn";
-  if (status === "live") return "live";
-  return null;
 }
 
 function reorderIds(orderedIds: readonly string[], sourceId: string, dropIndex: number): string[] {

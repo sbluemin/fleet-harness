@@ -3558,21 +3558,17 @@
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
-/* rail tier: 라벨 숨김 + 아이콘 가로 중앙정렬 */
+/* rail tier: 라벨/카운트/닫기를 flex 흐름에서 완전히 제거한다. max-width:0만으로는 close 버튼의
+   테두리(좌우 1px=2px)가 형제로 남아 justify-content:center가 아이콘을 1px 왼쪽으로 밀어
+   ＋New(아이콘 only)와 미세하게 어긋났다. display:none으로 빼면 beacon만 남아 정중앙에 온다. */
 .operations-side-bar[data-tier="rail"] .side-bar-chip-name,
 .operations-side-bar[data-tier="rail"] .side-bar-chip-count,
 .operations-side-bar[data-tier="rail"] .side-bar-chip-close {
-  opacity: 0;
-  pointer-events: none;
-  max-width: 0;
-  overflow: hidden;
+  display: none;
 }
 
 .operations-side-bar[data-tier="rail"] .side-bar-chip {
   justify-content: center;
-  /* rail tier: name/count/close가 max-width:0로만 접혀 flex 형제로 남아 gap이 유령 폭을 만든다.
-     gap을 0으로 없애 단일 아이콘이 칩 가로 정중앙에 오도록 한다(＋New 버튼과 동일 정렬). */
-  gap: 0;
   padding-left: 0;
   padding-right: 0;
 }

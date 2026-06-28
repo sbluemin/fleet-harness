@@ -2,15 +2,11 @@ import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, typ
 
 import type { OperationNode } from "../types.js";
 
-export type SideBarUnderway = "live" | "turn" | "awaiting" | null;
-
 export interface SideBarEntry {
   readonly operation: OperationNode;
   readonly active: boolean;
   readonly minimized: boolean;
   readonly notificationCount: number;
-  readonly underway: SideBarUnderway;
-  readonly showRing: boolean;
   readonly icon: ReactNode;
 }
 
@@ -54,14 +50,12 @@ export function OperationsSideBarChip({
   onOpenAccent,
 }: SideBarChipProps) {
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, notificationCount, underway } = entry;
+  const { operation, active, minimized, notificationCount } = entry;
   const title = displayTitle(operation);
   const chipClassName = [
     "side-bar-chip",
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
-    underway ? `side-bar-chip--underway side-bar-chip--underway-${underway}` : "",
-    entry.showRing ? "side-bar-chip--underway-ring" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
   ].filter(Boolean).join(" ");
