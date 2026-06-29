@@ -33,7 +33,7 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
     // (mount 전 사전 처리만으로는 비동기 삽입분이 누락되기 때문).
     neutralizeUntrustedDom(root);
     const observer = new MutationObserver(() => neutralizeUntrustedDom(root));
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src"] });
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
     return () => observer.disconnect();
   }, [html]);
 
@@ -82,8 +82,10 @@ function neutralizeUntrustedDom(root: ParentNode): void {
       anchor.setAttribute("aria-disabled", "true");
     }
   }
-  for (const img of root.querySelectorAll("img[src]")) {
-    img.removeAttribute("src");
-    img.setAttribute("aria-hidden", "true");
+  // 이미지 로드 속성(src·srcset)을 제거해 외부 auto-fetch를 차단한다(img 및 picture>source 모두).
+  for (const el of root.querySelectorAll("img[src], img[srcset], source[src], source[srcset]")) {
+    el.removeAttribute("src");
+    el.removeAttribute("srcset");
+    if (el.tagName === "IMG") el.setAttribute("aria-hidden", "true");
   }
 }
