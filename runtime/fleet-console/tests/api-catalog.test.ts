@@ -50,7 +50,7 @@ afterEach(async () => {
 describe("api catalog", () => {
   it("serializes only the public route catalog DTO", async () => {
     const fixture = await startFixture();
-    const response = await fetch(`${fixture.endpoint}settings/api-catalog`);
+    const response = await fetch(`${fixture.endpoint}api/v1/settings/api-catalog`);
     const body = await response.json() as ApiCatalogResponse;
     const serializedRoutes = JSON.stringify(body.routes);
 
@@ -150,7 +150,7 @@ function concretizeCatalogPath(routePath: string): string {
 }
 
 function headersForGate(gate: ApiCatalogEntry["gate"]): Record<string, string> {
-  if (gate === "terminal-origin" || gate === "console-origin") return { Origin: "http://127.0.0.1:1" };
+  if (gate === "origin-write" || gate === "origin-strict") return { Origin: "http://127.0.0.1:1" };
   if (gate === "lock-token") return {};
   return {};
 }

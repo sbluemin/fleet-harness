@@ -57,28 +57,20 @@ interface CarrierSettingsRouteContext {
   readonly pathname: string;
 }
 
-interface CliBody {
-  readonly cliType?: unknown;
-}
-
 interface ModelBody {
   readonly model?: unknown;
   readonly effort?: unknown;
 }
 
-interface DisplayNameBody {
+interface PatchBody {
+  readonly cli?: unknown;
+  readonly model?: unknown;
   readonly displayName?: unknown;
-}
-
-interface AgentModeBody {
   readonly agentMode?: unknown;
 }
 
 type ParsedCarrierMutation =
-  | { readonly kind: "cli"; readonly carrierId: string }
-  | { readonly kind: "model"; readonly carrierId: string }
-  | { readonly kind: "display-name"; readonly carrierId: string }
-  | { readonly kind: "agent-mode"; readonly carrierId: string }
+  | { readonly kind: "patch"; readonly carrierId: string }
   | { readonly kind: "taskforce-backend"; readonly carrierId: string; readonly cliType: string }
   | { readonly kind: "taskforce-all"; readonly carrierId: string };
 
@@ -92,66 +84,45 @@ const TASKFORCE_MIN_BACKENDS = 2;
 export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/carrier-settings/state",
+    path: "/api/v1/settings/carriers",
     summary: "Get the carrier settings status.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/carrier-settings/options",
+    path: "/api/v1/settings/carriers/options",
     summary: "Get the carrier settings options.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "loopback",
   },
   {
-    method: "PUT",
-    path: "/carrier-settings/carriers/:id/cli",
-    summary: "Change the carrier Agent CLI.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
-  },
-  {
-    method: "PUT",
-    path: "/carrier-settings/carriers/:id/model",
-    summary: "Change the carrier model selection.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
-  },
-  {
     method: "PATCH",
-    path: "/carrier-settings/carriers/:id/display-name",
-    summary: "Change the carrier display name.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
+    path: "/api/v1/settings/carriers/:id",
+    summary: "Update carrier settings fields (cli, model, displayName, agentMode).",
+    category: "Settings",
+    gate: "origin-write",
   },
   {
     method: "PUT",
-    path: "/carrier-settings/carriers/:id/agent-mode",
-    summary: "Change the carrier execution mode.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
-  },
-  {
-    method: "PUT",
-    path: "/carrier-settings/carriers/:id/taskforce/:cliType",
+    path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
     summary: "Set the Task Force backend model.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
+    category: "Settings",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
-    path: "/carrier-settings/carriers/:id/taskforce/:cliType",
+    path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
     summary: "Unset the Task Force backend model.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
+    category: "Settings",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
-    path: "/carrier-settings/carriers/:id/taskforce",
+    path: "/api/v1/settings/carriers/:id/taskforce",
     summary: "Reset the carrier Task Force settings.",
-    category: "Carrier Settings",
-    gate: "terminal-origin",
+    category: "Settings",
+    gate: "origin-write",
   },
 ];
 
@@ -160,7 +131,7 @@ export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (co
 
   return async function handleCarrierSettingsRoute(context: CarrierSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
-    if (pathname === "/carrier-settings/state") {
+    if (pathname === "/api/v1/settings/carriers") {
       if (req.method !== "GET") {
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
@@ -168,7 +139,7 @@ export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (co
       deps.writeJson(res, 200, buildCarrierSettingsState(deps.registry));
       return true;
     }
-    if (pathname === "/carrier-settings/options") {
+    if (pathname === "/api/v1/settings/carriers/options") {
       if (req.method !== "GET") {
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
@@ -211,8 +182,7 @@ async function handleCarrierMutation(
   mutation: ParsedCarrierMutation,
 ): Promise<void> {
   const method = req.method ?? "GET";
-  const expectedMethod = mutation.kind === "display-name" ? "PATCH" : mutation.kind === "taskforce-backend" || mutation.kind === "taskforce-all" ? method : "PUT";
-  if (!isExpectedCarrierMethod(mutation, method, expectedMethod)) {
+  if (!isExpectedCarrierMethod(mutation, method)) {
     deps.writeJson(res, 405, { error: "Method not allowed" });
     return;
   }
@@ -233,28 +203,8 @@ async function handleCarrierMutation(
     return;
   }
   try {
-    if (mutation.kind === "cli") {
-      const body = await readRequiredJsonBody<CliBody>(req, res, deps);
-      if (!body.ok) return;
-      await mutateCarrierCli(res, deps, controller, mutation.carrierId, body.body);
-      return;
-    }
-    if (mutation.kind === "model") {
-      const body = await readRequiredJsonBody<ModelBody>(req, res, deps);
-      if (!body.ok) return;
-      await mutateCarrierModel(res, deps, mutation.carrierId, body.body);
-      return;
-    }
-    if (mutation.kind === "display-name") {
-      const body = await readRequiredJsonBody<DisplayNameBody>(req, res, deps);
-      if (!body.ok) return;
-      mutateDisplayName(res, deps, mutation.carrierId, body.body);
-      return;
-    }
-    if (mutation.kind === "agent-mode") {
-      const body = await readRequiredJsonBody<AgentModeBody>(req, res, deps);
-      if (!body.ok) return;
-      mutateAgentMode(res, deps, mutation.carrierId, body.body);
+    if (mutation.kind === "patch") {
+      await mutateCarrierPatch(req, res, deps, controller, mutation.carrierId);
       return;
     }
     if (mutation.kind === "taskforce-backend") {
@@ -281,86 +231,77 @@ async function handleCarrierMutation(
   }
 }
 
-async function mutateCarrierCli(
+async function mutateCarrierPatch(
+  req: http.IncomingMessage,
   res: http.ServerResponse,
   deps: CarrierSettingsRouteDeps,
   controller: StatusOverlayController,
   carrierId: string,
-  body: CliBody,
 ): Promise<void> {
-  const cliType = readCliType(body.cliType);
-  if (!cliType) {
-    deps.writeJson(res, 400, { error: "invalid_cli_type" });
-    return;
+  const bodyResult = await readRequiredJsonBody<PatchBody>(req, res, deps);
+  if (!bodyResult.ok) return;
+  const body = bodyResult.body;
+  const config = requireCarrierConfig(deps.registry, carrierId);
+  const currentCliType = resolveAgentCliType(carrierId, config.defaultCliType);
+
+  // All-or-nothing validation: every provided field must be valid before any apply.
+  let newCliType: CliType | undefined;
+  if (body.cli !== undefined) {
+    const parsed = readCliType(body.cli);
+    if (!parsed) { deps.writeJson(res, 400, { error: "invalid_cli_type" }); return; }
+    newCliType = parsed;
   }
-  await controller.changeCliType(carrierId, cliType);
-  // 비지원(비-Claude) CLI로 전환하면 SubAgent는 유효하지 않다. agent-mode 라우트는 비지원 CLI의
-  // SA enable을 거부하지만 CLI 변경 경로는 그 가드를 우회하므로, 여기서 SA를 해제해 codex+subagent
-  // 같은 불일치 상태가 서버에 영속되지 않게 한다.
-  if (!SUBAGENT_CLI_TYPES.has(cliType)) {
-    const resolved = readCarriersSnapshot(buildDefaultsByCarrier(deps.registry)).carriers[carrierId];
-    if (resolved?.agentMode === "subagent") {
-      const config = requireCarrierConfig(deps.registry, carrierId);
-      updateCarrierAgentModeAtomically(carrierId, "cli", config.defaultAgentMode ?? "cli");
+  const effectiveCliType = newCliType ?? currentCliType;
+
+  let modelSelection: AgentCliSelection | undefined;
+  if (body.model !== undefined) {
+    const parsed = readSelection(effectiveCliType, body.model as ModelBody);
+    if (!parsed) { deps.writeJson(res, 400, { error: "invalid_model_selection" }); return; }
+    modelSelection = parsed;
+  }
+
+  let normalizedDisplayName: string | undefined;
+  if (body.displayName !== undefined) {
+    const parsed = normalizeCarrierDisplayNameInput(body.displayName);
+    if (parsed === null) { deps.writeJson(res, 400, { error: "invalid_display_name" }); return; }
+    normalizedDisplayName = parsed;
+  }
+
+  if (body.agentMode !== undefined) {
+    if (body.agentMode !== "cli" && body.agentMode !== "subagent") {
+      deps.writeJson(res, 400, { error: "invalid_agent_mode" }); return;
+    }
+    if (body.agentMode === "subagent" && !SUBAGENT_CLI_TYPES.has(effectiveCliType)) {
+      deps.writeJson(res, 400, { error: "subagent_unsupported" }); return;
     }
   }
-  writeMutationState(res, deps);
-}
 
-async function mutateCarrierModel(
-  res: http.ServerResponse,
-  deps: CarrierSettingsRouteDeps,
-  carrierId: string,
-  body: ModelBody,
-): Promise<void> {
-  const config = requireCarrierConfig(deps.registry, carrierId);
-  const cliType = resolveAgentCliType(carrierId, config.defaultCliType);
-  const selection = readSelection(cliType, body);
-  if (!selection) {
-    deps.writeJson(res, 400, { error: "invalid_model_selection" });
-    return;
+  // Best-effort sequential application.
+  if (newCliType) {
+    await controller.changeCliType(carrierId, newCliType);
+    // 비지원(비-Claude) CLI로 전환하면 SubAgent는 유효하지 않으므로, 불일치 상태가 영속되지 않게 해제한다.
+    if (!SUBAGENT_CLI_TYPES.has(newCliType)) {
+      const resolved = readCarriersSnapshot(buildDefaultsByCarrier(deps.registry)).carriers[carrierId];
+      if (resolved?.agentMode === "subagent") updateCarrierAgentModeAtomically(carrierId, "cli", config.defaultAgentMode ?? "cli");
+    }
   }
-  await updateAgentCliSelection(carrierId, cliType, selection);
-  notifyStatusUpdate(deps.registry);
-  writeMutationState(res, deps);
-}
 
-function mutateDisplayName(
-  res: http.ServerResponse,
-  deps: CarrierSettingsRouteDeps,
-  carrierId: string,
-  body: DisplayNameBody,
-): void {
-  const displayName = normalizeCarrierDisplayNameInput(body.displayName);
-  if (displayName === null) {
-    deps.writeJson(res, 400, { error: "invalid_display_name" });
-    return;
+  if (modelSelection) {
+    await updateAgentCliSelection(carrierId, effectiveCliType, modelSelection);
+    notifyStatusUpdate(deps.registry);
   }
-  updateCarrierDisplayName(carrierId, displayName, getCarrierSourceDisplayName(deps.registry, carrierId));
-  notifyStatusUpdate(deps.registry);
-  writeMutationState(res, deps);
-}
 
-function mutateAgentMode(
-  res: http.ServerResponse,
-  deps: CarrierSettingsRouteDeps,
-  carrierId: string,
-  body: AgentModeBody,
-): void {
-  const config = requireCarrierConfig(deps.registry, carrierId);
-  const agentMode = body.agentMode;
-  if (agentMode !== "cli" && agentMode !== "subagent") {
-    deps.writeJson(res, 400, { error: "invalid_agent_mode" });
-    return;
+  if (normalizedDisplayName !== undefined) {
+    updateCarrierDisplayName(carrierId, normalizedDisplayName, getCarrierSourceDisplayName(deps.registry, carrierId));
+    notifyStatusUpdate(deps.registry);
   }
-  const cliType = resolveAgentCliType(carrierId, config.defaultCliType);
-  if (agentMode === "subagent" && !SUBAGENT_CLI_TYPES.has(cliType)) {
-    deps.writeJson(res, 400, { error: "subagent_unsupported" });
-    return;
+
+  if (body.agentMode === "cli" || body.agentMode === "subagent") {
+    updateCarrierAgentModeAtomically(carrierId, body.agentMode, config.defaultAgentMode ?? "cli");
+    if (body.agentMode === "subagent") refreshTaskForceConfiguredCarriers(deps.registry);
+    notifyStatusUpdate(deps.registry);
   }
-  updateCarrierAgentModeAtomically(carrierId, agentMode, config.defaultAgentMode ?? "cli");
-  if (agentMode === "subagent") refreshTaskForceConfiguredCarriers(deps.registry);
-  notifyStatusUpdate(deps.registry);
+
   writeMutationState(res, deps);
 }
 
@@ -595,16 +536,14 @@ function fallbackResolvedState(config: CarrierConfig): ResolvedCarrierState {
 
 function parseCarrierMutation(pathname: string): ParsedCarrierMutation | null {
   const parts = pathname.split("/").filter(Boolean);
-  if (parts[0] !== "carrier-settings" || parts[1] !== "carriers" || !parts[2]) return null;
-  const carrierId = safeDecodeURIComponent(parts[2]);
+  // /api/v1/settings/carriers/:id/...
+  if (parts[0] !== "api" || parts[1] !== "v1" || parts[2] !== "settings" || parts[3] !== "carriers" || !parts[4]) return null;
+  const carrierId = safeDecodeURIComponent(parts[4]);
   if (!carrierId) return null;
-  if (parts.length === 4 && parts[3] === "cli") return { kind: "cli", carrierId };
-  if (parts.length === 4 && parts[3] === "model") return { kind: "model", carrierId };
-  if (parts.length === 4 && parts[3] === "display-name") return { kind: "display-name", carrierId };
-  if (parts.length === 4 && parts[3] === "agent-mode") return { kind: "agent-mode", carrierId };
-  if (parts.length === 4 && parts[3] === "taskforce") return { kind: "taskforce-all", carrierId };
-  if (parts.length === 5 && parts[3] === "taskforce") {
-    const cliType = safeDecodeURIComponent(parts[4] ?? "");
+  if (parts.length === 5) return { kind: "patch", carrierId };
+  if (parts.length === 6 && parts[5] === "taskforce") return { kind: "taskforce-all", carrierId };
+  if (parts.length === 7 && parts[5] === "taskforce") {
+    const cliType = safeDecodeURIComponent(parts[6] ?? "");
     return cliType ? { kind: "taskforce-backend", carrierId, cliType } : null;
   }
   return null;
@@ -618,10 +557,10 @@ function safeDecodeURIComponent(value: string): string | null {
   }
 }
 
-function isExpectedCarrierMethod(mutation: ParsedCarrierMutation, method: string, expectedMethod: string): boolean {
+function isExpectedCarrierMethod(mutation: ParsedCarrierMutation, method: string): boolean {
   if (mutation.kind === "taskforce-backend") return method === "PUT" || method === "DELETE";
   if (mutation.kind === "taskforce-all") return method === "DELETE";
-  return method === expectedMethod;
+  return method === "PATCH";
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {

@@ -33,7 +33,7 @@ export const notificationKinds = [agentAttentionNotification] as const;
 export const plugins = [terminalPlugin] as const;
 
 async function fetchOperation(operationId: string): Promise<{ readonly type: string } | null> {
-  const response = await fetch(`/operations/${encodeURIComponent(operationId)}`);
+  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`);
   if (!response.ok) return null;
   const payload = await response.json() as { readonly operation?: { readonly type?: unknown } };
   return typeof payload.operation?.type === "string" ? { type: payload.operation.type } : null;

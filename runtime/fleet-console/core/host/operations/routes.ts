@@ -44,11 +44,11 @@ type PatchOperationBody = {
 
 export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRouter {
   return async ({ req, res, pathname }) => {
-    if (pathname === "/operations") {
+    if (pathname === "/api/v1/operations") {
       await handleCollection(req, res, deps);
       return true;
     }
-    if (pathname === "/operations/catalog") {
+    if (pathname === "/api/v1/operations/catalog") {
       if (req.method !== "GET") {
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
@@ -56,12 +56,12 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
       deps.writeJson(res, 200, deps.resolveLaunchCatalog ? await deps.resolveLaunchCatalog() : { plugins: [] });
       return true;
     }
-    const childrenMatch = pathname.match(/^\/operations\/([^/]+)\/children$/);
+    const childrenMatch = pathname.match(/^\/api\/v1\/operations\/([^/]+)\/children$/);
     if (childrenMatch) {
       handleChildren(req, res, decodeURIComponent(childrenMatch[1] ?? ""), deps);
       return true;
     }
-    const itemMatch = pathname.match(/^\/operations\/([^/]+)$/);
+    const itemMatch = pathname.match(/^\/api\/v1\/operations\/([^/]+)$/);
     if (itemMatch) {
       await handleItem(req, res, decodeURIComponent(itemMatch[1] ?? ""), deps);
       return true;

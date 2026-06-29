@@ -326,6 +326,6 @@ async function closeOperation(operationId: string, plugin: FleetClientPlugin | n
   try {
     if (plugin?.closeOperation) await plugin.closeOperation(operationId);
   } catch { /* 플러그인 close 오류는 무시 */ }
-  await fetch(`/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" }).catch(() => {});
+  await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" }).catch(() => {});
   await fetchOperations(null).then(hydrateOperations).catch(() => {});
 }

@@ -76,7 +76,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     },
     operations: {
       createRoot: async (input) => {
-        const response = await fetch("/operations", {
+        const response = await fetch("/api/v1/operations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
@@ -87,7 +87,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       },
       createChild: async (parentId, input) => {
         const parent = await fetchOperation(parentId);
-        const response = await fetch("/operations", {
+        const response = await fetch("/api/v1/operations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...input, parentId, theaterId: parent.theaterId }),
@@ -97,7 +97,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
         return assertOperationNode(payload.operation);
       },
       rename: async (operationId, title) => {
-        const response = await fetch(`/operations/${encodeURIComponent(operationId)}`, {
+        const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title }),
@@ -107,7 +107,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
         return assertOperationNode(payload.operation);
       },
       remove: async (operationId) => {
-        const response = await fetch(`/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" });
+        const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" });
         if (!response.ok) throw new ApiError(response.status, `Operation remove failed: ${response.status}`);
       },
     },
@@ -133,7 +133,7 @@ export function useOperationTree(operations: readonly OperationNode[], parentId:
 export function useOperations(): UseOperationsResult {
   const [operations, setOperations] = React.useState<readonly OperationNode[]>([]);
   const refresh = React.useCallback(async () => {
-    const response = await fetch("/operations");
+    const response = await fetch("/api/v1/operations");
     if (!response.ok) throw new ApiError(response.status, `Operations request failed: ${response.status}`);
     const payload = await response.json() as { readonly operations?: readonly unknown[] };
     setOperations(Array.isArray(payload.operations) ? payload.operations.map(assertOperationNode) : []);
@@ -173,7 +173,7 @@ async function assertSafeResponse(response: Response): Promise<Response> {
 }
 
 async function fetchOperation(operationId: string): Promise<OperationNode> {
-  const response = await fetch(`/operations/${encodeURIComponent(operationId)}`);
+  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`);
   if (!response.ok) throw new ApiError(response.status, `Operation request failed: ${response.status}`);
   const payload = await response.json() as { readonly operation?: unknown };
   return assertOperationNode(payload.operation);

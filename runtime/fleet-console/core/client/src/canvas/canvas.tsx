@@ -425,7 +425,7 @@ function PluginOperationRenderer({
 }
 
 async function updatePluginOperationGeometry(operationId: string, geometry: OperationGeometry): Promise<void> {
-  await fetch(`/operations/${encodeURIComponent(operationId)}`, {
+  await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ geometry }),

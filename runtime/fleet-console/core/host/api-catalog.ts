@@ -7,7 +7,7 @@ export interface ApiCatalogEntry {
   readonly path: string;
   readonly summary: string;
   readonly category: string;
-  readonly gate: "loopback" | "terminal-origin" | "console-origin" | "lock-token";
+  readonly gate: "loopback" | "origin-write" | "origin-strict" | "lock-token";
 }
 
 const compareApiCatalogEntries = (left: ApiCatalogEntry, right: ApiCatalogEntry): number =>

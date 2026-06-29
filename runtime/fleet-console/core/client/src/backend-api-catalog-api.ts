@@ -7,7 +7,7 @@ interface ApiCatalogResponse {
 }
 
 export async function fetchApiCatalog(signal?: AbortSignal): Promise<readonly ApiCatalogEntry[]> {
-  const response = await fetch("/settings/api-catalog", { signal });
+  const response = await fetch("/api/v1/settings/api-catalog", { signal });
   await assertOk(response);
   return assertApiCatalogResponse(await response.json(), response.status).routes;
 }

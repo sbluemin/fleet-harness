@@ -101,52 +101,52 @@ const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/health",
+    path: "/api/v1/status",
     summary: "콘솔 관측 상태를 조회합니다.",
     category: "Observer",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/settings/api-catalog",
+    path: "/api/v1/settings/api-catalog",
     summary: "백엔드 API 카탈로그를 조회합니다.",
     category: "Observer",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/observer/release-notes",
+    path: "/api/v1/updates/release-notes",
     summary: "Get the console release notes.",
     category: "Update",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/theaters",
+    path: "/api/v1/theaters",
     summary: "Theater 목록을 조회합니다.",
     category: "Observer",
     gate: "loopback",
   },
   {
     method: "POST",
-    path: "/theaters",
+    path: "/api/v1/theaters",
     summary: "새 Theater를 등록합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
-    path: "/theaters/:theaterId",
+    path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
     path: "/plugins/terminal/shell/ticket",
     summary: "Shell WebSocket 접속 티켓을 발급합니다.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "GET",
@@ -160,7 +160,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/plugins/terminal/settings",
     summary: "Save Terminal plugin prompt settings.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "GET",
@@ -174,39 +174,39 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/plugins/terminal/model-auth/providers/:cli",
     summary: "Register a Terminal plugin model provider API key.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
     path: "/plugins/terminal/model-auth/providers/:cli",
     summary: "Remove a Terminal plugin model provider API key.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
-    path: "/theaters/folders/list",
+    path: "/api/v1/theaters/folder-listings",
     summary: "Theater 폴더 선택 목록을 조회합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
-    path: "/theaters/folders/grants",
+    path: "/api/v1/theaters/folder-grants",
     summary: "Theater 폴더 접근 grant를 발급합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
-    path: "/update/apply",
+    path: "/api/v1/updates/apply",
     summary: "Request console update application.",
     category: "Update",
-    gate: "console-origin",
+    gate: "origin-strict",
   },
   {
     method: "GET",
-    path: "/health",
+    path: "/api/v1/health",
     summary: "Check console status with the lock token.",
     category: "Health",
     gate: "lock-token",
@@ -419,9 +419,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
     publishDeleteEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, event),
   });
-  routeRegistry.register("/operations", operationsRouter);
-  routeRegistry.register("/carrier-settings", carrierSettingsRouter);
-  routeRegistry.register("/global-settings", globalSettingsRouter);
+  routeRegistry.register("/api/v1/operations", operationsRouter);
+  routeRegistry.register("/api/v1/settings", async (ctx) => {
+    const { req, res, pathname } = ctx;
+    if (pathname === "/api/v1/settings/api-catalog") {
+      handleObserverApiCatalog(req, res);
+      return true;
+    }
+    if (await carrierSettingsRouter(ctx)) return true;
+    return globalSettingsRouter(ctx);
+  });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -435,7 +442,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     if (tryServeStaticConsole(req, res, pathname)) return;
-    if (pathname === "/health") {
+    if (pathname === "/api/v1/health") {
       handleHealth(req, res);
       return;
     }
@@ -446,37 +453,32 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function handleCoreRequest(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): void {
-    if (pathname === "/theaters") {
+    if (pathname === "/api/v1/status") {
+      handleStatus(req, res);
+      return;
+    }
+    if (pathname === "/api/v1/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
     }
-    if (pathname === "/theaters/folders/list") {
+    if (pathname === "/api/v1/theaters/folder-listings") {
       runAsyncHandler(handleTheaterFoldersList(req, res), res);
       return;
     }
-    if (pathname === "/theaters/folders/grants") {
+    if (pathname === "/api/v1/theaters/folder-grants") {
       runAsyncHandler(handleTheaterFolderGrants(req, res), res);
       return;
     }
-    const theaterItemMatch = pathname.match(/^\/theaters\/([^/]+)$/);
+    const theaterItemMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)$/);
     if (theaterItemMatch) {
       runAsyncHandler(handleObserverTheaterItem(req, res, decodeURIComponent(theaterItemMatch[1] ?? "")), res);
       return;
     }
-    const theaterSessionMatch = pathname.match(/^\/theaters\/([^/]+)\/sessions$/);
-    if (theaterSessionMatch) {
-      runAsyncHandler(handleObserverTheaterSessions(req, res, decodeURIComponent(theaterSessionMatch[1] ?? "")), res);
-      return;
-    }
-    if (pathname === "/settings/api-catalog") {
-      handleObserverApiCatalog(req, res);
-      return;
-    }
-    if (pathname === "/observer/release-notes") {
+    if (pathname === "/api/v1/updates/release-notes") {
       runAsyncHandler(handleObserverReleaseNotes(req, res), res);
       return;
     }
-    if (pathname === "/update/apply") {
+    if (pathname === "/api/v1/updates/apply") {
       runAsyncHandler(handleUpdateApply(req, res), res);
       return;
     }
@@ -538,11 +540,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 200, body);
       return;
     }
-    if (req.headers.authorization !== undefined) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    handleObserverStatus(req, res);
+    writeJson(res, 401, { error: "Unauthorized" });
   }
 
   async function handleTheaterFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -656,24 +654,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, { ok: true });
   }
 
-  async function handleObserverTheaterSessions(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    if (!isTerminalAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    const theater = theaters.get(theaterId);
-    if (!theater) {
-      writeJson(res, 404, { error: "theater_not_found" });
-      return;
-    }
-    writeJson(res, 410, { error: "agent_plugin_required" });
-  }
-
-  function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
+  function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const theaterId = readUrl(req).searchParams.get("theaterId");
     const payload: ConsoleObserverStatus = {
       workspaces: operations.list().filter((operation) => operation.parentId === null).length,
@@ -691,7 +672,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, payload);
   }
 
-  function handleObserverApiCatalog(_req: http.IncomingMessage, res: http.ServerResponse): void {
+  function handleObserverApiCatalog(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
     writeJson(res, 200, { version, routes: buildApiCatalog() });
   }
 
@@ -776,6 +761,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 202, payload);
   }
 
+  // 카탈로그 gate 레이블은 "origin-write"로 개명됐지만 이 함수 이름은 별도 정리 범위.
   function isTerminalAuthorized(req: http.IncomingMessage): boolean {
     if (!lockHandle) return false;
     // Origin 검증으로 WS 경로와 동일한 출처 경계를 terminal 라우트에 적용한다.
@@ -787,6 +773,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return !!token && req.headers.authorization === `Bearer ${token}`;
   }
 
+  // 카탈로그 gate 레이블은 "origin-strict"로 개명됐지만 이 함수 이름은 별도 정리 범위.
   function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
     if (!lockHandle) return false;
     return req.headers.origin === `http://127.0.0.1:${lockHandle.payload.port ?? port}`;

@@ -20,7 +20,7 @@ export class ApiError extends Error {
 }
 
 export async function fetchOperationCatalog(signal?: AbortSignal): Promise<readonly OperationCatalogPlugin[]> {
-  const response = await fetch("/operations/catalog", { signal });
+  const response = await fetch("/api/v1/operations/catalog", { signal });
   if (!response.ok) throw new ApiError(response.status, `Operation catalog request failed: ${response.status}`);
   const payload = await response.json() as { readonly plugins?: unknown };
   return Array.isArray(payload.plugins) ? payload.plugins.map(readCatalogPlugin).filter((plugin): plugin is OperationCatalogPlugin => plugin !== null) : [];
