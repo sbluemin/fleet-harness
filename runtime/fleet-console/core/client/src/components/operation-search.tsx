@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { clearMaximizedOperationId } from "../canvas/canvas-store.js";
 import { filterOperationSearchEntries, groupOperationSearchEntries, searchTokens } from "../operation-search.js";
 import { closeOperationSearch, focusOperation, operationSearchEntries } from "../store.js";
 import type { ConsoleState } from "../types.js";
@@ -60,7 +59,7 @@ export function OperationSearch({ state }: OperationSearchProps) {
   if (!state.operationSearchOpen) return null;
 
   const selectEntry = (operationId: string) => {
-    clearMaximizedOperationId();
+    // 최대화 해제는 이동 경로(operations.tsx의 pendingOperationFocus 소비)에 위임한다 — 최대화 중이면 유지·교체.
     focusOperation(operationId);
     navigate("/operations");
     closeOperationSearch();
