@@ -1,5 +1,7 @@
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
+import { useInlineRename } from "../use-inline-rename.js";
+
 import type { OperationNode } from "../types.js";
 
 export interface SideBarEntry {
@@ -28,6 +30,7 @@ interface SideBarChipProps {
   readonly onPointerDragEnd: (event: ReactPointerEvent<HTMLLIElement>) => void;
   readonly onPointerDragCancel: (event: ReactPointerEvent<HTMLLIElement>) => void;
   readonly onOpenAccent: (operationId: string, anchor: DOMRect) => void;
+  readonly onRename: (operationId: string, title: string) => void;
 }
 
 export function OperationsSideBarChip({
@@ -48,10 +51,12 @@ export function OperationsSideBarChip({
   onPointerDragEnd,
   onPointerDragCancel,
   onOpenAccent,
+  onRename,
 }: SideBarChipProps) {
   const suppressClickRef = useRef(false);
   const { operation, active, minimized, notificationCount } = entry;
   const title = displayTitle(operation);
+  const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
     active ? "side-bar-chip--active" : "",
@@ -102,7 +107,7 @@ export function OperationsSideBarChip({
       tabIndex={0}
       aria-label={active ? `${title} (focused)` : `Focus operation ${title}`}
       aria-current={active ? "true" : undefined}
-      title={active ? "Focused · right-click to set accent" : "Click to focus · right-click to set accent"}
+      title={active ? "Focused · double-click to rename · right-click to set accent" : "Click to focus · double-click to rename · right-click to set accent"}
       style={chipStyle}
       onClick={focus}
       onContextMenu={openAccent}
@@ -142,7 +147,21 @@ export function OperationsSideBarChip({
           {entry.icon ?? <DefaultOpIcon />}
         </span>
       </span>
-      <span className="side-bar-chip-name">{title}</span>
+      {rename.renaming ? (
+        <input
+          className="side-bar-chip-rename-input"
+          ref={rename.inputRef}
+          value={rename.draftTitle}
+          aria-label={`Rename operation ${title}`}
+          onChange={(e) => rename.setDraftTitle(e.target.value)}
+          onKeyDown={rename.handleKeyDown}
+          onBlur={rename.handleBlur}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span className="side-bar-chip-name" onDoubleClick={rename.begin}>{title}</span>
+      )}
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
       ) : null}
