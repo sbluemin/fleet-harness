@@ -2,14 +2,22 @@
 
 import { describe, expect, it } from "vitest";
 
-import { decodeMermaidSource, renderMarkdown } from "../core/client/src/codex/markdown/renderer";
+import { decodeMermaidSource, renderMarkdown } from "@fleet-console/markdown/core";
+
+const resolveWikiLink = (id: string): string => `/entry/${encodeURIComponent(id)}`;
 
 describe("security markdown", () => {
   it("renders canonical wiki links as internal SPA anchors", () => {
-    const rendered = renderMarkdown("See [[wiki:alpha]].");
+    const rendered = renderMarkdown("See [[wiki:alpha]].", { resolveWikiLink });
     expect(rendered.html).toContain("href=\"/entry/alpha\"");
     expect(rendered.html).toContain("data-entry-id=\"alpha\"");
     expect(rendered.html).not.toContain("[[wiki:alpha]]");
+  });
+
+  it("renders wiki links as plain text when resolveWikiLink is not provided", () => {
+    const rendered = renderMarkdown("See [[wiki:alpha]].");
+    expect(rendered.html).toContain("[[wiki:alpha]]");
+    expect(rendered.html).not.toContain("href=");
   });
 
   it("removes script tags and event handlers", () => {
@@ -37,7 +45,7 @@ describe("security markdown", () => {
   });
 
   it("escapes attribute-breaking ids in canonical wiki links", () => {
-    const rendered = renderMarkdown("See [[wiki:alpha\\\"<tag>]].");
+    const rendered = renderMarkdown("See [[wiki:alpha\\\"<tag>]].", { resolveWikiLink });
     expect(rendered.html).toContain("data-entry-id=\"alpha%5C%22%3Ctag%3E\"");
     expect(rendered.html).not.toContain("data-entry-id=\"alpha\\&quot;<tag>\"");
   });

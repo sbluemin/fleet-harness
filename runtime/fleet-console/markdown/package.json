@@ -1,0 +1,34 @@
+{
+  "name": "@fleet-console/markdown",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./core": {
+      "types": "./core.ts",
+      "import": "./core.ts",
+      "default": "./core.ts"
+    },
+    "./mermaid": {
+      "types": "./mermaid.ts",
+      "import": "./mermaid.ts",
+      "default": "./mermaid.ts"
+    },
+    "./styles.css": {
+      "default": "./styles.css"
+    }
+  },
+  "dependencies": {
+    "dompurify": "^3.2.7",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.4.1",
+    "mermaid": "^11.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

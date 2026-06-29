@@ -1,18 +1,65 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import "@fleet-console/markdown/styles.css";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MarkdownViewerProps {
   readonly content: string;
   readonly truncated?: boolean;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
-  const html = useMemo(() => renderMarkdown(content), [content]);
+  // file-explorer는 신뢰할 수 없는 임의 .md를 미리보기하므로, 렌더 HTML을 DOM에 mount하기 전에
+  // 위험 요소를 무력화한다. 특히 이미지 src는 dangerouslySetInnerHTML로 삽입되는 즉시 브라우저가
+  // fetch하므로(렌더 이후 실행되는 useEffect로는 이미 늦다) 반드시 mount 전에 제거해야 추적
+  // (tracking pixel)·IP 노출을 막을 수 있다. 경로 링크 href도 함께 사전 제거한다.
+  const html = useMemo(() => {
+    const rendered = renderMarkdown(content).html;
+    const doc = new DOMParser().parseFromString(rendered, "text/html");
+    neutralizeUntrustedDom(doc.body);
+    return doc.body.innerHTML;
+  }, [content]);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    installDiagramHydrator(root);
+    // Mermaid 하이드레이터가 비동기로 삽입하는 노드/속성(SPA href 등)도 즉시 무력화한다
+    // (mount 전 사전 처리만으로는 비동기 삽입분이 누락되기 때문).
+    neutralizeUntrustedDom(root);
+    const observer = new MutationObserver(() => neutralizeUntrustedDom(root));
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
+    return () => observer.disconnect();
+  }, [html]);
+
+  // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 처리한다.
+  // codex는 자체 위임 핸들러를 두지만 file-explorer엔 없어 버튼이 무동작이었다 —
+  // pre[data-code]의 원본 코드를 클립보드에 복사하고 잠시 "Copied" 피드백을 표시한다.
+  const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+    if (!button) return;
+    const code = button.closest("pre")?.getAttribute("data-code");
+    if (!code) return;
+    void navigator.clipboard?.writeText(code);
+    const original = button.textContent;
+    button.textContent = "Copied";
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1200);
+  }, []);
 
   return (
     <div className="fexp-md-wrap">
       {truncated && <div className="fexp-truncated-badge">File is too large — showing a partial preview</div>}
       <div
-        className="fexp-md-body v-md"
+        ref={rootRef}
+        className="markdown-body"
+        onClick={handleCopyClick}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -20,116 +67,25 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
   );
 }
 
-function renderMarkdown(md: string): string {
-  const lines = md.split("\n");
-  const out: string[] = [];
-  let i = 0;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  while (i < lines.length) {
-    const line = lines[i]!;
-
-    // 펜스 코드 블록
-    if (line.startsWith("```")) {
-      const lang = line.slice(3).trim();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i]!.startsWith("```")) {
-        codeLines.push(escapeHtml(lines[i]!));
-        i++;
-      }
-      const langAttr = lang ? ` class="lang-${escapeHtml(lang)}"` : "";
-      out.push(`<pre class="fexp-md-pre"><code${langAttr}>${codeLines.join("\n")}</code></pre>`);
-      i++;
-      continue;
-    }
-
-    // 제목
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)/);
-    if (headingMatch) {
-      const level = headingMatch[1]!.length;
-      out.push(`<h${level} class="fexp-md-h${level}">${inlineMarkdown(headingMatch[2]!)}</h${level}>`);
-      i++;
-      continue;
-    }
-
-    // 수평선
-    if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim())) {
-      out.push(`<hr class="fexp-md-hr" />`);
-      i++;
-      continue;
-    }
-
-    // 비순서 목록
-    const ulMatch = line.match(/^(\s*)[-*+]\s+(.*)/);
-    if (ulMatch) {
-      const items: string[] = [];
-      while (i < lines.length && lines[i]!.match(/^(\s*)[-*+]\s+(.*)/)) {
-        const m = lines[i]!.match(/^(\s*)[-*+]\s+(.*)/)!;
-        items.push(`<li>${inlineMarkdown(m[2]!)}</li>`);
-        i++;
-      }
-      out.push(`<ul class="fexp-md-ul">${items.join("")}</ul>`);
-      continue;
-    }
-
-    // 순서 목록
-    const olMatch = line.match(/^\d+\.\s+(.*)/);
-    if (olMatch) {
-      const items: string[] = [];
-      while (i < lines.length && lines[i]!.match(/^\d+\.\s+(.*)/)) {
-        const m = lines[i]!.match(/^\d+\.\s+(.*)/)!;
-        items.push(`<li>${inlineMarkdown(m[1]!)}</li>`);
-        i++;
-      }
-      out.push(`<ol class="fexp-md-ol">${items.join("")}</ol>`);
-      continue;
-    }
-
-    // 인용
-    if (line.startsWith(">")) {
-      const quoteLines: string[] = [];
-      while (i < lines.length && lines[i]!.startsWith(">")) {
-        quoteLines.push(lines[i]!.slice(1).trim());
-        i++;
-      }
-      out.push(`<blockquote class="fexp-md-bq"><p>${inlineMarkdown(quoteLines.join(" "))}</p></blockquote>`);
-      continue;
-    }
-
-    // 빈 줄
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    // 단락
-    const paraLines: string[] = [];
-    while (i < lines.length && lines[i]!.trim() !== "" && !lines[i]!.startsWith("#") && !lines[i]!.startsWith("```") && !lines[i]!.startsWith(">")) {
-      paraLines.push(lines[i]!);
-      i++;
-    }
-    if (paraLines.length > 0) {
-      out.push(`<p class="fexp-md-p">${inlineMarkdown(paraLines.join(" "))}</p>`);
+// 신뢰 불가 미리보기에서 위험 요소를 무력화한다(구 정규식 렌더러의 안전 수준 보존):
+// - 상대/절대 경로 링크 href 제거 — 클릭(중간·우클릭 'open link' 포함) 시 console SPA 탭
+//   hijack을 차단한다. 외부 링크(http/mailto)와 문서 내 앵커(#)는 보존한다.
+// - 이미지 src 제거 — 외부 이미지 auto-fetch로 인한 추적·IP 노출을 차단한다.
+function neutralizeUntrustedDom(root: ParentNode): void {
+  for (const anchor of root.querySelectorAll("a[href]")) {
+    const href = anchor.getAttribute("href") ?? "";
+    if (href && !/^(https?:|mailto:|#)/i.test(href)) {
+      anchor.removeAttribute("href");
+      anchor.setAttribute("role", "link");
+      anchor.setAttribute("aria-disabled", "true");
     }
   }
-
-  return out.join("\n");
-}
-
-function inlineMarkdown(text: string): string {
-  // 먼저 HTML escape
-  let result = escapeHtml(text);
-  // 코드 인라인 (`code`)
-  result = result.replace(/`([^`]+)`/g, (_, code) => `<code class="fexp-md-code">${code}</code>`);
-  // 굵게 (**bold**)
-  result = result.replace(/\*\*([^*]+)\*\*/g, (_, b) => `<strong>${b}</strong>`);
-  // 기울임 (*italic*)
-  result = result.replace(/\*([^*]+)\*/g, (_, e) => `<em>${e}</em>`);
-  // 링크 [text](url)
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) => `<span class="fexp-md-link">${t}</span>`);
-  return result;
-}
-
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  // 이미지 로드 속성(src·srcset)을 제거해 외부 auto-fetch를 차단한다(img 및 picture>source 모두).
+  for (const el of root.querySelectorAll("img[src], img[srcset], source[src], source[srcset]")) {
+    el.removeAttribute("src");
+    el.removeAttribute("srcset");
+    if (el.tagName === "IMG") el.setAttribute("aria-hidden", "true");
+  }
 }

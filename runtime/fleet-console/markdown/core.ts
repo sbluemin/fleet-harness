@@ -8,9 +8,6 @@ import markdown from "highlight.js/lib/languages/markdown";
 import python from "highlight.js/lib/languages/python";
 import typescript from "highlight.js/lib/languages/typescript";
 
-import { entryPath } from "../router";
-import { escapeHtml } from "../utils/html";
-
 export interface TocItem {
   id: string;
   text: string;
@@ -24,6 +21,7 @@ export interface RenderedMarkdown {
 
 export interface RenderMarkdownOptions {
   omitDuplicateTitle?: string;
+  resolveWikiLink?: (id: string) => string | null;
 }
 
 // SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
@@ -42,7 +40,7 @@ const sanitizeConfig = {
 const highlighter = configureHighlighter();
 
 export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}): RenderedMarkdown {
-  const bodyWithWikiLinks = renderWikiLinks(body);
+  const bodyWithWikiLinks = renderWikiLinks(body, options.resolveWikiLink);
   const rawHtml = marked.parse(bodyWithWikiLinks, { async: false }) as string;
   const safeHtml = DOMPurify.sanitize(rawHtml, sanitizeConfig);
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
@@ -71,13 +69,15 @@ export function decodeMermaidSource(encoded: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-function renderWikiLinks(body: string): string {
+function renderWikiLinks(body: string, resolveWikiLink?: (id: string) => string | null): string {
   return body.replace(WIKI_LINK_PATTERN, (_match, rawId: string) => {
     const id = rawId.trim();
     if (!id) return "";
+    if (!resolveWikiLink) return escapeHtml(`[[wiki:${id}]]`);
+    const href = resolveWikiLink(id);
+    if (href === null) return escapeHtml(`[[wiki:${id}]]`);
     const label = escapeHtml(id);
     const encodedId = encodeURIComponent(id);
-    const href = entryPath(id);
     return `<a href="${href}" data-entry-id="${encodedId}">${label}</a>`;
   });
 }
@@ -212,4 +212,11 @@ function normalizeHeadingText(value: string): string {
     .trim()
     .replace(/\s+/g, " ")
     .toLocaleLowerCase("en-US");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
