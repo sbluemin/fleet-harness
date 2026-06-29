@@ -6,7 +6,7 @@ import {
   fetchEntry,
 } from "./api.js";
 import type { ConflictDetailResponse, ConflictListItem, DrydockDetailResponse, DrydockListItem, EntryResponse } from "./api.js";
-import { installDiagramHydrator } from "./markdown/diagrams.js";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { TocItem } from "@fleet-console/markdown/core";
 import { buildCompactContext, buildProvenanceContext, buildRelatedContextPack, renderCopyContextActions } from "./components/copy-context-actions.js";

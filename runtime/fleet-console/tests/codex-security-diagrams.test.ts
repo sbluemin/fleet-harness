@@ -30,7 +30,7 @@ async function loadHydrator(): Promise<InstalledHydrator> {
   vi.resetModules();
   initializeMock.mockClear();
   renderMock.mockClear();
-  return (await import("../core/client/src/codex/markdown/diagrams")) as unknown as InstalledHydrator;
+  return (await import("@fleet-console/markdown/mermaid")) as unknown as InstalledHydrator;
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
@@ -257,7 +257,7 @@ describe("diagram hydrator security", () => {
 
   it("source declares strict Mermaid config (static check)", async () => {
     const fs = await import("node:fs/promises");
-    const src = await fs.readFile("core/client/src/codex/markdown/diagrams.ts", "utf8");
+    const src = await fs.readFile("markdown/mermaid.ts", "utf8");
     expect(src).toMatch(/securityLevel:\s*["']strict["']/);
     expect(src).toMatch(/htmlLabels:\s*false/);
     expect(src).toMatch(/startOnLoad:\s*false/);
@@ -268,7 +268,7 @@ describe("diagram hydrator security", () => {
 
   it("source declares hand-drawn themeCSS overlay (static check)", async () => {
     const fs = await import("node:fs/promises");
-    const src = await fs.readFile("core/client/src/codex/markdown/diagrams.ts", "utf8");
+    const src = await fs.readFile("markdown/mermaid.ts", "utf8");
     expect(src).toMatch(/function\s+buildThemeCss\s*\(/);
     expect(src).toMatch(/--brass-deep/);
     expect(src).toMatch(/--aurora-deep/);
@@ -616,19 +616,19 @@ describe("diagram lightbox lifecycle", () => {
 
 describe("cssColorToHex (pure-JS oklch converter)", () => {
   it("converts percent-formatted oklch to a 7-char #rrggbb hex", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     const result = cssColorToHex("oklch(58% 0.13 200)");
     expect(result).toMatch(/^#[0-9a-f]{6}$/);
   });
 
   it("converts decimal-formatted oklch lightness to a 7-char #rrggbb hex", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     const result = cssColorToHex("oklch(0.78 0.13 75)");
     expect(result).toMatch(/^#[0-9a-f]{6}$/);
   });
 
   it("emits 8-bit alpha as #rrggbbaa when alpha < 1", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     const result = cssColorToHex("oklch(82% 0.13 195 / 28%)");
     expect(result).toMatch(/^#[0-9a-f]{8}$/);
     const alphaByte = parseInt(result.slice(7, 9), 16);
@@ -636,7 +636,7 @@ describe("cssColorToHex (pure-JS oklch converter)", () => {
   });
 
   it("renders Maritime Codex --ink-pearl (oklch(96% 0.012 88)) as a near-white hex", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     const result = cssColorToHex("oklch(96% 0.012 88)");
     expect(result).toMatch(/^#[0-9a-f]{6}$/);
     const r = parseInt(result.slice(1, 3), 16);
@@ -648,25 +648,25 @@ describe("cssColorToHex (pure-JS oklch converter)", () => {
   });
 
   it("passes hex input through unchanged", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     expect(cssColorToHex("#ff0000")).toBe("#ff0000");
   });
 
   it("leaves non-oklch CSS values unchanged", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     expect(cssColorToHex("transparent")).toBe("transparent");
     expect(cssColorToHex("inherit")).toBe("inherit");
     expect(cssColorToHex("rgb(12, 34, 56)")).toBe("rgb(12, 34, 56)");
   });
 
   it("returns the trimmed input for empty/whitespace values", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     expect(cssColorToHex("")).toBe("");
     expect(cssColorToHex("   ")).toBe("");
   });
 
   it("returns the original input when the oklch payload fails to parse", async () => {
-    const { cssColorToHex } = await import("../core/client/src/codex/markdown/diagrams");
+    const { cssColorToHex } = await import("@fleet-console/markdown/mermaid");
     expect(cssColorToHex("oklch(invalid)")).toBe("oklch(invalid)");
   });
 });
