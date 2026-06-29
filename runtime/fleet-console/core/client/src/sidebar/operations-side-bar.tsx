@@ -32,6 +32,7 @@ interface OperationsSideBarProps {
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
+  readonly onRename: (operationId: string, title: string) => void;
 }
 
 interface AccentPopoverState {
@@ -78,6 +79,7 @@ export function OperationsSideBar({
   onClose,
   onFocus,
   onSetAccent,
+  onRename,
 }: OperationsSideBarProps) {
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
@@ -345,6 +347,7 @@ export function OperationsSideBar({
               onPointerDragEnd={finishPointerDrag}
               onPointerDragCancel={cancelPointerDrag}
               onOpenAccent={(operationId, anchor) => setAccentPopover({ operationId, anchor })}
+              onRename={onRename}
             />
           );
         })}

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { AccentPopover } from "./accent-popover.js";
 import { resolveAccentColor } from "./operation-accent.js";
+import { useInlineRename } from "../use-inline-rename.js";
 
 interface OperationFrameProps {
   readonly operation: OperationNode;
@@ -49,13 +50,9 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   const operationRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const committingRef = useRef(false);
-  const skipBlurCommitRef = useRef(false);
-  const [renaming, setRenaming] = useState(false);
-  const [draftTitle, setDraftTitle] = useState("");
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const displayTitle = operation.renamedTitle ?? operation.title;
+  const rename = useInlineRename({ currentTitle: displayTitle, onCommit: onRename, onBegin: onActivate });
   // accent를 패널 외곽 box-shadow 링으로 칠한다(--op-accent). status(테두리·진행광)·focus(brass)와 채널이 달라 공존한다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
@@ -65,12 +62,6 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
     maximized ? "is-maximized" : "",
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
-
-  useEffect(() => {
-    if (!renaming) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [renaming]);
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized) return;
@@ -145,43 +136,6 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
     onGeometryCommit(resize.latest);
   };
 
-  const beginRename = () => {
-    onActivate();
-    skipBlurCommitRef.current = false;
-    setDraftTitle(displayTitle);
-    setRenaming(true);
-  };
-
-  const cancelRename = () => {
-    skipBlurCommitRef.current = true;
-    setRenaming(false);
-    setDraftTitle("");
-  };
-
-  const commitRename = () => {
-    if (committingRef.current) return;
-    committingRef.current = true;
-    try {
-      onRename(draftTitle);
-    } finally {
-      committingRef.current = false;
-      skipBlurCommitRef.current = true;
-      setRenaming(false);
-    }
-  };
-
-  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      commitRename();
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancelRename();
-    }
-  };
-
   const stopButtonPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.stopPropagation();
   };
@@ -244,25 +198,19 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
         ) : (
           <span className={beaconStatusClass(status)} aria-hidden="true" />
         )}
-        {renaming ? (
+        {rename.renaming ? (
           <input
-            ref={inputRef}
+            ref={rename.inputRef}
             className="canvas-operation-rename-input"
-            value={draftTitle}
+            value={rename.draftTitle}
             aria-label={`${displayTitle} 이름 변경`}
             onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            onKeyDown={handleRenameKeyDown}
-            onBlur={() => {
-              if (skipBlurCommitRef.current) {
-                skipBlurCommitRef.current = false;
-                return;
-              }
-              commitRename();
-            }}
+            onChange={(event) => rename.setDraftTitle(event.target.value)}
+            onKeyDown={rename.handleKeyDown}
+            onBlur={rename.handleBlur}
           />
         ) : (
-          <span className="canvas-operation-title" onPointerDown={stopTitlePointer} onDoubleClick={beginRename} title="Double-click to rename">
+          <span className="canvas-operation-title" onPointerDown={stopTitlePointer} onDoubleClick={rename.begin} title="Double-click to rename">
             {displayTitle}
           </span>
         )}
