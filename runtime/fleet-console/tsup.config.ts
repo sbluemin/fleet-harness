@@ -21,7 +21,8 @@ export default defineConfig([
     // workspace 패키지(@dotobokuri/*)는 npm에 개별 발행하지 않으므로 번들에 인라인한다.
     // native(node-pty)·동적 require(ws)는 정적 분석 대상이 아니라 external로 남으며,
     // publish 스크립트가 이 둘만 dependencies로 유지한다.
-    noExternal: [/^@dotobokuri\//, /^@fleet-console\/sdk(\/|$)/],
+    // @fleet-console/markdown(마크다운 SSoT 워크스페이스 패키지)도 npm publish 시 번들 흡수
+    noExternal: [/^@dotobokuri\//, /^@fleet-console\/(sdk|markdown)(\/|$)/],
     // esbuild는 plugin-host의 dev .ts 로더에서만 동적 import되는 devDependency다.
     // 번들에 인라인하면 esbuild 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw하므로 external로 남긴다.
     external: ["esbuild"],

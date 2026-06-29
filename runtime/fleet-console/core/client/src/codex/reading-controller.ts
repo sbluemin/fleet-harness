@@ -6,13 +6,14 @@ import {
   fetchEntry,
 } from "./api.js";
 import type { ConflictDetailResponse, ConflictListItem, DrydockDetailResponse, DrydockListItem, EntryResponse } from "./api.js";
-import { installDiagramHydrator } from "./markdown/diagrams.js";
-import { renderMarkdown } from "./markdown/renderer.js";
-import type { TocItem } from "./markdown/renderer.js";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import { renderMarkdown } from "@fleet-console/markdown/core";
+import type { TocItem } from "@fleet-console/markdown/core";
 import { buildCompactContext, buildProvenanceContext, buildRelatedContextPack, renderCopyContextActions } from "./components/copy-context-actions.js";
 import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { getState } from "./state.js";
+import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ export function mountReadingInto(
       const { index } = getState();
       const { html: markdownHtml, toc } = renderMarkdown(entry.body, {
         omitDuplicateTitle: entry.frontmatter.title,
+        resolveWikiLink: (id) => entryPath(id),
       });
 
       (readContainer as HTMLElement & { _currentEntry?: EntryResponse })._currentEntry = entry;

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "react": "^19.2.3"
   },
