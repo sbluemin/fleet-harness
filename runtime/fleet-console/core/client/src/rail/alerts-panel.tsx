@@ -5,7 +5,6 @@ import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "../styles/rail-alerts.css";
 import { useActiveRailPanelId } from "./rail-store.js";
-import { clearMaximizedOperationId } from "../canvas/canvas-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
   computeVisibleOperationIds,
@@ -50,7 +49,8 @@ export function AlertsPanelBody() {
 
   const handleMove = useCallback(
     (notification: OperationNotification) => {
-      clearMaximizedOperationId();
+      // 최대화는 직접 해제하지 않는다 — 이동 경로(operations.tsx의 pendingOperationFocus 소비)가
+      // 최대화 중이면 최대화 대상을 목적지 op로 교체해 최대화 뷰를 유지한다.
       focusOperation(notification.operationId);
       navigate("/operations");
       // rail 패널은 닫지 않는다 — 사용자가 명시적으로 닫을 때까지 유지

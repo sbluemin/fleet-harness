@@ -89,10 +89,18 @@ export function Operations({ state }: OperationsProps) {
     if (state.operationsHydrated) pruneOperations(operationOrder);
   }, [operationOrder, state.operationsHydrated]);
 
-  // 검색 등에서 들어온 일회성 이동 요청을 처리한다.
+  // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
   useEffect(() => {
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
+    // 최대화 뷰 유지: theater 전환 effect(loadForTheater, 위쪽 effect)가 먼저 실행되어
+    // 도착 Theater의 최대화 상태를 복원한 뒤이므로, 여기서 getMaximizedOperationId()는 도착 Theater 기준값이다.
+    // 최대화 중이면 최대화 대상만 목적지 op로 교체한다 — handleFocus·Alt+←/→와 동일 정책.
+    if (getMaximizedOperationId() !== null) {
+      setMaximizedOperationId(operationId);
+      consumeOperationFocus();
+      return;
+    }
     clearMaximizedOperationId();
     const viewportSize = viewportSizeFor(bodyRef.current);
     if (viewportSize) focusCanvasOperation(operationId, viewportSize);
