@@ -349,46 +349,6 @@ describe("console terminal observability", () => {
     expect(terminalSessions.sessions[0]?.status).toBe("error");
   });
 
-  it.skip("registers the runtime workspace only after PTY spawn succeeds", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-spawn-success-"));
-    tempDirs.push(dir);
-    const runtime = createFakeConsoleRuntime([], []);
-    const fixture = await startFixture({
-      agentRuntime: runtime as never,
-      terminalStartShell: () => createMockPty(),
-    });
-    const theater = await createTheater(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
-    expect(created.status).toBe(200);
-    const session = await created.json() as { readonly sessionId: string };
-    runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: session.sessionId, trackId: "t1", text: "hello" });
-
-    const observerTenants = await getJson<{ readonly tenants: ReadonlyArray<{ readonly tenantId: string; readonly tenantLabel: string; readonly terminalSessionId?: string }> }>(`${fixture.endpoint}observer/tenants`);
-    const observerJobs = await getJson<{ readonly tenants: ReadonlyArray<{ readonly jobs: ReadonlyArray<{ readonly jobId: string }> }> }>(`${fixture.endpoint}observer/jobs`);
-
-    expect(observerTenants.tenants).toEqual([
-      expect.objectContaining({ tenantId: session.sessionId, tenantLabel: "Claude Code", terminalSessionId: session.sessionId }),
-    ]);
-    expect(observerJobs.tenants[0]?.jobs[0]?.jobId).toBe("job-a");
-  });
-
-  it.skip("rejects a Theater session for a not-installed CLI with 409", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-gate-uninstalled-"));
-    tempDirs.push(dir);
-    const fixture = await startFixture({ agentCliDetector: createStubAgentCliDetector({ claude: false }) });
-    const theater = await createTheater(fixture, dir);
-    const res = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cliId: "claude" }),
-    });
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "agent_cli_unavailable" });
-  });
-  // 참고: signedIn 게이트의 거부 경로는 위 미설치 테스트가 동일 조건문(!available || !signedIn)을 태워 커버하고,
-  // signedIn=false 판정 자체는 combineAgentCliLaunchMetadata 단위 테스트가 검증한다. signedIn은 글로벌
-  // ~/.fleet/auth.json(authService)에 의존하므로 통합 레벨에서 deterministic하게 만들 별도 주입점이 없어
-  // 환경 의존 테스트를 추가하지 않는다.
 });
 
 describe("console static and terminal ticket boundary", () => {
@@ -769,7 +729,7 @@ describe("console static and terminal ticket boundary", () => {
 
   it("lists Theater folders through the browser API without native cancellation", async () => {
     const response = await fetchWithBlockedPortRetry((fixture) =>
-      fetch(`${fixture.endpoint}api/v1/theaters/folders/list`, {
+      fetch(`${fixture.endpoint}api/v1/theaters/folder-listings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: null }),
@@ -784,7 +744,7 @@ describe("console static and terminal ticket boundary", () => {
   it("rejects Theater folder routes when the browser Origin is not the console origin", async () => {
     const fixture = await startFixture();
 
-    const response = await fetch(`${fixture.endpoint}api/v1/theaters/folders/list`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/theaters/folder-listings`, {
       method: "POST",
       headers: { origin: "http://evil.example", "Content-Type": "application/json" },
       body: JSON.stringify({ path: null }),
@@ -798,7 +758,7 @@ describe("console static and terminal ticket boundary", () => {
       release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
     });
 
-    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -813,7 +773,7 @@ describe("console static and terminal ticket boundary", () => {
       release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
     });
 
-    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({ packageName: "@dotobokuri/fleet-console", version: "9.9.9" }),
@@ -828,7 +788,7 @@ describe("console static and terminal ticket boundary", () => {
       release: { channel: "local", version: "1.0.0", packageRoot: "/pkg" },
     });
 
-    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -848,7 +808,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
 
-    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -870,7 +830,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
 
-    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -912,7 +872,7 @@ describe("console static and terminal ticket boundary", () => {
         refresh: vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" }),
       },
     });
-    const request = () => fetch(`${fixture.endpoint}api/v1/update/apply`, {
+    const request = () => fetch(`${fixture.endpoint}api/v1/updates/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -991,71 +951,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(state.operationNodes[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
     if (process.platform !== "win32") expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
-  });
-
-  it.skip("rehydrates a created operation from a later capture without an intermediate persist", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-"));
-    tempDirs.push(dir);
-    const startedShells: string[] = [];
-    const fixture = await startFixture({
-      terminalLaunch: createMockLaunch,
-      terminalStartShell: (launch) => {
-        startedShells.push(launch.cwd);
-        return createMockPty();
-      },
-    });
-    const theater = await createTheater(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cliId: "codex" }),
-    });
-    const session = await created.json() as { readonly sessionId: string; readonly status: string };
-    const statePath = path.join(fixture.carrierStoreDir, "console", "state.json");
-    const initialState = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown; readonly sessionId?: unknown }> };
-    const capturesDir = path.join(fixture.carrierStoreDir, "console", "captures");
-    const capturePath = path.join(capturesDir, `${session.sessionId}.json`);
-
-    fs.mkdirSync(capturesDir, { recursive: true });
-    fs.writeFileSync(capturePath, JSON.stringify({
-      provider: "codex",
-      sessionId: "codex-provider-session-secret",
-      transcriptPath: "/secret/codex/transcript.jsonl",
-      source: "user-prompt-submit",
-      capturedAt: "2026-06-16T00:00:02.000Z",
-    }));
-    await fixture.server.stop();
-    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-lock-"));
-    tempDirs.push(restartDir);
-    (globalThis as { __fleetTerminalLaunch?: typeof createMockLaunch }).__fleetTerminalLaunch = createMockLaunch;
-    (globalThis as { __fleetTerminalStartShell?: (launch: TerminalLaunchSpec) => TerminalPtyHandle }).__fleetTerminalStartShell = (launch) => {
-      startedShells.push(launch.cwd);
-      return createMockPty();
-    };
-    const restartedServer = createConsoleServer({
-      port: 0,
-      version: "test",
-      dataDir: fixture.carrierStoreDir,
-    });
-    servers.push(restartedServer);
-    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
-
-    const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${restartedEndpoint}terminal/sessions`);
-    const persistedState = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
-    const serialized = JSON.stringify(sessions);
-
-    expect(created.status).toBe(200);
-    expect(session.status).toBe("terminal-only");
-    expect(initialState.operations[0]).toMatchObject({ sessionId: session.sessionId });
-    expect(initialState.operations[0]?.providerSession).toBeUndefined();
-    expect(startedShells).toEqual([dir]);
-    expect(sessions.sessions[0]).toMatchObject({ sessionId: session.sessionId, status: "dormant", resumeAvailable: true });
-    expect(persistedState.operations[0]?.providerSession).toMatchObject({ provider: "codex", sessionId: "codex-provider-session-secret" });
-    expect(fs.existsSync(capturePath)).toBe(false);
-    expect(serialized).not.toContain(dir);
-    expect(serialized).not.toContain("codex-provider-session-secret");
-    expect(serialized).not.toContain("transcript");
-    expect(serialized).not.toContain("providerSession");
   });
 
   it("keeps a wiki Theater's hasWiki true after a console restart by re-registering its Codex workspace", async () => {
@@ -1731,48 +1626,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(state.operations[0]?.providerSession).toBeDefined();
   });
 
-  it.skip("keeps a newly captured live session dormant after natural PTY exit", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-exit-"));
-    tempDirs.push(dir);
-    const ptys: ExitablePty[] = [];
-    const fixture = await startFixture({
-      terminalStartShell: () => {
-        const pty = createExitablePty();
-        ptys.push(pty);
-        return pty;
-      },
-    });
-    const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
-    const theaterResponse = await fetch(`${fixture.endpoint}api/v1/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
-    expect(theaterResponse.status).toBe(200);
-    const theater = await theaterResponse.json() as { readonly id: string };
-    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
-    expect(created.status).toBe(200);
-    const session = await created.json() as { readonly sessionId: string };
-    const capturesDir = path.join(fixture.carrierStoreDir, "console", "captures");
-    const capturePath = path.join(capturesDir, `${session.sessionId}.json`);
-    fs.mkdirSync(capturesDir, { recursive: true });
-    fs.writeFileSync(capturePath, JSON.stringify({
-      provider: "claude",
-      sessionId: "provider-session-secret",
-      capturedAt: "2026-06-16T00:00:00.000Z",
-    }));
-
-    expect(ptys).toHaveLength(1);
-    ptys[0]!.emitExit();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
-    const tenants = await getJson<{ readonly tenants: readonly unknown[] }>(`${fixture.endpoint}observer/tenants`);
-    const theaters = await getJson<{ readonly theaters: ReadonlyArray<{ readonly activeAdmiralCount: number }> }>(`${fixture.endpoint}api/v1/theaters`);
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
-
-    expect(sessions.sessions[0]).toMatchObject({ sessionId: session.sessionId, status: "dormant", resumeAvailable: true });
-    expect(tenants.tenants).toEqual([]);
-    expect(theaters.theaters[0]?.activeAdmiralCount).toBe(0);
-    expect(state.operations[0]?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    expect(fs.existsSync(capturePath)).toBe(false);
-  });
-
   it.skip("registers wiki-less Theaters as the observer superset without browser tokens", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-"));
     tempDirs.push(dir);
@@ -1927,41 +1780,6 @@ describe("console static and terminal ticket boundary", () => {
     });
     await expect(errorResponse.json()).resolves.toEqual({ error: "invalid_folder_grant" });
     expect(errorResponse.status).toBe(400);
-  });
-
-  it.skip("launches Theater sessions from the registered path and rejects unknown Theater ids", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-launch-"));
-    tempDirs.push(dir);
-    const launches: TerminalLaunchSpec[] = [];
-    const cliIds: Array<string | undefined> = [];
-    const fixture = await startFixture({
-      terminalLaunch: async (cwd, context) => {
-        cliIds.push(context?.cliId);
-        return createMockLaunch(cwd, context);
-      },
-      terminalStartShell: (launch) => {
-        launches.push(launch);
-        return createMockPty();
-      },
-    });
-    const theater = await createTheater(fixture, dir);
-    const unknown = await fetch(`${fixture.endpoint}api/v1/theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
-    const invalid = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "bogus" }) });
-    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "codex", cwd: "/tmp/ignored" }) });
-    const session = await created.json() as { readonly sessionId: string; readonly theaterId: string; readonly cliId?: string; readonly cwd?: unknown };
-    const sessions = await getJson<{ sessions: ReadonlyArray<{ readonly theaterId: string; readonly cwd?: unknown }> }>(`${fixture.endpoint}terminal/sessions`);
-    const serialized = JSON.stringify({ session, sessions });
-
-    expect(unknown.status).toBe(404);
-    expect(invalid.status).toBe(400);
-    expect(created.status).toBe(200);
-    expect(session).toMatchObject({ theaterId: theater.id, cliId: "codex" });
-    expect(session.cwd).toBeUndefined();
-    expect(sessions.sessions[0]).not.toHaveProperty("cwd");
-    expect(serialized).not.toContain(dir);
-    expect(launches[0]?.cwd).toBe(dir);
-    expect(cliIds).toEqual(["codex"]);
-    expect(sessions.sessions[0]?.theaterId).toBe(theater.id);
   });
 
   it.skip("terminates a terminal session over DELETE and drops it from the session list", async () => {
@@ -2304,7 +2122,7 @@ async function createShellOperation(fixture: ServerFixture, theaterId: string): 
 }
 
 async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
-  const response = await fetch(`${fixture.endpoint}api/v1/theaters/folders/grants`, {
+  const response = await fetch(`${fixture.endpoint}api/v1/theaters/folder-grants`, {
     method: "POST",
     headers,
     body: JSON.stringify({ path: cwd }),

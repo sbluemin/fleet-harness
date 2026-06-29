@@ -58,13 +58,13 @@ export async function fetchObserverStatus(theaterId: string | null, signal?: Abo
 
 export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}): Promise<ReleaseNotesResponse> {
   const suffix = options.force ? "?force=true" : "";
-  const response = await fetch(`/api/v1/observer/release-notes${suffix}`, { signal: options.signal });
+  const response = await fetch(`/api/v1/updates/release-notes${suffix}`, { signal: options.signal });
   await assertOk(response);
   return assertReleaseNotesResponse(await response.json(), response.status);
 }
 
 export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleUpdateApplyAcceptedResponse> {
-  const response = await fetch("/api/v1/update/apply", { method: "POST", signal });
+  const response = await fetch("/api/v1/updates/apply", { method: "POST", signal });
   await assertOk(response);
   return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
 }
@@ -82,7 +82,7 @@ export async function addTheater(folderGrantId: string, signal?: AbortSignal): P
 }
 
 export async function listTheaterFolders(path: string | null, signal?: AbortSignal): Promise<TheaterFolderListResponse> {
-  const response = await fetch("/api/v1/theaters/folders/list", {
+  const response = await fetch("/api/v1/theaters/folder-listings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
@@ -93,7 +93,7 @@ export async function listTheaterFolders(path: string | null, signal?: AbortSign
 }
 
 export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal): Promise<string> {
-  const response = await fetch("/api/v1/theaters/folders/grants", {
+  const response = await fetch("/api/v1/theaters/folder-grants", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),

@@ -115,7 +115,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/observer/release-notes",
+    path: "/api/v1/updates/release-notes",
     summary: "Get the console release notes.",
     category: "Update",
     gate: "loopback",
@@ -185,21 +185,21 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "POST",
-    path: "/api/v1/theaters/folders/list",
+    path: "/api/v1/theaters/folder-listings",
     summary: "Theater 폴더 선택 목록을 조회합니다.",
     category: "Observer",
     gate: "terminal-origin",
   },
   {
     method: "POST",
-    path: "/api/v1/theaters/folders/grants",
+    path: "/api/v1/theaters/folder-grants",
     summary: "Theater 폴더 접근 grant를 발급합니다.",
     category: "Observer",
     gate: "terminal-origin",
   },
   {
     method: "POST",
-    path: "/api/v1/update/apply",
+    path: "/api/v1/updates/apply",
     summary: "Request console update application.",
     category: "Update",
     gate: "console-origin",
@@ -461,11 +461,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
     }
-    if (pathname === "/api/v1/theaters/folders/list") {
+    if (pathname === "/api/v1/theaters/folder-listings") {
       runAsyncHandler(handleTheaterFoldersList(req, res), res);
       return;
     }
-    if (pathname === "/api/v1/theaters/folders/grants") {
+    if (pathname === "/api/v1/theaters/folder-grants") {
       runAsyncHandler(handleTheaterFolderGrants(req, res), res);
       return;
     }
@@ -474,16 +474,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleObserverTheaterItem(req, res, decodeURIComponent(theaterItemMatch[1] ?? "")), res);
       return;
     }
-    const theaterSessionMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)\/sessions$/);
-    if (theaterSessionMatch) {
-      runAsyncHandler(handleObserverTheaterSessions(req, res, decodeURIComponent(theaterSessionMatch[1] ?? "")), res);
-      return;
-    }
-    if (pathname === "/api/v1/observer/release-notes") {
+    if (pathname === "/api/v1/updates/release-notes") {
       runAsyncHandler(handleObserverReleaseNotes(req, res), res);
       return;
     }
-    if (pathname === "/api/v1/update/apply") {
+    if (pathname === "/api/v1/updates/apply") {
       runAsyncHandler(handleUpdateApply(req, res), res);
       return;
     }
@@ -657,23 +652,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     operations.deleteByTheater(theaterId);
     persistDurableState();
     writeJson(res, 200, { ok: true });
-  }
-
-  async function handleObserverTheaterSessions(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    if (!isTerminalAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    const theater = theaters.get(theaterId);
-    if (!theater) {
-      writeJson(res, 404, { error: "theater_not_found" });
-      return;
-    }
-    writeJson(res, 410, { error: "agent_plugin_required" });
   }
 
   function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
