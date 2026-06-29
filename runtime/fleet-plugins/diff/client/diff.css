@@ -128,6 +128,24 @@
   gap: 8px;
 }
 
+.diff-sections-notice {
+  padding: 16px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diff-notice-title {
+  color: var(--ink-spectral);
+  font-weight: 600;
+}
+
+.diff-notice-body {
+  color: var(--ink-fog);
+}
+
 /* ── 아코디언 섹션 ── */
 .diff-section {
   border-bottom: 1px solid var(--surface-rim);

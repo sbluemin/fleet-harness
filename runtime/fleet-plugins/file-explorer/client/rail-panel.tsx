@@ -77,7 +77,7 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
       }
       setViewState(theaterId, { kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "파일을 불러올 수 없습니다";
+      const msg = e instanceof Error ? e.message : "Unable to load file";
       if (msg === "binary_file") {
         setViewState(theaterId, { kind: "binary", name });
       } else {
@@ -139,16 +139,16 @@ function FileExplorerPanel({ theaterId }: RailPanelContext) {
               : ""}
           </span>
           {isViewerActive && (
-            <button className="fexp-viewer-close" type="button" onClick={handleCloseViewer} aria-label="뷰어 닫기">
+            <button className="fexp-viewer-close" type="button" onClick={handleCloseViewer} aria-label="Close viewer">
               ✕
             </button>
           )}
         </div>
         <div className="fexp-viewer-body">
           {viewState.kind === "none" && (
-            <div className="fexp-viewer-empty">파일 트리에서 항목을 선택하면 여기서 내용을 미리 볼 수 있습니다.</div>
+            <div className="fexp-viewer-empty">Select an item in the file tree to preview its contents here.</div>
           )}
-          {viewState.kind === "loading" && <div className="fexp-viewer-loading">로딩 중…</div>}
+          {viewState.kind === "loading" && <div className="fexp-viewer-loading">Loading…</div>}
           {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
           {viewState.kind === "code" && viewState.lang === "markdown" && (
             <MarkdownViewer content={viewState.content} truncated={viewState.truncated} />

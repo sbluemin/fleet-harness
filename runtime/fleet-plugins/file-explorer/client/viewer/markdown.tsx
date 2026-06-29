@@ -10,7 +10,7 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
 
   return (
     <div className="fexp-md-wrap">
-      {truncated && <div className="fexp-truncated-badge">파일이 너무 커서 일부만 표시됩니다</div>}
+      {truncated && <div className="fexp-truncated-badge">File is too large — showing a partial preview</div>}
       <div
         className="fexp-md-body v-md"
         // eslint-disable-next-line react/no-danger

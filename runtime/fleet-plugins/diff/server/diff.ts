@@ -115,7 +115,10 @@ export async function handleDiffChanged(
     ctx.host.http.writeJson(res, 200, { files, truncated: nameStatusResult.truncated || numstatResult.truncated });
   } catch (error) {
     if (error instanceof GitExecutorError) {
-      if (error.code === "no_git_repo") { ctx.host.http.writeJson(res, 422, { error: "no_git_repo" }); return; }
+      if (error.code === "no_git_repo" || error.code === "git_unavailable") {
+        ctx.host.http.writeJson(res, 422, { error: error.code });
+        return;
+      }
       ctx.host.http.writeJson(res, 500, { error: "git_failed" });
       return;
     }
@@ -201,7 +204,10 @@ export async function handleDiffFile(
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {
     if (error instanceof GitExecutorError) {
-      if (error.code === "no_git_repo") { ctx.host.http.writeJson(res, 422, { error: "no_git_repo" }); return; }
+      if (error.code === "no_git_repo" || error.code === "git_unavailable") {
+        ctx.host.http.writeJson(res, 422, { error: error.code });
+        return;
+      }
       ctx.host.http.writeJson(res, 500, { error: "git_failed" });
       return;
     }
