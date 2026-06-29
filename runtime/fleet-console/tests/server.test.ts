@@ -339,7 +339,7 @@ describe("console terminal observability", () => {
     });
     const failedBody = await failed.json();
     const observerTenants = await getJson<{ readonly tenants: readonly unknown[] }>(`${fixture.endpoint}observer/tenants`);
-    const observerStatus = await getJson<{ readonly workspaces: number }>(`${fixture.endpoint}api/v1/health`);
+    const observerStatus = await getJson<{ readonly workspaces: number }>(`${fixture.endpoint}api/v1/status`);
     const terminalSessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly status: string }> }>(`${fixture.endpoint}terminal/sessions`);
 
     expect(failed.status).toBe(503);
@@ -1843,7 +1843,7 @@ describe("console static and terminal ticket boundary", () => {
     const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
     const created = await fetch(`${fixture.endpoint}api/v1/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const theater = await created.json() as { readonly id: string };
-    const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}api/v1/health?theaterId=${encodeURIComponent(theater.id)}`);
+    const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}api/v1/status?theaterId=${encodeURIComponent(theater.id)}`);
     const serialized = JSON.stringify(status);
 
     expect(status).toMatchObject({

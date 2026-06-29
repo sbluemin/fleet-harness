@@ -51,7 +51,7 @@ export async function fetchTheaterBootstrap(signal?: AbortSignal): Promise<Theat
 
 export async function fetchObserverStatus(theaterId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
   const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
-  const response = await fetch(`/api/v1/health${suffix}`, { signal });
+  const response = await fetch(`/api/v1/status${suffix}`, { signal });
   await assertOk(response);
   return assertObserverStatus(await response.json(), response.status);
 }

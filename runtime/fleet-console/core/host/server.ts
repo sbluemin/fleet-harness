@@ -101,7 +101,7 @@ const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/api/v1/health",
+    path: "/api/v1/status",
     summary: "콘솔 관측 상태를 조회합니다.",
     category: "Observer",
     gate: "loopback",
@@ -446,6 +446,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function handleCoreRequest(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): void {
+    if (pathname === "/api/v1/status") {
+      handleStatus(req, res);
+      return;
+    }
     if (pathname === "/api/v1/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
@@ -538,11 +542,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 200, body);
       return;
     }
-    if (req.headers.authorization !== undefined) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    handleObserverStatus(req, res);
+    writeJson(res, 401, { error: "Unauthorized" });
   }
 
   async function handleTheaterFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -673,7 +673,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 410, { error: "agent_plugin_required" });
   }
 
-  function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
+  function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const theaterId = readUrl(req).searchParams.get("theaterId");
     const payload: ConsoleObserverStatus = {
       workspaces: operations.list().filter((operation) => operation.parentId === null).length,
