@@ -10,6 +10,7 @@ import { DiffTreeView } from "./diff-tree.js";
 type PairLoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "ok"; readonly staged: readonly DiffFileEntry[]; readonly changes: readonly DiffFileEntry[] }
+  | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
   | { readonly kind: "error"; readonly message: string };
 
 interface ChangedFilesProps {
@@ -72,21 +73,42 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, selectedSection, onS
     let cancelled = false;
     setState({ kind: "loading" });
 
-    const fetchMode = (mode: "workdir" | "staged") =>
-      ctx.api.fetch("diff", "changed", {
+    const fetchMode = async (mode: "workdir" | "staged"): Promise<DiffListResult> => {
+      const res = await fetch("/plugins/diff/changed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: ctx.theaterId, mode }),
-      }).then(async (res) => (await res.json()) as DiffListResult);
+      });
+      if (!res.ok) {
+        const payload = await res.json() as { error?: string };
+        throw new Error(payload.error ?? "git_failed");
+      }
+      return res.json() as Promise<DiffListResult>;
+    };
 
-    Promise.all([fetchMode("workdir"), fetchMode("staged")]).then(([workdir, staged]) => {
-      if (!cancelled) setState({ kind: "ok", staged: staged.files, changes: workdir.files });
-    }).catch((err: unknown) => {
-      if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
+    // allSettled로 두 모드를 모두 평가한다. Promise.all은 먼저 reject되는 쪽으로 실패하는데,
+    // repo 밖에서 workdir(`git diff`)는 "not a git repository"를 내지만 staged(`git diff --cached`)는
+    // "unknown option `cached'"로 실패해 git_failed로 분류된다 → 레이스로 notice가 비결정적이 된다.
+    // 한쪽이라도 not-a-repo / git 미설치를 보고하면 그것이 폴더에 대한 권위적 사유이므로 우선 채택한다.
+    Promise.allSettled([fetchMode("workdir"), fetchMode("staged")]).then(([workdir, staged]) => {
+      if (cancelled) return;
+      if (workdir.status === "fulfilled" && staged.status === "fulfilled") {
+        setState({ kind: "ok", staged: staged.value.files, changes: workdir.value.files });
+        return;
+      }
+      const reasons = [workdir, staged].map((r) =>
+        r.status === "rejected" ? (r.reason instanceof Error ? r.reason.message : "unknown") : null,
+      );
+      const notice = reasons.find((m) => m === "no_git_repo" || m === "git_unavailable");
+      if (notice === "no_git_repo" || notice === "git_unavailable") {
+        setState({ kind: "notice", reason: notice });
+        return;
+      }
+      setState({ kind: "error", message: reasons.find((m) => m !== null) ?? "unknown" });
     });
 
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, refreshToken]);
+  }, [ctx.theaterId, refreshToken]);
 
   const handleRetry = useCallback(() => setRefreshToken((t) => t + 1), []);
 
@@ -108,6 +130,22 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, selectedSection, onS
 
   if (state.kind === "loading") {
     return <div className="diff-sections-loading">Loading…</div>;
+  }
+
+  if (state.kind === "notice") {
+    const title = state.reason === "no_git_repo"
+      ? "Not a Git repository"
+      : "Git isn't available";
+    const body = state.reason === "no_git_repo"
+      ? "This folder isn't a Git repository, so there are no changes to show."
+      : "Git was not found on this system. Install Git and make sure it's on your PATH.";
+    return (
+      <div className="diff-sections-notice">
+        <strong className="diff-notice-title">{title}</strong>
+        <span className="diff-notice-body">{body}</span>
+        <button type="button" className="diff-refresh-btn" onClick={handleRetry}>Retry</button>
+      </div>
+    );
   }
 
   if (state.kind === "error") {

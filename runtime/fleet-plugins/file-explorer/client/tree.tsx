@@ -111,7 +111,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
   useEffect(() => {
     if (!theaterId) return;
     files.listFolder(currentPath || undefined).then(setResult).catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : "폴더를 불러올 수 없습니다");
+      setError(e instanceof Error ? e.message : "Unable to load folder");
     });
   }, [theaterId, currentPath, files]);
 
@@ -180,9 +180,9 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
   const totalHeight = flatRows.length * ROW_HEIGHT;
   const offsetY = startIdx * ROW_HEIGHT;
 
-  if (!theaterId) return <div className="fexp-tree-empty">Theater를 선택하세요</div>;
+  if (!theaterId) return <div className="fexp-tree-empty">Select a Theater</div>;
   if (error) return <div className="fexp-tree-error">{error}</div>;
-  if (!result) return <div className="fexp-tree-loading">로딩 중…</div>;
+  if (!result) return <div className="fexp-tree-loading">Loading…</div>;
 
   return (
     <div className="fexp-tree-container">
@@ -193,14 +193,14 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
           placeholder="Filter…"
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
-          aria-label="파일 필터"
+          aria-label="Filter files"
         />
         {filterText && (
           <button
             type="button"
             className="fexp-filter-clear"
             onClick={() => setFilterText("")}
-            aria-label="필터 지우기"
+            aria-label="Clear filter"
           >
             ✕
           </button>
@@ -210,8 +210,8 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
           className={`fexp-hidden-toggle${showHidden ? " is-active" : ""}`}
           onClick={handleToggleHidden}
           aria-pressed={showHidden}
-          aria-label={showHidden ? "숨김 파일 숨기기" : "숨김 파일 표시"}
-          title={showHidden ? "숨김 파일 숨기기" : "숨김 파일 표시"}
+          aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
+          title={showHidden ? "Hide hidden files" : "Show hidden files"}
         >
           {showHidden ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -231,7 +231,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
         ref={treeRef}
         className="fexp-tree"
         role="tree"
-        aria-label="파일 트리"
+        aria-label="File tree"
         onScroll={shouldVirtualize ? handleScroll : undefined}
       >
         {result.parentRelativePath !== null && !filterText && (
@@ -239,7 +239,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
             className="fexp-tree-up"
             type="button"
             onClick={() => setCurrentPath(result.parentRelativePath ?? "")}
-            aria-label="상위 폴더"
+            aria-label="Parent folder"
           >
             ↑ ..
           </button>
@@ -258,13 +258,13 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
           ))
         )}
         {flatRows.length === 0 && filterText && (
-          <div className="fexp-tree-empty">일치하는 항목 없음</div>
+          <div className="fexp-tree-empty">No matching items</div>
         )}
         {flatRows.length === 0 && !filterText && result.entries.length === 0 && (
-          <div className="fexp-tree-empty">폴더가 비어 있습니다</div>
+          <div className="fexp-tree-empty">This folder is empty</div>
         )}
         {hasOnlyHiddenEntries && (
-          <div className="fexp-tree-empty">숨김 항목만 있습니다 — 눈 아이콘으로 표시</div>
+          <div className="fexp-tree-empty">Only hidden items — use the eye icon to show them</div>
         )}
       </div>
     </div>
