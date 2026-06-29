@@ -84,6 +84,13 @@ export function getMaximizedOperationId(): string | null {
   return maximizedOperationId;
 }
 
+// canvas 스토어가 현재 로드한 Theater id. maximizedOperationId·maximizedOperationIdsByTheater 등
+// 최대화 상태는 이 Theater 기준으로 동작하므로, 최대화 관련 가드는 store.activeTheaterId가 아니라 이 값을 기준으로 삼아야 한다.
+// (loadForTheater가 passive effect로 갱신되어 store.activeTheaterId보다 한 박자 늦을 수 있다.)
+export function getLoadedTheaterId(): string | null {
+  return activeTheaterId;
+}
+
 export function useCanvasState(): CanvasState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
