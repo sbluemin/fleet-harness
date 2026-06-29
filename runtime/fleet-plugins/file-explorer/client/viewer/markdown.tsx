@@ -19,10 +19,13 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    // 상대/절대 경로 링크는 href를 제거해 완전히 inert화한다 — onClick preventDefault만으로는
-    // 중간클릭·우클릭 'open link'가 남은 href로 console SPA 탭을 가로채기 때문(구 inert span 동작 복원).
-    // 외부 링크(http/mailto)와 문서 내 앵커(#)는 보존한다.
-    const stripPathHrefs = () => {
+    // file-explorer는 신뢰할 수 없는 임의 .md를 미리보기하므로 두 가지를 무력화한다:
+    // 1) 상대/절대 경로 링크 href — 클릭(중간·우클릭 포함) 시 console SPA 탭을 가로채므로 제거.
+    //    외부 링크(http/mailto)와 문서 내 앵커(#)는 보존한다.
+    // 2) 이미지 src — 외부 이미지가 미리보기와 동시에 auto-fetch되어 추적(tracking pixel)·IP 노출에
+    //    악용될 수 있으므로 제거한다.
+    // 구 정규식 렌더러는 링크를 inert span으로, 이미지를 아예 렌더하지 않았다 — 그 안전 수준을 보존.
+    const neutralizeUntrusted = () => {
       for (const anchor of root.querySelectorAll("a[href]")) {
         const href = anchor.getAttribute("href") ?? "";
         if (href && !/^(https?:|mailto:|#)/i.test(href)) {
@@ -31,13 +34,17 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
           anchor.setAttribute("aria-disabled", "true");
         }
       }
+      for (const img of root.querySelectorAll("img[src]")) {
+        img.removeAttribute("src");
+        img.setAttribute("aria-hidden", "true");
+      }
     };
     installDiagramHydrator(root);
-    stripPathHrefs();
-    // Mermaid 하이드레이터는 비동기로 SVG를 렌더하며 same-origin SPA href를 재삽입하므로,
-    // DOM 변이를 관찰해 뒤늦게 들어온 경로 링크 href도 제거한다(초기 strip만으로는 누락).
-    const observer = new MutationObserver(stripPathHrefs);
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+    neutralizeUntrusted();
+    // Mermaid 하이드레이터가 비동기로 삽입하는 노드/속성(SPA href 등)도 즉시 무력화한다
+    // (초기 1회 처리만으로는 누락되기 때문).
+    const observer = new MutationObserver(neutralizeUntrusted);
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src"] });
     return () => observer.disconnect();
   }, [html]);
 
