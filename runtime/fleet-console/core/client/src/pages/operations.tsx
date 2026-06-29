@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
-import { fetchOperations, patchOperation } from "../api.js";
+import { fetchOperations, patchOperation, renameOperation } from "../api.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -176,6 +176,13 @@ export function Operations({ state }: OperationsProps) {
       .catch(() => {});
   }, []);
 
+  const handleRename = useCallback((operationId: string, title: string) => {
+    void renameOperation(operationId, title)
+      .then(() => fetchOperations(null))
+      .then(hydrateOperations)
+      .catch(() => {});
+  }, []);
+
   const handleClose = useCallback((operationId: string) => {
     if (closingOperationIds.has(operationId)) return;
     closingOperationIds.add(operationId);
@@ -208,6 +215,7 @@ export function Operations({ state }: OperationsProps) {
         onClose={handleClose}
         onFocus={handleFocus}
         onSetAccent={handleSetAccent}
+        onRename={handleRename}
       />
       <OperationsCanvas
         state={state}
