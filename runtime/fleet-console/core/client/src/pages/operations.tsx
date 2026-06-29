@@ -282,7 +282,16 @@ async function launchViaPlugin(
     newOperationId = operation.id;
   }
   await fetchOperations(null).then(hydrateOperations).catch(() => {});
-  if (newOperationId) focusOperation(newOperationId);
+  if (!newOperationId) return;
+  // 최대화 패널이 떠 있는 상태에서 새 Operation을 만들면 최대화를 유지하고 새 패널을 최대화 대상으로 승계한다.
+  // focusOperation은 pendingOperationFocus 경로로 clearMaximizedOperationId를 부르므로(최대화 해제), 최대화 중에는 호출하지 않는다.
+  // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, setMaximizedOperationId가 나머지 패널을 최소화해 새 패널만 전면화한다.
+  if (getMaximizedOperationId() !== null) {
+    setActiveOperation(newOperationId);
+    setMaximizedOperationId(newOperationId);
+  } else {
+    focusOperation(newOperationId);
+  }
 }
 
 async function closeOperation(operationId: string, plugin: FleetClientPlugin | null): Promise<void> {
