@@ -58,7 +58,7 @@ export async function fetchSessions(signal?: AbortSignal): Promise<readonly Sess
 }
 
 export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<OperationsSnapshot> {
-  const response = await fetch("/operations", { signal });
+  const response = await fetch("/api/v1/operations", { signal });
   await assertOk(response);
   const payload = await response.json() as { readonly operations?: unknown };
   if (!Array.isArray(payload.operations)) throw new AgentApiError(response.status, "Invalid operations response");

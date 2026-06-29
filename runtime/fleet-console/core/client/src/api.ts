@@ -42,7 +42,7 @@ export async function fetchTheaters(signal?: AbortSignal): Promise<readonly Thea
 }
 
 export async function fetchTheaterBootstrap(signal?: AbortSignal): Promise<TheaterBootstrap> {
-  const response = await fetch("/theaters", { signal });
+  const response = await fetch("/api/v1/theaters", { signal });
   await assertOk(response);
   const payload = (await response.json()) as { theaters?: unknown };
   if (!Array.isArray(payload.theaters)) throw new ApiError(response.status, "Invalid Theater response");
@@ -51,26 +51,26 @@ export async function fetchTheaterBootstrap(signal?: AbortSignal): Promise<Theat
 
 export async function fetchObserverStatus(theaterId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
   const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
-  const response = await fetch(`/health${suffix}`, { signal });
+  const response = await fetch(`/api/v1/health${suffix}`, { signal });
   await assertOk(response);
   return assertObserverStatus(await response.json(), response.status);
 }
 
 export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}): Promise<ReleaseNotesResponse> {
   const suffix = options.force ? "?force=true" : "";
-  const response = await fetch(`/observer/release-notes${suffix}`, { signal: options.signal });
+  const response = await fetch(`/api/v1/observer/release-notes${suffix}`, { signal: options.signal });
   await assertOk(response);
   return assertReleaseNotesResponse(await response.json(), response.status);
 }
 
 export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleUpdateApplyAcceptedResponse> {
-  const response = await fetch("/update/apply", { method: "POST", signal });
+  const response = await fetch("/api/v1/update/apply", { method: "POST", signal });
   await assertOk(response);
   return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
 }
 
 export async function addTheater(folderGrantId: string, signal?: AbortSignal): Promise<TheaterInfo> {
-  const response = await fetch("/theaters", {
+  const response = await fetch("/api/v1/theaters", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ folderGrantId }),
@@ -82,7 +82,7 @@ export async function addTheater(folderGrantId: string, signal?: AbortSignal): P
 }
 
 export async function listTheaterFolders(path: string | null, signal?: AbortSignal): Promise<TheaterFolderListResponse> {
-  const response = await fetch("/theaters/folders/list", {
+  const response = await fetch("/api/v1/theaters/folders/list", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
@@ -93,7 +93,7 @@ export async function listTheaterFolders(path: string | null, signal?: AbortSign
 }
 
 export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal): Promise<string> {
-  const response = await fetch("/theaters/folders/grants", {
+  const response = await fetch("/api/v1/theaters/folders/grants", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
@@ -106,13 +106,13 @@ export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal
 }
 
 export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE", signal });
+  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE", signal });
   await assertOk(response);
 }
 
 export async function fetchOperations(theaterId?: string | null, signal?: AbortSignal): Promise<readonly OperationNode[]> {
   const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
-  const response = await fetch(`/operations${suffix}`, { signal });
+  const response = await fetch(`/api/v1/operations${suffix}`, { signal });
   await assertOk(response);
   const payload = await response.json() as { readonly operations?: unknown };
   if (!Array.isArray(payload.operations)) throw new ApiError(response.status, "Invalid operations response");
@@ -124,7 +124,7 @@ export async function renameOperation(operationId: string, title: string, signal
 }
 
 export async function patchOperation(operationId: string, input: OperationPatchClientInput, signal?: AbortSignal): Promise<OperationNode> {
-  const response = await fetch(`/operations/${encodeURIComponent(operationId)}`, {
+  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -144,7 +144,7 @@ export async function createOperation(input: {
   readonly payload?: Record<string, unknown>;
   readonly geometry?: OperationNode["geometry"];
 }, signal?: AbortSignal): Promise<OperationNode> {
-  const response = await fetch("/operations", {
+  const response = await fetch("/api/v1/operations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

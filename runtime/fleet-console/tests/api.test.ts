@@ -16,7 +16,7 @@ describe("client api parsing", () => {
 
     await expect(applyConsoleUpdate()).resolves.toEqual({ status: "accepted" });
 
-    expect(fetchMock).toHaveBeenCalledWith("/update/apply", { method: "POST", signal: undefined });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/update/apply", { method: "POST", signal: undefined });
   });
 
   it("ignores extra update apply response keys", async () => {

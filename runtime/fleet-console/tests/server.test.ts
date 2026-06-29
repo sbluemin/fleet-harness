@@ -339,7 +339,7 @@ describe("console terminal observability", () => {
     });
     const failedBody = await failed.json();
     const observerTenants = await getJson<{ readonly tenants: readonly unknown[] }>(`${fixture.endpoint}observer/tenants`);
-    const observerStatus = await getJson<{ readonly workspaces: number }>(`${fixture.endpoint}health`);
+    const observerStatus = await getJson<{ readonly workspaces: number }>(`${fixture.endpoint}api/v1/health`);
     const terminalSessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly status: string }> }>(`${fixture.endpoint}terminal/sessions`);
 
     expect(failed.status).toBe(503);
@@ -358,7 +358,7 @@ describe("console terminal observability", () => {
       terminalStartShell: () => createMockPty(),
     });
     const theater = await createTheater(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
     expect(created.status).toBe(200);
     const session = await created.json() as { readonly sessionId: string };
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: session.sessionId, trackId: "t1", text: "hello" });
@@ -377,7 +377,7 @@ describe("console terminal observability", () => {
     tempDirs.push(dir);
     const fixture = await startFixture({ agentCliDetector: createStubAgentCliDetector({ claude: false }) });
     const theater = await createTheater(fixture, dir);
-    const res = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}/sessions`, {
+    const res = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cliId: "claude" }),
@@ -769,7 +769,7 @@ describe("console static and terminal ticket boundary", () => {
 
   it("lists Theater folders through the browser API without native cancellation", async () => {
     const response = await fetchWithBlockedPortRetry((fixture) =>
-      fetch(`${fixture.endpoint}theaters/folders/list`, {
+      fetch(`${fixture.endpoint}api/v1/theaters/folders/list`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: null }),
@@ -784,7 +784,7 @@ describe("console static and terminal ticket boundary", () => {
   it("rejects Theater folder routes when the browser Origin is not the console origin", async () => {
     const fixture = await startFixture();
 
-    const response = await fetch(`${fixture.endpoint}theaters/folders/list`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/theaters/folders/list`, {
       method: "POST",
       headers: { origin: "http://evil.example", "Content-Type": "application/json" },
       body: JSON.stringify({ path: null }),
@@ -798,7 +798,7 @@ describe("console static and terminal ticket boundary", () => {
       release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
     });
 
-    const response = await fetch(`${fixture.endpoint}update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -813,7 +813,7 @@ describe("console static and terminal ticket boundary", () => {
       release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
     });
 
-    const response = await fetch(`${fixture.endpoint}update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({ packageName: "@dotobokuri/fleet-console", version: "9.9.9" }),
@@ -828,7 +828,7 @@ describe("console static and terminal ticket boundary", () => {
       release: { channel: "local", version: "1.0.0", packageRoot: "/pkg" },
     });
 
-    const response = await fetch(`${fixture.endpoint}update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -848,7 +848,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
 
-    const response = await fetch(`${fixture.endpoint}update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -870,7 +870,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
 
-    const response = await fetch(`${fixture.endpoint}update/apply`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/update/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -912,7 +912,7 @@ describe("console static and terminal ticket boundary", () => {
         refresh: vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" }),
       },
     });
-    const request = () => fetch(`${fixture.endpoint}update/apply`, {
+    const request = () => fetch(`${fixture.endpoint}api/v1/update/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
       body: JSON.stringify({}),
@@ -1005,7 +1005,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const theater = await createTheater(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}/sessions`, {
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cliId: "codex" }),
@@ -1066,7 +1066,7 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture();
     const theater = await createTheater(fixture, dir);
 
-    const beforeRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${fixture.endpoint}theaters`);
+    const beforeRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${fixture.endpoint}api/v1/theaters`);
     await fixture.server.stop();
 
     const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-haswiki-lock-"));
@@ -1075,7 +1075,7 @@ describe("console static and terminal ticket boundary", () => {
     servers.push(restartedServer);
     const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
 
-    const afterRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}theaters`);
+    const afterRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}api/v1/theaters`);
 
     // 추가 직후에는 POST 경로가 워크스페이스를 등록하므로 hasWiki=true이고,
     // 재시작 후에도 복원된 Theater의 워크스페이스를 재등록해 hasWiki가 유지되어야 한다.
@@ -1092,10 +1092,10 @@ describe("console static and terminal ticket boundary", () => {
 
     // 등록 직후에는 codex 워크스페이스 라우트가 conflicts API를 200으로 서빙한다.
     const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/conflicts`, { redirect: "manual" });
-    const deleted = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    const deleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
     // forget 후에는 워크스페이스가 해제되어 같은 라우트가 codex 홈으로 302 리다이렉트된다.
     const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/conflicts`, { redirect: "manual" });
-    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}theaters`);
+    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}api/v1/theaters`);
 
     expect(beforeForget.status).toBe(200);
     expect(deleted.status).toBe(200);
@@ -1118,7 +1118,7 @@ describe("console static and terminal ticket boundary", () => {
 
     // MRU(B)를 forget하면 남은 A가 MRU로 승격되어, getMru() 기반 비프리픽스 라우트가
     // deps.cwd 폴백이 아니라 A의 위키를 서빙해야 한다.
-    const deleted = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theaterB.id)}`, { method: "DELETE" });
+    const deleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theaterB.id)}`, { method: "DELETE" });
     const search = await fetch(`${fixture.endpoint}console/codex/api/search`);
     const body = await search.json() as { readonly entries: ReadonlyArray<{ readonly id: string }> };
 
@@ -1189,7 +1189,7 @@ describe("console static and terminal ticket boundary", () => {
     servers.push(restartedServer);
     const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
 
-    const bootstrap = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}theaters`);
+    const bootstrap = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}api/v1/theaters`);
 
     expect(bootstrap.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
   });
@@ -1240,7 +1240,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
 
-    const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}theaters`);
+    const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/theaters`);
     const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}terminal/sessions`);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
     const serialized = JSON.stringify({ theaters, sessions });
@@ -1298,7 +1298,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(captureBody).toEqual({ ok: true });
     expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
     const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
-    const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}operations`);
+    const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}api/v1/operations`);
     const serializedOperations = JSON.stringify(operationsResponse);
 
     expect(capturedState.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
@@ -1661,8 +1661,8 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
 
-    const deleted = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE" });
-    const theaters = await getJson<{ readonly theaters: readonly unknown[] }>(`${fixture.endpoint}theaters`);
+    const deleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE" });
+    const theaters = await getJson<{ readonly theaters: readonly unknown[] }>(`${fixture.endpoint}api/v1/theaters`);
     const sessions = await getJson<{ readonly sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly theaters: readonly unknown[]; readonly operations: readonly unknown[]; readonly operationNodes: readonly unknown[] };
 
@@ -1743,10 +1743,10 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
-    const theaterResponse = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
+    const theaterResponse = await fetch(`${fixture.endpoint}api/v1/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     expect(theaterResponse.status).toBe(200);
     const theater = await theaterResponse.json() as { readonly id: string };
-    const created = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
     expect(created.status).toBe(200);
     const session = await created.json() as { readonly sessionId: string };
     const capturesDir = path.join(fixture.carrierStoreDir, "console", "captures");
@@ -1763,7 +1763,7 @@ describe("console static and terminal ticket boundary", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
     const tenants = await getJson<{ readonly tenants: readonly unknown[] }>(`${fixture.endpoint}observer/tenants`);
-    const theaters = await getJson<{ readonly theaters: ReadonlyArray<{ readonly activeAdmiralCount: number }> }>(`${fixture.endpoint}theaters`);
+    const theaters = await getJson<{ readonly theaters: ReadonlyArray<{ readonly activeAdmiralCount: number }> }>(`${fixture.endpoint}api/v1/theaters`);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
 
     expect(sessions.sessions[0]).toMatchObject({ sessionId: session.sessionId, status: "dormant", resumeAvailable: true });
@@ -1780,9 +1780,9 @@ describe("console static and terminal ticket boundary", () => {
     });
 
     const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as Record<string, unknown>;
-    const listed = await getJson<{ agentClis?: readonly Record<string, unknown>[]; theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}theaters`);
+    const listed = await getJson<{ agentClis?: readonly Record<string, unknown>[]; theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/theaters`);
     const serialized = JSON.stringify({ payload, listed });
 
     expect(created.status).toBe(200);
@@ -1823,7 +1823,7 @@ describe("console static and terminal ticket boundary", () => {
     });
 
     const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as { readonly id: string; readonly hasWiki: boolean };
     // 등록된 codex 워크스페이스 라우트가 접근 가능한지 확인.
     const search = await fetch(`${fixture.endpoint}console/codex/w/${payload.id}/api/conflicts`);
@@ -1841,9 +1841,9 @@ describe("console static and terminal ticket boundary", () => {
     });
 
     const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
-    const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const theater = await created.json() as { readonly id: string };
-    const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}health?theaterId=${encodeURIComponent(theater.id)}`);
+    const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}api/v1/health?theaterId=${encodeURIComponent(theater.id)}`);
     const serialized = JSON.stringify(status);
 
     expect(status).toMatchObject({
@@ -1920,7 +1920,7 @@ describe("console static and terminal ticket boundary", () => {
   it("rejects Theater registration without a valid folder grant", async () => {
     const failed = await startFixture();
 
-    const errorResponse = await fetch(`${failed.endpoint}theaters`, {
+    const errorResponse = await fetch(`${failed.endpoint}api/v1/theaters`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ folderGrantId: "missing-grant" }),
@@ -1945,9 +1945,9 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const theater = await createTheater(fixture, dir);
-    const unknown = await fetch(`${fixture.endpoint}theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
-    const invalid = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "bogus" }) });
-    const created = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "codex", cwd: "/tmp/ignored" }) });
+    const unknown = await fetch(`${fixture.endpoint}api/v1/theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
+    const invalid = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "bogus" }) });
+    const created = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "codex", cwd: "/tmp/ignored" }) });
     const session = await created.json() as { readonly sessionId: string; readonly theaterId: string; readonly cliId?: string; readonly cwd?: unknown };
     const sessions = await getJson<{ sessions: ReadonlyArray<{ readonly theaterId: string; readonly cwd?: unknown }> }>(`${fixture.endpoint}terminal/sessions`);
     const serialized = JSON.stringify({ session, sessions });
@@ -2170,17 +2170,17 @@ describe("observer theater forget", () => {
     // 사용자 시나리오: 추가된 Theater의 디렉터리가 파일시스템에서 사라진 뒤 forget을 수행한다.
     fs.rmSync(theaterDir, { recursive: true, force: true });
 
-    const forget = await fetch(`${fixture.endpoint}theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    const forget = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
     expect(forget.status).toBe(200);
 
-    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}theaters`);
+    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}api/v1/theaters`);
     expect(remaining.theaters).toEqual([]);
   });
 
   it("treats forget of an unknown/already-removed Theater as success (idempotent DELETE)", async () => {
     const fixture = await startFixture();
 
-    const forget = await fetch(`${fixture.endpoint}theaters/deadbeefdead`, { method: "DELETE" });
+    const forget = await fetch(`${fixture.endpoint}api/v1/theaters/deadbeefdead`, { method: "DELETE" });
     expect(forget.status).toBe(200);
     expect(await forget.json()).toEqual({ ok: true });
   });
@@ -2281,7 +2281,7 @@ async function createTerminalSession(fixture: ServerFixture, headers: Record<str
 }
 
 async function createOperation(fixture: ServerFixture, theaterId: string, input: { readonly type: string; readonly pluginId: string }): Promise<{ readonly id: string }> {
-  const response = await fetch(`${fixture.endpoint}operations`, {
+  const response = await fetch(`${fixture.endpoint}api/v1/operations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2304,7 +2304,7 @@ async function createShellOperation(fixture: ServerFixture, theaterId: string): 
 }
 
 async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
-  const response = await fetch(`${fixture.endpoint}theaters/folders/grants`, {
+  const response = await fetch(`${fixture.endpoint}api/v1/theaters/folders/grants`, {
     method: "POST",
     headers,
     body: JSON.stringify({ path: cwd }),
@@ -2315,7 +2315,7 @@ async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, head
 
 async function createTheater(fixture: ServerFixture, cwd: string): Promise<{ readonly id: string }> {
   const grant = await issueTheaterFolderGrant(fixture, cwd);
-  const response = await fetch(`${fixture.endpoint}theaters`, {
+  const response = await fetch(`${fixture.endpoint}api/v1/theaters`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ folderGrantId: grant.folderGrantId }),

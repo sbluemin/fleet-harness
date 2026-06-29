@@ -107,9 +107,9 @@ describe("operations platform", () => {
       getPluginSensitiveFields: (pluginId) => (pluginId === "terminal" ? ["pluginSecret"] : []),
     });
 
-    const list = await dispatch(router, "GET", "/operations");
-    const children = await dispatch(router, "GET", "/operations/parent/children");
-    const item = await dispatch(router, "GET", "/operations/parent");
+    const list = await dispatch(router, "GET", "/api/v1/operations");
+    const children = await dispatch(router, "GET", "/api/v1/operations/parent/children");
+    const item = await dispatch(router, "GET", "/api/v1/operations/parent");
     requestBody = {
       theaterId: "theater",
       type: "agent",
@@ -117,14 +117,14 @@ describe("operations platform", () => {
       title: "Created",
       payload: { pluginSecret: "created-secret", visible: "created" },
     };
-    const created = await dispatch(router, "POST", "/operations");
+    const created = await dispatch(router, "POST", "/api/v1/operations");
     requestBody = {
       payload: {
         pluginSecret: "patched-secret",
         visible: "patched",
       },
     };
-    const patched = await dispatch(router, "PATCH", "/operations/parent");
+    const patched = await dispatch(router, "PATCH", "/api/v1/operations/parent");
     const serialized = JSON.stringify([list, children, item, created, patched]);
 
     expect(serialized).toContain("parent");
@@ -152,22 +152,22 @@ describe("operations platform", () => {
     });
 
     requestBody = { accent: "blue" };
-    await dispatch(router, "PATCH", "/operations/op");
+    await dispatch(router, "PATCH", "/api/v1/operations/op");
     expect(store.get("op")?.accent).toBe("blue");
 
     // accent 생략(undefined) → 무변경
     requestBody = { title: "Renamed" };
-    await dispatch(router, "PATCH", "/operations/op");
+    await dispatch(router, "PATCH", "/api/v1/operations/op");
     expect(store.get("op")?.accent).toBe("blue");
 
     // accent: null → 해제(geometry null-clear 계약과 동일)
     requestBody = { accent: null };
-    await dispatch(router, "PATCH", "/operations/op");
+    await dispatch(router, "PATCH", "/api/v1/operations/op");
     expect(store.get("op")?.accent).toBeUndefined();
 
     // 문자열·null 외 타입 → 400 거부, 상태 불변
     requestBody = { accent: 42 };
-    const rejected = await dispatch(router, "PATCH", "/operations/op");
+    const rejected = await dispatch(router, "PATCH", "/api/v1/operations/op");
     expect(rejected).toEqual({ error: "invalid_operation_accent" });
     expect(store.get("op")?.accent).toBeUndefined();
   });
@@ -193,8 +193,8 @@ describe("operations platform", () => {
       }),
     });
 
-    const catalog = await dispatch(router, "GET", "/operations/catalog");
-    const rejected = await dispatch(router, "POST", "/operations/catalog");
+    const catalog = await dispatch(router, "GET", "/api/v1/operations/catalog");
+    const rejected = await dispatch(router, "POST", "/api/v1/operations/catalog");
 
     expect(catalog).toEqual({
       plugins: [
@@ -211,7 +211,7 @@ describe("operations platform", () => {
   it("concats multiple launch catalog providers for one plugin group", async () => {
     const fixture = await startCatalogFixture();
 
-    const response = await fetch(`${fixture.endpoint}operations/catalog`);
+    const response = await fetch(`${fixture.endpoint}api/v1/operations/catalog`);
     const catalog = await response.json() as { readonly plugins: ReadonlyArray<{ readonly id: string; readonly title: string; readonly kinds: ReadonlyArray<{ readonly id: string; readonly type: string; readonly title: string }> }> };
     const terminal = catalog.plugins.find((plugin) => plugin.id === "terminal");
 

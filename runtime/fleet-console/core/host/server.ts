@@ -101,42 +101,42 @@ const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/health",
+    path: "/api/v1/health",
     summary: "콘솔 관측 상태를 조회합니다.",
     category: "Observer",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/settings/api-catalog",
+    path: "/api/v1/settings/api-catalog",
     summary: "백엔드 API 카탈로그를 조회합니다.",
     category: "Observer",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/observer/release-notes",
+    path: "/api/v1/observer/release-notes",
     summary: "Get the console release notes.",
     category: "Update",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/theaters",
+    path: "/api/v1/theaters",
     summary: "Theater 목록을 조회합니다.",
     category: "Observer",
     gate: "loopback",
   },
   {
     method: "POST",
-    path: "/theaters",
+    path: "/api/v1/theaters",
     summary: "새 Theater를 등록합니다.",
     category: "Observer",
     gate: "terminal-origin",
   },
   {
     method: "DELETE",
-    path: "/theaters/:theaterId",
+    path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
     category: "Observer",
     gate: "terminal-origin",
@@ -185,28 +185,28 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "POST",
-    path: "/theaters/folders/list",
+    path: "/api/v1/theaters/folders/list",
     summary: "Theater 폴더 선택 목록을 조회합니다.",
     category: "Observer",
     gate: "terminal-origin",
   },
   {
     method: "POST",
-    path: "/theaters/folders/grants",
+    path: "/api/v1/theaters/folders/grants",
     summary: "Theater 폴더 접근 grant를 발급합니다.",
     category: "Observer",
     gate: "terminal-origin",
   },
   {
     method: "POST",
-    path: "/update/apply",
+    path: "/api/v1/update/apply",
     summary: "Request console update application.",
     category: "Update",
     gate: "console-origin",
   },
   {
     method: "GET",
-    path: "/health",
+    path: "/api/v1/health",
     summary: "Check console status with the lock token.",
     category: "Health",
     gate: "lock-token",
@@ -419,9 +419,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
     publishDeleteEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, event),
   });
-  routeRegistry.register("/operations", operationsRouter);
-  routeRegistry.register("/carrier-settings", carrierSettingsRouter);
-  routeRegistry.register("/global-settings", globalSettingsRouter);
+  routeRegistry.register("/api/v1/operations", operationsRouter);
+  routeRegistry.register("/api/v1/carrier-settings", carrierSettingsRouter);
+  routeRegistry.register("/api/v1/global-settings", globalSettingsRouter);
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -435,7 +435,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     if (tryServeStaticConsole(req, res, pathname)) return;
-    if (pathname === "/health") {
+    if (pathname === "/api/v1/health") {
       handleHealth(req, res);
       return;
     }
@@ -446,37 +446,37 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function handleCoreRequest(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): void {
-    if (pathname === "/theaters") {
+    if (pathname === "/api/v1/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
     }
-    if (pathname === "/theaters/folders/list") {
+    if (pathname === "/api/v1/theaters/folders/list") {
       runAsyncHandler(handleTheaterFoldersList(req, res), res);
       return;
     }
-    if (pathname === "/theaters/folders/grants") {
+    if (pathname === "/api/v1/theaters/folders/grants") {
       runAsyncHandler(handleTheaterFolderGrants(req, res), res);
       return;
     }
-    const theaterItemMatch = pathname.match(/^\/theaters\/([^/]+)$/);
+    const theaterItemMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)$/);
     if (theaterItemMatch) {
       runAsyncHandler(handleObserverTheaterItem(req, res, decodeURIComponent(theaterItemMatch[1] ?? "")), res);
       return;
     }
-    const theaterSessionMatch = pathname.match(/^\/theaters\/([^/]+)\/sessions$/);
+    const theaterSessionMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)\/sessions$/);
     if (theaterSessionMatch) {
       runAsyncHandler(handleObserverTheaterSessions(req, res, decodeURIComponent(theaterSessionMatch[1] ?? "")), res);
       return;
     }
-    if (pathname === "/settings/api-catalog") {
+    if (pathname === "/api/v1/settings/api-catalog") {
       handleObserverApiCatalog(req, res);
       return;
     }
-    if (pathname === "/observer/release-notes") {
+    if (pathname === "/api/v1/observer/release-notes") {
       runAsyncHandler(handleObserverReleaseNotes(req, res), res);
       return;
     }
-    if (pathname === "/update/apply") {
+    if (pathname === "/api/v1/update/apply") {
       runAsyncHandler(handleUpdateApply(req, res), res);
       return;
     }

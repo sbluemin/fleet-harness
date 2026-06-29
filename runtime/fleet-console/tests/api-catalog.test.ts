@@ -50,7 +50,7 @@ afterEach(async () => {
 describe("api catalog", () => {
   it("serializes only the public route catalog DTO", async () => {
     const fixture = await startFixture();
-    const response = await fetch(`${fixture.endpoint}settings/api-catalog`);
+    const response = await fetch(`${fixture.endpoint}api/v1/settings/api-catalog`);
     const body = await response.json() as ApiCatalogResponse;
     const serializedRoutes = JSON.stringify(body.routes);
 

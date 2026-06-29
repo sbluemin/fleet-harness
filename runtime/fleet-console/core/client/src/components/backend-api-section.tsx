@@ -64,7 +64,7 @@ export function BackendApiSection() {
         </div>
       ) : null}
 
-      <p className="global-settings-foot">Console backend routes are fetched from GET /settings/api-catalog, so newly registered routes appear here automatically. The Codex/Fleet Wiki API surface is not included.</p>
+      <p className="global-settings-foot">Console backend routes are fetched from GET /api/v1/settings/api-catalog, so newly registered routes appear here automatically. The Codex/Fleet Wiki API surface is not included.</p>
     </section>
   );
 }

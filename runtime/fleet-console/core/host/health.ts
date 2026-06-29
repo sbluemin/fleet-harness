@@ -21,7 +21,7 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
     try {
-      const res = await fetchImpl(`${lock.endpoint}health`, {
+      const res = await fetchImpl(`${lock.endpoint}api/v1/health`, {
         headers: { Authorization: `Bearer ${lock.token}` },
         signal: controller.signal,
       });

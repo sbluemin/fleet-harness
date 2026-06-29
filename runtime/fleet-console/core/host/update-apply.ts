@@ -316,7 +316,7 @@ function readLock() {
 async function isNewHealthOk(lock) {
   if (!lock || typeof lock.endpoint !== "string" || typeof lock.token !== "string") return false;
   try {
-    const response = await fetch(new URL("health", lock.endpoint), {
+    const response = await fetch(new URL("api/v1/health", lock.endpoint), {
       headers: { authorization: "Bearer " + lock.token },
     });
     if (!response.ok) return false;
@@ -342,7 +342,7 @@ async function readHealthVersion(response) {
 
 async function isHealthGone(endpoint) {
   try {
-    await fetch(new URL("health", endpoint));
+    await fetch(new URL("api/v1/health", endpoint));
     return false;
   } catch {
     return true;
