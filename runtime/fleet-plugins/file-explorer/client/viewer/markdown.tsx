@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
@@ -17,20 +17,21 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (rootRef.current) installDiagramHydrator(rootRef.current);
-  }, [html]);
-
-  // 마크다운 내 상대/절대 경로 링크는 클릭 시 console SPA 탭을 가로채(/console/<path>로 이동)
-  // 미리보기가 사라지므로 무력화한다(구 file-explorer 렌더러의 inert 링크 동작 보존).
-  // 외부 링크(http/mailto)와 문서 내 앵커(#)는 정상 동작하도록 통과시킨다.
-  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const anchor = (e.target as HTMLElement).closest("a");
-    if (!anchor) return;
-    const href = anchor.getAttribute("href") ?? "";
-    if (href && !/^(https?:|mailto:|#)/i.test(href)) {
-      e.preventDefault();
+    const root = rootRef.current;
+    if (!root) return;
+    installDiagramHydrator(root);
+    // 상대/절대 경로 링크는 href를 제거해 완전히 inert화한다 — onClick preventDefault만으로는
+    // 중간클릭·우클릭 'open link'가 남은 href로 console SPA 탭을 가로채기 때문(구 inert span 동작 복원).
+    // 외부 링크(http/mailto)와 문서 내 앵커(#)는 보존한다.
+    for (const anchor of root.querySelectorAll("a[href]")) {
+      const href = anchor.getAttribute("href") ?? "";
+      if (href && !/^(https?:|mailto:|#)/i.test(href)) {
+        anchor.removeAttribute("href");
+        anchor.setAttribute("role", "link");
+        anchor.setAttribute("aria-disabled", "true");
+      }
     }
-  }, []);
+  }, [html]);
 
   return (
     <div className="fexp-md-wrap">
@@ -38,7 +39,6 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
       <div
         ref={rootRef}
         className="markdown-body"
-        onClick={handleClick}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />
