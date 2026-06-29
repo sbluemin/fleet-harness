@@ -4,11 +4,8 @@ import {
   deleteCarrierTaskForceBackend,
   fetchCarrierSettingsOptions,
   fetchCarrierSettingsState,
+  patchCarrier,
   setCarrierTaskForceBackend,
-  updateCarrierAgentMode,
-  updateCarrierCli,
-  updateCarrierDisplayName,
-  updateCarrierModel,
 } from "./carrier-settings-api.js";
 import type {
   CarrierSettingsAgentMode,
@@ -133,28 +130,28 @@ export async function saveCarrierAll(desiredTaskForce: readonly CarrierSettingsT
     const draft = snapshot.draft;
     let latestState: CarrierSettingsState | null = null;
     if (draft.displayName !== carrier.displayName) {
-      latestState = (await updateCarrierDisplayName(carrier.carrierId, draft.displayName)).state;
+      latestState = (await patchCarrier(carrier.carrierId, { displayName: draft.displayName })).state;
     }
     const cliChanged = draft.cliType !== carrier.cliType;
     if (cliChanged) {
-      latestState = (await updateCarrierCli(carrier.carrierId, draft.cliType)).state;
+      latestState = (await patchCarrier(carrier.carrierId, { cli: draft.cliType })).state;
     }
-    // CLI 변경 시 updateCarrierCli가 대상 CLI에 저장돼 있던 이전 선택을 복원할 수 있다.
-    // 변경 전(구 CLI) carrier와의 모델 비교만으로 PUT을 건너뛰면, 신 CLI 기본값이 구 CLI
+    // CLI 변경 시 patchCarrier({ cli }) 가 대상 CLI에 저장돼 있던 이전 선택을 복원할 수 있다.
+    // 변경 전(구 CLI) carrier와의 모델 비교만으로 PATCH를 건너뛰면, 신 CLI 기본값이 구 CLI
     // 모델과 우연히 같을 때 복원된 선택이 draft와 다르게 저장된다. CLI가 바뀌었으면 항상
     // draft 모델을 명시 전송해 사용자가 본 draft 선택이 우선되게 한다.
     if (cliChanged || draft.model !== carrier.model || (draft.effort || "") !== (carrier.effort || "")) {
-      latestState = (await updateCarrierModel(carrier.carrierId, selectionFromDraft(draft))).state;
+      latestState = (await patchCarrier(carrier.carrierId, { model: selectionFromDraft(draft) })).state;
     }
     if (draft.agentMode === "subagent") {
-      // 이미 subagent여도 서버에 TF 백엔드가 남아 있으면(불일치 데이터) SA-enable PUT을 보내
+      // 이미 subagent여도 서버에 TF 백엔드가 남아 있으면(불일치 데이터) SA-enable PATCH를 보내
       // 서버가 TF를 원자적으로 정리하게 한다. carrier.agentMode만 보고 스킵하면 stale TF가 남는다.
       if (carrier.agentMode !== "subagent" || carrier.taskForceBackendCount > 0) {
-        latestState = (await updateCarrierAgentMode(carrier.carrierId, "subagent")).state;
+        latestState = (await patchCarrier(carrier.carrierId, { agentMode: "subagent" })).state;
       }
     } else {
       if (carrier.agentMode !== "cli") {
-        latestState = (await updateCarrierAgentMode(carrier.carrierId, "cli")).state;
+        latestState = (await patchCarrier(carrier.carrierId, { agentMode: "cli" })).state;
       }
       latestState = await saveTaskForceForCarrier(carrier, desiredTaskForce, latestState);
     }
