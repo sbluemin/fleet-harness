@@ -15,6 +15,13 @@ interface ModelSelection {
   readonly effort?: string;
 }
 
+interface CarrierPatch {
+  readonly cli?: string;
+  readonly model?: ModelSelection;
+  readonly displayName?: string;
+  readonly agentMode?: CarrierSettingsAgentMode;
+}
+
 const LEAKED_FIELD_NAMES = new Set([
   "token",
   "credential",
@@ -38,20 +45,8 @@ export async function fetchCarrierSettingsOptions(signal?: AbortSignal): Promise
   return assertCarrierSettingsOptions(await response.json(), response.status);
 }
 
-export async function updateCarrierCli(carrierId: string, cliType: string, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/cli`, "PUT", { cliType }, signal);
-}
-
-export async function updateCarrierModel(carrierId: string, selection: ModelSelection, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/model`, "PUT", selection, signal);
-}
-
-export async function updateCarrierDisplayName(carrierId: string, displayName: string, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/display-name`, "PATCH", { displayName }, signal);
-}
-
-export async function updateCarrierAgentMode(carrierId: string, agentMode: CarrierSettingsAgentMode, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/agent-mode`, "PUT", { agentMode }, signal);
+export async function patchCarrier(carrierId: string, patch: CarrierPatch, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}`, "PATCH", patch, signal);
 }
 
 export async function setCarrierTaskForceBackend(carrierId: string, cliType: string, selection: ModelSelection, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
