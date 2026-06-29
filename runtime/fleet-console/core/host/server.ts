@@ -672,7 +672,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, payload);
   }
 
-  function handleObserverApiCatalog(_req: http.IncomingMessage, res: http.ServerResponse): void {
+  function handleObserverApiCatalog(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
     writeJson(res, 200, { version, routes: buildApiCatalog() });
   }
 
