@@ -13,7 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
+import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, getState, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -286,7 +286,13 @@ async function launchViaPlugin(
   // 최대화 패널이 떠 있는 상태에서 새 Operation을 만들면 최대화를 유지하고 새 패널을 최대화 대상으로 승계한다.
   // focusOperation은 pendingOperationFocus 경로로 clearMaximizedOperationId를 부르므로(최대화 해제), 최대화 중에는 호출하지 않는다.
   // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, setMaximizedOperationId가 나머지 패널을 최소화해 새 패널만 전면화한다.
-  if (getMaximizedOperationId() !== null) {
+  //
+  // 단, 비동기 launch 동안 사용자가 다른 Theater로 전환했을 수 있다. getMaximizedOperationId/setMaximizedOperationId는
+  // 현재 활성 Theater 기준으로 동작하므로, 활성 Theater가 launch 시점 Theater와 같을 때만 승계해야 한다.
+  // 다르면 setMaximizedOperationId가 현재 Theater에 타 Theater 소속 op를 최대화 대상으로 잘못 등록해 패널 상태를 망가뜨린다.
+  // 이 경우 Theater-aware한 focusOperation으로 launch Theater에 돌아가 새 op를 포커스한다.
+  const stillOnLaunchTheater = getState().activeTheaterId === theaterId;
+  if (stillOnLaunchTheater && getMaximizedOperationId() !== null) {
     setActiveOperation(newOperationId);
     setMaximizedOperationId(newOperationId);
   } else {
