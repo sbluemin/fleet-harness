@@ -36,7 +36,7 @@ export default definePlugin({
       authService: infraServices.authService,
       globalOptionsService: infraServices.globalOptionsService,
     });
-    registerLaunchCatalog(ctx, async () => [SHELL_LAUNCH_KIND, ...await agentLaunchKinds()]);
+    registerLaunchCatalog(ctx, async () => [...await agentLaunchKinds(), SHELL_LAUNCH_KIND]);
   },
 });
 
