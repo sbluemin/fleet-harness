@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo";
+export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo" | "git_unavailable";
 
 export class GitExecutorError extends Error {
   readonly code: GitErrorCode;
@@ -37,7 +37,9 @@ export function runGit(
       // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
       child = spawn("git", args as string[], { cwd: opts.cwd, shell: false, windowsHide: true });
     } catch (error) {
-      reject(new GitExecutorError("spawn_failed", String(error)));
+      // spawn 동기 예외에서도 ENOENT는 git 바이너리 미설치로 분류한다(방어적 처리).
+      const code = (error as NodeJS.ErrnoException).code === "ENOENT" ? "git_unavailable" : "spawn_failed";
+      reject(new GitExecutorError(code, String(error)));
       return;
     }
 
@@ -72,7 +74,9 @@ export function runGit(
 
     child.on("error", (error) => {
       clearTimeout(timer);
-      reject(new GitExecutorError("spawn_failed", error.message));
+      // ENOENT = git 바이너리가 PATH에 없음; 나머지는 일반 spawn 실패
+      const code = (error as NodeJS.ErrnoException).code === "ENOENT" ? "git_unavailable" : "spawn_failed";
+      reject(new GitExecutorError(code, error.message));
     });
 
     child.on("close", (code) => {
@@ -85,7 +89,8 @@ export function runGit(
           resolve({ stdout, truncated });
           return;
         }
-        const isNoRepo = stderr.includes("not a git repository");
+        // macOS git diff는 "Not a git repository"(대문자 N)로 출력하므로 대소문자 무관하게 비교
+        const isNoRepo = stderr.toLowerCase().includes("not a git repository");
         reject(new GitExecutorError(isNoRepo ? "no_git_repo" : "non_zero_exit", stderr, code ?? undefined));
         return;
       }

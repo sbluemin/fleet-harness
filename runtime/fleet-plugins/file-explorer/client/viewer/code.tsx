@@ -13,7 +13,7 @@ export function CodeViewer({ content, lang, truncated }: CodeViewerProps) {
 
   return (
     <div className="fexp-code-wrap">
-      {truncated && <div className="fexp-truncated-badge">파일이 너무 커서 일부만 표시됩니다</div>}
+      {truncated && <div className="fexp-truncated-badge">File is too large — showing a partial preview</div>}
       <div className="fexp-code-scroll">
         <table className="fexp-code-table" aria-label="File contents">
           <tbody>
