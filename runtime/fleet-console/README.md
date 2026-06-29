@@ -14,15 +14,15 @@ Fleet Console owns its own local HTTP server. The Terminal plugin owns Shell and
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 
-The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-plugins/terminal`). It is the single built-in plugin id `terminal`, provides operation types `shell`, `agent`, and `agent.streaming`, owns plugin-scoped WebSocket, ticket, PTY session, and launch runtime, and serves Shell/Agent plugin routes under `/plugins/terminal/{shell,agent}/*`. The console owns Theater folder selection through `/theaters/folders/*`. The Shell launch title is `Shell`.
+The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-plugins/terminal`). It is the single built-in plugin id `terminal`, provides operation types `shell`, `agent`, and `agent.streaming`, owns plugin-scoped WebSocket, ticket, PTY session, and launch runtime, and serves Shell/Agent plugin routes under `/plugins/terminal/{shell,agent}/*`. The console owns Theater folder selection through `/api/v1/theaters/folder-listings` and `/api/v1/theaters/folder-grants`. The Shell launch title is `Shell`.
 
 ## Runtime Channels
 
 | Channel | Purpose | Token Boundary |
 |---|---|---|
 | `/observer/*` | Browser snapshot and SSE observer surface. | Loopback-only; no browser bearer token. |
-| `POST /theaters/folders/list` | Returns a directory listing (`{ path, parentPath, roots, entries, truncated? }`) for the given path, or the server home directory when `path` is null. Directories only, non-recursive, capped at 500 entries. | Requires the terminal Origin boundary (`isTerminalAuthorized`); no adminToken. |
-| `POST /theaters/folders/grants` | Validates the client-supplied absolute path through `validateAbsoluteDirectory` and returns a one-use `{ folderGrantId }`. | Requires the terminal Origin boundary; no adminToken. |
+| `POST /api/v1/theaters/folder-listings` | Returns a directory listing (`{ path, parentPath, roots, entries, truncated? }`) for the given path, or the server home directory when `path` is null. Directories only, non-recursive, capped at 500 entries. | Requires the terminal Origin boundary (`isTerminalAuthorized`); no adminToken. |
+| `POST /api/v1/theaters/folder-grants` | Validates the client-supplied absolute path through `validateAbsoluteDirectory` and returns a one-use `{ folderGrantId }`. | Requires the terminal Origin boundary; no adminToken. |
 | `/plugins/terminal/shell/*` | Shell launch and ticket routes for the `shell` operation type. | Shell cwd is resolved server-side from the selected Theater; browser receives only one-use terminal tickets. |
 | `/plugins/terminal/agent/*` | Agent launch, session, ticket, job, event, tenant, and state routes for the `agent` and `agent.streaming` operation types. | Requires the terminal Origin boundary; MCP/session tokens remain server-only. |
 | Terminal plugin WebSocket route | Terminal plugin-owned browser PTY WebSocket transport used by Shell and Agent operations under the plugin namespace. | Browser reaches it through a one-use ticket from the terminal plugin routes. |

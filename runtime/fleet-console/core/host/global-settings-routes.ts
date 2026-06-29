@@ -39,7 +39,7 @@ export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/api/v1/settings/global",
     summary: "Save the global console settings.",
     category: "Settings",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
 ];
 

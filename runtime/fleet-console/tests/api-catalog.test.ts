@@ -150,7 +150,7 @@ function concretizeCatalogPath(routePath: string): string {
 }
 
 function headersForGate(gate: ApiCatalogEntry["gate"]): Record<string, string> {
-  if (gate === "terminal-origin" || gate === "console-origin") return { Origin: "http://127.0.0.1:1" };
+  if (gate === "origin-write" || gate === "origin-strict") return { Origin: "http://127.0.0.1:1" };
   if (gate === "lock-token") return {};
   return {};
 }

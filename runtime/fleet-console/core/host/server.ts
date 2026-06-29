@@ -132,21 +132,21 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/api/v1/theaters",
     summary: "새 Theater를 등록합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
     path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
     path: "/plugins/terminal/shell/ticket",
     summary: "Shell WebSocket 접속 티켓을 발급합니다.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "GET",
@@ -160,7 +160,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/plugins/terminal/settings",
     summary: "Save Terminal plugin prompt settings.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "GET",
@@ -174,35 +174,35 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/plugins/terminal/model-auth/providers/:cli",
     summary: "Register a Terminal plugin model provider API key.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
     path: "/plugins/terminal/model-auth/providers/:cli",
     summary: "Remove a Terminal plugin model provider API key.",
     category: "Terminal Plugin",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
     path: "/api/v1/theaters/folder-listings",
     summary: "Theater 폴더 선택 목록을 조회합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
     path: "/api/v1/theaters/folder-grants",
     summary: "Theater 폴더 접근 grant를 발급합니다.",
     category: "Observer",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "POST",
     path: "/api/v1/updates/apply",
     summary: "Request console update application.",
     category: "Update",
-    gate: "console-origin",
+    gate: "origin-strict",
   },
   {
     method: "GET",
@@ -757,6 +757,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 202, payload);
   }
 
+  // 카탈로그 gate 레이블은 "origin-write"로 개명됐지만 이 함수 이름은 별도 정리 범위.
   function isTerminalAuthorized(req: http.IncomingMessage): boolean {
     if (!lockHandle) return false;
     // Origin 검증으로 WS 경로와 동일한 출처 경계를 terminal 라우트에 적용한다.
@@ -768,6 +769,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return !!token && req.headers.authorization === `Bearer ${token}`;
   }
 
+  // 카탈로그 gate 레이블은 "origin-strict"로 개명됐지만 이 함수 이름은 별도 정리 범위.
   function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
     if (!lockHandle) return false;
     return req.headers.origin === `http://127.0.0.1:${lockHandle.payload.port ?? port}`;

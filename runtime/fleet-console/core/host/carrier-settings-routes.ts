@@ -101,28 +101,28 @@ export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/api/v1/settings/carriers/:id",
     summary: "Update carrier settings fields (cli, model, displayName, agentMode).",
     category: "Settings",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "PUT",
     path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
     summary: "Set the Task Force backend model.",
     category: "Settings",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
     path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
     summary: "Unset the Task Force backend model.",
     category: "Settings",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
   {
     method: "DELETE",
     path: "/api/v1/settings/carriers/:id/taskforce",
     summary: "Reset the carrier Task Force settings.",
     category: "Settings",
-    gate: "terminal-origin",
+    gate: "origin-write",
   },
 ];
 
