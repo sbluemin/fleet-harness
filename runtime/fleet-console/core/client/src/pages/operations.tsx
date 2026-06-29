@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations, patchOperation } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -13,7 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, getState, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
+import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -288,10 +288,12 @@ async function launchViaPlugin(
   // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, setMaximizedOperationId가 나머지 패널을 최소화해 새 패널만 전면화한다.
   //
   // 단, 비동기 launch 동안 사용자가 다른 Theater로 전환했을 수 있다. getMaximizedOperationId/setMaximizedOperationId는
-  // 현재 활성 Theater 기준으로 동작하므로, 활성 Theater가 launch 시점 Theater와 같을 때만 승계해야 한다.
-  // 다르면 setMaximizedOperationId가 현재 Theater에 타 Theater 소속 op를 최대화 대상으로 잘못 등록해 패널 상태를 망가뜨린다.
-  // 이 경우 Theater-aware한 focusOperation으로 launch Theater에 돌아가 새 op를 포커스한다.
-  const stillOnLaunchTheater = getState().activeTheaterId === theaterId;
+  // canvas 스토어가 로드한 Theater 기준으로 동작하므로, 그 로드된 Theater가 launch 시점 Theater와 같을 때만 승계해야 한다.
+  // 다르면 setMaximizedOperationId가 다른 Theater에 타 Theater 소속 op를 최대화 대상으로 잘못 등록해 패널 상태를 망가뜨린다.
+  // store.activeTheaterId가 아니라 getLoadedTheaterId()를 보는 이유: loadForTheater가 passive effect라 store보다 늦게
+  // 갱신되어, A→B→A 왕복 시 store는 A인데 canvas는 아직 B인 desync 창이 생기기 때문이다.
+  // Theater가 다르면 Theater-aware한 focusOperation으로 launch Theater에 돌아가 새 op를 포커스한다.
+  const stillOnLaunchTheater = getLoadedTheaterId() === theaterId;
   if (stillOnLaunchTheater && getMaximizedOperationId() !== null) {
     setActiveOperation(newOperationId);
     setMaximizedOperationId(newOperationId);
