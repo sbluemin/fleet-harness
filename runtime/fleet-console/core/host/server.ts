@@ -420,8 +420,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     publishDeleteEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, event),
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
-  routeRegistry.register("/api/v1/carrier-settings", carrierSettingsRouter);
-  routeRegistry.register("/api/v1/global-settings", globalSettingsRouter);
+  routeRegistry.register("/api/v1/settings", async (ctx) => {
+    const { req, res, pathname } = ctx;
+    if (pathname === "/api/v1/settings/api-catalog") {
+      handleObserverApiCatalog(req, res);
+      return true;
+    }
+    if (await carrierSettingsRouter(ctx)) return true;
+    return globalSettingsRouter(ctx);
+  });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -470,10 +477,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const theaterSessionMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)\/sessions$/);
     if (theaterSessionMatch) {
       runAsyncHandler(handleObserverTheaterSessions(req, res, decodeURIComponent(theaterSessionMatch[1] ?? "")), res);
-      return;
-    }
-    if (pathname === "/api/v1/settings/api-catalog") {
-      handleObserverApiCatalog(req, res);
       return;
     }
     if (pathname === "/api/v1/observer/release-notes") {

@@ -27,43 +27,43 @@ const LEAKED_FIELD_NAMES = new Set([
 ]);
 
 export async function fetchCarrierSettingsState(signal?: AbortSignal): Promise<CarrierSettingsState> {
-  const response = await fetch("/api/v1/carrier-settings/state", { signal });
+  const response = await fetch("/api/v1/settings/carriers", { signal });
   await assertOk(response);
   return assertCarrierSettingsState(await response.json(), response.status);
 }
 
 export async function fetchCarrierSettingsOptions(signal?: AbortSignal): Promise<CarrierSettingsOptions> {
-  const response = await fetch("/api/v1/carrier-settings/options", { signal });
+  const response = await fetch("/api/v1/settings/carriers/options", { signal });
   await assertOk(response);
   return assertCarrierSettingsOptions(await response.json(), response.status);
 }
 
 export async function updateCarrierCli(carrierId: string, cliType: string, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/cli`, "PUT", { cliType }, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/cli`, "PUT", { cliType }, signal);
 }
 
 export async function updateCarrierModel(carrierId: string, selection: ModelSelection, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/model`, "PUT", selection, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/model`, "PUT", selection, signal);
 }
 
 export async function updateCarrierDisplayName(carrierId: string, displayName: string, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/display-name`, "PATCH", { displayName }, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/display-name`, "PATCH", { displayName }, signal);
 }
 
 export async function updateCarrierAgentMode(carrierId: string, agentMode: CarrierSettingsAgentMode, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/agent-mode`, "PUT", { agentMode }, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/agent-mode`, "PUT", { agentMode }, signal);
 }
 
 export async function setCarrierTaskForceBackend(carrierId: string, cliType: string, selection: ModelSelection, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/taskforce/${encodeURIComponent(cliType)}`, "PUT", selection, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/taskforce/${encodeURIComponent(cliType)}`, "PUT", selection, signal);
 }
 
 export async function deleteCarrierTaskForceBackend(carrierId: string, cliType: string, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/taskforce/${encodeURIComponent(cliType)}`, "DELETE", {}, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/taskforce/${encodeURIComponent(cliType)}`, "DELETE", {}, signal);
 }
 
 export async function deleteCarrierTaskForce(carrierId: string, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {
-  return mutateState(`/api/v1/carrier-settings/carriers/${encodeURIComponent(carrierId)}/taskforce`, "DELETE", {}, signal);
+  return mutateState(`/api/v1/settings/carriers/${encodeURIComponent(carrierId)}/taskforce`, "DELETE", {}, signal);
 }
 
 async function mutateState(url: string, method: string, body: unknown, signal?: AbortSignal): Promise<CarrierSettingsMutationResult> {

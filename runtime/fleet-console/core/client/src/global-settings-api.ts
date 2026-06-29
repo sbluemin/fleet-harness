@@ -2,13 +2,13 @@ import { ApiError } from "./api.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./types.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
-  const response = await fetch("/api/v1/global-settings/state", { signal });
+  const response = await fetch("/api/v1/settings/global", { signal });
   await assertOk(response);
   return assertGlobalSettingsState(await response.json(), response.status);
 }
 
 export async function updateGlobalSettings(patch: Partial<GlobalSettingsState>, signal?: AbortSignal): Promise<GlobalSettingsMutationResult> {
-  const response = await fetch("/api/v1/global-settings", {
+  const response = await fetch("/api/v1/settings/global", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),

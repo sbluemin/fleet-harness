@@ -73,8 +73,8 @@ afterEach(async () => {
 describe("carrier settings routes", () => {
   it("serves state and options without restricted browser fields", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/carrier-settings/state`);
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/carrier-settings/options`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
     const serialized = JSON.stringify({ state, options });
 
     expect(state.generation).toBeGreaterThanOrEqual(0);
@@ -92,7 +92,7 @@ describe("carrier settings routes", () => {
 
   it("serves provider defaults and model options from the validation registry", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/carrier-settings/options`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
 
     for (const cliType of getCliTypes()) {
       const option = options.cliTypes.find((item) => item.id === cliType);
@@ -110,7 +110,7 @@ describe("carrier settings routes", () => {
 
   it("uses getEffort defaults for advertised effort options", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/carrier-settings/options`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
 
     for (const cli of options.cliTypes) {
       for (const model of cli.models) {
@@ -130,15 +130,15 @@ describe("carrier settings routes", () => {
 
   it("rejects mutation requests without terminal origin and JSON content type", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/carrier-settings/state`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
     const carrier = state.carriers[0]!;
 
-    const wrongOrigin = await fetch(`${fixture.endpoint}api/v1/carrier-settings/carriers/${carrier.carrierId}/display-name`, {
+    const wrongOrigin = await fetch(`${fixture.endpoint}api/v1/settings/carriers/${carrier.carrierId}/display-name`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:1" },
       body: JSON.stringify({ displayName: "Blocked" }),
     });
-    const wrongType = await fetch(`${fixture.endpoint}api/v1/carrier-settings/carriers/${carrier.carrierId}/display-name`, {
+    const wrongType = await fetch(`${fixture.endpoint}api/v1/settings/carriers/${carrier.carrierId}/display-name`, {
       method: "PATCH",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ displayName: "Blocked" }),
@@ -150,19 +150,19 @@ describe("carrier settings routes", () => {
 
   it("initializes the store and persists display name changes to carriers.json", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/carrier-settings/state`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
     const carrier = state.carriers[0]!;
 
     const changed = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/carrier-settings/carriers/${carrier.carrierId}/display-name`,
+      `/api/v1/settings/carriers/${carrier.carrierId}/display-name`,
       "PATCH",
       { displayName: "Console Carrier" },
     );
     const persisted = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "carriers.json"), "utf8")) as { readonly carriers?: Record<string, { readonly displayName?: string }> };
     const reset = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/carrier-settings/carriers/${carrier.carrierId}/display-name`,
+      `/api/v1/settings/carriers/${carrier.carrierId}/display-name`,
       "PATCH",
       { displayName: carrier.sourceDisplayName },
     );
@@ -174,10 +174,10 @@ describe("carrier settings routes", () => {
 
   it("validates model and effort combinations server-side", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/carrier-settings/state`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
     const carrier = state.carriers[0]!;
 
-    const invalid = await rawMutate(fixture, `/api/v1/carrier-settings/carriers/${carrier.carrierId}/model`, "PUT", { model: "missing-model", effort: "max" });
+    const invalid = await rawMutate(fixture, `/api/v1/settings/carriers/${carrier.carrierId}/model`, "PUT", { model: "missing-model", effort: "max" });
 
     expect(invalid.status).toBe(400);
   });
@@ -185,7 +185,7 @@ describe("carrier settings routes", () => {
   it("does not return 500 for malformed percent-encoded carrier ids", async () => {
     const fixture = await startFixture();
 
-    const response = await rawMutate(fixture, "/api/v1/carrier-settings/carriers/%ZZ/model", "PUT", { model: "missing-model" });
+    const response = await rawMutate(fixture, "/api/v1/settings/carriers/%ZZ/model", "PUT", { model: "missing-model" });
 
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.status).toBeLessThan(500);
@@ -193,21 +193,21 @@ describe("carrier settings routes", () => {
 
   it("accepts every advertised model and effort selection in mutations", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/carrier-settings/options`);
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/carrier-settings/state`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
     const carrier = state.carriers[0]!;
 
     for (const cli of options.cliTypes) {
       await mutate<{ readonly state: CarrierSettingsState }>(
         fixture,
-        `/api/v1/carrier-settings/carriers/${carrier.carrierId}/cli`,
+        `/api/v1/settings/carriers/${carrier.carrierId}/cli`,
         "PUT",
         { cliType: cli.id },
       );
       for (const model of cli.models) {
         const response = await rawMutate(
           fixture,
-          `/api/v1/carrier-settings/carriers/${carrier.carrierId}/model`,
+          `/api/v1/settings/carriers/${carrier.carrierId}/model`,
           "PUT",
           selectionFor(model),
         );
@@ -219,20 +219,20 @@ describe("carrier settings routes", () => {
 
   it("clears Task Force atomically when SubAgent is enabled", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/carrier-settings/options`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
     const carrier = await findClaudeCarrier(fixture);
     const tfCli = options.cliTypes.find((cli) => cli.id !== carrier.cliType) ?? options.cliTypes[0]!;
     const tfModel = tfCli.models[0]!;
 
     const withTf = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/carrier-settings/carriers/${carrier.carrierId}/taskforce/${tfCli.id}`,
+      `/api/v1/settings/carriers/${carrier.carrierId}/taskforce/${tfCli.id}`,
       "PUT",
       selectionFor(tfModel),
     );
     const withSa = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/carrier-settings/carriers/${carrier.carrierId}/agent-mode`,
+      `/api/v1/settings/carriers/${carrier.carrierId}/agent-mode`,
       "PUT",
       { agentMode: "subagent" },
     );
@@ -247,20 +247,20 @@ describe("carrier settings routes", () => {
 
   it("disables SubAgent atomically when a Task Force backend is set", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/carrier-settings/options`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
     const carrier = await findClaudeCarrier(fixture);
     const tfCli = options.cliTypes.find((cli) => cli.id !== carrier.cliType) ?? options.cliTypes[0]!;
     const tfModel = tfCli.models[0]!;
 
     await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/carrier-settings/carriers/${carrier.carrierId}/agent-mode`,
+      `/api/v1/settings/carriers/${carrier.carrierId}/agent-mode`,
       "PUT",
       { agentMode: "subagent" },
     );
     const withTf = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/carrier-settings/carriers/${carrier.carrierId}/taskforce/${tfCli.id}`,
+      `/api/v1/settings/carriers/${carrier.carrierId}/taskforce/${tfCli.id}`,
       "PUT",
       selectionFor(tfModel),
     );
@@ -318,7 +318,7 @@ async function rawMutate(fixture: ServerFixture, pathname: string, method: strin
 }
 
 async function findClaudeCarrier(fixture: ServerFixture): Promise<CarrierSettingsCarrier> {
-  const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/carrier-settings/state`);
+  const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
   return state.carriers.find((carrier) => carrier.cliType === "claude") ?? state.carriers[0]!;
 }
 

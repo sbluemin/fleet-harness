@@ -29,16 +29,16 @@ const MAX_CONSOLE_STATIC_PORT = 65535;
 export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/api/v1/global-settings/state",
+    path: "/api/v1/settings/global",
     summary: "Get the global console settings status.",
-    category: "Global Settings",
+    category: "Settings",
     gate: "loopback",
   },
   {
     method: "PUT",
-    path: "/api/v1/global-settings",
+    path: "/api/v1/settings/global",
     summary: "Save the global console settings.",
-    category: "Global Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
 ];
@@ -46,20 +46,16 @@ export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
 export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (context: GlobalSettingsRouteContext) => Promise<boolean> {
   return async function handleGlobalSettingsRoute(context: GlobalSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
-    if (pathname === "/api/v1/global-settings/state") {
-      if (req.method !== "GET") {
-        deps.writeJson(res, 405, { error: "Method not allowed" });
+    if (pathname === "/api/v1/settings/global") {
+      if (req.method === "GET") {
+        deps.writeJson(res, 200, buildGlobalSettingsState(deps.globalOptionsService));
         return true;
       }
-      deps.writeJson(res, 200, buildGlobalSettingsState(deps.globalOptionsService));
-      return true;
-    }
-    if (pathname === "/api/v1/global-settings") {
-      if (req.method !== "PUT") {
-        deps.writeJson(res, 405, { error: "Method not allowed" });
+      if (req.method === "PUT") {
+        await mutateGlobalSettings(req, res, deps);
         return true;
       }
-      await mutateGlobalSettings(req, res, deps);
+      deps.writeJson(res, 405, { error: "Method not allowed" });
       return true;
     }
     return false;

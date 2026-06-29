@@ -92,65 +92,65 @@ const TASKFORCE_MIN_BACKENDS = 2;
 export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/api/v1/carrier-settings/state",
+    path: "/api/v1/settings/carriers",
     summary: "Get the carrier settings status.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "loopback",
   },
   {
     method: "GET",
-    path: "/api/v1/carrier-settings/options",
+    path: "/api/v1/settings/carriers/options",
     summary: "Get the carrier settings options.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "loopback",
   },
   {
     method: "PUT",
-    path: "/api/v1/carrier-settings/carriers/:id/cli",
+    path: "/api/v1/settings/carriers/:id/cli",
     summary: "Change the carrier Agent CLI.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
   {
     method: "PUT",
-    path: "/api/v1/carrier-settings/carriers/:id/model",
+    path: "/api/v1/settings/carriers/:id/model",
     summary: "Change the carrier model selection.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
   {
     method: "PATCH",
-    path: "/api/v1/carrier-settings/carriers/:id/display-name",
+    path: "/api/v1/settings/carriers/:id/display-name",
     summary: "Change the carrier display name.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
   {
     method: "PUT",
-    path: "/api/v1/carrier-settings/carriers/:id/agent-mode",
+    path: "/api/v1/settings/carriers/:id/agent-mode",
     summary: "Change the carrier execution mode.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
   {
     method: "PUT",
-    path: "/api/v1/carrier-settings/carriers/:id/taskforce/:cliType",
+    path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
     summary: "Set the Task Force backend model.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
   {
     method: "DELETE",
-    path: "/api/v1/carrier-settings/carriers/:id/taskforce/:cliType",
+    path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
     summary: "Unset the Task Force backend model.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
   {
     method: "DELETE",
-    path: "/api/v1/carrier-settings/carriers/:id/taskforce",
+    path: "/api/v1/settings/carriers/:id/taskforce",
     summary: "Reset the carrier Task Force settings.",
-    category: "Carrier Settings",
+    category: "Settings",
     gate: "terminal-origin",
   },
 ];
@@ -160,7 +160,7 @@ export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (co
 
   return async function handleCarrierSettingsRoute(context: CarrierSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
-    if (pathname === "/api/v1/carrier-settings/state") {
+    if (pathname === "/api/v1/settings/carriers") {
       if (req.method !== "GET") {
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
@@ -168,7 +168,7 @@ export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (co
       deps.writeJson(res, 200, buildCarrierSettingsState(deps.registry));
       return true;
     }
-    if (pathname === "/api/v1/carrier-settings/options") {
+    if (pathname === "/api/v1/settings/carriers/options") {
       if (req.method !== "GET") {
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
@@ -595,8 +595,8 @@ function fallbackResolvedState(config: CarrierConfig): ResolvedCarrierState {
 
 function parseCarrierMutation(pathname: string): ParsedCarrierMutation | null {
   const parts = pathname.split("/").filter(Boolean);
-  // /api/v1/carrier-settings/carriers/:id/...
-  if (parts[0] !== "api" || parts[1] !== "v1" || parts[2] !== "carrier-settings" || parts[3] !== "carriers" || !parts[4]) return null;
+  // /api/v1/settings/carriers/:id/...
+  if (parts[0] !== "api" || parts[1] !== "v1" || parts[2] !== "settings" || parts[3] !== "carriers" || !parts[4]) return null;
   const carrierId = safeDecodeURIComponent(parts[4]);
   if (!carrierId) return null;
   if (parts.length === 6 && parts[5] === "cli") return { kind: "cli", carrierId };
