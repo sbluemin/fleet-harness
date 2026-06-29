@@ -231,18 +231,6 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
-      dompurify:
-        specifier: ^3.2.7
-        version: 3.4.2
-      highlight.js:
-        specifier: ^11.11.1
-        version: 11.11.1
-      marked:
-        specifier: ^16.4.1
-        version: 16.4.2
-      mermaid:
-        specifier: ^11.12.1
-        version: 11.14.0
       node-pty:
         specifier: ^1.0.0
         version: 1.1.0
@@ -292,9 +280,21 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.2.0(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+      dompurify:
+        specifier: ^3.2.7
+        version: 3.4.2
       esbuild:
         specifier: 0.27.7
         version: 0.27.7
+      highlight.js:
+        specifier: ^11.11.1
+        version: 11.11.1
+      marked:
+        specifier: ^16.4.1
+        version: 16.4.2
+      mermaid:
+        specifier: ^11.12.1
+        version: 11.14.0
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)

@@ -1,4 +1,3 @@
-import "highlight.js/styles/github-dark.css";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "@fleet-console/markdown/styles.css";

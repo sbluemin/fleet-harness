@@ -3,6 +3,8 @@
    in markdown.tsx). Token references (--brass, --aurora, etc.) are declared
    in the consuming surface's theme.css and must be present at render time. */
 
+@import "highlight.js/styles/github-dark.css";
+
 .markdown-body {
   min-width: 0;
   max-inline-size: clamp(60ch, 78ch, 78ch);
