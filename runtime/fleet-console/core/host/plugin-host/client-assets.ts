@@ -1,19 +1,13 @@
-import { builtinModules } from "node:module";
 import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import path from "node:path";
 
-import * as reactNs from "react";
-import * as reactJsxRuntime from "react/jsx-runtime";
-import * as sdkNotificationsBrowser from "@fleet-console/sdk/notifications/browser";
-import * as sdkOperationsBrowser from "@fleet-console/sdk/operations/browser";
-import * as sdkPluginBrowser from "@fleet-console/sdk/plugin/browser";
-import * as sdkReactBrowser from "@fleet-console/sdk/react/browser";
-import * as sdkSettingsBrowser from "@fleet-console/sdk/settings/browser";
 import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 import type { Plugin } from "esbuild";
 
 import type { DiscoveredFleetPlugin } from "./types.js";
+import { SHIM_NAMED_EXPORTS } from "./shim-keys.generated.js";
 
 export interface PluginClientAssetsDeps {
   readonly plugins: readonly DiscoveredFleetPlugin[];
@@ -41,17 +35,17 @@ interface ShimDefinition {
   readonly name: string;
   readonly specifier: string;
   readonly globalKey: string;
-  readonly namespace: Record<string, unknown>;
+  readonly namedExports: readonly string[];
 }
 
 const SHIM_DEFINITIONS: readonly ShimDefinition[] = [
-  { name: "react", specifier: "react", globalKey: "react", namespace: reactNs },
-  { name: "react-jsx-runtime", specifier: "react/jsx-runtime", globalKey: "react/jsx-runtime", namespace: reactJsxRuntime },
-  { name: "sdk-plugin-browser", specifier: "@fleet-console/sdk/plugin/browser", globalKey: "@fleet-console/sdk/plugin/browser", namespace: sdkPluginBrowser },
-  { name: "sdk-settings-browser", specifier: "@fleet-console/sdk/settings/browser", globalKey: "@fleet-console/sdk/settings/browser", namespace: sdkSettingsBrowser },
-  { name: "sdk-operations-browser", specifier: "@fleet-console/sdk/operations/browser", globalKey: "@fleet-console/sdk/operations/browser", namespace: sdkOperationsBrowser },
-  { name: "sdk-notifications-browser", specifier: "@fleet-console/sdk/notifications/browser", globalKey: "@fleet-console/sdk/notifications/browser", namespace: sdkNotificationsBrowser },
-  { name: "sdk-react-browser", specifier: "@fleet-console/sdk/react/browser", globalKey: "@fleet-console/sdk/react/browser", namespace: sdkReactBrowser },
+  { name: "react", specifier: "react", globalKey: "react", namedExports: SHIM_NAMED_EXPORTS["react"] ?? [] },
+  { name: "react-jsx-runtime", specifier: "react/jsx-runtime", globalKey: "react/jsx-runtime", namedExports: SHIM_NAMED_EXPORTS["react/jsx-runtime"] ?? [] },
+  { name: "sdk-plugin-browser", specifier: "@fleet-console/sdk/plugin/browser", globalKey: "@fleet-console/sdk/plugin/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/plugin/browser"] ?? [] },
+  { name: "sdk-settings-browser", specifier: "@fleet-console/sdk/settings/browser", globalKey: "@fleet-console/sdk/settings/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/settings/browser"] ?? [] },
+  { name: "sdk-operations-browser", specifier: "@fleet-console/sdk/operations/browser", globalKey: "@fleet-console/sdk/operations/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/operations/browser"] ?? [] },
+  { name: "sdk-notifications-browser", specifier: "@fleet-console/sdk/notifications/browser", globalKey: "@fleet-console/sdk/notifications/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/notifications/browser"] ?? [] },
+  { name: "sdk-react-browser", specifier: "@fleet-console/sdk/react/browser", globalKey: "@fleet-console/sdk/react/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/react/browser"] ?? [] },
 ];
 const SHIM_URL_BY_SPECIFIER = new Map(SHIM_DEFINITIONS.map((definition) => [definition.specifier, `/plugin-runtime/shim/${definition.name}.mjs`]));
 const SHIM_BY_NAME = new Map(SHIM_DEFINITIONS.map((definition) => [definition.name, definition]));
@@ -59,7 +53,6 @@ const NODE_BUILTINS = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
 ]);
-const JS_IDENTIFIER = /^[A-Za-z_$][0-9A-Za-z_$]*$/u;
 
 export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginClientAssets {
   const clientSources = new Map<string, string>();
@@ -154,11 +147,11 @@ function createShimExternalsPlugin(rootRealpath: string): Plugin {
 }
 
 function renderShim(definition: ShimDefinition): string {
-  const namedExports = Object.keys(definition.namespace).filter((key) => key !== "default" && JS_IDENTIFIER.test(key));
+  // namedExports는 generate 단계에서 이미 필터링·정렬된 상태다.
   return [
     `const ns = globalThis.__fleetConsoleRuntime__?.[${JSON.stringify(definition.globalKey)}];`,
     `if (!ns) throw new Error(${JSON.stringify(`Fleet Console runtime shim unavailable: ${definition.globalKey}`)});`,
-    ...namedExports.map((key) => `export const ${key} = ns[${JSON.stringify(key)}];`),
+    ...definition.namedExports.map((key) => `export const ${key} = ns[${JSON.stringify(key)}];`),
     "export default ns.default;",
     "",
   ].join("\n");

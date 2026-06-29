@@ -17,3 +17,4 @@ keybindings.json
 !.claude/skills
 packages/fleet-admiral/src/agent-cli/assets.generated.ts
 runtime/fleet-console/core/client/src/release-notes.generated.ts
+runtime/fleet-console/core/host/plugin-host/shim-keys.generated.ts
