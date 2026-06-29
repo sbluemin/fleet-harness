@@ -1,4 +1,4 @@
-import type { TocItem } from "../markdown/renderer.js";
+import type { TocItem } from "@fleet-console/markdown/core";
 import { escapeAttribute, escapeHtml } from "../utils/html.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

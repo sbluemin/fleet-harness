@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { encodeMermaidSource } from "../core/client/src/codex/markdown/renderer";
+import { encodeMermaidSource } from "@fleet-console/markdown/core";
 
 interface InstalledHydrator {
   installDiagramHydrator: (root: ParentNode) => void;

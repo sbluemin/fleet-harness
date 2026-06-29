@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 
-import { decodeMermaidSource } from "./renderer";
+import { decodeMermaidSource } from "@fleet-console/markdown/core";
 
 interface MermaidApi {
   initialize(config: Record<string, unknown>): void;

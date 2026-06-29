@@ -52,6 +52,7 @@
     "@dotobokuri/fleet-carriers": "workspace:*",
     "@dotobokuri/fleet-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
+    "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-unicode11": "^0.8.0",
