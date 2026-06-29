@@ -13,7 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
+import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, getState, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -292,12 +292,16 @@ async function launchViaPlugin(
   // 다르면 setMaximizedOperationId가 다른 Theater에 타 Theater 소속 op를 최대화 대상으로 잘못 등록해 패널 상태를 망가뜨린다.
   // store.activeTheaterId가 아니라 getLoadedTheaterId()를 보는 이유: loadForTheater가 passive effect라 store보다 늦게
   // 갱신되어, A→B→A 왕복 시 store는 A인데 canvas는 아직 B인 desync 창이 생기기 때문이다.
-  // Theater가 다르면 Theater-aware한 focusOperation으로 launch Theater에 돌아가 새 op를 포커스한다.
   const stillOnLaunchTheater = getLoadedTheaterId() === theaterId;
-  if (stillOnLaunchTheater && getMaximizedOperationId() !== null) {
+  // fetchOperations 실패(.catch)로 hydrate가 누락되면 store에 newOperationId가 없다. 이때 승계하면
+  // setMaximizedOperationId가 기존 패널을 전부 최소화하지만 새 id는 캔버스에 없어 빈 화면이 박제된다.
+  // hydrate된 경우에만 승계하고, 아니면 focusOperation(op 부재 시 안전하게 no-op)으로 기존 최대화 패널을 그대로 둔다.
+  const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
+  if (stillOnLaunchTheater && operationHydrated && getMaximizedOperationId() !== null) {
     setActiveOperation(newOperationId);
     setMaximizedOperationId(newOperationId);
   } else {
+    // Theater가 다르거나 hydrate 누락이면 Theater-aware한 focusOperation으로 처리한다(launch Theater로 복귀·포커스, 부재 시 no-op).
     focusOperation(newOperationId);
   }
 }
