@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
@@ -41,12 +41,29 @@ export function MarkdownViewer({ content, truncated }: MarkdownViewerProps) {
     return () => observer.disconnect();
   }, [html]);
 
+  // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 처리한다.
+  // codex는 자체 위임 핸들러를 두지만 file-explorer엔 없어 버튼이 무동작이었다 —
+  // pre[data-code]의 원본 코드를 클립보드에 복사하고 잠시 "Copied" 피드백을 표시한다.
+  const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+    if (!button) return;
+    const code = button.closest("pre")?.getAttribute("data-code");
+    if (!code) return;
+    void navigator.clipboard?.writeText(code);
+    const original = button.textContent;
+    button.textContent = "Copied";
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1200);
+  }, []);
+
   return (
     <div className="fexp-md-wrap">
       {truncated && <div className="fexp-truncated-badge">File is too large — showing a partial preview</div>}
       <div
         ref={rootRef}
         className="markdown-body"
+        onClick={handleCopyClick}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />
