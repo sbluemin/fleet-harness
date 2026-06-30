@@ -266,7 +266,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     ctx.host.operations.create({
       id: session.sessionId,
       theaterId,
-      parentId: null,
       type: AGENT_OPERATION_TYPE,
       pluginId: ctx.pluginId,
       title: session.label ?? `${session.cwdLabel} #${session.sequence}`,

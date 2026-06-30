@@ -22,7 +22,7 @@ export const shellPlugin = definePlugin({
     await fetch(`/plugins/terminal/shell/sessions/${encodeURIComponent(operationId)}`, { method: "DELETE" });
   },
   launch: async ({ theaterId, operations }) => {
-    const operation = await operations.createRoot({
+    const operation = await operations.create({
       theaterId,
       type: "shell",
       pluginId: "terminal",

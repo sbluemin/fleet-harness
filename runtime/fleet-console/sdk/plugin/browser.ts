@@ -75,22 +75,11 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       dismiss: () => undefined,
     },
     operations: {
-      createRoot: async (input) => {
+      create: async (input) => {
         const response = await fetch("/api/v1/operations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
-        });
-        if (!response.ok) throw new ApiError(response.status, `Operation create failed: ${response.status}`);
-        const payload = await response.json() as { readonly operation?: unknown };
-        return assertOperationNode(payload.operation);
-      },
-      createChild: async (parentId, input) => {
-        const parent = await fetchOperation(parentId);
-        const response = await fetch("/api/v1/operations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...input, parentId, theaterId: parent.theaterId }),
         });
         if (!response.ok) throw new ApiError(response.status, `Operation create failed: ${response.status}`);
         const payload = await response.json() as { readonly operation?: unknown };
@@ -124,10 +113,6 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
 
 export function useStoreSnapshot<T>(subscribe: (listener: () => void) => () => void, getSnapshot: () => T): T {
   return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function useOperationTree(operations: readonly OperationNode[], parentId: string | null = null): readonly OperationNode[] {
-  return React.useMemo(() => operations.filter((operation) => operation.parentId === parentId), [operations, parentId]);
 }
 
 export function useOperations(): UseOperationsResult {
@@ -170,13 +155,6 @@ export function useOperationStatus(status: ClientOperationStatusCapability, oper
 async function assertSafeResponse(response: Response): Promise<Response> {
   if (!response.ok) throw new ApiError(response.status, `Plugin request failed: ${response.status}`);
   return response;
-}
-
-async function fetchOperation(operationId: string): Promise<OperationNode> {
-  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`);
-  if (!response.ok) throw new ApiError(response.status, `Operation request failed: ${response.status}`);
-  const payload = await response.json() as { readonly operation?: unknown };
-  return assertOperationNode(payload.operation);
 }
 
 function resolvePluginPath(pluginId: string, path: string): string {

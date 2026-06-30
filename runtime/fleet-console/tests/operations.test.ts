@@ -21,29 +21,17 @@ afterEach(async () => {
 });
 
 describe("operations platform", () => {
-  it("creates, moves, renames, lists children, and deletes OperationNodes", () => {
+  it("creates, renames, and deletes OperationNodes", () => {
     const store = createOperationStore({ now: () => 10 });
-    const parent = store.create({ id: "parent", theaterId: "theater", type: "agent", pluginId: "terminal", title: "Agent" });
-    const child = store.create({ id: "child", theaterId: "theater", parentId: parent.id, type: "stream", pluginId: "terminal", title: "Stream" });
-    const renamed = store.patch(child.id, { title: "Renamed Stream" });
+    const op = store.create({ id: "op", theaterId: "theater", type: "agent", pluginId: "terminal", title: "Agent" });
+    const renamed = store.patch(op.id, { title: "Renamed" });
 
-    expect(store.listByTheater("theater")).toHaveLength(2);
-    expect(store.listChildren("theater", parent.id)).toEqual([renamed]);
-    expect(renamed?.renamedTitle).toBe("Renamed Stream");
+    expect(store.listByTheater("theater")).toHaveLength(1);
+    expect(renamed?.renamedTitle).toBe("Renamed");
 
-    store.delete(parent.id);
+    store.delete(op.id);
 
     expect(store.list()).toEqual([]);
-  });
-
-  it("enforces depth two for operation trees", () => {
-    const store = createOperationStore({ now: () => 10 });
-    store.create({ id: "parent", theaterId: "theater", type: "agent", pluginId: "terminal", title: "Agent" });
-    store.create({ id: "child", theaterId: "theater", parentId: "parent", type: "stream", pluginId: "terminal", title: "Stream" });
-
-    expect(() => {
-      store.create({ id: "grandchild", theaterId: "theater", parentId: "child", type: "leaf", pluginId: "terminal", title: "Leaf" });
-    }).toThrow("operation_depth_exceeded");
   });
 
   it("strips fixed and plugin-declared sensitive fields from browser DTOs fail-closed", () => {
@@ -93,8 +81,7 @@ describe("operations platform", () => {
 
   it("applies plugin-declared sensitive fields to every operations router DTO", async () => {
     const store = createOperationStore({ now: () => 10 });
-    store.create(makeOperation({ id: "parent", payload: { pluginSecret: "parent-secret", visible: "parent" } }));
-    store.create(makeOperation({ id: "child", parentId: "parent", payload: { pluginSecret: "child-secret", visible: "child" } }));
+    store.create(makeOperation({ id: "op-a", payload: { pluginSecret: "a-secret", visible: "a" } }));
     let requestBody: unknown = null;
     const router = createOperationsRouter({
       store,
@@ -108,8 +95,7 @@ describe("operations platform", () => {
     });
 
     const list = await dispatch(router, "GET", "/api/v1/operations");
-    const children = await dispatch(router, "GET", "/api/v1/operations/parent/children");
-    const item = await dispatch(router, "GET", "/api/v1/operations/parent");
+    const item = await dispatch(router, "GET", "/api/v1/operations/op-a");
     requestBody = {
       theaterId: "theater",
       type: "agent",
@@ -124,15 +110,13 @@ describe("operations platform", () => {
         visible: "patched",
       },
     };
-    const patched = await dispatch(router, "PATCH", "/api/v1/operations/parent");
-    const serialized = JSON.stringify([list, children, item, created, patched]);
+    const patched = await dispatch(router, "PATCH", "/api/v1/operations/op-a");
+    const serialized = JSON.stringify([list, item, created, patched]);
 
-    expect(serialized).toContain("parent");
-    expect(serialized).toContain("child");
+    expect(serialized).toContain("op-a");
     expect(serialized).toContain("created");
     expect(serialized).toContain("patched");
-    expect(serialized).not.toContain("parent-secret");
-    expect(serialized).not.toContain("child-secret");
+    expect(serialized).not.toContain("a-secret");
     expect(serialized).not.toContain("created-secret");
     expect(serialized).not.toContain("patched-secret");
   });
@@ -229,8 +213,8 @@ describe("operations platform", () => {
 
   it("deletes every OperationNode for a Theater", () => {
     const store = createOperationStore({ now: () => 10 });
-    store.create(makeOperation({ id: "theater-a-parent", theaterId: "theater-a" }));
-    store.create(makeOperation({ id: "theater-a-child", theaterId: "theater-a", parentId: "theater-a-parent" }));
+    store.create(makeOperation({ id: "theater-a-1", theaterId: "theater-a" }));
+    store.create(makeOperation({ id: "theater-a-2", theaterId: "theater-a" }));
     store.create(makeOperation({ id: "theater-b", theaterId: "theater-b" }));
 
     expect(store.deleteByTheater("theater-a")).toBe(2);
@@ -238,21 +222,16 @@ describe("operations platform", () => {
     expect(store.list().map((node) => node.id)).toEqual(["theater-b"]);
   });
 
-  it("drops invalid restored OperationNodes that violate parent or depth constraints", () => {
+  it("deduplicates restored OperationNodes by id", () => {
     const store = createOperationStore({ now: () => 10 });
 
     store.replace([
-      makeNode({ id: "valid-root" }),
-      makeNode({ id: "valid-child", parentId: "valid-root" }),
-      makeNode({ id: "missing-parent", parentId: "missing" }),
-      makeNode({ id: "wrong-theater-parent", theaterId: "other" }),
-      makeNode({ id: "wrong-theater-child", parentId: "wrong-theater-parent" }),
-      makeNode({ id: "too-deep", parentId: "valid-child" }),
-      makeNode({ id: "cycle-a", parentId: "cycle-b" }),
-      makeNode({ id: "cycle-b", parentId: "cycle-a" }),
+      makeNode({ id: "op-a" }),
+      makeNode({ id: "op-a" }),
+      makeNode({ id: "op-b" }),
     ]);
 
-    expect(store.list().map((node) => node.id).sort()).toEqual(["valid-child", "valid-root", "wrong-theater-parent"]);
+    expect(store.list().map((node) => node.id).sort()).toEqual(["op-a", "op-b"]);
   });
 });
 
@@ -260,7 +239,6 @@ function makeNode(input: Partial<OperationNode> = {}): OperationNode {
   return {
     id: input.id ?? "op",
     theaterId: input.theaterId ?? "theater",
-    parentId: input.parentId ?? null,
     type: input.type ?? "agent",
     pluginId: input.pluginId ?? "terminal",
     title: input.title ?? "Agent",
@@ -278,7 +256,6 @@ function makeOperation(input: Partial<OperationCreateInput> = {}): OperationCrea
     type: input.type ?? "agent",
     pluginId: input.pluginId ?? "terminal",
     title: input.title ?? "Agent",
-    ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
     ...(input.payload !== undefined ? { payload: input.payload } : {}),
     ...(input.geometry !== undefined ? { geometry: input.geometry } : {}),
     ...(input.state !== undefined ? { state: input.state } : {}),

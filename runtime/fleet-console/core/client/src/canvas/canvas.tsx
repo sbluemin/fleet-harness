@@ -13,8 +13,6 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { OperationFrame } from "./operation-frame.js";
-import { OperationEdges } from "./operation-edges-layer.js";
-import { computeOperationEdges, type EdgeOperationInput } from "./operation-edges.js";
 import { RubberBand } from "./rubber-band.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
@@ -154,14 +152,6 @@ export function OperationsCanvas({
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
 
-  const visibleOperationIds = new Set(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id));
-  const edgeInputs: EdgeOperationInput[] = theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => ({
-    id: operation.id,
-    parentId: operation.parentId,
-    geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
-  }));
-  const operationEdges = computeOperationEdges(edgeInputs, visibleOperationIds);
-
   return (
     <main
       className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${perimeterEnabled ? "" : "is-perimeter-anim-off"}`}
@@ -180,7 +170,6 @@ export function OperationsCanvas({
           transform: `translate(${canvas.viewport.x}px, ${canvas.viewport.y}px) scale(${canvas.viewport.zoom})`,
         }}
       >
-        <OperationEdges edges={operationEdges} zoom={canvas.viewport.zoom} />
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;

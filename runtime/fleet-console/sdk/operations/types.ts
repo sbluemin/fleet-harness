@@ -14,7 +14,6 @@ export interface OperationTimestamps {
 export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
-  readonly parentId: string | null;
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;
@@ -28,7 +27,6 @@ export interface OperationNode {
 export interface OperationCreateInput {
   readonly id?: string;
   readonly theaterId: string;
-  readonly parentId?: string | null;
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;
@@ -41,7 +39,6 @@ export interface OperationCreateInput {
 export interface OperationPatchInput {
   readonly title?: string;
   readonly accent?: string | null;
-  readonly parentId?: string | null;
   readonly geometry?: OperationGeometry | null;
   readonly state?: Record<string, unknown>;
   readonly payload?: Record<string, unknown>;

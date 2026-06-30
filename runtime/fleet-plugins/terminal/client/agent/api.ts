@@ -160,7 +160,6 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     !payload
     || typeof payload.id !== "string"
     || typeof payload.theaterId !== "string"
-    || (payload.parentId !== null && typeof payload.parentId !== "string")
     || typeof payload.type !== "string"
     || typeof payload.pluginId !== "string"
     || typeof payload.title !== "string"
@@ -178,7 +177,6 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
   return {
     id: payload.id,
     theaterId: payload.theaterId,
-    parentId: payload.parentId ?? null,
     type: payload.type,
     pluginId: payload.pluginId,
     title: payload.title,

@@ -65,8 +65,7 @@ export interface ClientOperationStatusCapability {
 }
 
 export interface ClientOperationsCapability {
-  createRoot(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
-  createChild(parentId: string, input: { readonly type: string; readonly pluginId: string; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
+  create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
   rename(operationId: string, title: string): Promise<OperationNode>;
   remove(operationId: string): Promise<void>;
 }

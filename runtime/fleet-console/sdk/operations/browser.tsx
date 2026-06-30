@@ -32,7 +32,6 @@ export function assertOperationNode(value: unknown): OperationNode {
     !payload
     || typeof payload.id !== "string"
     || typeof payload.theaterId !== "string"
-    || (payload.parentId !== null && typeof payload.parentId !== "string")
     || typeof payload.type !== "string"
     || typeof payload.pluginId !== "string"
     || typeof payload.title !== "string"

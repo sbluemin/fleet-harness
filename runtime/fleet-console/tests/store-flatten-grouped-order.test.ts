@@ -7,7 +7,6 @@ function makeOp(id: string, groupId: string | null = null, createdAt = 1): Opera
   return {
     id,
     theaterId: "t1",
-    parentId: null,
     type: "shell",
     pluginId: "terminal",
     title: id,
