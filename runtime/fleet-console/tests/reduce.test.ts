@@ -7,6 +7,7 @@ import {
 } from "../../fleet-plugins/terminal/client/agent/reduce.js";
 import {
   computeVisibleOperationIds,
+  filterByLiveOperations,
   filterByPreferences,
   groupNotificationsByTheater,
   splitNotificationsByVisibility,
@@ -222,6 +223,7 @@ describe("notification selectors", () => {
   it("computes only the active operation as visible while Operations is mounted", () => {
     const visible = computeVisibleOperationIds(makeConsoleSnap({
       operationsViewActive: true,
+      activeTheaterId: "theater-a",
       activeOperationId: "operation-a",
       operations: [
         {
@@ -265,6 +267,41 @@ describe("notification selectors", () => {
         ts: { createdAt: 1, updatedAt: 1 },
       }],
     }))]).toEqual([]);
+  });
+
+  it("treats a stale active operation in another Theater as not visible", () => {
+    const op = (id: string, theaterId: string) => ({
+      id,
+      theaterId,
+      type: "shell",
+      pluginId: "terminal",
+      title: "Shell",
+      payload: {},
+      geometry: null,
+      ts: { createdAt: 1, updatedAt: 1 },
+    });
+    // Theater 전환 후 activeOperationId가 이전 Theater 패널을 가리키면(stale) 보임이 아니라 알림으로 노출되어야 한다.
+    expect([...computeVisibleOperationIds(makeConsoleSnap({
+      operationsViewActive: true,
+      activeTheaterId: "theater-a",
+      activeOperationId: "operation-b",
+      operations: [op("operation-a", "theater-a"), op("operation-b", "theater-b")],
+    }))]).toEqual([]);
+  });
+
+  it("treats a closed active operation as not visible", () => {
+    expect([...computeVisibleOperationIds(makeConsoleSnap({
+      operationsViewActive: true,
+      activeTheaterId: "theater-a",
+      activeOperationId: "ghost",
+      operations: [],
+    }))]).toEqual([]);
+  });
+
+  it("drops notifications for operations that no longer exist", () => {
+    const live = makeNotification("operation-a", "theater-a", 1);
+    const closed = makeNotification("operation-ghost", "theater-a", 2);
+    expect(filterByLiveOperations([live, closed], [{ id: "operation-a" }])).toEqual([live]);
   });
 
   it("splits hidden and visible notifications by operation id", () => {
