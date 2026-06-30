@@ -13,8 +13,11 @@ export interface VisibilitySplitNotifications {
 }
 
 export function computeVisibleOperationIds(consoleSnap: ConsoleState): ReadonlySet<string> {
-  if (!consoleSnap.operationsViewActive) return new Set();
-  return new Set(consoleSnap.operations.map((operation) => operation.id));
+  // 현재 보고 있는 패널(operations 화면이 떠 있고 active인 패널) 하나만 "보임"으로 간주한다.
+  // Theater·최소화·최대화와 무관하게 그 외 모든 패널의 Awaiting/Complete 알림은 ALERTS로 노출하고,
+  // 지금 보고 있는 active 패널의 알림만 무시한다.
+  if (!consoleSnap.operationsViewActive || !consoleSnap.activeOperationId) return new Set();
+  return new Set([consoleSnap.activeOperationId]);
 }
 
 export function splitNotificationsByVisibility(
