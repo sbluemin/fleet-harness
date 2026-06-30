@@ -225,7 +225,6 @@ describe("notification selectors", () => {
       operations: [{
         id: "operation-a",
         theaterId: "theater-a",
-        parentId: null,
         type: "shell",
         pluginId: "terminal",
         title: "Shell",

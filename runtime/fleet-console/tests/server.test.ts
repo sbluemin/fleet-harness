@@ -1525,7 +1525,6 @@ describe("console static and terminal ticket boundary", () => {
             {
               id: "operation-root",
               theaterId,
-              parentId: null,
               type: "operation",
               pluginId: "demo",
               title: "Operation Root",
@@ -1533,18 +1532,6 @@ describe("console static and terminal ticket boundary", () => {
               geometry: null,
               state: {},
               ts: { createdAt: 1_001, updatedAt: 1_001 },
-            },
-            {
-              id: "operation-child",
-              theaterId,
-              parentId: "operation-root",
-              type: "operation-child",
-              pluginId: "demo",
-              title: "Operation Child",
-              payload: { visible: true },
-              geometry: null,
-              state: {},
-              ts: { createdAt: 1_002, updatedAt: 1_002 },
             },
           ],
         }));
@@ -1701,7 +1688,6 @@ describe("console static and terminal ticket boundary", () => {
 
     expect(status).toMatchObject({
       workspaces: 0,
-      jobs: 0,
       version: "test",
       updateAvailable: false,
       port: fixture.lock.port,

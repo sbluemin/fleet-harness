@@ -47,7 +47,6 @@ export interface OperationPatchInput extends SdkOperationPatchInput {
 export interface OperationStore {
   list(): readonly OperationNode[];
   listByTheater(theaterId: string): readonly OperationNode[];
-  listChildren(theaterId: string, parentId: string | null): readonly OperationNode[];
   get(id: string): OperationNode | null;
   create(input: OperationCreateInput): OperationNode;
   upsert(input: OperationCreateInput): OperationNode;

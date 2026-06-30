@@ -40,7 +40,6 @@ export interface TheaterBootstrap {
 
 export interface ObserverStatus {
   readonly workspaces: number;
-  readonly jobs: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
   readonly updateAvailable: boolean;
@@ -85,7 +84,6 @@ export interface OperationGroup {
 export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
-  readonly parentId: string | null;
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;

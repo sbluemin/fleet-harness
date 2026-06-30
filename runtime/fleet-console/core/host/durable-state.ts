@@ -191,7 +191,6 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   return {
     id,
     theaterId,
-    parentId: readNullableString(value.parentId),
     type,
     pluginId,
     title,
@@ -209,7 +208,6 @@ function operationToNode(operation: DurableOperation): OperationNode {
   return {
     id: operation.sessionId,
     theaterId: operation.theaterId,
-    parentId: null,
     type: "shell",
     pluginId: "terminal",
     title: operation.label ?? `${operation.cwdLabel} #${operation.sequence}`,

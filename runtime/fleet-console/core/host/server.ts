@@ -657,8 +657,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const theaterId = readUrl(req).searchParams.get("theaterId");
     const payload: ConsoleObserverStatus = {
-      workspaces: operations.list().filter((operation) => operation.parentId === null).length,
-      jobs: operations.list().filter((operation) => operation.parentId !== null).length,
+      workspaces: operations.list().length,
       version,
       channel,
       ...updateCheck.getStatus(),

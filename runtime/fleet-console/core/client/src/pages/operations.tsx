@@ -339,7 +339,7 @@ async function launchViaPlugin(
     const result = await plugin.launch({ theaterId, kind, geometry, operations: capabilities.operations });
     newOperationId = result.id;
   } else {
-    const operation = await capabilities.operations.createRoot({
+    const operation = await capabilities.operations.create({
       theaterId,
       type: kind.type,
       pluginId,

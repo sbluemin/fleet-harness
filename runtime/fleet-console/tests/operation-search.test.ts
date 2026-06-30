@@ -11,7 +11,6 @@ function makeOperation(id: string, theaterId: string, title: string, pluginId = 
   return {
     id,
     theaterId,
-    parentId: null,
     type: pluginId,
     pluginId,
     title,

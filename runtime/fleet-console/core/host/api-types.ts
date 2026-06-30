@@ -53,7 +53,6 @@ export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unk
 
 export interface ConsoleObserverStatus {
   readonly workspaces: number;
-  readonly jobs: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
   readonly updateAvailable: boolean;
@@ -207,7 +206,6 @@ export interface ConsoleOperationGeometry {
 export interface ConsoleOperationNode {
   readonly id: string;
   readonly theaterId: string;
-  readonly parentId: string | null;
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;

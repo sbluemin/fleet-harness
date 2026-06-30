@@ -10,7 +10,6 @@ function makeNode(id: string, groupId?: string | null): OperationNode {
   return {
     id,
     theaterId: "t1",
-    parentId: null,
     type: "shell",
     pluginId: "terminal",
     title: id,

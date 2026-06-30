@@ -227,7 +227,6 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     !payload
     || typeof payload.id !== "string"
     || typeof payload.theaterId !== "string"
-    || (payload.parentId !== null && typeof payload.parentId !== "string")
     || typeof payload.type !== "string"
     || typeof payload.pluginId !== "string"
     || typeof payload.title !== "string"
@@ -245,7 +244,6 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
   return {
     id: payload.id,
     theaterId: payload.theaterId,
-    parentId: payload.parentId ?? null,
     type: payload.type,
     pluginId: payload.pluginId,
     title: payload.title,
@@ -306,7 +304,6 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
   if (
     !payload
     || typeof payload.workspaces !== "number"
-    || typeof payload.jobs !== "number"
     || typeof payload.version !== "string"
     || (payload.channel !== "stable" && payload.channel !== "local" && payload.channel !== "unknown")
     || typeof payload.updateAvailable !== "boolean"
@@ -321,7 +318,6 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
   }
   return {
     workspaces: payload.workspaces,
-    jobs: payload.jobs,
     version: payload.version,
     channel: payload.channel,
     updateAvailable: payload.updateAvailable,

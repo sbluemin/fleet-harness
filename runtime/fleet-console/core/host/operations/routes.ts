@@ -35,7 +35,6 @@ type OperationDeleteEvent = {
 type CreateOperationBody = Partial<OperationCreateInput>;
 type PatchOperationBody = {
   readonly title?: unknown;
-  readonly parentId?: unknown;
   readonly accent?: unknown;
   readonly groupId?: unknown;
   readonly payload?: unknown;
@@ -66,11 +65,6 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
     const groupItemMatch = pathname.match(/^\/api\/v1\/operations\/groups\/([^/]+)$/);
     if (groupItemMatch) {
       await handleGroupItem(req, res, decodeURIComponent(groupItemMatch[1] ?? ""), deps);
-      return true;
-    }
-    const childrenMatch = pathname.match(/^\/api\/v1\/operations\/([^/]+)\/children$/);
-    if (childrenMatch) {
-      handleChildren(req, res, decodeURIComponent(childrenMatch[1] ?? ""), deps);
       return true;
     }
     const itemMatch = pathname.match(/^\/api\/v1\/operations\/([^/]+)$/);
@@ -110,7 +104,6 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
     const node = deps.store.create({
       id: typeof body.id === "string" ? body.id : undefined,
       theaterId: body.theaterId,
-      parentId: typeof body.parentId === "string" || body.parentId === null ? body.parentId : null,
       type: body.type,
       pluginId: body.pluginId,
       title: body.title,
@@ -122,21 +115,8 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
     deps.persist();
     deps.writeJson(res, 201, { operation: sanitizeOperationNode(node, deps) });
   } catch (error) {
-    deps.writeJson(res, error instanceof Error && error.message === "operation_depth_exceeded" ? 409 : 400, { error: error instanceof Error ? error.message : "invalid_operation" });
+    deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_operation" });
   }
-}
-
-function handleChildren(req: http.IncomingMessage, res: http.ServerResponse, id: string, deps: OperationsRouterDeps): void {
-  if (req.method !== "GET") {
-    deps.writeJson(res, 405, { error: "Method not allowed" });
-    return;
-  }
-  const parent = deps.store.get(id);
-  if (!parent) {
-    deps.writeJson(res, 404, { error: "operation_not_found" });
-    return;
-  }
-  deps.writeJson(res, 200, { operations: deps.store.listChildren(parent.theaterId, id).map((node) => sanitizeOperationNode(node, deps)) });
 }
 
 async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, id: string, deps: OperationsRouterDeps): Promise<void> {
@@ -187,7 +167,6 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     const previousNode = typeof body.title === "string" ? deps.store.get(id) : null;
     const node = deps.store.patch(id, {
       ...(typeof body.title === "string" ? { title: body.title } : {}),
-      ...(typeof body.parentId === "string" || body.parentId === null ? { parentId: body.parentId } : {}),
       ...(typeof body.accent === "string" || body.accent === null ? { accent: body.accent } : {}),
       ...(typeof body.groupId === "string" || body.groupId === null ? { groupId: body.groupId } : {}),
       ...(isRecord(body.payload) ? { payload: body.payload } : {}),
@@ -210,7 +189,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     }
     deps.writeJson(res, 200, { operation: sanitizeOperationNode(node, deps) });
   } catch (error) {
-    deps.writeJson(res, error instanceof Error && error.message === "operation_depth_exceeded" ? 409 : 400, { error: error instanceof Error ? error.message : "invalid_operation_patch" });
+    deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_operation_patch" });
   }
 }
 

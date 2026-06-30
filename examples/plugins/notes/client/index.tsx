@@ -31,7 +31,7 @@ export default definePlugin({
       render: () => <NotesSettings />,
     }),
   ],
-  launch: (ctx) => ctx.operations.createRoot({
+  launch: (ctx) => ctx.operations.create({
     theaterId: ctx.theaterId,
     type: NOTES_OPERATION_TYPE,
     pluginId: NOTES_PLUGIN_ID,

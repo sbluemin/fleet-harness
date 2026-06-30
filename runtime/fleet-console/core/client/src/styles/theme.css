@@ -429,16 +429,6 @@ a {
   }
 }
 
-/* Operation 트리 간선의 "신호 전류(signal current)" — aurora 점선이 부모(기함)→자식(예하)으로
-   행진한다. parentId 지휘 계통이 살아있음을 보이는 기능적 상태 신호(ambient 장식 아님). 색은 aurora
-   고정("지금 살아있는 것"). dasharray 4 12(주기 16)와 정확히 한 주기(-16) 이동이라 이음매 없이 순환한다.
-   prefers-reduced-motion / 문서 숨김에서 단락 — AGENTS.md 모션 규약의 sanctioned 예외(상태 신호). */
-@keyframes operation-edge-flow {
-  to {
-    stroke-dashoffset: -16;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
