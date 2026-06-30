@@ -131,11 +131,6 @@ export function applyTruncation(tenantId: string, tenantLabel: string | undefine
   setAgentState({ tenantJobs: { ...state.tenantJobs, [tenantId]: { ...existing, tenantLabel: tenantLabel ?? existing.tenantLabel, truncation } } });
 }
 
-export function applySessionAttention(session: SessionInfo, reason: unknown): void {
-  applySessionUpdate(session);
-  if (reason === "idle_prompt") return;
-}
-
 export function sessionJobs(session: SessionInfo): readonly JobView[] {
   const tenantId = session.tenantId;
   if (!tenantId) return [];

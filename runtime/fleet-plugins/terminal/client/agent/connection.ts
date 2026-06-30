@@ -4,7 +4,7 @@ import type { ClientNotificationsCapability, ClientOperationStatusCapability, Cl
 import { fetchAgentState, fetchJobs, fetchOperationsSnapshot, fetchSessions, fetchTenants } from "./api.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
-import { applyJobsSnapshot, applyObservedEvent, applySessionAttention, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
+import { applyJobsSnapshot, applyObservedEvent, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
 
 interface AgentConnectionOptions {
@@ -66,8 +66,12 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
         continue;
       }
       if (interpreted.kind === "attention" && interpreted.session) {
-        applySessionAttention(interpreted.session, interpreted.reason);
-        if (interpreted.reason && interpreted.reason !== "idle_prompt") {
+        applySessionUpdate(interpreted.session);
+        // idle_prompt(정상 유휴)는 새 hook matcher에서 제외되지만, 업그레이드 전환기의 in-flight 세션이나
+        // 아직 재렌더되지 않은 hooks.json이 옛 matcher로 idle_prompt를 보낼 수 있다. 그 호환성을 위해
+        // idle_prompt는 client에서도 명시적으로 드롭한다(awaiting 전이 안 함). 나머지(permission_prompt·
+        // elicitation_dialog, 그리고 reason 없는 AskUserQuestion=PreToolUse)는 입력 대기이므로 awaiting로 전이한다.
+        if (interpreted.reason !== "idle_prompt") {
           applyActivity(options, interpreted.session.sessionId, "awaiting");
         }
         continue;
