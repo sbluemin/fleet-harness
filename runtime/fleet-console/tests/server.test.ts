@@ -776,26 +776,6 @@ describe("console static and terminal ticket boundary", () => {
     await expect(response.json()).resolves.toEqual({ error: "local_channel" });
   });
 
-  it.skip("rejects update apply while a live terminal session exists", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-update-live-"));
-    tempDirs.push(dir);
-    const fixture = await startFixture({
-      release: { channel: "stable", version: "1.0.0", packageRoot: process.cwd() },
-      terminalLaunch: createMockLaunch,
-      terminalStartShell: () => createMockPty(),
-    });
-    await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
-
-    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
-      body: JSON.stringify({}),
-    });
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({ error: "active_terminal_sessions" });
-  });
-
   it("accepts update apply after fresh recheck and starts shutdown after the 202 response", async () => {
     const updateApplyStart = vi.fn().mockResolvedValue({ accepted: true });
     const refresh = vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" });
@@ -1858,7 +1838,7 @@ describe("console static and terminal ticket boundary", () => {
     let destroyed = 0;
     const handler = createPluginTerminalUpgradeHandler({
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false, hasLiveSessions: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
       isAuthorized: () => true,
     });
 
@@ -1895,7 +1875,6 @@ describe("console static and terminal ticket boundary", () => {
         terminate: () => false,
         stop: async () => undefined,
         writeToSession: () => false,
-        hasLiveSessions: () => false,
       },
       isAuthorized: () => true,
     });

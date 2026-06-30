@@ -170,9 +170,6 @@ function resolveBlockedUpdateApplyCopy(errorCode: string | null): UpdateApplyCop
   if (errorCode === "local_channel") {
     return { label: "로컬 빌드", title: "로컬 개발 빌드는 콘솔에서 업데이트하지 않습니다.", tone: "blocked", disabled: true };
   }
-  if (errorCode === "active_terminal_sessions") {
-    return { label: "세션 종료 필요", title: "실행 중인 Operation을 종료한 뒤 업데이트하세요.", tone: "blocked", disabled: false };
-  }
   if (errorCode === "update_already_in_progress") {
     return { label: "이미 진행 중", title: "다른 업데이트 적용이 이미 진행 중입니다.", tone: "blocked", disabled: true };
   }
@@ -183,8 +180,7 @@ function resolveBlockedUpdateApplyCopy(errorCode: string | null): UpdateApplyCop
 }
 
 function isBlockedUpdateApplyError(code: string): boolean {
-  return code === "active_terminal_sessions"
-    || code === "local_channel"
+  return code === "local_channel"
     || code === "update_already_in_progress"
     || code === "update_not_available";
 }

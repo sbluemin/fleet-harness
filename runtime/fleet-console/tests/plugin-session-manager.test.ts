@@ -32,7 +32,6 @@ describe("plugin terminal session manager", () => {
     expect(failedPty.killed()).toBe(true);
     expect(failedPty.disposed()).toBe(1);
     expect(cleanupCount).toBe(1);
-    expect(manager.hasLiveSessions()).toBe(false);
 
     await expect(manager.createSession({ sessionId: "session-a", cwd: "/a" })).resolves.toBeUndefined();
     expect(healthyPty.killed()).toBe(false);
