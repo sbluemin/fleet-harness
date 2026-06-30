@@ -5,6 +5,78 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-06-30
+
+### Added
+- [fleet-console] Add a collapsible, resizable right-side Activity Rail that docks workspace tools as icon tabs beside the Operations map; selecting a tool slides its panel in and reflows the map, clicking the active icon collapses it, and the rail remembers its active tool, width, and open state across reloads.
+- [fleet-console] Add a File Explorer tool that browses and filters the active Theater's files and, on selecting a file, splits the panel into a resizable file view beside the tree with syntax-highlighted code, rendered markdown, image previews, and a binary fallback; large trees stay smooth via row virtualization.
+- [fleet-console] Add a Diff tool that lists the active Theater's changed files and shows their unified diffs, switchable between working-tree and staged changes.
+- [fleet-console] Fleet Console now discovers and loads third-party client plugins installed under `~/.fleet/plugins`, rendering their Operation panels and Settings sections alongside the built-in Terminal.
+- [fleet-console] Plugins declare an `apiVersion` for compatibility; an incompatible or failing external plugin is skipped without breaking the console.
+- [fleet-console] External plugin client code shares the console's React and SDK singleton through runtime shims, while plugin routes run in the host Node process under dedicated `/plugin-runtime/` endpoints.
+- [fleet-console] Rename an Operation directly from the left Operations SideBar by double-clicking its name.
+- [fleet-console] Operations SideBar now supports named groups: create, rename, recolor, and dissolve groups from a right-click menu, drag chips between groups, and collapse or expand a group's member chips. Group membership is shown by a colored rail that stays independent of the accent and in-progress status channels.
+- [fleet-console] Added a side bar map setting for turning Operation panel pulse animation on or off while preserving the running-state signal.
+- [fleet-console] Right-click an empty area of the left Operations SideBar to open the New Operation launcher at the cursor, the same overlay as the New Operation button.
+
+### Changed
+- [fleet-console] Set an Operation's accent color by clicking its status indicator - on the panel title bar or on its side bar entry - which opens a color popover; the dedicated accent button is gone, and clicking the side bar indicator lets you accent any Operation including minimized ones.
+- [fleet-console] An Operation's accent color now outlines its canvas panel as well as its side bar entry, taking over the focus outline in the chosen hue and staying visible whether or not the Operation is focused, running, awaiting, or minimized.
+- [fleet-console] Carrier output now streams inside the Agent panel as a summary banner at the top that opens a detail modal on click, instead of spawning a separate child streaming panel.
+- [fleet-console] Codex moves into the right-rail as a built-in panel; the /console/codex full route, the side-overlay edge handle, and the codex view-mode toggle are removed.
+- [fleet-console] Codex client no longer mutates browser history or reads the URL; workspace selection is driven by Theater state.
+- [fleet-console] Codex server drops the admin workspace registration endpoint and the bearer-token surface; Theater registration and restart restoration remain the only mount paths.
+- [fleet-console] Standalone fleet-wiki CLI removed; Codex enters via the Theater-scoped right-rail panel only.
+- [fleet-console] Redesigned the Codex knowledge panel for the right rail: a compact single-column navigator (search, entry list, Drydock badge, conflicts) replaces the cramped three-pane layout. Selecting an entry opens an inline two-pane split - the document on the left, the navigator still browsable on the right - and an Expand control opens a centered, comfortably wide reading overlay with a table-of-contents rail. The Codex markdown reading style is preserved throughout.
+- [fleet-console] Streamlined the Codex backend to four REST resources (search, entry, drydock, conflicts); raw source is now embedded in the entry response and the retired endpoints return 404.
+- [fleet-console] Replaced the bottom Operations taskbar and the canvas launcher button with a collapsible, resizable left side bar that lists every open Operation vertically by its kind icon. Click a chip to focus its panel (right-click a chip to set its accent colour), drag or use Alt+Shift+Up/Down to reorder, and use the "+ New" button to create Operations. A settings button beside "+ New" holds map fullscreen, radar sweep, panel pulse, and the keyboard-shortcut reference; the "+ New" and settings menus open as overlays beside their buttons. Side bar width and collapsed state persist per browser, and at its narrowest the bar collapses to a centred icon rail.
+- [fleet-console] The right Activity Rail and the File Explorer and Diff split panels now track the pointer immediately while resizing, instead of easing behind the cursor and only catching up when the drag stops.
+- [fleet-console] The ambient radar sweep and panel pulse animations now default to off when the console runs from a local unpublished build (`pnpm`), so development restarts start quiet; published builds keep them on by default, and an explicit per-browser toggle preference always wins over the channel default.
+- [fleet-console] The Diff panel now shows a clear English message when the selected folder is not a Git repository or when Git is not available, instead of a cryptic raw error.
+- [fleet-console] All File Explorer panel text is now in English.
+- [fleet-console] All console backend routes are now served under a unified `/api/v1` prefix, with settings consolidated under `/api/v1/settings/*` and updates under `/api/v1/updates/*`.
+- [fleet-console] Carrier settings now accept partial updates through a single `PATCH /api/v1/settings/carriers/:id` endpoint, replacing the four separate single-field mutation routes.
+- [fleet-console] Console Settings General (theme and console port) is now persisted server-side in the console data directory; the selected theme is shared across browsers and survives restarts instead of being remembered only per browser.
+- [fleet-console] Settings now groups console-owned controls separately from plugin-owned controls, with the self-contained Terminal Agent CLI section unifying system prompt controls, model sign-in, and CLI availability.
+- [fleet-console] Merge Appearance settings into General (Theme card + Console Port card); remove the Appearance nav item from the Settings left rail.
+- [fleet-console] Move Terminal Font and Terminal Renderer settings from core to the Terminal plugin; the Agent CLI settings section now owns these two cards, and all terminal panels react instantly via a module-scoped store.
+- [fleet-console] Fleet Console self-update now applies immediately regardless of active terminal sessions; the update no longer blocks while a terminal session has a live PTY.
+- [fleet-console] The Diff and File Explorer rail panels now use self-contained plugin-local backend routes (`/plugins/diff/*`, `/plugins/file-explorer/files/*`) instead of core console server routes, completing the plugin platform architecture.
+- [fleet-console] Diff panel now shows staged and unstaged changes as two simultaneously-visible collapsible sections (VS Code Source Control style), surfaces newly-created (untracked) files that were previously invisible, and adds a List / Tree view toggle in a plugin-owned toolbar.
+- [fleet-console] The Diff panel's file-tree and hunk views are now separated by a draggable divider, and the split ratio persists per browser.
+- [fleet-console] Extract shared markdown renderer and Mermaid hydrator into the `@fleet-console/markdown` workspace package so Codex reading and built-in plugin previews share one implementation.
+- [fleet-console] file-explorer `.md` preview now uses the same markdown engine and styles as Codex (GFM, syntax highlighting, Mermaid diagrams, code toolbar).
+- [fleet-console] File Explorer now opens as a persistent two-pane split (preview left, tree right) with a placeholder when no file is selected, widens the activity rail slot while active, and retains the in-session preview and split position when switching Theaters.
+- [fleet-console] File Explorer now shows colorful, file-type-specific icons - distinct shapes and per-language colors across code, data, style, document, image, shell, config, database, archive, and binary files - replacing the previous single-color glyphs. Directories now use open/closed folder icons with accent colors for well-known folders (such as src, test, node_modules, dist, docs, and .git), replacing the plain disclosure chevron. The whole icon palette adapts to the active Maritime or Carbon theme.
+- [fleet-console] Reworked Operation status indicators: removed the unused live state, so carrier streaming now shows as running.
+- [fleet-console] Recolored Operation status: awaiting is now aurora (teal) and idle is now green, and an idle panel no longer animates its perimeter.
+- [fleet-console] An Operation whose agent turn has ended keeps the running indicator while a carrier job is still streaming, then settles to idle once streaming finishes.
+- [fleet-console] An Operation raises an alert when it transitions into idle or awaiting.
+- [fleet-console] Terminal session panels no longer append a `#N` sequence number to their titles, so multiple sessions in the same Theater can share the same name.
+- [fleet-console] Theaters and terminal sessions saved by an earlier console version are now automatically migrated and preserved when upgrading instead of being reset.
+- [fleet-console] Removed the parent/child Operation tree concept; the Operations canvas no longer renders the command tether and every Operation is a top-level item.
+- [fleet-console] Console durable state is simplified to a single `operations` collection. The on-disk schema is bumped without a migration path, so existing `state.json` files are reset on first boot and previously registered Theaters and Operations are forgotten.
+- [fleet-console] The plugin SDK API version is bumped for the operations contract change, so external plugins built against the previous SDK are now rejected as incompatible instead of failing at runtime.
+- [fleet-console] Operation groups in the Operations left sidebar are now marked by a continuous colored rail down the group's left edge and a tinted group header, replacing the small per-entry color stub, so a group reads as one bounded run at a glance.
+- [fleet-console] Moved Theater folder selection into the console while making Terminal plugin sessions, tickets, and WebSocket transport self-contained for Shell and Agent operations.
+- [fleet-console] Reset the external plugin API compatibility version to 1; built-in plugin manifests now declare apiVersion 1 to match.
+- [fleet-console] Reset the console durable state schema version to 2.
+
+### Fixed
+- [fleet-console] Agent operation panels now enter the awaiting state for every input-waiting hook event, including AskUserQuestion prompts that previously left the panel inactive; idle prompts are no longer treated as a blocking signal.
+- [fleet-console] ALERTS now surfaces Awaiting and Complete notifications for every operation except the one you are actively viewing, regardless of its Theater or minimized/maximized state; previously notifications were suppressed for all operations while the Operations canvas was open, so the rail stayed empty.
+- [fleet-console] Opening an alert from ALERTS - or a result from the Operation quick-search - while an Operation panel is maximized now keeps the maximized view and switches it to the target Operation, instead of collapsing the maximized view.
+- [fleet-console] Creating a new Operation while a panel is maximized now keeps the maximized view and makes the new panel the maximized one, instead of dropping out of the maximized view.
+- [fleet-console] Fix the globally installed Fleet Console failing to start with a missing-React module error; the published package is now self-contained again, so the console and its built-in plugins load correctly after an npm install.
+- [fleet-console] Cycling Operations with Alt+Left/Right now follows the order shown in the Operations side bar - including any manual drag reordering - instead of a fixed creation-time order, so focus moves to the panel you expect.
+- [fleet-console] The Operations canvas surface (map background and sea wash) now follows the active theme instead of being locked to the Maritime palette, so the Carbon theme renders a neutral dark canvas; the Maritime appearance is unchanged.
+- [fleet-console] The Operations canvas radar sweep now animates whenever Radar sweep is enabled, no longer requiring Panel pulse to be on; Panel pulse independently controls the remaining ambient animations.
+- [fleet-console] Double-clicking an Operation's name in the Operations Left SideBar now reliably opens its inline rename editor.
+
+### Removed
+- [fleet-cli] Remove the Mission Control Wiki Server panel and the `fleet wiki` subcommand; the standalone fleet-wiki binary they relayed to was decommissioned.
+- [fleet-cli] The bundled `fleet-wiki` package is retained for wiki tool specs and entry count used by the MCP runtime and Mission Control status line.
+
 ## [1.15.0] - 2026-06-26
 
 ### Added
