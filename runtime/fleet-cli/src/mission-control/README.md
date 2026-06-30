@@ -14,7 +14,7 @@ Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane
 - **Gradient shimmer** — The Fleet banner animates on inactive screens with a smooth right-to-left RGB-lerped shimmer over a ~4-second cycle and stops while the active Agent CLI PTY is running.
 - **Options** — `OPTION` contains Mode, System prompt, and Metaphor toggle rows. Toggles update optimistic in-memory state immediately and schedule automatic `fleet-options.json` persistence without blocking render or input.
 - **Legacy presets** — Mission Control no longer reads or migrates the old `presets.json`; operators may delete that stale file manually after confirming they no longer need the old saved presets.
-- **System** — `SYSTEM` contains Carrier Roster, System Menu, and Exit. Authentication, Wiki Server, Diagnostics, and About are reached through `System Menu`.
+- **System** — `SYSTEM` contains Carrier Roster, System Menu, and Exit. Authentication, Diagnostics, and About are reached through `System Menu`.
 - **Exit Fleet** — Exit is a root navigate row and is not duplicated in nested panels.
 - **Input modals** — Text, password, and numeric modals remain. Confirmation flows use action-list Confirm/Cancel panels.
 
@@ -38,6 +38,6 @@ Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane
 | `menu/action-list-panel.ts` | Standard action-list `MenuPanel` factory. |
 | `menu/sectioned-list-panel.ts` | Root-only sectioned list `MenuPanel` factory. |
 | `menu/input-modal.ts` | Text, password, and numeric input modal implementation. |
-| `menu/*` | Authentication, Wiki Server, Diagnostics, About, and shared panel stack implementations. |
+| `menu/*` | Authentication, Diagnostics, About, and shared panel stack implementations. |
 | `welcome.ts` | Fleet banner ASCII, RGB-lerped cyan to blue gradient, amber accent, and shared centering helper. |
 | `loaded-counts.ts` | Carrier/wiki/queue counts and Fleet CLI release readout. |
