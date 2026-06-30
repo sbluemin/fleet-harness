@@ -11,7 +11,7 @@ import type { SettingsSectionDescriptor } from "../settings/types.js";
 
 export type ConsoleTheme = "maritime" | "carbon";
 
-export type OperationActivity = "idle" | "running" | "awaiting" | "live" | "dormant";
+export type OperationActivity = "idle" | "running" | "awaiting" | "dormant";
 
 export interface TerminalTicket {
   readonly ticket: string;

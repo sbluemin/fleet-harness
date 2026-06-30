@@ -282,15 +282,14 @@ function resizeGeometry(geometry: OperationGeometry, direction: ResizeDirection,
 function frameStatusClass(status: OperationActivity | undefined): string {
   if (status === "running") return "is-running is-running--turn";
   if (status === "awaiting") return "is-running is-running--awaiting";
-  if (status === "live") return "is-running is-running--live";
   return "";
 }
 
 function beaconStatusClass(status: OperationActivity | undefined): string {
   if (status === "running") return "tenant-beacon is-turn-running";
-  if (status === "awaiting") return "tenant-beacon is-turn-ended";
+  if (status === "awaiting") return "tenant-beacon is-awaiting";
   if (status === "dormant") return "tenant-beacon is-dormant";
-  return "tenant-beacon is-live";
+  return "tenant-beacon is-idle";
 }
 
 function MinimizeIcon() {

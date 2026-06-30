@@ -2371,8 +2371,14 @@
   background: var(--ink-rim);
 }
 
-.status-dot--live,
-.tenant-beacon.is-live {
+.status-dot--live {
+  background: var(--aurora);
+  box-shadow: 0 0 12px var(--aurora-glow);
+  animation: aurora-pulse 1.8s ease-in-out infinite;
+}
+
+/* awaiting — aurora(청록). 운영자 입력을 기다리는 살아있는 대기 신호(pulse). */
+.tenant-beacon.is-awaiting {
   background: var(--aurora);
   box-shadow: 0 0 12px var(--aurora-glow);
   animation: aurora-pulse 1.8s ease-in-out infinite;
@@ -2383,14 +2389,14 @@
   box-shadow: 0 0 8px color-mix(in oklch, var(--brass) 30%, transparent);
 }
 
-/* Agent CLI 턴 진행 중 — 노랑(--warn). 처리 중을 알리되 aurora(살아있는 Job)와 구별한다. */
+/* Agent CLI 턴 진행 중(캐리어 스트리밍 포함) — 노랑(--warn). aurora(awaiting 대기)와 구별한다. */
 .tenant-beacon.is-turn-running {
   background: var(--warn);
   box-shadow: 0 0 10px var(--warn-glow);
 }
 
-/* Agent CLI 턴 종료(유휴) — 그린(--positive). 입력 대기 상태. */
-.tenant-beacon.is-turn-ended {
+/* idle — 그린(--positive). 유휴 상태(턴 미진행/종료). 정적 dot, 외곽 애니메이션 없음. */
+.tenant-beacon.is-idle {
   background: var(--positive);
   box-shadow: 0 0 9px var(--positive-glow);
 }
@@ -3162,7 +3168,8 @@
 
 /* 작업 진행 중인 에이전트 패널 = "출항(underway)" 상태.
    인디케이터(비콘) 색을 따르는 외곽 진행광 + 정적 글로우로 진행을 표시한다.
-   색 변형: is-running--live=aurora(활성 캐리어 job), is-running--turn=warn(에이전트 턴 진행 = "그냥 작업중").
+   색 변형: is-running--turn=warn(에이전트 턴 진행 또는 캐리어 스트리밍 = "작업중"), is-running--awaiting=aurora(운영자 입력 대기).
+   idle/dormant는 진행광이 없다(idle은 별도 외곽 애니메이션 없음).
    외곽 진행광은 최소화 칩과 같은 perimeter-orbit 방식으로, 림은 inset 의사요소로 그린다.
    brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 진행광이 각자 의미로 공존.
    AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림+글로우로 단락). */
@@ -3174,21 +3181,17 @@
     0 0 22px -6px var(--uw-glow);
 }
 
-/* 인디케이터 색 추종 — live: aurora("지금 살아있는 것", 활성 캐리어 job) */
-.canvas-operation.is-running--live {
-  --uw-tint: var(--aurora);
-  --uw-glow: var(--aurora-glow);
-}
-
-/* 인디케이터 색 추종 — turn/awaiting: warn/amber(에이전트 턴 진행 또는 입력 대기) */
-.canvas-operation.is-running--turn,
-.canvas-operation.is-running--awaiting {
+/* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 또는 캐리어 스트리밍) */
+.canvas-operation.is-running--turn {
   --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
 }
 
+/* 인디케이터 색 추종 — awaiting: aurora(청록, 운영자 입력 대기) */
 .canvas-operation.is-running--awaiting {
-  border-color: var(--op-accent, color-mix(in oklch, var(--warn) 46%, var(--surface-rim)));
+  --uw-tint: var(--aurora);
+  --uw-glow: var(--aurora-glow);
+  border-color: var(--op-accent, color-mix(in oklch, var(--aurora) 46%, var(--surface-rim)));
 }
 
 /* 선택(is-active) + 진행 동시: accent 지정 시 accent 보더(우선), 미지정 시 brass 선택 보더. 진행광/글로우는 status 채널로 공존. */
@@ -3228,7 +3231,7 @@
 .operations-canvas.is-perimeter-anim-off .operations-radar-sweep,
 .operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
 .operations-canvas.is-perimeter-anim-off .status-dot--live,
-.operations-canvas.is-perimeter-anim-off .tenant-beacon.is-live,
+.operations-canvas.is-perimeter-anim-off .tenant-beacon.is-awaiting,
 .operations-canvas.is-perimeter-anim-off .job-summary-dot,
 .operations-canvas.is-perimeter-anim-off .tool-chip--live .tool-chip-glyph {
   animation: none;
