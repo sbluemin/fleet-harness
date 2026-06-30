@@ -1,1 +1,1 @@
-export const SDK_API_VERSION = 2;
+export const SDK_API_VERSION = 3;
