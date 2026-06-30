@@ -104,7 +104,7 @@ function applyActivity(options: AgentConnectionOptions, sessionId: string, activ
   if (activity === "awaiting") {
     options.notifications.emit({ kind: "agent.attention", operationId: sessionId, message: "Agent is waiting for input" });
   } else if (activity === "idle" && previous !== undefined) {
-    options.notifications.emit({ kind: "agent.idle", operationId: sessionId, message: "Agent turn ended" });
+    options.notifications.emit({ kind: "agent.ended", operationId: sessionId, message: "Agent turn ended" });
   }
 }
 

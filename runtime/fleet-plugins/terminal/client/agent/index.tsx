@@ -75,8 +75,10 @@ export const agentAttentionNotification = defineNotificationKind({
   title: "Agent input waiting",
 });
 
-export const agentIdleNotification = defineNotificationKind({
-  id: "agent.idle",
+// id에 ".end"를 포함시켜 core mapNotificationKind가 이 알림을 "ended"(turn 종료)로 분류하게 한다.
+// (idle 전이 = 에이전트 턴 종료이므로 ALERTS에서 "Stood down"으로 표시되어야 한다.)
+export const agentEndedNotification = defineNotificationKind({
+  id: "agent.ended",
   title: "Agent turn ended",
 });
 
@@ -84,7 +86,7 @@ export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
   settingsSections: [agentSettingsSection],
-  notificationKinds: [agentAttentionNotification, agentIdleNotification],
+  notificationKinds: [agentAttentionNotification, agentEndedNotification],
   install: (ctx) => installAgentPlugin(ctx),
   closeOperation: async (operationId) => {
     try {
