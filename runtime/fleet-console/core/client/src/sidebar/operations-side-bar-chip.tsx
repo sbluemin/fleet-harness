@@ -29,7 +29,6 @@ interface SideBarChipProps {
   readonly onPointerDragMove: (event: ReactPointerEvent<HTMLLIElement>) => void;
   readonly onPointerDragEnd: (event: ReactPointerEvent<HTMLLIElement>) => void;
   readonly onPointerDragCancel: (event: ReactPointerEvent<HTMLLIElement>) => void;
-  readonly grpColor?: string | null;
   readonly onOpenAccent: (operationId: string, anchor: DOMRect) => void;
   readonly onRename: (operationId: string, title: string) => void;
 }
@@ -51,7 +50,6 @@ export function OperationsSideBarChip({
   onPointerDragMove,
   onPointerDragEnd,
   onPointerDragCancel,
-  grpColor,
   onOpenAccent,
   onRename,
 }: SideBarChipProps) {
@@ -70,7 +68,6 @@ export function OperationsSideBarChip({
   const chipStyle = {
     "--i": index,
     ...(accentValue ? { "--chip-accent": accentValue } : {}),
-    ...(grpColor ? { "--grp-color": grpColor } : {}),
     ...(dragging ? { "--drag-dy": `${Math.round(dragOffsetY)}px` } : {}),
   } as CSSProperties;
 
@@ -145,7 +142,6 @@ export function OperationsSideBarChip({
       onPointerUpCapture={(event) => onPointerDragEnd(event)}
       onPointerCancelCapture={(event) => onPointerDragCancel(event)}
     >
-      {grpColor ? <div className="side-bar-chip__rail" aria-hidden="true" /> : null}
       <span className="side-bar-chip-beacon-button" aria-hidden="true">
         <span className="side-bar-chip-op-icon">
           {entry.icon ?? <DefaultOpIcon />}

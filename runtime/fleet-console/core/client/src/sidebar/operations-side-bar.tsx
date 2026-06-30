@@ -373,8 +373,10 @@ export function OperationsSideBar({
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
         {groupedSections.map((section) => {
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
+          const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
+          const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
           return (
-            <li key={section.groupId ?? "__ungrouped__"} data-drop-zone-group-id={section.groupId ?? "__ungrouped__"} className={section.groupId ? "side-bar-group-section" : "side-bar-ungrouped-section"}>
+            <li key={section.groupId ?? "__ungrouped__"} data-drop-zone-group-id={section.groupId ?? "__ungrouped__"} className={section.groupId ? "side-bar-group-section" : "side-bar-ungrouped-section"} style={sectionStyle}>
               {section.group ? (
                 <OperationsSideBarGroupHeader
                   group={section.group}
@@ -405,7 +407,6 @@ export function OperationsSideBar({
                     const sectionLocalIndex = section.entries.indexOf(entry);
                     const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
-                    const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
                     return (
                       <OperationsSideBarChip
                         key={entry.operation.id}
@@ -413,7 +414,6 @@ export function OperationsSideBar({
                         index={globalIndex}
                         isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
-                        grpColor={grpColor}
                         dragging={drag?.sourceId === entry.operation.id && drag.dragging}
                         dragOffsetY={drag?.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
                         dropTarget={
