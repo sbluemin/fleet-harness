@@ -75,11 +75,16 @@ export const agentAttentionNotification = defineNotificationKind({
   title: "Agent input waiting",
 });
 
+export const agentIdleNotification = defineNotificationKind({
+  id: "agent.idle",
+  title: "Agent turn ended",
+});
+
 export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
   settingsSections: [agentSettingsSection],
-  notificationKinds: [agentAttentionNotification],
+  notificationKinds: [agentAttentionNotification, agentIdleNotification],
   install: (ctx) => installAgentPlugin(ctx),
   closeOperation: async (operationId) => {
     try {

@@ -2,8 +2,9 @@ import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { ClientNotificationsCapability, ClientOperationStatusCapability, ClientOperationsCapability, OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { fetchAgentState, fetchJobs, fetchOperationsSnapshot, fetchSessions, fetchTenants } from "./api.js";
+import { isTerminalJobStatus } from "./reduce.js";
 import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
-import { applyJobsSnapshot, applyObservedEvent, applySessionAttention, applySessionUpdate, applyTenantSnapshot, applyTruncation, hydrateAgentClis, hydrateSessions, setAgentState } from "./store.js";
+import { applyJobsSnapshot, applyObservedEvent, applySessionAttention, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
 
 interface AgentConnectionOptions {
@@ -15,6 +16,8 @@ interface AgentConnectionOptions {
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
+// 세션별 직전 보고 activity. idle/awaiting 전이를 감지해 중복 없이 notification을 보내기 위함.
+const lastActivity = new Map<string, OperationActivity>();
 
 export function startAgentConnection(options: AgentConnectionOptions): () => void {
   const abort = new AbortController();
@@ -59,19 +62,20 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
       }
       if (interpreted.kind === "session" && interpreted.session) {
         applySessionUpdate(interpreted.session);
-        options.status.set(interpreted.session.sessionId, sessionActivity(interpreted.session));
+        applyActivity(options, interpreted.session.sessionId, sessionActivity(interpreted.session));
         continue;
       }
       if (interpreted.kind === "attention" && interpreted.session) {
         applySessionAttention(interpreted.session, interpreted.reason);
         if (interpreted.reason && interpreted.reason !== "idle_prompt") {
-          options.notifications.emit({ kind: "agent.attention", operationId: interpreted.session.sessionId, message: "Agent is waiting for input" });
-          options.status.set(interpreted.session.sessionId, "awaiting");
+          applyActivity(options, interpreted.session.sessionId, "awaiting");
         }
         continue;
       }
       if (interpreted.event) {
         applyObservedEvent(interpreted.event, interpreted.tenantLabel);
+        // 캐리어 job 상태 변화는 세션 activity(턴 종료 + 스트리밍 = running)에 영향을 주므로 재평가한다.
+        reevaluateSessionsForTenant(options, interpreted.event.tenantId);
       }
     }
   }
@@ -80,8 +84,39 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
 function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.status === "dormant") return "dormant";
   if (session.turnState === "running") return "running";
-  if (session.turnState === "ended") return "idle";
+  // 턴이 종료(ended)됐어도 캐리어 스트리밍이 진행 중이면 running을 유지한다.
+  if (session.turnState === "ended") return hasActiveCarrierStream(session) ? "running" : "idle";
   return "idle";
+}
+
+// 해당 세션에 종료되지 않은(스트리밍 중인) 캐리어 job이 하나라도 있으면 true.
+function hasActiveCarrierStream(session: SessionInfo): boolean {
+  return sessionJobs(session).some((job) => !isTerminalJobStatus(job.status));
+}
+
+// status를 반영하고, idle/awaiting로 전이될 때만 notification을 보낸다.
+// 같은 상태 반복은 알리지 않으며, idle은 직전 상태가 있는 실제 전이에서만 알려 초기 로드 noise를 막는다.
+function applyActivity(options: AgentConnectionOptions, sessionId: string, activity: OperationActivity): void {
+  const previous = lastActivity.get(sessionId);
+  options.status.set(sessionId, activity);
+  lastActivity.set(sessionId, activity);
+  if (previous === activity) return;
+  if (activity === "awaiting") {
+    options.notifications.emit({ kind: "agent.attention", operationId: sessionId, message: "Agent is waiting for input" });
+  } else if (activity === "idle" && previous !== undefined) {
+    options.notifications.emit({ kind: "agent.idle", operationId: sessionId, message: "Agent turn ended" });
+  }
+}
+
+// 특정 테넌트의 캐리어 job 상태가 바뀌면, 그 테넌트에 연결된 세션의 activity를 다시 계산해 반영한다.
+// (예: 턴 종료 후 마지막 스트리밍 job이 끝나면 running -> idle로 전이)
+function reevaluateSessionsForTenant(options: AgentConnectionOptions, tenantId: string): void {
+  const { sessions } = getAgentState();
+  for (const session of Object.values(sessions)) {
+    if (session.tenantId === tenantId) {
+      applyActivity(options, session.sessionId, sessionActivity(session));
+    }
+  }
 }
 
 async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOptions): Promise<void> {
@@ -94,7 +129,7 @@ async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOpti
   ]);
   hydrateAgentClis(agentClis);
   hydrateSessions(sessions);
-  for (const session of sessions) options.status.set(session.sessionId, sessionActivity(session));
+  for (const session of sessions) applyActivity(options, session.sessionId, sessionActivity(session));
   applyTenantSnapshot(tenants);
   applyJobsSnapshot(jobs);
   // resync 시 이전 agent.streaming orphan 패널을 조용히 제거한다(최선 노력, 실패 무시).
