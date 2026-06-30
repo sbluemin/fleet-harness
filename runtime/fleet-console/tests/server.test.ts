@@ -943,12 +943,11 @@ describe("console static and terminal ticket boundary", () => {
       TERM: "xterm-256color",
     });
     const stateFile = path.join(fixture.carrierStoreDir, "console", "state.json");
-    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { readonly version: number; readonly operations: readonly Record<string, unknown>[]; readonly operationNodes: readonly Record<string, unknown>[] };
-    expect(state.version).toBe(2);
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
+    expect(state.version).toBe(3);
     expect(state.operations).toHaveLength(1);
-    expect(state.operations[0]).toMatchObject({ sessionId: session.sessionId, cwd: dir });
-    expect(state.operations[0]?.providerSession).toBeUndefined();
-    expect(state.operationNodes[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
+    expect(state.operations[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
+    expect(state.operations[0]?.payload?.providerSession).toBeUndefined();
     if (process.platform !== "win32") expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
   });
@@ -1192,12 +1191,12 @@ describe("console static and terminal ticket boundary", () => {
     expect(capture.status).toBe(200);
     expect(captureBody).toEqual({ ok: true });
     expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
+    const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
     const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}api/v1/operations`);
     const serializedOperations = JSON.stringify(operationsResponse);
 
-    expect(capturedState.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    expect(capturedState.operationNodes[0]?.payload?.status).not.toBe("dormant");
+    expect(capturedState.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(capturedState.operations[0]?.payload?.status).not.toBe("dormant");
     expect(serializedOperations).not.toContain("providerSession");
     expect(serializedOperations).not.toContain("provider-session-secret");
     expect(operationsResponse.operations[0]?.payload).not.toHaveProperty("providerSession");
@@ -1205,9 +1204,9 @@ describe("console static and terminal ticket boundary", () => {
 
     ptys[0]!.emitExit();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
 
-    expect(state.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
   });
 
   it("persists captured provider sessions as dormant operation payloads on server stop", async () => {
@@ -1249,10 +1248,10 @@ describe("console static and terminal ticket boundary", () => {
     expect(ptys).toHaveLength(1);
 
     await fixture.server.stop();
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
 
-    expect(state.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    expect(state.operationNodes[0]?.payload?.status).toBe("dormant");
+    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operations[0]?.payload?.status).toBe("dormant");
   });
 
   it.skip("does not restore durable operations without provider sessions", async () => {
@@ -1486,7 +1485,7 @@ describe("console static and terminal ticket boundary", () => {
         const capturesDir = path.join(consoleDir, "captures");
         fs.mkdirSync(capturesDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 2,
+          version: 3,
           theaters: [{
             id: theaterId,
             path: dir,
@@ -1495,25 +1494,10 @@ describe("console static and terminal ticket boundary", () => {
             registeredAt: "2026-06-16T00:00:00.000Z",
             lastOpenedAt: "2026-06-16T00:00:01.000Z",
           }],
-          operations: [{
-            sessionId: "session-a",
-            theaterId,
-            cwd: dir,
-            cwdLabel: path.basename(dir),
-            sequence: 1,
-            cliId: "claude",
-            createdAt: 1_000,
-            providerSession: {
-              provider: "claude",
-              sessionId: "provider-session-secret",
-              capturedAt: "2026-06-16T00:00:02.000Z",
-            },
-          }],
-          operationNodes: [
+          operations: [
             {
               id: "session-a",
               theaterId,
-              parentId: null,
               type: "agent",
               pluginId: "terminal",
               title: "Terminal",
@@ -1546,14 +1530,13 @@ describe("console static and terminal ticket boundary", () => {
     const deleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE" });
     const theaters = await getJson<{ readonly theaters: readonly unknown[] }>(`${fixture.endpoint}api/v1/theaters`);
     const sessions = await getJson<{ readonly sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly theaters: readonly unknown[]; readonly operations: readonly unknown[]; readonly operationNodes: readonly unknown[] };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly theaters: readonly unknown[]; readonly operations: readonly unknown[] };
 
     expect(deleted.status).toBe(200);
     expect(theaters.theaters).toEqual([]);
     expect(sessions.sessions).toEqual([]);
     expect(state.theaters).toEqual([]);
     expect(state.operations).toEqual([]);
-    expect(state.operationNodes).toEqual([]);
     expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json"))).toBe(false);
   });
 

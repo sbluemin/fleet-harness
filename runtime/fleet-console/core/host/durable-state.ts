@@ -10,8 +10,6 @@ import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "./operations/types.js";
 import type { TheaterRegistration } from "./theaters.js";
 
-export type ConsoleLabelSource = "user" | "auto";
-
 export interface DurableOperationGroup {
   readonly id: string;
   readonly name: string;
@@ -21,29 +19,10 @@ export interface DurableOperationGroup {
   readonly createdAt: number;
 }
 
-export interface DurableOperation {
-  readonly sessionId: string;
-  readonly theaterId: string;
-  readonly cwd: string;
-  readonly cwdLabel: string;
-  readonly sequence: number;
-  readonly label?: string;
-  // 작전명 출처. 사용자가 수동 rename하면 "user", UserPromptSubmit 훅의 자동 작명이 설정하면 "auto".
-  // 미설정(레거시) 상태는 read-time에 label 유무로 해석한다: label이 있으면 user로 보수 해석해 자동 덮어쓰기를 막는다.
-  readonly labelSource?: ConsoleLabelSource;
-  readonly accent?: string;
-  // 최초 UserPromptSubmit auto-name hook 수신 여부. true면 이후 prompt는 자동 작명 후보여도 작전명을 바꾸지 않는다.
-  readonly autoNamePromptSeen?: boolean;
-  readonly cliId?: string;
-  readonly cliLabel?: string;
-  readonly createdAt: number;
-}
-
 export interface DurableConsoleState {
-  readonly version: 2;
+  readonly version: 3;
   readonly theaters: readonly TheaterRegistration[];
-  readonly operations: readonly DurableOperation[];
-  readonly operationNodes: readonly OperationNode[];
+  readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
 }
 
@@ -53,7 +32,7 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
@@ -80,19 +59,17 @@ export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateSt
 
 export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState {
   if (!isRecord(value)) return emptyDurableConsoleState();
-  if (value.version === 1) return migrateV1DurableConsoleState(value);
   if (value.version !== STATE_VERSION) return emptyDurableConsoleState();
   return {
     version: STATE_VERSION,
     theaters: readTheaterRegistrations(value.theaters),
-    operations: readDurableOperations(value.operations),
-    operationNodes: readOperationNodes(value.operationNodes),
+    operations: readOperations(value.operations),
     groups: readOperationGroups(value.groups),
   };
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
-  return { version: STATE_VERSION, theaters: [], operations: [], operationNodes: [], groups: [] };
+  return { version: STATE_VERSION, theaters: [], operations: [], groups: [] };
 }
 
 function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[] {
@@ -105,17 +82,7 @@ function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[
   return registrations;
 }
 
-function readDurableOperations(value: unknown): readonly DurableOperation[] {
-  if (!Array.isArray(value)) return [];
-  const operations: DurableOperation[] = [];
-  for (const item of value) {
-    const operation = sanitizeDurableOperation(item);
-    if (operation) operations.push(operation);
-  }
-  return operations;
-}
-
-function readOperationNodes(value: unknown): readonly OperationNode[] {
+function readOperations(value: unknown): readonly OperationNode[] {
   if (!Array.isArray(value)) return [];
   const nodes: OperationNode[] = [];
   for (const item of value) {
@@ -123,17 +90,6 @@ function readOperationNodes(value: unknown): readonly OperationNode[] {
     if (node) nodes.push(node);
   }
   return nodes;
-}
-
-function migrateV1DurableConsoleState(value: Record<string, unknown>): DurableConsoleState {
-  const operations = readDurableOperations(value.operations);
-  return {
-    version: STATE_VERSION,
-    theaters: readTheaterRegistrations(value.theaters),
-    operations,
-    operationNodes: operations.map(operationToNode),
-    groups: [],
-  };
 }
 
 function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null {
@@ -146,35 +102,6 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
   const lastOpenedAt = readNonEmptyString(value.lastOpenedAt);
   if (!id || !theaterPath || !realpath || !label || !registeredAt || !lastOpenedAt) return null;
   return { id, path: theaterPath, realpath, label, registeredAt, lastOpenedAt };
-}
-
-function sanitizeDurableOperation(value: unknown): DurableOperation | null {
-  if (!isRecord(value)) return null;
-  const sessionId = readNonEmptyString(value.sessionId);
-  const theaterId = readNonEmptyString(value.theaterId);
-  const cwd = readNonEmptyString(value.cwd);
-  const cwdLabel = readNonEmptyString(value.cwdLabel);
-  const sequence = readPositiveInteger(value.sequence);
-  const createdAt = readFiniteNumber(value.createdAt);
-  if (!sessionId || !theaterId || !cwd || !cwdLabel || sequence === null || createdAt === null) return null;
-  const label = readOptionalString(value.label);
-  const labelSource = readLabelSource(value.labelSource);
-  const accent = readOptionalAccent(value.accent);
-  const autoNamePromptSeen = value.autoNamePromptSeen === true || (labelSource === "auto" && label !== undefined);
-  return {
-    sessionId,
-    theaterId,
-    cwd,
-    cwdLabel,
-    sequence,
-    ...(label ? { label } : {}),
-    ...(labelSource ? { labelSource } : {}),
-    ...(accent ? { accent } : {}),
-    ...(autoNamePromptSeen ? { autoNamePromptSeen: true } : {}),
-    ...(readOptionalString(value.cliId) ? { cliId: readOptionalString(value.cliId) } : {}),
-    ...(readOptionalString(value.cliLabel) ? { cliLabel: readOptionalString(value.cliLabel) } : {}),
-    createdAt,
-  };
 }
 
 function sanitizeOperationNode(value: unknown): OperationNode | null {
@@ -201,30 +128,6 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
     ...(accent ? { accent } : {}),
     ...(groupId !== undefined ? { groupId } : {}),
     ts,
-  };
-}
-
-function operationToNode(operation: DurableOperation): OperationNode {
-  return {
-    id: operation.sessionId,
-    theaterId: operation.theaterId,
-    type: "shell",
-    pluginId: "terminal",
-    title: operation.label ?? `${operation.cwdLabel} #${operation.sequence}`,
-    ...(operation.label ? { renamedTitle: operation.label } : {}),
-    ...(operation.accent ? { accent: operation.accent } : {}),
-    payload: {
-      terminalSessionId: operation.sessionId,
-      cwd: operation.cwd,
-      cwdLabel: operation.cwdLabel,
-      sequence: operation.sequence,
-    },
-    geometry: null,
-    state: {},
-    ts: {
-      createdAt: operation.createdAt,
-      updatedAt: operation.createdAt,
-    },
   };
 }
 
@@ -260,10 +163,6 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function readNullableString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 function readRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
@@ -272,18 +171,10 @@ function remapTerminalPluginId(pluginId: string | null): string | null {
   return pluginId === "agent" || pluginId === "shell" ? "terminal" : pluginId;
 }
 
-function readLabelSource(value: unknown): ConsoleLabelSource | undefined {
-  return value === "user" || value === "auto" ? value : undefined;
-}
-
 function readOptionalAccent(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed.slice(0, 64) : undefined;
-}
-
-function readPositiveInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function readFiniteNumber(value: unknown): number | null {

@@ -853,7 +853,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     try {
       state = durableStateStore.load();
       theaters.restore(state.theaters);
-      operations.replace(state.operationNodes);
+      operations.replace(state.operations);
       operations.replaceGroups(state.groups ?? []);
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
@@ -892,10 +892,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function persistDurableState(): void {
     try {
       durableStateStore.save({
-        version: 2,
+        version: 3,
         theaters: theaters.list(),
-        operations: [],
-        operationNodes: operations.list(),
+        operations: operations.list(),
         groups: operations.listAllGroups(),
       });
     } catch (error) {
