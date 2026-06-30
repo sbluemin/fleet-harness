@@ -234,6 +234,13 @@ export function OperationsSideBar({
 
   const updatePointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
     if (!drag || drag.pointerId !== event.pointerId) return;
+    // 주 버튼이 눌려있지 않으면 프레스가 이미 끝난 것이다(포인터가 뷰포트 밖에서 떼여 window
+    // pointerup을 못 받아 pre-drag가 남은 경우 포함). 남은 pre-drag를 정리하고, 버튼 없는(이미 끝난)
+    // 포인터에는 임계치 돌파/capture 로직을 진입시키지 않는다(죽은 포인터 setPointerCapture 방지).
+    if (event.buttons === 0) {
+      if (!drag.dragging) setDrag(null);
+      return;
+    }
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
     if (!drag.dragging && distance < DRAG_THRESHOLD_PX) return;
     // 드래그가 임계치를 처음 넘는 순간 source 칩에 pointer capture를 건다. 이 핸들러는 캡처 전이라
