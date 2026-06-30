@@ -25,6 +25,7 @@ interface AggregateFramePayload {
 }
 
 const ATTENTION_REASONS: ReadonlySet<AttentionReason> = new Set([
+  "idle_prompt",
   "permission_prompt",
   "auth_success",
   "elicitation_dialog",
