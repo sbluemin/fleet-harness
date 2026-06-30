@@ -187,7 +187,10 @@ export function OperationsSideBar({
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // pointer capture는 드래그 임계치를 넘는 순간(updatePointerDrag)에만 건다. pointerdown 시점에 즉시 잡으면
+    // 후속 마우스 이벤트(특히 dblclick)가 캡처 대상인 <li>로 retarget되어, 칩 이름 span의
+    // onDoubleClick(rename)이 소실된다. 캡처를 지연시키면 단순 클릭/더블클릭은 span에 정상 도달하고
+    // 실제 드래그(이동 발생)만 캡처를 획득한다.
     setActiveContextMenu(null);
     disarmClose();
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
@@ -209,6 +212,10 @@ export function OperationsSideBar({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
     if (!drag.dragging && distance < DRAG_THRESHOLD_PX) return;
+    // 드래그가 임계치를 처음 넘는 순간 pointer capture를 획득해, 포인터가 칩 밖으로 나가도 이동을 계속 추적한다.
+    if (!drag.dragging && !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     const dropTarget = dropTargetFromPoint(event.clientY, dropSections, chipsRef.current, drag.sourceId);
     autoScrollSideBar(event.clientY, chipsRef.current);
     setDrag({ ...drag, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
