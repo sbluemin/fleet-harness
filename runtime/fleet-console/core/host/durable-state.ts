@@ -7,10 +7,19 @@ import {
 } from "@dotobokuri/fleet-infra";
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
-import type { OperationNode } from "./operations/types.js";
+import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "./operations/types.js";
 import type { TheaterRegistration } from "./theaters.js";
 
 export type ConsoleLabelSource = "user" | "auto";
+
+export interface DurableOperationGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly order: number;
+  readonly theaterId: string;
+  readonly createdAt: number;
+}
 
 export interface DurableOperation {
   readonly sessionId: string;
@@ -35,6 +44,7 @@ export interface DurableConsoleState {
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly DurableOperation[];
   readonly operationNodes: readonly OperationNode[];
+  readonly groups?: readonly DurableOperationGroup[];
 }
 
 export interface CreateConsoleDurableStateStoreDeps {
@@ -47,6 +57,12 @@ const STATE_VERSION = 2;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
+// 그룹 색상 키 화이트리스트 — 16색 accent 팔레트(operation-accent.ts)와 동일 키만 durable에 허용한다.
+const VALID_GROUP_COLOR_KEYS = new Set([
+  "red", "orange", "amber", "yellow", "lime", "green",
+  "emerald", "teal", "cyan", "sky", "blue", "indigo",
+  "violet", "purple", "magenta", "rose",
+]);
 
 export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateStoreDeps = {}): DurableJsonStore<DurableConsoleState> {
   const paths = deps.paths ?? createConsoleDataPaths();
@@ -71,11 +87,12 @@ export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState
     theaters: readTheaterRegistrations(value.theaters),
     operations: readDurableOperations(value.operations),
     operationNodes: readOperationNodes(value.operationNodes),
+    groups: readOperationGroups(value.groups),
   };
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
-  return { version: STATE_VERSION, theaters: [], operations: [], operationNodes: [] };
+  return { version: STATE_VERSION, theaters: [], operations: [], operationNodes: [], groups: [] };
 }
 
 function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[] {
@@ -115,6 +132,7 @@ function migrateV1DurableConsoleState(value: Record<string, unknown>): DurableCo
     theaters: readTheaterRegistrations(value.theaters),
     operations,
     operationNodes: operations.map(operationToNode),
+    groups: [],
   };
 }
 
@@ -169,6 +187,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   const ts = sanitizeOperationTimestamps(value.ts);
   if (!id || !theaterId || !type || !pluginId || !title || !ts) return null;
   const accent = readOptionalAccent(value.accent);
+  const groupId = readOptionalGroupId(value.groupId);
   return {
     id,
     theaterId,
@@ -181,6 +200,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
     geometry: sanitizeOperationGeometry(value.geometry),
     state: readRecord(value.state),
     ...(accent ? { accent } : {}),
+    ...(groupId !== undefined ? { groupId } : {}),
     ts,
   };
 }
@@ -270,4 +290,41 @@ function readPositiveInteger(value: unknown): number | null {
 
 function readFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readNonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function readOptionalGroupId(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed.slice(0, 64) : undefined;
+  }
+  return undefined;
+}
+
+function readOperationGroups(value: unknown): readonly DurableOperationGroup[] {
+  if (!Array.isArray(value)) return [];
+  const groups: DurableOperationGroup[] = [];
+  for (const item of value) {
+    const group = sanitizeOperationGroup(item);
+    if (group) groups.push(group);
+  }
+  return groups;
+}
+
+function sanitizeOperationGroup(value: unknown): DurableOperationGroup | null {
+  if (!isRecord(value)) return null;
+  const id = readNonEmptyString(value.id);
+  const theaterId = readNonEmptyString(value.theaterId);
+  const rawName = readNonEmptyString(value.name);
+  const color = readNonEmptyString(value.color);
+  const order = readNonNegativeInteger(value.order);
+  const createdAt = readFiniteNumber(value.createdAt);
+  if (!id || !theaterId || !rawName || !color || order === null || createdAt === null) return null;
+  if (rawName.length > MAX_GROUP_NAME_LENGTH) return null;
+  if (!VALID_GROUP_COLOR_KEYS.has(color)) return null;
+  return { id, theaterId, name: rawName, color, order, createdAt };
 }

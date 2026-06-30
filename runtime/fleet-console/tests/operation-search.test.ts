@@ -37,6 +37,7 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     theaters,
     operations,
     operationsHydrated: true,
+    groups: [],
     activeTheaterId: "theater-alpha",
     activeOperationId: null,
     operationStatus: {},

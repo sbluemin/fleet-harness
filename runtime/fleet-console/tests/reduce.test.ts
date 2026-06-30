@@ -50,6 +50,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     theaters: [],
     operations: [],
     operationsHydrated: true,
+    groups: [],
     activeTheaterId: null,
     activeOperationId: null,
     operationStatus: {},

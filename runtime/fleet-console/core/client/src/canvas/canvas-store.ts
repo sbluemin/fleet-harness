@@ -21,6 +21,8 @@ export interface CanvasState {
   readonly operationAccent: Record<string, string>;
   // 최소화된 Operation id 목록. geometry는 operations에 그대로 보존되므로 복원은 원위치·원크기로 되돌린다.
   readonly minimized: readonly string[];
+  // 접힌 그룹 id 목록(per-Theater localStorage). 접힘은 시각 표시 상태라 클라이언트 SSoT.
+  readonly collapsedGroups: readonly string[];
 }
 
 export interface CanvasViewportSize {
@@ -47,7 +49,7 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [] };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [] };
 
 const listeners = new Set<Listener>();
 const backgroundAnimationListeners = new Set<Listener>();
@@ -123,9 +125,21 @@ export function setState(patch: Partial<CanvasState>): void {
     operationOrder: patch.operationOrder ?? state.operationOrder,
     operationAccent: patch.operationAccent ?? state.operationAccent,
     minimized: patch.minimized ?? state.minimized,
+    collapsedGroups: patch.collapsedGroups ?? state.collapsedGroups,
   };
   scheduleSave();
   emit();
+}
+
+export function toggleGroupCollapsed(groupId: string): void {
+  const collapsed = state.collapsedGroups.includes(groupId)
+    ? state.collapsedGroups.filter((id) => id !== groupId)
+    : [...state.collapsedGroups, groupId];
+  setState({ collapsedGroups: collapsed });
+}
+
+export function useCollapsedGroups(): readonly string[] {
+  return useSyncExternalStore(subscribe, getCollapsedGroupsSnapshot, getCollapsedGroupsSnapshot);
 }
 
 // 즉시 이동(pan 드래그·검색 이동 등). 진행 중 줌 보간을 취소하고 current·target을 같은 값으로 맞춘다.
@@ -419,6 +433,10 @@ function getMinimizedSnapshot(): readonly string[] {
   return state.minimized;
 }
 
+function getCollapsedGroupsSnapshot(): readonly string[] {
+  return state.collapsedGroups;
+}
+
 function emitMapFullscreen(): void {
   for (const listener of mapFullscreenListeners) listener();
 }
@@ -610,6 +628,7 @@ function normalizeCanvasState(value: unknown): CanvasState {
     operationAccent: normalizeOperationAccent(value.operationAccent),
     // 저장된 최소화 목록 중 실재하는 Operation만 남긴다(stale 직렬화 방어).
     minimized: normalizeMinimized(value.minimized, operations),
+    collapsedGroups: normalizeStringArray(value.collapsedGroups),
   };
 }
 
@@ -702,4 +721,16 @@ function readPositiveNumber(value: unknown, fallback: number): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeStringArray(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || seen.has(item)) continue;
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
 }

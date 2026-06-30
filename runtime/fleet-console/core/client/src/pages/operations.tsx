@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
-import { fetchOperations, patchOperation, renameOperation } from "../api.js";
+import { createGroup, deleteGroup, fetchGroups, fetchOperations, patchOperation, renameOperation, updateGroup } from "../api.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -13,7 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { compareOperationCreatedAt, consumeOperationFocus, focusOperation, getState, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
+import { compareOperationCreatedAt, consumeOperationFocus, flattenGroupedOrder, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -61,11 +61,14 @@ export function Operations({ state }: OperationsProps) {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
-      // Alt 순환 순서를 Left SideBar 표시 순서(드래그 재정렬 반영)와 정확히 일치시킨다.
+      // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
       const snapshot = stateRef.current;
-      const order = sortOperationsByOrder(
+      const canvas = getCanvasSnapshot();
+      const order = flattenGroupedOrder(
         snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId),
-        getCanvasSnapshot().operationOrder,
+        snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
+        canvas.operationOrder,
+        canvas.collapsedGroups,
       ).map((operation) => operation.id);
       if (order.length === 0) return;
       event.preventDefault();
@@ -109,6 +112,7 @@ export function Operations({ state }: OperationsProps) {
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
+  const theaterGroups = (state.groups ?? []).filter((g) => g.theaterId === state.activeTheaterId);
 
   const renderKindIcon = useCallback((pluginId: string, kind: OperationLaunchKind): ReactNode => {
     const plugin = registry.plugins.find((p) => p.id === pluginId);
@@ -183,6 +187,47 @@ export function Operations({ state }: OperationsProps) {
       .catch(() => {});
   }, []);
 
+  const handleSetGroupId = useCallback((operationId: string, groupId: string | null) => {
+    void patchOperation(operationId, { groupId })
+      .then(() => fetchOperations(null))
+      .then(hydrateOperations)
+      .catch(() => {});
+  }, []);
+
+  const handleCreateGroup = useCallback((theaterId: string, name: string, operationId: string) => {
+    void createGroup({ theaterId, name, color: "blue" })
+      .then((group) => patchOperation(operationId, { groupId: group.id }))
+      .then(() => Promise.all([
+        fetchOperations(null).then(hydrateOperations),
+        fetchGroups(null).then(hydrateGroups),
+      ]))
+      .catch(() => {});
+  }, []);
+
+  const handleSetGroupColor = useCallback((groupId: string, color: string | null) => {
+    if (!color) return;
+    void updateGroup(groupId, { color })
+      .then(() => fetchGroups(null))
+      .then(hydrateGroups)
+      .catch(() => {});
+  }, []);
+
+  const handleRenameGroup = useCallback((groupId: string, name: string) => {
+    void updateGroup(groupId, { name })
+      .then(() => fetchGroups(null))
+      .then(hydrateGroups)
+      .catch(() => {});
+  }, []);
+
+  const handleUngroupAll = useCallback((groupId: string) => {
+    void deleteGroup(groupId)
+      .then(() => Promise.all([
+        fetchOperations(null).then(hydrateOperations),
+        fetchGroups(null).then(hydrateGroups),
+      ]))
+      .catch(() => {});
+  }, []);
+
   const handleClose = useCallback((operationId: string) => {
     if (closingOperationIds.has(operationId)) return;
     closingOperationIds.add(operationId);
@@ -198,6 +243,7 @@ export function Operations({ state }: OperationsProps) {
     >
       <OperationsSideBar
         operations={theaterOperations}
+        groups={theaterGroups}
         minimized={minimized}
         activeOperationId={state.activeOperationId}
         operationNotifications={state.operationNotifications}
@@ -216,6 +262,11 @@ export function Operations({ state }: OperationsProps) {
         onFocus={handleFocus}
         onSetAccent={handleSetAccent}
         onRename={handleRename}
+        onSetGroupId={handleSetGroupId}
+        onCreateGroup={handleCreateGroup}
+        onSetGroupColor={handleSetGroupColor}
+        onRenameGroup={handleRenameGroup}
+        onUngroupAll={handleUngroupAll}
       />
       <OperationsCanvas
         state={state}

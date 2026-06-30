@@ -73,6 +73,15 @@ export interface OperationGeometry {
   readonly zIndex: number;
 }
 
+export interface OperationGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly order: number;
+  readonly theaterId: string;
+  readonly createdAt: number;
+}
+
 export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
@@ -85,6 +94,8 @@ export interface OperationNode {
   readonly geometry: OperationGeometry | null;
   // 사용자 지정 accent 키(서버 영속). 미설정 시 부재. Dock 칩 perimeter 링 색의 SSoT다.
   readonly accent?: string | null;
+  // 사용자 지정 그룹 id(서버 영속). null이면 Ungrouped, 미설정 시 부재(Ungrouped와 동일 취급).
+  readonly groupId?: string | null;
   readonly state: Record<string, unknown>;
   readonly ts: {
     readonly createdAt: number;
@@ -209,6 +220,7 @@ export interface ConsoleState {
   readonly theaters: readonly TheaterInfo[];
   readonly operations: readonly OperationNode[];
   readonly operationsHydrated: boolean;
+  readonly groups: readonly OperationGroup[];
   readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;

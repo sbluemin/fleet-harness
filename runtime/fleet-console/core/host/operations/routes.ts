@@ -1,7 +1,7 @@
 import type http from "node:http";
 
 import type { OperationCatalogPlugin } from "../plugin-host/types.js";
-import type { OperationCreateInput, OperationNode, OperationStore } from "./types.js";
+import type { OperationCreateInput, OperationGroup, OperationGroupCreateInput, OperationGroupPatchInput, OperationNode, OperationStore } from "./types.js";
 import { createSanitizedOpDto } from "./sanitize.js";
 
 export interface OperationsRouterDeps {
@@ -37,10 +37,13 @@ type PatchOperationBody = {
   readonly title?: unknown;
   readonly parentId?: unknown;
   readonly accent?: unknown;
+  readonly groupId?: unknown;
   readonly payload?: unknown;
   readonly state?: unknown;
   readonly geometry?: unknown;
 };
+type CreateGroupBody = Partial<OperationGroupCreateInput>;
+type PatchGroupBody = Partial<OperationGroupPatchInput>;
 
 export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRouter {
   return async ({ req, res, pathname }) => {
@@ -54,6 +57,15 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
         return true;
       }
       deps.writeJson(res, 200, deps.resolveLaunchCatalog ? await deps.resolveLaunchCatalog() : { plugins: [] });
+      return true;
+    }
+    if (pathname === "/api/v1/operations/groups") {
+      await handleGroupCollection(req, res, deps);
+      return true;
+    }
+    const groupItemMatch = pathname.match(/^\/api\/v1\/operations\/groups\/([^/]+)$/);
+    if (groupItemMatch) {
+      await handleGroupItem(req, res, decodeURIComponent(groupItemMatch[1] ?? ""), deps);
       return true;
     }
     const childrenMatch = pathname.match(/^\/api\/v1\/operations\/([^/]+)\/children$/);
@@ -162,9 +174,13 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     deps.writeJson(res, 400, { error: "invalid_operation_patch" });
     return;
   }
-  // accent는 문자열(설정)·null(해제)·생략(무변경)만 허용한다. geometry의 null-clear 계약과 동일하다.
+  // accent/groupId는 문자열(설정)·null(해제)·생략(무변경)만 허용한다. geometry의 null-clear 계약과 동일하다.
   if (body.accent !== undefined && body.accent !== null && typeof body.accent !== "string") {
     deps.writeJson(res, 400, { error: "invalid_operation_accent" });
+    return;
+  }
+  if (body.groupId !== undefined && body.groupId !== null && typeof body.groupId !== "string") {
+    deps.writeJson(res, 400, { error: "invalid_operation_groupId" });
     return;
   }
   try {
@@ -173,6 +189,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
       ...(typeof body.title === "string" ? { title: body.title } : {}),
       ...(typeof body.parentId === "string" || body.parentId === null ? { parentId: body.parentId } : {}),
       ...(typeof body.accent === "string" || body.accent === null ? { accent: body.accent } : {}),
+      ...(typeof body.groupId === "string" || body.groupId === null ? { groupId: body.groupId } : {}),
       ...(isRecord(body.payload) ? { payload: body.payload } : {}),
       ...(isRecord(body.state) ? { state: body.state } : {}),
       ...(isRecord(body.geometry) || body.geometry === null ? { geometry: body.geometry === null ? null : readGeometry(body.geometry) } : {}),
@@ -199,6 +216,75 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
 
 function sanitizeOperationNode(node: OperationNode, deps: OperationsRouterDeps): OperationNode {
   return createSanitizedOpDto(node, { sensitiveFields: deps.getPluginSensitiveFields?.(node.pluginId) ?? [] });
+}
+
+async function handleGroupCollection(req: http.IncomingMessage, res: http.ServerResponse, deps: OperationsRouterDeps): Promise<void> {
+  if (req.method === "GET") {
+    // operations 컬렉션(handleCollection)과 동일한 계약: theaterId가 있으면 Theater별, 없으면 전체.
+    // 클라이언트는 전체 groups를 받아 activeTheaterId로 필터하므로(theaterGroups) null 호출도 200이어야 한다.
+    const theaterId = readRequestUrl(req).searchParams.get("theaterId");
+    const groups = theaterId ? deps.store.listGroups(theaterId) : deps.store.listAllGroups();
+    deps.writeJson(res, 200, { groups });
+    return;
+  }
+  if (req.method !== "POST") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  const body = await deps.readJsonBody<CreateGroupBody>(req);
+  if (!body || typeof body.theaterId !== "string" || typeof body.name !== "string" || typeof body.color !== "string") {
+    deps.writeJson(res, 400, { error: "invalid_group" });
+    return;
+  }
+  try {
+    const group = deps.store.createGroup({
+      theaterId: body.theaterId,
+      name: body.name,
+      color: body.color,
+      ...(typeof body.order === "number" ? { order: body.order } : {}),
+    });
+    deps.persist();
+    deps.writeJson(res, 201, { group });
+  } catch (error) {
+    deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_group" });
+  }
+}
+
+async function handleGroupItem(req: http.IncomingMessage, res: http.ServerResponse, id: string, deps: OperationsRouterDeps): Promise<void> {
+  if (req.method !== "PATCH" && req.method !== "DELETE") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  if (req.method === "DELETE") {
+    const deleted = deps.store.deleteGroup(id);
+    if (deleted) deps.persist();
+    deps.writeJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "group_not_found" });
+    return;
+  }
+  const body = await deps.readJsonBody<PatchGroupBody>(req);
+  if (!body) {
+    deps.writeJson(res, 400, { error: "invalid_group_patch" });
+    return;
+  }
+  const group: OperationGroup | null = deps.store.updateGroup(id, {
+    ...(typeof body.name === "string" ? { name: body.name } : {}),
+    ...(typeof body.color === "string" ? { color: body.color } : {}),
+    ...(typeof body.order === "number" ? { order: body.order } : {}),
+  });
+  if (!group) {
+    deps.writeJson(res, 404, { error: "group_not_found" });
+    return;
+  }
+  deps.persist();
+  deps.writeJson(res, 200, { group });
 }
 
 function readGeometry(value: Record<string, unknown>) {
