@@ -282,6 +282,20 @@ export function OperationsSideBar({
     });
   };
 
+  // 사이드바 빈 영역 우클릭 = ＋New 버튼과 동일한 launch 오버레이를 커서 위치에 연다.
+  // chip/그룹 헤더는 자체 우클릭 핸들러가 preventDefault()를 호출하므로(버블로 도달 시
+  // defaultPrevented=true), 그쪽 우클릭은 accent/그룹 메뉴를 유지하고 여기서는 무시한다.
+  const openNewMenuAtCursor = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.defaultPrevented) return;
+    event.preventDefault();
+    setSettingsMenu(null);
+    setActiveContextMenu(null);
+    setNewMenu({
+      anchor: { x: event.clientX, y: event.clientY },
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+    });
+  };
+
   const openSettingsMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (settingsMenu) {
       setSettingsMenu(null);
@@ -304,6 +318,7 @@ export function OperationsSideBar({
         data-tier={tier}
         data-canvas-blocker
         style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
+        onContextMenu={openNewMenuAtCursor}
       >
         <header className="operations-side-bar-header">
           <button
@@ -343,6 +358,7 @@ export function OperationsSideBar({
       data-tier={tier}
       data-canvas-blocker
       style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
+      onContextMenu={openNewMenuAtCursor}
     >
       <header className="operations-side-bar-header">
         <button
