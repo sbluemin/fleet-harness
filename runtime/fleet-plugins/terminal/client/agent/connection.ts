@@ -129,9 +129,11 @@ async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOpti
   ]);
   hydrateAgentClis(agentClis);
   hydrateSessions(sessions);
-  for (const session of sessions) applyActivity(options, session.sessionId, sessionActivity(session));
   applyTenantSnapshot(tenants);
   applyJobsSnapshot(jobs);
+  // activity 평가는 job 스냅샷 적용 이후에 한다 — tenantJobs가 비어있으면 hasActiveCarrierStream이
+  // 항상 false가 되어, 스트리밍 중인 세션이 재연결 직후 idle로 오판되고 허위 알림이 발생한다.
+  for (const session of sessions) applyActivity(options, session.sessionId, sessionActivity(session));
   // resync 시 이전 agent.streaming orphan 패널을 조용히 제거한다(최선 노력, 실패 무시).
   pruneOrphanStreamingOperations(operationsSnapshot.operations, options);
 }
