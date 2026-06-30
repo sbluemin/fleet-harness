@@ -23,10 +23,10 @@ const BASE_GROUP = {
   createdAt: 100,
 };
 
-describe("DurableConsoleState v3 — groups", () => {
-  it("groups 없는 v3 state를 빈 배열로 hydrate한다", () => {
+describe("DurableConsoleState v2 — groups", () => {
+  it("groups 없는 v2 state를 빈 배열로 hydrate한다", () => {
     const result = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [],
     });
@@ -35,7 +35,7 @@ describe("DurableConsoleState v3 — groups", () => {
 
   it("유효한 groups를 그대로 복원한다", () => {
     const result = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [],
       groups: [BASE_GROUP],
@@ -46,7 +46,7 @@ describe("DurableConsoleState v3 — groups", () => {
 
   it("잘못된 color 키를 가진 그룹을 버린다", () => {
     const result = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [],
       groups: [
@@ -60,7 +60,7 @@ describe("DurableConsoleState v3 — groups", () => {
 
   it("name이 64자를 초과하는 그룹을 버린다", () => {
     const result = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [],
       groups: [
@@ -73,7 +73,7 @@ describe("DurableConsoleState v3 — groups", () => {
 
   it("OperationNode의 groupId가 trim·null·undefined 모두 정상 처리된다", () => {
     const result = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [
         { ...BASE_NODE, id: "with-group", groupId: "  grp-1  " },
@@ -90,7 +90,7 @@ describe("DurableConsoleState v3 — groups", () => {
   it("groupId가 64자를 초과하면 truncate한다", () => {
     const longId = "a".repeat(80);
     const result = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [{ ...BASE_NODE, id: "op", groupId: longId }],
     });

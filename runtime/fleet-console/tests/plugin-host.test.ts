@@ -195,7 +195,7 @@ describe("plugin host", () => {
     tempDirs.push(dir);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "terminal"), "terminal");
-    writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 3 });
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 1 });
     const routes = new RouteRegistry();
     const host = createFleetPluginHost({
       cwd: dir,
@@ -225,7 +225,7 @@ describe("plugin host", () => {
     tempDirs.push(dir);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo", {}, false);
-    writePlugin(path.join(dir, "home", ".fleet", "plugins", "demo"), "demo", { apiVersion: 3 }, false);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "demo"), "demo", { apiVersion: 1 }, false);
 
     const host = createFleetPluginHost({
       cwd: dir,
@@ -247,7 +247,7 @@ describe("plugin host", () => {
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "built-in"), "built-in", {}, false);
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "missing"), "missing", {}, false);
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "future"), "future", { apiVersion: 999 }, false);
-    writePlugin(path.join(dir, "home", ".fleet", "plugins", "ok"), "ok", { apiVersion: 3 }, false);
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "ok"), "ok", { apiVersion: 1 }, false);
 
     const host = createFleetPluginHost({
       cwd: dir,

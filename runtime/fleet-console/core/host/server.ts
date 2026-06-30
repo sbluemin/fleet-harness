@@ -892,7 +892,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function persistDurableState(): void {
     try {
       durableStateStore.save({
-        version: 3,
+        version: 2,
         theaters: theaters.list(),
         operations: operations.list(),
         groups: operations.listAllGroups(),
