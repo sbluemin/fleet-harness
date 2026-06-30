@@ -67,7 +67,6 @@ export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
   createSession(context: TerminalTicketContext): Promise<void>;
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
-  hasLiveSessions(): boolean;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
   terminate(sessionId: string): boolean;

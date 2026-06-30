@@ -251,7 +251,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
-  const pluginLivenessProbes = new Set<() => boolean>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     operations: {
@@ -342,10 +341,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       registerCleanup: (cleanup) => {
         pluginCleanupCallbacks.add(cleanup);
         return () => pluginCleanupCallbacks.delete(cleanup);
-      },
-      registerLivenessProbe: (probe) => {
-        pluginLivenessProbes.add(probe);
-        return () => pluginLivenessProbes.delete(probe);
       },
     },
   };
@@ -727,10 +722,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 409, { error: "update_already_in_progress" });
       return;
     }
-    if (hasLiveTerminalOperations()) {
-      writeJson(res, 409, { error: "active_terminal_sessions" });
-      return;
-    }
     const freshStatus = await updateCheck.refresh({ force: true });
     if (!freshStatus.updateAvailable || !freshStatus.latestVersion) {
       writeJson(res, 409, { error: "update_not_available" });
@@ -785,13 +776,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function listTheaterInfos(): readonly ConsoleTheaterInfo[] {
     return theaters.list().map((theater) => toTheaterInfo(theater, codex.getWorkspace(theater.id) !== null));
-  }
-
-  function hasLiveTerminalOperations(): boolean {
-    for (const probe of pluginLivenessProbes) {
-      if (probe()) return true;
-    }
-    return false;
   }
 
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {

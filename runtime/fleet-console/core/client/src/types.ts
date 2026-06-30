@@ -53,7 +53,6 @@ export interface ObserverStatus {
 }
 
 export type ConsoleUpdateApplyError =
-  | "active_terminal_sessions"
   | "console_not_ready"
   | "local_channel"
   | "update_already_in_progress"

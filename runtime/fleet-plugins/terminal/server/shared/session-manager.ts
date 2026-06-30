@@ -84,10 +84,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     socket.once("close", () => detachSocket(session, socket));
   }
 
-  function hasLiveSessions(): boolean {
-    return sessions.size > 0 || pendingSessions.size > 0;
-  }
-
   async function createSession(context: TerminalTicketContext): Promise<void> {
     await getOrCreateSession(context);
   }
@@ -283,7 +279,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, hasLiveSessions, getSessionMessagePolicy, getSessionRenameCommand, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

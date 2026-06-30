@@ -39,8 +39,6 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },
   });
-  const lifecycle = ctx.host.lifecycle as { registerLivenessProbe?(probe: () => boolean): () => void };
-  lifecycle.registerLivenessProbe?.(() => sessions.hasLiveSessions());
   const upgrade = createPluginTerminalUpgradeHandler({
     tickets,
     sessions,
