@@ -26,9 +26,6 @@ interface SideBarChipProps {
   readonly onFocus: (operationId: string) => void;
   readonly onKeyboardMove: (operationId: string, direction: -1 | 1) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => void;
-  readonly onPointerDragMove: (event: ReactPointerEvent<HTMLLIElement>) => void;
-  readonly onPointerDragEnd: (event: ReactPointerEvent<HTMLLIElement>) => void;
-  readonly onPointerDragCancel: (event: ReactPointerEvent<HTMLLIElement>) => void;
   readonly onOpenAccent: (operationId: string, anchor: DOMRect) => void;
   readonly onRename: (operationId: string, title: string) => void;
 }
@@ -47,9 +44,6 @@ export function OperationsSideBarChip({
   onFocus,
   onKeyboardMove,
   onPointerDragStart,
-  onPointerDragMove,
-  onPointerDragEnd,
-  onPointerDragCancel,
   onOpenAccent,
   onRename,
 }: SideBarChipProps) {
@@ -115,15 +109,8 @@ export function OperationsSideBarChip({
         if (!isCloseArmed) onDisarmClose();
       }}
       onPointerDown={(event) => onPointerDragStart(event, operation.id)}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
-      onPointerUp={(event) => {
+      onPointerUp={() => {
         if (dragging) suppressClickRef.current = true;
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.stopPropagation();
       }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -138,9 +125,6 @@ export function OperationsSideBarChip({
           focus();
         }
       }}
-      onPointerMoveCapture={(event) => onPointerDragMove(event)}
-      onPointerUpCapture={(event) => onPointerDragEnd(event)}
-      onPointerCancelCapture={(event) => onPointerDragCancel(event)}
     >
       <span className="side-bar-chip-beacon-button" aria-hidden="true">
         <span className="side-bar-chip-op-icon">

@@ -103,6 +103,11 @@ export function OperationsSideBar({
   const closeArmTimeoutRef = useRef<number | null>(null);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const entriesRef = useRef<SideBarEntry[]>([]);
+  const currentOrderRef = useRef<string[]>([]);
+  const dropSectionsRef = useRef<DropSectionInfo[]>([]);
+  const onSetGroupIdRef = useRef(onSetGroupId);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
@@ -158,6 +163,7 @@ export function OperationsSideBar({
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
 
+
   const contextMenuOperation = activeContextMenu?.kind === "chip"
     ? allEntries.find((entry) => entry.operation.id === activeContextMenu.operationId)?.operation ?? null
     : null;
@@ -184,15 +190,90 @@ export function OperationsSideBar({
     entryIds: section.entries.map((e) => e.operation.id),
   }));
 
+  // window 이벤트 핸들러에서 commit 시점 최신값을 읽기 위해 매 렌더 ref를 동기화한다.
+  useEffect(() => {
+    entriesRef.current = allEntries;
+    currentOrderRef.current = currentOrder;
+    dropSectionsRef.current = dropSections;
+    onSetGroupIdRef.current = onSetGroupId;
+  });
+
+  const updateDrag = (next: DragState | null) => {
+    dragRef.current = next;
+    setDrag(next);
+  };
+
+  // drag 시작(pointerId가 생김)에만 window 리스너 3개를 등록하고, drag 종료 시 정확히 3개 해제한다.
+  const dragPointerId = drag?.pointerId ?? null;
+  useEffect(() => {
+    if (dragPointerId === null) return;
+
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragPointerId) return;
+      const current = dragRef.current;
+      if (!current) return;
+      if (event.buttons === 0) {
+        updateDrag(null);
+        return;
+      }
+      const distance = Math.hypot(event.clientX - current.startX, event.clientY - current.startY);
+      if (!current.dragging && distance < DRAG_THRESHOLD_PX) return;
+      if (current.dragging) event.preventDefault();
+      const dropTarget = dropTargetFromPoint(event.clientY, dropSectionsRef.current, chipsRef.current, current.sourceId);
+      autoScrollSideBar(event.clientY, chipsRef.current);
+      updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
+    };
+
+    const onUp = (event: PointerEvent) => {
+      if (event.pointerId !== dragPointerId) return;
+      const snap = dragRef.current;
+      updateDrag(null);
+      if (!snap?.dragging) return;
+
+      const { sourceId, sourceGroupId, dropIndex, dropGroupId } = snap;
+      const sections = dropSectionsRef.current;
+      const allIds = currentOrderRef.current;
+
+      if (dropGroupId !== sourceGroupId) {
+        const dropSection = sections.find((s) => s.groupId === dropGroupId);
+        const dropSegmentIds = dropSection?.entryIds ?? [];
+        setOperationOrder(insertIntoSegment(allIds, sourceId, dropIndex, dropSegmentIds));
+        onSetGroupIdRef.current(sourceId, dropGroupId);
+        return;
+      }
+
+      const sourceSection = sections.find((s) => s.groupId === sourceGroupId);
+      const segmentIds = sourceSection?.entryIds ?? [];
+      const currentLocalIndex = segmentIds.indexOf(sourceId);
+      if (currentLocalIndex === -1 || dropIndex === currentLocalIndex) return;
+      const nextOrder = reorderWithinSegment(allIds, sourceId, dropIndex, segmentIds);
+      setOperationOrder(nextOrder);
+    };
+
+    const onCancel = (event: PointerEvent) => {
+      if (event.pointerId !== dragPointerId) return;
+      updateDrag(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [dragPointerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
     setActiveContextMenu(null);
     disarmClose();
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
     const sourceGroupId = sourceEntry?.operation.groupId ?? null;
-    setDrag({
+    updateDrag({
       sourceId: operationId,
       sourceGroupId,
       pointerId: event.pointerId,
@@ -203,46 +284,6 @@ export function OperationsSideBar({
       dropIndex: currentOrder.indexOf(operationId),
       dropGroupId: sourceGroupId,
     });
-  };
-
-  const updatePointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-    if (!drag.dragging && distance < DRAG_THRESHOLD_PX) return;
-    const dropTarget = dropTargetFromPoint(event.clientY, dropSections, chipsRef.current, drag.sourceId);
-    autoScrollSideBar(event.clientY, chipsRef.current);
-    setDrag({ ...drag, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
-  };
-
-  const finishPointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    const { sourceId, sourceGroupId, dragging, dropIndex, dropGroupId } = drag;
-    setDrag(null);
-    if (!dragging) return;
-
-    if (dropGroupId !== sourceGroupId) {
-      // cross-group: groupId 변경 + 대상 그룹 내 dropIndex 위치로 order 재배치를 함께 처리한다.
-      const dropSection = dropSections.find((s) => s.groupId === dropGroupId);
-      const dropSegmentIds = dropSection?.entryIds ?? [];
-      const allIds = allEntries.map((e) => e.operation.id);
-      setOperationOrder(insertIntoSegment(allIds, sourceId, dropIndex, dropSegmentIds));
-      onSetGroupId(sourceId, dropGroupId);
-      return;
-    }
-
-    const section = groupedSections.find((s) => s.groupId === sourceGroupId);
-    const segmentIds = section ? section.entries.map((e) => e.operation.id) : [];
-    const currentLocalIndex = segmentIds.indexOf(sourceId);
-    if (currentLocalIndex === -1 || dropIndex === currentLocalIndex) return;
-    const allIds = allEntries.map((e) => e.operation.id);
-    const nextOrder = reorderWithinSegment(allIds, sourceId, dropIndex, segmentIds);
-    setOperationOrder(nextOrder);
-  };
-
-  const cancelPointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    setDrag(null);
   };
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
@@ -445,9 +486,6 @@ export function OperationsSideBar({
                         onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
-                        onPointerDragMove={updatePointerDrag}
-                        onPointerDragEnd={finishPointerDrag}
-                        onPointerDragCancel={cancelPointerDrag}
                         onOpenAccent={(operationId, anchor) => setActiveContextMenu({ kind: "chip", operationId, anchor })}
                         onRename={onRename}
                       />
