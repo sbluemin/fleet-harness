@@ -197,7 +197,7 @@ function ThemeCard() {
       <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">Theme</p>
-          <p className="global-settings-help">Console color scheme. Applies immediately and is remembered on this browser.</p>
+          <p className="global-settings-help">Console color scheme. Applies immediately and is saved server-side.</p>
         </div>
         {/* role="group" + aria-pressed — 단일선택 패턴. 선택 = brass(지금 보고 있는 곳). */}
         <div className="theme-picker" role="group" aria-label="Theme">
@@ -209,7 +209,7 @@ function ThemeCard() {
                 type="button"
                 aria-pressed={isActive}
                 className={`theme-card ${isActive ? "is-active" : ""}`}
-                onClick={() => setActiveTheme(theme.id)}
+                onClick={() => { setActiveTheme(theme.id); void setGlobalSettingsField("theme", theme.id); }}
               >
                 <span className="theme-card-swatch" aria-hidden="true">
                   {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
@@ -221,7 +221,7 @@ function ThemeCard() {
           })}
         </div>
       </div>
-      <p className="global-settings-foot">Theme applies immediately and is stored per browser.</p>
+      <p className="global-settings-foot">Theme applies immediately and is stored server-side.</p>
     </section>
   );
 }

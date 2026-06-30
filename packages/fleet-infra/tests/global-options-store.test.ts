@@ -63,6 +63,8 @@ describe("global options store", () => {
       [["cursor", "Sync"].join("")]: false,
       [["default", "CliId"].join("")]: "claude",
       model: "opus",
+      consolePortMode: "static",
+      consoleStaticPort: 8080,
     })).toEqual({
       changed: true,
       data: {
@@ -116,6 +118,23 @@ describe("global options store", () => {
       enableMetaphor: false,
     });
     expect(fs.readdirSync(dataDir).filter((name) => name.startsWith(".tmp-settings.json"))).toEqual([]);
+  });
+
+  it("sanitizes stale console port fields that migrated to console-settings store", () => {
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      replaceSystemPrompt: true,
+      enableMetaphor: false,
+      consolePortMode: "static",
+      consoleStaticPort: 8080,
+    })).toEqual({
+      changed: true,
+      data: {
+        version: 1,
+        replaceSystemPrompt: true,
+        enableMetaphor: false,
+      },
+    });
   });
 
   it("recovers stale locks and times out on fresh locks", () => {

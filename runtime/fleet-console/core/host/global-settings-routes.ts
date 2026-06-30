@@ -1,12 +1,13 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/fleet-infra";
+import type { DurableJsonStore } from "@dotobokuri/fleet-infra";
 
 import type { ApiCatalogEntry } from "./api-catalog.js";
+import type { ConsoleSettingsData } from "./console-settings.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./global-settings-types.js";
 
 interface GlobalSettingsRouteDeps {
-  readonly globalOptionsService: GlobalOptionsService;
+  readonly consoleSettingsStore: DurableJsonStore<ConsoleSettingsData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -21,6 +22,7 @@ interface GlobalSettingsRouteContext {
 interface GlobalSettingsBody {
   readonly consolePortMode?: unknown;
   readonly consoleStaticPort?: unknown;
+  readonly theme?: unknown;
 }
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
@@ -48,7 +50,7 @@ export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (cont
     const { req, res, pathname } = context;
     if (pathname === "/api/v1/settings/global") {
       if (req.method === "GET") {
-        deps.writeJson(res, 200, buildGlobalSettingsState(deps.globalOptionsService));
+        deps.writeJson(res, 200, buildGlobalSettingsState(deps.consoleSettingsStore));
         return true;
       }
       if (req.method === "PUT") {
@@ -62,8 +64,8 @@ export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (cont
   };
 }
 
-export function buildGlobalSettingsState(service: GlobalOptionsService): GlobalSettingsState {
-  return toGlobalSettingsState(service.load());
+export function buildGlobalSettingsState(store: DurableJsonStore<ConsoleSettingsData>): GlobalSettingsState {
+  return toGlobalSettingsState(store.load());
 }
 
 async function mutateGlobalSettings(
@@ -92,19 +94,29 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_console_static_port" });
     return;
   }
-  const updated = deps.globalOptionsService.update((current) => ({
-    ...current,
-    ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
-    ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
+  if (body.theme !== undefined && body.theme !== "maritime" && body.theme !== "carbon") {
+    deps.writeJson(res, 400, { error: "invalid_theme" });
+    return;
+  }
+  const updated = deps.consoleSettingsStore.update((current) => ({
+    version: 1,
+    general: {
+      ...current.general,
+      ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
+      ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
+      ...(body.theme === "maritime" || body.theme === "carbon" ? { theme: body.theme } : {}),
+    },
   }));
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
 }
 
-function toGlobalSettingsState(data: GlobalOptionsData): GlobalSettingsState {
+function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
+  const general = data.general ?? {};
   return {
-    consolePortMode: data.consolePortMode ?? "dynamic",
-    consoleStaticPort: data.consoleStaticPort ?? null,
+    consolePortMode: general.consolePortMode ?? "dynamic",
+    consoleStaticPort: general.consoleStaticPort ?? null,
+    theme: general.theme ?? "maritime",
   };
 }
 

@@ -21,7 +21,6 @@ import type {
 type Listener = () => void;
 
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
-const THEME_STORAGE_KEY = "fleet-console.activeTheme";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
@@ -41,7 +40,7 @@ let whatsNewSeenVersionMemo: string | null = null;
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
-  activeTheme: readStoredTheme(),
+  activeTheme: DEFAULT_THEME,
   version: "",
   updateAvailable: false,
   latestVersion: null,
@@ -99,12 +98,7 @@ export function setOperationsViewActive(active: boolean): void {
   setState({ operationsViewActive: active });
 }
 
-export function initThemeFromStorage(): void {
-  applyThemeToDocument(readStoredTheme());
-}
-
 export function setActiveTheme(theme: ThemeId): void {
-  writeStoredTheme(theme);
   applyThemeToDocument(theme);
   setState({ activeTheme: theme });
 }
@@ -544,16 +538,6 @@ function writeStoredActiveTheaterId(theaterId: string | null): void {
   }
 }
 
-function readStoredTheme(): ThemeId {
-  if (typeof window === "undefined") return DEFAULT_THEME;
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "maritime" || stored === "carbon" ? stored : DEFAULT_THEME;
-  } catch {
-    return DEFAULT_THEME;
-  }
-}
-
 function readStoredNotificationPreferences(): NotificationPreferences {
   if (typeof window === "undefined") return DEFAULT_NOTIFICATION_PREFERENCES;
   try {
@@ -620,15 +604,6 @@ function writeStoredNotificationPreferences(preferences: NotificationPreferences
       version: NOTIFICATION_PREFERENCES_VERSION,
       preferences,
     }));
-  } catch {
-    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
-  }
-}
-
-function writeStoredTheme(theme: ThemeId): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
     // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

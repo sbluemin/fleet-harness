@@ -14,6 +14,7 @@ import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
+import { createConsoleSettingsStore } from "./console-settings.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -239,6 +240,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
+  const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   const codex = createCodexGateway({
     cwd: deps.codexCwd ?? process.cwd(),
     host,
@@ -400,7 +402,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
   });
   const globalSettingsRouter = createGlobalSettingsRouter({
-    globalOptionsService: infraServices.globalOptionsService,
+    consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
@@ -952,7 +954,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         allowFallback: false,
       };
     }
-    const options = infraServices.globalOptionsService.load();
+    const options = consoleSettingsStore.load().general ?? {};
     if (options.consolePortMode === "static" && isValidConsoleStaticPort(options.consoleStaticPort)) {
       return {
         port: options.consoleStaticPort,

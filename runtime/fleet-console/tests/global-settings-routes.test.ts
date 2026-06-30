@@ -3,6 +3,7 @@ import type http from "node:http";
 import { describe, expect, it } from "vitest";
 
 import { createGlobalSettingsRouter } from "../core/host/global-settings-routes.js";
+import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../core/host/console-settings.js";
 
 interface WriteJsonCall {
   readonly status: number;
@@ -13,23 +14,23 @@ interface RouterHarnessOptions {
   readonly authorized?: boolean;
   readonly body?: unknown;
   readonly bodyNull?: boolean;
-  readonly data?: {
-    readonly replaceSystemPrompt?: boolean;
-    readonly enableMetaphor?: boolean;
-    readonly consolePortMode?: "dynamic" | "static";
-    readonly consoleStaticPort?: number;
-  };
+  readonly general?: ConsoleGeneralSettings;
 }
 
 describe("global settings routes", () => {
-  it("GET /global-settings/state returns the Console settings surface without internal keys", async () => {
-    const harness = createRouterHarness({ data: { replaceSystemPrompt: true, enableMetaphor: false } });
+  it("GET /global-settings/state returns flat Console settings with defaults", async () => {
+    const harness = createRouterHarness({ general: {} });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, theme: "maritime" } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("version");
-    expect(harness.writes[0]?.body).not.toHaveProperty("replaceSystemPrompt");
-    expect(harness.writes[0]?.body).not.toHaveProperty("enableMetaphor");
+    expect(harness.writes[0]?.body).not.toHaveProperty("general");
+  });
+
+  it("GET /global-settings/state reflects stored values", async () => {
+    const harness = createRouterHarness({ general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon" } });
+    await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon" } });
   });
 
   it("GET /global-settings/state rejects non-GET methods with 405", async () => {
@@ -38,27 +39,34 @@ describe("global settings routes", () => {
     expect(harness.writes[0]?.status).toBe(405);
   });
 
-  it("PUT /global-settings updates and returns the new port-only state", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
+  it("PUT /global-settings updates and returns the new state", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon" } });
     const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080 } } });
-    expect(harness.currentData()).toMatchObject({ version: 1, consolePortMode: "static", consoleStaticPort: 8080 });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon" } } });
+    expect(harness.currentGeneral()).toMatchObject({ consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon" });
   });
 
-  it("PUT /global-settings ignores removed prompt fields without mutating stored prompt settings", async () => {
+  it("PUT /global-settings stores a theme", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { theme: "carbon" } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, theme: "carbon" } } });
+    expect(harness.currentGeneral()).toMatchObject({ theme: "carbon" });
+  });
+
+  it("PUT /global-settings ignores replaceSystemPrompt/enableMetaphor body fields", async () => {
     const harness = createRouterHarness({
       authorized: true,
       body: { replaceSystemPrompt: false, enableMetaphor: true },
-      data: { replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 },
+      general: { consolePortMode: "static", consoleStaticPort: 8080, theme: "maritime" },
     });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080 } });
-    expect(harness.currentData()).toEqual({ version: 1, replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 });
+    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080, theme: "maritime" } });
+    expect(harness.currentGeneral()).toEqual({ consolePortMode: "static", consoleStaticPort: 8080, theme: "maritime" });
   });
 
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
-    const harness = createRouterHarness({ authorized: false, body: { enableMetaphor: true } });
+    const harness = createRouterHarness({ authorized: false, body: { theme: "carbon" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.writes[0]?.status).toBe(401);
     expect(harness.updateCalls).toBe(0);
@@ -81,7 +89,7 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores a static console port", async () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080 } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, theme: "maritime" } } });
   });
 
   it("PUT /global-settings rejects an out-of-range static port with 400", async () => {
@@ -93,6 +101,13 @@ describe("global settings routes", () => {
 
   it("PUT /global-settings rejects an invalid console port mode with 400", async () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "auto" } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /global-settings rejects an invalid theme with 400", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { theme: "neon" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);
@@ -114,25 +129,20 @@ describe("global settings routes", () => {
 
 function createRouterHarness(options: RouterHarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
-  let data: {
-    version: 1;
-    replaceSystemPrompt?: boolean;
-    enableMetaphor?: boolean;
-    consolePortMode?: "dynamic" | "static";
-    consoleStaticPort?: number;
-  } = { version: 1, ...options.data };
+  let data: ConsoleSettingsData = { version: 1, general: options.general ?? {} };
   let updateCalls = 0;
   const router = createGlobalSettingsRouter({
-    globalOptionsService: {
+    consoleSettingsStore: {
+      path: "/fake/settings.json",
       load: () => data,
-      save: (next) => { data = next; return data; },
+      save: (next) => { data = next; },
       update: (mutate) => { updateCalls += 1; data = mutate(data); return data; },
     },
     isAuthorized: () => options.authorized ?? true,
     readJsonBody: async () => (options.bodyNull ? null : (options.body ?? {})) as never,
     writeJson: (_res, status, body) => { writes.push({ status, body }); },
   });
-  return { router, writes, currentData: () => data, get updateCalls() { return updateCalls; } };
+  return { router, writes, currentGeneral: () => data.general, get updateCalls() { return updateCalls; } };
 }
 
 function req(method: string, contentType?: string): http.IncomingMessage {

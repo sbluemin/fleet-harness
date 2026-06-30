@@ -162,6 +162,7 @@ export interface CarrierSettingsMutationResult {
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
+  readonly theme: ThemeId;
 }
 
 export interface GlobalSettingsMutationResult {
