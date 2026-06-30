@@ -25,8 +25,6 @@ describe("agent observability DTO boundary", () => {
       sessionId: "session-a",
       theaterId: "theater-a",
       cwd,
-      cwdLabel: path.basename(cwd),
-      sequence: 1,
       cliId: "claude",
       cliLabel: "Claude",
       createdAt: 1_000,

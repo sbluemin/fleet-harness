@@ -16,7 +16,6 @@ function makeNode(id: string, groupId?: string | null): OperationNode {
     payload: {},
     geometry: null,
     groupId,
-    state: {},
     ts: { createdAt: 1, updatedAt: 1 },
   };
 }

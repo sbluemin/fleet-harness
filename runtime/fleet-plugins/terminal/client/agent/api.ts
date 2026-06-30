@@ -104,7 +104,6 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     !payload
     || typeof payload.sessionId !== "string"
     || typeof payload.cwdLabel !== "string"
-    || typeof payload.sequence !== "number"
     || typeof payload.status !== "string"
     || typeof payload.createdAt !== "number"
     || hasForbiddenBrowserPayloadKey(payload)
@@ -115,7 +114,6 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     sessionId: payload.sessionId,
     terminalSessionId: typeof payload.terminalSessionId === "string" ? payload.terminalSessionId : payload.sessionId,
     cwdLabel: payload.cwdLabel,
-    sequence: payload.sequence,
     label: typeof payload.label === "string" ? payload.label : undefined,
     cliId: typeof payload.cliId === "string" ? payload.cliId : undefined,
     cliLabel: typeof payload.cliLabel === "string" ? payload.cliLabel : undefined,
@@ -180,10 +178,8 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     type: payload.type,
     pluginId: payload.pluginId,
     title: payload.title,
-    renamedTitle: typeof payload.renamedTitle === "string" ? payload.renamedTitle : undefined,
     payload: payload.payload,
     geometry: payload.geometry ?? null,
-    state: payload.state && typeof payload.state === "object" && !Array.isArray(payload.state) ? payload.state : {},
     ts: payload.ts,
   };
 }

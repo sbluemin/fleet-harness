@@ -62,9 +62,9 @@ function toOperationSearchEntry(operation: OperationNode, theater: TheaterInfo |
     operationId: operation.id,
     theaterId: operation.theaterId,
     theaterLabel: theater?.label ?? operation.theaterId,
-    operationName: operation.renamedTitle ?? operation.title,
+    operationName: operation.title,
     pluginId: operation.pluginId,
-    status: typeof operation.state.status === "string" ? operation.state.status : "operation",
+    status: "operation",
   };
 }
 

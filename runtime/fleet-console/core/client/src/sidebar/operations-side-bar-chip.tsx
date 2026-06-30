@@ -180,7 +180,7 @@ export function OperationsSideBarChip({
 }
 
 function displayTitle(operation: OperationNode): string {
-  return operation.renamedTitle ?? operation.title;
+  return operation.title;
 }
 
 function SideBarCloseIcon() {

@@ -27,7 +27,7 @@ describe("operations platform", () => {
     const renamed = store.patch(op.id, { title: "Renamed" });
 
     expect(store.listByTheater("theater")).toHaveLength(1);
-    expect(renamed?.renamedTitle).toBe("Renamed");
+    expect(renamed?.title).toBe("Renamed");
 
     store.delete(op.id);
 
@@ -244,7 +244,6 @@ function makeNode(input: Partial<OperationNode> = {}): OperationNode {
     title: input.title ?? "Agent",
     payload: input.payload ?? {},
     geometry: input.geometry ?? null,
-    state: input.state ?? {},
     ts: input.ts ?? { createdAt: 10, updatedAt: 10 },
   };
 }
@@ -258,7 +257,6 @@ function makeOperation(input: Partial<OperationCreateInput> = {}): OperationCrea
     title: input.title ?? "Agent",
     ...(input.payload !== undefined ? { payload: input.payload } : {}),
     ...(input.geometry !== undefined ? { geometry: input.geometry } : {}),
-    ...(input.state !== undefined ? { state: input.state } : {}),
     ...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
   };
 }

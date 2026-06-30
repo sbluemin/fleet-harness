@@ -21,6 +21,59 @@ describe("durable console state", () => {
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], groups: [] });
   });
 
+  it("migrates v1 flat session records into v2 OperationNodes", () => {
+    const migrated = sanitizeDurableConsoleState({
+      version: 1,
+      theaters: [
+        { id: "t1", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-02T00:00:00.000Z" },
+      ],
+      operations: [
+        {
+          sessionId: "sess-1",
+          theaterId: "t1",
+          cwd: "/work/proj",
+          cwdLabel: "proj",
+          sequence: 7,
+          label: "My Session",
+          labelSource: "user",
+          autoNamePromptSeen: true,
+          cliId: "claude",
+          cliLabel: "Claude",
+          createdAt: 1000,
+          providerSession: { provider: "claude", sessionId: "p-1", transcriptPath: "/t.jsonl", capturedAt: "2026-01-01T00:00:00.000Z" },
+        },
+        // label 없는 v1 op → title은 cwd basename(#N 없음), provider 없는 세션도 패널로 복원
+        { sessionId: "sess-2", theaterId: "t1", cwd: "/work/proj/sub", cwdLabel: "sub", sequence: 8, cliId: "codex", cliLabel: "Codex", createdAt: 2000 },
+      ],
+    });
+
+    expect(migrated.version).toBe(2);
+    expect(migrated.theaters).toHaveLength(1);
+    expect(migrated.groups).toEqual([]);
+    expect(migrated.operations).toEqual([
+      {
+        id: "sess-1",
+        theaterId: "t1",
+        type: "agent",
+        pluginId: "terminal",
+        title: "My Session",
+        payload: { cwd: "/work/proj", cliId: "claude", cliLabel: "Claude", labelSource: "user", providerSession: { provider: "claude", sessionId: "p-1", transcriptPath: "/t.jsonl", capturedAt: "2026-01-01T00:00:00.000Z" } },
+        geometry: null,
+        ts: { createdAt: 1000, updatedAt: 1000 },
+      },
+      {
+        id: "sess-2",
+        theaterId: "t1",
+        type: "agent",
+        pluginId: "terminal",
+        title: "sub",
+        payload: { cwd: "/work/proj/sub", cliId: "codex", cliLabel: "Codex" },
+        geometry: null,
+        ts: { createdAt: 2000, updatedAt: 2000 },
+      },
+    ]);
+  });
+
   it("remaps persisted terminal plugin ids without changing operation type or id", () => {
     const sanitized = sanitizeDurableConsoleState({
       version: 2,

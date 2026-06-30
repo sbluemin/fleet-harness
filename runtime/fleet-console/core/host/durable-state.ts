@@ -59,17 +59,66 @@ export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateSt
 
 export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState {
   if (!isRecord(value)) return emptyDurableConsoleState();
-  if (value.version !== STATE_VERSION) return emptyDurableConsoleState();
+  const upgraded = migrateToCurrentVersion(value);
+  if (upgraded.version !== STATE_VERSION) return emptyDurableConsoleState();
   return {
     version: STATE_VERSION,
-    theaters: readTheaterRegistrations(value.theaters),
-    operations: readOperations(value.operations),
-    groups: readOperationGroups(value.groups),
+    theaters: readTheaterRegistrations(upgraded.theaters),
+    operations: readOperations(upgraded.operations),
+    groups: readOperationGroups(upgraded.groups),
   };
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
   return { version: STATE_VERSION, theaters: [], operations: [], groups: [] };
+}
+
+// 릴리스된 stable durable state(v1, flat 세션 레코드)을 현재 스키마(OperationNode)로 1회 변환한다.
+// 변환 결과는 readOperations의 sanitizeOperationNode가 다시 검증하므로 여기서는 모양만 맞춘다.
+// v1만 변환하고, 그 외 STATE_VERSION이 아닌 값은 상위 sanitize에서 empty 폴백된다.
+function migrateToCurrentVersion(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.version === 1) return migrateV1ToV2(value);
+  return value;
+}
+
+function migrateV1ToV2(v1: Record<string, unknown>): Record<string, unknown> {
+  const operations = Array.isArray(v1.operations) ? v1.operations.map(migrateV1Operation) : [];
+  return {
+    version: STATE_VERSION,
+    theaters: v1.theaters ?? [],
+    operations,
+    groups: [],
+  };
+}
+
+function migrateV1Operation(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const sessionId = readNonEmptyString(value.sessionId);
+  const theaterId = readNonEmptyString(value.theaterId);
+  const cwd = readNonEmptyString(value.cwd);
+  const createdAt = readFiniteNumber(value.createdAt);
+  if (!sessionId || !theaterId || !cwd || createdAt === null) return null;
+  // v1 label(사용자/auto 표시명) → title. 없으면 cwd basename(#N 제거 규칙과 일치).
+  const title = readOptionalString(value.label) ?? (path.basename(cwd) || cwd);
+  const payload: Record<string, unknown> = { cwd };
+  const cliId = readOptionalString(value.cliId);
+  const cliLabel = readOptionalString(value.cliLabel);
+  const labelSource = readOptionalString(value.labelSource);
+  if (cliId) payload.cliId = cliId;
+  if (cliLabel) payload.cliLabel = cliLabel;
+  if (labelSource) payload.labelSource = labelSource;
+  if (isRecord(value.providerSession)) payload.providerSession = value.providerSession;
+  // 드롭: sequence(#N 기능 제거), cwdLabel(basename 파생), autoNamePromptSeen(v2 비영속).
+  return {
+    id: sessionId,
+    theaterId,
+    type: "agent",
+    pluginId: "terminal",
+    title,
+    payload,
+    geometry: null,
+    ts: { createdAt, updatedAt: createdAt },
+  };
 }
 
 function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[] {
@@ -121,10 +170,8 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
     type,
     pluginId,
     title,
-    ...(readOptionalString(value.renamedTitle) ? { renamedTitle: readOptionalString(value.renamedTitle) } : {}),
     payload: readRecord(value.payload),
     geometry: sanitizeOperationGeometry(value.geometry),
-    state: readRecord(value.state),
     ...(accent ? { accent } : {}),
     ...(groupId !== undefined ? { groupId } : {}),
     ts,

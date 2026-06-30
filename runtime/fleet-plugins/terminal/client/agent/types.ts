@@ -32,7 +32,6 @@ export interface SessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
-  readonly sequence: number;
   readonly label?: string;
   readonly cliId?: string;
   readonly cliLabel?: string;

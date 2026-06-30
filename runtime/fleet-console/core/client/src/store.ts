@@ -215,7 +215,7 @@ export function raiseOperationNotification(input: ClientNotification): void {
   if (!operation) return;
   const theaterId = operation.theaterId ?? null;
   const theaterLabel = state.theaters.find((theater) => theater.id === theaterId)?.label ?? theaterId ?? "Unknown";
-  const operationLabel = operation.renamedTitle ?? operation.title;
+  const operationLabel = operation.title;
   const kind = mapNotificationKind(input.kind);
   notificationSeq += 1;
   const existing = state.operationNotifications[input.operationId];

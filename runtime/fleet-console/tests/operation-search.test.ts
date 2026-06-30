@@ -16,7 +16,6 @@ function makeOperation(id: string, theaterId: string, title: string, pluginId = 
     title,
     payload: {},
     geometry: null,
-    state: { status: "live" },
     ts: { createdAt: 1, updatedAt: 1 },
   };
 }

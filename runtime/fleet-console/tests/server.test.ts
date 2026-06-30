@@ -127,21 +127,6 @@ describe("console terminal observability", () => {
     expect(serialized).toContain("job-runtime");
   });
 
-  it("numbers pending terminal sessions per Theater, isolating the #1 starting value", () => {
-    const theaterA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-a-"));
-    const theaterB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-b-"));
-    tempDirs.push(theaterA, theaterB);
-    const store = createConsoleObservabilityStore();
-
-    const a1 = store.createPendingTerminalSession({ sessionId: "a1", cwd: theaterA, createdAt: 1 });
-    const a2 = store.createPendingTerminalSession({ sessionId: "a2", cwd: theaterA, createdAt: 2 });
-    const b1 = store.createPendingTerminalSession({ sessionId: "b1", cwd: theaterB, createdAt: 3 });
-
-    expect(a1.sequence).toBe(1);
-    expect(a2.sequence).toBe(2);
-    expect(b1.sequence).toBe(1);
-  });
-
   it("injects dormant durable operations without exposing server-only provider data", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-store-"));
     tempDirs.push(dir);
@@ -151,8 +136,6 @@ describe("console terminal observability", () => {
       sessionId: "session-a",
       theaterId: workspaceHash(fs.realpathSync.native(dir)),
       cwd: dir,
-      cwdLabel: path.basename(dir),
-      sequence: 7,
       cliId: "claude",
       cliLabel: "Claude",
       createdAt: 1_000,
@@ -169,7 +152,6 @@ describe("console terminal observability", () => {
     expect(session).toMatchObject({
       sessionId: "session-a",
       status: "dormant",
-      sequence: 7,
       resumeAvailable: true,
     });
     expect(serialized).not.toContain(dir);
@@ -269,8 +251,6 @@ describe("console terminal observability", () => {
       sessionId: "legacy",
       theaterId: workspaceHash(fs.realpathSync.native(dir)),
       cwd: dir,
-      cwdLabel: path.basename(dir),
-      sequence: 1,
       label: "Operator named",
       createdAt: 1,
     });
@@ -287,8 +267,6 @@ describe("console terminal observability", () => {
       sessionId: "legacy-auto",
       theaterId: workspaceHash(fs.realpathSync.native(dir)),
       cwd: dir,
-      cwdLabel: path.basename(dir),
-      sequence: 1,
       label: "Existing auto label",
       labelSource: "auto",
       autoNamePromptSeen: true,
@@ -1114,7 +1092,6 @@ describe("console static and terminal ticket boundary", () => {
             theaterId,
             cwd: dir,
             cwdLabel: path.basename(dir),
-            sequence: 1,
             cliId: "claude",
             cliLabel: "Claude",
             createdAt: 1_000,
@@ -1248,10 +1225,9 @@ describe("console static and terminal ticket boundary", () => {
     expect(ptys).toHaveLength(1);
 
     await fixture.server.stop();
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
 
     expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    expect(state.operations[0]?.payload?.status).toBe("dormant");
   });
 
   it.skip("does not restore durable operations without provider sessions", async () => {
@@ -1278,7 +1254,6 @@ describe("console static and terminal ticket boundary", () => {
             theaterId,
             cwd: dir,
             cwdLabel: path.basename(dir),
-            sequence: 1,
             cliId: "claude",
             createdAt: 1_000,
           }],
@@ -1318,7 +1293,6 @@ describe("console static and terminal ticket boundary", () => {
               theaterId,
               cwd: dir,
               cwdLabel: path.basename(dir),
-              sequence: 1,
               cliId: "claude",
               createdAt: 1_000,
             },
@@ -1327,7 +1301,6 @@ describe("console static and terminal ticket boundary", () => {
               theaterId,
               cwd: dir,
               cwdLabel: path.basename(dir),
-              sequence: 2,
               createdAt: 2_000,
               providerSession: {
                 provider: "claude",
@@ -1381,7 +1354,6 @@ describe("console static and terminal ticket boundary", () => {
             theaterId,
             cwd: dir,
             cwdLabel: path.basename(dir),
-            sequence: 1,
             cliId: "claude",
             cliLabel: "Claude",
             createdAt: 1_000,
@@ -1446,7 +1418,6 @@ describe("console static and terminal ticket boundary", () => {
             theaterId,
             cwd: dir,
             cwdLabel: path.basename(dir),
-            sequence: 1,
             cliId: "claude",
             createdAt: 1_000,
             providerSession: {
@@ -1565,7 +1536,6 @@ describe("console static and terminal ticket boundary", () => {
             theaterId,
             cwd: dir,
             cwdLabel: path.basename(dir),
-            sequence: 1,
             cliId: "claude",
             createdAt: 1_000,
             providerSession: {

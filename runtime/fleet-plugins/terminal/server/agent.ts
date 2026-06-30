@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import process from "node:process";
 
 import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
@@ -19,7 +20,7 @@ import { captureSession, readProviderSessionCapture, unlinkProviderSessionCaptur
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
-import type { AgentTerminalSessionInfo } from "./agent-api/types.js";
+import type { AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { buildModelAuthState } from "./model-auth-state.js";
 
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
@@ -247,7 +248,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         return true;
       }
       observability.notifySessionUpdated(updated);
-      ctx.host.operations.patch(sessionId, { title: updated.label ?? `${updated.cwdLabel} #${updated.sequence}` });
+      const renamedCwd = readPayloadString(ctx.host.operations.get(sessionId)?.payload ?? {}, "cwd") ?? updated.cwdLabel;
+      ctx.host.operations.patch(sessionId, { title: updated.label ?? path.basename(renamedCwd) });
       injectRenameCommand(sessionId, updated.label);
       ctx.host.http.writeJson(res, 200, updated);
       return true;
@@ -268,8 +270,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       theaterId,
       type: AGENT_OPERATION_TYPE,
       pluginId: ctx.pluginId,
-      title: session.label ?? `${session.cwdLabel} #${session.sequence}`,
-      payload: { ...toOperationPayload(session), cwd },
+      title: session.label ?? path.basename(cwd),
+      payload: toOperationPayload(cwd, session),
       createdAt: session.createdAt,
     });
     try {
@@ -288,7 +290,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
       observability.notifySessionUpdated(created);
-      ctx.host.operations.patch(sessionId, { payload: { ...ctx.host.operations.get(sessionId)?.payload, ...toOperationPayload(created), cwd } });
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(cwd, created) });
       ctx.host.http.writeJson(res, 200, created);
     } catch {
       pendingRuntimeSessions.delete(sessionId);
@@ -332,7 +334,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
-      ctx.host.operations.patch(sessionId, { payload: { ...node.payload, ...toOperationPayload(resumed, providerSession) } });
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(cwd, resumed, providerSession) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
       pendingRuntimeSessions.delete(sessionId);
@@ -384,7 +386,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const result = observability.autoNameTerminalSession(sessionId, deriveOperationLabel(prompt));
     if (result?.renamed) {
       observability.notifySessionUpdated(result.session);
-      ctx.host.operations.patch(sessionId, { title: result.session.label ?? `${result.session.cwdLabel} #${result.session.sequence}`, payload: { ...ctx.host.operations.get(sessionId)?.payload, ...toOperationPayload(result.session) } });
+      const autoNameCwd = readPayloadString(ctx.host.operations.get(sessionId)?.payload ?? {}, "cwd") ?? result.session.cwdLabel;
+      ctx.host.operations.patch(sessionId, { title: result.session.label ?? path.basename(autoNameCwd) });
     }
     ctx.host.http.writeJson(res, 200, { ok: true, renamed: result?.renamed === true });
     return true;
@@ -459,7 +462,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const dormant = observability.transitionTerminalSessionToDormant(operationId, providerSession);
       if (dormant) {
         observability.notifySessionUpdated(dormant);
-        ctx.host.operations.patch(operationId, { payload: { ...ctx.host.operations.get(operationId)?.payload, ...toOperationPayload(dormant, providerSession) } });
+        const exitCwd = readPayloadString(ctx.host.operations.get(operationId)?.payload ?? {}, "cwd") ?? "";
+        ctx.host.operations.patch(operationId, { payload: toOperationPayload(exitCwd, dormant, providerSession) });
       }
     } else {
       observability.removeTerminalSession(operationId);
@@ -495,16 +499,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {
+    const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "";
     return observability.injectDormantOperation({
       sessionId: operation.id,
       theaterId: operation.theaterId,
-      cwd: readPayloadString(operation.payload, "cwd"),
-      cwdLabel: readPayloadString(operation.payload, "cwdLabel"),
-      sequence: readPayloadNumber(operation.payload, "sequence"),
-      ...(readPayloadString(operation.payload, "label") ? { label: readPayloadString(operation.payload, "label") } : {}),
-      ...(readPayloadString(operation.payload, "cliId") ? { cliId: readPayloadString(operation.payload, "cliId") } : {}),
-      ...(readPayloadString(operation.payload, "cliLabel") ? { cliLabel: readPayloadString(operation.payload, "cliLabel") } : {}),
-      createdAt: readPayloadNumber(operation.payload, "createdAt"),
+      cwd,
+      ...(readPayloadString(operation.payload, "labelSource") ? { label: operation.title, labelSource: readPayloadString(operation.payload, "labelSource") as AgentLabelSource } : {}),
+      ...(readPayloadString(operation.payload, "cliId") ? { cliId: readPayloadString(operation.payload, "cliId")! } : {}),
+      ...(readPayloadString(operation.payload, "cliLabel") ? { cliLabel: readPayloadString(operation.payload, "cliLabel")! } : {}),
+      createdAt: operation.ts.createdAt,
       ...(readProviderSession(operation.payload) ? { providerSession: readProviderSession(operation.payload)! } : {}),
     });
   }
@@ -515,7 +518,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const providerSession = readProviderSession(operation.payload);
       if (!providerSession || observability.getTerminalSessionInfo(operation.id)) continue;
       const dormant = injectOperation(operation);
-      ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, ...toOperationPayload(dormant, providerSession) } });
+      const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
+      ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, ...toOperationPayload(cwd, dormant, providerSession) } });
     }
   }
 
@@ -532,18 +536,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 }
 
-function toOperationPayload(session: AgentTerminalSessionInfo, providerSession?: ProviderSession): Record<string, unknown> {
+function toOperationPayload(cwd: string, session: AgentTerminalSessionInfo, providerSession?: ProviderSession): Record<string, unknown> {
   return {
-    terminalSessionId: session.sessionId,
-    cwdLabel: session.cwdLabel,
-    sequence: session.sequence,
-    theaterId: session.theaterId,
-    createdAt: session.createdAt,
-    status: session.status,
-    ...(session.label ? { label: session.label } : {}),
+    cwd,
     ...(session.cliId ? { cliId: session.cliId } : {}),
     ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
     ...(providerSession ? { providerSession } : {}),
+    ...(session.labelSource ? { labelSource: session.labelSource } : {}),
   };
 }
 

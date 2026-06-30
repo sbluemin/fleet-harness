@@ -21,7 +21,6 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
   return {
     ...node,
     payload: sanitizeRecord(node.payload, sensitiveFields),
-    state: sanitizeRecord(node.state, sensitiveFields),
   };
 }
 

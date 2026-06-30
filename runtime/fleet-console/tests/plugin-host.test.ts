@@ -52,6 +52,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
   },
   lifecycle: {
     registerCleanup: () => () => {},
+    registerLivenessProbe: () => () => {},
   },
 };
 

@@ -36,10 +36,11 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
     startShell: startTerminalShell,
     onSessionExit: async (sessionId) => {
-      markTerminalStatus(ctx, sessionId, "dormant");
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },
   });
+  const lifecycle = ctx.host.lifecycle as { registerLivenessProbe?(probe: () => boolean): () => void };
+  lifecycle.registerLivenessProbe?.(() => sessions.hasLiveSessions());
   const upgrade = createPluginTerminalUpgradeHandler({
     tickets,
     sessions,
@@ -48,20 +49,13 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
 
   return {
     handleUpgrade: upgrade.handleUpgrade,
-    issueTicket: (context) => {
-      markTerminalStatus(ctx, context.operationId ?? context.sessionId, "live");
-      return tickets.issue(context);
-    },
+    issueTicket: (context) => tickets.issue(context),
     canAttach: (operationId) => sessions.canAttach(operationId),
     attach: async (context) => {
-      markTerminalStatus(ctx, context.operationId ?? context.sessionId, "live");
       await sessions.createSession(context);
     },
     write: (operationId, data) => sessions.writeToSession(operationId, data),
-    terminate: (operationId) => {
-      markTerminalStatus(ctx, operationId, "closed");
-      return sessions.terminate(operationId);
-    },
+    terminate: (operationId) => sessions.terminate(operationId),
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
     onExit: (callback) => {
@@ -81,17 +75,6 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       terminalLaunchResolvers.clear();
     },
   };
-}
-
-function markTerminalStatus(ctx: FleetPluginServerContext, operationId: string, terminalStatus: "live" | "dormant" | "closed"): void {
-  const operation = ctx.host.operations.get(operationId);
-  if (!operation) return;
-  ctx.host.operations.patch(operationId, {
-    state: {
-      ...operation.state,
-      terminalStatus,
-    },
-  });
 }
 
 function createRegistryAwareTerminalLaunchResolver(defaultResolver: TerminalLaunchResolver, resolvers: ReadonlyMap<string, TerminalLaunchResolver>): TerminalLaunchResolver {

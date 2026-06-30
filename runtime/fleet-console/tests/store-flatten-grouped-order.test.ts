@@ -13,7 +13,6 @@ function makeOp(id: string, groupId: string | null = null, createdAt = 1): Opera
     payload: {},
     geometry: null,
     groupId,
-    state: {},
     ts: { createdAt, updatedAt: createdAt },
   };
 }

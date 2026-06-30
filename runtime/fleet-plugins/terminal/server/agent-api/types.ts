@@ -24,8 +24,6 @@ export interface AgentDurableOperation {
   readonly sessionId: string;
   readonly theaterId: string;
   readonly cwd: string;
-  readonly cwdLabel: string;
-  readonly sequence: number;
   readonly label?: string;
   readonly labelSource?: AgentLabelSource;
   readonly autoNamePromptSeen?: boolean;
@@ -39,8 +37,8 @@ export interface AgentTerminalSessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
-  readonly sequence: number;
   readonly label?: string;
+  readonly labelSource?: AgentLabelSource;
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly status: AgentSessionStatus;

@@ -34,7 +34,6 @@ export function createOperationStore(deps: { readonly now?: () => number } = {})
       title: input.title,
       accent: input.accent ?? existing.accent,
       geometry: input.geometry ?? existing.geometry,
-      state: input.state ?? existing.state,
       payload: input.payload ?? existing.payload,
     }, now());
     nodes.set(existing.id, updated);
@@ -151,7 +150,6 @@ function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
     payload: input.payload ?? {},
     geometry: input.geometry ?? null,
-    state: input.state ?? {},
     ts: {
       createdAt: input.createdAt ?? timestamp,
       updatedAt: timestamp,
@@ -163,12 +161,11 @@ function normalizePatch(existing: OperationNode, input: OperationPatchInput, tim
   const title = input.title?.trim();
   return {
     ...existing,
-    ...(title !== undefined ? { renamedTitle: title.length > 0 ? title : undefined, title: title.length > 0 ? title : existing.title } : {}),
+    ...(title !== undefined ? { title: title.length > 0 ? title : existing.title } : {}),
     ...(input.accent !== undefined ? { accent: input.accent && input.accent.trim() ? input.accent.trim() : undefined } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
     ...(input.payload !== undefined ? { payload: input.payload } : {}),
     ...(input.geometry !== undefined ? { geometry: input.geometry } : {}),
-    ...(input.state !== undefined ? { state: input.state } : {}),
     ts: { ...existing.ts, updatedAt: timestamp },
   };
 }

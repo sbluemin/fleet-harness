@@ -38,7 +38,6 @@ type PatchOperationBody = {
   readonly accent?: unknown;
   readonly groupId?: unknown;
   readonly payload?: unknown;
-  readonly state?: unknown;
   readonly geometry?: unknown;
 };
 type CreateGroupBody = Partial<OperationGroupCreateInput>;
@@ -110,7 +109,6 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
       ...(typeof body.accent === "string" ? { accent: body.accent } : {}),
       payload: isRecord(body.payload) ? body.payload : {},
       geometry: isRecord(body.geometry) ? readGeometry(body.geometry) : null,
-      state: isRecord(body.state) ? body.state : {},
     });
     deps.persist();
     deps.writeJson(res, 201, { operation: sanitizeOperationNode(node, deps) });
@@ -170,7 +168,6 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
       ...(typeof body.accent === "string" || body.accent === null ? { accent: body.accent } : {}),
       ...(typeof body.groupId === "string" || body.groupId === null ? { groupId: body.groupId } : {}),
       ...(isRecord(body.payload) ? { payload: body.payload } : {}),
-      ...(isRecord(body.state) ? { state: body.state } : {}),
       ...(isRecord(body.geometry) || body.geometry === null ? { geometry: body.geometry === null ? null : readGeometry(body.geometry) } : {}),
     });
     if (!node) {

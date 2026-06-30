@@ -496,18 +496,17 @@ function sessionFromOperation(context: OperationRenderContext): SessionInfo {
   return {
     sessionId: context.operation.id,
     terminalSessionId: context.operation.id,
-    cwdLabel: readPayloadString(context.operation.payload, "cwdLabel") ?? "Workspace",
-    sequence: readPayloadNumber(context.operation.payload, "sequence") ?? 0,
+    cwdLabel: context.operation.title || "Workspace",
     label: context.operation.title,
     cliId: readPayloadString(context.operation.payload, "cliId") ?? undefined,
     cliLabel: readPayloadString(context.operation.payload, "cliLabel") ?? undefined,
-    status: readPayloadString(context.operation.payload, "status") === "dormant" ? "dormant" : "registered",
+    status: "dormant",
     turnState: "none",
-    createdAt: readPayloadNumber(context.operation.payload, "createdAt") ?? Date.now(),
+    createdAt: context.operation.ts.createdAt,
     theaterId: context.theaterId,
     tenantId: readPayloadString(context.operation.payload, "tenantId") ?? undefined,
     registrationId: readPayloadString(context.operation.payload, "registrationId") ?? undefined,
-    resumeAvailable: readPayloadString(context.operation.payload, "status") === "dormant",
+    resumeAvailable: true,
   };
 }
 

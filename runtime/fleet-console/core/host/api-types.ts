@@ -85,7 +85,6 @@ export interface ConsoleTerminalSessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
-  readonly sequence: number;
   readonly label?: string;
   readonly accent?: string;
   readonly cliId?: string;
@@ -209,10 +208,8 @@ export interface ConsoleOperationNode {
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;
-  readonly renamedTitle?: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: ConsoleOperationGeometry | null;
-  readonly state: Record<string, unknown>;
   readonly ts: {
     readonly createdAt: number;
     readonly updatedAt: number;

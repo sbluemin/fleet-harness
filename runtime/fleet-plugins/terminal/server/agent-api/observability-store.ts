@@ -50,7 +50,6 @@ interface PendingTerminalSessionState {
   readonly cwd: string;
   readonly canonicalCwd: string;
   readonly cwdLabel: string;
-  readonly sequence: number;
   label?: string;
   labelSource?: AgentLabelSource;
   autoNamePromptSeen?: boolean;
@@ -99,8 +98,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   const truncationByTenant = new Map<string, AgentObserverTruncation>();
   const jobsByTenant = new Map<string, TenantJobState>();
   const terminalSessionsById = new Map<string, PendingTerminalSessionState>();
-  // Theater별로 격리된 세션 순번 카운터. 단조 증가하며 재사용하지 않아 세션 수명 동안 #N이 안정적이다.
-  const terminalSequenceByTheater = new Map<string, number>();
   const listenersByTenant = new Map<string, Set<AgentObservedEventListener>>();
   const allListeners = new Set<AgentAllEventListener>();
   let nextObservedId = 1;
@@ -214,14 +211,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const createdAt = input.createdAt ?? now();
     const canonicalCwd = canonicalizeTheaterPath(input.cwd);
     const theaterId = workspaceHash(canonicalCwd);
-    const sequence = (terminalSequenceByTheater.get(theaterId) ?? 0) + 1;
-    terminalSequenceByTheater.set(theaterId, sequence);
     const state: PendingTerminalSessionState = {
       sessionId: input.sessionId,
       cwd: input.cwd,
       canonicalCwd,
       cwdLabel: path.basename(input.cwd) || input.cwd,
-      sequence,
       cliId: input.cliId,
       createdAt,
       theaterId,
@@ -233,14 +227,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function injectDormantOperation(operation: DormantOperationInput): AgentTerminalSessionInfo {
-    const currentSequence = terminalSequenceByTheater.get(operation.theaterId) ?? 0;
-    terminalSequenceByTheater.set(operation.theaterId, Math.max(currentSequence, operation.sequence));
     const state: PendingTerminalSessionState = {
       sessionId: operation.sessionId,
       cwd: operation.cwd,
       canonicalCwd: canonicalizeTheaterPath(operation.cwd),
-      cwdLabel: operation.cwdLabel,
-      sequence: operation.sequence,
+      cwdLabel: path.basename(operation.cwd) || operation.cwd,
       label: operation.label,
       labelSource: operation.labelSource,
       autoNamePromptSeen: operation.autoNamePromptSeen,
@@ -265,8 +256,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       sessionId: session.sessionId,
       theaterId: session.theaterId,
       cwd: session.cwd,
-      cwdLabel: session.cwdLabel,
-      sequence: session.sequence,
       ...(session.label ? { label: session.label } : {}),
       ...(session.labelSource ? { labelSource: session.labelSource } : {}),
       ...(session.autoNamePromptSeen ? { autoNamePromptSeen: true } : {}),
@@ -385,7 +374,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     truncationByTenant.clear();
     jobsByTenant.clear();
     terminalSessionsById.clear();
-    terminalSequenceByTheater.clear();
     listenersByTenant.clear();
     allListeners.clear();
   }
@@ -483,8 +471,8 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     sessionId: state.sessionId,
     terminalSessionId: state.terminalSessionId,
     cwdLabel: state.cwdLabel,
-    sequence: state.sequence,
     label: state.label,
+    labelSource: state.labelSource,
     cliId: state.cliId,
     cliLabel: state.cliLabel,
     status: state.status,

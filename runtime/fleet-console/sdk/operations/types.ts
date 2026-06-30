@@ -17,10 +17,8 @@ export interface OperationNode {
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;
-  readonly renamedTitle?: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;
-  readonly state: Record<string, unknown>;
   readonly ts: OperationTimestamps;
 }
 
@@ -32,7 +30,6 @@ export interface OperationCreateInput {
   readonly title: string;
   readonly payload?: Record<string, unknown>;
   readonly geometry?: OperationGeometry | null;
-  readonly state?: Record<string, unknown>;
   readonly createdAt?: number;
 }
 
@@ -40,7 +37,6 @@ export interface OperationPatchInput {
   readonly title?: string;
   readonly accent?: string | null;
   readonly geometry?: OperationGeometry | null;
-  readonly state?: Record<string, unknown>;
   readonly payload?: Record<string, unknown>;
 }
 

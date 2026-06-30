@@ -251,6 +251,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
+  const pluginLivenessProbes = new Set<() => boolean>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     operations: {
@@ -341,6 +342,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       registerCleanup: (cleanup) => {
         pluginCleanupCallbacks.add(cleanup);
         return () => pluginCleanupCallbacks.delete(cleanup);
+      },
+      registerLivenessProbe: (probe) => {
+        pluginLivenessProbes.add(probe);
+        return () => pluginLivenessProbes.delete(probe);
       },
     },
   };
@@ -783,11 +788,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function hasLiveTerminalOperations(): boolean {
-    return operations.list().some((operation) => {
-      if (operation.pluginId !== "terminal") return false;
-      const terminalStatus = operation.state.terminalStatus;
-      return terminalStatus === "live" || terminalStatus === "running";
-    });
+    for (const probe of pluginLivenessProbes) {
+      if (probe()) return true;
+    }
+    return false;
   }
 
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {

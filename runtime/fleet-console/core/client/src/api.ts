@@ -247,14 +247,12 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     type: payload.type,
     pluginId: payload.pluginId,
     title: payload.title,
-    renamedTitle: typeof payload.renamedTitle === "string" ? payload.renamedTitle : undefined,
     payload: payload.payload,
     geometry: payload.geometry ?? null,
     // 서버가 영속한 accent를 노드에 보존한다. 누락 시 server→store 동기화가 사용자 accent를 null로 덮어쓴다.
     accent: typeof payload.accent === "string" ? payload.accent : null,
     // 서버가 영속한 groupId를 보존한다. null = Ungrouped 명시, undefined = 미설정(Ungrouped와 동일 취급).
     groupId: payload.groupId === null ? null : typeof payload.groupId === "string" ? payload.groupId : undefined,
-    state: payload.state && typeof payload.state === "object" && !Array.isArray(payload.state) ? payload.state : {},
     ts: payload.ts,
   };
 }

@@ -230,7 +230,6 @@ describe("notification selectors", () => {
         title: "Shell",
         payload: {},
         geometry: null,
-        state: {},
         ts: { createdAt: 1, updatedAt: 1 },
       }],
     }));

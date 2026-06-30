@@ -18,7 +18,6 @@ describe("pruneOrphanStreamingOperations (connection resync)", () => {
       title: "Test",
       payload: {},
       geometry: null,
-      state: {},
       ts: { createdAt: 1_000, updatedAt: 1_000 },
       ...overrides,
     };

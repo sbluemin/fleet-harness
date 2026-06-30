@@ -51,7 +51,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
-  const displayTitle = operation.renamedTitle ?? operation.title;
+  const displayTitle = operation.title;
   const rename = useInlineRename({ currentTitle: displayTitle, onCommit: onRename, onBegin: onActivate });
   // accent를 패널 외곽 box-shadow 링으로 칠한다(--op-accent). status(테두리·진행광)·focus(brass)와 채널이 달라 공존한다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
