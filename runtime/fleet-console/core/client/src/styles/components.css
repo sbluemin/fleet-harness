@@ -3228,7 +3228,6 @@
   animation: perimeter-orbit 2.4s linear infinite;
 }
 
-.operations-canvas.is-perimeter-anim-off .operations-radar-sweep,
 .operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
 .operations-canvas.is-perimeter-anim-off .status-dot--live,
 .operations-canvas.is-perimeter-anim-off .tenant-beacon.is-awaiting,
