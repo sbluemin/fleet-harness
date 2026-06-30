@@ -3687,33 +3687,28 @@
 }
 
 
-/* ── Group Rail Bar (--grp-color 채널 전용 — chip ::before perimeter와 독립) ───── */
-
-.side-bar-chip__rail {
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--grp-color, transparent);
-  flex: none;
-  pointer-events: none;
-}
-
-/* rail tier에서도 바는 그대로 표시 (아이콘 왼쪽) */
-.operations-side-bar[data-tier="rail"] .side-bar-chip__rail {
-  top: 3px;
-  bottom: 3px;
-}
-
 /* ── Group Section Layout ──────────────────────────────────────────────────────── */
 
-.side-bar-group-section,
 .side-bar-ungrouped-section {
   list-style: none;
   display: flex;
   flex-direction: column;
+}
+
+/* 연속 좌측 레일 — group section 전체 관통 (ungrouped 제외) */
+.side-bar-group-section {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--space-1);
+  padding-left: var(--space-1);
+  border-left: 3px solid var(--grp-color, transparent);
+}
+
+/* rail tier에서는 56px 폭 제약 때문에 좌측 offset 최소화 */
+.operations-side-bar[data-tier="rail"] .side-bar-group-section {
+  margin-left: 0;
+  padding-left: 2px;
 }
 
 .side-bar-group-chips {
@@ -3732,9 +3727,10 @@
   align-items: center;
   gap: var(--space-1);
   padding: 4px var(--space-1) 4px var(--space-2);
-  margin: 2px var(--space-1) 0;
+  margin: 2px var(--space-1) 0 0;
   border-radius: var(--radius-md);
   user-select: none;
+  background: color-mix(in oklch, var(--grp-color, transparent) 14%, transparent);
 }
 
 .side-bar-group-header__toggle {
@@ -3747,7 +3743,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--grp-color, var(--ink-fog));
   border-radius: var(--radius-sm);
   transition: color var(--duration-fast) var(--ease-spring);
 }
@@ -3784,7 +3780,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--grp-color, var(--ink-fog));
+  color: color-mix(in oklch, var(--grp-color, var(--ink-fog)) 92%, var(--ink-pearl));
 }
 
 .side-bar-group-header__count {
