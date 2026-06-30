@@ -104,10 +104,9 @@ export interface ConsoleSessionUpdatedEvent {
   readonly session: ConsoleTerminalSessionInfo;
 }
 
-// Notification hook의 notification_type. idle_prompt만 캐리어 출격 중 억제 대상이고,
-// 권한 요청·elicitation 등과 부재(예: AskUserQuestion=PreToolUse)는 실제 입력 대기로 간주한다.
+// Notification hook의 notification_type. 권한 요청·elicitation 등과 부재(예: AskUserQuestion=PreToolUse)는
+// 실제 입력 대기로 간주한다. 정상 유휴(idle_prompt)는 상류 hook matcher에서 제외되어 유입되지 않는다.
 export type ConsoleAttentionReason =
-  | "idle_prompt"
   | "permission_prompt"
   | "auth_success"
   | "elicitation_dialog"
@@ -115,7 +114,7 @@ export type ConsoleAttentionReason =
   | "elicitation_response";
 
 // Agent CLI가 사용자 입력을 기다리며 중단된 transient 신호(턴 상태는 "running" 유지). session:updated와 달리
-// 세션 메타를 갱신하지 않고 1회성 알림만 흘린다. reason은 출격 중 오탐(idle_prompt)을 구분하기 위한 신호다.
+// 세션 메타를 갱신하지 않고 1회성 알림만 흘린다. reason은 입력 대기 종류(권한 요청·elicitation 등)를 구분하기 위한 신호다.
 export interface ConsoleSessionAttentionEvent {
   readonly type: "session:attention";
   readonly session: ConsoleTerminalSessionInfo;

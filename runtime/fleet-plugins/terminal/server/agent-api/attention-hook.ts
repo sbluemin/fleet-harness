@@ -15,7 +15,6 @@ const ATTENTION_STDIN_TIMEOUT_MS = 500;
 // Claude Notification hook의 notification_type 값. 이 집합 밖(예: AskUserQuestion=PreToolUse는 필드 자체가 없음)은
 // reason 없이 흘려, 클라이언트가 실제 입력 대기로 처리하게 한다. 임의 문자열이 브라우저로 새는 것도 막는다.
 const ATTENTION_REASONS: ReadonlySet<AgentAttentionReason> = new Set([
-  "idle_prompt",
   "permission_prompt",
   "auth_success",
   "elicitation_dialog",

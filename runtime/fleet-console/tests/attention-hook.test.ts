@@ -108,11 +108,11 @@ describe("runAttentionHook", () => {
 
     await runAttentionHook(
       { FLEET_CONSOLE_SESSION_ID: "session-z", FLEET_CONSOLE_DIR: dir },
-      { fetchImpl, stdin: Readable.from([JSON.stringify({ hook_event_name: "Notification", notification_type: "idle_prompt" })]) },
+      { fetchImpl, stdin: Readable.from([JSON.stringify({ hook_event_name: "Notification", notification_type: "permission_prompt" })]) },
     );
 
     expect(calls).toHaveLength(1);
-    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ reason: "idle_prompt" });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ reason: "permission_prompt" });
   });
 
   it("omits the reason for an unknown notification_type (e.g. AskUserQuestion PreToolUse)", async () => {

@@ -3,7 +3,6 @@ export type SessionStatus = "starting" | "live" | "registered" | "terminal-only"
 export type TurnState = "none" | "running" | "ended";
 
 export type AttentionReason =
-  | "idle_prompt"
   | "permission_prompt"
   | "auth_success"
   | "elicitation_dialog"

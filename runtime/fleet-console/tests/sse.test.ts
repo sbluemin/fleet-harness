@@ -91,7 +91,7 @@ describe("interpretObserverFrame", () => {
     const frame = interpretObserverFrame({
       event: "session:attention",
       data: JSON.stringify({
-        reason: "idle_prompt",
+        reason: "permission_prompt",
         session: {
           sessionId: "session-a",
           terminalSessionId: "session-a",
@@ -103,7 +103,7 @@ describe("interpretObserverFrame", () => {
       }),
     });
 
-    expect(frame).toMatchObject({ kind: "attention", reason: "idle_prompt", session: { sessionId: "session-a" } });
+    expect(frame).toMatchObject({ kind: "attention", reason: "permission_prompt", session: { sessionId: "session-a" } });
   });
 
   it("drops an unknown attention reason to undefined", () => {

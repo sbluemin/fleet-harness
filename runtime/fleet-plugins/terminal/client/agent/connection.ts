@@ -4,7 +4,7 @@ import type { ClientNotificationsCapability, ClientOperationStatusCapability, Cl
 import { fetchAgentState, fetchJobs, fetchOperationsSnapshot, fetchSessions, fetchTenants } from "./api.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
-import { applyJobsSnapshot, applyObservedEvent, applySessionAttention, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
+import { applyJobsSnapshot, applyObservedEvent, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
 
 interface AgentConnectionOptions {
@@ -66,10 +66,11 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
         continue;
       }
       if (interpreted.kind === "attention" && interpreted.session) {
-        applySessionAttention(interpreted.session, interpreted.reason);
-        if (interpreted.reason && interpreted.reason !== "idle_prompt") {
-          applyActivity(options, interpreted.session.sessionId, "awaiting");
-        }
+        applySessionUpdate(interpreted.session);
+        // attention 이벤트는 모두 입력 대기로 간주해 awaiting로 전이한다. 차단이 아닌 idle_prompt(정상 유휴)는
+        // 상류 hook matcher에서 제외되어 유입되지 않으므로, 도달하는 attention은 항상 실제 입력 대기다.
+        // (permission_prompt·elicitation_dialog, 그리고 reason 없는 AskUserQuestion=PreToolUse 포함.)
+        applyActivity(options, interpreted.session.sessionId, "awaiting");
         continue;
       }
       if (interpreted.event) {

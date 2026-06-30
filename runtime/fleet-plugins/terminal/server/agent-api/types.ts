@@ -3,7 +3,6 @@ export type AgentSessionStatus = "starting" | "terminal-only" | "registered" | "
 export type AgentTurnState = "none" | "running" | "ended";
 
 export type AgentAttentionReason =
-  | "idle_prompt"
   | "permission_prompt"
   | "auth_success"
   | "elicitation_dialog"

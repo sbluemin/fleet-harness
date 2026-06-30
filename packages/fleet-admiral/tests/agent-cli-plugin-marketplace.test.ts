@@ -141,7 +141,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     ]);
     // 그 외 입력 대기는 입력 대기 Notification 타입만 |-구분 정확 매처로 거른다.
     expect(hooksJson.hooks.Notification).toEqual([
-      { matcher: "permission_prompt|idle_prompt|elicitation_dialog", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
+      { matcher: "permission_prompt|elicitation_dialog", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
     ]);
   });
 
