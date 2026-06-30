@@ -101,11 +101,13 @@ export function OperationsSideBar({
   const tier = collapsed ? "rail" : tierFromWidth(width);
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
-  // 드래그 시작 칩(source)의 <li> 요소. 캡처가 지연되므로, 임계치 돌파 시 항상 이 source 요소에
-  // 캡처를 걸어야 드래그 수명주기와 클릭 억제가 source 칩에 유지된다(현재 포인터 아래 칩이 아니라).
-  const dragSourceElRef = useRef<HTMLLIElement | null>(null);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const entriesRef = useRef<SideBarEntry[]>([]);
+  const currentOrderRef = useRef<string[]>([]);
+  const dropSectionsRef = useRef<DropSectionInfo[]>([]);
+  const onSetGroupIdRef = useRef(onSetGroupId);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
@@ -161,24 +163,6 @@ export function OperationsSideBar({
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
 
-  // pre-drag 정리: 임계치를 넘기 전(아직 pointer capture 미획득)에 포인터가 칩 밖에서 떼이면 칩의
-  // onPointerUpCapture가 호출되지 않아 drag 상태가 남는다. 이 stale 상태를 이후 hover가 reorder
-  // 시작으로 오해하거나 이미 끝난 포인터에 setPointerCapture를 시도하지 않도록, pre-drag 윈도우
-  // 동안에만 window pointerup/cancel로 정리한다. 실제 드래그(dragging=true)는 capture를 획득해
-  // 칩의 onPointerUpCapture가 정리하므로 이 리스너 대상이 아니다.
-  const preDragPointerId = drag && !drag.dragging ? drag.pointerId : null;
-  useEffect(() => {
-    if (preDragPointerId === null) return;
-    const clearPreDrag = (event: PointerEvent) => {
-      if (event.pointerId === preDragPointerId) setDrag(null);
-    };
-    window.addEventListener("pointerup", clearPreDrag);
-    window.addEventListener("pointercancel", clearPreDrag);
-    return () => {
-      window.removeEventListener("pointerup", clearPreDrag);
-      window.removeEventListener("pointercancel", clearPreDrag);
-    };
-  }, [preDragPointerId]);
 
   const contextMenuOperation = activeContextMenu?.kind === "chip"
     ? allEntries.find((entry) => entry.operation.id === activeContextMenu.operationId)?.operation ?? null
@@ -206,20 +190,90 @@ export function OperationsSideBar({
     entryIds: section.entries.map((e) => e.operation.id),
   }));
 
+  // window 이벤트 핸들러에서 commit 시점 최신값을 읽기 위해 매 렌더 ref를 동기화한다.
+  useEffect(() => {
+    entriesRef.current = allEntries;
+    currentOrderRef.current = currentOrder;
+    dropSectionsRef.current = dropSections;
+    onSetGroupIdRef.current = onSetGroupId;
+  });
+
+  const updateDrag = (next: DragState | null) => {
+    dragRef.current = next;
+    setDrag(next);
+  };
+
+  // drag 시작(pointerId가 생김)에만 window 리스너 3개를 등록하고, drag 종료 시 정확히 3개 해제한다.
+  const dragPointerId = drag?.pointerId ?? null;
+  useEffect(() => {
+    if (dragPointerId === null) return;
+
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragPointerId) return;
+      const current = dragRef.current;
+      if (!current) return;
+      if (event.buttons === 0) {
+        updateDrag(null);
+        return;
+      }
+      const distance = Math.hypot(event.clientX - current.startX, event.clientY - current.startY);
+      if (!current.dragging && distance < DRAG_THRESHOLD_PX) return;
+      if (current.dragging) event.preventDefault();
+      const dropTarget = dropTargetFromPoint(event.clientY, dropSectionsRef.current, chipsRef.current, current.sourceId);
+      autoScrollSideBar(event.clientY, chipsRef.current);
+      updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
+    };
+
+    const onUp = (event: PointerEvent) => {
+      if (event.pointerId !== dragPointerId) return;
+      const snap = dragRef.current;
+      updateDrag(null);
+      if (!snap?.dragging) return;
+
+      const { sourceId, sourceGroupId, dropIndex, dropGroupId } = snap;
+      const sections = dropSectionsRef.current;
+      const allIds = currentOrderRef.current;
+
+      if (dropGroupId !== sourceGroupId) {
+        const dropSection = sections.find((s) => s.groupId === dropGroupId);
+        const dropSegmentIds = dropSection?.entryIds ?? [];
+        setOperationOrder(insertIntoSegment(allIds, sourceId, dropIndex, dropSegmentIds));
+        onSetGroupIdRef.current(sourceId, dropGroupId);
+        return;
+      }
+
+      const sourceSection = sections.find((s) => s.groupId === sourceGroupId);
+      const segmentIds = sourceSection?.entryIds ?? [];
+      const currentLocalIndex = segmentIds.indexOf(sourceId);
+      if (currentLocalIndex === -1 || dropIndex === currentLocalIndex) return;
+      const nextOrder = reorderWithinSegment(allIds, sourceId, dropIndex, segmentIds);
+      setOperationOrder(nextOrder);
+    };
+
+    const onCancel = (event: PointerEvent) => {
+      if (event.pointerId !== dragPointerId) return;
+      updateDrag(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [dragPointerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
-    // pointer capture는 드래그 임계치를 넘는 순간(updatePointerDrag)에만 건다. pointerdown 시점에 즉시 잡으면
-    // 후속 마우스 이벤트(특히 dblclick)가 캡처 대상인 <li>로 retarget되어, 칩 이름 span의
-    // onDoubleClick(rename)이 소실된다. 캡처를 지연시키면 단순 클릭/더블클릭은 span에 정상 도달하고
-    // 실제 드래그(이동 발생)만 캡처를 획득한다. 단, 캡처 대상은 항상 이 source 칩이어야 하므로
-    // source <li>를 기억해 둔다(임계치 돌파 시 포인터가 이미 인접 칩 위로 이동했을 수 있다).
-    dragSourceElRef.current = event.currentTarget;
     setActiveContextMenu(null);
     disarmClose();
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
     const sourceGroupId = sourceEntry?.operation.groupId ?? null;
-    setDrag({
+    updateDrag({
       sourceId: operationId,
       sourceGroupId,
       pointerId: event.pointerId,
@@ -230,60 +284,6 @@ export function OperationsSideBar({
       dropIndex: currentOrder.indexOf(operationId),
       dropGroupId: sourceGroupId,
     });
-  };
-
-  const updatePointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    // 주 버튼이 눌려있지 않으면 프레스가 이미 끝난 것이다(포인터가 뷰포트 밖에서 떼여 window
-    // pointerup을 못 받아 pre-drag가 남은 경우 포함). 남은 pre-drag를 정리하고, 버튼 없는(이미 끝난)
-    // 포인터에는 임계치 돌파/capture 로직을 진입시키지 않는다(죽은 포인터 setPointerCapture 방지).
-    if (event.buttons === 0) {
-      if (!drag.dragging) setDrag(null);
-      return;
-    }
-    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-    if (!drag.dragging && distance < DRAG_THRESHOLD_PX) return;
-    // 드래그가 임계치를 처음 넘는 순간 source 칩에 pointer capture를 건다. 이 핸들러는 캡처 전이라
-    // 현재 포인터 아래 칩(인접 칩일 수 있다)에서 실행될 수 있으므로 event.currentTarget이 아니라
-    // 기억해 둔 source <li>에 캡처를 걸어야, 이후 pointermove/up과 클릭 억제가 source 칩에 모인다.
-    const sourceEl = dragSourceElRef.current;
-    if (!drag.dragging && sourceEl && !sourceEl.hasPointerCapture(event.pointerId)) {
-      sourceEl.setPointerCapture(event.pointerId);
-    }
-    const dropTarget = dropTargetFromPoint(event.clientY, dropSections, chipsRef.current, drag.sourceId);
-    autoScrollSideBar(event.clientY, chipsRef.current);
-    setDrag({ ...drag, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
-  };
-
-  const finishPointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    const { sourceId, sourceGroupId, dragging, dropIndex, dropGroupId } = drag;
-    setDrag(null);
-    if (!dragging) return;
-
-    if (dropGroupId !== sourceGroupId) {
-      // cross-group: groupId 변경 + 대상 그룹 내 dropIndex 위치로 order 재배치를 함께 처리한다.
-      const dropSection = dropSections.find((s) => s.groupId === dropGroupId);
-      const dropSegmentIds = dropSection?.entryIds ?? [];
-      const allIds = allEntries.map((e) => e.operation.id);
-      setOperationOrder(insertIntoSegment(allIds, sourceId, dropIndex, dropSegmentIds));
-      onSetGroupId(sourceId, dropGroupId);
-      return;
-    }
-
-    const section = groupedSections.find((s) => s.groupId === sourceGroupId);
-    const segmentIds = section ? section.entries.map((e) => e.operation.id) : [];
-    const currentLocalIndex = segmentIds.indexOf(sourceId);
-    if (currentLocalIndex === -1 || dropIndex === currentLocalIndex) return;
-    const allIds = allEntries.map((e) => e.operation.id);
-    const nextOrder = reorderWithinSegment(allIds, sourceId, dropIndex, segmentIds);
-    setOperationOrder(nextOrder);
-  };
-
-  const cancelPointerDrag = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    setDrag(null);
   };
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
@@ -486,9 +486,6 @@ export function OperationsSideBar({
                         onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
-                        onPointerDragMove={updatePointerDrag}
-                        onPointerDragEnd={finishPointerDrag}
-                        onPointerDragCancel={cancelPointerDrag}
                         onOpenAccent={(operationId, anchor) => setActiveContextMenu({ kind: "chip", operationId, anchor })}
                         onRename={onRename}
                       />
