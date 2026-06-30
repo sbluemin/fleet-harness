@@ -13,7 +13,6 @@ describe("pruneOrphanStreamingOperations (connection resync)", () => {
     return {
       id: "op-1",
       theaterId: "theater-1",
-      parentId: null,
       type: "agent",
       pluginId: "terminal",
       title: "Test",
