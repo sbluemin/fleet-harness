@@ -95,7 +95,8 @@ function hasActiveCarrierStream(session: SessionInfo): boolean {
 }
 
 // status를 반영하고, idle/awaiting로 전이될 때만 notification을 보낸다.
-// 같은 상태 반복은 알리지 않으며, idle은 직전 상태가 있는 실제 전이에서만 알려 초기 로드 noise를 막는다.
+// 같은 상태 반복은 알리지 않는다. idle 종료 알림은 실제 턴 완료(running/awaiting -> idle)에서만 보내며,
+// dormant -> idle(세션 재개)이나 초기 관측(undefined -> idle)은 턴 완료가 아니므로 제외한다.
 function applyActivity(options: AgentConnectionOptions, sessionId: string, activity: OperationActivity): void {
   const previous = lastActivity.get(sessionId);
   options.status.set(sessionId, activity);
@@ -103,7 +104,7 @@ function applyActivity(options: AgentConnectionOptions, sessionId: string, activ
   if (previous === activity) return;
   if (activity === "awaiting") {
     options.notifications.emit({ kind: "agent.attention", operationId: sessionId, message: "Agent is waiting for input" });
-  } else if (activity === "idle" && previous !== undefined) {
+  } else if (activity === "idle" && (previous === "running" || previous === "awaiting")) {
     options.notifications.emit({ kind: "agent.ended", operationId: sessionId, message: "Agent turn ended" });
   }
 }
