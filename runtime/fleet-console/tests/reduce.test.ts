@@ -7,6 +7,7 @@ import {
 } from "../../fleet-plugins/terminal/client/agent/reduce.js";
 import {
   computeVisibleOperationIds,
+  filterByLiveOperations,
   filterByPreferences,
   groupNotificationsByTheater,
   splitNotificationsByVisibility,
@@ -219,9 +220,42 @@ describe("notification selectors", () => {
     }))]).toEqual([]);
   });
 
-  it("computes visible operations while the Operations canvas is mounted", () => {
+  it("computes only the active operation as visible while Operations is mounted", () => {
     const visible = computeVisibleOperationIds(makeConsoleSnap({
       operationsViewActive: true,
+      activeTheaterId: "theater-a",
+      activeOperationId: "operation-a",
+      operations: [
+        {
+          id: "operation-a",
+          theaterId: "theater-a",
+          type: "shell",
+          pluginId: "terminal",
+          title: "Shell",
+          payload: {},
+          geometry: null,
+          ts: { createdAt: 1, updatedAt: 1 },
+        },
+        {
+          id: "operation-b",
+          theaterId: "theater-b",
+          type: "shell",
+          pluginId: "terminal",
+          title: "Shell",
+          payload: {},
+          geometry: null,
+          ts: { createdAt: 1, updatedAt: 1 },
+        },
+      ],
+    }));
+    // active 패널만 visible — 같은/다른 Theater의 비active 패널은 ALERTS로 노출되도록 hidden 처리한다.
+    expect([...visible]).toEqual(["operation-a"]);
+  });
+
+  it("computes no visible operations when no operation is active", () => {
+    expect([...computeVisibleOperationIds(makeConsoleSnap({
+      operationsViewActive: true,
+      activeOperationId: null,
       operations: [{
         id: "operation-a",
         theaterId: "theater-a",
@@ -232,8 +266,42 @@ describe("notification selectors", () => {
         geometry: null,
         ts: { createdAt: 1, updatedAt: 1 },
       }],
-    }));
-    expect([...visible]).toEqual(["operation-a"]);
+    }))]).toEqual([]);
+  });
+
+  it("treats a stale active operation in another Theater as not visible", () => {
+    const op = (id: string, theaterId: string) => ({
+      id,
+      theaterId,
+      type: "shell",
+      pluginId: "terminal",
+      title: "Shell",
+      payload: {},
+      geometry: null,
+      ts: { createdAt: 1, updatedAt: 1 },
+    });
+    // Theater 전환 후 activeOperationId가 이전 Theater 패널을 가리키면(stale) 보임이 아니라 알림으로 노출되어야 한다.
+    expect([...computeVisibleOperationIds(makeConsoleSnap({
+      operationsViewActive: true,
+      activeTheaterId: "theater-a",
+      activeOperationId: "operation-b",
+      operations: [op("operation-a", "theater-a"), op("operation-b", "theater-b")],
+    }))]).toEqual([]);
+  });
+
+  it("treats a closed active operation as not visible", () => {
+    expect([...computeVisibleOperationIds(makeConsoleSnap({
+      operationsViewActive: true,
+      activeTheaterId: "theater-a",
+      activeOperationId: "ghost",
+      operations: [],
+    }))]).toEqual([]);
+  });
+
+  it("drops notifications for operations that no longer exist", () => {
+    const live = makeNotification("operation-a", "theater-a", 1);
+    const closed = makeNotification("operation-ghost", "theater-a", 2);
+    expect(filterByLiveOperations([live, closed], [{ id: "operation-a" }])).toEqual([live]);
   });
 
   it("splits hidden and visible notifications by operation id", () => {

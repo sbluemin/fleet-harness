@@ -13,8 +13,25 @@ export interface VisibilitySplitNotifications {
 }
 
 export function computeVisibleOperationIds(consoleSnap: ConsoleState): ReadonlySet<string> {
-  if (!consoleSnap.operationsViewActive) return new Set();
-  return new Set(consoleSnap.operations.map((operation) => operation.id));
+  // 현재 보고 있는 패널(operations 화면이 떠 있고, 현재 Theater에 실재하는 active 패널) 하나만 "보임"으로 간주한다.
+  // Theater·최소화·최대화와 무관하게 그 외 모든 패널의 Awaiting/Complete 알림은 ALERTS로 노출하고,
+  // 지금 보고 있는 active 패널의 알림만 무시한다. Theater 전환 등으로 stale해진 activeOperationId
+  // (다른 Theater를 가리키거나 이미 닫힌 패널)는 "보임"에서 제외해 그 알림이 계속 노출되게 한다.
+  if (!consoleSnap.operationsViewActive || !consoleSnap.activeOperationId) return new Set();
+  const active = consoleSnap.operations.find((operation) => operation.id === consoleSnap.activeOperationId);
+  if (!active || active.theaterId !== consoleSnap.activeTheaterId) return new Set();
+  return new Set([active.id]);
+}
+
+// 이미 닫힌(operations에 더는 존재하지 않는) 패널의 잔존 알림을 ALERTS 대상에서 제외하는 폴백.
+// 활성 패널이 awaiting/complete로 전이된 뒤 닫히면 알림만 남을 수 있고, 그 알림은 이동해도 대상 패널이
+// 없어 아무 반응이 없으므로 표시 자체를 막는다.
+export function filterByLiveOperations(
+  notifications: readonly OperationNotification[],
+  operations: readonly { readonly id: string }[],
+): readonly OperationNotification[] {
+  const live = new Set(operations.map((operation) => operation.id));
+  return notifications.filter((notification) => live.has(notification.operationId));
 }
 
 export function splitNotificationsByVisibility(

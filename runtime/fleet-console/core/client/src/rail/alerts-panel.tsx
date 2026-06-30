@@ -8,6 +8,7 @@ import { useActiveRailPanelId } from "./rail-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
   computeVisibleOperationIds,
+  filterByLiveOperations,
   filterByPreferences,
   groupNotificationsByTheater,
   splitNotificationsByVisibility,
@@ -35,8 +36,8 @@ export function AlertsPanelBody() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const notifications = useMemo(
-    () => Object.values(state.operationNotifications),
-    [state.operationNotifications],
+    () => filterByLiveOperations(Object.values(state.operationNotifications), state.operations),
+    [state.operationNotifications, state.operations],
   );
   const visibleIds = computeVisibleOperationIds(state);
   const eligible = splitNotificationsByVisibility(notifications, visibleIds).hidden;
@@ -138,8 +139,8 @@ function AlertsIcon() {
   const isActive = activeId === "alerts";
 
   const notifications = useMemo(
-    () => Object.values(state.operationNotifications),
-    [state.operationNotifications],
+    () => filterByLiveOperations(Object.values(state.operationNotifications), state.operations),
+    [state.operationNotifications, state.operations],
   );
   const visibleIds = computeVisibleOperationIds(state);
   const eligible = splitNotificationsByVisibility(notifications, visibleIds).hidden;
