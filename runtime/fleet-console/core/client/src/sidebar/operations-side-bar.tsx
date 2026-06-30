@@ -158,6 +158,25 @@ export function OperationsSideBar({
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
 
+  // pre-drag 정리: 임계치를 넘기 전(아직 pointer capture 미획득)에 포인터가 칩 밖에서 떼이면 칩의
+  // onPointerUpCapture가 호출되지 않아 drag 상태가 남는다. 이 stale 상태를 이후 hover가 reorder
+  // 시작으로 오해하거나 이미 끝난 포인터에 setPointerCapture를 시도하지 않도록, pre-drag 윈도우
+  // 동안에만 window pointerup/cancel로 정리한다. 실제 드래그(dragging=true)는 capture를 획득해
+  // 칩의 onPointerUpCapture가 정리하므로 이 리스너 대상이 아니다.
+  const preDragPointerId = drag && !drag.dragging ? drag.pointerId : null;
+  useEffect(() => {
+    if (preDragPointerId === null) return;
+    const clearPreDrag = (event: PointerEvent) => {
+      if (event.pointerId === preDragPointerId) setDrag(null);
+    };
+    window.addEventListener("pointerup", clearPreDrag);
+    window.addEventListener("pointercancel", clearPreDrag);
+    return () => {
+      window.removeEventListener("pointerup", clearPreDrag);
+      window.removeEventListener("pointercancel", clearPreDrag);
+    };
+  }, [preDragPointerId]);
+
   const contextMenuOperation = activeContextMenu?.kind === "chip"
     ? allEntries.find((entry) => entry.operation.id === activeContextMenu.operationId)?.operation ?? null
     : null;
