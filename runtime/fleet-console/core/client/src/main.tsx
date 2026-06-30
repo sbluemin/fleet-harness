@@ -20,8 +20,9 @@ import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";
 import { App } from "./app.js";
+import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
-import { initThemeFromStorage } from "./store.js";
+import { setActiveTheme } from "./store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -47,7 +48,12 @@ globalThis.__fleetConsoleRuntime__ = {
   "@fleet-console/sdk/react/browser": sdkReactBrowser,
 };
 
-initThemeFromStorage();
+try {
+  const settings = await fetchGlobalSettingsState();
+  setActiveTheme(settings.theme);
+} catch {
+  // 서버 미응답 시 DEFAULT_THEME 유지
+}
 
 const registry = await loadPluginRegistry();
 const app = document.querySelector("#app");

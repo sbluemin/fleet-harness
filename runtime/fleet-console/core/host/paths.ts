@@ -14,6 +14,7 @@ export interface ConsoleDataPaths {
   readonly dir: string;
   readonly stateFile: string;
   readonly capturesDir: string;
+  readonly settingsFile: string;
 }
 
 export interface CreateConsolePathsDeps {
@@ -35,6 +36,7 @@ const CONSOLE_RUNTIME_DIR_NAME = "console";
 const LOCK_FILE_NAME = "console.lock";
 const CONSOLE_DATA_DIR_NAME = "console";
 const CONSOLE_STATE_FILE_NAME = "state.json";
+const CONSOLE_SETTINGS_FILE_NAME = "settings.json";
 const CONSOLE_CAPTURES_DIR_NAME = "captures";
 
 export function createConsolePaths(deps: CreateConsolePathsDeps = {}): ConsolePaths {
@@ -49,6 +51,7 @@ export function createConsoleDataPaths(deps: CreateConsoleDataPathsDeps = {}): C
   return {
     dir,
     stateFile: path.join(dir, CONSOLE_STATE_FILE_NAME),
+    settingsFile: path.join(dir, CONSOLE_SETTINGS_FILE_NAME),
     capturesDir: path.join(dir, CONSOLE_CAPTURES_DIR_NAME),
   };
 }
