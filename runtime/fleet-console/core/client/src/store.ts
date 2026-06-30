@@ -8,6 +8,7 @@ import type {
   ConsoleState,
   NotificationKind,
   NotificationPreferences,
+  OperationGroup,
   OperationNotification,
   OperationNode,
   ObserverStatus,
@@ -51,6 +52,7 @@ let state: ConsoleState = {
   theaters: [],
   operations: [],
   operationsHydrated: false,
+  groups: [],
   activeTheaterId: null,
   activeOperationId: null,
   operationStatus: {},
@@ -177,6 +179,10 @@ export function hydrateOperations(operations: readonly OperationNode[]): void {
   setState({ operations, operationsHydrated: true });
 }
 
+export function hydrateGroups(groups: readonly OperationGroup[]): void {
+  setState({ groups });
+}
+
 export function setActiveTheater(theaterId: string | null): void {
   writeStoredActiveTheaterId(theaterId);
   setState({ activeTheaterId: theaterId });
@@ -296,6 +302,37 @@ export function sortOperationsByOrder(
     if (rightIndex !== undefined) return 1;
     return compareOperationCreatedAt(left, right);
   });
+}
+
+// 그룹 적용 visible 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)로 flatten한 배열을 반환.
+// SideBar visible 순서와 Alt+←/→ cycling 순서의 공유 SSoT.
+// collapsedGroups: 접힌 그룹 id 목록 — 해당 그룹의 멤버는 결과에서 제외한다.
+export function flattenGroupedOrder(
+  operations: readonly OperationNode[],
+  groups: readonly OperationGroup[],
+  operationOrder: readonly string[],
+  collapsedGroups: readonly string[] = [],
+): readonly OperationNode[] {
+  const sorted = sortOperationsByOrder(operations, operationOrder);
+  const collapsedSet = new Set(collapsedGroups);
+  const sortedGroups = [...groups].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  const buckets = new Map<string | null, OperationNode[]>();
+  for (const group of sortedGroups) buckets.set(group.id, []);
+  buckets.set(null, []);
+  for (const op of sorted) {
+    const gid = op.groupId ?? null;
+    if (gid !== null && buckets.has(gid)) {
+      buckets.get(gid)!.push(op);
+    } else {
+      buckets.get(null)!.push(op);
+    }
+  }
+  return [
+    ...sortedGroups
+      .filter((g) => !collapsedSet.has(g.id))
+      .flatMap((g) => buckets.get(g.id) ?? []),
+    ...(buckets.get(null) ?? []),
+  ];
 }
 
 export function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {

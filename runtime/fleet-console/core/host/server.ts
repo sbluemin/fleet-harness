@@ -855,11 +855,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       state = durableStateStore.load();
       theaters.restore(state.theaters);
       operations.replace(state.operationNodes);
+      operations.replaceGroups(state.groups ?? []);
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
       state = emptyDurableConsoleState();
       theaters.restore([]);
       operations.replace([]);
+      operations.replaceGroups([]);
     }
     // Codex WorkspaceRegistry는 인메모리라 재시작 시 비워진다. hasWiki 판정이 이 레지스트리에
     // 의존하므로(getWorkspace !== null), 복원된 Theater를 재등록하지 않으면 위키가 있는 Theater도
@@ -895,6 +897,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         theaters: theaters.list(),
         operations: [],
         operationNodes: operations.list(),
+        groups: operations.listAllGroups(),
       });
     } catch (error) {
       console.warn(`[fleet-console] Durable state save failed: ${error instanceof Error ? error.message : String(error)}`);

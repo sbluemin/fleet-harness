@@ -17,8 +17,8 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 3, theaters: [], operations: [] })).toEqual({ version: 2, theaters: [], operations: [], operationNodes: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ sessionId: "missing" }], operationNodes: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], operationNodes: [] });
+    expect(sanitizeDurableConsoleState({ version: 3, theaters: [], operations: [] })).toEqual({ version: 2, theaters: [], operations: [], operationNodes: [], groups: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ sessionId: "missing" }], operationNodes: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], operationNodes: [], groups: [] });
   });
 
   it("migrates v1 durable operations into v2 OperationNodes one-way", () => {

@@ -1,4 +1,4 @@
-import type { ConsoleUpdateApplyAcceptedResponse, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -23,6 +23,19 @@ export interface ReleaseNotesFetchOptions {
 export interface OperationPatchClientInput {
   readonly title?: string;
   readonly accent?: string | null;
+  readonly groupId?: string | null;
+}
+
+export interface OperationGroupCreateInput {
+  readonly theaterId: string;
+  readonly name: string;
+  readonly color: string;
+}
+
+export interface OperationGroupPatchInput {
+  readonly name?: string;
+  readonly color?: string;
+  readonly order?: number;
 }
 
 const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "ticket", "token", "transcriptPath"] as const;
@@ -119,6 +132,44 @@ export async function fetchOperations(theaterId?: string | null, signal?: AbortS
   return payload.operations.map((operation) => assertOperationNode(operation, response.status));
 }
 
+export async function fetchGroups(theaterId?: string | null, signal?: AbortSignal): Promise<readonly OperationGroup[]> {
+  const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
+  const response = await fetch(`/api/v1/operations/groups${suffix}`, { signal });
+  await assertOk(response);
+  const payload = await response.json() as { readonly groups?: unknown };
+  if (!Array.isArray(payload.groups)) throw new ApiError(response.status, "Invalid groups response");
+  return payload.groups.map((group) => assertOperationGroup(group, response.status));
+}
+
+export async function createGroup(input: OperationGroupCreateInput, signal?: AbortSignal): Promise<OperationGroup> {
+  const response = await fetch("/api/v1/operations/groups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    signal,
+  });
+  await assertOk(response);
+  const payload = await response.json() as { readonly group?: unknown };
+  return assertOperationGroup(payload.group, response.status);
+}
+
+export async function updateGroup(groupId: string, patch: OperationGroupPatchInput, signal?: AbortSignal): Promise<OperationGroup> {
+  const response = await fetch(`/api/v1/operations/groups/${encodeURIComponent(groupId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+    signal,
+  });
+  await assertOk(response);
+  const payload = await response.json() as { readonly group?: unknown };
+  return assertOperationGroup(payload.group, response.status);
+}
+
+export async function deleteGroup(groupId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/operations/groups/${encodeURIComponent(groupId)}`, { method: "DELETE", signal });
+  await assertOk(response);
+}
+
 export async function renameOperation(operationId: string, title: string, signal?: AbortSignal): Promise<OperationNode> {
   return patchOperation(operationId, { title }, signal);
 }
@@ -203,8 +254,33 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     geometry: payload.geometry ?? null,
     // 서버가 영속한 accent를 노드에 보존한다. 누락 시 server→store 동기화가 사용자 accent를 null로 덮어쓴다.
     accent: typeof payload.accent === "string" ? payload.accent : null,
+    // 서버가 영속한 groupId를 보존한다. null = Ungrouped 명시, undefined = 미설정(Ungrouped와 동일 취급).
+    groupId: payload.groupId === null ? null : typeof payload.groupId === "string" ? payload.groupId : undefined,
     state: payload.state && typeof payload.state === "object" && !Array.isArray(payload.state) ? payload.state : {},
     ts: payload.ts,
+  };
+}
+
+function assertOperationGroup(value: unknown, status: number): OperationGroup {
+  const payload = value as Partial<OperationGroup>;
+  if (
+    !payload
+    || typeof payload.id !== "string"
+    || typeof payload.theaterId !== "string"
+    || typeof payload.name !== "string"
+    || typeof payload.color !== "string"
+    || typeof payload.order !== "number"
+    || typeof payload.createdAt !== "number"
+  ) {
+    throw new ApiError(status, "Invalid group response");
+  }
+  return {
+    id: payload.id,
+    theaterId: payload.theaterId,
+    name: payload.name,
+    color: payload.color,
+    order: payload.order,
+    createdAt: payload.createdAt,
   };
 }
 

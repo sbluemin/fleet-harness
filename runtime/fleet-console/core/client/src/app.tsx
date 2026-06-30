@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useMapFullscreen } from "./canvas/canvas-store.js";
-import { fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
+import { fetchGroups, fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
@@ -14,7 +14,7 @@ import { usePluginRegistry } from "./plugin-registry.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { applyObserverStatus, applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -75,6 +75,7 @@ export function App() {
         resolveOnboardingOnBootstrap();
       });
     void fetchOperations(null, abort.signal).then(hydrateOperations).catch(() => {});
+    void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});
     beginReleaseNotesFetch();
     void fetchReleaseNotes({ signal: abort.signal })
       .then(applyReleaseNotes)

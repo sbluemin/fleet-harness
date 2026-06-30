@@ -3687,6 +3687,169 @@
 }
 
 
+/* ── Group Rail Bar (--grp-color 채널 전용 — chip ::before perimeter와 독립) ───── */
+
+.side-bar-chip__rail {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--grp-color, transparent);
+  flex: none;
+  pointer-events: none;
+}
+
+/* rail tier에서도 바는 그대로 표시 (아이콘 왼쪽) */
+.operations-side-bar[data-tier="rail"] .side-bar-chip__rail {
+  top: 3px;
+  bottom: 3px;
+}
+
+/* ── Group Section Layout ──────────────────────────────────────────────────────── */
+
+.side-bar-group-section,
+.side-bar-ungrouped-section {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-bar-group-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Group Header ──────────────────────────────────────────────────────────────── */
+
+.side-bar-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px var(--space-1) 4px var(--space-2);
+  margin: 2px var(--space-1) 0;
+  border-radius: var(--radius-md);
+  user-select: none;
+}
+
+.side-bar-group-header__toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-group-header__toggle:hover,
+.side-bar-group-header__toggle:focus-visible {
+  color: var(--ink-spectral);
+  outline: none;
+}
+
+.side-bar-group-header__arrow {
+  width: 12px;
+  height: 12px;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-group-header__arrow.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-group-header__arrow {
+    transition: none;
+  }
+}
+
+.side-bar-group-header__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--grp-color, var(--ink-fog));
+}
+
+.side-bar-group-header__count {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-fog);
+  min-width: 14px;
+  text-align: right;
+}
+
+/* rail tier 그룹 헤더: 색상 dot만 표시 */
+.side-bar-group-header--rail {
+  justify-content: center;
+  padding: 4px 0;
+  margin: 2px 0 0;
+  cursor: pointer;
+}
+
+.side-bar-group-header__dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--grp-color, var(--ink-fog));
+}
+
+/* Ungrouped label */
+.side-bar-ungrouped-label {
+  padding: 2px var(--space-1) 2px var(--space-2);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+  opacity: 0.5;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-ungrouped-label {
+  display: none;
+}
+
+/* ── Cross-section drop target (aurora tint on target group chip list) ─────────── */
+
+.side-bar-section--drop-target {
+  background: color-mix(in oklch, var(--aurora) 6%, transparent);
+  border-radius: var(--radius-md);
+  outline: 1px dashed color-mix(in oklch, var(--aurora) 40%, transparent);
+  outline-offset: -1px;
+}
+
+/* ── 3-tier indent for chips inside groups ──────────────────────────────────────── */
+
+.operations-side-bar[data-tier="list"] .side-bar-group-section .side-bar-chip,
+.operations-side-bar[data-tier="detail"] .side-bar-group-section .side-bar-chip {
+  padding-left: 18px;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-group-section .side-bar-chip {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 /* ── Resize Handle (우측 가장자리 4px, col-resize cursor) ───────────────────────── */
 
 .operations-side-bar-resize-handle {
@@ -3749,6 +3912,148 @@
 
 /* accent 설정 팝업 — 패널/Dock 좌측 인디케이터 클릭으로 열린다. 트리거에 앵커되는 오버레이 팝업.
    오버레이는 바깥 클릭을 받아 닫는 투명 click-catcher(딤 없음), 카드는 인라인 좌표(position:fixed)로 트리거 옆에 뜬다. */
+/* ── Group Context Menu (chip + group-header 통합 오버레이) ─────────────────────── */
+
+.group-context-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.group-context-menu-card {
+  position: fixed;
+  z-index: 1;
+  min-width: 192px;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.group-context-menu-section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+  padding: 4px 6px 2px;
+}
+
+.group-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-spectral);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.group-context-menu-item:hover,
+.group-context-menu-item:focus-visible {
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
+  outline: none;
+}
+
+.group-context-menu-item.is-selected {
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  color: color-mix(in oklch, var(--brass) 80%, var(--ink-spectral));
+}
+
+.group-context-menu-item--new {
+  color: var(--ink-fog);
+  font-style: italic;
+}
+
+.group-context-menu-item--danger {
+  color: var(--coral);
+}
+
+.group-context-menu-item--danger.is-armed {
+  background: color-mix(in oklch, var(--coral) 12%, transparent);
+  border-color: color-mix(in oklch, var(--coral) 30%, transparent);
+  font-weight: 700;
+}
+
+.group-context-menu-item__dot {
+  display: block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-fog);
+}
+
+.group-context-menu-item__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-context-menu-item__check {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--brass);
+}
+
+.group-context-menu-item__new-label {
+  color: var(--ink-fog);
+}
+
+.group-context-menu-new-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
+  color: var(--ink-spectral);
+  font-family: var(--font-body);
+  font-size: 13px;
+  outline: none;
+}
+
+.group-context-menu-new-input:focus {
+  border-color: color-mix(in oklch, var(--brass) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 30%, transparent);
+}
+
+.group-context-menu-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--surface-rim);
+}
+
+.group-context-menu-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 24px);
+  gap: 4px;
+  padding: 2px 4px 4px;
+}
+
+/* ── Accent Popover ─────────────────────────────────────────────────────────────── */
+
 .accent-popover-overlay {
   position: fixed;
   inset: 0;
