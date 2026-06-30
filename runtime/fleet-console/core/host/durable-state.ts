@@ -20,7 +20,7 @@ export interface DurableOperationGroup {
 }
 
 export interface DurableConsoleState {
-  readonly version: 3;
+  readonly version: 2;
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
@@ -32,7 +32,7 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-const STATE_VERSION = 3;
+const STATE_VERSION = 2;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";

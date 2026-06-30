@@ -17,13 +17,13 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [], operations: [] })).toEqual({ version: 3, theaters: [], operations: [], groups: [] });
-    expect(sanitizeDurableConsoleState({ version: 3, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 3, theaters: [], operations: [], groups: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 2, theaters: [], operations: [], groups: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], groups: [] });
   });
 
   it("remaps persisted terminal plugin ids without changing operation type or id", () => {
     const sanitized = sanitizeDurableConsoleState({
-      version: 3,
+      version: 2,
       theaters: [],
       operations: [
         makeOperationNode({ id: "agent-op", pluginId: "agent", type: "agent" }),

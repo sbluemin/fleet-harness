@@ -944,7 +944,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const stateFile = path.join(fixture.carrierStoreDir, "console", "state.json");
     const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(2);
     expect(state.operations).toHaveLength(1);
     expect(state.operations[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
     expect(state.operations[0]?.payload?.providerSession).toBeUndefined();
@@ -1485,7 +1485,7 @@ describe("console static and terminal ticket boundary", () => {
         const capturesDir = path.join(consoleDir, "captures");
         fs.mkdirSync(capturesDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 3,
+          version: 2,
           theaters: [{
             id: theaterId,
             path: dir,
