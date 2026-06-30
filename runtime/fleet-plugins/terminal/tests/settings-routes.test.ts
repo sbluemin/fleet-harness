@@ -21,21 +21,21 @@ interface HarnessOptions {
 describe("terminal settings routes", () => {
   it("GET /plugins/terminal/settings returns only prompt booleans", async () => {
     const harness = createRouteHarness({
-      data: { version: 1, replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 },
+      data: { version: 1, replaceSystemPrompt: true, enableMetaphor: false },
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: true, enableMetaphor: false } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
-  it("PUT /plugins/terminal/settings updates both booleans and preserves unrelated global options", async () => {
+  it("PUT /plugins/terminal/settings updates both booleans in global options", async () => {
     const harness = createRouteHarness({
       body: { replaceSystemPrompt: false, enableMetaphor: true },
-      data: { version: 1, replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 },
+      data: { version: 1, replaceSystemPrompt: true, enableMetaphor: false },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: false, enableMetaphor: true } }]);
-    expect(harness.currentData()).toEqual({ version: 1, replaceSystemPrompt: false, enableMetaphor: true, consolePortMode: "static", consoleStaticPort: 8080 });
+    expect(harness.currentData()).toEqual({ version: 1, replaceSystemPrompt: false, enableMetaphor: true });
   });
 
   it("PUT /plugins/terminal/settings rejects non-boolean payloads", async () => {
