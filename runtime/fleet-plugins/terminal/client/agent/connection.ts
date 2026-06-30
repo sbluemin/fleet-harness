@@ -114,9 +114,12 @@ function applyActivity(options: AgentConnectionOptions, sessionId: string, activ
 function reevaluateSessionsForTenant(options: AgentConnectionOptions, tenantId: string): void {
   const { sessions } = getAgentState();
   for (const session of Object.values(sessions)) {
-    if (session.tenantId === tenantId) {
-      applyActivity(options, session.sessionId, sessionActivity(session));
-    }
+    if (session.tenantId !== tenantId) continue;
+    // attention으로 설정된 awaiting는 transient 신호로 turnState에 반영되지 않는다.
+    // 캐리어 job 이벤트 재평가가 이를 running으로 덮어쓰면 입력 대기 표시가 사라지므로 보존한다.
+    // (다음 session:updated 프레임이나 turn 전이가 awaiting를 해소한다.)
+    if (lastActivity.get(session.sessionId) === "awaiting") continue;
+    applyActivity(options, session.sessionId, sessionActivity(session));
   }
 }
 
