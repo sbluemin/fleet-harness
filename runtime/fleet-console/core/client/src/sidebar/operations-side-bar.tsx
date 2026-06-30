@@ -101,6 +101,9 @@ export function OperationsSideBar({
   const tier = collapsed ? "rail" : tierFromWidth(width);
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
+  // 드래그 시작 칩(source)의 <li> 요소. 캡처가 지연되므로, 임계치 돌파 시 항상 이 source 요소에
+  // 캡처를 걸어야 드래그 수명주기와 클릭 억제가 source 칩에 유지된다(현재 포인터 아래 칩이 아니라).
+  const dragSourceElRef = useRef<HTMLLIElement | null>(null);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
@@ -209,7 +212,9 @@ export function OperationsSideBar({
     // pointer capture는 드래그 임계치를 넘는 순간(updatePointerDrag)에만 건다. pointerdown 시점에 즉시 잡으면
     // 후속 마우스 이벤트(특히 dblclick)가 캡처 대상인 <li>로 retarget되어, 칩 이름 span의
     // onDoubleClick(rename)이 소실된다. 캡처를 지연시키면 단순 클릭/더블클릭은 span에 정상 도달하고
-    // 실제 드래그(이동 발생)만 캡처를 획득한다.
+    // 실제 드래그(이동 발생)만 캡처를 획득한다. 단, 캡처 대상은 항상 이 source 칩이어야 하므로
+    // source <li>를 기억해 둔다(임계치 돌파 시 포인터가 이미 인접 칩 위로 이동했을 수 있다).
+    dragSourceElRef.current = event.currentTarget;
     setActiveContextMenu(null);
     disarmClose();
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
@@ -231,9 +236,12 @@ export function OperationsSideBar({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
     if (!drag.dragging && distance < DRAG_THRESHOLD_PX) return;
-    // 드래그가 임계치를 처음 넘는 순간 pointer capture를 획득해, 포인터가 칩 밖으로 나가도 이동을 계속 추적한다.
-    if (!drag.dragging && !event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.setPointerCapture(event.pointerId);
+    // 드래그가 임계치를 처음 넘는 순간 source 칩에 pointer capture를 건다. 이 핸들러는 캡처 전이라
+    // 현재 포인터 아래 칩(인접 칩일 수 있다)에서 실행될 수 있으므로 event.currentTarget이 아니라
+    // 기억해 둔 source <li>에 캡처를 걸어야, 이후 pointermove/up과 클릭 억제가 source 칩에 모인다.
+    const sourceEl = dragSourceElRef.current;
+    if (!drag.dragging && sourceEl && !sourceEl.hasPointerCapture(event.pointerId)) {
+      sourceEl.setPointerCapture(event.pointerId);
     }
     const dropTarget = dropTargetFromPoint(event.clientY, dropSections, chipsRef.current, drag.sourceId);
     autoScrollSideBar(event.clientY, chipsRef.current);
