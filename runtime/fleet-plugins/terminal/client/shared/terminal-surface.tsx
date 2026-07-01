@@ -6,6 +6,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
+import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { useTerminalPrefs } from "./terminal-prefs-store.js";
 
@@ -135,18 +136,16 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
     terminal.loadAddon(new Unicode11Addon());
     terminal.unicode.activeVersion = "11";
 
-    // Shift+Enter는 개행(LF)으로 처리한다. xterm 기본 동작은 Shift 여부와 무관하게 Enter를
-    // CR(\r)로 보내 TUI가 이를 "제출"로 해석하므로, Shift+Enter는 직접 LF(\n)를 입력시키고
-    // (input()이 onData를 트리거해 기존 전송 경로를 탄다) 기본 CR 전송을 막는다.
-    // 이 핸들러는 keydown뿐 아니라 keypress 이벤트에서도 호출되므로, keydown에서만 LF를 한 번
-    // 입력시키되 false 반환은 모든 이벤트 타입에 적용해야 keypress 경로의 CR 전송까지 차단된다.
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (event.key === "Enter" && event.shiftKey) {
-        if (event.type === "keydown") terminal.input("\n");
-        return false;
-      }
-      return true;
-    });
+    // Shift+Enter를 LF(\n)로 처리한다. xterm 기본 동작은 Shift 무관하게 Enter를 CR(\r)로 보내
+    // TUI가 "제출"로 해석하므로, Shift+Enter는 LF를 직접 전송하고 기본 CR 전송을 막는다.
+    // IME composition 중에는 xterm helper textarea의 compositionend 뒤 setTimeout(0)으로 LF를 예약해
+    // xterm CompositionHelper의 최종 한글 전송(compositionend→setTimeout(0)) 뒤에 LF가 붙게 한다.
+    const imeHandler = createImeShiftEnterHandler(() => terminal.input("\n"));
+    const imeEventTarget = container.querySelector<HTMLElement>("textarea.xterm-helper-textarea, textarea") ?? container;
+    imeEventTarget.addEventListener("compositionstart", imeHandler.onCompositionStart);
+    imeEventTarget.addEventListener("compositionend", imeHandler.onCompositionEnd);
+    imeEventTarget.addEventListener("focusout", imeHandler.onCompositionCancel);
+    terminal.attachCustomKeyEventHandler(imeHandler.handleKeyEvent);
 
     const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false);
     outputSchedulerRef.current = outputScheduler;
@@ -203,6 +202,10 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
       disposed = true;
       resizeObserver.disconnect();
       if (resizeDebounce) clearTimeout(resizeDebounce);
+      imeEventTarget.removeEventListener("compositionstart", imeHandler.onCompositionStart);
+      imeEventTarget.removeEventListener("compositionend", imeHandler.onCompositionEnd);
+      imeEventTarget.removeEventListener("focusout", imeHandler.onCompositionCancel);
+      imeHandler.dispose();
       connection.dispose();
       outputScheduler.dispose();
       terminalRef.current = null;
