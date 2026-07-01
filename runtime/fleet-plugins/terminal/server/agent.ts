@@ -13,6 +13,7 @@ import { createWorkspaceChangeScanner } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector } from "./agent-api/agent-cli-detect.js";
+import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
@@ -435,15 +436,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {
     const metadata = await buildAgentCliLaunchMetadata();
-    return metadata.map((cli) => {
-      const disabled = !cli.available || !cli.signedIn;
-      return {
-        id: cli.id,
-        type: AGENT_OPERATION_TYPE,
-        title: cli.label,
-        ...(disabled ? { disabled: true, disabledReason: !cli.available ? "Not installed" : "Sign in required" } : {}),
-      };
-    });
+    return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE);
   }
 
   function launch(cwd: string | undefined, context: { readonly operationId?: string } | undefined) {
