@@ -29,6 +29,7 @@ export interface ReadingController {
   destroy(): void;
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
+  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
 }
 
 export interface MountReadingOptions {
@@ -58,6 +59,8 @@ export function mountReadingInto(
 ): ReadingController {
   let destroyed = false;
   let cleanupSpy: (() => void) | null = null;
+  // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
+  let liveOpts = opts;
 
   // 드라이독 결정 상태 (패치 상세 뷰에서 관리)
   type DecisionPhase = "idle" | "approving" | "rejecting" | "submitting";
@@ -77,7 +80,7 @@ export function mountReadingInto(
     if (patchRowBtn) {
       event.preventDefault();
       const patchId = patchRowBtn.dataset.patchId || undefined;
-      opts.onPatchOpen?.(patchId);
+      liveOpts.onPatchOpen?.(patchId);
       return;
     }
 
@@ -85,7 +88,7 @@ export function mountReadingInto(
     const relatedBtn = target.closest<HTMLElement>("[data-entry-id]");
     if (relatedBtn?.dataset.entryId) {
       event.preventDefault();
-      opts.onRelatedClick(relatedBtn.dataset.entryId);
+      liveOpts.onRelatedClick(relatedBtn.dataset.entryId);
       return;
     }
 
@@ -122,7 +125,7 @@ export function mountReadingInto(
     if (!action) return;
 
     if (action === "back") {
-      opts.onPatchOpen?.(undefined);
+      liveOpts.onPatchOpen?.(undefined);
       return;
     }
 
@@ -175,8 +178,8 @@ export function mountReadingInto(
     decisionError = null;
     redrawDecisionBar();
     try {
-      await decideDrydock(opts.theaterId, currentDetailPatchId, action, reason);
-      opts.onDecided?.();
+      await decideDrydock(liveOpts.theaterId, currentDetailPatchId, action, reason);
+      liveOpts.onDecided?.();
     } catch (err) {
       decisionPhase = action === "approve" ? "approving" : "rejecting";
       decisionError = err instanceof Error ? err.message : String(err);
@@ -203,7 +206,7 @@ export function mountReadingInto(
     cleanupReader();
 
     try {
-      const entry = await fetchEntry(opts.theaterId, entryId);
+      const entry = await fetchEntry(liveOpts.theaterId, entryId);
       if (destroyed) return;
 
       const { index } = getState();
@@ -252,7 +255,7 @@ export function mountReadingInto(
 
     try {
       if (patchId) {
-        const detail = await fetchDrydockDetail(opts.theaterId, patchId);
+        const detail = await fetchDrydockDetail(liveOpts.theaterId, patchId);
         if (destroyed) return;
 
         currentDetailMeta = detail.meta;
@@ -271,7 +274,7 @@ export function mountReadingInto(
           cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
         }
       } else {
-        const list = await fetchDrydock(opts.theaterId, "pending");
+        const list = await fetchDrydock(liveOpts.theaterId, "pending");
         if (destroyed) return;
         opts.tocContainer.innerHTML = "";
         readContainer.innerHTML = renderDrydockList(list.items, "Drydock — Pending Patches");
@@ -288,12 +291,12 @@ export function mountReadingInto(
 
     try {
       if (conflictId) {
-        const detail = await fetchConflictDetail(opts.theaterId, conflictId);
+        const detail = await fetchConflictDetail(liveOpts.theaterId, conflictId);
         if (destroyed) return;
         opts.tocContainer.innerHTML = "";
         readContainer.innerHTML = renderConflictDetail(detail);
       } else {
-        const conflicts = await fetchConflicts(opts.theaterId);
+        const conflicts = await fetchConflicts(liveOpts.theaterId);
         if (destroyed) return;
         opts.tocContainer.innerHTML = "";
         readContainer.innerHTML = renderConflictList(conflicts);
@@ -326,6 +329,9 @@ export function mountReadingInto(
       } else if (opts.kind === "conflicts") {
         await renderConflictsView(subId);
       }
+    },
+    refreshCallbacks(next): void {
+      liveOpts = { ...liveOpts, ...next };
     },
   };
 }

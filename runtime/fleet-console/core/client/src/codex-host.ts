@@ -91,6 +91,16 @@ export function mountReaderInto(
   }
   activeReaderEntryId = opts.kind === "entry" ? (opts.initialEntryId ?? null) : null;
 
+  // relocate마다 현재 마운트 소유자(split/overlay)의 콜백을 컨트롤러에 반영한다.
+  // 재생성 경로에서도 idempotent이므로 항상 호출한다.
+  readerController.refreshCallbacks({
+    onPatchOpen: opts.onPatchOpen,
+    onDecided: opts.onDecided,
+    onRelatedClick: opts.onRelatedClick,
+    onClose: opts.onClose,
+    theaterId: opts.theaterId,
+  });
+
   // 같은 엔트리를 split→오버레이(Expand)로 옮길 때는 읽기 위치를 보존한다. 반대 방향
   // (오버레이→split, Esc)은 오버레이 언마운트로 reader가 먼저 detach되어 위치 복원이
   // 불안정하므로 상단부터 시작한다(콤팩트 뷰 복귀라 허용). 새 엔트리/뷰도 상단부터.
