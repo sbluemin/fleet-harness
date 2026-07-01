@@ -23,6 +23,7 @@ let tocHostNode: HTMLDivElement | null = null;
 let readerController: ReadingController | null = null;
 let activeReaderKind: "entry" | "drydock" | "conflicts" | null = null;
 let activeReaderEntryId: string | null = null;
+let activeReaderSubId: string | undefined = undefined;
 let lastReaderScrollTop = 0;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -79,9 +80,14 @@ export function mountReaderInto(
     readerController?.destroy();
     readerController = mountReadingInto(rNode, { ...opts, tocContainer: tNode });
     activeReaderKind = opts.kind;
+    activeReaderSubId = opts.subId;
   } else if (opts.kind === "entry" && opts.initialEntryId && opts.initialEntryId !== activeReaderEntryId) {
     // 엔트리가 실제로 바뀐 경우에만 재렌더(같은 엔트리 relocate는 재렌더 없이 스크롤 보존).
     void readerController.setEntry(opts.initialEntryId);
+  } else if ((opts.kind === "drydock" || opts.kind === "conflicts") && opts.subId !== activeReaderSubId) {
+    // 드라이독/컨플릭트: subId가 바뀐 경우(목록↔상세 전환) navigateSub으로 내부 재렌더
+    activeReaderSubId = opts.subId;
+    void readerController.navigateSub(opts.subId);
   }
   activeReaderEntryId = opts.kind === "entry" ? (opts.initialEntryId ?? null) : null;
 
@@ -106,6 +112,7 @@ export function teardownReaderNodes(): void {
   readerController?.destroy();
   readerController = null;
   activeReaderKind = null;
+  activeReaderSubId = undefined;
   if (readerHostNode?.parentElement) readerHostNode.parentElement.removeChild(readerHostNode);
   if (tocHostNode?.parentElement) tocHostNode.parentElement.removeChild(tocHostNode);
 }
