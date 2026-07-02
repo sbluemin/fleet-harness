@@ -100,9 +100,18 @@ async function ensureCliMjs(cliHome: string, onBootstrap?: (line: string) => voi
     }
 
     _cliMjsPath = mjsPath;
-    _bootstrapPromise = null;
     return mjsPath;
   })();
+
+  // 실패한 부트스트랩을 캐시하면 일시적 네트워크 오류가 콘솔 재시작 전까지
+  // 영구 실패로 고착된다 — 정착 후 항상 비워 다음 호출이 재시도할 수 있게 한다.
+  // (호출자에게는 원본 promise가 반환되어 에러가 전파되고, 이 파생 체인은
+  // 리셋 전용이므로 reject를 흡수해 unhandled rejection을 막는다.)
+  _bootstrapPromise
+    .finally(() => {
+      _bootstrapPromise = null;
+    })
+    .catch(() => {});
 
   return _bootstrapPromise;
 }
