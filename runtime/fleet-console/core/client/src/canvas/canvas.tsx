@@ -406,6 +406,7 @@ function PluginOperationRenderer({
     notifications: capabilities.notifications,
     operations: capabilities.operations,
     preferences: capabilities.preferences,
+    settings: capabilities.settings,
     status: capabilities.status,
     onActivate,
     onClose,
