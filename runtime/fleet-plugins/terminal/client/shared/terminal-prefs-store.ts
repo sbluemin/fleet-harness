@@ -51,6 +51,8 @@ export function migrateLegacyTerminalPrefs(): void {
 }
 
 export function connectTerminalSettings(settings: ClientSettingsCapability): void {
+  // 재연결 시 진행 중인 이전 하이드레이션이 낡은 결과를 채택하지 못하도록 epoch를 올려 폐기한다.
+  fontWriteEpoch += 1;
   settingsCapability = settings;
   void hydrateFontFromServer();
 }

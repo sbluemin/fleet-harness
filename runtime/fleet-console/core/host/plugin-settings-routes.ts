@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { DurableJsonStore } from "@dotobokuri/fleet-infra";
 
 import type { ApiCatalogEntry } from "./api-catalog.js";
-import type { ConsoleSettingsData } from "./console-settings.js";
+import { PLUGIN_ID_PATTERN, type ConsoleSettingsData } from "./console-settings.js";
 
 interface PluginSettingsRouteDeps {
   readonly consoleSettingsStore: DurableJsonStore<ConsoleSettingsData>;
@@ -19,7 +19,6 @@ interface PluginSettingsRouteContext {
 }
 
 const PLUGIN_SETTINGS_PREFIX = "/api/v1/settings/plugins/";
-const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const MAX_PLUGIN_SETTINGS_BYTES = 32 * 1024;
 
 export const PLUGIN_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [

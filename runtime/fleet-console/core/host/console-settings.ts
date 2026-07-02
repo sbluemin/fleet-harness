@@ -28,8 +28,9 @@ export interface CreateConsoleSettingsStoreDeps {
   readonly now?: () => number;
 }
 
+export const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+
 const SETTINGS_VERSION = 1;
-const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const SETTINGS_LOCK_DIR_NAME = "settings.lock";
 const SETTINGS_LOCK_OWNER_FILE_NAME = "owner.json";
 const SETTINGS_TEMP_PREFIX = ".settings.";

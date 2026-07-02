@@ -195,6 +195,7 @@ function resolvePluginPath(pluginId: string, path: string): string {
   return `/plugins/${pluginId}${suffix}`;
 }
 
+// 서버(core/host console-settings의 PLUGIN_ID_PATTERN)와 동일 패턴 — SDK는 core를 import할 수 없어 사본을 유지한다.
 const PLUGIN_SETTINGS_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
 function resolvePluginSettingsPath(pluginId: string): string {
