@@ -175,7 +175,7 @@ export class AcpConnection extends BaseConnection {
       } catch {
         // 정리 실패는 원본 예외를 가리지 않음
       }
-      throw error;
+      throw this.withStderrDiagnostics(error, 'ACP initialize');
     }
   }
 
@@ -195,54 +195,58 @@ export class AcpConnection extends BaseConnection {
     strictMcp?: boolean,
     effort?: string,
   ): Promise<NewSessionResponse> {
-    const agent = this.getAgent();
-    const servers = mcpServers ?? [];
+    try {
+      const agent = this.getAgent();
+      const servers = mcpServers ?? [];
 
-    let session: NewSessionResponse;
-    if (sessionId) {
-      if (!agent.loadSession) {
-        throw new Error('연결된 에이전트가 session/load를 지원하지 않습니다');
-      }
-      const loadSessionParams: LoadSessionRequest & { _meta?: Record<string, unknown> } = {
-        sessionId,
-        cwd: workspace,
-        mcpServers: servers,
-      };
-      const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
-      if (meta) {
-        loadSessionParams._meta = meta;
-      }
-      const loadResult = await this.withFixedTimeout(
-        agent.loadSession(loadSessionParams),
-        this.initTimeout,
-        'session/load',
-      );
-      session = { ...loadResult, sessionId } as LoadSessionResponse & NewSessionResponse;
-    } else {
-      const newSessionParams: {
-        cwd: string;
-        mcpServers: McpServer[];
-        _meta?: Record<string, unknown>;
-      } = {
-        cwd: workspace,
-        mcpServers: servers,
-      };
+      let session: NewSessionResponse;
+      if (sessionId) {
+        if (!agent.loadSession) {
+          throw new Error('연결된 에이전트가 session/load를 지원하지 않습니다');
+        }
+        const loadSessionParams: LoadSessionRequest & { _meta?: Record<string, unknown> } = {
+          sessionId,
+          cwd: workspace,
+          mcpServers: servers,
+        };
+        const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
+        if (meta) {
+          loadSessionParams._meta = meta;
+        }
+        const loadResult = await this.withFixedTimeout(
+          agent.loadSession(loadSessionParams),
+          this.initTimeout,
+          'session/load',
+        );
+        session = { ...loadResult, sessionId } as LoadSessionResponse & NewSessionResponse;
+      } else {
+        const newSessionParams: {
+          cwd: string;
+          mcpServers: McpServer[];
+          _meta?: Record<string, unknown>;
+        } = {
+          cwd: workspace,
+          mcpServers: servers,
+        };
 
-      const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
-      if (meta) {
-        newSessionParams._meta = meta;
+        const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
+        if (meta) {
+          newSessionParams._meta = meta;
+        }
+
+        session = await this.withFixedTimeout(
+          agent.newSession(newSessionParams),
+          this.initTimeout,
+          'session/new',
+        );
       }
 
-      session = await this.withFixedTimeout(
-        agent.newSession(newSessionParams),
-        this.initTimeout,
-        'session/new',
-      );
+      this.setState('ready');
+      this.activeSessionId = session.sessionId;
+      return session;
+    } catch (error) {
+      throw this.withStderrDiagnostics(error, sessionId ? 'ACP session/load' : 'ACP session/new');
     }
-
-    this.setState('ready');
-    this.activeSessionId = session.sessionId;
-    return session;
   }
 
   /**
@@ -302,14 +306,18 @@ export class AcpConnection extends BaseConnection {
       loadSessionParams._meta = meta;
     }
 
-    const result = await this.withFixedTimeout(
-      agent.loadSession(loadSessionParams),
-      this.requestTimeout,
-      'session/load',
-    );
-    this.activeSessionId = params.sessionId;
-    this.setState('ready');
-    return result;
+    try {
+      const result = await this.withFixedTimeout(
+        agent.loadSession(loadSessionParams),
+        this.requestTimeout,
+        'session/load',
+      );
+      this.activeSessionId = params.sessionId;
+      this.setState('ready');
+      return result;
+    } catch (error) {
+      throw this.withStderrDiagnostics(error, 'ACP session/load');
+    }
   }
 
   /**
