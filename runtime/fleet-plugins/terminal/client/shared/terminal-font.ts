@@ -105,17 +105,24 @@ export function createCustomTerminalFontSettings(customName: string, size: numbe
   };
 }
 
+export function parseTerminalFontSettingsValue(value: unknown): TerminalFontSettings | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const stored = value as StoredTerminalFontSettings;
+  const size = clampTerminalFontSize(typeof stored.size === "number" ? stored.size : DEFAULT_TERMINAL_FONT_SIZE);
+  if (stored.source === "custom" && typeof stored.customName === "string") {
+    return createCustomTerminalFontSettings(stored.customName, size);
+  }
+  if (typeof stored.id === "string" && isTerminalFontId(stored.id)) {
+    return createCuratedTerminalFontSettings(stored.id, size);
+  }
+  return null;
+}
+
 export function parseStoredTerminalFontSettings(raw: string | null): TerminalFontSettings {
   if (!raw) return createDefaultTerminalFontSettings();
   try {
-    const stored = JSON.parse(raw) as StoredTerminalFontSettings;
-    const size = clampTerminalFontSize(typeof stored.size === "number" ? stored.size : DEFAULT_TERMINAL_FONT_SIZE);
-    if (stored.source === "custom" && typeof stored.customName === "string") {
-      return createCustomTerminalFontSettings(stored.customName, size);
-    }
-    if (typeof stored.id === "string" && isTerminalFontId(stored.id)) {
-      return createCuratedTerminalFontSettings(stored.id, size);
-    }
+    const parsed = parseTerminalFontSettingsValue(JSON.parse(raw) as unknown);
+    if (parsed !== null) return parsed;
   } catch {
     // 손상된 localStorage 값은 기본 Cascadia self-hosted 설정으로 복구한다.
   }
