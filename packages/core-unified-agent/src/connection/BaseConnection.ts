@@ -31,6 +31,31 @@ export interface BaseConnectionOptions {
   promptIdleTimeout?: number;
 }
 
+interface SecretPattern {
+  readonly label: string;
+  readonly pattern: RegExp;
+}
+
+const STDERR_DIAGNOSTIC_LINE_LIMIT = 20;
+const STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT = 2_000;
+const STDERR_DIAGNOSTIC_TOTAL_BYTE_LIMIT = 8_000;
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+const CONTROL_PATTERN = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+const SECRET_PATTERNS: readonly SecretPattern[] = [
+  { label: 'aws_access_key', pattern: /AKIA[0-9A-Z]{16}/g },
+  { label: 'github_token', pattern: /gh[psour]_[A-Za-z0-9]{36}/g },
+  { label: 'jwt', pattern: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g },
+  { label: 'openai_key', pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
+  {
+    label: 'generic_secret',
+    pattern: /\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*\s*[:=]\s*["']?[^\s"']+["']?/gi,
+  },
+  {
+    label: 'pem_private_key',
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/g,
+  },
+];
+
 /**
  * 프로세스 Spawn + Stream 관리 기반 클래스.
  * child_process.spawn으로 CLI 프로세스를 생성하고,
@@ -50,6 +75,7 @@ export class BaseConnection extends EventEmitter {
   protected readonly initTimeout: number;
   protected readonly promptIdleTimeout: number;
   protected stderrBuffer = '';
+  private readonly diagnosticStderrTail: string[] = [];
 
   constructor(options: BaseConnectionOptions) {
     super();
@@ -219,8 +245,31 @@ export class BaseConnection extends EventEmitter {
       return;
     }
 
+    this.recordDiagnosticStderrLine(message);
     this.emit('log', message);
     this.emit('logEntry', this.createStructuredLogEntry(message));
+  }
+
+  /** 실패 메시지에 붙일 수 있는 짧고 마스킹된 stderr tail을 반환합니다. */
+  protected getStderrDiagnosticTail(): string {
+    return this.diagnosticStderrTail.join('\n');
+  }
+
+  /** 원본 에러에 stderr tail 진단을 붙여 상위 계층으로 전달합니다. */
+  protected withStderrDiagnostics(error: unknown, phase: string): Error {
+    const baseError = error instanceof Error ? error : new Error(String(error));
+    this.flushStderrBuffer();
+    const stderrTail = this.getStderrDiagnosticTail();
+    if (!stderrTail || baseError.message.includes(`${phase} stderr tail:`)) {
+      return baseError;
+    }
+
+    const diagnosticError = new Error(
+      `${baseError.message}\n\n${phase} stderr tail:\n${stderrTail}`,
+      { cause: baseError },
+    );
+    diagnosticError.name = baseError.name;
+    return diagnosticError;
   }
 
   /** 기본 구조화 stderr 로그 항목을 생성합니다. */
@@ -266,6 +315,24 @@ export class BaseConnection extends EventEmitter {
       }),
     ]);
   }
+
+  private recordDiagnosticStderrLine(message: string): void {
+    const sanitized = sanitizeDiagnosticStderrLine(message);
+    if (!sanitized) {
+      return;
+    }
+
+    this.diagnosticStderrTail.push(sanitized);
+    while (this.diagnosticStderrTail.length > STDERR_DIAGNOSTIC_LINE_LIMIT) {
+      this.diagnosticStderrTail.shift();
+    }
+    while (
+      byteLength(this.getStderrDiagnosticTail()) > STDERR_DIAGNOSTIC_TOTAL_BYTE_LIMIT &&
+      this.diagnosticStderrTail.length > 1
+    ) {
+      this.diagnosticStderrTail.shift();
+    }
+  }
 }
 
 /**
@@ -294,4 +361,24 @@ function quoteForCmd(token: string): string {
 function buildWindowsCmdArgs(command: string, args: string[]): string[] {
   const line = [command, ...args].map(quoteForCmd).join(' ');
   return ['/S', '/C', `"${line}"`];
+}
+
+function sanitizeDiagnosticStderrLine(value: string): string {
+  const cleaned = redactDiagnosticSecrets(value.replace(ANSI_PATTERN, '').replace(CONTROL_PATTERN, '')).trim();
+  if (cleaned.length <= STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT) {
+    return cleaned;
+  }
+  const omitted = cleaned.length - STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT;
+  return `${cleaned.slice(0, STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT)} [truncated ${omitted} chars]`;
+}
+
+function redactDiagnosticSecrets(value: string): string {
+  return SECRET_PATTERNS.reduce(
+    (text, { label, pattern }) => text.replace(pattern, `[REDACTED:${label}]`),
+    value,
+  );
+}
+
+function byteLength(value: string): number {
+  return Buffer.byteLength(value, 'utf8');
 }

@@ -8,12 +8,20 @@ interface TestableAcpConnection {
   agentCapabilities: { sessionCapabilities?: { close?: unknown }; loadSession?: boolean } | null;
   command: string;
   connectionState: string;
+  createSession: (workspace: string, sessionId?: string) => Promise<NewSessionResponse>;
   endSession: (sessionId: string) => Promise<void>;
+  pushStderr: (chunk: string) => void;
   reconnectSession: (cwd: string, sessionId?: string) => Promise<NewSessionResponse>;
 }
 
+class TestAcpConnection extends AcpConnection {
+  pushStderr(chunk: string): void {
+    this.consumeStderrChunk(chunk);
+  }
+}
+
 function createConnection(): TestableAcpConnection {
-  return new AcpConnection({
+  return new TestAcpConnection({
     command: 'test-cli',
     args: ['--acp'],
     cwd: process.cwd(),
@@ -34,6 +42,24 @@ function createMockAgent(overrides?: Partial<Agent>): Agent {
     ...overrides,
   } as unknown as Agent;
 }
+
+// ─── stderr diagnostics ──────────────────────────────────
+
+describe('AcpConnection stderr diagnostics', () => {
+  it('session/new 실패 메시지에 stderr tail을 포함한다', async () => {
+    const conn = createConnection();
+    const mockAgent = createMockAgent({
+      newSession: vi.fn().mockRejectedValue(new Error('new session failed')),
+    } as unknown as Partial<Agent>);
+    conn.agentProxy = mockAgent;
+
+    conn.pushStderr('codex-acp: workspace must be a git repository\n');
+
+    await expect(conn.createSession('/workspace')).rejects.toThrow(
+      /new session failed[\s\S]+ACP session\/new stderr tail:[\s\S]+codex-acp: workspace must be a git repository/,
+    );
+  });
+});
 
 // ─── endSession ───────────────────────────────────────────
 

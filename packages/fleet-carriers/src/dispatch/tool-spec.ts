@@ -303,6 +303,9 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
   try {
     result = await runSingleCarrier(opts);
     finalStatus = result.status;
+    if (finalStatus === "error") {
+      finalError = result.error ?? result.responseText;
+    }
   } catch (error) {
     finalStatus = "error";
     finalError = error instanceof Error ? error.message : String(error);
