@@ -128,6 +128,23 @@ describe('BaseConnection logEntry', () => {
     expect(tail.match(/\[REDACTED:pem_private_key\]/g)?.length).toBe(3);
   });
 
+  it('환경변수 형식 등 BEGIN 마커가 임베디드된 라인도 PEM 모드로 전환하고 바디가 누출되지 않는다', () => {
+    const connection = new TestConnection();
+
+    // "PREFIX=-----BEGIN PRIVATE KEY-----" 형태: 앵커 매치 안 되는 케이스
+    connection.push('PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n');
+    connection.push('embedded-secret-body\n');
+    connection.push('-----END PRIVATE KEY-----\n');
+
+    const tail = connection.diagnosticTail();
+
+    // 바디가 누출되지 않아야 함
+    expect(tail).not.toContain('embedded-secret-body');
+    // BEGIN이 포함된 라인 전체도 리댁트
+    expect(tail).not.toContain('PRIVATE_KEY=');
+    expect(tail).toContain('[REDACTED:pem_private_key]');
+  });
+
   it('stderr 진단 tail은 최근 라인만 보존하고 secret을 마스킹한다', () => {
     const connection = new TestConnection();
 

@@ -57,8 +57,9 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
 ];
 
 // PEM 블록 헤더/푸터 감지용 패턴 (줄 단위 상태 기계에서 사용)
-const PEM_BEGIN_PATTERN = /^-----BEGIN [A-Z ]*PRIVATE KEY-----$/;
-const PEM_END_PATTERN = /^-----END [A-Z ]*PRIVATE KEY-----$/;
+// 앵커 없이 포함 여부를 검사해 "PREFIX=-----BEGIN PRIVATE KEY-----" 같은 임베디드 마커도 감지
+const PEM_BEGIN_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----/;
+const PEM_END_PATTERN = /-----END [A-Z ]*PRIVATE KEY-----/;
 
 /**
  * 프로세스 Spawn + Stream 관리 기반 클래스.
