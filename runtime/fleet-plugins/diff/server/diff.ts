@@ -253,7 +253,14 @@ export async function handleDiffFile(
     } catch {
       // 파일이 삭제된 경우(D 상태) realpath가 실패해도 git이 안전하게 처리
     }
-    const result = await runGit(["diff", "HEAD", "--unified=3", "--", relativePath], { cwd: gitCwd });
+    let result;
+    try {
+      result = await runGit(["diff", "HEAD", "--unified=3", "--", relativePath], { cwd: gitCwd });
+    } catch (err) {
+      if (!isNoHeadError(err)) throw err;
+      // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
+      result = await runGit(["diff", "--cached", "--unified=3", "--", relativePath], { cwd: gitCwd });
+    }
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {
     if (error instanceof GitExecutorError) {
