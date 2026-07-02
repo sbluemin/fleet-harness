@@ -1,12 +1,18 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { SkillListItem } from "../server/types.js";
+import type { Scope, SkillListItem } from "../server/types.js";
 import { FindTab } from "./find-tab.js";
 import { InstalledTab } from "./installed-tab.js";
+import { ReadingOverlay } from "./reading-overlay.js";
 import "./skills.css";
-import { setActiveTab, useSkillsStore } from "./skills-store.js";
+import {
+  setActiveTab,
+  setInstallFormOpenId,
+  useSkillsStore,
+} from "./skills-store.js";
+import { Toast } from "./toast.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -14,18 +20,44 @@ interface SkillsPanelProps {
   readonly ctx: RailPanelContext;
 }
 
+interface ReadMoreEntry {
+  readonly skill: SkillListItem;
+  readonly isInstalled: boolean;
+  readonly registryId?: string;
+}
+
 // ─── SkillsPanel ─────────────────────────────────────────────────────────────
 
 function SkillsPanel({ ctx }: SkillsPanelProps) {
   const { theaterId } = ctx;
   const { activeTab, installedList } = useSkillsStore();
-  const [readMoreSkill, setReadMoreSkill] = useState<SkillListItem | null>(null);
+  const [readMoreEntry, setReadMoreEntry] = useState<ReadMoreEntry | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [installedRefreshKey, setInstalledRefreshKey] = useState(0);
 
   const installedCount = installedList.length;
 
-  if (!theaterId && activeTab === "installed") {
-    // Show empty state with Theater hint — still render tab shell
-  }
+  const handleReadMoreInstalled = useCallback((skill: SkillListItem) => {
+    setReadMoreEntry({ skill, isInstalled: true });
+  }, []);
+
+  const handleReadMoreFind = useCallback((skill: SkillListItem, registryId: string) => {
+    setReadMoreEntry({ skill, isInstalled: false, registryId });
+  }, []);
+
+  const handleInstallSuccess = useCallback((skillName: string, scope: Scope) => {
+    setToastMessage(`Installed ${skillName} to ${scope}`);
+    setInstalledRefreshKey((k) => k + 1);
+    setActiveTab("installed");
+  }, []);
+
+  const handleOverlayInstall = useCallback(() => {
+    if (readMoreEntry?.registryId) {
+      setInstallFormOpenId(readMoreEntry.registryId);
+      setActiveTab("find");
+    }
+    setReadMoreEntry(null);
+  }, [readMoreEntry]);
 
   return (
     <div className="skills-root">
@@ -53,29 +85,26 @@ function SkillsPanel({ ctx }: SkillsPanelProps) {
       {activeTab === "installed" ? (
         <InstalledTab
           theaterId={theaterId}
-          onReadMore={setReadMoreSkill}
+          onReadMore={handleReadMoreInstalled}
+          refreshKey={installedRefreshKey}
         />
       ) : (
         <FindTab
           theaterId={theaterId}
-          onReadMore={setReadMoreSkill}
+          onReadMore={handleReadMoreFind}
+          onInstallSuccess={handleInstallSuccess}
         />
       )}
 
-      {/* ReadingOverlay renders here in W3 */}
-      {readMoreSkill && (
-        <div className="skills-overlay-placeholder" onClick={() => setReadMoreSkill(null)}>
-          <div className="skills-overlay-placeholder-inner" onClick={(e) => e.stopPropagation()}>
-            <div className="skills-overlay-header">
-              <span>{readMoreSkill.name}</span>
-              <button type="button" onClick={() => setReadMoreSkill(null)} aria-label="Close">✕</button>
-            </div>
-            <div className="skills-overlay-body">
-              <p className="skills-empty-state">Reading overlay — W3 implementation pending.</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+
+      <ReadingOverlay
+        skill={readMoreEntry?.skill ?? null}
+        isInstalled={readMoreEntry?.isInstalled ?? false}
+        theaterId={theaterId}
+        onClose={() => setReadMoreEntry(null)}
+        onInstall={handleOverlayInstall}
+      />
     </div>
   );
 }

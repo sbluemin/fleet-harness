@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import type { SkillListItem } from "../server/types.js";
 import { SkillCard } from "./skill-card.js";
@@ -9,18 +9,14 @@ import {
   type Scope,
   useSkillsStore,
 } from "./skills-store.js";
+import { useJobLog } from "./use-job-log.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface InstalledTabProps {
   readonly theaterId: string | null;
   readonly onReadMore: (skill: SkillListItem) => void;
-}
-
-interface UpdateState {
-  readonly status: "running" | "done" | "error";
-  readonly lines: string[];
-  readonly scope: Scope;
+  readonly refreshKey?: number;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -35,10 +31,10 @@ async function fetchInstalledList(theaterId: string | null): Promise<SkillListIt
 
 // ─── InstalledTab ─────────────────────────────────────────────────────────────
 
-export function InstalledTab({ theaterId, onReadMore }: InstalledTabProps) {
+export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTabProps) {
   const { scope, filterText, installedList, installedLoading } = useSkillsStore();
-  const [updateState, setUpdateState] = useState<UpdateState | null>(null);
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const updateLog = useJobLog();
+  const updateScopeRef = useRef<Scope | null>(null);
 
   const loadList = useCallback((tid: string | null) => {
     setInstalledState([], true);
@@ -49,59 +45,21 @@ export function InstalledTab({ theaterId, onReadMore }: InstalledTabProps) {
 
   useEffect(() => {
     loadList(theaterId);
-  }, [theaterId, loadList]);
+  }, [theaterId, loadList, refreshKey]);
 
-  useEffect(() => () => {
-    if (pollRef.current) clearTimeout(pollRef.current);
-  }, []);
+  useEffect(() => {
+    if (updateLog.status === "done" || updateLog.status === "error") {
+      loadList(theaterId);
+    }
+  }, [updateLog.status, theaterId, loadList]);
 
   const handleUpdate = useCallback((updScope: string) => {
     const s = updScope as Scope;
-    setUpdateState({ status: "running", lines: [], scope: s });
-
+    updateScopeRef.current = s;
     const body: Record<string, unknown> = { scope: s };
     if (theaterId) body["theaterId"] = theaterId;
-
-    void (async () => {
-      const res = await fetch("/plugins/skills/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }).catch(() => null);
-
-      if (!res?.ok) {
-        setUpdateState((prev) => prev ? { ...prev, status: "error" } : null);
-        return;
-      }
-
-      const { jobId } = await res.json() as { jobId: string };
-      let cursor = 0;
-
-      const poll = async () => {
-        const jr = await fetch(
-          `/plugins/skills/jobs?jobId=${encodeURIComponent(jobId)}&cursor=${cursor}`,
-        ).catch(() => null);
-        if (!jr?.ok) {
-          setUpdateState((prev) => prev ? { ...prev, status: "error" } : null);
-          return;
-        }
-        const data = await jr.json() as { lines: string[]; nextCursor: number; status: string };
-        cursor = data.nextCursor;
-        setUpdateState((prev) =>
-          prev ? { ...prev, lines: [...prev.lines, ...data.lines] } : null,
-        );
-        if (data.status === "running") {
-          pollRef.current = setTimeout(() => { void poll(); }, 750);
-        } else {
-          setUpdateState((prev) =>
-            prev ? { ...prev, status: data.status as "done" | "error" } : null,
-          );
-          loadList(theaterId);
-        }
-      };
-      pollRef.current = setTimeout(() => { void poll(); }, 750);
-    })();
-  }, [theaterId, loadList]);
+    updateLog.start("/plugins/skills/update", body);
+  }, [theaterId, updateLog]);
 
   const handleRemove = useCallback((name: string, removeScope: string) => {
     const body: Record<string, unknown> = { scope: removeScope, skill: name };
@@ -123,7 +81,8 @@ export function InstalledTab({ theaterId, onReadMore }: InstalledTabProps) {
     return true;
   });
 
-  const isUpdating = updateState?.status === "running" && updateState.scope === visibleScope;
+  const isUpdating =
+    updateLog.status === "running" && updateScopeRef.current === visibleScope;
 
   return (
     <div className="skills-tab-body">
@@ -155,15 +114,16 @@ export function InstalledTab({ theaterId, onReadMore }: InstalledTabProps) {
         aria-label="Filter installed skills"
       />
 
-      {updateState && (
-        <div className={`skills-update-log skills-update-log--${updateState.status}`}>
-          {updateState.lines.map((line, i) => (
+      {(updateLog.status === "running" || updateLog.status === "done" || updateLog.status === "error") && (
+        <div className="skills-update-log">
+          {updateLog.lines.map((line, i) => (
+            // eslint-disable-next-line react/no-array-index-key
             <div key={i} className="skills-update-log-line">{line}</div>
           ))}
-          {updateState.status === "done" && (
+          {updateLog.status === "done" && (
             <div className="skills-update-log-line skills-update-log-done">✓ Update complete</div>
           )}
-          {updateState.status === "error" && (
+          {updateLog.status === "error" && (
             <div className="skills-update-log-line skills-update-log-error">✗ Update failed</div>
           )}
         </div>

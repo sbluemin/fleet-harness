@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import type { SkillListItem, SkillSearchItem } from "../server/types.js";
+import type { Scope, SkillListItem, SkillSearchItem } from "../server/types.js";
+import { InstallFlow } from "./install-flow.js";
 import {
   setInstallFormOpenId,
   setSearchQuery,
@@ -12,7 +13,8 @@ import {
 
 interface FindTabProps {
   readonly theaterId: string | null;
-  readonly onReadMore: (skill: SkillListItem) => void;
+  readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
+  readonly onInstallSuccess: (skillName: string, scope: Scope) => void;
 }
 
 interface FindResultCardProps {
@@ -20,7 +22,8 @@ interface FindResultCardProps {
   readonly theaterId: string | null;
   readonly isFormOpen: boolean;
   readonly onInstallClick: () => void;
-  readonly onReadMore: (skill: SkillListItem) => void;
+  readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
+  readonly onInstallSuccess: (skillName: string, scope: Scope) => void;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -51,7 +54,14 @@ async function doSearch(q: string): Promise<void> {
 
 // ─── FindResultCard ───────────────────────────────────────────────────────────
 
-function FindResultCard({ result, isFormOpen, onInstallClick, onReadMore }: FindResultCardProps) {
+function FindResultCard({
+  result,
+  theaterId,
+  isFormOpen,
+  onInstallClick,
+  onReadMore,
+  onInstallSuccess,
+}: FindResultCardProps) {
   const previewSkill: SkillListItem = {
     name: result.name,
     scope: "project",
@@ -61,12 +71,12 @@ function FindResultCard({ result, isFormOpen, onInstallClick, onReadMore }: Find
   };
 
   return (
-    <div className={`skills-card skills-card--find${isFormOpen ? " is-expanded" : ""}`}>
+    <div className={`skills-card${isFormOpen ? " is-expanded" : ""}`}>
       <div className="skills-card-header">
         <button
           type="button"
           className="skills-card-name-btn"
-          onClick={() => onReadMore(previewSkill)}
+          onClick={() => onReadMore(previewSkill, result.id)}
           title="Read SKILL.md preview"
         >
           {result.name}
@@ -85,14 +95,25 @@ function FindResultCard({ result, isFormOpen, onInstallClick, onReadMore }: Find
           {isFormOpen ? "Cancel" : "Install"}
         </button>
       </div>
-      {/* InstallFlow renders inside the card in W3 */}
+      {isFormOpen && (
+        <InstallFlow
+          source={result.source}
+          skill={result.name}
+          theaterId={theaterId}
+          onCancel={onInstallClick}
+          onSuccess={(installedScope) => {
+            onInstallClick();
+            onInstallSuccess(result.name, installedScope);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ─── FindTab ─────────────────────────────────────────────────────────────────
 
-export function FindTab({ theaterId, onReadMore }: FindTabProps) {
+export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProps) {
   const { searchQuery, searchResults, searchLoading, installFormOpenId } = useSkillsStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -139,6 +160,7 @@ export function FindTab({ theaterId, onReadMore }: FindTabProps) {
               setInstallFormOpenId(installFormOpenId === result.id ? null : result.id)
             }
             onReadMore={onReadMore}
+            onInstallSuccess={onInstallSuccess}
           />
         ))}
       </div>
