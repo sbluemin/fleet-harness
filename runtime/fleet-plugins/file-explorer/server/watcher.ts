@@ -36,6 +36,9 @@ interface WatcherEntry {
 // 서버 측 debounce 간격 — 이벤트 폭풍 흡수
 const DEBOUNCE_MS = 200;
 
+// 기본 싱글턴 레지스트리 — handlers.ts에서 사용 (함수 선언 호이스팅에 의존)
+export const watcherRegistry: WatcherRegistry = createWatcherRegistry();
+
 export function createWatcherRegistry(
   watcherFactory: WatcherFactory = (p, opts, cb) =>
     fs.watch(p, opts, (ev, fn) => cb(ev, typeof fn === "string" ? fn : null)),
@@ -126,9 +129,6 @@ export function createWatcherRegistry(
 
   return { subscribe };
 }
-
-// 기본 싱글턴 레지스트리 — handlers.ts에서 사용
-export const watcherRegistry: WatcherRegistry = createWatcherRegistry();
 
 function computeRelDir(filename: string | null): string {
   if (!filename) return "";
