@@ -12,6 +12,7 @@ packages:
   - "runtime/fleet-plugins/terminal"
   - "runtime/fleet-plugins/diff"
   - "runtime/fleet-plugins/file-explorer"
+  - "runtime/fleet-plugins/skills"
 allowBuilds:
   esbuild: true
   node-pty: true
