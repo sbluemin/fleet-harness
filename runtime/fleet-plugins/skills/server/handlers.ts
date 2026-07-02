@@ -314,7 +314,9 @@ export async function handleRemove(
   if (!cwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   try {
-    const result = await executor(["remove", "-s", skill, "-a", "*", "-y"], { cwd, timeout: CLI_TIMEOUT_MS });
+    // `-a "*"`는 CLI가 리터럴 agent 이름으로 검증해 거부한다(help의 '*'는 셸 표기).
+    // agent 플래그를 생략하면 비-TTY에서 모든 설치 표면(universal+심링크)이 제거된다 — 실측 확정.
+    const result = await executor(["remove", "-s", skill, "-y"], { cwd, timeout: CLI_TIMEOUT_MS });
     if (result.exitCode !== 0) {
       // CLI stdout에는 홈/작업 디렉터리 절대경로가 섞일 수 있어 브라우저로 내보내지 않는다(Token Boundary).
       ctx.host.http.writeJson(res, 502, { error: "remove_failed" });

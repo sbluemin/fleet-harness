@@ -105,6 +105,39 @@ describe("미인가 요청 401", () => {
   });
 });
 
+// ─── remove CLI 인자 계약 ─────────────────────────────────────────────────────
+
+describe("handleRemove CLI 인자", () => {
+  it("agent 플래그 없이 remove -s <skill> -y 로 실행한다 (-a '*'는 CLI가 거부 — 실측 고정)", async () => {
+    const calls: string[][] = [];
+    const spyExec: CliExecutor = async (args) => {
+      calls.push(args);
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    const ctx = {
+      host: {
+        security: { isTerminalAuthorized: () => true },
+        http: {
+          writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+            (res as unknown as { _status: number })._status = status;
+            (res as unknown as { _body: unknown })._body = body;
+          },
+          readJsonBody: async () => ({ scope: "global", skill: "pdf" }),
+        },
+        paths: { resolveTheaterPath: () => null },
+      },
+    } as unknown as FleetPluginServerContext;
+
+    const res = makeRes();
+    await handleRemove(makeReq("POST", "/plugins/skills/remove"), res, ctx, spyExec);
+
+    expect(res._status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual(["remove", "-s", "pdf", "-y"]);
+    expect(calls[0]).not.toContain("*");
+  });
+});
+
 // ─── extractSkillMarkdown ─────────────────────────────────────────────────────
 
 describe("extractSkillMarkdown", () => {
