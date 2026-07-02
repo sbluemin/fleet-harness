@@ -2,6 +2,7 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection } from "./agent/index.js";
 import { shellOperationKind, shellPlugin } from "./shell/index.js";
+import { connectTerminalSettings } from "./shared/terminal-prefs-store.js";
 
 const AGENT_OPERATION_TYPES = new Set(["agent"]);
 
@@ -10,7 +11,7 @@ export const terminalPlugin = definePlugin({
   operationKinds: [shellOperationKind, agentOperationKind],
   settingsSections: [agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
-  install: (ctx) => agentPlugin.install?.(ctx),
+  install: (ctx) => { connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
   closeOperation: async (operationId) => {
     const operation = await fetchOperation(operationId);
     if (operation?.type === "shell") {

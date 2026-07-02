@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { migrateLegacyTerminalPrefs } from "../client/shared/terminal-prefs-store.js";
+import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
+
+import { connectTerminalSettings, getTerminalPrefsSnapshot, migrateLegacyTerminalPrefs, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-prefs-store.js";
 
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
 const FONT_KEY = "fleet-plugin.terminal.font";
@@ -66,5 +68,154 @@ describe("migrateLegacyTerminalPrefs", () => {
     store[LEGACY_RENDERER_KEY] = "webgl";
     migrateLegacyTerminalPrefs();
     expect(store[RENDERER_KEY]).toBe(rendererAfterFirst);
+  });
+});
+
+describe("connectTerminalSettings / server hydration", () => {
+  const store: Record<string, string> = {};
+  const originalWindow = (globalThis as Record<string, unknown>).window;
+
+  function makeStorage() {
+    return {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = value; },
+      removeItem: (key: string) => { delete store[key]; },
+    };
+  }
+
+  beforeEach(() => {
+    for (const k of Object.keys(store)) delete store[k];
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage: makeStorage() },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  });
+
+  function makeCapability(opts: {
+    serverValue?: Record<string, unknown> | null;
+    readError?: boolean;
+  } = {}): ClientSettingsCapability & { putCalls: { id: string; value: Record<string, unknown> }[] } {
+    const putCalls: { id: string; value: Record<string, unknown> }[] = [];
+    return {
+      putCalls,
+      read: async (_pluginId) => {
+        if (opts.readError) throw new Error("network error");
+        return opts.serverValue !== undefined ? opts.serverValue : null;
+      },
+      write: async (pluginId, value) => {
+        putCalls.push({ id: pluginId, value });
+      },
+    };
+  }
+
+  it("hydrates font from server when server has a stored value", async () => {
+    const cap = makeCapability({
+      serverValue: { font: { source: "curated", id: "jetbrains", customName: "", size: 16 } },
+    });
+    connectTerminalSettings(cap);
+    await vi.waitFor(() => cap.putCalls.length === 0 && getTerminalPrefsSnapshot().font.id === "jetbrains");
+    expect(getTerminalPrefsSnapshot().font.id).toBe("jetbrains");
+    expect(store[FONT_KEY]).toBeUndefined();
+  });
+
+  it("seeds server from localStorage when server returns null and FONT_KEY exists", async () => {
+    store[FONT_KEY] = JSON.stringify({ source: "curated", id: "fira-code", customName: "", size: 15 });
+    const cap = makeCapability({ serverValue: null });
+    connectTerminalSettings(cap);
+    await vi.waitFor(() => cap.putCalls.length > 0);
+    expect(cap.putCalls[0]?.id).toBe("terminal");
+    expect((cap.putCalls[0]?.value as { font?: { id?: string } }).font?.id).toBe("fira-code");
+    expect(store[FONT_KEY]).toBeUndefined();
+  });
+
+  it("seed migration is idempotent — second connect with server value does not PUT again", async () => {
+    store[FONT_KEY] = JSON.stringify({ source: "curated", id: "fira-code", customName: "", size: 15 });
+    const cap = makeCapability({ serverValue: null });
+    connectTerminalSettings(cap);
+    await vi.waitFor(() => cap.putCalls.length > 0);
+    const firstCallCount = cap.putCalls.length;
+    // 서버에 이제 값이 있음 — 재연결 시 추가 PUT 없음
+    const cap2 = makeCapability({ serverValue: { font: { source: "curated", id: "fira-code", customName: "", size: 15 } } });
+    connectTerminalSettings(cap2);
+    // 하이드레이션이 서버 값을 채택할 때까지 대기한 뒤 재시드 PUT이 없음을 단언한다.
+    await vi.waitFor(() => getTerminalPrefsSnapshot().font.id === "fira-code");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(cap2.putCalls.length).toBe(0);
+    // 첫 번째 캐파빌리티의 총 PUT은 1회여야 함
+    expect(firstCallCount).toBe(1);
+  });
+
+  it("race guard: user setTerminalFontSize during read prevents hydration from overriding", async () => {
+    let resolveRead!: (v: Record<string, unknown> | null) => void;
+    const cap: ClientSettingsCapability & { putCalls: { id: string; value: Record<string, unknown> }[] } = {
+      putCalls: [],
+      read: async () => new Promise<Record<string, unknown> | null>((resolve) => { resolveRead = resolve; }),
+      write: async (id, value) => { cap.putCalls.push({ id, value }); },
+    };
+    connectTerminalSettings(cap);
+    // read가 pending 중에 사용자가 폰트 크기 변경
+    setTerminalFontSize(20);
+    // 이제 서버 응답 도착 — epoch가 달라졌으므로 무시
+    resolveRead({ font: { source: "curated", id: "jetbrains", customName: "", size: 12 } });
+    await new Promise((r) => setTimeout(r, 10));
+    // 현재 폰트는 사용자 설정값(20px)이어야 함
+    expect(getTerminalPrefsSnapshot().font.size).toBe(20);
+  });
+
+  it("race guard: hydration does not seed PUT if write epoch changed", async () => {
+    store[FONT_KEY] = JSON.stringify({ source: "curated", id: "fira-code", customName: "", size: 14 });
+    let resolveRead!: (v: Record<string, unknown> | null) => void;
+    const cap: ClientSettingsCapability & { putCalls: { id: string; value: Record<string, unknown> }[] } = {
+      putCalls: [],
+      read: async () => new Promise<Record<string, unknown> | null>((resolve) => { resolveRead = resolve; }),
+      write: async (id, value) => { cap.putCalls.push({ id, value }); },
+    };
+    connectTerminalSettings(cap);
+    setTerminalFont("jetbrains"); // epoch 증가 → hydration PUT 폐기
+    resolveRead(null);
+    await new Promise((r) => setTimeout(r, 10));
+    // jetbrains 쓰기 PUT 1개만 있어야 함(hydration 시드 PUT은 없어야 함)
+    expect(cap.putCalls.every((c) => {
+      const font = (c.value as { font?: { id?: string } }).font;
+      return font?.id === "jetbrains";
+    })).toBe(true);
+  });
+
+  it("set* functions no longer write to localStorage font key", () => {
+    connectTerminalSettings(makeCapability({ serverValue: null }));
+    delete store[FONT_KEY]; // 초기화
+    setTerminalFont("jetbrains");
+    expect(store[FONT_KEY]).toBeUndefined();
+    setTerminalFontSize(18);
+    expect(store[FONT_KEY]).toBeUndefined();
+  });
+
+  it("set* functions issue a PUT to the server", async () => {
+    const cap = makeCapability({ serverValue: null });
+    connectTerminalSettings(cap);
+    setTerminalFont("jetbrains");
+    await vi.waitFor(() => cap.putCalls.some((c) => {
+      const font = (c.value as { font?: { id?: string } }).font;
+      return font?.id === "jetbrains";
+    }));
+    expect(cap.putCalls.some((c) => {
+      const font = (c.value as { font?: { id?: string } }).font;
+      return font?.id === "jetbrains";
+    })).toBe(true);
+  });
+
+  it("does not throw when read fails; state stays unchanged", async () => {
+    const cap = makeCapability({ readError: true });
+    const fontBefore = getTerminalPrefsSnapshot().font;
+    connectTerminalSettings(cap);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getTerminalPrefsSnapshot().font).toEqual(fontBefore);
   });
 });

@@ -144,6 +144,7 @@ function concretizeCatalogPath(routePath: string): string {
   return routePath
     .replaceAll(":sessionId", "missing-session")
     .replaceAll(":theaterId", "missing-theater")
+    .replaceAll(":pluginId", "terminal")
     .replaceAll(":id", "missing-carrier")
     .replaceAll(":cliType", "claude")
     .replaceAll(":cli", "claude-kimi");

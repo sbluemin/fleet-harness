@@ -37,6 +37,7 @@ export interface PluginInstallContext {
   readonly notifications: ClientNotificationsCapability;
   readonly operations: ClientOperationsCapability;
   readonly preferences: ClientPreferencesCapability;
+  readonly settings: ClientSettingsCapability;
   readonly status: ClientOperationStatusCapability;
 }
 
@@ -75,6 +76,11 @@ export interface ClientPreferencesCapability {
   write<T>(key: string, value: T): void;
 }
 
+export interface ClientSettingsCapability {
+  read(pluginId: string): Promise<Record<string, unknown> | null>;
+  write(pluginId: string, value: Record<string, unknown>): Promise<void>;
+}
+
 export interface UseOperationsResult {
   readonly operations: readonly OperationNode[];
   readonly refresh: () => Promise<void>;
@@ -107,6 +113,7 @@ export interface OperationRenderContext extends OperationContext {
   readonly notifications: ClientNotificationsCapability;
   readonly operations: ClientOperationsCapability;
   readonly preferences: ClientPreferencesCapability;
+  readonly settings: ClientSettingsCapability;
   readonly status: ClientOperationStatusCapability;
   readonly onActivate: () => void;
   readonly onClose: () => void;

@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
-import { createCuratedTerminalFontSettings, createCustomTerminalFontSettings, createDefaultTerminalFontSettings, parseStoredTerminalFontSettings, serializeTerminalFontSettings } from "./terminal-font.js";
+import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
+
+import { createCuratedTerminalFontSettings, createCustomTerminalFontSettings, createDefaultTerminalFontSettings, parseStoredTerminalFontSettings, parseTerminalFontSettingsValue, serializeTerminalFontSettings } from "./terminal-font.js";
 import type { TerminalFontId, TerminalFontSettings, TerminalRenderer } from "./types.js";
 
 interface TerminalPrefsState {
@@ -18,6 +20,8 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 
 let state: TerminalPrefsState = initState();
+let settingsCapability: ClientSettingsCapability | null = null;
+let fontWriteEpoch = 0;
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
@@ -43,6 +47,99 @@ export function migrateLegacyTerminalPrefs(): void {
     window.localStorage.removeItem(LEGACY_FONT_KEY);
   } catch {
     // localStorage 접근 실패 시 in-memory 기본값 유지.
+  }
+}
+
+export function connectTerminalSettings(settings: ClientSettingsCapability): void {
+  // 재연결 시 진행 중인 이전 하이드레이션이 낡은 결과를 채택하지 못하도록 epoch를 올려 폐기한다.
+  fontWriteEpoch += 1;
+  settingsCapability = settings;
+  void hydrateFontFromServer();
+}
+
+export function getTerminalPrefsSnapshot(): TerminalPrefsState {
+  return state;
+}
+
+export function useTerminalPrefs(): TerminalPrefsState {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function useTerminalRenderer(): TerminalRenderer {
+  return useSyncExternalStore(subscribe, () => state.renderer, () => state.renderer);
+}
+
+export function useTerminalFontSettings(): TerminalFontSettings {
+  return useSyncExternalStore(subscribe, () => state.font, () => state.font);
+}
+
+export function setTerminalRenderer(renderer: TerminalRenderer): void {
+  writeStoredRenderer(renderer);
+  patchState({ renderer });
+}
+
+export function setTerminalFont(fontId: TerminalFontId): void {
+  const font = createCuratedTerminalFontSettings(fontId, state.font.size);
+  fontWriteEpoch += 1;
+  patchState({ font });
+  void pushFontToServer(font);
+}
+
+export function setCustomTerminalFont(customName: string): void {
+  const font = createCustomTerminalFontSettings(customName, state.font.size);
+  fontWriteEpoch += 1;
+  patchState({ font });
+  void pushFontToServer(font);
+}
+
+export function setTerminalFontSize(size: number): void {
+  const font = state.font.source === "custom"
+    ? createCustomTerminalFontSettings(state.font.customName, size)
+    : createCuratedTerminalFontSettings(state.font.id, size);
+  fontWriteEpoch += 1;
+  patchState({ font });
+  void pushFontToServer(font);
+}
+
+async function hydrateFontFromServer(): Promise<void> {
+  if (!settingsCapability) return;
+  const epoch = fontWriteEpoch;
+  try {
+    const value = await settingsCapability.read("terminal");
+    if (value !== null) {
+      const parsed = parseTerminalFontSettingsValue(value["font"]);
+      if (parsed !== null) {
+        if (epoch !== fontWriteEpoch) return;
+        patchState({ font: parsed });
+        try { window.localStorage.removeItem(FONT_KEY); } catch { /* best-effort */ }
+        return;
+      }
+    }
+    // 서버 값 부재 — 1회 시드 마이그레이션
+    if (typeof window !== "undefined") {
+      let stored: string | null = null;
+      try { stored = window.localStorage.getItem(FONT_KEY); } catch { /* best-effort */ }
+      if (stored !== null) {
+        const parsed = parseStoredTerminalFontSettings(stored);
+        if (epoch !== fontWriteEpoch) return;
+        patchState({ font: parsed });
+        void pushFontToServer(parsed);
+        try { window.localStorage.removeItem(FONT_KEY); } catch { /* best-effort */ }
+      }
+    }
+  } catch {
+    // best-effort — read 실패 시 조용히 현 상태 유지.
+  }
+}
+
+async function pushFontToServer(font: TerminalFontSettings): Promise<void> {
+  if (!settingsCapability) return;
+  try {
+    await settingsCapability.write("terminal", {
+      font: { source: font.source, id: font.id, customName: font.customName, size: font.size },
+    });
+  } catch {
+    // best-effort — write 실패 시 조용히 무시한다.
   }
 }
 
@@ -74,15 +171,6 @@ function writeStoredRenderer(renderer: TerminalRenderer): void {
   }
 }
 
-function writeStoredFont(font: TerminalFontSettings): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(FONT_KEY, serializeTerminalFontSettings(font));
-  } catch {
-    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
-  }
-}
-
 function emit(): void {
   for (const listener of listeners) listener();
 }
@@ -99,41 +187,4 @@ function subscribe(listener: Listener): () => void {
 
 function getSnapshot(): TerminalPrefsState {
   return state;
-}
-
-export function useTerminalPrefs(): TerminalPrefsState {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function useTerminalRenderer(): TerminalRenderer {
-  return useSyncExternalStore(subscribe, () => state.renderer, () => state.renderer);
-}
-
-export function useTerminalFontSettings(): TerminalFontSettings {
-  return useSyncExternalStore(subscribe, () => state.font, () => state.font);
-}
-
-export function setTerminalRenderer(renderer: TerminalRenderer): void {
-  writeStoredRenderer(renderer);
-  patchState({ renderer });
-}
-
-export function setTerminalFont(fontId: TerminalFontId): void {
-  const font = createCuratedTerminalFontSettings(fontId, state.font.size);
-  writeStoredFont(font);
-  patchState({ font });
-}
-
-export function setCustomTerminalFont(customName: string): void {
-  const font = createCustomTerminalFontSettings(customName, state.font.size);
-  writeStoredFont(font);
-  patchState({ font });
-}
-
-export function setTerminalFontSize(size: number): void {
-  const font = state.font.source === "custom"
-    ? createCustomTerminalFontSettings(state.font.customName, size)
-    : createCuratedTerminalFontSettings(state.font.id, size);
-  writeStoredFont(font);
-  patchState({ font });
 }

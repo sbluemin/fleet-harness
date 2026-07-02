@@ -6,6 +6,7 @@ import type {
   ClientApiCapability,
   ClientOperationStatusCapability,
   ClientPreferencesCapability,
+  ClientSettingsCapability,
   FleetClientPlugin,
   OperationActivity,
   OperationKindDescriptor,
@@ -16,6 +17,11 @@ import type {
 export interface BoundPluginApi {
   readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
   readonly subscribe: (path: string, onMessage: (event: MessageEvent<string>) => void) => () => void;
+}
+
+export interface BoundPluginSettings {
+  readonly read: () => Promise<Record<string, unknown> | null>;
+  readonly write: (value: Record<string, unknown>) => Promise<void>;
 }
 
 export interface BoundOperationStatus {
@@ -104,6 +110,24 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       read: (key, fallback) => readPreference(key, fallback),
       write: (key, value) => writePreference(key, value),
     },
+    settings: {
+      read: async (pluginId) => {
+        const response = await fetch(resolvePluginSettingsPath(pluginId));
+        if (!response.ok) throw new ApiError(response.status, `Plugin settings read failed: ${response.status}`);
+        const payload = await response.json() as { readonly value?: unknown };
+        const value = payload.value;
+        if (typeof value === "object" && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
+        return null;
+      },
+      write: async (pluginId, value) => {
+        const response = await fetch(resolvePluginSettingsPath(pluginId), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(value),
+        });
+        if (!response.ok) throw new ApiError(response.status, `Plugin settings write failed: ${response.status}`);
+      },
+    },
     status: {
       set: () => undefined,
       clear: () => undefined,
@@ -136,6 +160,13 @@ export function usePluginApi(api: ClientApiCapability, pluginId: string): BoundP
   }), [api, pluginId]);
 }
 
+export function usePluginSettings(settings: ClientSettingsCapability, pluginId: string): BoundPluginSettings {
+  return React.useMemo(() => ({
+    read: () => settings.read(pluginId),
+    write: (value) => settings.write(pluginId, value),
+  }), [settings, pluginId]);
+}
+
 export function usePluginStorage<T>(preferences: ClientPreferencesCapability, key: string, fallback: T): [T, (next: T) => void] {
   const [value, setValue] = React.useState<T>(() => preferences.read(key, fallback));
   const write = React.useCallback((next: T) => {
@@ -162,6 +193,14 @@ function resolvePluginPath(pluginId: string, path: string): string {
   const suffix = path.startsWith("/") ? path : `/${path}`;
   if (suffix.includes("..")) throw new ApiError(400, "Invalid plugin path");
   return `/plugins/${pluginId}${suffix}`;
+}
+
+// 서버(core/host console-settings의 PLUGIN_ID_PATTERN)와 동일 패턴 — SDK는 core를 import할 수 없어 사본을 유지한다.
+const PLUGIN_SETTINGS_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+
+function resolvePluginSettingsPath(pluginId: string): string {
+  if (!PLUGIN_SETTINGS_ID_PATTERN.test(pluginId)) throw new ApiError(400, "Invalid plugin id");
+  return `/api/v1/settings/plugins/${encodeURIComponent(pluginId)}`;
 }
 
 function readPreference<T>(key: string, fallback: T): T {
