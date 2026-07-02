@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-07-02
+
+### Fixed
+- [fleet-console] Restored the Codex Drydock patch review flow: pending patches now render as a compact, clickable list, each opens its proposed wiki document in the Codex reading view, and can be approved or rejected with a reason from the rail or the expanded reading overlay.
+- [fleet-console] Disabled unsupported Claude Kimi and Claude GLM launch options in Operation Controls.
+- [fleet-console] Korean IME input now keeps composed text together when Shift+Enter inserts a newline in terminal panels.
+
 ## [1.16.0] - 2026-06-30
 
 ### Added
