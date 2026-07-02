@@ -1,0 +1,104 @@
+import { useSyncExternalStore } from "react";
+
+import type { SkillListItem, SkillSearchItem } from "../server/types.js";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+export type ActiveTab = "installed" | "find";
+export type Scope = "project" | "global";
+
+interface SkillsState {
+  readonly activeTab: ActiveTab;
+  readonly scope: Scope;
+  readonly filterText: string;
+  readonly searchQuery: string;
+  readonly searchResults: readonly SkillSearchItem[];
+  readonly searchLoading: boolean;
+  readonly installedList: readonly SkillListItem[];
+  readonly installedLoading: boolean;
+  readonly updateJobId: string | null;
+  readonly updateJobScope: Scope | null;
+  readonly installFormOpenId: string | null;
+}
+
+type Listener = () => void;
+
+// ─── constants ───────────────────────────────────────────────────────────────
+
+const DEFAULT_STATE: SkillsState = {
+  activeTab: "installed",
+  scope: "project",
+  filterText: "",
+  searchQuery: "",
+  searchResults: [],
+  searchLoading: false,
+  installedList: [],
+  installedLoading: false,
+  updateJobId: null,
+  updateJobScope: null,
+  installFormOpenId: null,
+};
+
+// ─── module state ─────────────────────────────────────────────────────────────
+
+const listeners = new Set<Listener>();
+let state: SkillsState = DEFAULT_STATE;
+
+// ─── functions ───────────────────────────────────────────────────────────────
+
+function emit(): void {
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function getSnapshot(): SkillsState {
+  return state;
+}
+
+export function useSkillsStore(): SkillsState {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function setActiveTab(tab: ActiveTab): void {
+  state = { ...state, activeTab: tab };
+  emit();
+}
+
+export function setScope(scope: Scope): void {
+  state = { ...state, scope };
+  emit();
+}
+
+export function setFilterText(filterText: string): void {
+  state = { ...state, filterText };
+  emit();
+}
+
+export function setSearchQuery(searchQuery: string): void {
+  state = { ...state, searchQuery };
+  emit();
+}
+
+export function setSearchState(results: readonly SkillSearchItem[], loading: boolean): void {
+  state = { ...state, searchResults: results, searchLoading: loading };
+  emit();
+}
+
+export function setInstalledState(list: readonly SkillListItem[], loading: boolean): void {
+  state = { ...state, installedList: list, installedLoading: loading };
+  emit();
+}
+
+export function setUpdateJob(jobId: string | null, scope: Scope | null): void {
+  state = { ...state, updateJobId: jobId, updateJobScope: scope };
+  emit();
+}
+
+export function setInstallFormOpenId(id: string | null): void {
+  state = { ...state, installFormOpenId: id };
+  emit();
+}

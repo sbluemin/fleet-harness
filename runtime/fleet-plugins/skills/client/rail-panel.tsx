@@ -1,4 +1,12 @@
+import { useState } from "react";
+
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+
+import type { SkillListItem } from "../server/types.js";
+import { FindTab } from "./find-tab.js";
+import { InstalledTab } from "./installed-tab.js";
+import "./skills.css";
+import { setActiveTab, useSkillsStore } from "./skills-store.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -8,10 +16,66 @@ interface SkillsPanelProps {
 
 // ─── SkillsPanel ─────────────────────────────────────────────────────────────
 
-function SkillsPanel({ ctx: _ctx }: SkillsPanelProps) {
+function SkillsPanel({ ctx }: SkillsPanelProps) {
+  const { theaterId } = ctx;
+  const { activeTab, installedList } = useSkillsStore();
+  const [readMoreSkill, setReadMoreSkill] = useState<SkillListItem | null>(null);
+
+  const installedCount = installedList.length;
+
+  if (!theaterId && activeTab === "installed") {
+    // Show empty state with Theater hint — still render tab shell
+  }
+
   return (
-    <div className="skills-root skills-placeholder">
-      <p className="skills-placeholder-text">Skills panel — W2 implementation pending.</p>
+    <div className="skills-root">
+      <div className="skills-tab-bar" role="tablist" aria-label="Skills panels">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "installed"}
+          className={`skills-tab-btn${activeTab === "installed" ? " is-active" : ""}`}
+          onClick={() => setActiveTab("installed")}
+        >
+          Installed{installedCount > 0 ? ` ${installedCount}` : ""}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "find"}
+          className={`skills-tab-btn${activeTab === "find" ? " is-active" : ""}`}
+          onClick={() => setActiveTab("find")}
+        >
+          Find
+        </button>
+      </div>
+
+      {activeTab === "installed" ? (
+        <InstalledTab
+          theaterId={theaterId}
+          onReadMore={setReadMoreSkill}
+        />
+      ) : (
+        <FindTab
+          theaterId={theaterId}
+          onReadMore={setReadMoreSkill}
+        />
+      )}
+
+      {/* ReadingOverlay renders here in W3 */}
+      {readMoreSkill && (
+        <div className="skills-overlay-placeholder" onClick={() => setReadMoreSkill(null)}>
+          <div className="skills-overlay-placeholder-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="skills-overlay-header">
+              <span>{readMoreSkill.name}</span>
+              <button type="button" onClick={() => setReadMoreSkill(null)} aria-label="Close">✕</button>
+            </div>
+            <div className="skills-overlay-body">
+              <p className="skills-empty-state">Reading overlay — W3 implementation pending.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -26,7 +90,6 @@ function SkillsIcon() {
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinejoin="round"
-        fill="none"
       />
     </svg>
   );
