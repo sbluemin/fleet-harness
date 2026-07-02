@@ -23,8 +23,6 @@ interface FlatRow {
   readonly isLoading: boolean;
 }
 
-type WatchState = "inactive" | "watching" | "degraded";
-
 const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
@@ -98,7 +96,6 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
-  const [watchState, setWatchState] = useState<WatchState>("inactive");
   const treeRef = useRef<HTMLDivElement>(null);
 
   // SSE 핸들러가 최신 상태를 참조하도록 ref로 유지
@@ -137,10 +134,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
 
   // SSE 자동 새로고침 — theaterId/files 변경 시 재구독, 언마운트 시 close
   useEffect(() => {
-    if (!theaterId) {
-      setWatchState("inactive");
-      return;
-    }
+    if (!theaterId) return;
 
     let isFirstOpen = true;
     const url = `/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}`;
@@ -154,10 +148,6 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
         }).catch(() => {});
       }
     };
-
-    es.addEventListener("state", (e) => {
-      setWatchState((e as MessageEvent).data as WatchState);
-    });
 
     es.addEventListener("change", (e) => {
       const relDir = (e as MessageEvent).data as string;
@@ -184,7 +174,6 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
 
     return () => {
       es.close();
-      setWatchState("inactive");
     };
   }, [theaterId, files]);
 
@@ -295,9 +284,6 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
         >
           ↻
         </button>
-        {watchState === "watching" && (
-          <span className="fexp-watch-dot" aria-hidden="true" />
-        )}
         <button
           type="button"
           className={`fexp-hidden-toggle${showHidden ? " is-active" : ""}`}
