@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildAgentCliLaunchKinds } from "../server/agent-api/agent-cli-launch-kinds.js";
 
 describe("buildAgentCliLaunchKinds", () => {
-  it("Claude Kimi와 Claude GLM을 Operation Controls에서 미지원으로 비활성화한다", () => {
+  it("Claude Kimi와 Claude GLM을 Operation Controls 목록에서 숨긴다", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude", label: "Claude", available: true, signedIn: true },
@@ -16,8 +16,6 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       { id: "claude", type: "agent", title: "Claude" },
-      { id: "claude-kimi", type: "agent", title: "Claude Kimi", disabled: true, disabledReason: "Not supported" },
-      { id: "claude-glm", type: "agent", title: "Claude GLM", disabled: true, disabledReason: "Not supported" },
       { id: "codex", type: "agent", title: "Codex" },
     ]);
   });
