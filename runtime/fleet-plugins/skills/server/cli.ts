@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { resolvePathBinary } from "@dotobokuri/core-agent";
+
 // ─── types ───────────────────────────────────────────────────────────────────
 
 export interface CliResult {
@@ -52,21 +54,38 @@ export function resetCliStateForTest(): void {
   _bootstrapPromise = null;
 }
 
+// Windows에서 `npm`은 `npm.cmd` 셸 심(shim)이라 execFile(shell:false)로 직접 못 띄운다
+// (ENOENT, 패치된 Node에서는 .cmd 직접 spawn이 EINVAL). core-agent의 resolvePathBinary가
+// PATH/PATHEXT 탐색 + `cmd.exe /d /s /c call <npm.cmd>` 래핑을 담당한다 — terminal 플러그인과
+// 동일한 크로스플랫폼 정공법. POSIX는 `npm`이 그대로 실행되므로 변환하지 않는다.
+export function resolveNpmCommand(
+  npmArgs: string[],
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): { file: string; args: string[] } {
+  if (platform !== "win32") return { file: "npm", args: npmArgs };
+  const resolved = resolvePathBinary("npm", env, { platform });
+  if (!resolved) throw new Error("npm binary not found on PATH");
+  return { file: resolved.bin, args: [...resolved.prefixArgs, ...npmArgs] };
+}
+
 async function runNpmInstall(cliHome: string): Promise<void> {
+  const { file, args } = resolveNpmCommand([
+    "install",
+    `${SKILLS_PACKAGE}@${SKILLS_VERSION}`,
+    "--prefix", cliHome,
+    "--global=false",
+    "--force=false",
+    "--no-audit",
+    "--no-fund",
+    "--loglevel=error",
+  ]);
   return new Promise<void>((resolve, reject) => {
     const child = execFile(
-      "npm",
-      [
-        "install",
-        `${SKILLS_PACKAGE}@${SKILLS_VERSION}`,
-        "--prefix", cliHome,
-        "--global=false",
-        "--force=false",
-        "--no-audit",
-        "--no-fund",
-        "--loglevel=error",
-      ],
-      { shell: false, timeout: BOOTSTRAP_TIMEOUT_MS },
+      file,
+      args,
+      // windowsHide: GUI 콘솔에서 하위 프로세스(cmd.exe 심 래퍼) 콘솔 창이 순간 표시되는 것을 막는다.
+      { shell: false, windowsHide: true, timeout: BOOTSTRAP_TIMEOUT_MS },
     );
     child.on("close", (code) => {
       if (code === 0) resolve();
@@ -124,7 +143,8 @@ export function createDefaultExecutor(cliHome: string): CliExecutor {
           const child = execFile(
             process.execPath,
             [mjsPath, ...args],
-            { shell: false, cwd, timeout, maxBuffer: 10 * 1024 * 1024 },
+            // windowsHide: GUI 콘솔에서 하위 node.exe 콘솔 창이 순간 표시되는 것을 막는다.
+            { shell: false, windowsHide: true, cwd, timeout, maxBuffer: 10 * 1024 * 1024 },
           );
 
           const stdoutParts: string[] = [];

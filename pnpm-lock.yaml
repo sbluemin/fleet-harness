@@ -398,6 +398,9 @@ importers:
 
   runtime/fleet-plugins/skills:
     dependencies:
+      '@dotobokuri/core-agent':
+        specifier: workspace:*
+        version: link:../../../packages/core-agent
       '@fleet-console/markdown':
         specifier: workspace:*
         version: link:../../fleet-console/markdown

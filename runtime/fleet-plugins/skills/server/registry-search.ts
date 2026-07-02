@@ -58,5 +58,10 @@ export async function searchRegistry(q: string, limit: number): Promise<SkillSea
       if (item) items.push(item);
     }
   }
+
+  // 기본 정렬: Star(설치/다운로드) 수 내림차순. 동률은 레지스트리 응답(관련도) 순서를
+  // 보존한다 — Array.prototype.sort는 안정 정렬(ES2019+).
+  items.sort((a, b) => b.installs - a.installs);
+
   return items;
 }
