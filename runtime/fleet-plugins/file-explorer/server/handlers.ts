@@ -146,7 +146,8 @@ export function handleFilesWatch(
   const unsubscribe = watcherRegistry.subscribe(
     theaterId,
     theaterPath,
-    (relDir) => sendEvent("change", relDir),
+    // 개행 포함 파일명이 SSE 필드 경계를 깨지 않도록 JSON으로 프레이밍한다
+    (relDir) => sendEvent("change", JSON.stringify(relDir)),
     (state) => sendEvent("state", state),
   );
 

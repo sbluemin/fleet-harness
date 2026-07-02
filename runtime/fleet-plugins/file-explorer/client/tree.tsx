@@ -118,7 +118,10 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
 
   useEffect(() => {
     if (!theaterId) return;
-    files.listFolder(currentPath || undefined).then(setResult).catch((e: unknown) => {
+    files.listFolder(currentPath || undefined).then((r) => {
+      setResult(r);
+      setError(null);
+    }).catch((e: unknown) => {
       setError(e instanceof Error ? e.message : "Unable to load folder");
     });
   }, [theaterId, currentPath, files]);
@@ -140,8 +143,16 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     const url = `/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}`;
     const es = new EventSource(url);
 
+    // 루트 재조회 성공 시 stale error를 함께 걷어 에러 화면에서 회복한다
+    const reloadRoot = () => {
+      filesRef.current.listFolder(currentPathRef.current || undefined).then((r) => {
+        setResult(r);
+        setError(null);
+      }).catch(() => {});
+    };
+
     const doFullRefresh = () => {
-      filesRef.current.listFolder(currentPathRef.current || undefined).then(setResult).catch(() => {});
+      reloadRoot();
       for (const relPath of expandedDirsRef.current) {
         filesRef.current.listFolder(relPath).then((r) => {
           setChildResults((prev) => new Map(prev).set(relPath, r));
@@ -150,10 +161,17 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     };
 
     es.addEventListener("change", (e) => {
-      const relDir = (e as MessageEvent).data as string;
+      // 서버가 JSON 프레이밍한 상대경로 — 개행 포함 파일명도 안전하게 전달된다
+      let relDir: string;
+      try {
+        relDir = JSON.parse((e as MessageEvent).data as string) as string;
+      } catch {
+        return;
+      }
+      if (typeof relDir !== "string") return;
       // 루트 레벨 변경 또는 현재 탐색 경로 변경
       if (relDir === "" || relDir === currentPathRef.current) {
-        filesRef.current.listFolder(currentPathRef.current || undefined).then(setResult).catch(() => {});
+        reloadRoot();
       }
       // 펼쳐진 폴더에 해당하면 해당 폴더만 재조회
       if (relDir !== "" && expandedDirsRef.current.has(relDir)) {
@@ -222,8 +240,11 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
 
   const handleRefresh = useCallback(() => {
     if (!theaterId) return;
-    // 루트 재조회
-    files.listFolder(currentPath || undefined).then(setResult).catch((e: unknown) => {
+    // 루트 재조회 — 성공 시 stale error를 걷어 에러 화면에서도 복구 가능하게 한다
+    files.listFolder(currentPath || undefined).then((r) => {
+      setResult(r);
+      setError(null);
+    }).catch((e: unknown) => {
       setError(e instanceof Error ? e.message : "Unable to load folder");
     });
     // 펼쳐진 모든 폴더 재조회
