@@ -396,6 +396,31 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
+  runtime/fleet-plugins/skills:
+    dependencies:
+      '@fleet-console/markdown':
+        specifier: workspace:*
+        version: link:../../fleet-console/markdown
+      '@fleet-console/sdk':
+        specifier: workspace:*
+        version: link:../../fleet-console/sdk
+      react:
+        specifier: ^19.2.3
+        version: 19.2.7
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.2.17
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+
   runtime/fleet-plugins/terminal:
     dependencies:
       '@dotobokuri/core-agent':

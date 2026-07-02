@@ -1,0 +1,7 @@
+{
+  "id": "skills",
+  "name": "Skills",
+  "apiVersion": 1,
+  "routes": "routes.ts",
+  "client": "client/index.tsx"
+}
