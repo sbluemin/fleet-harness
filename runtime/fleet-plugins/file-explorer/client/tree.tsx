@@ -272,7 +272,9 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
   const offsetY = startIdx * ROW_HEIGHT;
 
   if (!theaterId) return <div className="fexp-tree-empty">Select a Theater</div>;
-  if (error) return <div className="fexp-tree-error">{error}</div>;
+  // 전체 에러 화면은 보여줄 트리가 아예 없을 때(초기 로드 실패)만 —
+  // 이전 result가 있으면 트리를 유지해 ↻ 재시도 경로를 보존한다
+  if (error && !result) return <div className="fexp-tree-error">{error}</div>;
   if (!result) return <div className="fexp-tree-loading">Loading…</div>;
 
   return (
