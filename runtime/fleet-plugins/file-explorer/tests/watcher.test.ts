@@ -110,7 +110,7 @@ describe("createWatcherRegistry", () => {
 
     vi.advanceTimersByTime(100);
     expect(onChange).toHaveBeenCalledTimes(2);
-    const dirs = onChange.mock.calls.map(([d]: [string]) => d).sort();
+    const dirs = onChange.mock.calls.map(([d]) => d).sort();
     expect(dirs).toEqual(["lib", "src"]);
 
     unsub();
