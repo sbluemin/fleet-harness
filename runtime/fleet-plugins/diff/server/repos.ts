@@ -1,3 +1,4 @@
+import type { Dir } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
@@ -62,7 +63,7 @@ export async function scanRepos(
   if (currentDepth >= maxDepth) return false;
 
   // 하위 디렉터리 DFS 순회 (node_modules, .git 내부 제외)
-  let dirHandle: fs.Dir | null = null;
+  let dirHandle: Dir | null = null;
   try {
     dirHandle = await fs.opendir(dir);
     try {
