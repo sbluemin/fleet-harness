@@ -193,6 +193,56 @@ describe("createWatcherRegistry", () => {
     expect(mockClose).toHaveBeenCalledOnce();
   });
 
+  it("Windows 백슬래시 경로도 list API와 동일한 OS-native 구분자로 발화한다", () => {
+    let watchCb: ((event: string, filename: string | null) => void) | undefined;
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_, __, cb) => {
+      watchCb = cb;
+      return { close: vi.fn(), on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50);
+
+    const onChange = vi.fn();
+    const unsub = registry.subscribe("t1", "/path", onChange, () => {});
+
+    watchCb!("change", "src\\nested\\file.ts");
+    vi.advanceTimersByTime(100);
+
+    // path.relative가 만드는 클라이언트 저장값(src\nested)과 동일해야 한다
+    expect(onChange).toHaveBeenCalledWith("src\\nested");
+    unsub();
+  });
+
+  it("error 후 옛 구독 해제가 교체 watcher를 레지스트리에서 제거하지 않는다", () => {
+    const errorCbs: Array<(error: Error) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation(() => {
+      const close = vi.fn();
+      closes.push(close);
+      return {
+        close,
+        on: vi.fn().mockImplementation((event: string, cb: (error: Error) => void) => {
+          if (event === "error") errorCbs.push(cb);
+        }),
+      };
+    });
+    const registry = createWatcherRegistry(mockFactory);
+
+    const unsubOld = registry.subscribe("t1", "/path", () => {}, vi.fn());
+    errorCbs[0]!(new Error("EPERM"));
+
+    // 교체 watcher 생성 (2번째 factory 호출)
+    registry.subscribe("t1", "/path", () => {}, vi.fn());
+    expect(mockFactory).toHaveBeenCalledTimes(2);
+
+    // 옛 구독 해제 — 교체 entry를 지우면 안 된다
+    unsubOld();
+
+    // 교체 entry가 살아있으면 재구독은 watcher를 재사용한다 (3번째 factory 호출 없음)
+    registry.subscribe("t1", "/path", () => {}, vi.fn());
+    expect(mockFactory).toHaveBeenCalledTimes(2);
+    expect(closes[1]).not.toHaveBeenCalled();
+  });
+
   it("watcher 런타임 error 시 구독자 전원에게 degraded를 알리고 정리한다", () => {
     let errorCb: ((error: Error) => void) | undefined;
     const mockClose = vi.fn();

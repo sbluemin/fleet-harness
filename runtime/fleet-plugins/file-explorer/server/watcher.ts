@@ -59,7 +59,8 @@ export function createWatcherRegistry(
       if (entry.subscriberCount <= 0) {
         for (const t of entry.debounceTimers.values()) clearTimeout(t);
         entry.watcher.close();
-        entries.delete(theaterId);
+        // error 이후 교체된 새 entry를 지우지 않도록 동일 entry일 때만 제거한다
+        if (entries.get(theaterId) === entry) entries.delete(theaterId);
       }
     };
   }
@@ -103,17 +104,19 @@ export function createWatcherRegistry(
       return () => {};
     }
 
+    const entry: WatcherEntry = { watcher, subscribers, stateSubscribers, subscriberCount: 1, debounceTimers };
+
     // 감시 런타임 오류(감시 대상 삭제 등): unhandled 'error'로 프로세스가 죽지 않도록
     // 구독자 전원에게 degrade를 알리고 watcher를 정리한다. SSE 연결 자체는 유지된다.
     watcher.on("error", () => {
       for (const t of debounceTimers.values()) clearTimeout(t);
       debounceTimers.clear();
       try { watcher.close(); } catch { /* 이미 닫힌 경우 무시 */ }
-      entries.delete(theaterId);
+      // 교체된 새 entry를 지우지 않도록 동일 entry일 때만 제거한다
+      if (entries.get(theaterId) === entry) entries.delete(theaterId);
       for (const notify of stateSubscribers) notify("degraded");
     });
 
-    const entry: WatcherEntry = { watcher, subscribers, stateSubscribers, subscriberCount: 1, debounceTimers };
     entries.set(theaterId, entry);
     subscribers.add(onChange);
     stateSubscribers.add(onState);
@@ -129,10 +132,10 @@ export const watcherRegistry: WatcherRegistry = createWatcherRegistry();
 
 function computeRelDir(filename: string | null): string {
   if (!filename) return "";
-  // OS 구분자를 포워드슬래시로 정규화
-  const normalized = filename.replace(/\\/g, "/");
-  const lastSlash = normalized.lastIndexOf("/");
-  // 루트 레벨 파일(슬래시 없음 또는 맨 앞에만)이면 루트 dir('')로
-  if (lastSlash <= 0) return "";
-  return normalized.slice(0, lastSlash);
+  // 구분자를 변환하지 않는다 — files/list의 relativePath(path.relative, OS-native 구분자)와
+  // 동일한 형태여야 클라이언트의 expandedDirs 비교가 Windows에서도 일치한다.
+  const lastSep = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
+  // 루트 레벨 파일(구분자 없음 또는 맨 앞에만)이면 루트 dir('')로
+  if (lastSep <= 0) return "";
+  return filename.slice(0, lastSep);
 }
