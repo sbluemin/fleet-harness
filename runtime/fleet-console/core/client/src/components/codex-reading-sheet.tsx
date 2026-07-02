@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { mountReaderInto, saveReaderScroll } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
+import { loadInitialData } from "../codex/state.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,15 @@ export function CodexReadingSheet() {
         expandCodexReader();
       },
       onClose: closeReading,
+      onPatchOpen: (pid) => {
+        openCodexReader({ kind: "drydock", patchId: pid });
+        expandCodexReader();
+      },
+      onDecided: () => {
+        void loadInitialData();
+        openCodexReader({ kind: "drydock", patchId: undefined });
+        expandCodexReader();
+      },
     });
 
     requestAnimationFrame(() => {

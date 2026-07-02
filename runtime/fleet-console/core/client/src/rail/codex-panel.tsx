@@ -12,6 +12,7 @@ import {
   teardownReaderNodes,
 } from "../codex-host.js";
 import { closeCodexReader, expandCodexReader, openCodexReader } from "../store.js";
+import { loadInitialData } from "../codex/state.js";
 
 // ─── Rail panel descriptor ────────────────────────────────────────────────────
 
@@ -95,6 +96,11 @@ function CodexRailPanel() {
       theaterId: activeTheaterId,
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
       onClose: () => closeCodexReader(),
+      onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
+      onDecided: () => {
+        void loadInitialData();
+        openCodexReader({ kind: "drydock", patchId: undefined });
+      },
     });
   }, [shouldMountCodex, activeTheaterId, hasReader, expanded, readerKey]);
 
