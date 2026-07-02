@@ -178,6 +178,41 @@
   color: inherit;
 }
 
+/* Frontmatter metadata card — YAML frontmatter (---) extracted in core.ts and
+   rendered as a key/value manifest instead of a mangled setext heading. Keys
+   are mono uppercase eyebrows (brass), values body ink, on a glass surface
+   consistent with the Maritime "MANIFEST" language. */
+.markdown-body .frontmatter {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-5);
+  align-items: baseline;
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-mid) 40%, transparent);
+}
+
+.markdown-body .frontmatter dt {
+  margin: 0;
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.markdown-body .frontmatter dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink-spectral);
+  font-size: var(--font-size-lg);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .markdown-body table {
   width: 100%;
   border-collapse: collapse;

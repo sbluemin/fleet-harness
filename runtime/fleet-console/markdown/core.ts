@@ -24,10 +24,29 @@ export interface RenderMarkdownOptions {
   resolveWikiLink?: (id: string) => string | null;
 }
 
+interface FrontmatterEntry {
+  key: string;
+  value: string;
+}
+
+interface ExtractedFrontmatter {
+  entries: FrontmatterEntry[];
+  content: string;
+}
+
 // SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
 // Inlined here because the client (Vite SPA) bundle cannot transitively pull
 // fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
 const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
+
+// Leading YAML frontmatter fence: `---` on the first line through a closing
+// `---`. Without this, marked treats the closing `---` as a setext heading
+// underline and folds the whole block into one <h2>. We strip it and render a
+// dedicated metadata card instead. BOM-tolerant; CRLF-tolerant.
+const FRONTMATTER_PATTERN = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+// A top-level `key: value` line inside the frontmatter block. Indented lines
+// and list items (`- item`) are folded into the previous entry's value.
+const FRONTMATTER_ENTRY_PATTERN = /^(\S[^:]*?):[ \t]*(.*)$/;
 
 const marked = new Marked({
   gfm: true,
@@ -40,9 +59,11 @@ const sanitizeConfig = {
 const highlighter = configureHighlighter();
 
 export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}): RenderedMarkdown {
-  const bodyWithWikiLinks = renderWikiLinks(body, options.resolveWikiLink);
+  const { entries, content } = extractFrontmatter(body);
+  const bodyWithWikiLinks = renderWikiLinks(content, options.resolveWikiLink);
   const rawHtml = marked.parse(bodyWithWikiLinks, { async: false }) as string;
-  const safeHtml = DOMPurify.sanitize(rawHtml, sanitizeConfig);
+  const frontmatterHtml = renderFrontmatterCard(entries);
+  const safeHtml = DOMPurify.sanitize(frontmatterHtml + rawHtml, sanitizeConfig);
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
   removeDuplicateTitleHeading(document, options.omitDuplicateTitle);
   decorateHeadings(document);
@@ -67,6 +88,41 @@ export function decodeMermaidSource(encoded: string): string {
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return new TextDecoder().decode(bytes);
+}
+
+function extractFrontmatter(body: string): ExtractedFrontmatter {
+  const match = FRONTMATTER_PATTERN.exec(body);
+  if (!match) return { entries: [], content: body };
+  const entries = parseFrontmatterEntries(match[1] ?? "");
+  return { entries, content: body.slice(match[0].length) };
+}
+
+function parseFrontmatterEntries(block: string): FrontmatterEntry[] {
+  const entries: FrontmatterEntry[] = [];
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+$/, "");
+    if (line.trim() === "") continue;
+    const entryMatch = FRONTMATTER_ENTRY_PATTERN.exec(line);
+    if (entryMatch) {
+      const [, key = "", value = ""] = entryMatch;
+      entries.push({ key: key.trim(), value: value.trim() });
+      continue;
+    }
+    // Indented continuation or list item: fold into the previous entry's value.
+    const previous = entries[entries.length - 1];
+    if (!previous) continue;
+    const folded = line.trim();
+    previous.value = previous.value ? `${previous.value} ${folded}` : folded;
+  }
+  return entries;
+}
+
+function renderFrontmatterCard(entries: FrontmatterEntry[]): string {
+  if (entries.length === 0) return "";
+  const rows = entries
+    .map((entry) => `<dt>${escapeHtml(entry.key)}</dt><dd>${escapeHtml(entry.value)}</dd>`)
+    .join("");
+  return `<dl class="frontmatter">${rows}</dl>`;
 }
 
 function renderWikiLinks(body: string, resolveWikiLink?: (id: string) => string | null): string {

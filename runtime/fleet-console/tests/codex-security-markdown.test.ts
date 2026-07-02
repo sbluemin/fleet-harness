@@ -88,4 +88,50 @@ describe("security markdown", () => {
     expect(decoded).toContain("<script>alert(1)</script>");
     expect(decoded).toContain("onclick=");
   });
+
+  it("renders leading YAML frontmatter as a metadata card, not a heading", () => {
+    const body = [
+      "---",
+      "name: frontend-design",
+      "description: Guidance for distinctive visual design.",
+      "license: Complete terms in LICENSE.txt",
+      "---",
+      "",
+      "# Frontend Design",
+      "",
+      "Body text.",
+    ].join("\n");
+    const rendered = renderMarkdown(body);
+    expect(rendered.html).toContain("<dl class=\"frontmatter\">");
+    expect(rendered.html).toContain("<dt>name</dt><dd>frontend-design</dd>");
+    expect(rendered.html).toContain("<dt>description</dt>");
+    // The closing --- must not fold the block into a setext <h2> blob.
+    expect(rendered.html).not.toContain("<h2");
+    expect(rendered.html).toContain("Body text.");
+  });
+
+  it("escapes HTML in frontmatter values", () => {
+    const rendered = renderMarkdown("---\nname: <script>alert(1)</script>\n---\n\nBody.");
+    expect(rendered.html).toContain("<dl class=\"frontmatter\">");
+    expect(rendered.html).not.toContain("<script");
+    expect(rendered.html).toContain("&lt;script&gt;");
+  });
+
+  it("keeps the frontmatter block out of the table of contents", () => {
+    const rendered = renderMarkdown("---\nname: x\n---\n\n## Real Section\n");
+    expect(rendered.toc).toHaveLength(1);
+    expect(rendered.toc[0]?.text).toBe("Real Section");
+  });
+
+  it("leaves documents without frontmatter unchanged", () => {
+    const rendered = renderMarkdown("# Title\n\nBody.");
+    expect(rendered.html).not.toContain("frontmatter");
+    expect(rendered.html).toContain("Title");
+  });
+
+  it("does not treat a mid-document --- as frontmatter", () => {
+    const rendered = renderMarkdown("Intro paragraph.\n\n---\n\nAfter.");
+    expect(rendered.html).not.toContain("frontmatter");
+    expect(rendered.html).toContain("<hr>");
+  });
 });
