@@ -144,7 +144,10 @@ describe("connectTerminalSettings / server hydration", () => {
     // 서버에 이제 값이 있음 — 재연결 시 추가 PUT 없음
     const cap2 = makeCapability({ serverValue: { font: { source: "curated", id: "fira-code", customName: "", size: 15 } } });
     connectTerminalSettings(cap2);
-    await vi.waitFor(() => cap2.putCalls.length === 0 || true);
+    // 하이드레이션이 서버 값을 채택할 때까지 대기한 뒤 재시드 PUT이 없음을 단언한다.
+    await vi.waitFor(() => getTerminalPrefsSnapshot().font.id === "fira-code");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(cap2.putCalls.length).toBe(0);
     // 첫 번째 캐파빌리티의 총 PUT은 1회여야 함
     expect(firstCallCount).toBe(1);
   });
