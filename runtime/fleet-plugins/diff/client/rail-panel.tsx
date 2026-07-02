@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffSection } from "../server/types.js";
+import type { DiffFileEntry, DiffFileMode, RepoEntry, ReposDiscoveryResult } from "../server/types.js";
 import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./diff-view-store.js";
@@ -12,21 +12,45 @@ import { HunkView } from "./hunk-view.js";
 
 type ViewMode = "list" | "tree";
 
-type HunkMode = "workdir" | "staged" | "commit" | "untracked";
-
 interface DiffPanelProps {
   readonly ctx: RailPanelContext;
+}
+
+interface RepoPickerProps {
+  readonly theaterId: string;
+  readonly repos: readonly RepoEntry[];
+  readonly loading: boolean;
+  readonly truncated?: boolean;
+  readonly activeSubPath: string;
+  readonly depth: number;
+  readonly onSelect: (relPath: string) => void;
+  readonly onDepthChange: (depth: number) => void;
+  readonly onRescan: () => void;
+  readonly onClose: () => void;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
 const PREFS_SPLIT_RATIO = "fleet-console.diff.splitRatio";
+const PREFS_DEPTH = "fleet-console.diff.depth";
+const PREFS_REPO_PREFIX = "fleet-console.diff.repo.";
+
 // 레일 패널 기본 폭(312px)·최소 폭(240px) 안에서 미리보기+리스트가 나란히 들어가도록
 // 두 최소폭 합(130+100=230)을 레일 최소폭 이하로 잡는다.
 const MIN_HUNK_PX = 130;
 const MIN_TREE_PX = 100;
 const DEFAULT_SPLIT_RATIO = 0.55;
+const DEFAULT_DEPTH = 3;
+
+const DEPTH_OPTS: readonly { readonly value: number; readonly label: string }[] = [
+  { value: 1, label: "1" },
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 4, label: "4" },
+  { value: 5, label: "5" },
+  { value: 8, label: "Max" },
+];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -49,11 +73,164 @@ function readSplitRatio(): number {
   return DEFAULT_SPLIT_RATIO;
 }
 
-// 섹션+상태에서 HunkView가 사용할 git diff 모드 결정
-function getHunkMode(selected: SelectedFile): HunkMode {
-  if (selected.section === "staged") return "staged";
+function readDepth(): number {
+  try {
+    const v = localStorage.getItem(PREFS_DEPTH);
+    if (v !== null) {
+      const n = parseInt(v, 10);
+      if (!isNaN(n) && n >= 1) return n;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_DEPTH;
+}
+
+function readSubPath(theaterId: string): string {
+  try { return localStorage.getItem(PREFS_REPO_PREFIX + theaterId) ?? ""; } catch { return ""; }
+}
+
+function saveSubPath(theaterId: string, relPath: string): void {
+  try { localStorage.setItem(PREFS_REPO_PREFIX + theaterId, relPath); } catch { /* ignore */ }
+}
+
+// subPath 상태+entry.status에서 HunkView용 모드 결정
+function getHunkMode(selected: SelectedFile): DiffFileMode {
   if (selected.entry.status === "U") return "untracked";
-  return "workdir";
+  return "unified";
+}
+
+// path basename 브라우저 환경 대체
+function basename(p: string): string {
+  return p.split("/").filter(Boolean).pop() ?? p;
+}
+
+// ─── RepoDropdown ─────────────────────────────────────────────────────────────
+
+function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelect, onDepthChange, onRescan, onClose }: RepoPickerProps) {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    // 메뉴 내부 클릭은 바깥 클릭 핸들러로 버블링되지 않도록 막는다
+    e.stopPropagation();
+  }, []);
+
+  const handleDepthSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    e.stopPropagation();
+    const val = parseInt(e.target.value, 10);
+    if (!isNaN(val)) onDepthChange(val);
+  }, [onDepthChange]);
+
+  return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div
+      className="diff-repo-menu"
+      role="listbox"
+      aria-label="Repositories"
+      onClick={handleClick}
+    >
+      <div className="diff-repo-menu-eyebrow">
+        <span>Repositories</span>
+        {!loading && <span>{repos.length} found</span>}
+      </div>
+
+      {loading ? (
+        <div className="diff-repo-scan">
+          <span className="diff-repo-spin" aria-hidden="true" />
+          Scanning to depth {depth}…
+        </div>
+      ) : repos.length === 0 ? (
+        <div className="diff-repo-empty">
+          No Git repositories within depth {depth}.
+        </div>
+      ) : (
+        repos.map((repo) => {
+          const isCur = repo.relPath === activeSubPath;
+          return (
+            <button
+              key={repo.relPath}
+              type="button"
+              role="option"
+              aria-selected={isCur}
+              className={`diff-repo-opt${isCur ? " is-cur" : ""}`}
+              onClick={() => { onSelect(repo.relPath); onClose(); }}
+            >
+              <svg className="diff-repo-mark" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                {isCur && (
+                  <path d="M3 7.5L6 10.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                )}
+              </svg>
+              <span>
+                <span className="diff-repo-line1">
+                  <span className="diff-repo-opt-name">{repo.name}</span>
+                  <span className="diff-repo-branch">
+                    <BranchIcon />
+                    <span>{repo.branch}</span>
+                  </span>
+                  {repo.relPath === "" && <span className="diff-repo-badge">root</span>}
+                </span>
+                <span className="diff-repo-opt-path">
+                  {repo.relPath === "" ? "· Theater root" : repo.relPath}
+                </span>
+              </span>
+            </button>
+          );
+        })
+      )}
+
+      {!loading && truncated && (
+        <div className="diff-repo-truncated">
+          List capped — reduce depth to see all repos.
+        </div>
+      )}
+
+      <div className="diff-repo-menu-foot">
+        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+        <label className="diff-repo-depth">
+          Depth
+          <select
+            value={depth}
+            onChange={handleDepthSelect}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {DEPTH_OPTS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="diff-repo-rescan" onClick={(e) => { e.stopPropagation(); onRescan(); }}>
+          ⟳ Rescan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── 아이콘 ───────────────────────────────────────────────────────────────────
+
+function FolderIcon() {
+  return (
+    <svg className="fico" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2 4a1 1 0 011-1h3l1.2 1.2H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BranchIcon() {
+  return (
+    <svg className="bico" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <circle cx="3" cy="3" r="1.6" stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="3" cy="9" r="1.6" stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="9" cy="3.4" r="1.6" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M3 4.6v2.8M4.4 3.2H7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M7.4 4.8C6.4 5.4 4.4 5.6 3.6 7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg className="chev" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 // ─── DiffPanel ───────────────────────────────────────────────────────────────
@@ -66,14 +243,112 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleSelectFile = useCallback((entry: DiffFileEntry, section: DiffSection) => {
+  // 저장소 피커 상태
+  const [activeSubPath, setActiveSubPath] = useState<string>(
+    () => ctx.theaterId ? readSubPath(ctx.theaterId) : "",
+  );
+  const [depth, setDepth] = useState<number>(readDepth);
+  const [repos, setRepos] = useState<RepoEntry[]>([]);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [reposTruncated, setReposTruncated] = useState(false);
+  const fetchSeqRef = useRef(0);
+  // depthRef: 렌더 중 동기 갱신 — theater useEffect에서 deps 없이 최신 depth 접근
+  const depthRef = useRef(depth);
+  depthRef.current = depth;
+
+  const fetchRepos = useCallback((currentSubPath: string, maxDepth: number) => {
     if (!ctx.theaterId) return;
-    setSelectedFile(entry, section, ctx.theaterId);
+    const seq = ++fetchSeqRef.current;
+    setReposLoading(true);
+    fetch("/plugins/diff/repos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: ctx.theaterId, maxDepth }),
+    }).then(async (res) => {
+      if (seq !== fetchSeqRef.current) return;
+      if (!res.ok) { setReposLoading(false); return; }
+      const data = await res.json() as ReposDiscoveryResult;
+      if (seq !== fetchSeqRef.current) return;
+      const fetched = data.repos as RepoEntry[];
+      setRepos(fetched);
+      setReposTruncated(data.truncated ?? false);
+      setScanned(true);
+      // Smart 기본값: theater root가 저장소가 아닌데 다른 저장소가 있으면 첫 번째로 자동 전환
+      if (currentSubPath === "" && !fetched.some((r) => r.relPath === "") && fetched.length >= 1) {
+        const first = fetched[0]!;
+        setActiveSubPath(first.relPath);
+        if (ctx.theaterId) saveSubPath(ctx.theaterId, first.relPath);
+      }
+      setReposLoading(false);
+    }).catch(() => {
+      if (seq !== fetchSeqRef.current) return;
+      setReposLoading(false);
+    });
   }, [ctx.theaterId]);
 
-  const handleCloseHunk = useCallback(() => {
+  // Theater 변경(및 마운트) 시 피커 상태 초기화 + eager fetch
+  useEffect(() => {
+    if (!ctx.theaterId) return;
+    const sp = readSubPath(ctx.theaterId);
+    setActiveSubPath(sp);
+    setRepos([]);
+    setReposTruncated(false);
+    setScanned(false);
+    setMenuOpen(false);
     clearSelectedFile();
+    fetchRepos(sp, depthRef.current);
+  }, [ctx.theaterId, fetchRepos]);
+
+  const handleTriggerClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen((open) => !open);
   }, []);
+
+  const handleCloseMenu = useCallback(() => setMenuOpen(false), []);
+
+  const handleSelectRepo = useCallback((relPath: string) => {
+    if (relPath === activeSubPath) return;
+    setActiveSubPath(relPath);
+    if (ctx.theaterId) saveSubPath(ctx.theaterId, relPath);
+    clearSelectedFile(); // 저장소 변경 시 선택 파일 초기화
+  }, [activeSubPath, ctx.theaterId]);
+
+  const handleDepthChange = useCallback((newDepth: number) => {
+    setDepth(newDepth);
+    try { localStorage.setItem(PREFS_DEPTH, String(newDepth)); } catch { /* ignore */ }
+    fetchRepos(activeSubPath, newDepth);
+  }, [fetchRepos, activeSubPath]);
+
+  const handleRescan = useCallback(() => {
+    fetchRepos(activeSubPath, depth);
+  }, [fetchRepos, activeSubPath, depth]);
+
+  // 외부 클릭으로 메뉴 닫기
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = () => setMenuOpen(false);
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [menuOpen]);
+
+  // Escape 키로 메뉴 닫기
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
+
+  const handleSelectFile = useCallback((entry: DiffFileEntry) => {
+    if (!ctx.theaterId) return;
+    setSelectedFile(entry, activeSubPath, ctx.theaterId);
+  }, [ctx.theaterId, activeSubPath]);
+
+  const handleCloseHunk = useCallback(() => { clearSelectedFile(); }, []);
 
   const handleViewMode = useCallback((next: ViewMode) => {
     setViewMode(next);
@@ -111,7 +386,13 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
-  const hunkMode: HunkMode = selectedFile ? getHunkMode(selectedFile) : "workdir";
+  // 활성 저장소 정보 — 스캔 전에는 subPath 기반 표시 이름만 사용
+  const activeRepo = repos.find((r) => r.relPath === activeSubPath) ?? null;
+  const activeName = activeRepo?.name
+    ?? (activeSubPath === "" ? "Working tree" : basename(activeSubPath) || "Working tree");
+  const activeBranch = activeRepo?.branch ?? null;
+
+  const hunkMode: DiffFileMode = selectedFile ? getHunkMode(selectedFile) : "unified";
 
   return (
     <div
@@ -135,7 +416,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
             </button>
           </div>
           <div className="diff-hunk-body">
-            <HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} />
+            <HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} />
           </div>
         </div>
       )}
@@ -148,7 +429,39 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       )}
       <div className="diff-tree-pane">
         <div className="diff-plugin-toolbar">
-          <span className="diff-toolbar-label">Working tree</span>
+          <button
+            type="button"
+            className="diff-repo-trigger"
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            onClick={handleTriggerClick}
+          >
+            <FolderIcon />
+            <span className="nm">{activeName}</span>
+            {activeBranch && (
+              <span className="brc">
+                <BranchIcon />
+                <span className="bnm">{activeBranch}</span>
+              </span>
+            )}
+            <ChevronIcon />
+          </button>
+
+          {menuOpen && (
+            <RepoDropdown
+              theaterId={ctx.theaterId ?? ""}
+              repos={repos}
+              loading={reposLoading}
+              truncated={reposTruncated}
+              activeSubPath={activeSubPath}
+              depth={depth}
+              onSelect={handleSelectRepo}
+              onDepthChange={handleDepthChange}
+              onRescan={handleRescan}
+              onClose={handleCloseMenu}
+            />
+          )}
+
           <div className="diff-view-toggle">
             <button
               type="button"
@@ -183,7 +496,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
           ctx={ctx}
           viewMode={viewMode}
           selectedPath={selectedFile?.entry.path ?? null}
-          selectedSection={selectedFile?.section ?? null}
+          subPath={activeSubPath}
           onSelect={handleSelectFile}
         />
       </div>

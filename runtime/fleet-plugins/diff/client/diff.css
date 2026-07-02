@@ -339,6 +339,330 @@
   white-space: nowrap;
 }
 
+/* ── 저장소 피커 트리거 ── */
+.diff-repo-trigger {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  text-align: left;
+}
+
+.diff-repo-trigger:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+.diff-repo-trigger .fico {
+  width: 13px;
+  height: 13px;
+  color: var(--brass-deep);
+  flex: none;
+}
+
+.diff-repo-trigger .nm {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--brass);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: none;
+  max-width: 128px;
+}
+
+.diff-repo-trigger .brc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-fog);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.diff-repo-trigger .brc .bico {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  color: var(--ink-rim);
+}
+
+.diff-repo-trigger .brc .bnm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-repo-trigger .chev {
+  width: 11px;
+  height: 11px;
+  color: var(--ink-fog);
+  flex: none;
+  margin-left: auto;
+  transition: transform var(--duration-fast);
+}
+
+.diff-repo-trigger[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-repo-trigger .chev {
+    transition-duration: 0.01ms;
+  }
+}
+
+/* ── 저장소 피커 드롭다운 ── */
+.diff-repo-menu {
+  position: absolute;
+  z-index: 30;
+  left: 8px;
+  right: 8px;
+  top: calc(100% + 4px);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-floating);
+  padding: 5px;
+  animation: diff-repo-drop var(--duration-base) var(--ease-spring);
+}
+
+@keyframes diff-repo-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-repo-menu {
+    animation-duration: 0.01ms;
+  }
+}
+
+.diff-repo-menu-eyebrow {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-rim);
+  padding: 6px 8px 5px;
+}
+
+.diff-repo-opt {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.diff-repo-opt:hover {
+  background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
+}
+
+.diff-repo-opt.is-cur {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+
+.diff-repo-mark {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.diff-repo-opt.is-cur .diff-repo-mark {
+  color: var(--brass);
+}
+
+.diff-repo-opt:not(.is-cur) .diff-repo-mark {
+  color: transparent;
+}
+
+.diff-repo-line1 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.diff-repo-opt-name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-spectral);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-repo-opt.is-cur .diff-repo-opt-name {
+  color: var(--brass);
+}
+
+.diff-repo-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-fog);
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.diff-repo-branch .bico {
+  width: 9px;
+  height: 9px;
+  color: var(--ink-rim);
+}
+
+.diff-repo-badge {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.diff-repo-opt-path {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-rim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* ── 드롭다운 푸터: Depth + Rescan ── */
+.diff-repo-menu-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 4px;
+  margin-top: 4px;
+  border-top: 1px solid var(--surface-rim);
+}
+
+.diff-repo-depth {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-rim);
+}
+
+.diff-repo-depth select {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-spectral);
+  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: 3px 6px;
+  cursor: pointer;
+  outline: none;
+}
+
+.diff-repo-depth select:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.diff-repo-rescan {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+}
+
+.diff-repo-rescan:hover {
+  color: var(--ink-spectral);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+/* ── 스캔 중 / 빈 상태 ── */
+.diff-repo-scan {
+  padding: 12px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-repo-spin {
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--surface-rim);
+  border-top-color: var(--brass);
+  border-radius: 999px;
+  animation: diff-repo-spin 0.7s linear infinite;
+  flex: none;
+}
+
+@keyframes diff-repo-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-repo-spin {
+    animation: none;
+  }
+}
+
+.diff-repo-empty {
+  padding: 12px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-rim);
+}
+
+.diff-repo-truncated {
+  padding: 6px 10px 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--warn);
+  border-top: 1px solid var(--surface-rim);
+  margin-top: 4px;
+}
+
 /* ── 기타 공통 ── */
 .diff-refresh-btn {
   background: none;

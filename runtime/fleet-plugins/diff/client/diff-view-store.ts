@@ -1,13 +1,14 @@
 import { useSyncExternalStore } from "react";
 
-import type { DiffFileEntry, DiffSection } from "../server/types.js";
+import type { DiffFileEntry } from "../server/types.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 export interface SelectedFile {
   readonly entry: DiffFileEntry;
-  readonly section: DiffSection;
   readonly theaterId: string;
+  // 선택 시점의 subPath — 저장소가 바뀌면 선택을 초기화하는 데 사용
+  readonly subPath: string;
 }
 
 interface DiffViewState {
@@ -43,8 +44,8 @@ export function useSelectedFile(theaterId: string | null): SelectedFile | null {
   return s.file;
 }
 
-export function setSelectedFile(entry: DiffFileEntry, section: DiffSection, theaterId: string): void {
-  state = { file: { entry, section, theaterId } };
+export function setSelectedFile(entry: DiffFileEntry, subPath: string, theaterId: string): void {
+  state = { file: { entry, subPath, theaterId } };
   emit();
 }
 
