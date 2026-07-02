@@ -56,6 +56,10 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
   },
 ];
 
+// PEM 블록 헤더/푸터 감지용 패턴 (줄 단위 상태 기계에서 사용)
+const PEM_BEGIN_PATTERN = /^-----BEGIN [A-Z ]*PRIVATE KEY-----$/;
+const PEM_END_PATTERN = /^-----END [A-Z ]*PRIVATE KEY-----$/;
+
 /**
  * 프로세스 Spawn + Stream 관리 기반 클래스.
  * child_process.spawn으로 CLI 프로세스를 생성하고,
@@ -76,6 +80,8 @@ export class BaseConnection extends EventEmitter {
   protected readonly promptIdleTimeout: number;
   protected stderrBuffer = '';
   private readonly diagnosticStderrTail: string[] = [];
+  // PEM 블록 내부 여부 추적 (줄 단위 수신 시 바디 라인 누출 방지)
+  private inPemBlock = false;
 
   constructor(options: BaseConnectionOptions) {
     super();
@@ -317,7 +323,21 @@ export class BaseConnection extends EventEmitter {
   }
 
   private recordDiagnosticStderrLine(message: string): void {
-    const sanitized = sanitizeDiagnosticStderrLine(message);
+    const pemMarkerLine = normalizePemMarkerLine(message);
+
+    // PEM BEGIN 마커: 이후 모든 라인(바디·END 포함)을 비밀로 처리
+    if (PEM_BEGIN_PATTERN.test(pemMarkerLine)) {
+      this.inPemBlock = true;
+    }
+
+    const inBlock = this.inPemBlock;
+
+    // PEM END 마커: 현재 라인까지 비밀 처리 후 블록 종료
+    if (PEM_END_PATTERN.test(pemMarkerLine)) {
+      this.inPemBlock = false;
+    }
+
+    const sanitized = sanitizeDiagnosticStderrLine(message, inBlock);
     if (!sanitized) {
       return;
     }
@@ -363,13 +383,22 @@ function buildWindowsCmdArgs(command: string, args: string[]): string[] {
   return ['/S', '/C', `"${line}"`];
 }
 
-function sanitizeDiagnosticStderrLine(value: string): string {
-  const cleaned = redactDiagnosticSecrets(value.replace(ANSI_PATTERN, '').replace(CONTROL_PATTERN, '')).trim();
+function sanitizeDiagnosticStderrLine(value: string, isPemLine: boolean): string {
+  // PEM 블록 라인은 ANSI 제거·시크릿 스캔 없이 즉시 리댁트
+  const cleaned = (
+    isPemLine
+      ? '[REDACTED:pem_private_key]'
+      : redactDiagnosticSecrets(value.replace(ANSI_PATTERN, '').replace(CONTROL_PATTERN, ''))
+  ).trim();
   if (cleaned.length <= STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT) {
     return cleaned;
   }
   const omitted = cleaned.length - STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT;
   return `${cleaned.slice(0, STDERR_DIAGNOSTIC_LINE_CHAR_LIMIT)} [truncated ${omitted} chars]`;
+}
+
+function normalizePemMarkerLine(value: string): string {
+  return value.replace(ANSI_PATTERN, '').replace(CONTROL_PATTERN, '').trim();
 }
 
 function redactDiagnosticSecrets(value: string): string {

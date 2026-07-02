@@ -51,6 +51,83 @@ describe('BaseConnection logEntry', () => {
     expect(entries.every((entry) => entry.source === 'stderr')).toBe(true);
   });
 
+  it('PEM private key 블록이 줄 단위로 수신되어도 바디 라인이 diagnosticTail에 누출되지 않는다', () => {
+    const connection = new TestConnection();
+
+    connection.push('normal line before\n');
+    connection.push('-----BEGIN PRIVATE KEY-----\n');
+    connection.push('MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC\n');
+    connection.push('-----END PRIVATE KEY-----\n');
+    connection.push('normal line after\n');
+
+    const tail = connection.diagnosticTail();
+
+    // PEM 바디가 누출되지 않아야 함
+    expect(tail).not.toContain('MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC');
+    // BEGIN/END/바디 모두 REDACTED 처리
+    expect(tail.match(/\[REDACTED:pem_private_key\]/g)?.length).toBe(3);
+    // 비밀 외 정상 라인은 유지
+    expect(tail).toContain('normal line before');
+    expect(tail).toContain('normal line after');
+  });
+
+  it('청크 경계로 PEM 블록이 분할 수신되어도 바디가 누출되지 않는다', () => {
+    const connection = new TestConnection();
+
+    // BEGIN과 바디가 서로 다른 청크로 도착하는 경우
+    connection.push('-----BEGIN EC PRIVATE KEY-----\ntop-secret-key-material\n');
+    connection.push('more-secret-material\n-----END EC PRIVATE KEY-----\n');
+
+    const tail = connection.diagnosticTail();
+
+    expect(tail).not.toContain('top-secret-key-material');
+    expect(tail).not.toContain('more-secret-material');
+    expect(tail).toContain('[REDACTED:pem_private_key]');
+  });
+
+  it('withStderrDiagnostics 출력에 PEM 바디가 누출되지 않는다', () => {
+    const connection = new TestConnection();
+
+    connection.push('-----BEGIN RSA PRIVATE KEY-----\n');
+    connection.push('supersecretprivatekey\n');
+    connection.push('-----END RSA PRIVATE KEY-----\n');
+
+    const error = connection.diagnose(new Error('connection failed'), 'ACP session/new');
+
+    expect(error.message).not.toContain('supersecretprivatekey');
+    expect(error.message).toContain('[REDACTED:pem_private_key]');
+    expect(error.message).toContain('ACP session/new stderr tail:');
+  });
+
+  it('PEM 블록 앞뒤의 정상 stderr는 리댁트 없이 보존된다', () => {
+    const connection = new TestConnection();
+
+    connection.push('before-pem\n');
+    connection.push('-----BEGIN PRIVATE KEY-----\n');
+    connection.push('secretbody\n');
+    connection.push('-----END PRIVATE KEY-----\n');
+    connection.push('after-pem\n');
+
+    const tail = connection.diagnosticTail();
+
+    expect(tail).toContain('before-pem');
+    expect(tail).toContain('after-pem');
+    expect(tail).not.toContain('secretbody');
+  });
+
+  it('CRLF로 수신된 PEM 블록도 바디가 누출되지 않는다', () => {
+    const connection = new TestConnection();
+
+    connection.push('-----BEGIN PRIVATE KEY-----\r\n');
+    connection.push('crlf-secret-body\r\n');
+    connection.push('-----END PRIVATE KEY-----\r\n');
+
+    const tail = connection.diagnosticTail();
+
+    expect(tail).not.toContain('crlf-secret-body');
+    expect(tail.match(/\[REDACTED:pem_private_key\]/g)?.length).toBe(3);
+  });
+
   it('stderr 진단 tail은 최근 라인만 보존하고 secret을 마스킹한다', () => {
     const connection = new TestConnection();
 
