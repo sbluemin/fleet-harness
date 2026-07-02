@@ -19,6 +19,7 @@ export interface ConsoleGeneralSettings {
 export interface ConsoleSettingsData {
   readonly version: 1;
   readonly general?: ConsoleGeneralSettings;
+  readonly plugins?: Record<string, Record<string, unknown>>;
 }
 
 export interface CreateConsoleSettingsStoreDeps {
@@ -28,6 +29,7 @@ export interface CreateConsoleSettingsStoreDeps {
 }
 
 const SETTINGS_VERSION = 1;
+const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const SETTINGS_LOCK_DIR_NAME = "settings.lock";
 const SETTINGS_LOCK_OWNER_FILE_NAME = "owner.json";
 const SETTINGS_TEMP_PREFIX = ".settings.";
@@ -52,14 +54,16 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   if (!isRecord(value)) return emptyConsoleSettingsData();
   if (value.version !== SETTINGS_VERSION) return emptyConsoleSettingsData();
   const general = readConsoleGeneralSettings(value.general);
+  const plugins = readConsolePluginSettings(value.plugins);
   return {
     version: SETTINGS_VERSION,
     general: general ?? {},
+    plugins: plugins ?? {},
   };
 }
 
 export function emptyConsoleSettingsData(): ConsoleSettingsData {
-  return { version: 1, general: {} };
+  return { version: 1, general: {}, plugins: {} };
 }
 
 function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | null {
@@ -78,6 +82,17 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(theme !== undefined ? { theme } : {}),
   };
+}
+
+function readConsolePluginSettings(value: unknown): Record<string, Record<string, unknown>> | null {
+  if (!isRecord(value)) return null;
+  const result: Record<string, Record<string, unknown>> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!PLUGIN_ID_PATTERN.test(key)) continue;
+    if (!isRecord(entry)) continue;
+    result[key] = entry;
+  }
+  return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

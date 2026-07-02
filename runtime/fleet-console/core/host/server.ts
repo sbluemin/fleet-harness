@@ -17,6 +17,7 @@ import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore } from "./console-settings.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
+import { createPluginSettingsRouter } from "./plugin-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createOperationsRouter } from "./operations/routes.js";
 import { createOperationStore } from "./operations/store.js";
@@ -407,6 +408,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
+  const pluginSettingsRouter = createPluginSettingsRouter({
+    consoleSettingsStore,
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    writeJson,
+  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -429,6 +436,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return true;
     }
     if (await carrierSettingsRouter(ctx)) return true;
+    if (await pluginSettingsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
   });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
