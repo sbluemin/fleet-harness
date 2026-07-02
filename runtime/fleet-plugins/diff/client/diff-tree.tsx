@@ -1,12 +1,39 @@
 import { useCallback, useState } from "react";
 
-import type { DiffFileEntry, DiffSection } from "../server/types.js";
+import type { DiffFileEntry } from "../server/types.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface TreeNode {
   dirs: { [key: string]: TreeNode };
   files: DiffFileEntry[];
+}
+
+interface DiffTreeViewProps {
+  readonly files: readonly DiffFileEntry[];
+  readonly selectedPath: string | null;
+  readonly onSelect: (entry: DiffFileEntry) => void;
+}
+
+interface TreeCommonProps {
+  readonly selectedPath: string | null;
+  readonly onSelect: (entry: DiffFileEntry) => void;
+}
+
+interface TreeChildrenProps extends TreeCommonProps {
+  readonly node: TreeNode;
+  readonly depth: number;
+}
+
+interface TreeFolderProps extends TreeCommonProps {
+  readonly dirKey: string;
+  readonly node: TreeNode;
+  readonly depth: number;
+}
+
+interface TreeLeafProps extends TreeCommonProps {
+  readonly entry: DiffFileEntry;
+  readonly depth: number;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -34,45 +61,21 @@ export function buildDiffTree(files: readonly DiffFileEntry[]): TreeNode {
 
 // ─── DiffTreeView (export) ────────────────────────────────────────────────────
 
-interface DiffTreeViewProps {
-  readonly files: readonly DiffFileEntry[];
-  readonly section: DiffSection;
-  readonly selectedPath: string | null;
-  readonly selectedSection: DiffSection | null;
-  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
-}
-
-export function DiffTreeView({ files, section, selectedPath, selectedSection, onSelect }: DiffTreeViewProps) {
+export function DiffTreeView({ files, selectedPath, onSelect }: DiffTreeViewProps) {
   const tree = buildDiffTree(files);
   return (
     <DiffTreeChildren
       node={tree}
       depth={0}
-      section={section}
       selectedPath={selectedPath}
-      selectedSection={selectedSection}
       onSelect={onSelect}
     />
   );
 }
 
-// ─── 내부 공유 props ──────────────────────────────────────────────────────────
+// ─── 내부 컴포넌트 ─────────────────────────────────────────────────────────────
 
-interface TreeCommonProps {
-  readonly section: DiffSection;
-  readonly selectedPath: string | null;
-  readonly selectedSection: DiffSection | null;
-  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
-}
-
-// ─── DiffTreeChildren ─────────────────────────────────────────────────────────
-
-interface TreeChildrenProps extends TreeCommonProps {
-  readonly node: TreeNode;
-  readonly depth: number;
-}
-
-function DiffTreeChildren({ node, depth, section, selectedPath, selectedSection, onSelect }: TreeChildrenProps) {
+function DiffTreeChildren({ node, depth, selectedPath, onSelect }: TreeChildrenProps) {
   return (
     <>
       {Object.entries(node.dirs).map(([key, child]) => (
@@ -81,9 +84,7 @@ function DiffTreeChildren({ node, depth, section, selectedPath, selectedSection,
           dirKey={key}
           node={child}
           depth={depth}
-          section={section}
           selectedPath={selectedPath}
-          selectedSection={selectedSection}
           onSelect={onSelect}
         />
       ))}
@@ -92,9 +93,7 @@ function DiffTreeChildren({ node, depth, section, selectedPath, selectedSection,
           key={f.path}
           entry={f}
           depth={depth}
-          section={section}
           selectedPath={selectedPath}
-          selectedSection={selectedSection}
           onSelect={onSelect}
         />
       ))}
@@ -102,15 +101,7 @@ function DiffTreeChildren({ node, depth, section, selectedPath, selectedSection,
   );
 }
 
-// ─── DiffTreeFolder ───────────────────────────────────────────────────────────
-
-interface TreeFolderProps extends TreeCommonProps {
-  readonly dirKey: string;
-  readonly node: TreeNode;
-  readonly depth: number;
-}
-
-function DiffTreeFolder({ dirKey, node, depth, section, selectedPath, selectedSection, onSelect }: TreeFolderProps) {
+function DiffTreeFolder({ dirKey, node, depth, selectedPath, onSelect }: TreeFolderProps) {
   const [collapsed, setCollapsed] = useState(false);
   const handleToggle = useCallback(() => setCollapsed((c) => !c), []);
 
@@ -146,9 +137,7 @@ function DiffTreeFolder({ dirKey, node, depth, section, selectedPath, selectedSe
         <DiffTreeChildren
           node={resolvedNode}
           depth={depth + 1}
-          section={section}
           selectedPath={selectedPath}
-          selectedSection={selectedSection}
           onSelect={onSelect}
         />
       )}
@@ -156,16 +145,9 @@ function DiffTreeFolder({ dirKey, node, depth, section, selectedPath, selectedSe
   );
 }
 
-// ─── DiffTreeLeaf ─────────────────────────────────────────────────────────────
-
-interface TreeLeafProps extends TreeCommonProps {
-  readonly entry: DiffFileEntry;
-  readonly depth: number;
-}
-
-function DiffTreeLeaf({ entry, depth, section, selectedPath, selectedSection, onSelect }: TreeLeafProps) {
-  const isSelected = entry.path === selectedPath && section === selectedSection;
-  const handleClick = useCallback(() => onSelect(entry, section), [entry, section, onSelect]);
+function DiffTreeLeaf({ entry, depth, selectedPath, onSelect }: TreeLeafProps) {
+  const isSelected = entry.path === selectedPath;
+  const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   const indent = depth * 16 + 12;
   const name = entry.path.split("/").pop() ?? entry.path;
 

@@ -1,6 +1,5 @@
-export type DiffMode = "workdir" | "staged" | "commit" | "untracked";
-
-export type DiffSection = "staged" | "workdir";
+// /file 엔드포인트에서 hunk 모드를 구분하는 타입. staged/workdir/commit 분기는 git diff HEAD 통합으로 제거.
+export type DiffFileMode = "unified" | "untracked";
 
 export interface DiffFileEntry {
   readonly path: string;
@@ -16,5 +15,16 @@ export interface DiffListResult {
 
 export interface DiffHunkResult {
   readonly content: string;
+  readonly truncated?: boolean;
+}
+
+export interface RepoEntry {
+  readonly relPath: string;
+  readonly name: string;
+  readonly branch: string;
+}
+
+export interface ReposDiscoveryResult {
+  readonly repos: readonly RepoEntry[];
   readonly truncated?: boolean;
 }

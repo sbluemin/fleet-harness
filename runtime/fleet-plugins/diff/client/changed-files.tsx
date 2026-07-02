@@ -2,14 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffListResult, DiffSection } from "../server/types.js";
+import type { DiffFileEntry, DiffListResult } from "../server/types.js";
 import { DiffTreeView } from "./diff-tree.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
-type PairLoadState =
+type LoadState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly staged: readonly DiffFileEntry[]; readonly changes: readonly DiffFileEntry[] }
+  | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[] }
   | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
   | { readonly kind: "error"; readonly message: string };
 
@@ -17,32 +17,18 @@ interface ChangedFilesProps {
   readonly ctx: RailPanelContext;
   readonly viewMode: "list" | "tree";
   readonly selectedPath: string | null;
-  readonly selectedSection: DiffSection | null;
-  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
-}
-
-interface SectionProps {
-  readonly name: string;
-  readonly files: readonly DiffFileEntry[];
-  readonly isCollapsed: boolean;
-  readonly onToggle: () => void;
-  readonly viewMode: "list" | "tree";
-  readonly section: DiffSection;
-  readonly selectedPath: string | null;
-  readonly selectedSection: DiffSection | null;
-  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
+  readonly subPath: string;
+  readonly onSelect: (entry: DiffFileEntry) => void;
 }
 
 interface ListFileRowProps {
   readonly entry: DiffFileEntry;
-  readonly section: DiffSection;
   readonly isSelected: boolean;
-  readonly onSelect: (entry: DiffFileEntry, section: DiffSection) => void;
+  readonly onSelect: (entry: DiffFileEntry) => void;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const PREFS_STAGED_COLLAPSED = "fleet-console.diff.stagedCollapsed";
 const PREFS_CHANGES_COLLAPSED = "fleet-console.diff.changesCollapsed";
 
 const STATUS_LABEL: { [key: string]: string } = {
@@ -59,10 +45,9 @@ function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ ctx, viewMode, selectedPath, selectedSection, onSelect }: ChangedFilesProps) {
-  const [state, setState] = useState<PairLoadState>({ kind: "loading" });
+export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect }: ChangedFilesProps) {
+  const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshToken, setRefreshToken] = useState(0);
-  const [stagedCollapsed, setStagedCollapsed] = useState(() => readCollapsed(PREFS_STAGED_COLLAPSED));
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
 
   useEffect(() => {
@@ -73,52 +58,33 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, selectedSection, onS
     let cancelled = false;
     setState({ kind: "loading" });
 
-    const fetchMode = async (mode: "workdir" | "staged"): Promise<DiffListResult> => {
-      const res = await fetch("/plugins/diff/changed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: ctx.theaterId, mode }),
-      });
+    fetch("/plugins/diff/changed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: ctx.theaterId, subPath }),
+    }).then(async (res) => {
       if (!res.ok) {
         const payload = await res.json() as { error?: string };
-        throw new Error(payload.error ?? "git_failed");
-      }
-      return res.json() as Promise<DiffListResult>;
-    };
-
-    // allSettled로 두 모드를 모두 평가한다. Promise.all은 먼저 reject되는 쪽으로 실패하는데,
-    // repo 밖에서 workdir(`git diff`)는 "not a git repository"를 내지만 staged(`git diff --cached`)는
-    // "unknown option `cached'"로 실패해 git_failed로 분류된다 → 레이스로 notice가 비결정적이 된다.
-    // 한쪽이라도 not-a-repo / git 미설치를 보고하면 그것이 폴더에 대한 권위적 사유이므로 우선 채택한다.
-    Promise.allSettled([fetchMode("workdir"), fetchMode("staged")]).then(([workdir, staged]) => {
-      if (cancelled) return;
-      if (workdir.status === "fulfilled" && staged.status === "fulfilled") {
-        setState({ kind: "ok", staged: staged.value.files, changes: workdir.value.files });
+        const code = payload.error ?? "git_failed";
+        if (!cancelled) {
+          if (code === "no_git_repo" || code === "git_unavailable") {
+            setState({ kind: "notice", reason: code });
+          } else {
+            setState({ kind: "error", message: code });
+          }
+        }
         return;
       }
-      const reasons = [workdir, staged].map((r) =>
-        r.status === "rejected" ? (r.reason instanceof Error ? r.reason.message : "unknown") : null,
-      );
-      const notice = reasons.find((m) => m === "no_git_repo" || m === "git_unavailable");
-      if (notice === "no_git_repo" || notice === "git_unavailable") {
-        setState({ kind: "notice", reason: notice });
-        return;
-      }
-      setState({ kind: "error", message: reasons.find((m) => m !== null) ?? "unknown" });
+      const data = await res.json() as DiffListResult;
+      if (!cancelled) setState({ kind: "ok", files: data.files });
+    }).catch((err: unknown) => {
+      if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
     });
 
     return () => { cancelled = true; };
-  }, [ctx.theaterId, refreshToken]);
+  }, [ctx.theaterId, subPath, refreshToken]);
 
   const handleRetry = useCallback(() => setRefreshToken((t) => t + 1), []);
-
-  const handleToggleStaged = useCallback(() => {
-    setStagedCollapsed((v) => {
-      const next = !v;
-      try { localStorage.setItem(PREFS_STAGED_COLLAPSED, next ? "1" : "0"); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
 
   const handleToggleChanges = useCallback(() => {
     setChangesCollapsed((v) => {
@@ -159,75 +125,45 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, selectedSection, onS
 
   return (
     <div className="diff-sections">
-      <AccordionSection
-        name="Staged Changes"
-        files={state.staged}
-        isCollapsed={stagedCollapsed}
-        onToggle={handleToggleStaged}
-        viewMode={viewMode}
-        section="staged"
-        selectedPath={selectedPath}
-        selectedSection={selectedSection}
-        onSelect={onSelect}
-      />
-      <AccordionSection
-        name="Changes"
-        files={state.changes}
-        isCollapsed={changesCollapsed}
-        onToggle={handleToggleChanges}
-        viewMode={viewMode}
-        section="workdir"
-        selectedPath={selectedPath}
-        selectedSection={selectedSection}
-        onSelect={onSelect}
-      />
+      <div className={`diff-section${changesCollapsed ? " is-collapsed" : ""}`}>
+        <button type="button" className="diff-section-head" onClick={handleToggleChanges}>
+          <svg className="diff-section-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="diff-section-name">Changes</span>
+          <span className="diff-count-badge">{state.files.length}</span>
+        </button>
+        {!changesCollapsed && (
+          <div className="diff-section-rows">
+            {state.files.length === 0 ? (
+              <div className="diff-empty-row">No changes</div>
+            ) : viewMode === "tree" ? (
+              <DiffTreeView
+                files={state.files}
+                selectedPath={selectedPath}
+                onSelect={onSelect}
+              />
+            ) : (
+              state.files.map((entry) => (
+                <ListFileRow
+                  key={entry.path}
+                  entry={entry}
+                  isSelected={entry.path === selectedPath}
+                  onSelect={onSelect}
+                />
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
-function AccordionSection({ name, files, isCollapsed, onToggle, viewMode, section, selectedPath, selectedSection, onSelect }: SectionProps) {
-  return (
-    <div className={`diff-section${isCollapsed ? " is-collapsed" : ""}`}>
-      <button type="button" className="diff-section-head" onClick={onToggle}>
-        <svg className="diff-section-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span className="diff-section-name">{name}</span>
-        <span className="diff-count-badge">{files.length}</span>
-      </button>
-      {!isCollapsed && (
-        <div className="diff-section-rows">
-          {files.length === 0 ? (
-            <div className="diff-empty-row">No changes</div>
-          ) : viewMode === "tree" ? (
-            <DiffTreeView
-              files={files}
-              section={section}
-              selectedPath={selectedPath}
-              selectedSection={selectedSection}
-              onSelect={onSelect}
-            />
-          ) : (
-            files.map((entry) => (
-              <ListFileRow
-                key={entry.path}
-                entry={entry}
-                section={section}
-                isSelected={entry.path === selectedPath && section === selectedSection}
-                onSelect={onSelect}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ListFileRow({ entry, section, isSelected, onSelect }: ListFileRowProps) {
-  const handleClick = useCallback(() => onSelect(entry, section), [entry, section, onSelect]);
+function ListFileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
+  const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   const lastSlash = entry.path.lastIndexOf("/");
   const dir = lastSlash >= 0 ? entry.path.slice(0, lastSlash + 1) : "";
   const name = lastSlash >= 0 ? entry.path.slice(lastSlash + 1) : entry.path;

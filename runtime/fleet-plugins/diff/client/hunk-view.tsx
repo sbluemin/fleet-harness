@@ -2,15 +2,15 @@ import { useEffect, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffHunkResult } from "../server/types.js";
+import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
 
-type DiffMode = "workdir" | "staged" | "commit" | "untracked";
+// ─── types ───────────────────────────────────────────────────────────────────
 
 interface HunkViewProps {
   readonly ctx: RailPanelContext;
   readonly file: DiffFileEntry;
-  readonly mode: DiffMode;
-  readonly ref?: string;
+  readonly mode: DiffFileMode;
+  readonly subPath: string;
 }
 
 type LoadState =
@@ -23,6 +23,8 @@ type HunkLine =
   | { readonly kind: "add"; readonly text: string }
   | { readonly kind: "del"; readonly text: string }
   | { readonly kind: "ctx"; readonly text: string };
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
 function parseHunk(content: string): HunkLine[] {
   return content.split("\n").map((line): HunkLine => {
@@ -40,7 +42,9 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-export function HunkView({ ctx, file, mode, ref: commitRef }: HunkViewProps) {
+// ─── HunkView ────────────────────────────────────────────────────────────────
+
+export function HunkView({ ctx, file, mode, subPath }: HunkViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
@@ -53,7 +57,7 @@ export function HunkView({ ctx, file, mode, ref: commitRef }: HunkViewProps) {
     ctx.api.fetch("diff", "file", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, ref: commitRef }),
+      body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, subPath }),
     }).then(async (res) => {
       const result = await res.json() as DiffHunkResult;
       if (!cancelled) setState({ kind: "ok", result });
@@ -61,7 +65,7 @@ export function HunkView({ ctx, file, mode, ref: commitRef }: HunkViewProps) {
       if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.api, file.path, mode, commitRef, ctx.theaterId]);
+  }, [ctx.api, file.path, mode, subPath, ctx.theaterId]);
 
   if (state.kind === "loading") {
     return <div className="diff-hunk-loading">Loading…</div>;
