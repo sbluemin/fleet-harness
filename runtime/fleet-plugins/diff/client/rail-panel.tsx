@@ -258,7 +258,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const depthRef = useRef(depth);
   depthRef.current = depth;
 
-  const fetchRepos = useCallback((currentSubPath: string, maxDepth: number) => {
+  const fetchRepos = useCallback((maxDepth: number) => {
     if (!ctx.theaterId) return;
     const seq = ++fetchSeqRef.current;
     setReposLoading(true);
@@ -275,12 +275,8 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       setRepos(fetched);
       setReposTruncated(data.truncated ?? false);
       setScanned(true);
-      // Smart 기본값: theater root가 저장소가 아닌데 다른 저장소가 있으면 첫 번째로 자동 전환
-      if (currentSubPath === "" && !fetched.some((r) => r.relPath === "") && fetched.length >= 1) {
-        const first = fetched[0]!;
-        setActiveSubPath(first.relPath);
-        if (ctx.theaterId) saveSubPath(ctx.theaterId, first.relPath);
-      }
+      // theater root가 저장소가 아니면 자동 선택하지 않는다 — 임의 하위 저장소를 여는 것은
+      // 사용자에게 혼란을 주므로, 하위 저장소는 드롭다운에서 명시적으로 선택하게 둔다.
       setReposLoading(false);
     }).catch(() => {
       if (seq !== fetchSeqRef.current) return;
@@ -298,7 +294,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     setScanned(false);
     setMenuOpen(false);
     clearSelectedFile();
-    fetchRepos(sp, depthRef.current);
+    fetchRepos(depthRef.current);
   }, [ctx.theaterId, fetchRepos]);
 
   const handleTriggerClick = useCallback((e: React.MouseEvent) => {
@@ -318,12 +314,12 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const handleDepthChange = useCallback((newDepth: number) => {
     setDepth(newDepth);
     try { localStorage.setItem(PREFS_DEPTH, String(newDepth)); } catch { /* ignore */ }
-    fetchRepos(activeSubPath, newDepth);
-  }, [fetchRepos, activeSubPath]);
+    fetchRepos(newDepth);
+  }, [fetchRepos]);
 
   const handleRescan = useCallback(() => {
-    fetchRepos(activeSubPath, depth);
-  }, [fetchRepos, activeSubPath, depth]);
+    fetchRepos(depth);
+  }, [fetchRepos, depth]);
 
   // 외부 클릭으로 메뉴 닫기
   useEffect(() => {
