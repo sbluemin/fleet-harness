@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-07-02
+
+### Added
+- [fleet-console] Console plugins can now persist their own settings on the console server, stored per plugin, so plugin settings survive browser changes and console restarts.
+- [fleet-console] Terminal font name and size now persist across browsers and console restarts; existing per-browser font preferences are migrated automatically on first load.
+- [fleet-console] File Explorer now offers a manual refresh button in the toolbar, re-reads folder contents every time a directory is expanded, and live-updates the file tree as files change on disk.
+- [fleet-console] Add a built-in Skills plugin to the Activity Rail for searching the skills.sh registry, installing skills with inline progress streaming, updating, removing, and reading SKILL.md in an overlay.
+
+### Changed
+- [fleet-console] The Diff panel can now target any Git repository nested under the current Theater instead of only the Theater root; pick one from the toolbar, with its current branch shown and a selectable scan depth.
+- [fleet-console] The Diff panel now shows a single combined Changes list (staged and unstaged together) instead of separate Staged and Changes sections.
+
+### Fixed
+- [fleet-console] Fixed the Diff panel repository picker dropdown not appearing when clicked because it was positioned outside the panel and clipped.
+- [fleet-console] The Diff panel no longer auto-selects a nested repository when the Theater root is not a Git repository; pick one explicitly from the toolbar picker instead.
+- [core-unified-agent] [fleet-carriers] Include redacted Codex ACP stderr diagnostics in failed carrier jobs without adding stderr to successful results.
+- [fleet-console] Hid unsupported Claude Kimi and Claude GLM launch aliases from Operation Controls.
+- [fleet-console] YAML frontmatter at the top of a Markdown document (such as a SKILL.md preview) now renders as a labeled metadata card instead of collapsing into one oversized heading.
+- [fleet-console] Fixed the Skills SKILL.md reading overlay collapsing to only a few lines tall; it now opens at a stable reading height with a scrollable body.
+
 ## [1.16.1] - 2026-07-02
 
 ### Fixed
