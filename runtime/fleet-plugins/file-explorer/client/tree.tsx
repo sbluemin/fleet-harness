@@ -23,6 +23,8 @@ interface FlatRow {
   readonly isLoading: boolean;
 }
 
+type WatchState = "inactive" | "watching" | "degraded";
+
 const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
@@ -96,7 +98,16 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
+  const [watchState, setWatchState] = useState<WatchState>("inactive");
   const treeRef = useRef<HTMLDivElement>(null);
+
+  // SSE 핸들러가 최신 상태를 참조하도록 ref로 유지
+  const expandedDirsRef = useRef<Set<string>>(expandedDirs);
+  expandedDirsRef.current = expandedDirs;
+  const currentPathRef = useRef<string>(currentPath);
+  currentPathRef.current = currentPath;
+  const filesRef = useRef<PluginFilesClient>(files);
+  filesRef.current = files;
 
   useEffect(() => {
     if (!theaterId) return;
@@ -124,15 +135,71 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     return () => ro.disconnect();
   }, []);
 
+  // SSE 자동 새로고침 — theaterId/files 변경 시 재구독, 언마운트 시 close
+  useEffect(() => {
+    if (!theaterId) {
+      setWatchState("inactive");
+      return;
+    }
+
+    let isFirstOpen = true;
+    const url = `/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}`;
+    const es = new EventSource(url);
+
+    const doFullRefresh = () => {
+      filesRef.current.listFolder(currentPathRef.current || undefined).then(setResult).catch(() => {});
+      for (const relPath of expandedDirsRef.current) {
+        filesRef.current.listFolder(relPath).then((r) => {
+          setChildResults((prev) => new Map(prev).set(relPath, r));
+        }).catch(() => {});
+      }
+    };
+
+    es.addEventListener("state", (e) => {
+      setWatchState((e as MessageEvent).data as WatchState);
+    });
+
+    es.addEventListener("change", (e) => {
+      const relDir = (e as MessageEvent).data as string;
+      // 루트 레벨 변경 또는 현재 탐색 경로 변경
+      if (relDir === "" || relDir === currentPathRef.current) {
+        filesRef.current.listFolder(currentPathRef.current || undefined).then(setResult).catch(() => {});
+      }
+      // 펼쳐진 폴더에 해당하면 해당 폴더만 재조회
+      if (relDir !== "" && expandedDirsRef.current.has(relDir)) {
+        filesRef.current.listFolder(relDir).then((r) => {
+          setChildResults((prev) => new Map(prev).set(relDir, r));
+        }).catch(() => {});
+      }
+    });
+
+    es.onopen = () => {
+      if (isFirstOpen) {
+        isFirstOpen = false;
+        return;
+      }
+      // 재연결: 놓친 변경 보정을 위해 전체 재조회
+      doFullRefresh();
+    };
+
+    return () => {
+      es.close();
+      setWatchState("inactive");
+    };
+  }, [theaterId, files]);
+
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
+    // 현재 펼침 상태를 읽어 펼치는 동작인지 판단
+    const isExpanding = !expandedDirs.has(relPath);
     setExpandedDirs((prev) => {
       const next = new Set(prev);
       if (next.has(relPath)) { next.delete(relPath); return next; }
       next.add(relPath);
       return next;
     });
-    if (!childResults.has(relPath)) {
+    // 폴더를 펼 때마다 항상 서버에서 재조회 (영구 캐시 제거)
+    if (isExpanding) {
       setLoadingDirs((prev) => new Set(prev).add(relPath));
       files.listFolder(relPath).then((r) => {
         setChildResults((prev) => new Map(prev).set(relPath, r));
@@ -141,7 +208,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
         setLoadingDirs((prev) => { const s = new Set(prev); s.delete(relPath); return s; });
       });
     }
-  }, [files, childResults]);
+  }, [files, expandedDirs]);
 
   const handleEntryClick = useCallback((entry: FolderEntry) => {
     if (entry.kind === "dir") handleDirClick(entry);
@@ -163,6 +230,20 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
       return next;
     });
   }, []);
+
+  const handleRefresh = useCallback(() => {
+    if (!theaterId) return;
+    // 루트 재조회
+    files.listFolder(currentPath || undefined).then(setResult).catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : "Unable to load folder");
+    });
+    // 펼쳐진 모든 폴더 재조회
+    for (const relPath of expandedDirs) {
+      files.listFolder(relPath).then((r) => {
+        setChildResults((prev) => new Map(prev).set(relPath, r));
+      }).catch(() => {});
+    }
+  }, [files, currentPath, expandedDirs, theaterId]);
 
   const low = filterText.toLowerCase();
 
@@ -204,6 +285,18 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
           >
             ✕
           </button>
+        )}
+        <button
+          type="button"
+          className="fexp-refresh-btn"
+          onClick={handleRefresh}
+          aria-label="Refresh file tree"
+          title="Refresh file tree"
+        >
+          ↻
+        </button>
+        {watchState === "watching" && (
+          <span className="fexp-watch-dot" aria-hidden="true" />
         )}
         <button
           type="button"

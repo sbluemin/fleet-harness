@@ -476,3 +476,44 @@
 .fexp-hidden-toggle.is-active {
   color: var(--brass);
 }
+
+/* ── 수동 새로고침 버튼 ── */
+.fexp-refresh-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  font-size: 15px;
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s;
+}
+
+.fexp-refresh-btn:hover {
+  color: var(--ink-spectral);
+}
+
+/* ── 감시 활성 aurora dot (WATCHING 시맨틱) ── */
+.fexp-watch-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aurora);
+  animation: fexp-watch-pulse 2s ease-in-out infinite;
+}
+
+@keyframes fexp-watch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fexp-watch-dot {
+    animation: none;
+  }
+}
