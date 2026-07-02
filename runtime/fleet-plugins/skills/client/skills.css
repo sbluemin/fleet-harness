@@ -361,7 +361,10 @@
   border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
+  /* 확정 높이가 필수 — content-driven 높이에서는 body의 flex-grow가 분배할 공간이
+     없어 다이얼로그가 헤더+한 줄 높이로 붕괴한다(Codex Reading Sheet와 동일한
+     고정 컨테이너 패턴). max-height 상한만으로는 높이가 만들어지지 않는다. */
+  height: min(80vh, 900px);
   max-width: min(720px, calc(100vw - 120px));
   overflow: hidden;
   width: 100%;
@@ -407,6 +410,8 @@
 
 .skills-overlay-body {
   flex: 1 1 0;
+  /* flex 자식의 min-height:auto 기본값은 내용만큼 늘어나 스크롤을 깨뜨린다. */
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-4);
 }
