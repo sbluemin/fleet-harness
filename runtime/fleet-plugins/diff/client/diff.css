@@ -58,6 +58,7 @@
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
 .diff-plugin-toolbar {
+  position: relative; /* 저장소 피커 드롭다운(absolute)의 컨테이닝 블록 — 없으면 상위 기준으로 배치돼 화면 밖으로 클리핑됨 */
   display: flex;
   align-items: center;
   gap: 6px;
@@ -428,6 +429,9 @@
   left: 8px;
   right: 8px;
   top: calc(100% + 4px);
+  /* 저장소가 많아도 트리페인(overflow:hidden) 밖으로 넘쳐 잘리지 않도록 내부 스크롤 */
+  max-height: 340px;
+  overflow-y: auto;
   background: var(--surface-glass-strong);
   backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid var(--surface-rim-strong);
