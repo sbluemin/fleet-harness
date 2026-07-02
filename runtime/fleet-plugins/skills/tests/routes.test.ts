@@ -3,7 +3,9 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it } from "vitest";
 
+import type { CliExecutor } from "../server/cli.js";
 import {
+  extractSkillMarkdown,
   handleGetJob,
   handleInstalledFile,
   handleInstall,
@@ -51,11 +53,12 @@ function makeRes(): http.ServerResponse & { _status?: number; _body?: unknown } 
 // ─── 401 tests ───────────────────────────────────────────────────────────────
 
 const unauthorizedCtx = makeUnauthorizedCtx();
+const dummyExec: CliExecutor = async () => ({ stdout: "", stderr: "", exitCode: 0 });
 
 describe("미인가 요청 401", () => {
   it("handleList → 401", async () => {
     const res = makeRes();
-    await handleList(makeReq("GET", "/plugins/skills/list"), res, unauthorizedCtx);
+    await handleList(makeReq("GET", "/plugins/skills/list"), res, unauthorizedCtx, dummyExec);
     expect(res._status).toBe(401);
   });
 
@@ -67,13 +70,13 @@ describe("미인가 요청 401", () => {
 
   it("handleInstall → 401", async () => {
     const res = makeRes();
-    await handleInstall(makeReq("POST", "/plugins/skills/install"), res, unauthorizedCtx);
+    await handleInstall(makeReq("POST", "/plugins/skills/install"), res, unauthorizedCtx, dummyExec);
     expect(res._status).toBe(401);
   });
 
   it("handleUpdate → 401", async () => {
     const res = makeRes();
-    await handleUpdate(makeReq("POST", "/plugins/skills/update"), res, unauthorizedCtx);
+    await handleUpdate(makeReq("POST", "/plugins/skills/update"), res, unauthorizedCtx, dummyExec);
     expect(res._status).toBe(401);
   });
 
@@ -85,19 +88,48 @@ describe("미인가 요청 401", () => {
 
   it("handleRemove → 401", async () => {
     const res = makeRes();
-    await handleRemove(makeReq("POST", "/plugins/skills/remove"), res, unauthorizedCtx);
+    await handleRemove(makeReq("POST", "/plugins/skills/remove"), res, unauthorizedCtx, dummyExec);
     expect(res._status).toBe(401);
   });
 
   it("handlePreview → 401", async () => {
     const res = makeRes();
-    await handlePreview(makeReq("POST", "/plugins/skills/preview"), res, unauthorizedCtx);
+    await handlePreview(makeReq("POST", "/plugins/skills/preview"), res, unauthorizedCtx, dummyExec);
     expect(res._status).toBe(401);
   });
 
   it("handleInstalledFile → 401", async () => {
     const res = makeRes();
-    await handleInstalledFile(makeReq("POST", "/plugins/skills/installed-file"), res, unauthorizedCtx);
+    await handleInstalledFile(makeReq("POST", "/plugins/skills/installed-file"), res, unauthorizedCtx, dummyExec);
     expect(res._status).toBe(401);
+  });
+});
+
+// ─── extractSkillMarkdown ─────────────────────────────────────────────────────
+
+describe("extractSkillMarkdown", () => {
+  it("태그 사이 본문만 반환한다", () => {
+    const raw = "some prefix\n<SKILL.md>\n# Hello\nworld\n</SKILL.md>\nsome suffix";
+    expect(extractSkillMarkdown(raw)).toBe("# Hello\nworld");
+  });
+
+  it("태그 없으면 전체 trim 반환한다", () => {
+    const raw = "  # Plain markdown\n  ";
+    expect(extractSkillMarkdown(raw)).toBe("# Plain markdown");
+  });
+
+  it("ANSI 코드를 제거한다", () => {
+    const raw = "\x1B[32m<SKILL.md>\x1B[0m\ncontent\n</SKILL.md>";
+    expect(extractSkillMarkdown(raw)).toBe("content");
+  });
+
+  it("닫는 태그가 없으면 전체 trim 반환한다", () => {
+    const raw = "<SKILL.md>\nno closing";
+    expect(extractSkillMarkdown(raw)).toBe("<SKILL.md>\nno closing");
+  });
+
+  it("빈 태그 본문은 빈 문자열을 반환한다", () => {
+    const raw = "<SKILL.md></SKILL.md>";
+    expect(extractSkillMarkdown(raw)).toBe("");
   });
 });

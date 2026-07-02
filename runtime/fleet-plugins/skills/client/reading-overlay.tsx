@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { SkillListItem } from "../server/types.js";
 import { MarkdownView } from "./markdown-view.js";
@@ -139,7 +140,7 @@ export function ReadingOverlay({
 
   const metaText = skill.displayPath || skill.source || null;
 
-  return (
+  return createPortal(
     <div
       className="skills-overlay-backdrop"
       onClick={onClose}
@@ -190,6 +191,7 @@ export function ReadingOverlay({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

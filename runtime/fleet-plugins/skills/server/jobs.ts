@@ -50,7 +50,7 @@ export function createJob(scope: string, theaterId: string): string | null {
 
   const id = crypto.randomUUID();
   jobs.set(id, {
-    lines: ["Preparing skills CLI (first run may take a moment)…"],
+    lines: [],
     status: "running",
     createdAt: Date.now(),
     partialLine: "",

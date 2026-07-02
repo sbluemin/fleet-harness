@@ -54,10 +54,10 @@ describe("createJob", () => {
     expect(id2).not.toBeNull();
   });
 
-  it("pre-injects warm-up line as first entry", () => {
+  it("starts with empty lines (warmup injected via onBootstrap)", () => {
     const id = createJob("project", "t1")!;
     const result = getJobResult(id, 0)!;
-    expect(result.lines[0]).toContain("Preparing skills CLI");
+    expect(result.lines).toHaveLength(0);
   });
 });
 
@@ -66,19 +66,19 @@ describe("appendChunk + finishJob + getJobResult", () => {
     const id = createJob("project", "t2")!;
     appendChunk(id, "line1\nline2\n");
     const r1 = getJobResult(id, 0)!;
-    expect(r1.lines).toHaveLength(3); // warmup + 2 lines
-    expect(r1.nextCursor).toBe(3);
+    expect(r1.lines).toHaveLength(2);
+    expect(r1.nextCursor).toBe(2);
 
     appendChunk(id, "line3\n");
-    const r2 = getJobResult(id, 3)!;
+    const r2 = getJobResult(id, 2)!;
     expect(r2.lines).toEqual(["line3"]);
-    expect(r2.nextCursor).toBe(4);
+    expect(r2.nextCursor).toBe(3);
   });
 
   it("strips ANSI from appended chunks", () => {
     const id = createJob("project", "t3")!;
     appendChunk(id, "\x1B[32mgreen text\x1B[0m\n");
-    const r = getJobResult(id, 1)!;
+    const r = getJobResult(id, 0)!;
     expect(r.lines[0]).toBe("green text");
   });
 
@@ -124,7 +124,14 @@ describe("appendChunk + finishJob + getJobResult", () => {
     const id = createJob("project", "t8")!;
     appendChunk(id, "partial");
     appendChunk(id, " line\n");
-    const r = getJobResult(id, 1)!;
+    const r = getJobResult(id, 0)!;
     expect(r.lines[0]).toBe("partial line");
+  });
+
+  it("warmup line injected via appendChunk shows in result", () => {
+    const id = createJob("project", "t9")!;
+    appendChunk(id, "Preparing skills CLI (first run may take a moment)…\n");
+    const r = getJobResult(id, 0)!;
+    expect(r.lines[0]).toContain("Preparing skills CLI");
   });
 });
