@@ -316,8 +316,8 @@ export async function handleRemove(
   try {
     const result = await executor(["remove", "-s", skill, "-a", "*", "-y"], { cwd, timeout: CLI_TIMEOUT_MS });
     if (result.exitCode !== 0) {
-      const detail = stripAnsi(result.stdout).trim().slice(0, 500);
-      ctx.host.http.writeJson(res, 502, { error: "remove_failed", detail });
+      // CLI stdout에는 홈/작업 디렉터리 절대경로가 섞일 수 있어 브라우저로 내보내지 않는다(Token Boundary).
+      ctx.host.http.writeJson(res, 502, { error: "remove_failed" });
       return;
     }
     ctx.host.http.writeJson(res, 200, { ok: true });
@@ -385,12 +385,20 @@ export async function handleInstalledFile(
     const skillRoot = entry.path;
     const skillMdPath = path.join(skillRoot, "SKILL.md");
 
-    const [realRoot, realMd] = await Promise.all([
+    const [realAllowedRoot, realRoot, realMd] = await Promise.all([
+      // CLI가 보고한 skillRoot 자체도 신뢰하지 않는다 — scope의 정당한 상위 경계
+      // (project=theater 루트, global=홈)를 벗어나면 읽지 않는다. `.agents/skills`로
+      // 고정하지 않는 이유: claude 단독 설치는 `.claude/skills` 아래에 놓인다.
+      fs.realpath(cwd),
       fs.realpath(skillRoot),
       fs.realpath(skillMdPath).catch(() => null),
     ]);
 
     if (!realMd) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
+    if (realRoot !== realAllowedRoot && !realRoot.startsWith(realAllowedRoot + path.sep)) {
+      ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
+      return;
+    }
     if (realMd !== realRoot && !realMd.startsWith(realRoot + path.sep)) {
       ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
       return;
