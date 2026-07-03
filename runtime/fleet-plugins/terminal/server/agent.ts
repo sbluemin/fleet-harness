@@ -25,7 +25,6 @@ import type { AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/typ
 import { buildModelAuthState } from "./model-auth-state.js";
 
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
-type SessionPatchBody = { readonly label?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
@@ -107,6 +106,16 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const unsubscribeRename = ctx.host.events.subscribe(OPERATION_RENAMED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRenamedEvent(payload)) return;
     if (payload.pluginId !== TERMINAL_PLUGIN_ID || payload.type !== AGENT_OPERATION_TYPE) return;
+    const updated = observability.renameTerminalSession(payload.operationId, payload.title);
+    if (updated) {
+      observability.notifySessionUpdated(updated);
+      const operation = ctx.host.operations.get(payload.operationId);
+      if (operation) {
+        const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
+        const providerSession = readProviderSession(operation.payload);
+        ctx.host.operations.patch(payload.operationId, { payload: toOperationPayload(cwd, updated, providerSession) });
+      }
+    }
     injectRenameCommand(payload.operationId, payload.title);
   });
   rehydrateDormantAgentOperations();
@@ -235,24 +244,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (req.method === "DELETE") {
       removeSession(sessionId);
       ctx.host.http.writeJson(res, 200, { ok: true });
-      return true;
-    }
-    if (req.method === "PATCH") {
-      const body = await ctx.host.http.readJsonBody<SessionPatchBody>(req);
-      if (!body || (body.label !== undefined && typeof body.label !== "string")) {
-        ctx.host.http.writeJson(res, 400, { error: "invalid_session_label" });
-        return true;
-      }
-      const updated = observability.renameTerminalSession(sessionId, body.label ?? "");
-      if (!updated) {
-        ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-        return true;
-      }
-      observability.notifySessionUpdated(updated);
-      const renamedCwd = readPayloadString(ctx.host.operations.get(sessionId)?.payload ?? {}, "cwd") ?? updated.cwdLabel;
-      ctx.host.operations.patch(sessionId, { title: updated.label ?? path.basename(renamedCwd) });
-      injectRenameCommand(sessionId, updated.label);
-      ctx.host.http.writeJson(res, 200, updated);
       return true;
     }
     return methodNotAllowed(res);

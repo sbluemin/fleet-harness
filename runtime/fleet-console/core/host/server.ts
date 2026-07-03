@@ -20,7 +20,9 @@ import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createPluginSettingsRouter } from "./plugin-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createOperationsRouter } from "./operations/routes.js";
+import { createSanitizedOpDto } from "./operations/sanitize.js";
 import { createOperationStore } from "./operations/store.js";
+import type { OperationNode } from "./operations/types.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createPluginClientAssets } from "./plugin-host/client-assets.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
@@ -31,6 +33,7 @@ import { ConsoleReleaseNotesUnavailableError } from "./release-notes/types.js";
 import { RouteRegistry } from "./route-registry/route-registry.js";
 import { UpgradeRegistry } from "./route-registry/upgrade-registry.js";
 import { withSecurityHeaders } from "./security-headers.js";
+import { encodeSseData } from "./sse.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
 import { createFolderGrantStore } from "./theater-folder-grants.js";
@@ -255,6 +258,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
+  const operationSseSubscribers = new Set<http.ServerResponse>();
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     operations: {
       list: () => operations.list(),
@@ -265,8 +269,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return operation;
       },
       patch: (id, input) => {
+        const previousTitle = "title" in input ? operations.get(id)?.title : undefined;
         const operation = operations.patch(id, input);
-        if (operation) persistDurableState();
+        if (operation) {
+          persistDurableState();
+          if (previousTitle !== undefined && previousTitle !== operation.title) {
+            broadcastOperationChanged(operation);
+          }
+        }
         return operation;
       },
       delete: (id) => {
@@ -427,6 +437,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveLaunchCatalog: resolveOperationCatalog,
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
     publishDeleteEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, event),
+    broadcastOperationChanged,
+    subscribeOperationSse: (res) => {
+      res.writeHead(200, withSecurityHeaders({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      }));
+      res.write(":connected\n\n");
+      operationSseSubscribers.add(res);
+      res.on("close", () => {
+        operationSseSubscribers.delete(res);
+      });
+    },
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
   routeRegistry.register("/api/v1/settings", async (ctx) => {
@@ -884,6 +907,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           console.warn(`[fleet-console] Codex workspace restore skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
+    }
+  }
+
+  function broadcastOperationChanged(node: OperationNode): void {
+    if (operationSseSubscribers.size === 0) return;
+    const sensitiveFields = [
+      ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []),
+      ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
+    ];
+    const sanitized = createSanitizedOpDto(node, { sensitiveFields });
+    const data = encodeSseData("operation:changed", { operation: sanitized });
+    for (const res of operationSseSubscribers) {
+      res.write(data);
     }
   }
 

@@ -173,6 +173,14 @@ export function hydrateOperations(operations: readonly OperationNode[]): void {
   setState({ operations, operationsHydrated: true });
 }
 
+export function applyOperationUpdate(operation: OperationNode): void {
+  const index = state.operations.findIndex((op) => op.id === operation.id);
+  if (index === -1) return;
+  const operations = [...state.operations];
+  operations[index] = operation;
+  setState({ operations });
+}
+
 export function hydrateGroups(groups: readonly OperationGroup[]): void {
   setState({ groups });
 }

@@ -76,16 +76,6 @@ export async function createAgentSession(theaterId: string, cliId: string, signa
   return assertSessionInfo(await response.json(), response.status);
 }
 
-export async function renameAgentSession(sessionId: string, label: string, signal?: AbortSignal): Promise<SessionInfo> {
-  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ label }),
-    signal,
-  });
-  await assertOk(response);
-  return assertSessionInfo(await response.json(), response.status);
-}
 
 export async function resumeAgentSession(sessionId: string, signal?: AbortSignal): Promise<SessionInfo> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST", signal });

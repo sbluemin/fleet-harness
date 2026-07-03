@@ -12,6 +12,8 @@ export interface OperationsRouterDeps {
   readonly persist: () => void;
   readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
   readonly publishDeleteEvent?: (event: OperationDeleteEvent) => void;
+  readonly broadcastOperationChanged?: (node: OperationNode) => void;
+  readonly subscribeOperationSse?: (res: http.ServerResponse) => void;
   readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
   readonly resolveLaunchCatalog?: () => Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }>;
 }
@@ -55,6 +57,14 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
         return true;
       }
       deps.writeJson(res, 200, deps.resolveLaunchCatalog ? await deps.resolveLaunchCatalog() : { plugins: [] });
+      return true;
+    }
+    if (pathname === "/api/v1/operations/events") {
+      if (req.method !== "GET") {
+        deps.writeJson(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      deps.subscribeOperationSse?.(res);
       return true;
     }
     if (pathname === "/api/v1/operations/groups") {
@@ -183,7 +193,16 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
         title: node.title,
         previousTitle: previousNode.title,
       });
+    } else if (typeof body.title === "string" && body.title.trim() === "") {
+      deps.publishRenameEvent?.({
+        operationId: node.id,
+        pluginId: node.pluginId,
+        type: node.type,
+        title: "",
+        previousTitle: node.title,
+      });
     }
+    deps.broadcastOperationChanged?.(deps.store.get(id) ?? node);
     deps.writeJson(res, 200, { operation: sanitizeOperationNode(node, deps) });
   } catch (error) {
     deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_operation_patch" });

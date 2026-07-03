@@ -26,7 +26,6 @@ export interface AgentDurableOperation {
   readonly cwd: string;
   readonly label?: string;
   readonly labelSource?: AgentLabelSource;
-  readonly autoNamePromptSeen?: boolean;
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly createdAt: number;

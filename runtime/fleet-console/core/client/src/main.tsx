@@ -21,6 +21,7 @@ import "./styles/layout.css";
 import "./styles/components.css";
 import { App } from "./app.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
+import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
 import { setActiveTheme } from "./store.js";
 
@@ -56,6 +57,7 @@ try {
 }
 
 const registry = await loadPluginRegistry();
+connectOperationsSse();
 const app = document.querySelector("#app");
 if (app) {
   createRoot(app).render(
