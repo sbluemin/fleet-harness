@@ -112,7 +112,7 @@ ait --json -c claude "Summarize" | jq .response
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--cli <name>` | `-c` | CLI selection (`claude` \| `claude-zai` \| `claude-kimi` \| `codex` \| `opencode-go` \| `cursor`) |
+| `--cli <name>` | `-c` | CLI selection (`claude` \| `codex` \| `opencode-go` \| `cursor`) |
 | `--session <id>` | `-s` | Resume a previous session (requires `--cli`) |
 | `--model <name>` | `-m` | Model override |
 | `--effort <level>` | `-e` | Reasoning effort when supported by the selected CLI |
@@ -153,7 +153,7 @@ On error:
 - **Codex**: supported via native `codex-app-server` turn config
 - **Claude (ACP via `claude-agent-acp`)**: supported on the `claude` provider with `low | medium | high | max`
 
-Fleet sends Claude ACP effort through the bridge's advertised `effort` config option. Only the primary `claude` provider exposes effort in `models.json`; `claude-zai` and `claude-kimi` remain conservatively disabled in this package.
+Fleet sends Claude ACP effort through the bridge's advertised `effort` config option. Only the primary `claude` provider exposes effort in `models.json`.
 
 ---
 

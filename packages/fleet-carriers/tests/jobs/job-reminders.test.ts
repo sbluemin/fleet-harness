@@ -56,13 +56,13 @@ describe("buildCarrierResultSystemReminder", () => {
       kind: "taskforce",
       status: "done",
       summary,
-      taskforceBackend: "claude-zai, codex",
+      taskforceBackend: "claude, codex",
       label: "2 backends",
     })).toBe([
       '<system-reminder source="carrier-completion">',
       "[carrier:result]",
       "- taskforce:3: taskforce done",
-      "  kind=taskforce status=done changes=unavailable label=2 backends backend=claude-zai, codex",
+      "  kind=taskforce status=done changes=unavailable label=2 backends backend=claude, codex",
       "</system-reminder>",
     ].join("\n"));
   });

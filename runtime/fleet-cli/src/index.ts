@@ -2,9 +2,6 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
-import { createInfraServices } from "@dotobokuri/fleet-infra";
-
-import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions, parseFleetHookCommand } from "./cli-args.js";
 import { runSubagentsContextHook } from "./hooks/subagents-context.js";
@@ -21,17 +18,6 @@ const PLUGIN_ENTRY = {
   ...(PLUGIN_TSX_LOADER_PATH ? { tsxLoaderPath: PLUGIN_TSX_LOADER_PATH } : {}),
 };
 const argv = process.argv.slice(2);
-
-if (argv[0] === "auth") {
-  // auth 커맨드 전용 Composition Root — 경량 infraServices 조립 후 authService 주입
-  const authInfraServices = createInfraServices();
-  const status = await dispatchAuthCommand(
-    argv,
-    { stdout: process.stdout, stderr: process.stderr },
-    { authService: authInfraServices.authService },
-  );
-  process.exit(status);
-}
 
 if (argv[0] === "hook") {
   const hookCommand = parseFleetHookCommandOrExit(argv.slice(1));

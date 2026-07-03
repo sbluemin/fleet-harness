@@ -7,15 +7,10 @@
 - The Terminal plugin owns `/plugins/terminal/settings`.
 - `GET /plugins/terminal/settings` returns the Terminal prompt settings DTO. Loopback host validation is enforced by the upstream console host gate before plugin route dispatch.
 - `PUT /plugins/terminal/settings` requires the terminal Origin authorization gate and updates only Terminal prompt settings.
-- The Terminal plugin owns `/plugins/terminal/model-auth`.
-- The Terminal plugin owns the model-auth provider whitelist and state builder.
-- `GET /plugins/terminal/model-auth/state` returns the display-safe model sign-in DTO built by the Terminal plugin. Loopback host validation is enforced by the upstream console host gate before plugin route dispatch.
-- `PUT /plugins/terminal/model-auth/providers/:cli` and `DELETE /plugins/terminal/model-auth/providers/:cli` require the terminal Origin authorization gate and mutate provider API keys through `@dotobokuri/fleet-infra` auth storage.
 - The Terminal plugin owns one Settings section: `Agent CLI`.
-- The `Agent CLI` Settings section renders exactly five blocks in order: System Prompt / Metaphor, Model Sign-in, Agent CLI Available, Terminal Font, and Terminal Renderer.
+- The `Agent CLI` Settings section renders exactly four blocks in order: System Prompt / Metaphor, Agent CLI Available, Terminal Font, and Terminal Renderer.
 - `Agent CLI` owns `replaceSystemPrompt` and `enableMetaphor` UI controls for Terminal-launched agent sessions.
 - Prompt settings persist through `@dotobokuri/fleet-infra` global options in `~/.fleet/settings.json`. Do not move these settings into plugin storage.
-- Model sign-in persists through `@dotobokuri/fleet-infra` auth service in `~/.fleet/auth.json`. Do not move API keys into plugin storage or browser payloads.
 - Terminal Font and Terminal Renderer settings are Terminal plugin-owned end-to-end: state, persistence, UI, and consumption all live in the plugin. Core/client must not touch these values.
 - **Terminal Font** (name + size) is persisted on the console server under `plugins.terminal.font` via `ClientSettingsCapability` (`/api/v1/settings/plugins/terminal`). This survives browser changes and console restarts. **Terminal Renderer** remains in localStorage under `fleet-plugin.terminal.renderer` — do not move it to server storage.
 - On first load the store attempts to hydrate font from the server. If the server has no value but `fleet-plugin.terminal.font` exists in localStorage, the local value is seeded to the server via a single PUT and the localStorage key is deleted (1-time migration, idempotent — if the server already has a value on any subsequent load, the local key is deleted without re-seeding). Legacy keys (`fleet-console.terminalRenderer`, `fleet-console.terminalFont`) are migrated once on first access to the new namespace keys before server hydration.

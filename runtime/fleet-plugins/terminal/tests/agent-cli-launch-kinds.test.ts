@@ -3,12 +3,10 @@ import { describe, expect, it } from "vitest";
 import { buildAgentCliLaunchKinds } from "../server/agent-api/agent-cli-launch-kinds.js";
 
 describe("buildAgentCliLaunchKinds", () => {
-  it("Claude Kimi와 Claude GLM을 Operation Controls 목록에서 숨긴다", () => {
+  it("모든 CLI를 Operation Controls 목록에 포함한다", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude", label: "Claude", available: true, signedIn: true },
-        { id: "claude-kimi", label: "Claude Kimi", available: true, signedIn: true },
-        { id: "claude-glm", label: "Claude GLM", available: true, signedIn: true },
         { id: "codex", label: "Codex", available: true, signedIn: true },
       ],
       "agent",
@@ -20,7 +18,7 @@ describe("buildAgentCliLaunchKinds", () => {
     ]);
   });
 
-  it("지원되는 CLI에는 기존 설치와 로그인 비활성화 사유를 유지한다", () => {
+  it("설치 미완료 및 로그인 미완료 CLI에 비활성화 사유를 표시한다", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude", label: "Claude", available: false, signedIn: true },

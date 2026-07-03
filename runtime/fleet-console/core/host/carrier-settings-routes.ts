@@ -78,7 +78,7 @@ type JsonBodyResult<T> =
   | { readonly ok: true; readonly body: T }
   | { readonly ok: false };
 
-const SUBAGENT_CLI_TYPES = new Set<CliType>(["claude", "claude-zai", "claude-kimi", "claude-glm"]);
+const SUBAGENT_CLI_TYPES = new Set<CliType>(["claude"]);
 const TASKFORCE_MIN_BACKENDS = 2;
 
 export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [

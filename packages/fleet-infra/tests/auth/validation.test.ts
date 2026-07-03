@@ -15,17 +15,17 @@ describe("auth validation", () => {
     const fetchMock = mockFetch(new Response("{}", { status: 200 }));
 
     const result = await validateAnthropicCompatibleApiKey({
-      providerId: "Claude Code with Z.AI GLM",
+      providerId: "Test Anthropic Provider",
       apiKey: "valid-token",
-      baseUrl: "https://api.z.ai/api/anthropic/",
+      baseUrl: "https://api.example.invalid/anthropic/",
     });
 
     expect(result).toEqual({
-      providerId: "Claude Code with Z.AI GLM",
+      providerId: "Test Anthropic Provider",
       status: "success",
     });
     expect(isAuthValidationSuccess(result)).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith("https://api.z.ai/api/anthropic/v1/messages", expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.invalid/anthropic/v1/messages", expect.objectContaining({
       method: "POST",
       headers: expect.objectContaining({
         "content-type": "application/json",
@@ -79,20 +79,20 @@ describe("auth validation", () => {
 
   it("creates a plain English validation error message", () => {
     const error = createAuthValidationError({
-      providerId: "Claude Code with Moonshot Kimi",
+      providerId: "Test Anthropic Provider",
       status: "forbidden",
     });
 
     expect(error.message).toContain("Auth token is not allowed for this provider");
-    expect(error.message).toContain("Claude Code with Moonshot Kimi");
+    expect(error.message).toContain("Test Anthropic Provider");
   });
 });
 
 function baseRequest() {
   return {
-    providerId: "Claude Code with Z.AI GLM",
+    providerId: "Test Anthropic Provider",
     apiKey: "token",
-    baseUrl: "https://api.z.ai/api/anthropic",
+    baseUrl: "https://api.example.invalid/anthropic",
   };
 }
 

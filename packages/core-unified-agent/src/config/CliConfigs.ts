@@ -33,77 +33,6 @@ export const CLI_BACKENDS = {
     usesNpxBridge: true,
     defaultMaxTokens: 16_384,
   },
-  'claude-zai': {
-    id: 'claude-zai',
-    cliCommand: 'claude',
-    protocol: 'acp',
-    authRequired: true,
-    npxPackage: '@agentclientprotocol/claude-agent-acp@0.33.1',
-    modes: [
-      { id: 'default', label: 'Default' },
-      { id: 'plan', label: 'Plan' },
-      { id: 'bypassPermissions', label: 'YOLO' },
-    ],
-    supportsSessionClose: true,
-    supportsSessionLoad: true,
-    requiresModelAtSpawn: false,
-    usesNpxBridge: true,
-    defaultMaxTokens: 16_384,
-    defaultEnv: {
-      ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
-      API_TIMEOUT_MS: '3000000',
-    },
-  },
-  'claude-kimi': {
-    id: 'claude-kimi',
-    cliCommand: 'claude',
-    protocol: 'acp',
-    authRequired: true,
-    npxPackage: '@agentclientprotocol/claude-agent-acp@0.33.1',
-    modes: [
-      { id: 'default', label: 'Default' },
-      { id: 'plan', label: 'Plan' },
-      { id: 'bypassPermissions', label: 'YOLO' },
-    ],
-    supportsSessionClose: true,
-    supportsSessionLoad: true,
-    requiresModelAtSpawn: false,
-    usesNpxBridge: true,
-    defaultMaxTokens: 16_384,
-    defaultEnv: {
-      ANTHROPIC_BASE_URL: 'https://api.kimi.com/coding/',
-      ENABLE_TOOL_SEARCH: 'false',
-      ANTHROPIC_MODEL: 'kimi-k2.7-code',
-      CLAUDE_CODE_SUBAGENT_MODEL: 'kimi-k2.7-code',
-      API_TIMEOUT_MS: '3000000',
-    },
-  },
-  'claude-glm': {
-    id: 'claude-glm',
-    cliCommand: 'claude',
-    protocol: 'acp',
-    authRequired: true,
-    npxPackage: '@agentclientprotocol/claude-agent-acp@0.33.1',
-    modes: [
-      { id: 'default', label: 'Default' },
-      { id: 'plan', label: 'Plan' },
-      { id: 'bypassPermissions', label: 'YOLO' },
-    ],
-    supportsSessionClose: true,
-    supportsSessionLoad: true,
-    requiresModelAtSpawn: false,
-    usesNpxBridge: true,
-    defaultMaxTokens: 16_384,
-    defaultEnv: {
-      ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/anthropic',
-      // ZhipuAI Claude Code 권장 슬롯 매핑 — 직접 launch(Native PTY) 경로에서도
-      // haiku/sonnet/opus 별칭이 GLM 모델로 해석되도록 env로 고정한다.
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-4.5-air',
-      ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-4.7',
-      ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.1',
-      API_TIMEOUT_MS: '3000000',
-    },
-  },
   codex: {
     id: 'codex',
     cliCommand: 'codex',
@@ -231,10 +160,10 @@ export function getBackendConfig(cli: CliType): CliBackendConfig {
  * Claude 계열 CLI인지 판별합니다.
  *
  * @param cli - CLI 종류
- * @returns Claude 계열('claude' | 'claude-zai' | 'claude-kimi' | 'claude-glm') 여부
+ * @returns Claude 계열 여부
  */
-export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-zai' | 'claude-kimi' | 'claude-glm' {
-  return cli === 'claude' || cli === 'claude-zai' || cli === 'claude-kimi' || cli === 'claude-glm';
+export function isClaudeFamily(cli: CliType): cli is 'claude' {
+  return cli === 'claude';
 }
 
 /**
@@ -246,9 +175,6 @@ export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-zai' | '
 export function getYoloModeId(cli: CliType): string {
   switch (cli) {
     case 'claude':
-    case 'claude-zai':
-    case 'claude-kimi':
-    case 'claude-glm':
       return 'bypassPermissions';
     case 'opencode-go':
       return 'build';

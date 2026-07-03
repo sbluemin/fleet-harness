@@ -24,7 +24,7 @@ describe("session options resolver", () => {
       cliIdOverride: "codex",
       defaults: DEFAULTS,
       env: {
-        FLEET_AGENT_CLI: "claude-kimi",
+        FLEET_AGENT_CLI: "claude",
         FLEET_ENABLE_METAPHOR: "1",
         FLEET_REPLACE_SYSTEM_PROMPT: "0",
       },
@@ -53,7 +53,7 @@ describe("session options resolver", () => {
     const resolved = resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
-      env: { FLEET_AGENT_CLI: "claude-kimi" },
+      env: { FLEET_AGENT_CLI: "codex" },
       globalOptions: {
         version: 1,
         replaceSystemPrompt: true,
@@ -62,7 +62,7 @@ describe("session options resolver", () => {
       parseCliId: parseAgentCliId,
     });
 
-    expect(resolved.values.cliId).toBe("claude-kimi");
+    expect(resolved.values.cliId).toBe("codex");
     expect(resolved.sources.cliId).toBe("env");
     expect(resolved.sources.enableMetaphor).toBe("global-options");
   });

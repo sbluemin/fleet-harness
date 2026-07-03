@@ -99,8 +99,6 @@ Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CL
 | CLI | Provider | Protocol | Key Capabilities |
 |-----|----------|----------|------------------|
 | **Claude Code** | Anthropic | ACP | Deep reasoning, architecture judgment |
-| **Claude Code (Z.AI GLM)** | Z.AI | ACP | Claude bridge to GLM-5 series |
-| **Claude Code (Moonshot Kimi)** | Moonshot | ACP | Claude bridge to Kimi K2 series |
 | **Codex CLI** | OpenAI | ACP | Fast code generation, multi-wave execution |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
 | **Cursor Agent** | Cursor | ACP | Multi-model routing across frontier models |

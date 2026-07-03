@@ -105,7 +105,7 @@ export async function injectAgentCliProfile(
   const doctrine = options.buildSystemPrompt(injectTone);
   const tempCleanups: Array<() => void> = [];
   try {
-    const systemPromptFile = profile.id === "claude" || profile.id === "claude-kimi" || profile.id === "claude-glm"
+    const systemPromptFile = profile.id === "claude"
       ? writeSystemPromptFile(profile.id, doctrine, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const plugin = await createAgentCliPlugin({
@@ -206,7 +206,7 @@ function buildStartupNativeDefinitions(
 }
 
 function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeDefinitions["host"] {
-  if (cliId === "claude" || cliId === "claude-kimi" || cliId === "claude-glm") return "claude";
+  if (cliId === "claude") return "claude";
   return "none";
 }
 

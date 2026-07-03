@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary, type AuthEnvResolver } from "@dotobokuri/core-agent";
+import { resolvePathBinary } from "@dotobokuri/core-agent";
 import {
   createSystemPromptBuilder,
   injectAgentCliProfile,
@@ -14,8 +14,7 @@ import {
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, getFleetDataDir, type InfraServices } from "@dotobokuri/fleet-infra";
-import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
+import { createInfraServices, getFleetDataDir, type GlobalOptionsService } from "@dotobokuri/fleet-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
@@ -29,7 +28,7 @@ export interface TerminalLaunchResolverDeps {
   readonly entryPath?: string;
   readonly tsxLoaderPath?: string;
   readonly dataDir?: string;
-  readonly infraServices?: InfraServices;
+  readonly infraServices?: { readonly globalOptionsService: GlobalOptionsService };
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
@@ -65,7 +64,6 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
   const agentRuntime = deps.agentRuntime;
   const injectProfile = deps.injectProfile ?? injectAgentCliProfile;
   const resolveProfile = deps.resolveProfile ?? resolveAgentCliProfile;
-  const authEnvResolver: AuthEnvResolver = (cli) => resolveAuthEnv(cli as Parameters<typeof resolveAuthEnv>[0], { authService: infraServices.authService });
   const hookEntry: ConsoleHookCommandEntry = { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
 
   return async (selectedCwd, context) => {
@@ -86,7 +84,6 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     }
     const sessionId = context?.sessionId ?? "default";
     return createAgentCliLaunchSpec({
-      authEnvResolver,
       agentRuntime,
       cwd,
       dataDir,
@@ -123,14 +120,13 @@ function hasHookEntryExtension(entryPath: string): boolean {
 }
 
 async function createAgentCliLaunchSpec(options: {
-  readonly authEnvResolver: AuthEnvResolver;
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly cliId?: string;
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly hookEntry: ConsoleHookCommandEntry;
-  readonly infraServices: InfraServices;
+  readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
@@ -144,8 +140,6 @@ async function createAgentCliLaunchSpec(options: {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
     const profile = await options.resolveProfile(options.env, options.cwd, {
-      authEnvResolver: options.authEnvResolver,
-      authService: options.infraServices.authService,
       cliId: options.cliId,
       resumeSessionId: options.resumeSessionId,
     });
@@ -263,7 +257,7 @@ function resolveOptionalPackage(id: string): string | undefined {
 // 세션 launch 직전에 전역 옵션(~/.fleet/settings.json)을 1회 스냅샷한다. daemon 재시작 없이도
 // 신규 세션이 최신 토글 값을 반영하도록 부팅 캐시가 아닌 launch 시점에 읽는다. 로드 실패(락 타임아웃 등)는
 // 세션 launch를 막지 않고 기본값(append / 메타포 off)으로 폴백한다.
-function readGlobalSettingsSnapshot(infraServices: InfraServices): { readonly enableMetaphor: boolean; readonly replaceSystemPrompt: boolean } {
+function readGlobalSettingsSnapshot(infraServices: { readonly globalOptionsService: GlobalOptionsService }): { readonly enableMetaphor: boolean; readonly replaceSystemPrompt: boolean } {
   try {
     const data = infraServices.globalOptionsService.load();
     return {

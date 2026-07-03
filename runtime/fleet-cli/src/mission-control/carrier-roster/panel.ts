@@ -601,7 +601,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       return;
     }
     if (entry.cliType === "codex" && enabled) {
-      this.feedbackMessage = `${entry.displayName} Codex native SubAgent는 지원하지 않습니다. Claude 계열에서만 사용할 수 있습니다.`;
+      this.feedbackMessage = `${entry.displayName} Codex native SubAgent는 지원하지 않습니다. Claude Code에서만 사용할 수 있습니다.`;
       this.options.requestRender();
       return;
     }
@@ -610,8 +610,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
     notifyStatusUpdate(this.options.carrierRuntime.registry);
     this.feedbackMessage = enabled
       ? resetTaskForce
-        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 Claude 계열 dedicated CLI 시작부터 적용됩니다.`
-        : `${entry.displayName} Native(SubAgent) 활성화: 다음 Claude 계열 dedicated CLI 시작부터 적용됩니다.`
+        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 Claude Code dedicated CLI 시작부터 적용됩니다.`
+        : `${entry.displayName} Native(SubAgent) 활성화: 다음 Claude Code dedicated CLI 시작부터 적용됩니다.`
       : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
     this.options.requestRender();
   }

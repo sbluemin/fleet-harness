@@ -1,4 +1,4 @@
-export type AgentCliId = "claude" | "claude-kimi" | "claude-glm" | "codex";
+export type AgentCliId = "claude" | "codex";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;
@@ -32,21 +32,7 @@ export interface AgentCliDefinition {
   createProfile(options: AgentCliProfileOptions): Promise<AgentCliProfile>;
 }
 
-export interface AuthServiceLike {
-  deleteApiKey(providerId: string): Promise<boolean>;
-  getApiKey(providerId: string): Promise<string | undefined>;
-  listProviderIds(): Promise<string[]>;
-  setApiKey(providerId: string, key: string): Promise<void>;
-}
-
-export interface AuthEnvResolver {
-  (cliId: AgentCliId, options: { readonly authService?: AuthServiceLike }): Promise<Readonly<Record<string, string>>> | Readonly<Record<string, string>>;
-}
-
 export interface AgentCliProfileOptions {
-  // Composition Root가 주입하는 인증 서비스와 env resolver. fleet-admiral은 fleet-infra를 직접 import하지 않는다.
-  readonly authEnvResolver?: AuthEnvResolver;
-  readonly authService?: AuthServiceLike;
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;

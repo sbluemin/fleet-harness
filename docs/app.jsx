@@ -41,8 +41,8 @@ const UI = {
   hierarchyTitle: { ko: "3-단 지휘 체계", en: "Three-tier command structure" },
   hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 함대는 그 결정을 작전으로 환원한다.", en: "You don't write code — you decide. The fleet turns each decision into an operation." },
 
-  backendsEy:    { ko: "CLI Backends · 06", en: "CLI Backends · 06" },
-  backendsTitle: { ko: ["여섯 개의 CLI,", "한 명의 제독."], en: ["Six CLIs,", "one Admiral."] },
+  backendsEy:    { ko: "CLI Backends · 04", en: "CLI Backends · 04" },
+  backendsTitle: { ko: ["네 개의 CLI,", "한 명의 제독."], en: ["Four CLIs,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작전을 수행하지 않는다. 각 백엔드는 자신이 가장 잘하는 항해를 맡는다.", en: "No single model runs every mission. Each backend takes the voyage it sails best." },
 
   captainsEy:    { ko: "Captains Roster · 08", en: "Captains Roster · 08" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 6 CLI · 8 Captains · 4 Modes", en: "· 6 CLI · 8 Captains · 4 Modes" },
+  countMeta:   { ko: "· 4 CLI · 8 Captains · 4 Modes", en: "· 4 CLI · 8 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -104,11 +104,9 @@ const HIERARCHY = [
 
 const CLI_BACKENDS = [
   { num: "01", vendor: "Anthropic", name: "Claude Code", tag: { ko: "장기 추론·아키텍처 판단의 표준 백엔드", en: "The standard backend for long-form reasoning and architectural judgment." }, color: "oklch(78% 0.13 75)" },
-  { num: "02", vendor: "Z.AI", name: "Claude Code · GLM", tag: { ko: "Anthropic 호환 · GLM 구동 코스트 절감 라인", en: "Anthropic-compatible — a GLM-powered cost-cutting line." }, color: "oklch(82% 0.13 195)" },
-  { num: "03", vendor: "Moonshot", name: "Claude Code · Kimi", tag: { ko: "Anthropic 호환 · 초장문 컨텍스트 라인", en: "Anthropic-compatible — the ultra-long-context line." }, color: "oklch(78% 0.14 290)" },
-  { num: "04", vendor: "OpenAI", name: "Codex", tag: { ko: "도구 호출과 실행 위임에 최적화된 작업 함정", en: "A working vessel optimized for tool calls and execution delegation." }, color: "oklch(72% 0.17 25)" },
-  { num: "05", vendor: "Cursor", name: "Cursor Agent", tag: { ko: "프론티어 모델 다중 라우팅 함정", en: "A multi-model vessel routing across frontier models." }, color: "oklch(78% 0.14 145)" },
-  { num: "06", vendor: "Open Source", name: "OpenCode Go", tag: { ko: "오픈코어 폴백 · 자체 호스팅 모델 게이트웨이", en: "Open-core fallback — a self-hosted model gateway." }, color: "oklch(74% 0.06 248)" },
+  { num: "02", vendor: "OpenAI", name: "Codex", tag: { ko: "도구 호출과 실행 위임에 최적화된 작업 함정", en: "A working vessel optimized for tool calls and execution delegation." }, color: "oklch(72% 0.17 25)" },
+  { num: "03", vendor: "Cursor", name: "Cursor Agent", tag: { ko: "프론티어 모델 다중 라우팅 함정", en: "A multi-model vessel routing across frontier models." }, color: "oklch(78% 0.14 145)" },
+  { num: "04", vendor: "Open Source", name: "OpenCode Go", tag: { ko: "오픈코어 폴백 · 자체 호스팅 모델 게이트웨이", en: "Open-core fallback — a self-hosted model gateway." }, color: "oklch(74% 0.06 248)" },
 ];
 
 const CAPTAINS = [
@@ -302,7 +300,7 @@ const DIFFS = [
     n: "01",
     name: "Multi-CLI Orchestration",
     kr: { ko: "멀티-CLI 오케스트레이션", en: "Multi-CLI Orchestration" },
-    body: { ko: "단일 인터페이스 아래 6개의 CLI 백엔드 — Claude Code 라인 3종, Codex, Gemini, OpenCode Go — 가 함께 실행된다. 모델별 강점을 작전 단위로 골라 쓴다.", en: "Six CLI backends — three Claude Code lines, Codex, Gemini, OpenCode Go — run together under one interface. Pick each model's strength on a per-operation basis." },
+    body: { ko: "단일 인터페이스 아래 4개의 CLI 백엔드 — Claude Code, Codex, Cursor Agent, OpenCode Go — 가 함께 실행된다. 모델별 강점을 작전 단위로 골라 쓴다.", en: "Four CLI backends — Claude Code, Codex, Cursor Agent, OpenCode Go — run together under one interface. Pick each model's strength on a per-operation basis." },
   },
   {
     n: "02",
@@ -360,7 +358,7 @@ const COMPARES = [
     name: "Fleet Action Protocol",
     us: true,
     bullets: [
-      { ko: "6 CLI 백엔드 동시 지휘", en: "Six CLI backends commanded together" },
+      { ko: "4 CLI 백엔드 동시 지휘", en: "Four CLI backends commanded together" },
       { ko: "8 함장 명시적 책임 분리", en: "Eight captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
