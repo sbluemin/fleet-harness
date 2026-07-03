@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { definePlugin, defineOperationKind, React } from "@fleet-console/sdk/plugin/browser";
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import type { BenchRun, BenchVerdict } from "../server/bench-store.js";
 import { getBenchRun, deleteBenchRun } from "./api.js";
@@ -13,6 +13,9 @@ interface RunsListPayload {
   readonly runs: ReadonlyArray<{ readonly runId: string; readonly benchOpId: string; readonly initialPrompt: string }>;
 }
 
+// install 콜백에서 캡처 — closeOperation이 operations 목록 재조회에 사용한다.
+let capturedResync: (() => void) | null = null;
+
 const benchOperationKind = defineOperationKind({
   pluginId: "bench",
   type: "bench",
@@ -24,6 +27,10 @@ const benchOperationKind = defineOperationKind({
 export const benchPlugin = definePlugin({
   id: "bench",
   operationKinds: [benchOperationKind],
+  install: (ctx: PluginInstallContext) => {
+    capturedResync = () => ctx.api.resync();
+    return () => { capturedResync = null; };
+  },
   launch: async (ctx) => {
     return new Promise((resolve, reject) => {
       const container = document.createElement("div");
@@ -54,6 +61,8 @@ export const benchPlugin = definePlugin({
       const run = data.runs.find((r) => r.benchOpId === operationId);
       if (!run) return;
       await fetch(`/plugins/bench/runs/${encodeURIComponent(run.runId)}`, { method: "DELETE" });
+      // 삭제 완료 후 operations 스냅샷 재조회 — 사이드바가 reload 없이 갱신된다.
+      capturedResync?.();
     } catch {
       // 무시 — host가 bench op를 이후 표준 흐름으로 제거
     }

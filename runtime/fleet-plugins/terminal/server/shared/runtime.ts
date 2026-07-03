@@ -20,6 +20,8 @@ export interface TerminalRuntime {
   // bench 플러그인 전용: 세션 scrollback 최근 byteLimit 바이트 사본 반환.
   getScrollbackTail(operationId: string, byteLimit: number): Buffer[];
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
+  // terminal 내부 전용: PTY 출력이 올 때마다 sessionId를 통지 — quiescence 감지 큐가 구독.
+  subscribeOutput(listener: (sessionId: string) => void): () => void;
   registerLaunchResolver(operationType: string, resolver: TerminalLaunchResolver): () => void;
   stop(): Promise<void>;
 }
@@ -31,6 +33,7 @@ const SHELL_OPERATION_TYPE = "shell";
 export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRuntime {
   const tickets = createPluginTerminalTicketRegistry();
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
+  const terminalOutputListeners = new Set<(sessionId: string) => void>();
   const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
   const defaultTerminalLaunch = createShellTerminalLaunchResolver();
   terminalLaunchResolvers.set(SHELL_OPERATION_TYPE, (cwd, context) => defaultTerminalLaunch(cwd, { ...context, kind: "shell" }));
@@ -39,6 +42,9 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     startShell: startTerminalShell,
     onSessionExit: async (sessionId) => {
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
+    },
+    onOutput: (sessionId) => {
+      for (const listener of terminalOutputListeners) listener(sessionId);
     },
   });
   const upgrade = createPluginTerminalUpgradeHandler({
@@ -63,6 +69,10 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       terminalExitListeners.add(callback);
       return () => terminalExitListeners.delete(callback);
     },
+    subscribeOutput: (listener) => {
+      terminalOutputListeners.add(listener);
+      return () => terminalOutputListeners.delete(listener);
+    },
     registerLaunchResolver: (operationType, resolver) => {
       terminalLaunchResolvers.set(operationType, resolver);
       return () => {
@@ -73,6 +83,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       upgrade.close();
       await sessions.stop();
       terminalExitListeners.clear();
+      terminalOutputListeners.clear();
       terminalLaunchResolvers.clear();
     },
   };

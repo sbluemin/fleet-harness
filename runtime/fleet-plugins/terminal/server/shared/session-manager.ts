@@ -13,6 +13,8 @@ export interface TerminalSessionManagerDeps {
   readonly scrollbackLimit?: number;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
   readonly onSessionExit?: (sessionId: string) => unknown;
+  // PTY 데이터를 수신할 때마다 호출 — quiescence 감지 큐가 구독한다. terminal 내부 전용.
+  readonly onOutput?: (sessionId: string) => void;
 }
 
 interface TerminalSession {
@@ -207,6 +209,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (session.activeSocket && session.activeSocket.readyState === WS_OPEN_STATE) {
       session.activeSocket.send(buffer, { binary: true });
     }
+    deps.onOutput?.(session.id);
   }
 
   function handleSocketMessage(session: TerminalSession, data: TerminalSocketData, isBinary: boolean): void {
