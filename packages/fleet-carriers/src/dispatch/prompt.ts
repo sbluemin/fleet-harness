@@ -33,12 +33,21 @@ export interface CarrierToolSpecDeps {
 
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
 
+// 모든 캐리어 공통 응답 프로토콜 — metadata 유무와 무관하게 항상 주입한다.
+const COMMON_RESPONSE_PROTOCOL = `<response_protocol>
+Keep progress narration concise — at most one line per meaningful step. No verbose play-by-play or step-by-step essays (short streaming lines are acceptable for the live observation channel).
+
+When the mission is complete, wrap the entire final output in a <report>...</report> tag and emit it exactly once, at the very end. The Admiral retrieves only the report block, so everything you need to convey — results, evidence, file paths, caveats — must be inside it. Your persona's output_format structure applies inside the report block as usual.
+
+Do not mention or demonstrate the literal opening and closing report tag anywhere in the body outside that final block.
+</response_protocol>`;
+
 // ═════════════════════════════════════════════════════════
 // 캐리어 시스템 프롬프트 (Tier 2)
 // ═════════════════════════════════════════════════════════
 
 export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
-  const parts: string[] = [CARRIER_FLEET_BACKGROUND];
+  const parts: string[] = [CARRIER_FLEET_BACKGROUND, COMMON_RESPONSE_PROTOCOL];
 
   if (metadata) {
     parts.push(`<your_identity>\n${metadata.title}\n${metadata.summary}\n</your_identity>`);

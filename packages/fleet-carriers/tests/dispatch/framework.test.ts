@@ -560,10 +560,8 @@ describe("carrier_dispatch native subagent mode delegation", () => {
 
     await vi.waitFor(() => {
       expect(getJobSummary("carrier:dispatch-manifest", Date.now())?.workspaceChanges).toMatchObject({
-        attribution: "window-approximate",
-        available: true,
         changes: [{ status: "M", path: "src/file.ts" }],
-        statLine: "1 file (window-approx)",
+        truncated: false,
       });
     });
     unregister();
@@ -593,11 +591,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
       accepted: true,
     });
     await vi.waitFor(() => {
-      expect(getJobSummary("carrier:dispatch-no-scanner", Date.now())?.workspaceChanges).toMatchObject({
-        available: false,
-        reason: "scanner-not-configured",
-        statLine: "unavailable",
-      });
+      expect(getJobSummary("carrier:dispatch-no-scanner", Date.now())?.workspaceChanges).toBeUndefined();
     });
   });
 
@@ -811,10 +805,8 @@ describe("carrier_dispatch taskforce stream metadata", () => {
 
     await vi.waitFor(() => {
       expect(getJobSummary("taskforce:dispatch-taskforce-manifest", Date.now())?.workspaceChanges).toMatchObject({
-        attribution: "window-approximate",
-        available: true,
         changes: [{ status: "A", path: "docs/plan.md" }],
-        statLine: "1 file (window-approx)",
+        truncated: false,
       });
     });
     unregister();
