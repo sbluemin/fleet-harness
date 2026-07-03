@@ -162,6 +162,20 @@ async function handleVerdicts(
     .filter((v) => typeof v.rubricId === "string" && typeof v.winnerOpId === "string")
     .map((v) => ({ rubricId: v.rubricId as string, winnerOpId: v.winnerOpId as string }));
   const notes = typeof body.notes === "string" ? body.notes : undefined;
+  // rubricId·winnerOpId는 해당 run의 rubric/참전자 범위 안에서만 유효 — 임의 문자열 판정 위조 차단.
+  const runs = await store.loadRuns();
+  const run = runs.find((r) => r.runId === runId);
+  if (!run) {
+    ctx.host.http.writeJson(res, 404, { error: "run_not_found" });
+    return true;
+  }
+  const validRefs = verdicts.every(
+    (v) => run.rubric.some((r) => r.id === v.rubricId) && run.participants.some((p) => p.opId === v.winnerOpId),
+  );
+  if (!validRefs) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_verdict_refs" });
+    return true;
+  }
   const updated = await store.saveVerdicts(runId, verdicts, notes);
   if (!updated) {
     ctx.host.http.writeJson(res, 404, { error: "run_not_found" });

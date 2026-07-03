@@ -110,12 +110,15 @@ export async function runContenderFanout(input: FanoutInput): Promise<FanoutResu
 
 export async function deleteFanout(participantOpIds: readonly string[], benchOpId: string, groupId: string, serverPort: number): Promise<void> {
   const base = `http://127.0.0.1:${serverPort}`;
-  // 삭제 순서: 참전자 op → bench op → group
+  // 삭제 순서: 참전자 op → bench op → group. 부분 실패는 orphan으로 남으므로 최소한 흔적을 남긴다.
+  const warn = (what: string) => (err: unknown) => {
+    console.warn(`[bench] deleteFanout: ${what} delete failed`, err instanceof Error ? err.message : err);
+  };
   for (const opId of participantOpIds) {
-    await fetch(`${base}/plugins/terminal/agent/sessions/${opId}`, { method: "DELETE" }).catch(() => {});
+    await fetch(`${base}/plugins/terminal/agent/sessions/${opId}`, { method: "DELETE" }).catch(warn(`participant ${opId}`));
   }
-  await fetch(`${base}/api/v1/operations/${benchOpId}`, { method: "DELETE" }).catch(() => {});
-  await fetch(`${base}/api/v1/operations/groups/${groupId}`, { method: "DELETE" }).catch(() => {});
+  await fetch(`${base}/api/v1/operations/${benchOpId}`, { method: "DELETE" }).catch(warn(`bench op ${benchOpId}`));
+  await fetch(`${base}/api/v1/operations/groups/${groupId}`, { method: "DELETE" }).catch(warn(`group ${groupId}`));
 }
 
 function simpleHash(str: string): number {

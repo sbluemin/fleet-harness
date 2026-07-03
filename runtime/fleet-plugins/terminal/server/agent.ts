@@ -158,6 +158,10 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (path === "/capture") return handleCapture(req, res, "");
     const scrollbackMatch = path.match(/^\/sessions\/([^/]+)\/scrollback$/);
     if (scrollbackMatch) {
+      if (!ctx.host.security.isTerminalAuthorized(req)) {
+        ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+        return true;
+      }
       return handleScrollbackRoute(req, res, decodeURIComponent(scrollbackMatch[1] ?? ""), terminalRuntime, ctx.host.http.writeJson);
     }
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);

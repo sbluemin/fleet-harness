@@ -3,6 +3,5 @@
   "apiVersion": 1,
   "name": "Eval Bench",
   "client": "client/index.tsx",
-  "routes": "routes.ts",
-  "sensitiveFields": ["initialPrompt", "contenders"]
+  "routes": "routes.ts"
 }
