@@ -21,6 +21,14 @@ describe('ModelRegistry', () => {
     expect(modelIds).toContain('gpt-5.5');
   });
 
+  it('OpenCode Go 정적 모델 목록에 GLM-5.2와 Kimi K2.7 Code를 포함한다', () => {
+    const provider = getProviderModels('opencode-go');
+    const modelIds = provider.models.map((model) => model.modelId);
+
+    expect(modelIds).toContain('opencode-go/glm-5.2');
+    expect(modelIds).toContain('opencode-go/kimi-k2.7-code');
+  });
+
   it('Cursor 정적 모델 목록은 cursor-agent CLI 모델 ID를 그대로 노출한다', () => {
     const provider = getProviderModels('cursor');
     const modelIds = provider.models.map((model) => model.modelId);
