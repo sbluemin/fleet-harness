@@ -1,10 +1,12 @@
 import type { BenchContender, BenchRubricItem } from "./bench-store.js";
 
+// durable-state의 VALID_GROUP_COLOR_KEYS 화이트리스트와 동일한 16색 named key만 허용된다 —
+// hex 값은 라이브 생성은 통과하지만 재시작 sanitize에서 그룹이 제거된다.
 const ACCENT_PALETTE = [
-  "#ef4444", "#f97316", "#eab308", "#22c55e",
-  "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
-  "#f43f5e", "#f59e0b", "#10b981", "#06b6d4",
-  "#6366f1", "#a855f7", "#d946ef", "#84cc16",
+  "red", "orange", "amber", "yellow",
+  "lime", "green", "emerald", "teal",
+  "cyan", "sky", "blue", "indigo",
+  "violet", "purple", "magenta", "rose",
 ] as const;
 
 export interface FanoutResult {
