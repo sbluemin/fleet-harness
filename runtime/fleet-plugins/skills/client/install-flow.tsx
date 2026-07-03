@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { AgentId, Scope } from "../server/types.js";
-import { useJobLog } from "./use-job-log.js";
+import type { UseJobLogReturn } from "./use-job-log.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -11,6 +11,7 @@ interface InstallFlowProps {
   readonly theaterId: string | null;
   readonly onCancel: () => void;
   readonly onSuccess: (scope: Scope) => void;
+  readonly jobLog: UseJobLogReturn;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -31,12 +32,12 @@ const SUCCESS_LINGER_MS = 1200;
 
 // ─── InstallFlow ──────────────────────────────────────────────────────────────
 
-export function InstallFlow({ source, skill, theaterId, onCancel, onSuccess }: InstallFlowProps) {
+export function InstallFlow({ source, skill, theaterId, onCancel, onSuccess, jobLog }: InstallFlowProps) {
   const [scope, setScope] = useState<Scope>(theaterId ? "project" : "global");
   const [allAgents, setAllAgents] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<Set<AgentId>>(new Set(AGENT_IDS));
 
-  const { status, lines, start } = useJobLog();
+  const { status, start } = jobLog;
   const isRunning = status === "running";
   const isDone = status === "done";
   const isError = status === "error";
@@ -138,21 +139,6 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onSuccess }: I
           >
             Install now
           </button>
-        </div>
-      )}
-
-      {(isRunning || isDone || isError) && (
-        <div className="skills-update-log">
-          {lines.map((line, i) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <div key={i} className="skills-update-log-line">{line}</div>
-          ))}
-          {isDone && (
-            <div className="skills-update-log-line skills-update-log-done">✓ Installed</div>
-          )}
-          {isError && (
-            <div className="skills-update-log-line skills-update-log-error">✗ Install failed</div>
-          )}
         </div>
       )}
     </div>

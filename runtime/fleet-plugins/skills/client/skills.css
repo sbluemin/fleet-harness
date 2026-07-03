@@ -269,24 +269,144 @@
   .skills-btn { transition: none; }
 }
 
-/* ─── update log ─────────────────────────────────────────────────────────────── */
+/* ─── status dock ────────────────────────────────────────────────────────────── */
 
-.skills-update-log {
-  background: color-mix(in srgb, var(--surface-glass) 30%, transparent);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  font-family: "JetBrains Mono Variable", monospace;
-  font-size: 0.6875rem;
-  max-height: 160px;
-  overflow-y: auto;
-  padding: var(--space-2);
+.skills-dock {
+  flex-shrink: 0;
+  border-top: 1px solid var(--surface-rim);
+  background: color-mix(in srgb, var(--surface-glass) 80%, transparent);
+  display: flex;
+  flex-direction: column;
 }
 
-.skills-update-log-line { color: var(--ink-body); line-height: 1.5; }
+.skills-dock-log {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3) 0;
+}
 
-.skills-update-log-done { color: var(--aurora); }
+.skills-dock-log-line {
+  color: var(--ink-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.skills-update-log-error { color: var(--coral); }
+.skills-dock-log-done { color: var(--positive); }
+
+.skills-dock-log-error { color: var(--coral); }
+
+.skills-dock-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-2);
+  padding: 9px var(--space-3);
+  user-select: none;
+}
+
+.skills-dock-summary:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.skills-dock-dot {
+  background: var(--ink-fog);
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+}
+
+.skills-dock-dot.is-live {
+  animation: skills-dock-pulse 1.6s ease-in-out infinite;
+  background: var(--aurora);
+}
+
+.skills-dock-dot.is-ok { background: var(--positive); }
+
+.skills-dock-dot.is-err { background: var(--coral); }
+
+@keyframes skills-dock-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--aurora) 22%, transparent);
+    opacity: 0.7;
+  }
+  50% {
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--aurora) 22%, transparent);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skills-dock-dot.is-live { animation-duration: 0.01ms; }
+}
+
+.skills-dock-label {
+  color: var(--ink-spectral);
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.skills-dock-label.is-ok { color: var(--positive); }
+
+.skills-dock-label.is-err { color: var(--coral); }
+
+.skills-dock-count {
+  color: var(--ink-fog);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+}
+
+.skills-dock-dismiss {
+  background: none;
+  border: none;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.skills-dock-dismiss:hover { color: var(--ink-spectral); }
+
+.skills-dock-dismiss:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.skills-dock-retry {
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--coral) 40%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--coral);
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.skills-dock-retry:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.skills-dock-chevron {
+  color: var(--ink-fog);
+  font-size: 0.72rem;
+  pointer-events: none;
+  transition: transform var(--duration-base) ease;
+}
+
+.skills-dock-chevron.is-open { transform: rotate(180deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .skills-dock-chevron { transition: none; }
+}
 
 /* ─── install flow ───────────────────────────────────────────────────────────── */
 

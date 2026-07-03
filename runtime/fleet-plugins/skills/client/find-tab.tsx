@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { Scope, SkillListItem, SkillSearchItem } from "../server/types.js";
 import { InstallFlow } from "./install-flow.js";
+import { JobStatusDock } from "./job-status-dock.js";
 import {
   setInstallFormOpenId,
   setSearchQuery,
   setSearchState,
   useSkillsStore,
 } from "./skills-store.js";
+import { useJobLog, type UseJobLogReturn } from "./use-job-log.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +26,7 @@ interface FindResultCardProps {
   readonly onInstallClick: () => void;
   readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
   readonly onInstallSuccess: (skillName: string, scope: Scope) => void;
+  readonly jobLog: UseJobLogReturn;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ function FindResultCard({
   onInstallClick,
   onReadMore,
   onInstallSuccess,
+  jobLog,
 }: FindResultCardProps) {
   const previewSkill: SkillListItem = {
     name: result.name,
@@ -105,6 +109,7 @@ function FindResultCard({
             onInstallClick();
             onInstallSuccess(result.name, installedScope);
           }}
+          jobLog={jobLog}
         />
       )}
     </div>
@@ -116,6 +121,7 @@ function FindResultCard({
 export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProps) {
   const { searchQuery, searchResults, searchLoading, installFormOpenId } = useSkillsStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const installJobLog = useJobLog();
 
   const handleQueryChange = useCallback((q: string) => {
     setSearchQuery(q);
@@ -128,42 +134,61 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
+  const installingName =
+    installFormOpenId != null
+      ? (searchResults.find((r) => r.id === installFormOpenId)?.name ?? "")
+      : "";
+
+  const installRunningLabel = installingName ? `Installing ${installingName}…` : "Installing…";
+
   return (
-    <div className="skills-tab-body">
-      <input
-        type="search"
-        className="skills-filter-input"
-        placeholder="Search skills.sh registry…"
-        value={searchQuery}
-        onChange={(e) => handleQueryChange(e.target.value)}
-        aria-label="Search skills registry"
-      />
+    <>
+      <div className="skills-tab-body">
+        <input
+          type="search"
+          className="skills-filter-input"
+          placeholder="Search skills.sh registry…"
+          value={searchQuery}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          aria-label="Search skills registry"
+        />
 
-      {searchLoading && <div className="skills-empty-state">Searching…</div>}
+        {searchLoading && <div className="skills-empty-state">Searching…</div>}
 
-      {!searchLoading && searchQuery.length >= MIN_QUERY_LEN && searchResults.length === 0 && (
-        <div className="skills-empty-state">No results for "{searchQuery}".</div>
-      )}
+        {!searchLoading && searchQuery.length >= MIN_QUERY_LEN && searchResults.length === 0 && (
+          <div className="skills-empty-state">No results for "{searchQuery}".</div>
+        )}
 
-      {!searchLoading && searchQuery.length > 0 && searchQuery.length < MIN_QUERY_LEN && (
-        <div className="skills-empty-state">Type at least 2 characters to search.</div>
-      )}
+        {!searchLoading && searchQuery.length > 0 && searchQuery.length < MIN_QUERY_LEN && (
+          <div className="skills-empty-state">Type at least 2 characters to search.</div>
+        )}
 
-      <div className="skills-card-list">
-        {searchResults.map((result) => (
-          <FindResultCard
-            key={result.id}
-            result={result}
-            theaterId={theaterId}
-            isFormOpen={installFormOpenId === result.id}
-            onInstallClick={() =>
-              setInstallFormOpenId(installFormOpenId === result.id ? null : result.id)
-            }
-            onReadMore={onReadMore}
-            onInstallSuccess={onInstallSuccess}
-          />
-        ))}
+        <div className="skills-card-list">
+          {searchResults.map((result) => (
+            <FindResultCard
+              key={result.id}
+              result={result}
+              theaterId={theaterId}
+              isFormOpen={installFormOpenId === result.id}
+              onInstallClick={() =>
+                setInstallFormOpenId(installFormOpenId === result.id ? null : result.id)
+              }
+              onReadMore={onReadMore}
+              onInstallSuccess={onInstallSuccess}
+              jobLog={installJobLog}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+
+      <JobStatusDock
+        status={installJobLog.status}
+        lines={installJobLog.lines}
+        runningLabel={installRunningLabel}
+        doneLabel="Installed"
+        errorLabel="Install failed"
+        onDismiss={installJobLog.reset}
+      />
+    </>
   );
 }
