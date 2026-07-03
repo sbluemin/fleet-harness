@@ -64,16 +64,22 @@ describe("extractFinalReport", () => {
     expect(extractFinalReport(text)).toBe("line 1\nline 2\nline 3");
   });
 
-  it("중첩처럼 보이는 구조 — 마지막 닫힘 기준으로 처리", () => {
-    // <report>...</report> 안에 plain text로 report 태그가 있는 경우
-    // 첫 번째 </report>에서 끊어진 후, 다음 <report>를 찾는다.
-    // <report>outer <report>inner</report> rest</report>
-    // → inner가 마지막 완결이 아니라 outer의 마지막 닫힘이 먼저 발견되므로 "outer <report>inner"
-    // 본 구현은 단순 indexOf 기반 — 중첩을 파싱하지 않음.
+  it("중첩처럼 보이는 구조 — 마지막 열림 태그의 완결 쌍을 반환", () => {
+    // 역방향 앵커: 마지막 <report>(inner)부터 시도 → 그 뒤 첫 </report>와 짝
+    // 본 구현은 단순 문자열 매칭 — 중첩을 재귀 파싱하지 않음.
     const text = "<report>outer <report>inner</report> rest</report>";
-    // 첫 <report> + 첫 </report>: body = "outer <report>inner"
-    // 두 번째 <report>(없음) → 루프 종료
-    // 실제로 두 번째 "rest</report>"에 <report>가 없으므로 body = "outer <report>inner"
-    expect(extractFinalReport(text)).toBe("outer <report>inner");
+    expect(extractFinalReport(text)).toBe("inner");
+  });
+
+  it("stray 열림 태그가 앞선 내레이션에 섞여도 최종 블록만 추출한다", () => {
+    // 전진 탐색이라면 stray <report>가 진짜 닫힘과 짝지어져 결과를 오염시키는 시나리오
+    const text = "progress note accidentally mentions <report> here\nmore work...\n<report>real final report</report>";
+    expect(extractFinalReport(text)).toBe("real final report");
+  });
+
+  it("마지막 블록이 빈 본문이면 그 앞 완결 블록으로 후퇴한다", () => {
+    expect(
+      extractFinalReport("<report>real</report> narration <report>   </report>"),
+    ).toBe("real");
   });
 });
