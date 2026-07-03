@@ -1,5 +1,5 @@
 export type CarrierJobsAction = "status" | "result" | "cancel" | "list";
-export type CarrierJobsFormat = "summary" | "full";
+export type CarrierJobsFormat = "summary" | "full" | "raw";
 
 export interface CarrierJobsParams {
   action: CarrierJobsAction;
@@ -8,7 +8,6 @@ export interface CarrierJobsParams {
 }
 
 export interface CarrierJobsAvailability {
-  summary_available: boolean;
   full_available: boolean;
   full_invalidated: boolean;
 }
@@ -61,11 +60,7 @@ export interface CarrierJobSummary extends CarrierJobBase {
 }
 
 export interface WorkspaceChangeManifest {
-  attribution: "window-approximate";
-  available: boolean;
-  reason?: string;
   changes: WorkspaceChangeManifestEntry[];
-  statLine: string;
   truncated: boolean;
 }
 

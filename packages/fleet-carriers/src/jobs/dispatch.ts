@@ -6,6 +6,8 @@ import { getFinalized, hasFinalizedJobArchive, hasJobArchive, serializeJobArchiv
 import { cancelJob, getActiveJob, listActiveJobs } from "./lifecycle.js";
 import { getJobSummary, listJobSummaries } from "./summary-cache.js";
 import { isCarrierJobId, CARRIER_JOBS_FULL_RESULT_BYTE_CAP, CARRIER_JOBS_GLOBAL_BYTE_CAP, CARRIER_JOBS_PER_SUBOP_BYTE_CAP, type ArchiveBlock, type CarrierJobRecord, type CarrierJobStatus, type CarrierJobSummary, type JobArchive, type CarrierJobsAvailability, type CarrierJobsFormat, type CarrierJobsParams } from "./types.js";
+import { extractFinalReport } from "./report-extract.js";
+import { buildStatLine } from "./workspace-manifest.js";
 
 // summary cache / launch-response는 하위 모듈로 분리됨 — 기존 소비자를 위한 동명 re-export
 export {
@@ -34,8 +36,6 @@ export interface CarrierResultSystemReminderInput {
 }
 
 export interface CarrierJobsResponse {
-  action: string;
-  format?: CarrierJobsFormat;
   job_id?: string;
   ok: boolean;
   status?: string;
@@ -48,7 +48,6 @@ export interface CarrierJobsResponse {
   full_invalidated?: boolean;
   retry_after?: string;
   notice?: string;
-  summary_available?: boolean;
   cancelled?: boolean;
   error?: string;
 }
@@ -84,6 +83,7 @@ export const CARRIER_JOBS_DOCTRINE = {
 };
 
 const REMINDER_TEXT_LIMIT = 500;
+// eslint-disable-next-line no-control-regex
 const REMINDER_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
 const REMINDER_WHITESPACE = /\s+/g;
 
@@ -93,11 +93,14 @@ const ACTIVE_CANCEL_NOTICE =
   "Cancel did not apply: the job is still running normally, not hung. Long-running carrier jobs are expected — do not retry cancel without an explicit user request to abort. The [carrier:result] push will arrive automatically; stop calling tools and return control to the user.";
 
 export function buildCarrierResultSystemReminder(input: CarrierResultSystemReminderInput): string {
+  const changes = input.summary.workspaceChanges
+    ? buildStatLine(input.summary.workspaceChanges.changes.length, input.summary.workspaceChanges.truncated)
+    : "unavailable";
   const lines = [`- ${input.jobId}: ${sanitizeReminderText(input.summary.summary)}`];
   const metadata = [
     `kind=${input.kind}`,
     `status=${input.status}`,
-    `changes=${sanitizeReminderText(input.summary.workspaceChanges?.statLine ?? "unavailable")}`,
+    `changes=${sanitizeReminderText(changes)}`,
     input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
     input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
     input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,
@@ -123,8 +126,8 @@ export function buildCarrierJobsSchema(): TObject {
     })),
     format: Type.Optional(Type.Unsafe<string>({
       type: "string",
-      enum: ["summary", "full"],
-      description: "Optional result detail level for renderers and result lookups.",
+      enum: ["summary", "full", "raw"],
+      description: `Optional result detail level. "full" returns the final report (extracted deterministically from the carrier's <report> block; falls back to the raw archive when absent). "summary" returns metadata only. "raw" returns the unprocessed full archive (debugging/audit). Defaults to "full" when omitted.`,
     })),
   });
 }
@@ -147,7 +150,6 @@ export function buildCarrierJobsToolSpec(): AgentToolSpec {
 export function dispatchCarrierJobsAction(params: CarrierJobsParams, now = Date.now()): CarrierJobsResponse {
   if (params.action === "list") {
     return {
-      action: "list",
       ok: true,
       active: listActiveJobs(),
       recent: listJobSummaries(now),
@@ -157,7 +159,6 @@ export function dispatchCarrierJobsAction(params: CarrierJobsParams, now = Date.
   const jobIdError = validateJobId(params.job_id);
   if (jobIdError) {
     return {
-      action: params.action,
       job_id: params.job_id,
       ok: false,
       error: jobIdError,
@@ -170,7 +171,6 @@ export function dispatchCarrierJobsAction(params: CarrierJobsParams, now = Date.
   if (params.action === "cancel") return cancelResponse(jobId, now);
 
   return {
-    action: String((params as { action?: unknown }).action),
     job_id: jobId,
     ok: false,
     error: "unsupported action",
@@ -207,7 +207,6 @@ function statusResponse(jobId: string, now: number): CarrierJobsResponse {
   const summary = getJobSummary(jobId, now);
   const availability = getAvailability(jobId, summary, now);
   return {
-    action: "status",
     job_id: jobId,
     ok: Boolean(active || summary || availability.full_available),
     status: active?.status ?? summary?.status ?? "not_found",
@@ -223,8 +222,6 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
   const availability = getAvailability(jobId, summary, now);
   if (active) {
     return {
-      action: "result",
-      format,
       job_id: jobId,
       ok: false,
       status: active.status,
@@ -239,8 +236,6 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
 
   if (format === "summary") {
     return {
-      action: "result",
-      format,
       job_id: jobId,
       ok: Boolean(summary),
       status: summary?.status ?? "not_found",
@@ -256,17 +251,36 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
   const serializeOpts = isSubOpJob
     ? { perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP, maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP }
     : { maxBytes: CARRIER_JOBS_FULL_RESULT_BYTE_CAP };
-  const fullResult = archive ? serializeJobArchive(archive, serializeOpts) : undefined;
+
+  let fullResult: string | undefined;
+  let results: Record<string, string> | undefined;
+
+  if (archive) {
+    if (isTaskForceJob) {
+      results = serializeTaskForceResultsByBackend(archive, format);
+    } else if (format === "raw") {
+      // raw: 추출 없이 현행 전문 직렬화
+      fullResult = serializeJobArchive(archive, serializeOpts);
+    } else {
+      // full: <report> 블록 추출 시도 → 실패 시 현행 전문 폴백
+      const rawSerialized = serializeJobArchive(archive);
+      const reportBody = extractFinalReport(rawSerialized);
+      if (reportBody !== null) {
+        fullResult = capTextBytes(reportBody, CARRIER_JOBS_FULL_RESULT_BYTE_CAP);
+      } else {
+        fullResult = serializeJobArchive(archive, serializeOpts);
+      }
+    }
+  }
+
   return {
-    action: "result",
-    format,
     job_id: jobId,
     ok: Boolean(archive),
     status: archive?.status ?? summary?.status ?? "not_found",
     summary: summary ?? undefined,
     ...availability,
     full_result: isTaskForceJob ? undefined : fullResult,
-    results: archive && isTaskForceJob ? serializeTaskForceResultsByBackend(archive) : undefined,
+    results: archive && isTaskForceJob ? results : undefined,
     error: archive ? undefined : "full result unavailable or expired",
   };
 }
@@ -276,7 +290,6 @@ function cancelResponse(jobId: string, now: number): CarrierJobsResponse {
   const active = getActiveJob(jobId);
   const summary = getJobSummary(jobId, now);
   return {
-    action: "cancel",
     job_id: jobId,
     ok: result.cancelled,
     cancelled: result.cancelled,
@@ -291,7 +304,6 @@ function cancelResponse(jobId: string, now: number): CarrierJobsResponse {
 function getAvailability(jobId: string, summary: CarrierJobSummary | null, now: number): CarrierJobsAvailability {
   const fullAvailable = hasFinalizedJobArchive(jobId, now);
   return {
-    summary_available: Boolean(summary),
     full_available: fullAvailable,
     full_invalidated: !hasJobArchive(jobId, now) && Boolean(summary),
   };
@@ -304,10 +316,11 @@ function validateJobId(jobId: string | undefined): string | null {
 }
 
 function normalizeFormat(format: CarrierJobsParams["format"]): CarrierJobsFormat {
-  return format === "summary" ? "summary" : "full";
+  if (format === "summary" || format === "raw") return format;
+  return "full";
 }
 
-function serializeTaskForceResultsByBackend(archive: JobArchive): Record<string, string> {
+function serializeTaskForceResultsByBackend(archive: JobArchive, format: CarrierJobsFormat): Record<string, string> {
   const grouped = new Map<string, ArchiveBlock[]>();
   const orderedKeys: string[] = [];
   for (const block of archive.blocks) {
@@ -322,10 +335,36 @@ function serializeTaskForceResultsByBackend(archive: JobArchive): Record<string,
   const results: Record<string, string> = {};
   for (const cliType of orderedKeys) {
     const blocks = grouped.get(cliType)!;
-    results[cliType] = serializeJobArchive(
-      { ...archive, blocks },
-      { maxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP },
-    );
+    const subArchive = { ...archive, blocks };
+
+    if (format === "raw") {
+      // raw: 추출 없이 현행 전문 직렬화
+      results[cliType] = serializeJobArchive(subArchive, { maxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP });
+    } else {
+      // full: <report> 블록 추출 시도 → 실패 시 현행 전문 폴백
+      const rawSerialized = serializeJobArchive(subArchive);
+      const reportBody = extractFinalReport(rawSerialized);
+      if (reportBody !== null) {
+        results[cliType] = capTextBytes(reportBody, CARRIER_JOBS_PER_SUBOP_BYTE_CAP);
+      } else {
+        results[cliType] = serializeJobArchive(subArchive, { maxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP });
+      }
+    }
   }
   return results;
+}
+
+/**
+ * 추출된 report 본문에 바이트 캡을 적용합니다.
+ * 기존 정화 파이프(ANSI 제거, 비밀 마스킹)는 serializeJobArchive 단계에서 이미 적용됩니다.
+ */
+function capTextBytes(text: string, maxBytes: number): string {
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+  const buf = Buffer.from(text, "utf8");
+  const marker = "\n\n[truncated]";
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  let end = Math.max(0, maxBytes - markerBytes);
+  // UTF-8 멀티바이트 경계 조정
+  while (end > 0 && (buf[end]! & 0xc0) === 0x80) end--;
+  return buf.subarray(0, end).toString("utf8") + marker;
 }

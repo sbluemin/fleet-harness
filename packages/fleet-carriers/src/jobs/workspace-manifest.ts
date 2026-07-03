@@ -16,7 +16,6 @@ interface NormalizedWorkspaceChangeSnapshotEntry {
   readonly contentHash?: string;
 }
 
-export const WORKSPACE_CHANGE_ATTRIBUTION = "window-approximate";
 export const WORKSPACE_CHANGE_LIMIT = 200;
 /** baseline에서 dirty였다가 종료 스냅샷에서 사라진 경로의 합성 status — 원복/삭제 탐지용. */
 export const WORKSPACE_CHANGE_CLEARED_STATUS = "cleared";
@@ -38,10 +37,8 @@ export async function captureJobWindowManifest(
   scanner: WorkspaceChangeScanner | undefined,
   cwd: string,
   baseline: readonly WorkspaceChangeSnapshotEntry[] | null,
-): Promise<WorkspaceChangeManifest> {
-  if (!scanner) {
-    return unavailableWorkspaceManifest("scanner-not-configured");
-  }
+): Promise<WorkspaceChangeManifest | undefined> {
+  if (!scanner) return undefined;
   const end = await captureWorkspaceSnapshot(scanner, cwd);
   return buildWorkspaceManifest(baseline, end);
 }
@@ -49,11 +46,8 @@ export async function captureJobWindowManifest(
 export function buildWorkspaceManifest(
   baseline: readonly WorkspaceChangeSnapshotEntry[] | null,
   end: readonly WorkspaceChangeSnapshotEntry[] | null,
-  reason?: string,
-): WorkspaceChangeManifest {
-  if (!baseline || !end) {
-    return unavailableWorkspaceManifest(reason ?? "snapshot-unavailable");
-  }
+): WorkspaceChangeManifest | undefined {
+  if (!baseline || !end) return undefined;
 
   const baselineByPath = new Map(baseline.map((entry) => [entry.path, normalizeSnapshotEntry(entry)]));
   const endChanges = end
@@ -71,23 +65,14 @@ export function buildWorkspaceManifest(
   const capped = changes.slice(0, WORKSPACE_CHANGE_LIMIT);
 
   return {
-    attribution: WORKSPACE_CHANGE_ATTRIBUTION,
-    available: true,
     changes: capped,
-    statLine: buildStatLine(changes.length, truncated),
     truncated,
   };
 }
 
-export function unavailableWorkspaceManifest(reason: string): WorkspaceChangeManifest {
-  return {
-    attribution: WORKSPACE_CHANGE_ATTRIBUTION,
-    available: false,
-    reason,
-    changes: [],
-    statLine: "unavailable",
-    truncated: false,
-  };
+export function buildStatLine(changeCount: number, truncated: boolean): string {
+  const suffix = changeCount === 1 ? "file" : "files";
+  return `${truncated ? `${WORKSPACE_CHANGE_LIMIT}+` : String(changeCount)} ${suffix} (window-approx)`;
 }
 
 function normalizeSnapshotEntry(entry: WorkspaceChangeSnapshotEntry): NormalizedWorkspaceChangeSnapshotEntry {
@@ -115,9 +100,4 @@ function hasWindowChange(
     return baseline.contentHash !== end.contentHash;
   }
   return false;
-}
-
-function buildStatLine(changeCount: number, truncated: boolean): string {
-  const suffix = changeCount === 1 ? "file" : "files";
-  return `${truncated ? `${WORKSPACE_CHANGE_LIMIT}+` : String(changeCount)} ${suffix} (window-approx)`;
 }
