@@ -22,6 +22,10 @@ export interface RepoEntry {
   readonly relPath: string;
   readonly name: string;
   readonly branch: string;
+  /** 링크드 워크트리인 경우 true. 고아 워크트리(부모가 theater 밖)도 포함 */
+  readonly isWorktree?: boolean;
+  /** 부모 저장소의 relPath. 부모가 동일 theater 내에 있을 때만 설정됨 */
+  readonly worktreeOf?: string;
 }
 
 export interface ReposDiscoveryResult {
