@@ -99,8 +99,6 @@ Fleet은 API를 래핑하거나 프록시를 운용하지 않습니다 — **프
 | CLI | 제공자 | 프로토콜 | 주요 기능 |
 |-----|--------|----------|-----------|
 | **Claude Code** | Anthropic | ACP | 심층 추론, 아키텍처 판단 |
-| **Claude Code (Z.AI GLM)** | Z.AI | ACP | Claude 브리지를 통한 GLM-5 시리즈 |
-| **Claude Code (Moonshot Kimi)** | Moonshot | ACP | Claude 브리지를 통한 Kimi K2 시리즈 |
 | **Codex CLI** | OpenAI | ACP | 빠른 코드 생성, 다단계 실행 |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
 | **Cursor Agent** | Cursor | ACP | 프론티어 모델 다중 라우팅 |

@@ -168,27 +168,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
-    method: "GET",
-    path: "/plugins/terminal/model-auth/state",
-    summary: "Get Terminal plugin model sign-in status.",
-    category: "Terminal Plugin",
-    gate: "loopback",
-  },
-  {
-    method: "PUT",
-    path: "/plugins/terminal/model-auth/providers/:cli",
-    summary: "Register a Terminal plugin model provider API key.",
-    category: "Terminal Plugin",
-    gate: "origin-write",
-  },
-  {
-    method: "DELETE",
-    path: "/plugins/terminal/model-auth/providers/:cli",
-    summary: "Remove a Terminal plugin model provider API key.",
-    category: "Terminal Plugin",
-    gate: "origin-write",
-  },
-  {
     method: "POST",
     path: "/api/v1/theaters/folder-listings",
     summary: "Theater 폴더 선택 목록을 조회합니다.",

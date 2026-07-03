@@ -69,7 +69,7 @@ ${c.bold('사용법')}
   echo "프롬프트" | ait [옵션]
 
 ${c.bold('옵션')}
-  -c, --cli <name>      CLI 선택 (claude | claude-zai | claude-kimi | claude-glm | codex | opencode-go | cursor)
+  -c, --cli <name>      CLI 선택 (claude | codex | opencode-go | cursor)
   -s, --session <id>    이전 세션 재개 (사용 시 -c 필수)
   -m, --model <name>    모델 지정
   -e, --effort <level>  reasoning effort (모델별 지원 시에만 적용)

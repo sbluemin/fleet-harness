@@ -52,9 +52,9 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
   private currentSystemPrompt: string | null = null;
   private currentEffort: string | null = null;
   private detector = new CliDetector();
-  private readonly cliType: CliType & ('claude' | 'claude-zai' | 'claude-kimi' | 'claude-glm');
+  private readonly cliType: CliType & 'claude';
 
-  constructor(cliType: CliType & ('claude' | 'claude-zai' | 'claude-kimi' | 'claude-glm') = 'claude') {
+  constructor(cliType: CliType & 'claude' = 'claude') {
     super();
     this.cliType = cliType;
   }

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   getAgentCliMetadata,
-  resolveAgentCliId,
   type AgentCliId,
   type AgentCliProfile,
 } from "@dotobokuri/fleet-admiral";
@@ -28,15 +27,6 @@ interface FakePanel extends Component {
   getFocusLine?(width: number): number | undefined;
 }
 
-interface FakeAuthService {
-  readonly setCalls: Array<{ readonly providerId: string; readonly key: string }>;
-  readonly deleteCalls: string[];
-  deleteApiKey(providerId: string): Promise<boolean>;
-  getApiKey(providerId: string): Promise<string | undefined>;
-  listProviderIds(): Promise<string[]>;
-  setApiKey(providerId: string, key: string): Promise<void>;
-}
-
 interface FakeShimmerTimer extends MissionControlShimmerTimer {
   active: boolean;
   readonly callback: () => void;
@@ -55,7 +45,6 @@ const TEST_PROFILE: AgentCliProfile = {
 };
 const CLI_OPTIONS = [
   { id: "claude" as const, label: "Claude" },
-  { id: "claude-kimi" as const, label: "Claude Kimi" },
   { id: "codex" as const, label: "Codex" },
 ];
 const ALL_CLI_OPTIONS = getAgentCliMetadata();
@@ -234,7 +223,7 @@ describe("Mission Control controller", () => {
     systemController.ptyView.resize(100, 24);
     openSystemMenu(systemController);
     expect(stripAnsi(systemController.component.render(100).join("\n"))).toContain("System Menu");
-    expect(stripAnsi(systemController.component.render(100).join("\n"))).toContain("Authentication");
+    expect(stripAnsi(systemController.component.render(100).join("\n"))).toContain("Diagnostics");
   });
 
   it("renders System Menu with one accent header and the full Fleet banner", () => {
@@ -260,8 +249,8 @@ describe("Mission Control controller", () => {
 
     expect(plainOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(plainOutput).not.toContain("███ FLEET ███");
-    expect(plainOutput).toContain("Mission Control / System Menu / Authentication");
-    expect(plainOutput).toContain("Authentication");
+    expect(plainOutput).toContain("Mission Control / System Menu / Diagnostics");
+    expect(plainOutput).toContain("Diagnostics");
   });
 
   it("aligns System Menu rows in a fixed centered column", () => {
@@ -270,7 +259,7 @@ describe("Mission Control controller", () => {
 
     openSystemMenu(controller);
     const lines = stripAnsi(controller.component.render(100).join("\n")).split("\n");
-    const labels = ["Authentication", "Diagnostics", "About"];
+    const labels = ["Diagnostics", "About"];
     const rows = labels.map((label) => {
       const row = lines.find((line) => line.match(/[▸ ]/) && line.includes(label));
       expect(row).toBeDefined();
@@ -289,7 +278,7 @@ describe("Mission Control controller", () => {
       },
     });
 
-    openRootItem(controller, 8);
+    openRootItem(controller, 7);
 
     expect(exitCalls).toEqual(["exit"]);
   });
@@ -302,7 +291,7 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("o");
     controller.ptyHost.write("m");
     expect(renderPlain(controller)).toContain("Mission Control");
-    expect(renderPlain(controller)).not.toContain("System Menu / Authentication");
+    expect(renderPlain(controller)).not.toContain("System Menu / Diagnostics");
   });
 
   it("renders launcher root panel lines through the direct renderer path", () => {
@@ -436,13 +425,13 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\x1b");
 
     controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
+    expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
+    expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("k");
-    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
+    expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("\x1b[A");
     expect(renderPlain(controller)).toContain("▸ Claude");
@@ -462,77 +451,20 @@ describe("Mission Control controller", () => {
 
     openSystemMenu(controller);
     expect(renderPlain(controller)).toContain("System Menu");
-    expect(renderPlain(controller)).toContain("▸ Authentication");
+    expect(renderPlain(controller)).toContain("▸ Diagnostics");
 
     controller.ptyHost.write("\r");
-    const authOutput = controller.component.render(80).join("\n");
-    expect(stripAnsi(authOutput)).toContain("Mission Control / System Menu / Authentication");
-    expect(stripAnsi(authOutput)).toContain("Enter actions");
-    expect(authOutput).toContain(SELECTED_BG);
+    const diagOutput = controller.component.render(80).join("\n");
+    expect(stripAnsi(diagOutput)).toContain("Mission Control / System Menu / Diagnostics");
+    expect(stripAnsi(diagOutput)).toContain("Diagnostics");
+    expect(diagOutput).toContain(SELECTED_BG);
 
     controller.ptyHost.write("\x1b");
     expect(renderPlain(controller)).toContain("System Menu");
-    expect(renderPlain(controller)).not.toContain("Enter actions");
 
     controller.ptyHost.write("\x1b");
     expect(renderPlain(controller)).toContain("Mission Control");
   });
-
-  it("masks auth API key input and saves without spawning a child auth command", async () => {
-    const authService = createFakeAuthService();
-    const hosts: FakeHost[] = [];
-    const controller = createTestController({ authService, hosts });
-
-    openSystemMenuItem(controller, 0);
-    await waitForAsyncLaunch();
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("secret-api-key");
-
-    expect(renderPlain(controller)).toContain("**************|");
-    expect(renderPlain(controller)).not.toContain("secret-api-key");
-
-    controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
-
-    expect(authService.setCalls).toEqual([{ key: "secret-api-key", providerId: "Claude Code with ZhipuAI GLM" }]);
-    expect(hosts).toEqual([]);
-  });
-
-  it("recomputes auth provider actions and defaults delete confirmation to Cancel", async () => {
-    const authService = createFakeAuthService();
-    const controller = createTestController({ authService });
-
-    openSystemMenuItem(controller, 0);
-    await waitForAsyncLaunch();
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Register API Key");
-    expect(renderPlain(controller)).not.toContain("Delete API Key");
-
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("secret-api-key");
-    controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
-    expect(renderPlain(controller)).toContain("Replace API Key");
-    expect(renderPlain(controller)).toContain("Delete API Key");
-
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("▸ Cancel");
-    controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
-    expect(authService.deleteCalls).toEqual([]);
-    expect(renderPlain(controller)).toContain("Delete API Key");
-
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
-    expect(authService.deleteCalls).toEqual(["Claude Code with ZhipuAI GLM"]);
-    expect(renderPlain(controller)).toContain("Register API Key");
-    expect(renderPlain(controller)).not.toContain("Delete API Key");
-  });
-
 
   it("renders diagnostics safely and keeps subview Esc local", () => {
     const controller = createTestController({
@@ -543,7 +475,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\x1b[2J",
     });
 
-    openSystemMenuItem(controller, 1);
+    openSystemMenuItem(controller, 0);
     let diagnosticsOutput = controller.component.render(80).join("\n");
     expect(stripAnsi(diagnosticsOutput)).toContain("Diagnostics");
     expect(stripAnsi(diagnosticsOutput)).not.toContain(["Log", "Viewer"].join(" "));
@@ -573,7 +505,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\nspoofed-cwd",
     });
 
-    openSystemMenuItem(controller, 1);
+    openSystemMenuItem(controller, 0);
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
@@ -596,39 +528,13 @@ describe("Mission Control controller", () => {
     expect(lines.some((line) => line.trim() === "spoofed-cwd")).toBe(false);
   });
 
-  it("requests a render when async input modal submit fails", async () => {
-    let renderRequests = 0;
-    const authService = {
-      ...createFakeAuthService(),
-      setApiKey: () => Promise.reject(new Error("write failed")),
-    };
-    const controller = createTestController({
-      authService,
-      onRenderRequest: () => {
-        renderRequests += 1;
-      },
-    });
-
-    openSystemMenuItem(controller, 0);
-    await waitForAsyncLaunch();
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("\r");
-    controller.ptyHost.write("secret");
-    const beforeSubmit = renderRequests;
-    controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
-
-    expect(renderPlain(controller)).toContain("write failed");
-    expect(renderRequests).toBeGreaterThan(beforeSubmit);
-  });
-
   it("renders about panel with counts and placeholder docs link", () => {
     const controller = createTestController({
       loadedCounts: { carriers: 8, queuedPatches: 3, wikiEntries: 17 },
       release: { channel: "stable", version: "0.22.1" },
     });
 
-    openSystemMenuItem(controller, 2);
+    openSystemMenuItem(controller, 1);
     const output = controller.component.render(80).join("\n");
 
     expect(renderPlain(controller)).toContain("Version: 0.22.1");
@@ -965,7 +871,6 @@ describe("Mission Control controller", () => {
 
     openStart(controller);
     controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
 
@@ -1026,15 +931,9 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("▸ Claude");
 
     controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
+    expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
-
-    controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Claude GLM");
-
-    controller.ptyHost.write("\x1b[B");
     expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("\x1b[13u");
@@ -1043,30 +942,6 @@ describe("Mission Control controller", () => {
 
     expect(launched).toEqual(["codex"]);
     expect(controller.getState().kind).toBe("active");
-  });
-
-  it("preserves agent CLI resolver precedence for Mission Control defaults", () => {
-    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "claude" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
-    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "claude-kimi" })).toBe("claude-kimi");
-  });
-
-  it("keeps Claude Kimi CLI selections instead of collapsing them to Claude", async () => {
-    const launched: AgentCliId[] = [];
-    const controller = createTestController({
-      cliOptions: ALL_CLI_OPTIONS,
-      initialCliId: resolveAgentCliId({ FLEET_AGENT_CLI: "claude-kimi" }),
-      resolveProfile: (cliId) => {
-        launched.push(cliId);
-        return Promise.resolve({ ...TEST_PROFILE, id: cliId, label: cliId });
-      },
-    });
-
-    expect(controller.getState().cliId).toBe("claude-kimi");
-
-    await controller.launchSelected();
-
-    expect(launched).toEqual(["claude-kimi"]);
-    expect(controller.getState().cliId).toBe("claude-kimi");
   });
 
   it("builds app-level profile config with registry parity", async () => {
@@ -1081,7 +956,6 @@ describe("Mission Control controller", () => {
     expect(config.initialCliId).toBe("codex");
     expect(config.cliOptions).toEqual(expect.arrayContaining([
       { id: "claude", label: "Claude" },
-      { id: "claude-kimi", label: "Claude Kimi" },
       { id: "codex", label: "Codex" },
     ]));
 
@@ -1104,7 +978,6 @@ describe("Mission Control controller", () => {
 });
 
 function createTestController(options: {
-  readonly authService?: FakeAuthService;
   readonly cliOptions?: readonly MissionControlCliOption[];
   readonly createPtyHost?: (profile: PtyLaunchProfile) => PtyHost;
   readonly initialCliId?: AgentCliId;
@@ -1129,7 +1002,6 @@ function createTestController(options: {
       options.hosts?.push(host);
       return host;
     }),
-    authService: options.authService,
     initialCliId: options.initialCliId ?? "claude",
     env: options.env,
     invocationCwd: options.invocationCwd ?? "/tmp/mission-control",
@@ -1190,32 +1062,6 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
     },
   };
 }
-
-function createFakeAuthService(): FakeAuthService {
-  const keys = new Map<string, string>();
-  const setCalls: Array<{ readonly providerId: string; readonly key: string }> = [];
-  const deleteCalls: string[] = [];
-  return {
-    deleteCalls,
-    setCalls,
-    deleteApiKey(providerId) {
-      deleteCalls.push(providerId);
-      return Promise.resolve(keys.delete(providerId));
-    },
-    getApiKey(providerId) {
-      return Promise.resolve(keys.get(providerId));
-    },
-    listProviderIds() {
-      return Promise.resolve([...keys.keys()]);
-    },
-    setApiKey(providerId, key) {
-      setCalls.push({ providerId, key });
-      keys.set(providerId, key);
-      return Promise.resolve();
-    },
-  };
-}
-
 
 function createFakePanel(label: string, renderedLines: readonly string[] = [label], focusLine?: number): FakePanel {
   const inputs: string[] = [];
@@ -1322,7 +1168,7 @@ function openOptions(controller: ReturnType<typeof createTestController>): void 
 }
 
 function openSystemMenu(controller: ReturnType<typeof createTestController>): void {
-  openRootItem(controller, 7);
+  openRootItem(controller, 6);
 }
 
 function openSystemMenuItem(controller: ReturnType<typeof createTestController>, index: number): void {

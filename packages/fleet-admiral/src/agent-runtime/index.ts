@@ -7,7 +7,6 @@ import {
 	executorMcpRuntimeProviderRuntime,
 	executorPortRuntime,
 	type AgentToolSpec,
-	type AuthEnvResolver,
 	type ExecutorSessionManager,
 	type InProcessMcpServer,
 	type McpToolRegistry,
@@ -33,7 +32,6 @@ export interface FleetAgentRuntimeToolRegistration {
 
 export interface FleetAgentRuntimeLifecycleDeps {
 	readonly dataDir: string;
-	readonly authEnvResolver: AuthEnvResolver;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
 	readonly wikiToolSpecs?: readonly AgentToolSpec[];
@@ -156,7 +154,7 @@ function registerFleetAgentRuntimeTools(
 	deps: FleetAgentRuntimeLifecycleDeps,
 ): void {
 	registerAgentToolDefaults(mcpRegistry, carrierRuntime, {
-		authEnvResolver: deps.authEnvResolver,
+		authEnvResolver: async () => ({}),
 		reservedExternalMcpServerIds: buildReservedExternalMcpServerIds(deps.reservedExternalMcpServerIds),
 		workspaceChangeScanner: deps.workspaceChangeScanner,
 	});

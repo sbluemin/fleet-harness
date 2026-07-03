@@ -147,7 +147,7 @@ function concretizeCatalogPath(routePath: string): string {
     .replaceAll(":pluginId", "terminal")
     .replaceAll(":id", "missing-carrier")
     .replaceAll(":cliType", "claude")
-    .replaceAll(":cli", "claude-kimi");
+    .replaceAll(":cli", "claude");
 }
 
 function headersForGate(gate: ApiCatalogEntry["gate"]): Record<string, string> {

@@ -3,11 +3,6 @@ export interface AuthStorageEntry {
   [extraField: string]: unknown;
 }
 
-export interface AuthMessageProviderRef {
-  cli?: string;
-  providerId: string;
-}
-
 export interface AuthValidationFailureMessageInput {
   providerId: string;
   status: AuthValidationFailureStatus;

@@ -382,12 +382,7 @@ export class AcpConnection extends BaseConnection {
 
   /** Claude 계열 브릿지인지 여부를 단일 판별 지점으로 유지합니다. */
   private isClaudeBackend(): boolean {
-    return (
-      this.cliType === 'claude' ||
-      this.cliType === 'claude-zai' ||
-      this.cliType === 'claude-kimi' ||
-      this.cliType === 'claude-glm'
-    );
+    return this.cliType === 'claude';
   }
 
   /** Claude bridge만 native system prompt append를 지원하므로 이 경로만 사용합니다. */

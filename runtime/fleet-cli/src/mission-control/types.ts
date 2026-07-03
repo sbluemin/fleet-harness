@@ -1,5 +1,4 @@
 import type { AgentCliId, AgentCliProfile } from "@dotobokuri/fleet-admiral";
-import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
@@ -85,7 +84,6 @@ export interface MissionControlPtyView extends Component {
 
 export interface CreateMissionControlControllerOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
-  readonly authService: AuthService;
   readonly carrierRuntime?: CarrierRuntime;
   readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
   readonly createPtyView?: (cols: number, rows: number) => PtyView;

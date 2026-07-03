@@ -106,8 +106,6 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     carrierRuntime: runtime.carrierRuntime,
   }).build;
   const missionControlProfileConfig = createMissionControlProfileConfig({
-    authEnvResolver: runtime.authEnvResolver,
-    authService: runtime.infraServices.authService,
     env: process.env,
     invocationCwd,
   });
@@ -149,7 +147,6 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     ...missionControlProfileConfig,
     initialCliId: sessionOptionsRuntime.getResolved().values.cliId,
     cliOptions: getAgentCliMetadata(),
-    authService: runtime.infraServices.authService,
     carrierRuntime: runtime.carrierRuntime,
     createPtyHost: () => {
       throw new Error("fleet --native does not create an embedded Agent CLI PTY");
@@ -162,7 +159,7 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
         dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
-        hookExec: profile.id === "claude" || profile.id === "claude-kimi" || profile.id === "claude-glm"
+        hookExec: profile.id === "claude"
           ? buildFleetHookCommand(options.pluginEntry)
           : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),

@@ -7,9 +7,7 @@ import {
   parseAgentCliId,
   resolveAgentCliId,
   resolveAgentCliProfile,
-  type ResolveAgentCliProfileOptions,
 } from "@dotobokuri/fleet-admiral";
-import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 
 import {
   assertInputContract,
@@ -54,8 +52,6 @@ type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "
 type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
 
 export interface CreateMissionControlProfileConfigOptions {
-  readonly authEnvResolver?: ResolveAgentCliProfileOptions["authEnvResolver"];
-  readonly authService?: AuthService;
   readonly env: NodeJS.ProcessEnv;
   readonly invocationCwd: string;
 }
@@ -70,8 +66,6 @@ export function createMissionControlProfileConfig(
     initialCliId: resolveAgentCliId(options.env),
     resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
       resolveAgentCliProfile(options.env, options.invocationCwd, {
-        authEnvResolver: options.authEnvResolver,
-        authService: options.authService,
         cliId: selectedCliId,
         model: launchOptions?.model,
       }),
@@ -110,9 +104,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   }).build;
   const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({
-    authEnvResolver: runtime.authEnvResolver,
-    // Claude 호환 전용 프로필의 resolveAuthEnv까지 Composition Root의 authService를 명시 주입한다.
-    authService: runtime.infraServices.authService,
     env: process.env,
     invocationCwd,
   });
@@ -121,7 +112,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     ...missionControlProfileConfig,
     initialCliId: cliId,
     cliOptions: missionControlProfileConfig.cliOptions,
-    authService: runtime.infraServices.authService,
     carrierRuntime: runtime.carrierRuntime,
     createPtyHost: (profile) => createPtyHost({ profile }),
     injectProfile: (profile, launchOptions) =>
@@ -132,7 +122,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
-        hookExec: profile.id === "claude" || profile.id === "claude-kimi" || profile.id === "claude-glm"
+        hookExec: profile.id === "claude"
           ? buildFleetHookCommand(options.pluginEntry)
           : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),

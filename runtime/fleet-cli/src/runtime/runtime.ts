@@ -1,11 +1,10 @@
-import type { AuthEnvResolver, ExecutorSessionManager, McpToolRegistry } from "@dotobokuri/core-agent";
+import type { ExecutorSessionManager, McpToolRegistry } from "@dotobokuri/core-agent";
 import {
 	createFleetAgentRuntimeLifecycle,
 	type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
-import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
@@ -13,7 +12,6 @@ import { reconcileRuntimeState } from "./reconciliation.js";
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
 export interface RuntimeServices {
-	readonly authEnvResolver: AuthEnvResolver;
 	readonly carrierRuntime: CarrierRuntime;
 	readonly dataDir: string;
 	readonly dedicatedMcpSession: ExecutorSessionManager;
@@ -62,9 +60,7 @@ export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}
 async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
 	const dataDir = deps.dataDir ?? getFleetDataDir();
 	const infraServices = createInfraServices();
-	const authEnvResolver: AuthEnvResolver = (cli) => resolveAuthEnv(cli, { authService: infraServices.authService });
 	const agentRuntime = createFleetAgentRuntimeLifecycle({
-		authEnvResolver,
 		dataDir,
 		onMcpServerStartError: (error) => {
 			console.error("[fleet-cli] Failed to start MCP server", error);
@@ -77,7 +73,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	return {
 		agentRuntime,
 		services: {
-			authEnvResolver,
 			carrierRuntime: agentRuntime.carrierRuntime,
 			dataDir,
 			dedicatedMcpSession: agentRuntime.dedicatedMcpSession,

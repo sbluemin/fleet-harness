@@ -4,7 +4,6 @@ import process from "node:process";
 
 import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { GlobalOptionsService } from "@dotobokuri/fleet-infra";
-import { resolveAuthEnv, type AuthService } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -22,8 +21,6 @@ import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } fro
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
-import { buildModelAuthState } from "./model-auth-state.js";
-
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -37,7 +34,6 @@ type OperationRenamedEvent = {
   readonly previousTitle: string;
 };
 interface AgentRouteDeps {
-  readonly authService: AuthService;
   readonly globalOptionsService: GlobalOptionsService;
 }
 
@@ -62,9 +58,7 @@ export function registerAgentRoutes(
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const dataDir = ctx.host.paths.dataDir;
-  const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: deps.authService });
   const runtime = createFleetAgentRuntimeLifecycle({
-    authEnvResolver,
     dataDir,
     onMcpServerStartError: (error) => {
       console.error("[fleet-console] Failed to start MCP server", error);
@@ -421,11 +415,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
-    const [detected, modelAuth] = await Promise.all([
-      detector.detect(),
-      buildModelAuthState(deps.authService),
-    ]);
-    return combineAgentCliLaunchMetadata(metadata, detected, modelAuth.providers);
+    const detected = await detector.detect();
+    return combineAgentCliLaunchMetadata(metadata, detected, []);
   }
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {

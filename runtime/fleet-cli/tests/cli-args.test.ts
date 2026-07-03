@@ -48,7 +48,6 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("USAGE");
     expect(helpText).toContain("COMMANDS");
     expect(helpText).toContain("OPTIONS");
-    expect(helpText).toContain("auth");
     expect(helpText).toContain("console");
     expect(helpText).toContain("Open Fleet Console, or manage the console server");
     expect(helpText).toContain("-h, --help");

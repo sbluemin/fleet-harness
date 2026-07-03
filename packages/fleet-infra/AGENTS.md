@@ -4,7 +4,7 @@
 
 ## Owns
 
-- `auth/` — CLI auth provider mapping, storage, validation, and user-facing auth messages.
+- `auth/` — generic auth storage and Anthropic-compatible validation helpers. No active CLI provider mapping is defined here.
 - `data-dir/` — Fleet data directory resolution and legacy migration.
 - `global-options/` — host-agnostic global option I/O for Fleet startup behavior.
 - `fs-store/` — generic durable filesystem I/O primitive: atomic writes (temp+rename+fsync), advisory directory locks with quarantine-based stale recovery, secure directory/file modes, symlink guards, and path-traversal defenses. Consumed by global-options, auth, and carriers storage via explicit DI.
@@ -34,7 +34,7 @@ Do not add individual deep source-file exports without an explicit public API de
 ## Dependency Boundary
 
 - This package must stay host-agnostic.
-- It may depend on `@dotobokuri/core-unified-agent` for shared CLI type definitions and the CLI provider catalog (`CLI_BACKENDS`), the SSoT from which auth provider env/baseUrl values are derived.
+- It may depend on `@dotobokuri/core-unified-agent` only when an infrastructure primitive genuinely needs shared CLI type definitions or the CLI provider catalog (`CLI_BACKENDS`).
 - It must not import `@dotobokuri/fleet-cli`, `fleet-carriers`, host UI/runtime packages, or engine packages.
 - Relative imports inside `src/` must stay within `packages/fleet-infra/src/**`.
 

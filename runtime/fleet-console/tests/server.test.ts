@@ -1574,8 +1574,6 @@ describe("console static and terminal ticket boundary", () => {
     // 매핑(id/label)만 단언하고 게이트 불린은 타입만 확인한다. 결합 로직은 별도 단위 테스트가 검증한다.
     expect((listed.agentClis ?? []).map((cli) => ({ id: cli.id, label: cli.label }))).toEqual([
       { id: "claude", label: "Claude" },
-      { id: "claude-kimi", label: "Claude Kimi" },
-      { id: "claude-glm", label: "Claude GLM" },
       { id: "codex", label: "Codex" },
     ]);
     for (const cli of listed.agentClis ?? []) {

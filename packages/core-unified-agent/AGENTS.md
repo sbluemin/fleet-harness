@@ -146,8 +146,6 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 | CLI | Protocol | spawn Method | set_config_option | set_mode |
 |-----|----------|--------------|-------------------|----------|
 | Claude | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` | ✅ | ✅ |
-| Claude (ZAI) | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp --cli` | ✅ | ✅ |
-| Claude (Kimi) | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp --cli` | ✅ | ✅ |
 | Codex | `codex-acp` / `app-server` | (Toggle) `npx --yes --package=@zed-industries/codex-acp@0.14.0 codex-acp` / `codex app-server` | ✅ (ACP) / Pending (Legacy) | ✅ (ACP) / Pending (Legacy) |
 | opencode-go | ACP | `opencode acp` | ✅ | ✅ |
 
@@ -185,7 +183,7 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 Adding a new CLI provider requires updating the provider registry first, then any provider-specific seams that do not derive automatically:
 
 1. **`packages/core-unified-agent/src/config/CliConfigs.ts`** — Add an entry to `CLI_BACKENDS` with the required spawn/protocol metadata.
-2. **Claude-family alias additions** — If the new provider reuses `UnifiedClaudeAgentClient`, also update the `cliType` union in `src/client/UnifiedClaudeAgentClient.ts` and the Claude bridge allowlist in `src/connection/AcpConnection.ts#getClaudeSystemPrompt()`.
+2. **Claude bridge changes** — If the primary Claude provider's bridge behavior changes, update `UnifiedClaudeAgentClient`, the Claude bridge guard in `src/connection/AcpConnection.ts`, and related E2E coverage together.
 3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/UnifiedAgent.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
 4. **Non-derived provider seams** — Add or adjust any dedicated client routing or fallback behavior that is not automatically derived from `CLI_BACKENDS`.
 

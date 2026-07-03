@@ -96,7 +96,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
       terminalName: "xterm-256color",
     });
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ authEnvResolver: expect.any(Function) }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: undefined }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
   });

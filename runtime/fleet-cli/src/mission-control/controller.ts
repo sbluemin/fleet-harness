@@ -6,7 +6,6 @@ import { PtyView } from "../controls/terminal-view.js";
 import { createCarrierRosterPanel } from "./carrier-roster/register.js";
 import { createAboutPanel } from "./menu/about-panel.js";
 import { createActionListPanel } from "./menu/action-list-panel.js";
-import { createAuthPanel } from "./menu/auth-panel.js";
 import { createDiagnosticsPanel } from "./menu/diagnostics-panel.js";
 import { createInputModal } from "./menu/input-modal.js";
 import { createPanelStack, type MenuPanel, type PanelStack } from "./menu/panel-stack.js";
@@ -43,7 +42,6 @@ interface FocusAwareComponent extends Component {
 }
 
 interface SystemMenuPanelOptions {
-  readonly authService: CreateMissionControlControllerOptions["authService"];
   readonly counts: CreateMissionControlControllerOptions["loadedCounts"];
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
@@ -330,7 +328,6 @@ export function createMissionControlController(options: CreateMissionControlCont
       },
       openSystemMenu: () => {
         stack.push(createSystemMenuPanel({
-          authService: options.authService,
           counts: options.loadedCounts,
           cwd: options.invocationCwd ?? process.cwd(),
           env: options.env ?? process.env,
@@ -614,18 +611,6 @@ function createSystemMenuPanel(options: SystemMenuPanelOptions): MenuPanel {
     breadcrumbs: () => options.getStack().breadcrumbs(),
     footer: "↑↓ select  Enter open  Esc back",
     actions: () => [
-      {
-        id: "auth",
-        label: "Authentication",
-        run: () => {
-          const stack = options.getStack();
-          stack.push(createAuthPanel({
-            authService: options.authService,
-            onRenderRequest: options.onRenderRequest,
-            stack,
-          }));
-        },
-      },
       {
         id: "diagnostics",
         label: "Diagnostics",
