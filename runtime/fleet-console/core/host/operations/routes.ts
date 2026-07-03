@@ -185,21 +185,16 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
       return;
     }
     deps.persist();
-    if (previousNode && previousNode.title !== node.title) {
+    // 사용자 개시 rename(HTTP PATCH의 title)은 텍스트 변경 여부와 무관하게 rename 이벤트를 발행한다.
+    // 같은 텍스트로 커밋해도 사용자가 이름을 "확정"한 것이므로 terminal 구독자가 labelSource를 user로 무장해야 한다.
+    // 빈 텍스트는 reset(title:"")으로 발행해 기본 표시명 복원 + auto 재활성을 유도한다.
+    if (previousNode && typeof body.title === "string") {
       deps.publishRenameEvent?.({
         operationId: node.id,
         pluginId: node.pluginId,
         type: node.type,
-        title: node.title,
+        title: body.title.trim() === "" ? "" : node.title,
         previousTitle: previousNode.title,
-      });
-    } else if (typeof body.title === "string" && body.title.trim() === "") {
-      deps.publishRenameEvent?.({
-        operationId: node.id,
-        pluginId: node.pluginId,
-        type: node.type,
-        title: "",
-        previousTitle: node.title,
       });
     }
     deps.broadcastOperationChanged?.(deps.store.get(id) ?? node);
