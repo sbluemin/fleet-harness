@@ -113,7 +113,10 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       if (operation) {
         const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
         const providerSession = readProviderSession(operation.payload);
-        ctx.host.operations.patch(payload.operationId, { payload: toOperationPayload(cwd, updated, providerSession) });
+        // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
+        // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
+        // 이 patch는 store.patch(HTTP 미경유)라 operation:renamed를 재발행하지 않아 구독 루프를 만들지 않는다.
+        ctx.host.operations.patch(payload.operationId, { title: updated.label ?? updated.cwdLabel, payload: toOperationPayload(cwd, updated, providerSession) });
       }
     }
     injectRenameCommand(payload.operationId, payload.title);
