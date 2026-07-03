@@ -33,7 +33,18 @@
 ## Pending Initial-Input Queue (Bench Fan-out Contract)
 
 - `POST /plugins/terminal/agent/sessions` accepts an optional `initialInput?: string` field in the request body.
-- On successful attach, if `initialInput` is provided, the queue schedules `terminalRuntime.write(sessionId, input + "\n")` after a 200 ms grace delay to absorb CLI prompt startup time.
 - **Token Boundary**: `initialInput` is **never included** in the session create response payload (`SessionInfo`). It is consumed server-side only.
-- The queue is implemented in `server/agent-api/pending-initial-input.ts`. It is disarmed on session exit or error, and cleaned up on plugin lifecycle shutdown.
-- `TerminalLaunchContext.initialPrompt` field must **not** be added. The queue is maintained as a local map inside the agent route scope.
+- Delivery strategy is determined per-CLI via `resolveInitialInputMode(cliId)` in `server/agent-api/initial-input-mode.ts`:
+
+| CLI id       | Mode   | Delivery mechanism                                   |
+|--------------|--------|------------------------------------------------------|
+| `claude`     | `argv` | Appended as final positional arg at spawn time       |
+| `claude-kimi`| `argv` | Appended as final positional arg at spawn time       |
+| `claude-glm` | `argv` | Appended as final positional arg at spawn time       |
+| `codex`      | `write`| Quiescence-based `terminalRuntime.write` (see below) |
+| unknown      | `write`| Quiescence-based write (safe fallback)               |
+
+- **argv mode (claude family)**: `initialInput` flows through `TerminalLaunchContext.initialInput` → `createAgentCliLaunchSpec` → `toLaunchSpec`, where it is appended to `profile.args` before PTY spawn. No queue involvement.
+- **write mode (codex / unknown)**: `createPendingInitialInputQueue` (in `server/agent-api/pending-initial-input.ts`) uses output-quiescence detection. On each PTY stdout event the settle timer (700 ms) resets; after no output for 700 ms the text is written, followed by `\r` (CR) 250 ms later. A hard cap of 8 s forces flush if output never arrives.
+- The queue is disarmed on session exit, error, or explicit `disarm(sessionId)` call, and cleaned up via `cleanup()` on plugin lifecycle shutdown. `pendingArgvInitialInput` map in `agent.ts` is also cleared on cleanup, session exit, and error.
+- **Security note**: argv positional injection passes the prompt as a process argument visible in `ps` output. This is intentional for claude CLIs which accept the first turn as a positional; it must not be used for CLIs that do not advertise this interface.

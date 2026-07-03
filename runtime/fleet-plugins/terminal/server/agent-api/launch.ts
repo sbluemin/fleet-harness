@@ -18,6 +18,7 @@ import { createInfraServices, getFleetDataDir, type InfraServices } from "@dotob
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { resolveInitialInputMode } from "./initial-input-mode.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 
 export interface TerminalLaunchResolverDeps {
@@ -97,6 +98,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
       cliId: context?.cliId,
+      initialInput: context?.initialInput,
       resumeSessionId: context?.resumeSessionId,
       sessionId,
     });
@@ -132,6 +134,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly hookEntry: ConsoleHookCommandEntry;
   readonly infraServices: InfraServices;
   readonly injectProfile: typeof injectAgentCliProfile;
+  readonly initialInput?: string;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
@@ -176,11 +179,12 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
+    const argvInitialInput = resolveInitialInputMode(options.cliId) === "argv" ? options.initialInput : undefined;
     return toLaunchSpec(injectedProfile, createOnceCleanup(async () => {
       for (const cleanup of [...cleanupStack].reverse()) {
         await cleanup();
       }
-    }));
+    }), argvInitialInput);
   } catch (error) {
     for (const cleanup of [...cleanupStack].reverse()) {
       try {
@@ -193,9 +197,9 @@ async function createAgentCliLaunchSpec(options: {
   }
 }
 
-function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>): TerminalLaunchSpec {
+function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, initialInput?: string): TerminalLaunchSpec {
   return {
-    args: [...profile.args],
+    args: initialInput ? [...profile.args, initialInput] : [...profile.args],
     bin: profile.bin,
     cleanup,
     cwd: profile.cwd,

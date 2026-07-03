@@ -20,6 +20,8 @@ export interface TerminalLaunchContext {
   readonly kind?: "fleet" | "shell";
   readonly cliId?: string;
   readonly resumeSessionId?: string;
+  // Nimitz 재재결(carrier:924c5066)로 해제 — per-CLI 모드 테이블이 argv/write 전달 전략 결정.
+  readonly initialInput?: string;
 }
 
 export interface TerminalTicket {

@@ -14,6 +14,7 @@ import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector } from "./agent-api/agent-cli-detect.js";
 import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
+import { resolveInitialInputMode } from "./agent-api/initial-input-mode.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
@@ -82,6 +83,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   });
   const detector = createDefaultAgentCliDetector();
   const initialInputQueue = createPendingInitialInputQueue({ terminalRuntime });
+  // argv 모드 세션의 initialInput을 launch 호출까지 1회 전달하기 위한 임시 보관소(Token Boundary: payload에 미포함).
+  const pendingArgvInitialInput = new Map<string, string>();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
@@ -230,8 +233,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return true;
     }
-    const initialInput = typeof body?.initialInput === "string" ? body.initialInput : undefined;
-    await createSession(cwd, theaterId, cliId, res, initialInput);
+    const initialInput = typeof body?.initialInput === "string" ? body.initialInput.trim() : undefined;
+    await createSession(cwd, theaterId, cliId, res, initialInput || undefined);
     return true;
   }
 
@@ -278,6 +281,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return;
     }
     const sessionId = crypto.randomUUID();
+    // argv 모드이면 launch 시 args에 포함 — Map에 보관 후 launch 함수에서 1회 소비(Token Boundary: payload 미포함).
+    const initialInputMode = resolveInitialInputMode(cliId);
+    if (initialInput && initialInputMode === "argv") {
+      pendingArgvInitialInput.set(sessionId, initialInput);
+    }
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     ctx.host.operations.create({
       id: session.sessionId,
@@ -305,11 +313,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
       observability.notifySessionUpdated(created);
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(cwd, created) });
-      // initialInput이 있으면 큐에 등록 — attach 성공 후 graceMs(200ms) 지연으로 flush(Token Boundary: 응답에 미포함).
-      if (initialInput) initialInputQueue.enqueue(sessionId, initialInput);
+      // write 모드만 quiescence 큐에 등록 — argv 모드는 spawn args에 이미 포함됨(Token Boundary: 응답에 미포함).
+      if (initialInput && initialInputMode === "write") initialInputQueue.enqueue(sessionId, initialInput);
       ctx.host.http.writeJson(res, 200, created);
     } catch {
       pendingRuntimeSessions.delete(sessionId);
+      pendingArgvInitialInput.delete(sessionId);
       initialInputQueue.disarm(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
       ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
@@ -460,11 +469,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
     const providerSession = readProviderSession(operation?.payload)?.sessionId;
-    return launchResolver(cwd, { sessionId: operationId, operationId, operationType: AGENT_OPERATION_TYPE, pluginId: ctx.pluginId, cliId, resumeSessionId: providerSession });
+    // argv 모드 초기 입력을 1회 소비(attach→launch 흐름에서만 발화, Token Boundary: payload 미포함).
+    const initialInput = pendingArgvInitialInput.get(operationId);
+    if (initialInput !== undefined) pendingArgvInitialInput.delete(operationId);
+    return launchResolver(cwd, { sessionId: operationId, operationId, operationType: AGENT_OPERATION_TYPE, pluginId: ctx.pluginId, cliId, resumeSessionId: providerSession, initialInput });
   }
 
   async function handleExit(operationId: string): Promise<void> {
     initialInputQueue.disarm(operationId);
+    pendingArgvInitialInput.delete(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -483,6 +496,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   function removeSession(sessionId: string): void {
     initialInputQueue.disarm(sessionId);
+    pendingArgvInitialInput.delete(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -492,6 +506,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function cleanup(): Promise<void> {
     initialInputQueue.cleanup();
+    pendingArgvInitialInput.clear();
     unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();
