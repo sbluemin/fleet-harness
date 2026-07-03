@@ -187,7 +187,6 @@ export interface OperationNotification {
   readonly theaterId: string | null;
   readonly theaterLabel: string;
   readonly operationLabel: string;
-  readonly count: number;
   readonly lastRaisedSeq: number;
 }
 

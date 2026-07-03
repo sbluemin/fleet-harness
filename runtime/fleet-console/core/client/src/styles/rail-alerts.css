@@ -290,22 +290,6 @@
   color: var(--positive);
 }
 
-.notification-row-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ink-spectral);
-  background: color-mix(in oklch, var(--ink-fog) 17%, transparent);
-  flex-shrink: 0;
-}
-
 .notification-row-move {
   flex-shrink: 0;
   padding: 4px 11px;

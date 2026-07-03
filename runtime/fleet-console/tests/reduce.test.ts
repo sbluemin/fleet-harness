@@ -23,7 +23,6 @@ function makeNotification(
   operationId: string,
   theaterId: string | null,
   lastRaisedSeq: number,
-  count = 1,
 ): OperationNotification {
   return {
     kind: "input-waiting",
@@ -31,7 +30,6 @@ function makeNotification(
     theaterId,
     theaterLabel: theaterId ?? "Unknown",
     operationLabel: operationId,
-    count,
     lastRaisedSeq,
   };
 }
@@ -316,14 +314,14 @@ describe("notification selectors", () => {
 
   it("groups notifications by Theater and sorts by last raised sequence", () => {
     const groups = groupNotificationsByTheater([
-      makeNotification("session-a", "theater-a", 1, 2),
+      makeNotification("session-a", "theater-a", 1),
       makeNotification("session-b", "theater-b", 5),
       makeNotification("session-c", "theater-a", 3),
     ]);
 
-    expect(groups.map((group) => [group.theaterId, group.totalCount, group.notifications.map((item) => item.operationId)])).toEqual([
-      ["theater-b", 1, ["session-b"]],
-      ["theater-a", 3, ["session-c", "session-a"]],
+    expect(groups.map((group) => [group.theaterId, group.notifications.map((item) => item.operationId)])).toEqual([
+      ["theater-b", ["session-b"]],
+      ["theater-a", ["session-c", "session-a"]],
     ]);
   });
 

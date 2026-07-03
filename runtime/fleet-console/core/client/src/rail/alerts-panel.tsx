@@ -96,7 +96,7 @@ export function AlertsPanelBody() {
             >
               <header className="notification-cluster-group-head">
                 <span className="notification-cluster-theater">{group.theaterLabel}</span>
-                <span className="notification-cluster-group-count">{group.totalCount}</span>
+                <span className="notification-cluster-group-count">{group.notifications.length}</span>
               </header>
               <ul className="notification-cluster-roster">
                 {group.notifications.map((notification) => (
@@ -111,9 +111,6 @@ export function AlertsPanelBody() {
                         {KIND_LABEL[notification.kind]}
                       </span>
                     </span>
-                    {notification.count > 1 ? (
-                      <span className="notification-row-count">{notification.count}</span>
-                    ) : null}
                     <button
                       type="button"
                       className="notification-row-move"
@@ -146,7 +143,7 @@ function AlertsIcon() {
   const eligible = splitNotificationsByVisibility(notifications, visibleIds).hidden;
   const filtered = filterByPreferences(eligible, state.notificationPreferences);
   const groups = groupNotificationsByTheater(filtered);
-  const totalCount = groups.reduce((sum, group) => sum + group.totalCount, 0);
+  const totalCount = groups.reduce((sum, group) => sum + group.notifications.length, 0);
   const waitingCount = countByKind(groups, "input-waiting");
 
   // 패널이 닫혀있을 때 신규 알림 도착 시 외곽 펄스 1회 재생
@@ -246,7 +243,6 @@ function collectMuteableTheaterGroups(
       theaterLabel:
         theaters.find((theater) => theater.id === theaterId)?.label ?? theaterId,
       notifications: [],
-      totalCount: 0,
     });
   }
   return [...byId.values()];
@@ -259,7 +255,7 @@ function countByKind(
   let total = 0;
   for (const group of groups) {
     for (const notification of group.notifications) {
-      if (notification.kind === kind) total += notification.count;
+      if (notification.kind === kind) total += 1;
     }
   }
   return total;
