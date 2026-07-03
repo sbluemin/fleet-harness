@@ -7,6 +7,7 @@ import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./diff-view-store.js";
 import { HunkView } from "./hunk-view.js";
+import { groupRepos, relativeToParent } from "./repo-grouping.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -106,6 +107,17 @@ function basename(p: string): string {
 // ─── RepoDropdown ─────────────────────────────────────────────────────────────
 
 function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelect, onDepthChange, onRescan, onClose }: RepoPickerProps) {
+  // 현재 선택된 항목이 워크트리이면 해당 부모 그룹을 메뉴 열릴 때 자동 펼침
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const active = repos.find((r) => r.relPath === activeSubPath);
+    if (active?.worktreeOf !== undefined) {
+      return new Set([active.worktreeOf]);
+    }
+    return new Set();
+  });
+
+  const { groups, topLevelCount } = groupRepos(repos);
+
   const handleClick = useCallback((e: React.MouseEvent) => {
     // 메뉴 내부 클릭은 바깥 클릭 핸들러로 버블링되지 않도록 막는다
     e.stopPropagation();
@@ -117,6 +129,31 @@ function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelec
     if (!isNaN(val)) onDepthChange(val);
   }, [onDepthChange]);
 
+  const toggleGroup = useCallback((relPath: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(relPath)) {
+        next.delete(relPath);
+      } else {
+        next.add(relPath);
+      }
+      return next;
+    });
+  }, []);
+
+  // 메뉴가 열린 뒤에 repos fetch가 도착하는 경합에서도 현재 선택의 부모 그룹을 펼친다
+  useEffect(() => {
+    const active = repos.find((r) => r.relPath === activeSubPath);
+    const parent = active?.worktreeOf;
+    if (parent === undefined) return;
+    setExpandedGroups((prev) => {
+      if (prev.has(parent)) return prev;
+      const next = new Set(prev);
+      next.add(parent);
+      return next;
+    });
+  }, [repos, activeSubPath]);
+
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
@@ -127,7 +164,7 @@ function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelec
     >
       <div className="diff-repo-menu-eyebrow">
         <span>Repositories</span>
-        {!loading && <span>{repos.length} found</span>}
+        {!loading && <span>{topLevelCount} found</span>}
       </div>
 
       {loading ? (
@@ -140,36 +177,95 @@ function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelec
           No Git repositories within depth {depth}.
         </div>
       ) : (
-        repos.map((repo) => {
+        groups.map(({ repo, worktrees }) => {
           const isCur = repo.relPath === activeSubPath;
+          const hasWorktrees = worktrees.length > 0;
+          const isExpanded = expandedGroups.has(repo.relPath);
+          const isOrphanWorktree = repo.isWorktree === true && repo.worktreeOf === undefined;
+
           return (
-            <button
-              key={repo.relPath}
-              type="button"
-              role="option"
-              aria-selected={isCur}
-              className={`diff-repo-opt${isCur ? " is-cur" : ""}`}
-              onClick={() => { onSelect(repo.relPath); onClose(); }}
-            >
-              <svg className="diff-repo-mark" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                {isCur && (
-                  <path d="M3 7.5L6 10.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                )}
-              </svg>
-              <span>
-                <span className="diff-repo-line1">
-                  <span className="diff-repo-opt-name">{repo.name}</span>
-                  <span className="diff-repo-branch">
-                    <BranchIcon />
-                    <span>{repo.branch}</span>
+            <div key={repo.relPath} className="diff-repo-group">
+              {/* 부모/최상위 저장소 행: 선택 버튼 + 워크트리 펼침 버튼(있을 때만) */}
+              <div className="diff-repo-group-row">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={isCur}
+                  className={`diff-repo-opt${isCur ? " is-cur" : ""}`}
+                  onClick={() => { onSelect(repo.relPath); onClose(); }}
+                >
+                  <svg className="diff-repo-mark" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    {isCur && (
+                      <path d="M3 7.5L6 10.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    )}
+                  </svg>
+                  <span>
+                    <span className="diff-repo-line1">
+                      <span className="diff-repo-opt-name">{repo.name}</span>
+                      <span className="diff-repo-branch">
+                        <BranchIcon />
+                        <span>{repo.branch}</span>
+                      </span>
+                      {repo.relPath === "" && <span className="diff-repo-badge">root</span>}
+                      {/* 고아 워크트리(부모 theater 밖): worktree 뱃지 */}
+                      {isOrphanWorktree && <span className="diff-repo-badge">worktree</span>}
+                    </span>
+                    <span className="diff-repo-opt-path">
+                      {repo.relPath === "" ? "· Theater root" : repo.relPath}
+                    </span>
                   </span>
-                  {repo.relPath === "" && <span className="diff-repo-badge">root</span>}
-                </span>
-                <span className="diff-repo-opt-path">
-                  {repo.relPath === "" ? "· Theater root" : repo.relPath}
-                </span>
-              </span>
-            </button>
+                </button>
+
+                {/* 워크트리 펼침 버튼 — button-in-button 금지로 형제 요소로 배치 */}
+                {hasWorktrees && (
+                  <button
+                    type="button"
+                    className="diff-repo-expand"
+                    aria-expanded={isExpanded}
+                    onClick={(e) => { e.stopPropagation(); toggleGroup(repo.relPath); }}
+                  >
+                    {isExpanded ? "▾" : "▸"} {worktrees.length} {worktrees.length === 1 ? "worktree" : "worktrees"}
+                  </button>
+                )}
+              </div>
+
+              {/* 자식 워크트리 목록 — 기본 접힘, 펼쳤을 때만 렌더 */}
+              {isExpanded && (
+                <div className="diff-repo-children" role="group">
+                  {worktrees.map((wt) => {
+                    const isWtCur = wt.relPath === activeSubPath;
+                    const relLabel = relativeToParent(wt.relPath, repo.relPath);
+                    return (
+                      <div key={wt.relPath} className="diff-repo-child-row">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isWtCur}
+                          className={`diff-repo-opt diff-repo-child-opt${isWtCur ? " is-cur" : ""}`}
+                          onClick={() => { onSelect(wt.relPath); onClose(); }}
+                        >
+                          <svg className="diff-repo-mark" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                            {isWtCur && (
+                              <path d="M3 7.5L6 10.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                            )}
+                          </svg>
+                          <span>
+                            <span className="diff-repo-line1">
+                              <span className="diff-repo-opt-name">{wt.name}</span>
+                              <span className="diff-repo-branch">
+                                <BranchIcon />
+                                <span>{wt.branch}</span>
+                              </span>
+                            </span>
+                            <span className="diff-repo-opt-path">{relLabel}</span>
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })
       )}
@@ -251,7 +347,6 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const [repos, setRepos] = useState<RepoEntry[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [scanned, setScanned] = useState(false);
   const [reposTruncated, setReposTruncated] = useState(false);
   const fetchSeqRef = useRef(0);
   // depthRef: 렌더 중 동기 갱신 — theater useEffect에서 deps 없이 최신 depth 접근
@@ -274,7 +369,6 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       const fetched = data.repos as RepoEntry[];
       setRepos(fetched);
       setReposTruncated(data.truncated ?? false);
-      setScanned(true);
       // theater root가 저장소가 아니면 자동 선택하지 않는다 — 임의 하위 저장소를 여는 것은
       // 사용자에게 혼란을 주므로, 하위 저장소는 드롭다운에서 명시적으로 선택하게 둔다.
       setReposLoading(false);
@@ -291,7 +385,6 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     setActiveSubPath(sp);
     setRepos([]);
     setReposTruncated(false);
-    setScanned(false);
     setMenuOpen(false);
     clearSelectedFile();
     fetchRepos(depthRef.current);

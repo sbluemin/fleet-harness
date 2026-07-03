@@ -562,6 +562,80 @@
   margin-top: 1px;
 }
 
+/* ── 워크트리 그룹 행 레이아웃 ── */
+/* 선택 버튼(flex:1)과 펼침 버튼(flex:none)을 나란히 배치 */
+.diff-repo-group-row {
+  display: flex;
+  align-items: center;
+}
+
+.diff-repo-group-row .diff-repo-opt {
+  flex: 1;
+  min-width: 0;
+  /* 그룹 행 내에서는 width:100% 대신 flex:1로 */
+  width: auto;
+}
+
+/* 워크트리 펼침 버튼 — 선택 버튼의 형제 요소(button-in-button 금지) */
+.diff-repo-expand {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 7px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  transition: color var(--duration-fast), background var(--duration-fast);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-repo-expand {
+    transition-duration: 0.01ms;
+  }
+}
+
+.diff-repo-expand:hover {
+  color: var(--ink-spectral);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+.diff-repo-expand[aria-expanded="true"] {
+  color: var(--brass);
+}
+
+/* 자식 행: 들여쓰기 + 좌측 연결선 */
+.diff-repo-child-row {
+  position: relative;
+  padding-left: 18px;
+}
+
+/* 좌측 1px 연결선 (var(--surface-rim)) */
+.diff-repo-child-row::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--surface-rim);
+}
+
+/* 마지막 자식: 연결선을 행 중간까지만 그린다 */
+.diff-repo-child-row:last-child::before {
+  bottom: 50%;
+}
+
+.diff-repo-child-row .diff-repo-opt {
+  width: 100%;
+}
+
 /* ── 드롭다운 푸터: Depth + Rescan ── */
 .diff-repo-menu-foot {
   display: flex;
