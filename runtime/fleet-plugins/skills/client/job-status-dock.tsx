@@ -112,6 +112,9 @@ export function JobStatusDock({
         aria-expanded={isOpen}
         onClick={toggle}
         onKeyDown={(e) => {
+          // 자식 버튼(Dismiss/Retry)에서 버블링된 키 이벤트가 도크 토글을 삼키지 않도록,
+          // 요약 바 자체에 포커스가 있을 때만 Enter/Space를 처리한다.
+          if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             toggle();
