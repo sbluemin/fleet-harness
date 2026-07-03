@@ -17,6 +17,8 @@ export interface TerminalRuntime {
   terminate(operationId: string): boolean;
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
+  // bench 플러그인 전용: 세션 scrollback 최근 byteLimit 바이트 사본 반환.
+  getScrollbackTail(operationId: string, byteLimit: number): Buffer[];
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
   registerLaunchResolver(operationType: string, resolver: TerminalLaunchResolver): () => void;
   stop(): Promise<void>;
@@ -56,6 +58,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     terminate: (operationId) => sessions.terminate(operationId),
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
+    getScrollbackTail: (operationId, byteLimit) => sessions.getScrollbackTail(operationId, byteLimit),
     onExit: (callback) => {
       terminalExitListeners.add(callback);
       return () => terminalExitListeners.delete(callback);

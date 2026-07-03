@@ -279,7 +279,25 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, terminate, stop, writeToSession };
+  function getScrollbackTail(sessionId: string, byteLimit: number): Buffer[] {
+    const session = sessions.get(sessionId);
+    if (!session) return [];
+    const result: Buffer[] = [];
+    let accumulated = 0;
+    for (let i = session.scrollback.length - 1; i >= 0; i--) {
+      const chunk = session.scrollback[i]!;
+      if (accumulated + chunk.length > byteLimit) {
+        const remaining = byteLimit - accumulated;
+        if (remaining > 0) result.unshift(chunk.subarray(chunk.length - remaining));
+        break;
+      }
+      result.unshift(chunk);
+      accumulated += chunk.length;
+    }
+    return result;
+  }
+
+  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, terminate, stop, writeToSession, getScrollbackTail };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

@@ -21,10 +21,13 @@ import { captureSession, readProviderSessionCapture, unlinkProviderSessionCaptur
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
+import { createPendingInitialInputQueue } from "./agent-api/pending-initial-input.js";
+import { handleScrollbackRoute } from "./agent-api/scrollback-route.js";
 import type { AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { buildModelAuthState } from "./model-auth-state.js";
 
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
+// initialInput은 응답 payload에 노출하지 않는다(Token Boundary).
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly initialInput?: unknown };
 type SessionPatchBody = { readonly label?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -78,6 +81,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     workspaceHash: ctx.host.paths.workspaceHash,
   });
   const detector = createDefaultAgentCliDetector();
+  const initialInputQueue = createPendingInitialInputQueue({ terminalRuntime });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
@@ -152,6 +156,10 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     if (path === "/sessions") return handleSessions(req, res);
     if (path === "/capture") return handleCapture(req, res, "");
+    const scrollbackMatch = path.match(/^\/sessions\/([^/]+)\/scrollback$/);
+    if (scrollbackMatch) {
+      return handleScrollbackRoute(req, res, decodeURIComponent(scrollbackMatch[1] ?? ""), terminalRuntime, ctx.host.http.writeJson);
+    }
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessionMatch) return handleSessionItem(req, res, decodeURIComponent(sessionMatch[1] ?? ""), sessionMatch[2] ?? "");
     if (path === "/ticket") {
@@ -218,7 +226,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return true;
     }
-    await createSession(cwd, theaterId, cliId, res);
+    const initialInput = typeof body?.initialInput === "string" ? body.initialInput : undefined;
+    await createSession(cwd, theaterId, cliId, res, initialInput);
     return true;
   }
 
@@ -258,7 +267,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     return methodNotAllowed(res);
   }
 
-  async function createSession(cwd: string, theaterId: string, cliId: AgentCliId, res: Parameters<typeof handle>[0]["res"]): Promise<void> {
+  async function createSession(cwd: string, theaterId: string, cliId: AgentCliId, res: Parameters<typeof handle>[0]["res"], initialInput?: string): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
       ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
@@ -292,9 +301,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
       observability.notifySessionUpdated(created);
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(cwd, created) });
+      // initialInput이 있으면 큐에 등록 — attach 성공 후 graceMs(200ms) 지연으로 flush(Token Boundary: 응답에 미포함).
+      if (initialInput) initialInputQueue.enqueue(sessionId, initialInput);
       ctx.host.http.writeJson(res, 200, created);
     } catch {
       pendingRuntimeSessions.delete(sessionId);
+      initialInputQueue.disarm(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
       ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
     }
@@ -448,6 +460,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   async function handleExit(operationId: string): Promise<void> {
+    initialInputQueue.disarm(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -465,6 +478,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   function removeSession(sessionId: string): void {
+    initialInputQueue.disarm(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -473,6 +487,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   async function cleanup(): Promise<void> {
+    initialInputQueue.cleanup();
     unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();

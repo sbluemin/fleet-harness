@@ -21,3 +21,19 @@
 - On first load the store attempts to hydrate font from the server. If the server has no value but `fleet-plugin.terminal.font` exists in localStorage, the local value is seeded to the server via a single PUT and the localStorage key is deleted (1-time migration, idempotent — if the server already has a value on any subsequent load, the local key is deleted without re-seeding). Legacy keys (`fleet-console.terminalRenderer`, `fleet-console.terminalFont`) are migrated once on first access to the new namespace keys before server hydration.
 - **Hydration race guard**: if the user calls `setTerminalFont*`/`setTerminalFontSize` while a server `read` is still pending, the `fontWriteEpoch` counter is bumped and the hydration result is discarded on resolve — the user's explicit write always wins.
 - All prefs state is module-scoped in `client/shared/terminal-prefs-store.ts` and subscribed via `useSyncExternalStore`. Every mounted terminal panel (active, inactive, dormant) reacts instantly to settings card changes.
+
+## Scrollback Tail Route (Bench Consumer Contract)
+
+- `GET /plugins/terminal/agent/sessions/:sessionId/scrollback?lines=N` — returns `{ scrollback: string, bytes: number, truncated: boolean }`.
+- **Authorized consumer**: bench plugin only. No other plugin or client surface should call this route.
+- Response contains **stdout bytes only**. `ticket`, `token`, `providerSession`, `transcriptPath`, `canonicalCwd`, and all other sensitive fields must never appear in the response body.
+- `lines` query parameter is clamped to [1, 200]. Byte upper bound is 32,768 (32 KB) from the scrollback ring.
+- Implemented in `server/agent-api/scrollback-route.ts`, dispatched from `server/agent.ts` handle function, no explicit auth gate beyond the loopback host gate enforced upstream.
+
+## Pending Initial-Input Queue (Bench Fan-out Contract)
+
+- `POST /plugins/terminal/agent/sessions` accepts an optional `initialInput?: string` field in the request body.
+- On successful attach, if `initialInput` is provided, the queue schedules `terminalRuntime.write(sessionId, input + "\n")` after a 200 ms grace delay to absorb CLI prompt startup time.
+- **Token Boundary**: `initialInput` is **never included** in the session create response payload (`SessionInfo`). It is consumed server-side only.
+- The queue is implemented in `server/agent-api/pending-initial-input.ts`. It is disarmed on session exit or error, and cleaned up on plugin lifecycle shutdown.
+- `TerminalLaunchContext.initialPrompt` field must **not** be added. The queue is maintained as a local map inside the agent route scope.

@@ -72,4 +72,6 @@ export interface TerminalSessionManager {
   terminate(sessionId: string): boolean;
   stop(): Promise<void>;
   writeToSession(sessionId: string, data: string): boolean;
+  // bench 플러그인 전용: 세션 scrollback의 최근 byteLimit 바이트 사본 반환. 세션 미존재 시 빈 배열.
+  getScrollbackTail(sessionId: string, byteLimit: number): Buffer[];
 }
