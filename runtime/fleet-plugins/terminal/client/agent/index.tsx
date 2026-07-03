@@ -10,6 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
@@ -41,6 +42,12 @@ interface RendererOption {
   readonly label: string;
 }
 
+interface PinnedScrollLocal {
+  readonly containerRef: React.RefObject<HTMLDivElement | null>;
+  readonly pinned: boolean;
+  readonly jumpToLatest: () => void;
+}
+
 const RENDERERS: readonly RendererOption[] = [
   { id: "webgl", label: "WebGL" },
   { id: "dom", label: "DOM" },
@@ -48,6 +55,8 @@ const RENDERERS: readonly RendererOption[] = [
 
 const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
+const DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
+const PIN_SLACK_PX = 56;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -109,22 +118,104 @@ function installAgentPlugin(ctx: PluginInstallContext): () => void {
   });
 }
 
+// core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.
+function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScrollLocal {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const pinnedRef = React.useRef(true);
+  const [pinned, setPinned] = React.useState(true);
+
+  const updatePinned = React.useCallback((next: boolean) => {
+    if (pinnedRef.current === next) return;
+    pinnedRef.current = next;
+    setPinned(next);
+  }, []);
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      updatePinned(distance <= PIN_SLACK_PX);
+    };
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [updatePinned]);
+
+  React.useLayoutEffect(() => {
+    updatePinned(true);
+    const container = containerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [resetKey, updatePinned]);
+
+  React.useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || !pinnedRef.current) return;
+    container.scrollTop = container.scrollHeight;
+  }, [contentKey]);
+
+  const jumpToLatest = React.useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+    container.focus({ preventScroll: true });
+    updatePinned(true);
+  }, [updatePinned]);
+
+  return { containerRef, pinned, jumpToLatest };
+}
+
+function useDockCollapsed(): [boolean, (next: boolean) => void] {
+  const [collapsed, setCollapsedState] = React.useState(() => {
+    try {
+      return localStorage.getItem(DOCK_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const setCollapsed = React.useCallback((next: boolean) => {
+    try {
+      if (next) {
+        localStorage.setItem(DOCK_COLLAPSED_KEY, "true");
+      } else {
+        localStorage.removeItem(DOCK_COLLAPSED_KEY);
+      }
+    } catch {
+      // localStorage 비가용 환경 무시
+    }
+    setCollapsedState(next);
+  }, []);
+
+  return [collapsed, setCollapsed];
+}
+
+function useElapsed(startedAt: number | undefined): string {
+  const [now, setNow] = React.useState(Date.now);
+
+  React.useEffect(() => {
+    if (startedAt === undefined) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  if (startedAt === undefined) return "";
+  return formatElapsedDuration(now - startedAt);
+}
+
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const [modalOpen, setModalOpen] = React.useState(false);
-  const summaryButtonRef = React.useRef<HTMLButtonElement>(null);
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
+  const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
-  const primaryJob = activeJobs[0] ?? null;
-  const totalTrackCount = activeJobs.reduce((sum, job) => sum + job.trackOrder.length, 0);
 
   const closeModal = React.useCallback(() => {
     setModalOpen(false);
-    summaryButtonRef.current?.focus();
+    detailBtnRef.current?.focus();
   }, []);
 
   // [M2] paint 전 동기 포커스 이동으로 순간 배경 포커스 잔류 방지
@@ -178,31 +269,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   return (
     <div className="agent-stream-host">
-      {primaryJob ? (
-        <button
-          ref={summaryButtonRef}
-          type="button"
-          className="job-summary job-summary--banner job-summary--live"
-          aria-label={
-            activeJobs.length > 1
-              ? `${activeJobs.length} carriers streaming${totalTrackCount > 0 ? `, ${totalTrackCount} tracks` : ""} — click to expand`
-              : `${primaryJob.label ?? primaryJob.jobId}${totalTrackCount > 0 ? `, ${totalTrackCount} tracks` : ""} — click to expand`
-          }
-          onClick={() => setModalOpen(true)}
-        >
-          <span className="job-summary-row">
-            <span className="job-summary-dot" aria-hidden="true" />
-            <span className="job-summary-eyebrow">
-              {activeJobs.length > 1 ? `${activeJobs.length} carriers` : (primaryJob.ownerCarrierId ?? "Carrier")}
-            </span>
-            {totalTrackCount > 0 ? (
-              <span className="job-summary-count" aria-hidden="true">{totalTrackCount}</span>
-            ) : null}
-            <span className="job-summary-chev" aria-hidden="true">›</span>
-          </span>
-          <p className="job-summary-text">{primaryJob.label ?? primaryJob.jobId}</p>
-        </button>
-      ) : null}
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
@@ -212,6 +278,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
+      {activeJobs.length > 0 ? (
+        <StreamDock activeJobs={activeJobs} onOpenDetail={() => setModalOpen(true)} detailBtnRef={detailBtnRef} />
+      ) : null}
       {modalOpen ? (
         <div ref={overlayRef} className="job-overlay" role="dialog" aria-modal="true" aria-label="Carrier stream details">
           <button type="button" className="job-overlay-scrim" aria-label="Close" tabIndex={-1} onClick={closeModal} />
@@ -225,6 +294,120 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
               )}
             </div>
           </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StreamDock({
+  activeJobs,
+  onOpenDetail,
+  detailBtnRef,
+}: {
+  readonly activeJobs: readonly JobView[];
+  readonly onOpenDetail: () => void;
+  readonly detailBtnRef?: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const [collapsed, setCollapsed] = useDockCollapsed();
+  const primaryJob = activeJobs[0];
+  const elapsed = useElapsed(primaryJob?.startedAt);
+  const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
+  const tokenLabel = formatTokenEstimate(totalTokens);
+
+  const carrierLabel = activeJobs.length > 1
+    ? `${activeJobs.length} carriers`
+    : (primaryJob?.ownerCarrierId ?? "Carrier");
+
+  const tailText = getDockTailText(activeJobs);
+  const contentKey = activeJobs.map((j) => `${j.jobId}:${j.lastEventId}`).join(",");
+  const resetKey = `${!collapsed}:${activeJobs.map((j) => j.jobId).join(",")}`;
+  const { containerRef, pinned, jumpToLatest } = usePinnedScrollLocal(resetKey, contentKey);
+
+  return (
+    <div className="job-dock">
+      <div className="job-dock-header">
+        <span className="job-dock-dot" aria-hidden="true" />
+        <span className="job-dock-carrier">{carrierLabel}</span>
+        <span className="job-dock-meta">
+          {elapsed ? <span>{elapsed}</span> : null}
+          {tokenLabel ? <span>{tokenLabel}</span> : null}
+        </span>
+        <button
+          type="button"
+          className="job-dock-grip"
+          aria-label={collapsed ? "Expand stream dock" : "Collapse stream dock"}
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          {collapsed ? "▲" : "▼"}
+        </button>
+        <button
+          ref={detailBtnRef}
+          type="button"
+          className="job-dock-detail-btn"
+          onClick={onOpenDetail}
+        >
+          Details
+        </button>
+      </div>
+      {collapsed ? (
+        tailText ? <div className="job-dock-tail" aria-hidden="true">{tailText}</div> : null
+      ) : null}
+      <div className={`job-dock-body-wrap${collapsed ? " is-collapsed" : ""}`}>
+        <div ref={containerRef} className="job-dock-body" tabIndex={-1}>
+          {activeJobs.map((job) =>
+            job.trackOrder.map((trackId) => {
+              const track = job.tracks[trackId];
+              return track ? <DockTrackRow key={`${job.jobId}:${trackId}`} track={track} /> : null;
+            })
+          )}
+        </div>
+        {!pinned ? (
+          <button type="button" className="follow-button" onClick={jumpToLatest}>
+            ↓ Follow
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DockTrackRow({ track }: { readonly track: TrackView }) {
+  const isLive = trackCardModifier(track.status) === "track-card--live";
+  const tailOutput = getLastLine(track.text);
+  const tailThought = getLastLine(track.thought);
+  return (
+    <div className="job-dock-track">
+      <div className="job-dock-track-head">
+        <span className="job-dock-track-name">{track.displayName}</span>
+        <span className={`job-dock-track-status${isLive ? " job-dock-track-status--live" : ""}`}>
+          {track.status}
+        </span>
+      </div>
+      {!tailOutput && tailThought ? (
+        <div className="job-dock-track-thought" aria-label="Thinking">{tailThought}</div>
+      ) : null}
+      {tailOutput ? (
+        <div className="job-dock-track-text">
+          {tailOutput}
+          {isLive ? <span className="job-dock-caret" aria-hidden="true" /> : null}
+        </div>
+      ) : null}
+      {track.tools.length > 0 ? (
+        <div className="job-dock-tools">
+          {track.tools.map((tool) => {
+            const isDone = tool.status === "completed" || tool.status === "failed" || tool.status === "error";
+            const chipLive = isLive && !isDone;
+            return (
+              <span
+                key={tool.id}
+                className={`job-dock-tool-chip${chipLive ? " job-dock-tool-chip--live" : ""}`}
+              >
+                {tool.name ?? tool.id}
+              </span>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -426,6 +609,29 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function getDockTailText(activeJobs: readonly JobView[]): string {
+  for (let jobIdx = activeJobs.length - 1; jobIdx >= 0; jobIdx--) {
+    const job = activeJobs[jobIdx];
+    if (!job) continue;
+    for (let trackIdx = job.trackOrder.length - 1; trackIdx >= 0; trackIdx--) {
+      const trackId = job.trackOrder[trackIdx];
+      if (!trackId) continue;
+      const track = job.tracks[trackId];
+      if (!track) continue;
+      const last = getLastLine(track.text) || getLastLine(track.thought);
+      if (last) return last;
+    }
+  }
+  return "";
+}
+
+function getLastLine(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const lines = trimmed.split("\n");
+  return lines[lines.length - 1]?.trim() ?? "";
+}
+
 function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {
   const resolution = resolveTerminalFont(terminalFont);
   const currentFontLabel = terminalFontLabel(terminalFont);
@@ -597,3 +803,5 @@ function AgentGlyph() {
     </svg>
   );
 }
+
+export { formatElapsedDuration, formatTokenEstimate, estimateJobTokens } from "./helpers.js";
