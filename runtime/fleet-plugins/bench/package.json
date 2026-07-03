@@ -4,5 +4,16 @@
   "private": true,
   "type": "module",
   "main": "routes.ts",
-  "module": "routes.ts"
+  "module": "routes.ts",
+  "dependencies": {
+    "@fleet-console/sdk": "workspace:*",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.2"
+  }
 }
