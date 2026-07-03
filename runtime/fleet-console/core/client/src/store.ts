@@ -212,8 +212,7 @@ export function raiseOperationNotification(input: ClientNotification): void {
   const operationLabel = operation.title;
   const kind = mapNotificationKind(input.kind);
   notificationSeq += 1;
-  const existing = state.operationNotifications[input.operationId];
-  const count = existing ? existing.count + 1 : 1;
+  // 같은 패널의 알림은 누적하지 않고 최신 것으로 교체한다(last-writer-wins).
   setState({
     operationNotifications: {
       ...state.operationNotifications,
@@ -223,7 +222,6 @@ export function raiseOperationNotification(input: ClientNotification): void {
         theaterId,
         theaterLabel,
         operationLabel,
-        count,
         lastRaisedSeq: notificationSeq,
       },
     },

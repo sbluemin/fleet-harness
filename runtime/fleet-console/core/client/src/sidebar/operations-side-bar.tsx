@@ -122,7 +122,7 @@ export function OperationsSideBar({
       operation,
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
-      notificationCount: operationNotifications[operation.id]?.count ?? 0,
+      notificationCount: operationNotifications[operation.id] ? 1 : 0,
       icon,
     };
   });

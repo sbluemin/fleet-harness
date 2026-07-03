@@ -4,7 +4,6 @@ export interface NotificationTheaterGroup {
   readonly theaterId: string | null;
   readonly theaterLabel: string;
   readonly notifications: readonly OperationNotification[];
-  readonly totalCount: number;
 }
 
 export interface VisibilitySplitNotifications {
@@ -51,17 +50,15 @@ export function splitNotificationsByVisibility(
 }
 
 export function groupNotificationsByTheater(notifications: readonly OperationNotification[]): readonly NotificationTheaterGroup[] {
-  const groups = new Map<string, { theaterId: string | null; theaterLabel: string; notifications: OperationNotification[]; totalCount: number }>();
+  const groups = new Map<string, { theaterId: string | null; theaterLabel: string; notifications: OperationNotification[] }>();
   for (const notification of [...notifications].sort((a, b) => b.lastRaisedSeq - a.lastRaisedSeq)) {
     const key = notification.theaterId ?? "__unknown__";
     const group = groups.get(key) ?? {
       theaterId: notification.theaterId,
       theaterLabel: notification.theaterLabel,
       notifications: [],
-      totalCount: 0,
     };
     group.notifications.push(notification);
-    group.totalCount += notification.count;
     groups.set(key, group);
   }
   return [...groups.values()].sort((a, b) => {
