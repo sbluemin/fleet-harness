@@ -135,14 +135,27 @@ export function JobStatusDock({
             ✕
           </button>
         )}
-        {status === "error" && onRetry != null && (
-          <button
-            type="button"
-            className="skills-dock-retry"
-            onClick={(e) => { e.stopPropagation(); onRetry(); }}
-          >
-            Retry
-          </button>
+        {status === "error" && (
+          // error는 자동소멸하지 않으므로, Retry(있으면)와 함께 수동 해제용 ✕를 항상 제공한다.
+          <>
+            {onRetry != null && (
+              <button
+                type="button"
+                className="skills-dock-retry"
+                onClick={(e) => { e.stopPropagation(); onRetry(); }}
+              >
+                Retry
+              </button>
+            )}
+            <button
+              type="button"
+              className="skills-dock-dismiss"
+              aria-label="Dismiss"
+              onClick={(e) => { e.stopPropagation(); dismiss(); }}
+            >
+              ✕
+            </button>
+          </>
         )}
         <span className={`skills-dock-chevron${isOpen ? " is-open" : ""}`} aria-hidden="true">▾</span>
       </div>
