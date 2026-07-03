@@ -38,7 +38,7 @@ const TERMINAL_OPTIONS = {
   convertEol: true,
   cursorBlink: true,
   cursorStyle: "block" as const,
-  lineHeight: 1.2,
+  lineHeight: 1,
 };
 
 const RESIZE_DEBOUNCE_MS = 80;

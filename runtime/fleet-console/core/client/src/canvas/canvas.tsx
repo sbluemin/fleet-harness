@@ -150,6 +150,8 @@ export function OperationsCanvas({
   const operationKindRegistry = registry.operationKinds;
   const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
+  // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
+  const effectiveZoom = panelMaximized ? 1 : canvas.viewport.zoom;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
 
   return (
@@ -167,20 +169,24 @@ export function OperationsCanvas({
       <div
         className="operations-canvas-world"
         style={{
-          transform: `translate(${canvas.viewport.x}px, ${canvas.viewport.y}px) scale(${canvas.viewport.zoom})`,
+          // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해
+          // will-change 합성 레이어의 서브픽셀 오프셋 리샘플(글자 번짐)을 제거한다.
+          transform: panelMaximized
+            ? "none"
+            : `translate(${Math.round(canvas.viewport.x)}px, ${Math.round(canvas.viewport.y)}px) scale(${canvas.viewport.zoom})`,
         }}
       >
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;
-          const frameGeometry = operationMaximized ? maximizedGeometryFor(canvas.viewport, canvasSize, topPanelZIndex) : baseGeometry;
+          const frameGeometry = operationMaximized ? maximizedGeometryFor(canvasSize, topPanelZIndex) : baseGeometry;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
             geometry: frameGeometry,
             operationKindRegistry,
             status: state.operationStatus[operation.id],
             theme: state.activeTheme,
-            viewportZoom: canvas.viewport.zoom,
+            viewportZoom: effectiveZoom,
             minimized: minimizedSet.has(operation.id),
             maximized: operationMaximized,
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
@@ -287,12 +293,14 @@ function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
   return operation.geometry ?? { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
 }
 
-function maximizedGeometryFor(viewport: { readonly x: number; readonly y: number; readonly zoom: number }, canvasSize: { readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {
+// 최대화 패널은 world transform이 none인 상태에서 렌더되므로 화면 좌표(0,0) 기준 캔버스 풀사이즈로 배치한다.
+// viewport에 의존하지 않아 현재 줌/팬과 무관하게 항상 net scale 1로 최대화된다.
+function maximizedGeometryFor(canvasSize: { readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {
   return {
-    x: -viewport.x / viewport.zoom,
-    y: -viewport.y / viewport.zoom,
-    width: Math.max(320, canvasSize.width) / viewport.zoom,
-    height: Math.max(240, canvasSize.height) / viewport.zoom,
+    x: 0,
+    y: 0,
+    width: Math.max(320, canvasSize.width),
+    height: Math.max(240, canvasSize.height),
     zIndex,
   };
 }

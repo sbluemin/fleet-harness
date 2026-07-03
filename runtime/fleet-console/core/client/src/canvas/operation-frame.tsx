@@ -165,11 +165,21 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
     setAccentAnchor(anchor);
   };
 
+  // 패널 좌표·크기를 정수 픽셀로 스냅해 패널·내부 xterm 캔버스 원점을 정수 픽셀에 정렬한다(서브픽셀 번짐 제거).
+  const frameStyle = {
+    left: Math.round(geometry.x),
+    top: Math.round(geometry.y),
+    width: Math.round(geometry.width),
+    height: Math.round(geometry.height),
+    zIndex: geometry.zIndex,
+    ...(accentColor ? { "--op-accent": accentColor } : {}),
+  } as CSSProperties;
+
   return (
     <article
       ref={operationRef}
       className={className}
-      style={{ left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height, zIndex: geometry.zIndex, ...(accentColor ? { "--op-accent": accentColor } : {}) } as CSSProperties}
+      style={frameStyle}
       onPointerDown={onActivate}
       data-canvas-operation
       aria-label={`Operation ${displayTitle}`}
