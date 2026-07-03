@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import type { SkillListItem } from "../server/types.js";
+import { JobStatusDock } from "./job-status-dock.js";
 import { SkillCard } from "./skill-card.js";
 import {
   setFilterText,
@@ -74,6 +75,10 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTab
       .catch(() => null);
   }, [theaterId, loadList]);
 
+  const handleRetry = useCallback(() => {
+    if (updateScopeRef.current) handleUpdate(updateScopeRef.current);
+  }, [handleUpdate]);
+
   const visibleScope: Scope = scope === "project" && !theaterId ? "global" : scope;
   const filtered = installedList.filter((s) => {
     if (s.scope !== visibleScope) return false;
@@ -85,70 +90,67 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTab
     updateLog.status === "running" && updateScopeRef.current === visibleScope;
 
   return (
-    <div className="skills-tab-body">
-      <div className="skills-scope-toggle">
-        <button
-          type="button"
-          className={`skills-scope-btn${visibleScope === "project" ? " is-active" : ""}`}
-          onClick={() => setScope("project")}
-          disabled={!theaterId}
-          title={!theaterId ? "Select a Theater to view project skills" : undefined}
-        >
-          Project
-        </button>
-        <button
-          type="button"
-          className={`skills-scope-btn${visibleScope === "global" ? " is-active" : ""}`}
-          onClick={() => setScope("global")}
-        >
-          Global
-        </button>
-      </div>
+    <>
+      <div className="skills-tab-body">
+        <div className="skills-scope-toggle">
+          <button
+            type="button"
+            className={`skills-scope-btn${visibleScope === "project" ? " is-active" : ""}`}
+            onClick={() => setScope("project")}
+            disabled={!theaterId}
+            title={!theaterId ? "Select a Theater to view project skills" : undefined}
+          >
+            Project
+          </button>
+          <button
+            type="button"
+            className={`skills-scope-btn${visibleScope === "global" ? " is-active" : ""}`}
+            onClick={() => setScope("global")}
+          >
+            Global
+          </button>
+        </div>
 
-      <input
-        type="search"
-        className="skills-filter-input"
-        placeholder="Filter installed skills…"
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        aria-label="Filter installed skills"
-      />
+        <input
+          type="search"
+          className="skills-filter-input"
+          placeholder="Filter installed skills…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          aria-label="Filter installed skills"
+        />
 
-      {(updateLog.status === "running" || updateLog.status === "done" || updateLog.status === "error") && (
-        <div className="skills-update-log">
-          {updateLog.lines.map((line, i) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <div key={i} className="skills-update-log-line">{line}</div>
+        {installedLoading && <div className="skills-empty-state">Loading…</div>}
+
+        {!installedLoading && filtered.length === 0 && (
+          <div className="skills-empty-state">
+            {filterText ? "No skills match the filter." : `No ${visibleScope} skills installed.`}
+          </div>
+        )}
+
+        <div className="skills-card-list">
+          {filtered.map((skill) => (
+            <SkillCard
+              key={`${skill.scope}:${skill.name}`}
+              skill={skill}
+              onReadMore={onReadMore}
+              onUpdate={handleUpdate}
+              onRemove={handleRemove}
+              isUpdating={isUpdating}
+            />
           ))}
-          {updateLog.status === "done" && (
-            <div className="skills-update-log-line skills-update-log-done">✓ Update complete</div>
-          )}
-          {updateLog.status === "error" && (
-            <div className="skills-update-log-line skills-update-log-error">✗ Update failed</div>
-          )}
         </div>
-      )}
-
-      {installedLoading && <div className="skills-empty-state">Loading…</div>}
-
-      {!installedLoading && filtered.length === 0 && (
-        <div className="skills-empty-state">
-          {filterText ? "No skills match the filter." : `No ${visibleScope} skills installed.`}
-        </div>
-      )}
-
-      <div className="skills-card-list">
-        {filtered.map((skill) => (
-          <SkillCard
-            key={`${skill.scope}:${skill.name}`}
-            skill={skill}
-            onReadMore={onReadMore}
-            onUpdate={handleUpdate}
-            onRemove={handleRemove}
-            isUpdating={isUpdating}
-          />
-        ))}
       </div>
-    </div>
+
+      <JobStatusDock
+        status={updateLog.status}
+        lines={updateLog.lines}
+        runningLabel="Updating skills…"
+        doneLabel="Updated"
+        errorLabel="Update failed"
+        onDismiss={updateLog.reset}
+        onRetry={handleRetry}
+      />
+    </>
   );
 }

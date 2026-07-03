@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { AgentId, Scope } from "../server/types.js";
-import { useJobLog } from "./use-job-log.js";
+import type { UseJobLogReturn } from "./use-job-log.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -10,7 +10,8 @@ interface InstallFlowProps {
   readonly skill: string;
   readonly theaterId: string | null;
   readonly onCancel: () => void;
-  readonly onSuccess: (scope: Scope) => void;
+  readonly onStarted: (scope: Scope) => void;
+  readonly jobLog: UseJobLogReturn;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -27,25 +28,17 @@ const AGENT_LABELS: Record<AgentId, string> = {
 const PERMISSION_WARNING =
   "Skills run with full agent permissions. Review before use — open the name to read SKILL.md.";
 
-const SUCCESS_LINGER_MS = 1200;
-
 // ─── InstallFlow ──────────────────────────────────────────────────────────────
 
-export function InstallFlow({ source, skill, theaterId, onCancel, onSuccess }: InstallFlowProps) {
+export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, jobLog }: InstallFlowProps) {
   const [scope, setScope] = useState<Scope>(theaterId ? "project" : "global");
   const [allAgents, setAllAgents] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<Set<AgentId>>(new Set(AGENT_IDS));
 
-  const { status, lines, start } = useJobLog();
+  const { status, start } = jobLog;
   const isRunning = status === "running";
   const isDone = status === "done";
   const isError = status === "error";
-
-  useEffect(() => {
-    if (!isDone) return;
-    const timer = setTimeout(() => onSuccess(scope), SUCCESS_LINGER_MS);
-    return () => clearTimeout(timer);
-  }, [isDone, onSuccess, scope]);
 
   const handleToggleAll = useCallback(() => {
     setAllAgents(true);
@@ -73,7 +66,10 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onSuccess }: I
     if (scope === "project" && theaterId) body["theaterId"] = theaterId;
 
     start("/plugins/skills/install", body);
-  }, [allAgents, selectedAgents, source, skill, scope, theaterId, start]);
+    // 완료 전파(설치 목록 새로고침·탭 전환)는 잡 소유자(FindTab)가 status로 구동하므로,
+    // 이 transient 폼은 설치 대상 scope만 시작 시점에 상위로 알린다.
+    onStarted(scope);
+  }, [allAgents, selectedAgents, source, skill, scope, theaterId, start, onStarted]);
 
   return (
     <div className="skills-install-flow">
@@ -138,21 +134,6 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onSuccess }: I
           >
             Install now
           </button>
-        </div>
-      )}
-
-      {(isRunning || isDone || isError) && (
-        <div className="skills-update-log">
-          {lines.map((line, i) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <div key={i} className="skills-update-log-line">{line}</div>
-          ))}
-          {isDone && (
-            <div className="skills-update-log-line skills-update-log-done">✓ Installed</div>
-          )}
-          {isError && (
-            <div className="skills-update-log-line skills-update-log-error">✗ Install failed</div>
-          )}
         </div>
       )}
     </div>
