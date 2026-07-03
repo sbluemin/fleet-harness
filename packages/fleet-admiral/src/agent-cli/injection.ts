@@ -82,9 +82,11 @@ type StartupNativeDefinitions =
   | { readonly host: "claude"; readonly definitions: ClaudeSubagentDefinition[] }
   | { readonly host: "none"; readonly definitions: [] };
 
-const CODEX_FLEET_PROFILE_FILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.config\.toml$/;
-const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
-const CODEX_STALE_PROFILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const CODEX_FLEET_PROFILE_NAME = "fleet";
+const CODEX_FLEET_PROFILE_FILE_NAME = `${CODEX_FLEET_PROFILE_NAME}.config.toml`;
+const CODEX_LEGACY_FLEET_PROFILE_FILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.config\.toml$/;
+const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex profile";
+const CODEX_LEGACY_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const SYSTEM_PROMPT_FILE_MODE = 0o600;
 
 export async function injectAgentCliProfile(
@@ -130,7 +132,7 @@ export async function injectAgentCliProfile(
           turnStartHookExec: options.turnStartHookExec,
           turnEndHookExec: options.turnEndHookExec,
           autoNameHookExec: options.autoNameHookExec,
-        }, (cleanup) => tempCleanups.push(cleanup))
+        })
       : undefined;
     const launchWarnings: string[] = [];
     // 과거 fleet-global/fleet-project 렌더가 Codex 설정에 남긴 등록·flat marketplace 잔재를 등록 루프 전에 1회 정리한다.
@@ -245,14 +247,12 @@ function writeCodexFleetProfile(
   doctrine: string,
   pluginKeys: readonly string[],
   hookExecs: CodexProfileHookExecs,
-  onCleanup: (cleanup: () => void) => void,
 ): CodexFleetProfile {
   const codexHome = env.CODEX_HOME ?? path.join(env.HOME ?? os.homedir(), ".codex");
   mkdirSync(codexHome, { recursive: true });
-  pruneStaleCodexFleetProfiles(codexHome);
-  const profileName = `fleet-${crypto.randomUUID()}`;
-  const profilePath = path.join(codexHome, `${profileName}.config.toml`);
-  onCleanup(() => rmBestEffort(profilePath));
+  pruneLegacyCodexFleetProfiles(codexHome);
+  const profileName = CODEX_FLEET_PROFILE_NAME;
+  const profilePath = path.join(codexHome, CODEX_FLEET_PROFILE_FILE_NAME);
   writeFileNoFollow(profilePath, [
     CODEX_FLEET_PROFILE_MARKER,
     // doctrine를 멀티라인 TOML 문자열로 직렬화해 실제 줄바꿈을 보존(pretty)한다.
@@ -260,6 +260,9 @@ function writeCodexFleetProfile(
     `developer_instructions = """`,
     escapeTomlMultilineString(doctrine),
     `"""`,
+    "",
+    "[features]",
+    "hooks = true",
     "",
     ...pluginKeys.flatMap((pluginKey) => [
       `[plugins."${escapeTomlBasicString(pluginKey)}"]`,
@@ -310,28 +313,27 @@ function writeFileNoFollow(filePath: string, content: string): void {
   }
 }
 
-function pruneStaleCodexFleetProfiles(codexHome: string): void {
+function pruneLegacyCodexFleetProfiles(codexHome: string): void {
   let entries: string[];
   try {
     entries = readdirSync(codexHome);
   } catch {
     return;
   }
-  const now = Date.now();
   for (const entry of entries) {
-    if (!CODEX_FLEET_PROFILE_FILE_NAME_PATTERN.test(entry)) continue;
+    if (!CODEX_LEGACY_FLEET_PROFILE_FILE_NAME_PATTERN.test(entry)) continue;
     const filePath = path.join(codexHome, entry);
-    if (!isStaleFleetCodexProfile(filePath, now)) continue;
+    if (!isLegacyFleetCodexProfile(filePath)) continue;
     unlinkBestEffort(filePath);
   }
 }
 
-function isStaleFleetCodexProfile(filePath: string, now: number): boolean {
+function isLegacyFleetCodexProfile(filePath: string): boolean {
   try {
     const stat = lstatSync(filePath);
     if (!stat.isFile() || stat.isSymbolicLink()) return false;
-    if (now - stat.mtimeMs <= CODEX_STALE_PROFILE_MAX_AGE_MS) return false;
-    return readFirstLine(filePath) === CODEX_FLEET_PROFILE_MARKER;
+    const firstLine = readFirstLine(filePath);
+    return firstLine === CODEX_LEGACY_FLEET_PROFILE_MARKER;
   } catch {
     return false;
   }
