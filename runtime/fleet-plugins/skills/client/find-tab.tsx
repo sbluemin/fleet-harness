@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Scope, SkillListItem, SkillSearchItem } from "../server/types.js";
 import { InstallFlow } from "./install-flow.js";
@@ -25,7 +25,7 @@ interface FindResultCardProps {
   readonly isFormOpen: boolean;
   readonly onInstallClick: () => void;
   readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
-  readonly onInstallSuccess: (skillName: string, scope: Scope) => void;
+  readonly onInstallStarted: (skillName: string, scope: Scope) => void;
   readonly jobLog: UseJobLogReturn;
 }
 
@@ -63,7 +63,7 @@ function FindResultCard({
   isFormOpen,
   onInstallClick,
   onReadMore,
-  onInstallSuccess,
+  onInstallStarted,
   jobLog,
 }: FindResultCardProps) {
   const previewSkill: SkillListItem = {
@@ -105,10 +105,7 @@ function FindResultCard({
           skill={result.name}
           theaterId={theaterId}
           onCancel={onInstallClick}
-          onSuccess={(installedScope) => {
-            onInstallClick();
-            onInstallSuccess(result.name, installedScope);
-          }}
+          onStarted={(installedScope) => onInstallStarted(result.name, installedScope)}
           jobLog={jobLog}
         />
       )}
@@ -122,6 +119,7 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
   const { searchQuery, searchResults, searchLoading, installFormOpenId } = useSkillsStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const installJobLog = useJobLog();
+  const [installTarget, setInstallTarget] = useState<{ name: string; scope: Scope } | null>(null);
 
   const handleQueryChange = useCallback((q: string) => {
     setSearchQuery(q);
@@ -134,12 +132,17 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
-  const installingName =
-    installFormOpenId != null
-      ? (searchResults.find((r) => r.id === installFormOpenId)?.name ?? "")
-      : "";
+  // 설치 완료 전파(설치 목록 새로고침·Installed 탭 전환·토스트)는 잡 소유자인 FindTab이
+  // 소유한다. 설치 도중 사용자가 InstallFlow 폼을 접어 언마운트해도, 여기서 status==="done"을
+  // 보고 확실히 전파한다(폼 내부 타이머에 의존해 완료가 고아가 되지 않는다).
+  useEffect(() => {
+    if (installJobLog.status !== "done" || !installTarget) return;
+    onInstallSuccess(installTarget.name, installTarget.scope);
+    setInstallFormOpenId(null);
+    setInstallTarget(null);
+  }, [installJobLog.status, installTarget, onInstallSuccess]);
 
-  const installRunningLabel = installingName ? `Installing ${installingName}…` : "Installing…";
+  const installRunningLabel = installTarget ? `Installing ${installTarget.name}…` : "Installing…";
 
   return (
     <>
@@ -174,7 +177,7 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
                 setInstallFormOpenId(installFormOpenId === result.id ? null : result.id)
               }
               onReadMore={onReadMore}
-              onInstallSuccess={onInstallSuccess}
+              onInstallStarted={(name, scope) => setInstallTarget({ name, scope })}
               jobLog={installJobLog}
             />
           ))}
