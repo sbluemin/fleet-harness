@@ -5,6 +5,11 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-07-03
+
+### Fixed
+- [fleet-console] Terminal text on the Operations canvas no longer renders blurry after panning or zooming; panels snap to whole pixels, and maximizing a panel renders at the default zoom so the terminal stays crisp regardless of the current map zoom.
+
 ## [1.17.0] - 2026-07-02
 
 ### Added
