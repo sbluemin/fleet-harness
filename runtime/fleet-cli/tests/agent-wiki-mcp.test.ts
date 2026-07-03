@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,8 +46,10 @@ const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
   "wiki_compile_source",
   "wiki_query",
 ] as const;
-const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
-const FLEET_PROFILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex profile";
+const CODEX_LEGACY_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
+const FLEET_PROFILE_NAME = "fleet";
+const FLEET_PROFILE_FILE_NAME = `${FLEET_PROFILE_NAME}.config.toml`;
 const TEST_HOOK_ENTRY = {
   entryPath: "/opt/fleet/dist/index.js",
   execPath: "/opt/node/bin/node",
@@ -197,9 +199,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
   it("registers Codex plugin through the resolved Codex CLI before launch args are returned", async () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
     const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
-    const staleProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000000.config.toml");
-    const freshProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000001.config.toml");
-    const userFleetProfilePath = path.join(codexHome, "fleet.config.toml");
+    const legacyProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000000.config.toml");
+    const legacyFreshProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000001.config.toml");
+    const fleetProfilePath = path.join(codexHome, FLEET_PROFILE_FILE_NAME);
     const commands: string[] = [];
     const codexState = {
       installed: new Set<string>(),
@@ -207,11 +209,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
     };
     const releaseSessionToken = vi.fn();
     try {
-      writeFileSync(staleProfilePath, `${CODEX_FLEET_PROFILE_MARKER}\nold = true\n`, { encoding: "utf8" });
-      writeFileSync(freshProfilePath, `${CODEX_FLEET_PROFILE_MARKER}\nfresh = true\n`, { encoding: "utf8" });
-      writeFileSync(userFleetProfilePath, "user = true\n", { encoding: "utf8" });
-      const staleMtime = new Date(Date.now() - (25 * 60 * 60 * 1000));
-      utimesSync(staleProfilePath, staleMtime, staleMtime);
+      writeFileSync(legacyProfilePath, `${CODEX_LEGACY_FLEET_PROFILE_MARKER}\nold = true\n`, { encoding: "utf8" });
+      writeFileSync(legacyFreshProfilePath, `${CODEX_LEGACY_FLEET_PROFILE_MARKER}\nfresh = true\n`, { encoding: "utf8" });
+      writeFileSync(fleetProfilePath, "user = true\n", { encoding: "utf8" });
       const profile = await injectAgentCliProfile({
         args: ["--no-alt-screen"],
         bin: "/usr/local/bin/codex",
@@ -227,28 +227,28 @@ describe("fleet-cli agent CLI MCP registration", () => {
           expect(command.bin).toBe("/usr/local/bin/codex");
           const line = command.args.join(" ");
           commands.push(line);
-	          if (line === "plugin marketplace list") {
-	            return {
-	              status: 0,
-	              stderr: "",
-	              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet-harness ${codexState.marketplaceRoot}\n`,
-	            };
-	          }
+          if (line === "plugin marketplace list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet-harness ${codexState.marketplaceRoot}\n`,
+            };
+          }
           if (line.startsWith("plugin marketplace add ")) {
             codexState.marketplaceRoot = line.slice("plugin marketplace add ".length);
             return { status: 0, stderr: "", stdout: "" };
           }
           if (line === "plugin list") {
-	            return {
-	              status: 0,
-	              stderr: "",
-	              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet-harness  installed, enabled`).join("\n"),
-	            };
-	          }
-	          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
-	            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet-harness".length));
-	            return { status: 0, stderr: "", stdout: "" };
-	          }
+            return {
+              status: 0,
+              stderr: "",
+              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet-harness  installed, enabled`).join("\n"),
+            };
+          }
+          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
+            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet-harness".length));
+            return { status: 0, stderr: "", stdout: "" };
+          }
           return { status: 0, stderr: "", stdout: "" };
         },
         dataDir: rootDir,
@@ -264,37 +264,39 @@ describe("fleet-cli agent CLI MCP registration", () => {
       });
 
       expect(commands).toEqual([
-	        "plugin marketplace list",
-	        "plugin list",
-	        "plugin marketplace list",
-	        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
-	        "plugin list",
-	        "plugin add fleet -m fleet-harness",
-	      ]);
+        "plugin marketplace list",
+        "plugin list",
+        "plugin marketplace list",
+        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
+        "plugin list",
+        "plugin add fleet -m fleet-harness",
+      ]);
       expect(profile.args).toContain("--enable");
       // codex 0.142.0에서 제거된 기능 플래그라 인자에 포함되면 "Unknown feature flag"로 기동 실패한다.
       expect(profile.args).not.toContain("child_agents_md");
       expect(profile.args).toContain("--profile");
       const profileName = argValue(profile.args, "--profile");
-      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
-      const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+      expect(profileName).toBe(FLEET_PROFILE_NAME);
       expect(profile.args).not.toContain("plugin_hooks");
-      expect(profile.args).toContain("--dangerously-bypass-hook-trust");
-      expect(readFileSync(profilePath, "utf8")).toBe([
+      expect(profile.args).not.toContain("--dangerously-bypass-hook-trust");
+      expect(readFileSync(fleetProfilePath, "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
         'developer_instructions = """',
         "private fleet prompt",
         '"""',
         "",
+        "[features]",
+        "hooks = true",
+        "",
         '[plugins."fleet@fleet-harness"]',
         "enabled = true",
         "",
       ].join("\n"));
-      expect(existsSync(staleProfilePath)).toBe(false);
-      expect(existsSync(freshProfilePath)).toBe(true);
-      expect(existsSync(userFleetProfilePath)).toBe(true);
+      expect(existsSync(legacyProfilePath)).toBe(false);
+      expect(existsSync(legacyFreshProfilePath)).toBe(false);
+      expect(existsSync(fleetProfilePath)).toBe(true);
       profile.cleanup?.();
-      expect(existsSync(profilePath)).toBe(false);
+      expect(existsSync(fleetProfilePath)).toBe(true);
       expect(releaseSessionToken).toHaveBeenCalledTimes(1);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
@@ -302,7 +304,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     }
   });
 
-  it("enables every rendered Codex plugin in the Fleet session profile", async () => {
+  it("enables every rendered Codex plugin in the fixed Fleet profile", async () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
     const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
     const cwd = mkdtempSync(path.join(os.tmpdir(), "fleet-project-cwd-"));
@@ -374,12 +376,15 @@ describe("fleet-cli agent CLI MCP registration", () => {
       ]);
       expect(codexState.installed).toEqual(new Set(["fleet@fleet-harness"]));
       const profileName = argValue(profile.args, "--profile");
-      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
-      expect(readFileSync(path.join(codexHome, `${profileName}.config.toml`), "utf8")).toBe([
+      expect(profileName).toBe(FLEET_PROFILE_NAME);
+      expect(readFileSync(path.join(codexHome, FLEET_PROFILE_FILE_NAME), "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
         'developer_instructions = """',
         "private fleet prompt",
         '"""',
+        "",
+        "[features]",
+        "hooks = true",
         "",
         '[plugins."fleet@fleet-harness"]',
         "enabled = true",
@@ -423,13 +428,16 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
       expect(profile.args).not.toContain("child_agents_md");
       const profileName = argValue(profile.args, "--profile");
-      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
-      const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+      expect(profileName).toBe(FLEET_PROFILE_NAME);
+      const profilePath = path.join(codexHome, FLEET_PROFILE_FILE_NAME);
       expect(readFileSync(profilePath, "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
         'developer_instructions = """',
         "private fleet prompt",
         '"""',
+        "",
+        "[features]",
+        "hooks = true",
         "",
         '[plugins."fleet@fleet-harness"]',
         "enabled = true",
@@ -438,7 +446,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(profile.launchWarnings?.[0]).toContain("codex plugin marketplace list failed");
       expect(profile.launchWarnings?.[0]).toContain("codex plugin exploded");
       profile.cleanup?.();
-      expect(existsSync(profilePath)).toBe(false);
+      expect(existsSync(profilePath)).toBe(true);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
       rmSync(codexHome, { recursive: true, force: true });

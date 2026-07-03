@@ -76,16 +76,18 @@ describe("agent CLI session resume and capture hooks", () => {
       resumeSessionId: "codex-session-456",
     }));
     const profileName = injected.args[injected.args.indexOf("--profile") + 1];
-    const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+    const profilePath = path.join(codexHome, "fleet.config.toml");
     const toml = readFileSync(profilePath, "utf8");
 
+    expect(profileName).toBe("fleet");
     expect(injected.args.slice(0, 6)).toEqual(["/shim/codex", "resume", "codex-session-456", "--no-alt-screen", "--model", "gpt-5.4"]);
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--no-alt-screen"]));
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--profile"]));
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["-c"]));
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--enable"]));
     expect(indexOfSequence(injected.args, ["--enable", "hooks"])).toBeGreaterThan(indexOfSequence(injected.args, ["resume", "codex-session-456"]));
-    expect(indexOfSequence(injected.args, ["--dangerously-bypass-hook-trust"])).toBeGreaterThan(indexOfSequence(injected.args, ["resume", "codex-session-456"]));
+    expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
+    expect(toml).toContain("[features]\nhooks = true");
     expect(toml).toContain("[hooks]\n");
     expect(toml).toContain('UserPromptSubmit = [{ hooks = [{ type = "command", command = "\'node\' \'console.js\' \'hook\' \'capture-session\' \'codex\'" }] }]');
     expect(toml).not.toContain("args =");
@@ -160,7 +162,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(codexPluginJson.hooks).toBeUndefined();
   });
 
-  it("writes Codex UserPromptSubmit capture command in the session profile without plugin inline hooks", async () => {
+  it("writes Codex UserPromptSubmit capture command in the fixed Fleet profile without plugin inline hooks", async () => {
     const root = createTempRoot("fleet-admiral-codex-hooks-");
     const codexHome = path.join(root, "codex-home");
     const profile = baseProfile("codex", {
@@ -173,13 +175,15 @@ describe("agent CLI session resume and capture hooks", () => {
       captureSessionHookExec,
     }));
     const profileName = injected.args[injected.args.indexOf("--profile") + 1];
-    const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+    const profilePath = path.join(codexHome, "fleet.config.toml");
     const toml = readFileSync(profilePath, "utf8");
     const pluginJson = JSON.parse(readFileSync(path.join(root, "data", "marketplace", "plugins", "fleet", ".codex-plugin", "plugin.json"), "utf8")) as CodexPluginManifest;
 
-    expect(readdirSync(codexHome).filter((entry) => entry.endsWith(".config.toml"))).toHaveLength(1);
+    expect(profileName).toBe("fleet");
+    expect(readdirSync(codexHome).filter((entry) => entry.endsWith(".config.toml"))).toEqual(["fleet.config.toml"]);
     expect(indexOfSequence(injected.args, ["--enable", "hooks"])).toBeGreaterThanOrEqual(0);
-    expect(indexOfSequence(injected.args, ["--dangerously-bypass-hook-trust"])).toBeGreaterThanOrEqual(0);
+    expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
+    expect(toml).toContain("[features]\nhooks = true");
     expect(toml).toContain("[hooks]\n");
     expect(toml).toContain('UserPromptSubmit = [{ hooks = [{ type = "command", command = "\'/opt/fleet node\' \'console path.js\' \'hook\' \'capture-session\' \'codex\'" }] }]');
     expect(toml).not.toContain("args =");

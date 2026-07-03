@@ -17,9 +17,6 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
     'approval_policy="never"',
     "-c",
     'sandbox_mode="danger-full-access"',
-    // hook 신뢰 프롬프트("Hooks need review")를 fleet 관리 세션에서 건너뛴다. bypass_hook_trust는
-    // config 키가 아니라 전용 CLI 플래그이므로 -c override가 아닌 플래그로 전달해야 한다.
-    "--dangerously-bypass-hook-trust",
   ];
   for (const server of context.mcpServers) {
     const prefix = `mcp_servers.${server.name}`;
