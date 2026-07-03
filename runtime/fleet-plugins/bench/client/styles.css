@@ -1,0 +1,323 @@
+/* Bench 플러그인 스타일 — 모든 색상은 var() 토큰만 사용 */
+
+.bench-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+}
+
+.bench-summary-card {
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bench-summary-prompt {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--ink-spectral);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 4.5em;
+  overflow: hidden;
+}
+
+.bench-summary-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--ink-fog);
+}
+
+.bench-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brass);
+  flex-shrink: 0;
+}
+
+/* 참전자 카드 그리드 */
+.bench-contenders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.bench-card {
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color var(--duration-base) var(--ease-spring);
+}
+
+.bench-card--winner {
+  border-color: var(--positive);
+  box-shadow: 0 0 0 1px var(--positive);
+}
+
+.bench-card--running {
+  border-color: color-mix(in oklab, var(--aurora), transparent 40%);
+}
+
+.bench-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklab, var(--surface-glass), transparent 20%);
+}
+
+.bench-card-cli {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--ink-primary);
+  flex: 1;
+}
+
+.bench-card-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bench-card-status--running { background: var(--aurora); }
+.bench-card-status--awaiting { background: var(--warn); }
+.bench-card-status--succeeded { background: var(--positive); }
+.bench-card-status--failed { background: var(--coral); }
+.bench-card-status--idle { background: var(--ink-fog); }
+
+.bench-card-winner-pip {
+  font-size: var(--font-size-xs);
+  color: var(--positive);
+  font-weight: 700;
+}
+
+.bench-card-scrollback {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--ink-spectral);
+  white-space: pre;
+  min-height: 120px;
+  max-height: 240px;
+}
+
+/* 판정 폼 */
+.bench-verdict-form {
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bench-verdict-form h3 {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.bench-rubric-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bench-rubric-label {
+  font-size: var(--font-size-sm);
+  color: var(--ink-primary);
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.bench-rubric-options {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.bench-rubric-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+.bench-rubric-option input[type="radio"] {
+  accent-color: var(--brass);
+}
+
+.bench-rubric-option-label {
+  font-size: var(--font-size-sm);
+  color: var(--ink-spectral);
+}
+
+.bench-verdict-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.bench-verdict-judged-badge {
+  font-size: var(--font-size-xs);
+  color: var(--positive);
+  font-weight: 600;
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in oklab, var(--positive), transparent 80%);
+  border-radius: var(--radius-sm);
+}
+
+/* Launch overlay backdrop */
+.bench-launch-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+}
+
+.bench-launch-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--surface-glass), transparent 20%);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+/* Launch overlay card */
+.bench-launch-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  width: min(540px, calc(100vw - var(--space-6)));
+  position: relative;
+  z-index: 1;
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  max-height: calc(100vh - var(--space-6));
+  overflow-y: auto;
+}
+
+.bench-launch-overlay h2 {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.bench-launch-warning {
+  font-size: var(--font-size-xs);
+  color: var(--warn);
+  background: color-mix(in oklab, var(--warn), transparent 85%);
+  border: 1px solid color-mix(in oklab, var(--warn), transparent 60%);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.bench-launch-readonly-note {
+  font-size: var(--font-size-xs);
+  color: var(--ink-fog);
+  background: color-mix(in oklab, var(--surface-glass), transparent 20%);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.bench-launch-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.bench-launch-field label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.bench-launch-textarea {
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--ink-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2);
+  resize: vertical;
+  min-height: 80px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.bench-launch-cli-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.bench-launch-cli-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+.bench-launch-cli-option input[type="checkbox"] {
+  accent-color: var(--brass);
+}
+
+.bench-launch-cli-option-label {
+  font-size: var(--font-size-sm);
+  color: var(--ink-spectral);
+}
+
+.bench-launch-rubric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--ink-fog);
+}
+
+.bench-launch-error {
+  font-size: var(--font-size-xs);
+  color: var(--coral);
+}
+
+.bench-launch-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .bench-card { animation: none; transition: none; }
+  .bench-card-status { animation: none; }
+}
