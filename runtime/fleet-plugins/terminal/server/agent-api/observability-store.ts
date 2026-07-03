@@ -52,7 +52,6 @@ interface PendingTerminalSessionState {
   readonly cwdLabel: string;
   label?: string;
   labelSource?: AgentLabelSource;
-  autoNamePromptSeen?: boolean;
   cliId?: string;
   cliLabel?: string;
   readonly createdAt: number;
@@ -69,7 +68,6 @@ type DormantOperationInput = AgentDurableOperation;
 
 interface AutoNameTerminalSessionResult {
   readonly session: AgentTerminalSessionInfo;
-  readonly changed: boolean;
   readonly renamed: boolean;
 }
 
@@ -234,7 +232,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       cwdLabel: path.basename(operation.cwd) || operation.cwd,
       label: operation.label,
       labelSource: operation.labelSource,
-      autoNamePromptSeen: operation.autoNamePromptSeen,
       cliId: operation.cliId,
       cliLabel: operation.cliLabel,
       createdAt: operation.createdAt,
@@ -258,7 +255,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       cwd: session.cwd,
       ...(session.label ? { label: session.label } : {}),
       ...(session.labelSource ? { labelSource: session.labelSource } : {}),
-      ...(session.autoNamePromptSeen ? { autoNamePromptSeen: true } : {}),
       ...(session.cliId ? { cliId: session.cliId } : {}),
       ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
       createdAt: session.createdAt,
@@ -309,36 +305,34 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (!session) return null;
     const label = rawLabel.trim().slice(0, 200);
     if (label.length === 0) {
-      // 빈 rename은 사용자가 기본 표시명(#N Operation)으로 되돌린 것이다. label과 labelSource를 같은 호출에서
-      // 함께 지워, 다음 최초 프롬프트부터 자동 작명이 재활성화되게 한다(둘을 분리하면 영구 자동 작명 차단 위험).
+      // 빈 rename은 사용자가 기본 표시명으로 되돌린 것이다. label과 labelSource를 함께 지워
+      // 다음 프롬프트부터 자동 작명이 재활성화되게 한다.
       delete session.label;
       delete session.labelSource;
-      delete session.autoNamePromptSeen;
     } else {
       session.label = label;
       session.labelSource = "user";
-      session.autoNamePromptSeen = true;
     }
     return toTerminalSessionInfo(session);
   }
 
-  // 자동 작명: 사용자 수동 라벨이 없고, 아직 UserPromptSubmit auto-name hook을 받은 적 없는 세션에만 적용한다.
+  // 자동 작명: 사용자 수동 라벨(labelSource "user")이 없는 세션에만 적용한다.
   // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다.
+  // 매 UserPromptSubmit마다 호출되며, 실제 라벨 변경이 있을 때만 patch/persist된다.
   function autoNameTerminalSession(sessionId: string, label: string | null): AutoNameTerminalSessionResult | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     const effectiveSource: AgentLabelSource | undefined = session.labelSource ?? (session.label ? "user" : undefined);
-    if (effectiveSource === "user" || session.autoNamePromptSeen) {
-      return { session: toTerminalSessionInfo(session), changed: false, renamed: false };
+    if (effectiveSource === "user") {
+      return { session: toTerminalSessionInfo(session), renamed: false };
     }
-    session.autoNamePromptSeen = true;
     const next = label?.trim().slice(0, 200) ?? "";
     if (next.length === 0 || next === session.label) {
-      return { session: toTerminalSessionInfo(session), changed: true, renamed: false };
+      return { session: toTerminalSessionInfo(session), renamed: false };
     }
     session.label = next;
     session.labelSource = "auto";
-    return { session: toTerminalSessionInfo(session), changed: true, renamed: true };
+    return { session: toTerminalSessionInfo(session), renamed: true };
   }
 
   function notifySessionUpdated(session: AgentTerminalSessionInfo): void {
