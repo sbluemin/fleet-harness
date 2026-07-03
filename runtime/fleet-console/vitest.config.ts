@@ -19,6 +19,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "../fleet-plugins/bench/tests/**/*.test.ts"],
   },
 });
