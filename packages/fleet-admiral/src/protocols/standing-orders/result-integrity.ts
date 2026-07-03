@@ -48,6 +48,10 @@ Disposition (report one line): ${"`"}inspection: pass${"`"} | ${"`"}inspection: 
 deviations corrected by the Admiral${"`"} | ${"`"}inspection: rejected — re-dispatched
 with findings${"`"}. Small deviations the Admiral corrects directly during
 integration; systematic deviations route back to the owning carrier.
+"Small/harmless" is a claim that needs evidence, not an eyeball impression:
+before so classifying a deviation, confirm it changes no observable behavior,
+contract, or output and is unreachable by any real execution path; if
+unconfirmed, treat it as a defect, not a small deviation.
 Proportionality: full-diff reading for doctrine/prompt/structural changes;
 stat + targeted sampling for large mechanical changes. Read-only jobs skip
 this gate — their claims route through Deep Dive instead.
