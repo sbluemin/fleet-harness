@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
 import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "../client/agent/helpers.js";
-import { isTerminalJobStatus } from "../client/agent/reduce.js";
+import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 
@@ -172,6 +172,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           thought: "b".repeat(400),
           sentTextLength: 400,
           sentThoughtLength: 400,
+          lastEventId: 0,
           tools: [],
         },
       },
@@ -193,6 +194,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           thought: "",
           sentTextLength: 4000,
           sentThoughtLength: 0,
+          lastEventId: 0,
           tools: [],
         },
       },
@@ -213,6 +215,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           thought: "",
           sentTextLength: 100,
           sentThoughtLength: 0,
+          lastEventId: 0,
           tools: [],
         },
         t2: {
@@ -223,6 +226,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           thought: "",
           sentTextLength: 300,
           sentThoughtLength: 100,
+          lastEventId: 0,
           tools: [],
         },
       },
@@ -243,6 +247,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           thought: "",
           sentTextLength: 400,
           sentThoughtLength: 0,
+          lastEventId: 0,
           tools: [],
         },
         // t2는 trackOrder에 없음
@@ -254,6 +259,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           thought: "",
           sentTextLength: 9999,
           sentThoughtLength: 0,
+          lastEventId: 0,
           tools: [],
         },
       },
@@ -315,5 +321,25 @@ describe("resolveCarrierCaptain (캡틴 해석)", () => {
 
   it("undefined → undefined", () => {
     expect(resolveCarrierCaptain(undefined)).toBeUndefined();
+  });
+});
+
+// ── applyEvent 트랙 lastEventId 스탬프(접힘 테일 트랙 recency 근거) ─────────────
+
+describe("applyEvent (트랙 lastEventId 스탬프)", () => {
+  it("track 이벤트는 해당 트랙에 observed.id를 기록하고 최신 이벤트로 갱신한다", () => {
+    let job = createEmptyJob("t1", "j1", 1000);
+    job = applyEvent(job, { id: 5, tenantId: "t1", type: "track:text", at: 1001, event: { trackId: "a", text: "hi" } });
+    expect(job.tracks.a?.lastEventId).toBe(5);
+    job = applyEvent(job, { id: 9, tenantId: "t1", type: "track:text", at: 1002, event: { trackId: "a", text: "!" } });
+    expect(job.tracks.a?.lastEventId).toBe(9);
+  });
+
+  it("서로 다른 트랙은 각자의 최신 이벤트 id를 갖는다", () => {
+    let job = createEmptyJob("t1", "j1", 1000);
+    job = applyEvent(job, { id: 3, tenantId: "t1", type: "track:text", at: 1001, event: { trackId: "a", text: "a1" } });
+    job = applyEvent(job, { id: 7, tenantId: "t1", type: "track:text", at: 1002, event: { trackId: "b", text: "b1" } });
+    expect(job.tracks.a?.lastEventId).toBe(3);
+    expect(job.tracks.b?.lastEventId).toBe(7);
   });
 });

@@ -615,18 +615,15 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
 }
 
 function getDockTailText(activeJobs: readonly JobView[]): string {
-  // 접힘 테일은 가장 최근 이벤트를 받은 잡부터 훑어 최신 출력 1줄을 고른다.
-  // lastEventId는 전역 단조 증가이므로 잡 삽입 순서가 아니라 실제 최근 활동 순서를 반영한다(활성 잡이 여럿일 때 정확).
-  const byRecency = [...activeJobs].sort((a, b) => b.lastEventId - a.lastEventId);
-  for (const job of byRecency) {
-    for (let trackIdx = job.trackOrder.length - 1; trackIdx >= 0; trackIdx--) {
-      const trackId = job.trackOrder[trackIdx];
-      if (!trackId) continue;
-      const track = job.tracks[trackId];
-      if (!track) continue;
-      const last = getLastLine(track.text) || getLastLine(track.thought);
-      if (last) return last;
-    }
+  // 모든 활성 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해,
+  // 가장 최근 활동한 트랙의 출력 1줄을 접힘 테일로 고른다. 잡·트랙 삽입 순서가 아닌 실제 이벤트 순서를 따른다.
+  const tracks = activeJobs
+    .flatMap((job) => job.trackOrder.map((trackId) => job.tracks[trackId]))
+    .filter((track): track is TrackView => Boolean(track))
+    .sort((a, b) => b.lastEventId - a.lastEventId);
+  for (const track of tracks) {
+    const last = getLastLine(track.text) || getLastLine(track.thought);
+    if (last) return last;
   }
   return "";
 }
