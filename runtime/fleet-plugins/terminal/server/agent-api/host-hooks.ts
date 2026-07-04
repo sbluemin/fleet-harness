@@ -25,13 +25,6 @@ const JAVASCRIPT_ENTRY_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
 const TYPESCRIPT_ENTRY_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"]);
 const MARKETPLACE_LOCK_DIR_SUFFIX = ".lock";
 
-export function buildConsoleHookCommand(entry: ConsoleHookCommandEntry | undefined): FleetHookExec {
-  if (entry === undefined) {
-    throw new Error("Fleet Console session hook command requires the current console entry path");
-  }
-  return buildConsoleCliHookExec(entry, ["hook", "subagents-context"]);
-}
-
 export function buildConsoleTurnHookCommand(entry: ConsoleHookCommandEntry, phase: ConsoleTurnPhase): FleetHookExec {
   return buildConsoleCliHookExec(entry, ["hook", phase === "start" ? "turn-start" : "turn-end"]);
 }

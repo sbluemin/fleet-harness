@@ -65,7 +65,6 @@ describe("agent CLI plugin marketplace rendering", () => {
     };
 
     const firstRender = createAgentCliPlugin({
-      claudeDefinitions: [],
       cliId: "codex",
       cwd,
       dataDir,
@@ -73,7 +72,6 @@ describe("agent CLI plugin marketplace rendering", () => {
     });
     await firstHomeEntered.promise;
     const secondRender = createAgentCliPlugin({
-      claudeDefinitions: [],
       cliId: "codex",
       cwd,
       dataDir,
@@ -100,17 +98,6 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(readFileSync(path.join(homeMarketplace, "user-note.txt"), "utf8")).toBe("home user file\n");
     expect(existsSync(path.join(homeMarketplace, ".agents", "plugins", "marketplace.json"))).toBe(true);
     expect(findStagingEntries(homeMarketplace)).toEqual([]);
-
-    const preservedPluginJson = readFileSync(path.join(second.pluginRoot, ".codex-plugin", "plugin.json"), "utf8");
-    await expect(createAgentCliPlugin({
-      claudeDefinitions: [],
-      cliId: "claude",
-      cwd,
-      dataDir,
-      withMarketplaceLock: async (_target, fn) => fn(),
-    })).rejects.toThrow("Fleet Claude session hook command is required");
-    expect(readFileSync(path.join(second.pluginRoot, ".codex-plugin", "plugin.json"), "utf8")).toBe(preservedPluginJson);
-    expect(findStagingEntries(homeMarketplace)).toEqual([]);
   });
 
   it("wires AskUserQuestion PreToolUse and input-waiting Notification hooks for Claude", async () => {
@@ -119,15 +106,12 @@ describe("agent CLI plugin marketplace rendering", () => {
     const dataDir = path.join(root, "data");
     const cwd = path.join(root, "project");
     mkdirSync(cwd, { recursive: true });
-    const hookExec = { command: "node", args: ["cli.mjs", "hook", "subagents-context"] };
     const inputWaitingHookExec = { command: "node", args: ["cli.mjs", "hook", "attention"] };
 
     const plugin = await createAgentCliPlugin({
-      claudeDefinitions: [],
       cliId: "claude",
       cwd,
       dataDir,
-      hookExec,
       inputWaitingHookExec,
       withMarketplaceLock: async (_target, fn) => fn(),
     });
@@ -153,11 +137,9 @@ describe("agent CLI plugin marketplace rendering", () => {
     mkdirSync(cwd, { recursive: true });
 
     const plugin = await createAgentCliPlugin({
-      claudeDefinitions: [],
       cliId: "claude",
       cwd,
       dataDir,
-      hookExec: { command: "node", args: ["cli.mjs", "hook", "subagents-context"] },
       captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "claude"] },
       turnStartHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-start"] },
       turnEndHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-end"] },
@@ -182,7 +164,6 @@ describe("agent CLI plugin marketplace rendering", () => {
     writeFileSync(path.join(stalePluginDir, "skills", "legacy", "SKILL.md"), "# Legacy\n", { flag: "wx" });
 
     await createAgentCliPlugin({
-      claudeDefinitions: [],
       cliId: "codex",
       cwd,
       dataDir,

@@ -8,7 +8,6 @@ import {
   setCarrierTaskForceBackend,
 } from "./carrier-settings-api.js";
 import type {
-  CarrierSettingsAgentMode,
   CarrierSettingsCarrier,
   CarrierSettingsOptions,
   CarrierSettingsState,
@@ -19,7 +18,6 @@ interface CarrierSettingsDraft {
   readonly model: string;
   readonly effort: string;
   readonly displayName: string;
-  readonly agentMode: CarrierSettingsAgentMode;
   readonly taskforce: Readonly<Record<string, { readonly model: string; readonly effort: string }>>;
 }
 
@@ -46,7 +44,6 @@ const EMPTY_DRAFT: CarrierSettingsDraft = {
   model: "",
   effort: "",
   displayName: "",
-  agentMode: "cli",
   taskforce: {},
 };
 
@@ -143,18 +140,7 @@ export async function saveCarrierAll(desiredTaskForce: readonly CarrierSettingsT
     if (cliChanged || draft.model !== carrier.model || (draft.effort || "") !== (carrier.effort || "")) {
       latestState = (await patchCarrier(carrier.carrierId, { model: selectionFromDraft(draft) })).state;
     }
-    if (draft.agentMode === "subagent") {
-      // 이미 subagent여도 서버에 TF 백엔드가 남아 있으면(불일치 데이터) SA-enable PATCH를 보내
-      // 서버가 TF를 원자적으로 정리하게 한다. carrier.agentMode만 보고 스킵하면 stale TF가 남는다.
-      if (carrier.agentMode !== "subagent" || carrier.taskForceBackendCount > 0) {
-        latestState = (await patchCarrier(carrier.carrierId, { agentMode: "subagent" })).state;
-      }
-    } else {
-      if (carrier.agentMode !== "cli") {
-        latestState = (await patchCarrier(carrier.carrierId, { agentMode: "cli" })).state;
-      }
-      latestState = await saveTaskForceForCarrier(carrier, desiredTaskForce, latestState);
-    }
+    latestState = await saveTaskForceForCarrier(carrier, desiredTaskForce, latestState);
     return { state: latestState ?? await fetchCarrierSettingsState() };
   });
 }
@@ -200,7 +186,6 @@ function buildDraft(carrier: CarrierSettingsCarrier, options: CarrierSettingsOpt
     model: carrier.model,
     effort: carrier.effort ?? "",
     displayName: carrier.displayName,
-    agentMode: carrier.agentMode,
     taskforce,
   };
 }

@@ -7,7 +7,6 @@ import {
   createCarrierRuntime,
   initStore,
   resetStoreForTests,
-  setCarrierAgentMode,
   updateTaskForceModelSelection,
 } from "@dotobokuri/fleet-carriers";
 import { getCliModels } from "@dotobokuri/core-agent";
@@ -15,7 +14,7 @@ import { getCliModels } from "@dotobokuri/core-agent";
 import { createJobBarSections } from "../src/mission-bridge/job-bar/section.js";
 import { renderBlockLines, renderCarrierJobHud } from "../src/mission-bridge/job-bar/renderer.js";
 import { createJobBarState, type JobBarState } from "../src/mission-bridge/job-bar/state.js";
-import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI, TASKFORCE_BADGE_COLOR } from "../src/styles/carriers.js";
+import { PROVIDER_ANSI_COLORS, TASKFORCE_BADGE_COLOR } from "../src/styles/carriers.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/mission-bridge/job-bar/view-model.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
@@ -507,23 +506,9 @@ describe("job bar renderer", () => {
     expect(sections.map(desiredHeight)).toEqual([1, 0]);
   });
 
-  it("renders subagent-mode carrier names with provider color and keeps the SA badge magenta", () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-subagent-"));
-    initStore(tempDir);
-    setCarrierAgentMode("ohio", true);
-    const state = createTestJobBarState();
-
-    const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
-
-    expect(line).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
-    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
-    expect(line).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
-  });
-
   it("renders Task Force carrier strip, detail header, and job label in TF blue while preserving backend row colors", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-taskforce-"));
     initStore(tempDir);
-    setCarrierAgentMode("ohio", false, "subagent");
     updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
     updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
     const runtime = createTestCarrierRuntime();
@@ -543,43 +528,9 @@ describe("job bar renderer", () => {
     expect(text).not.toContain("[1:2]");
   });
 
-  it("keeps an active SA strip badge without rendering an activity count badge", () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-active-sa-"));
-    initStore(tempDir);
-    setCarrierAgentMode("ohio", true);
-    const state = createTestJobBarState();
-    state.getPanelJobs().set("carrier:ohio", buildCarrierJob("carrier:ohio", "ohio", "Ohio", "run:ohio", "Review active strip", 1000));
-
-    const line = stripAnsi(createJobBarSections(state)[0]!.component.render(200).join("\n"));
-
-    expect(line).toContain("Ohio [SA]");
-    expect(line).not.toContain("● Ohio");
-    expect(line).not.toContain("○ Ohio");
-    expect(line).not.toContain("[1:1]");
-    expect(line).not.toContain("[1]");
-  });
-
-  it("shows an SA badge before TF badges for legacy SA plus TF strip state", () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-sa-tf-"));
-    initStore(tempDir);
-    setCarrierAgentMode("ohio", true);
-    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
-    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
-    const state = createTestJobBarState();
-
-    const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
-
-    expect(line).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
-    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
-    expect(line).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
-    expect(line).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
-    expect(line).not.toContain("[TF:2]");
-  });
-
-  it("does not leak SA or TF colors into backend rows when displayCli collides with a carrier id", () => {
+  it("does not leak TF colors into backend rows when displayCli collides with a carrier id", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-displaycli-collision-"));
     initStore(tempDir);
-    setCarrierAgentMode("ohio", false, "subagent");
     updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
     updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
     const runtime = createTestCarrierRuntime();
@@ -593,7 +544,6 @@ describe("job bar renderer", () => {
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
     expect(backendLine).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
     expect(backendLine).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
-    expect(backendLine).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {

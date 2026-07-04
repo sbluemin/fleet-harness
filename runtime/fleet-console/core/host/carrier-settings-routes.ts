@@ -17,7 +17,6 @@ import {
   resetTaskForceModelSelection,
   resolveAgentCliType,
   saveAgentCliSelection,
-  setCarrierAgentMode,
   setTaskForceConfiguredCarriers,
   StatusOverlayController,
   TASKFORCE_CLI_TYPES,
@@ -25,9 +24,7 @@ import {
   updateCarrierCliType,
   updateCarrierDisplayName,
   updateCarriers,
-  updateTaskForceModelSelection,
   type AgentCliSelection,
-  type CarrierAgentMode,
   type CarrierConfig,
   type CarrierRegistry,
   type ResolvedCarrierState,
@@ -66,7 +63,6 @@ interface PatchBody {
   readonly cli?: unknown;
   readonly model?: unknown;
   readonly displayName?: unknown;
-  readonly agentMode?: unknown;
 }
 
 type ParsedCarrierMutation =
@@ -78,7 +74,6 @@ type JsonBodyResult<T> =
   | { readonly ok: true; readonly body: T }
   | { readonly ok: false };
 
-const SUBAGENT_CLI_TYPES = new Set<CliType>(["claude"]);
 const TASKFORCE_MIN_BACKENDS = 2;
 
 export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
@@ -99,7 +94,7 @@ export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "PATCH",
     path: "/api/v1/settings/carriers/:id",
-    summary: "Update carrier settings fields (cli, model, displayName, agentMode).",
+    summary: "Update carrier settings fields (cli, model, displayName).",
     category: "Settings",
     gate: "origin-write",
   },
@@ -267,23 +262,9 @@ async function mutateCarrierPatch(
     normalizedDisplayName = parsed;
   }
 
-  if (body.agentMode !== undefined) {
-    if (body.agentMode !== "cli" && body.agentMode !== "subagent") {
-      deps.writeJson(res, 400, { error: "invalid_agent_mode" }); return;
-    }
-    if (body.agentMode === "subagent" && !SUBAGENT_CLI_TYPES.has(effectiveCliType)) {
-      deps.writeJson(res, 400, { error: "subagent_unsupported" }); return;
-    }
-  }
-
   // Best-effort sequential application.
   if (newCliType) {
     await controller.changeCliType(carrierId, newCliType);
-    // 비지원(비-Claude) CLI로 전환하면 SubAgent는 유효하지 않으므로, 불일치 상태가 영속되지 않게 해제한다.
-    if (!SUBAGENT_CLI_TYPES.has(newCliType)) {
-      const resolved = readCarriersSnapshot(buildDefaultsByCarrier(deps.registry)).carriers[carrierId];
-      if (resolved?.agentMode === "subagent") updateCarrierAgentModeAtomically(carrierId, "cli", config.defaultAgentMode ?? "cli");
-    }
   }
 
   if (modelSelection) {
@@ -293,12 +274,6 @@ async function mutateCarrierPatch(
 
   if (normalizedDisplayName !== undefined) {
     updateCarrierDisplayName(carrierId, normalizedDisplayName, getCarrierSourceDisplayName(deps.registry, carrierId));
-    notifyStatusUpdate(deps.registry);
-  }
-
-  if (body.agentMode === "cli" || body.agentMode === "subagent") {
-    updateCarrierAgentModeAtomically(carrierId, body.agentMode, config.defaultAgentMode ?? "cli");
-    if (body.agentMode === "subagent") refreshTaskForceConfiguredCarriers(deps.registry);
     notifyStatusUpdate(deps.registry);
   }
 
@@ -341,13 +316,12 @@ async function readRequiredJsonBody<T>(
   return { ok: true, body };
 }
 
-function buildDefaultsByCarrier(registry: CarrierRegistry): Record<string, { readonly cliType: CliType; readonly defaultAgentMode?: CarrierAgentMode; readonly defaultModel?: string; readonly defaultEffort?: string }> {
+function buildDefaultsByCarrier(registry: CarrierRegistry): Record<string, { readonly cliType: CliType; readonly defaultModel?: string; readonly defaultEffort?: string }> {
   return Object.fromEntries(
     getRegisteredOrder(registry).map((carrierId) => {
       const config = requireCarrierConfig(registry, carrierId);
       return [carrierId, {
         cliType: config.defaultCliType,
-        ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
         ...buildCarrierModelDefaults(config, config.defaultCliType),
       }];
     }),
@@ -374,8 +348,6 @@ function toCarrierSettingsCarrier(
     defaultCliType: config.defaultCliType,
     model: selection.model,
     ...(selection.effort ? { effort: selection.effort } : {}),
-    agentMode: resolved.agentMode,
-    subagentMode: resolved.agentMode === "subagent",
     taskForceBackendCount: taskForceBackends.length,
     taskforce: { backends: taskForceBackends },
   };
@@ -400,7 +372,6 @@ function toCliOption(cliType: CliType): CarrierSettingsCliOption {
   return {
     id: cliType,
     displayName: CLI_DISPLAY_NAMES[cliType] ?? provider.name,
-    supportsSubagent: SUBAGENT_CLI_TYPES.has(cliType),
     models: provider.models.map((model): CarrierSettingsModelOption => {
       const effort = getEffort(cliType, model.modelId);
       return {
@@ -447,33 +418,12 @@ function createStatusOverlayController(registry: CarrierRegistry): StatusOverlay
   });
 }
 
-function updateCarrierAgentModeAtomically(
-  carrierId: string,
-  agentMode: CarrierAgentMode,
-  defaultAgentMode: CarrierAgentMode,
-): void {
-  if (agentMode === "cli") {
-    setCarrierAgentMode(carrierId, false, defaultAgentMode);
-    return;
-  }
-  updateCarriers((states) => {
-    const carriers = { ...(states.carriers ?? {}) };
-    const current = carriers[carrierId] ?? {};
-    const next = { ...current };
-    next.agentMode = "subagent";
-    delete next.taskforce;
-    carriers[carrierId] = next;
-    states.carriers = carriers;
-  });
-}
-
 function updateTaskForceBackendAtomically(carrierId: string, cliType: CliType, selection: AgentCliSelection): void {
   updateCarriers((states) => {
     const carriers = { ...(states.carriers ?? {}) };
     const current = carriers[carrierId] ?? {};
     carriers[carrierId] = {
       ...current,
-      agentMode: "cli",
       taskforce: {
         ...(current.taskforce ?? {}),
         [cliType]: selection,
@@ -516,7 +466,6 @@ function readCurrentModelSelection(registry: CarrierRegistry, carrierId: string)
   const defaults = {
     [carrierId]: {
       cliType: config.defaultCliType,
-      ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
       ...buildCarrierModelDefaults(config, config.defaultCliType),
     },
   };
@@ -527,7 +476,6 @@ function readCurrentModelSelection(registry: CarrierRegistry, carrierId: string)
 
 function fallbackResolvedState(config: CarrierConfig): ResolvedCarrierState {
   return {
-    agentMode: config.defaultAgentMode ?? "cli",
     agentCliType: config.defaultCliType,
     agentCli: { [config.defaultCliType]: readDefaultSelection(config.defaultCliType) },
     taskforce: {},

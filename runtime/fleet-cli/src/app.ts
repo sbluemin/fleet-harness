@@ -24,10 +24,8 @@ import {
   type TuiPtyManager,
 } from "./controls/index.js";
 import {
-  buildFleetHookCommand,
   runCodexCommand,
   withFleetMarketplaceLock,
-  type FleetHookCommandEntry,
 } from "./agent-cli/host-hooks.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
@@ -45,7 +43,6 @@ import { checkForUpdate } from "./update/check.js";
 export interface RunAppOptions {
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
-  readonly pluginEntry?: FleetHookCommandEntry;
 }
 
 type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "cliOptions" | "initialCliId" | "resolveProfile">;
@@ -117,14 +114,10 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     injectProfile: (profile, launchOptions) =>
       injectAgentCliProfile(profile, {
         buildSystemPrompt,
-        carrierRuntime: runtime.carrierRuntime,
         codexCommandRunner: runCodexCommand,
         dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
-        hookExec: profile.id === "claude"
-          ? buildFleetHookCommand(options.pluginEntry)
-          : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
         replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
         withMarketplaceLock: withFleetMarketplaceLock,

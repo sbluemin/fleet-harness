@@ -16,14 +16,8 @@ export const CHRONICLE_DEFAULTS: CarrierPersonaDefaults = {
   agent: {
     dispatch: {
       defaultCliType: "claude",
-      defaultAgentMode: "subagent",
       defaultModel: "sonnet",
       defaultEffort: "low",
-    },
-    nativeSubagents: {
-      byHost: {
-        claude: { defaultModel: "sonnet", defaultEffort: "low" },
-      },
     },
   },
 };

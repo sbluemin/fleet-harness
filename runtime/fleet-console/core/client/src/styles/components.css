@@ -2058,10 +2058,6 @@
   transform: rotate(-90deg);
 }
 
-.carrier-settings-control-group--taskforce.is-disabled .carrier-settings-tf-list {
-  opacity: 0.58;
-}
-
 /* 컨트롤 그룹 사이 하이라인 구분 — 레퍼런스의 섹션 리듬을 살린 에디토리얼 분리. */
 .carrier-settings-control-group + .carrier-settings-control-group {
   padding-top: var(--space-5);

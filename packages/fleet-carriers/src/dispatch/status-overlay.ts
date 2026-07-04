@@ -217,18 +217,13 @@ export class StatusOverlayController implements Pick<
   }
 }
 
-/**
- * 페르소나 CLI 기본값 해석 SSoT — claude cliType일 때 config.subagent.byHost.claude를
- * 우선하고(존재 시 top-level defaultModel/defaultEffort 무시), 없으면 top-level
- * defaultModel/defaultEffort로 fallback한다. 그 외 cliType은 기본값 없음.
- */
 export function buildCarrierModelDefaults(
   config: CarrierConfig | undefined,
   cliType: CarrierCliType,
 ): CarrierAgentProviderDefaults {
   if (!config) return {};
   if (cliType === "claude") {
-    return config.subagent?.byHost?.claude ?? {
+    return {
       ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
       ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
     };

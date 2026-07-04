@@ -3,12 +3,6 @@ import { chmodSync, closeSync, constants, lstatSync, mkdirSync, mkdtempSync, ope
 import os from "node:os";
 import path from "node:path";
 
-import {
-  type CarrierRuntime,
-  type ClaudeSubagentDefinition,
-} from "@dotobokuri/fleet-carriers";
-
-import { buildClaudeNativeSubagentPlan } from "./carrier-defaults.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { buildPosixShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
@@ -25,7 +19,6 @@ import type {
 
 export interface InjectAgentCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
-  readonly carrierRuntime: CarrierRuntime;
   readonly dataDir: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
@@ -40,7 +33,6 @@ export interface InjectAgentCliProfileOptions {
   // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
   readonly autoNameHookExec?: FleetHookExec;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
-  readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly pluginRootDir?: string;
   readonly resumeSessionId?: string;
@@ -78,10 +70,6 @@ interface ExecutorServerToken {
   readonly token: string;
 }
 
-type StartupNativeDefinitions =
-  | { readonly host: "claude"; readonly definitions: ClaudeSubagentDefinition[] }
-  | { readonly host: "none"; readonly definitions: [] };
-
 const CODEX_FLEET_PROFILE_NAME = "fleet";
 const CODEX_FLEET_PROFILE_FILE_NAME = `${CODEX_FLEET_PROFILE_NAME}.config.toml`;
 const CODEX_LEGACY_FLEET_PROFILE_FILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.config\.toml$/;
@@ -100,7 +88,6 @@ export async function injectAgentCliProfile(
 
   const injectTone = options.enableMetaphor ?? false;
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
-  const startupDefinitions = buildStartupNativeDefinitions(profile.id, options.carrierRuntime);
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({ cwd: profile.cwd, label: tokenLabel });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
@@ -111,7 +98,6 @@ export async function injectAgentCliProfile(
       ? writeSystemPromptFile(profile.id, doctrine, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const plugin = await createAgentCliPlugin({
-      claudeDefinitions: startupDefinitions.host === "claude" ? startupDefinitions.definitions : [],
       cliId: profile.id,
       codexCommandRunner: options.codexCommandRunner,
       cwd: profile.cwd,
@@ -122,7 +108,6 @@ export async function injectAgentCliProfile(
       turnEndHookExec: options.turnEndHookExec,
       inputWaitingHookExec: options.inputWaitingHookExec,
       autoNameHookExec: options.autoNameHookExec,
-      hookExec: startupDefinitions.host === "claude" ? requireHookExec(options.hookExec) : undefined,
       withMarketplaceLock: options.withMarketplaceLock,
     });
     const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
@@ -196,20 +181,6 @@ export async function injectAgentCliProfile(
     options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
     throw error;
   }
-}
-
-function buildStartupNativeDefinitions(
-  cliId: AgentCliProfile["id"],
-  carrierRuntime: CarrierRuntime,
-): StartupNativeDefinitions {
-  const host = getNativeSubagentHost(cliId);
-  if (host === "none") return { host, definitions: [] };
-  return { host, definitions: buildClaudeNativeSubagentPlan(carrierRuntime.registry).definitions };
-}
-
-function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeDefinitions["host"] {
-  if (cliId === "claude") return "claude";
-  return "none";
 }
 
 function buildAgentCliMcpServerConfigs(
@@ -413,11 +384,6 @@ function unlinkBestEffort(targetPath: string): void {
   } catch {
     // stale profile 정리는 검증 뒤 파일이 바뀌거나 사라져도 세션 시작을 막지 않는다.
   }
-}
-
-function requireHookExec(hookExec: FleetHookExec | undefined): FleetHookExec {
-  if (hookExec) return hookExec;
-  throw new Error("Fleet session hook executable is required for Claude native injection");
 }
 
 function requireCodexCommandRunner(

@@ -1,20 +1,15 @@
 import {
   CLI_DISPLAY_NAMES,
-  getCarrierConfig,
   getConfiguredTaskForceBackendsFromSnapshot,
   getRegisteredOrder,
-  readCarrierAgentModeSnapshot,
   readCarriersSnapshot,
-  resolveAgentCliType,
   resolveCarrierDisplayName,
-  type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../controls/index.js";
 import { ANSI_RESET } from "../../styles/ansi.js";
 import {
   PROVIDER_ANSI_COLORS,
-  SUBAGENT_PRESENTATION_ANSI,
   TASKFORCE_BADGE_COLOR,
   TASKFORCE_BADGE_RGB,
 } from "../../styles/carriers.js";
@@ -38,7 +33,6 @@ export interface CarrierHudTile {
   readonly color: string;
   readonly displayName: string;
   readonly rgb: [number, number, number];
-  readonly subagentMode: boolean;
   readonly taskForceBackendCount: number;
 }
 
@@ -208,7 +202,6 @@ function appendWidgetJobSummary(
   theme: FleetPtyTheme | undefined,
   now: number,
 ): void {
-  const subagentModes = readCarrierAgentModeSnapshot(buildCarrierDefaults(carrierRuntime)).agentModes;
   const groups = buildCarrierJobGroups(
     jobs,
     getRegisteredOrder(carrierRuntime.registry),
@@ -218,7 +211,7 @@ function appendWidgetJobSummary(
     const group = groups[groupIndex];
     if (!group || group.jobs.length === 0) continue;
     const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(readCarriersSnapshot(), group.carrierId).length;
-    const groupColor = resolveCarrierPresentationColor(carrierRuntime, group.carrierId, subagentModes, taskForceBackendCount);
+    const groupColor = resolveCarrierPresentationColor(carrierRuntime, group.carrierId, taskForceBackendCount);
     const groupModelInfo = carrierGroupModelInfo(group);
     lines.push(truncateToWidth(
       `${STREAM_PREFIX}${groupColor}${group.displayName}${groupModelInfo}${ANSI_RESET}`,
@@ -274,18 +267,15 @@ function appendTrackRows(
 
 function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly PanelJob[]): CarrierHudTile[] {
   const snapshot = readCarriersSnapshot();
-  const subagentModes = readCarrierAgentModeSnapshot(buildCarrierDefaults(carrierRuntime)).agentModes;
   return getRegisteredOrder(carrierRuntime.registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
     const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
-    const subagentMode = subagentModes[carrierId] === "subagent";
     return {
       activeJobCount: activeCarrierJobs.length,
       carrierId,
-      color: resolveCarrierPresentationColor(carrierRuntime, carrierId, subagentModes, taskForceBackendCount),
+      color: resolveCarrierPresentationColor(carrierRuntime, carrierId, taskForceBackendCount),
       displayName: resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
-      rgb: resolveCarrierPresentationRgb(carrierRuntime, carrierId, subagentModes, taskForceBackendCount),
-      subagentMode,
+      rgb: resolveCarrierPresentationRgb(carrierRuntime, carrierId, taskForceBackendCount),
       taskForceBackendCount,
     };
   });
@@ -333,14 +323,9 @@ function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
-  // subagentMode일 때 [SA] 뱃지만 반환 (pending '*' 마커 제거)
-  if (carrier.subagentMode) {
-    return ` ${SUBAGENT_PRESENTATION_ANSI}[SA]${ANSI_RESET}`;
-  }
-  const tfBadge = carrier.taskForceBackendCount >= 2
+  return carrier.taskForceBackendCount >= 2
     ? ` ${TASKFORCE_BADGE_COLOR}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  return tfBadge;
 }
 
 function kindDisplayName(kind: string): string {
@@ -383,30 +368,11 @@ function groupTrackModelEffortLabel(group: CarrierJobGroupViewModel): string {
   return track ? trackModelEffortLabel(track) : "";
 }
 
-function buildCarrierDefaults(carrierRuntime: CarrierRuntime): Record<string, CarrierModelDefaults> {
-  return Object.fromEntries(
-    getRegisteredOrder(carrierRuntime.registry)
-      .map((carrierId) => {
-        const config = getCarrierConfig(carrierRuntime.registry, carrierId);
-        if (!config) return null;
-        return [carrierId, {
-          cliType: resolveAgentCliType(carrierId, config.defaultCliType),
-          ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
-          ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
-          ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
-        }];
-      })
-      .filter((entry): entry is [string, CarrierModelDefaults] => entry !== null),
-  );
-}
-
 function resolveCarrierPresentationColor(
   carrierRuntime: CarrierRuntime,
   carrierId: string,
-  subagentModes: Record<string, "subagent">,
   taskForceBackendCount: number,
 ): string {
-  if (subagentModes[carrierId] === "subagent") return resolveCarrierColor(carrierRuntime.registry, carrierId);
   if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
@@ -414,10 +380,8 @@ function resolveCarrierPresentationColor(
 function resolveCarrierPresentationRgb(
   carrierRuntime: CarrierRuntime,
   carrierId: string,
-  subagentModes: Record<string, "subagent">,
   taskForceBackendCount: number,
 ): [number, number, number] {
-  if (subagentModes[carrierId] === "subagent") return resolveCarrierRgb(carrierRuntime.registry, carrierId);
   if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB;
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
 }

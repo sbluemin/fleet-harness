@@ -7,15 +7,12 @@ import {
   getAgentCliSelection,
   getCarrierConfig,
   getRegisteredOrder,
-  loadCarrierStates,
   notifyStatusUpdate,
   normalizeCarrierDisplayNameInput,
   resolveAgentCliType,
   resolveCarrierDisplayName,
-  resetCarrierTaskForceConfig,
   sanitizeCarrierDisplayName,
   saveAgentCliSelection,
-  setCarrierAgentMode,
   updateAgentCliSelection,
   updateCarrierCliType,
   updateCarrierDisplayName,
@@ -61,7 +58,6 @@ const CARRIER_ACTION_LABELS = [
   "Agent CLI",
   "Model",
   "Configure TaskForce",
-  "Configure SubAgent",
   "Rename Carrier",
   "Toggle Details",
 ] as const;
@@ -105,7 +101,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       startCliTypeEdit: () => this.startCliTypeEdit(),
       startModelEdit: () => this.startModelEdit(),
       startRenameEdit: () => this.startRenameEdit(),
-      toggleSubagentMode: () => this.toggleSubagentMode(),
       toggleDetails: () => this.toggleDetails(),
     });
   }
@@ -245,12 +240,9 @@ export class CarrierStatusOverlay implements Component, Focusable {
         this.openTaskForce();
         return;
       case 3:
-        this.toggleSubagentMode();
-        return;
-      case 4:
         this.startRenameEdit();
         return;
-      case 5:
+      case 4:
         this.toggleDetails();
         return;
       default:
@@ -588,32 +580,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       carrierDisplayName: entry.displayName,
       carrierId: entry.carrierId,
     });
-  }
-
-  private toggleSubagentMode(): void {
-    const entry = this.getSelectedEntry();
-    if (!entry) return;
-    const enabled = !entry.subagentMode;
-    const config = getCarrierConfig(this.options.carrierRuntime.registry, entry.carrierId);
-    if (!config) {
-      this.feedbackMessage = `저장 실패: ${entry.displayName} carrier metadata를 찾을 수 없습니다.`;
-      this.options.requestRender();
-      return;
-    }
-    if (entry.cliType === "codex" && enabled) {
-      this.feedbackMessage = `${entry.displayName} Codex native SubAgent는 지원하지 않습니다. Claude Code에서만 사용할 수 있습니다.`;
-      this.options.requestRender();
-      return;
-    }
-    setCarrierAgentMode(entry.carrierId, enabled, config.defaultAgentMode);
-    const resetTaskForce = enabled ? resetCarrierTaskForceConfig(entry.carrierId) : false;
-    notifyStatusUpdate(this.options.carrierRuntime.registry);
-    this.feedbackMessage = enabled
-      ? resetTaskForce
-        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 Claude Code dedicated CLI 시작부터 적용됩니다.`
-        : `${entry.displayName} Native(SubAgent) 활성화: 다음 Claude Code dedicated CLI 시작부터 적용됩니다.`
-      : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
-    this.options.requestRender();
   }
 
   private cancelEdit(): void {

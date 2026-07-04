@@ -33,6 +33,7 @@ describe("carriers.json state IO", () => {
       _meta: { generation: 4 },
       carriers: {
         ohio: {
+          agentMode: "subagent",
           agentCliType: "codex",
           agentCli: {
             codex: { model: "not-a-real-model", effort: "not-a-real-effort" },
@@ -44,14 +45,13 @@ describe("carriers.json state IO", () => {
     const snapshot = readCarriersSnapshot({
       ohio: {
         cliType: "codex",
-        defaultAgentMode: "subagent",
         defaultModel: "gpt-5.5",
         defaultEffort: "low",
       },
     });
 
     expect(snapshot.generation).toBe(4);
-    expect(snapshot.carriers.ohio?.agentMode).toBe("subagent");
+    expect("agentMode" in snapshot.carriers.ohio!).toBe(false);
     expect(snapshot.carriers.ohio?.agentCliType).toBe("codex");
     expect(snapshot.carriers.ohio?.agentCli.codex).toEqual({ model: "gpt-5.5", effort: "low" });
   });

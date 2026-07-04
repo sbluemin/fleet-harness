@@ -33,7 +33,6 @@ interface CarrierSettingsCarrier {
   readonly defaultCliType: string;
   readonly model: string;
   readonly effort?: string;
-  readonly agentMode: "cli" | "subagent";
   readonly taskForceBackendCount: number;
   readonly taskforce: {
     readonly backends: ReadonlyArray<{ readonly cliType: string; readonly model: string; readonly effort?: string }>;
@@ -43,7 +42,6 @@ interface CarrierSettingsCarrier {
 interface CarrierSettingsOptions {
   readonly cliTypes: ReadonlyArray<{
     readonly id: string;
-    readonly supportsSubagent: boolean;
     readonly models: ReadonlyArray<{ readonly modelId: string; readonly name: string; readonly effort?: { readonly levels: readonly string[]; readonly default: string } }>;
     readonly defaultModel: string;
   }>;
@@ -80,7 +78,6 @@ describe("carrier settings routes", () => {
     expect(state.generation).toBeGreaterThanOrEqual(0);
     expect(state.carriers.length).toBeGreaterThan(0);
     expect(options.taskForceConstraints.minBackends).toBe(2);
-    expect(options.cliTypes.some((cli) => cli.id === "claude" && cli.supportsSubagent)).toBe(true);
     expect(serialized).not.toContain(fixture.lock.token);
     expect(serialized).not.toContain("credential");
     expect(serialized).not.toContain("prompt");
@@ -215,59 +212,6 @@ describe("carrier settings routes", () => {
         await response.arrayBuffer();
       }
     }
-  });
-
-  it("clears Task Force atomically when SubAgent is enabled", async () => {
-    const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
-    const carrier = await findClaudeCarrier(fixture);
-    const tfCli = options.cliTypes.find((cli) => cli.id !== carrier.cliType) ?? options.cliTypes[0]!;
-    const tfModel = tfCli.models[0]!;
-
-    const withTf = await mutate<{ readonly state: CarrierSettingsState }>(
-      fixture,
-      `/api/v1/settings/carriers/${carrier.carrierId}/taskforce/${tfCli.id}`,
-      "PUT",
-      selectionFor(tfModel),
-    );
-    const withSa = await mutate<{ readonly state: CarrierSettingsState }>(
-      fixture,
-      `/api/v1/settings/carriers/${carrier.carrierId}`,
-      "PATCH",
-      { agentMode: "subagent" },
-    );
-    const afterTf = withTf.state.carriers.find((item) => item.carrierId === carrier.carrierId)!;
-    const afterSa = withSa.state.carriers.find((item) => item.carrierId === carrier.carrierId)!;
-
-    expect(afterTf.taskForceBackendCount).toBe(1);
-    expect(afterTf.agentMode).toBe("cli");
-    expect(afterSa.agentMode).toBe("subagent");
-    expect(afterSa.taskForceBackendCount).toBe(0);
-  });
-
-  it("disables SubAgent atomically when a Task Force backend is set", async () => {
-    const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
-    const carrier = await findClaudeCarrier(fixture);
-    const tfCli = options.cliTypes.find((cli) => cli.id !== carrier.cliType) ?? options.cliTypes[0]!;
-    const tfModel = tfCli.models[0]!;
-
-    await mutate<{ readonly state: CarrierSettingsState }>(
-      fixture,
-      `/api/v1/settings/carriers/${carrier.carrierId}`,
-      "PATCH",
-      { agentMode: "subagent" },
-    );
-    const withTf = await mutate<{ readonly state: CarrierSettingsState }>(
-      fixture,
-      `/api/v1/settings/carriers/${carrier.carrierId}/taskforce/${tfCli.id}`,
-      "PUT",
-      selectionFor(tfModel),
-    );
-    const updated = withTf.state.carriers.find((item) => item.carrierId === carrier.carrierId)!;
-
-    expect(updated.agentMode).toBe("cli");
-    expect(updated.taskForceBackendCount).toBe(1);
   });
 
 });

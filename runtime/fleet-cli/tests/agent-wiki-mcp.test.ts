@@ -13,7 +13,6 @@ import {
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
 } from "@dotobokuri/core-agent";
-import { buildFleetHookCommand } from "../src/agent-cli/host-hooks.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -50,11 +49,6 @@ const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex profile";
 const CODEX_LEGACY_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const FLEET_PROFILE_NAME = "fleet";
 const FLEET_PROFILE_FILE_NAME = `${FLEET_PROFILE_NAME}.config.toml`;
-const TEST_HOOK_ENTRY = {
-  entryPath: "/opt/fleet/dist/index.js",
-  execPath: "/opt/node/bin/node",
-};
-const TEST_HOOK_EXEC = buildFleetHookCommand(TEST_HOOK_ENTRY);
 const WITH_TEST_MARKETPLACE_LOCK = <T>(_target: string, fn: () => T): T => fn();
 
 describe("fleet-cli agent CLI MCP registration", () => {
@@ -145,7 +139,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
         terminalName: "claude",
       }, {
         buildSystemPrompt: () => "private fleet prompt",
-        carrierRuntime: createCarrierRuntime(),
         dataDir: rootDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({
@@ -154,7 +147,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
           issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken,
         } as never,
-        hookExec: TEST_HOOK_EXEC,
         onCleanup: (cleanup) => cleanups.push(cleanup),
         pluginRootDir: rootDir,
         withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
@@ -166,17 +158,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(pluginRoots).toEqual([pluginRoot]);
       expect(systemPromptFile).toBeDefined();
       expect(readFileSync(systemPromptFile!, "utf8")).toBe("private fleet prompt");
-      expect(readJson(path.join(pluginRoot, "hooks", "hooks.json"))).toMatchObject({
-        hooks: {
-          SessionStart: [{
-            hooks: [{
-              args: TEST_HOOK_EXEC.args,
-              command: TEST_HOOK_EXEC.command,
-              type: "command",
-            }],
-          }],
-        },
-      });
       expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
       expect(readFileSync(path.join(pluginRoot, "skills", "protocol-midline", "SKILL.md"), "utf8")).toContain("name: protocol-midline");
       const renderedArgs = profile.args.join(" ");
@@ -222,7 +203,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
         terminalName: "xterm-256color",
       }, {
         buildSystemPrompt: () => "private fleet prompt",
-        carrierRuntime: createCarrierRuntime(),
         codexCommandRunner: (command: CodexPluginRegistrationCommand) => {
           expect(command.bin).toBe("/usr/local/bin/codex");
           const line = command.args.join(" ");
@@ -324,7 +304,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
         terminalName: "xterm-256color",
       }, {
         buildSystemPrompt: () => "private fleet prompt",
-        carrierRuntime: createCarrierRuntime(),
         codexCommandRunner: (command: CodexPluginRegistrationCommand) => {
           const line = command.args.join(" ");
           commands.push(line);
@@ -412,7 +391,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
         terminalName: "xterm-256color",
       }, {
         buildSystemPrompt: () => "private fleet prompt",
-        carrierRuntime: createCarrierRuntime(),
         codexCommandRunner: () => ({ status: 1, stderr: "codex plugin exploded", stdout: "" }),
         dataDir: rootDir,
         dedicatedMcpSession: {

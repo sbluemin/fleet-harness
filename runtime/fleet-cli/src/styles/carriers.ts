@@ -15,10 +15,6 @@ const PROVIDER_BG_RGBS: Record<string, readonly [number, number, number]> = {
 export const PROVIDER_ANSI_COLORS: Record<string, string> = mapAnsi(PROVIDER_RGBS, rgb);
 export const PROVIDER_BG_ANSI_COLORS: Record<string, string> = mapAnsi(PROVIDER_BG_RGBS, bgRgb);
 
-export const SUBAGENT_PRESENTATION_RGB: readonly [number, number, number] = [216, 100, 168];
-export const SUBAGENT_PRESENTATION_ANSI = rgb(...SUBAGENT_PRESENTATION_RGB);
-export const SUBAGENT_PRESENTATION_BG_ANSI = bgRgb(30, 14, 26);
-
 export const TASKFORCE_BADGE_RGB: [number, number, number] = [100, 180, 255];
 export const TASKFORCE_BADGE_COLOR = rgb(...TASKFORCE_BADGE_RGB);
 

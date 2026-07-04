@@ -19,7 +19,6 @@ import {
   section,
   stripAnsi,
 } from "./help-style.js";
-import { runSubagentsContextHook } from "./hooks/subagents-context.js";
 import { createConsoleLock } from "./lock.js";
 import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
@@ -67,7 +66,7 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "subagents-context", "turn-start", "turn-end", "attention", "auto-name"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -95,12 +94,11 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   return mode;
 }
 
-export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "subagents-context" } | { readonly command: "turn-start" } | { readonly command: "turn-end" } | { readonly command: "attention" } | { readonly command: "auto-name" } {
+export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "turn-start" } | { readonly command: "turn-end" } | { readonly command: "attention" } | { readonly command: "auto-name" } {
   const [commandName, ...rest] = argv;
   if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName)) {
     throw new Error("Unknown fleet-console hook command");
   }
-  if (commandName === "subagents-context" && rest.length === 0) return { command: "subagents-context" };
   if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
@@ -283,10 +281,6 @@ export async function main(): Promise<void> {
   }
   if (process.argv[2] === "hook") {
     const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
-    if (hookCommand.command === "subagents-context") {
-      process.stdout.write(`${runSubagentsContextHook(process.env)}\n`);
-      return;
-    }
     if (hookCommand.command === "turn-start" || hookCommand.command === "turn-end") {
       // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(codex Stop exit2=continuation, claude block 출력 금지).
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: hookCommand.command === "turn-start" ? "start" : "end" }, process.env);

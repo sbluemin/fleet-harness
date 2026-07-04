@@ -8,7 +8,6 @@ import {
 import type {
   AgentCliConfig,
   AgentCliSelection,
-  CarrierAgentMode,
   CarrierState,
   TaskForceConfig,
   TaskForceSelection,
@@ -42,10 +41,6 @@ export function sanitizeFreeformText(value: unknown): string | null {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function sanitizeAgentMode(value: unknown): CarrierAgentMode | undefined {
-  return value === "cli" || value === "subagent" ? value : undefined;
 }
 
 export function sanitizeAgentCliType(value: unknown): CliType | undefined {
@@ -107,13 +102,11 @@ export function sanitizeTaskforce(value: unknown): TaskForceConfig {
 
 export function sanitizeCarrierState(value: unknown): CarrierState | undefined {
   if (!isRecord(value)) return undefined;
-  const agentMode = sanitizeAgentMode(value.agentMode);
   const agentCliType = sanitizeAgentCliType(value.agentCliType);
   const agentCli = sanitizeAgentCli(value.agentCli);
   const taskforce = sanitizeTaskforce(value.taskforce);
   const displayName = sanitizeFreeformText(value.displayName);
   const result: CarrierState = {};
-  if (agentMode) result.agentMode = agentMode;
   if (agentCliType) result.agentCliType = agentCliType;
   if (Object.keys(agentCli).length > 0) result.agentCli = agentCli;
   if (Object.keys(taskforce).length > 0) result.taskforce = taskforce;

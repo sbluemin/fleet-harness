@@ -98,8 +98,6 @@ export interface OperationNode {
   };
 }
 
-export type CarrierSettingsAgentMode = "cli" | "subagent";
-
 export interface CarrierSettingsModelOption {
   readonly modelId: string;
   readonly name: string;
@@ -112,7 +110,6 @@ export interface CarrierSettingsModelOption {
 export interface CarrierSettingsCliOption {
   readonly id: string;
   readonly displayName: string;
-  readonly supportsSubagent: boolean;
   readonly models: readonly CarrierSettingsModelOption[];
   readonly defaultModel: string;
 }
@@ -142,8 +139,6 @@ export interface CarrierSettingsCarrier {
   readonly defaultCliType: string;
   readonly model: string;
   readonly effort?: string;
-  readonly agentMode: CarrierSettingsAgentMode;
-  readonly subagentMode: boolean;
   readonly taskForceBackendCount: number;
   readonly taskforce: {
     readonly backends: readonly CarrierSettingsTaskForceBackend[];

@@ -165,7 +165,6 @@ function buildResolvedCarrierState(
 ): ResolvedCarrierState {
   const agentCli = sanitizeAgentCli(state.agentCli);
   return {
-    agentMode: state.agentMode ?? defaults?.defaultAgentMode ?? "cli",
     agentCliType,
     agentCli: {
       ...agentCli,

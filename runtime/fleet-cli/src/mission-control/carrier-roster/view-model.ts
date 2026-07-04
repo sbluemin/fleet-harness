@@ -4,7 +4,6 @@ import {
   getConfiguredTaskForceBackendsFromSnapshot,
   getRegisteredOrder,
   readCarriersSnapshot,
-  readCarrierAgentModeSnapshot,
   resolveAgentCliType,
   resolveCarrierDisplayName,
   type CarrierConfig,
@@ -103,7 +102,6 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
   const registry = carrierRuntime.registry;
   const registeredOrder = getRegisteredOrder(registry);
   const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(carrierRuntime, snapshot);
-  const subagentModes = readCarrierAgentModeSnapshot(cliTypesByCarrier).agentModes;
   const healedSnapshot = readCarriersSnapshot(cliTypesByCarrier);
 
   for (const id of registeredOrder) {
@@ -127,7 +125,6 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
       role,
       roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
-      subagentMode: subagentModes[id] === "subagent",
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
     });
   }
@@ -161,7 +158,6 @@ function buildHostCarrierModelDefaults(config: CarrierConfig): CarrierModelDefau
   const cliDefaults = buildCarrierModelDefaults(config, cliType);
   return {
     cliType,
-    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
     ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
     ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
   };

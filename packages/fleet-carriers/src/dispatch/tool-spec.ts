@@ -29,7 +29,6 @@ import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/work
 import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
-  isCarrierAgentModeSubagent,
   loadCarrierStates,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
@@ -219,7 +218,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       }
 
       const metadata = config.carrierMetadata;
-      const isNativeSubagentMode = isCarrierAgentModeSubagent(carrierId, config.defaultAgentMode);
 
       // 필수 request-block 검증
       if (metadata) {
@@ -233,7 +231,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         }
       }
 
-      if (!isNativeSubagentMode && getConfiguredTaskForceBackends(carrierId).length >= 2) {
+      if (getConfiguredTaskForceBackends(carrierId).length >= 2) {
         return launchTaskForceJob({
           registry,
           carrierId,
@@ -498,7 +496,6 @@ function resolveCarrierTrackModelInfo(registry: CarrierRegistry, carrierId: stri
     [carrierId]: carrierConfig
       ? {
         cliType,
-        ...(carrierConfig.defaultAgentMode ? { defaultAgentMode: carrierConfig.defaultAgentMode } : {}),
         ...(carrierConfig.defaultEffort ? { defaultEffort: carrierConfig.defaultEffort } : {}),
         ...(carrierConfig.defaultModel ? { defaultModel: carrierConfig.defaultModel } : {}),
       }

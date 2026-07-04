@@ -2,14 +2,11 @@ import {
   CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES,
   getConfiguredTaskForceCarrierIds,
-  getCarrierConfig,
   getTaskForceModelConfig,
   getRegisteredOrder,
-  isCarrierAgentModeSubagent,
   notifyStatusUpdate,
   readCarriersSnapshot,
   resetTaskForceModelSelection,
-  setCarrierAgentMode,
   setTaskForceConfiguredCarriers,
   updateTaskForceModelSelection,
   type CarrierRuntime,
@@ -320,23 +317,11 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
 
     this.mode = "saving";
     this.options.requestRender();
-    const config = getCarrierConfig(this.options.carrierRuntime.registry, this.options.carrierId);
-    const wasSubagent = config ? isCarrierAgentModeSubagent(this.options.carrierId, config.defaultAgentMode) : false;
-    const previousDefaultAgentMode = config?.defaultAgentMode;
     try {
       updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
-      const disabledSubagent = this.disableSubagentModeForTaskForceCommit();
       syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
-      this.feedbackMessage = disabledSubagent
-        ? `경고: ${this.options.carrierDisplayName} Native(SubAgent)를 해제하고 ${entry.displayName} Task Force 설정을 저장했습니다.`
-        : `${entry.displayName} 설정을 저장했습니다.`;
+      this.feedbackMessage = `${entry.displayName} 설정을 저장했습니다.`;
     } catch (error) {
-      if (wasSubagent) {
-        if (config !== undefined) {
-          config.defaultAgentMode = previousDefaultAgentMode;
-        }
-        setCarrierAgentMode(this.options.carrierId, true);
-      }
       this.feedbackMessage = `저장 실패: ${errorMessage(error)}`;
     } finally {
       this.resetEditState();
@@ -348,16 +333,6 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     this.feedbackMessage = `저장 실패: ${message}`;
     this.resetEditState();
     this.options.requestRender();
-  }
-
-  private disableSubagentModeForTaskForceCommit(): boolean {
-    const config = getCarrierConfig(this.options.carrierRuntime.registry, this.options.carrierId);
-    if (!config) {
-      throw new Error(`${this.options.carrierDisplayName} carrier metadata를 찾을 수 없습니다.`);
-    }
-    if (!isCarrierAgentModeSubagent(this.options.carrierId, config.defaultAgentMode)) return false;
-    setCarrierAgentMode(this.options.carrierId, false, config.defaultAgentMode);
-    return true;
   }
 
   private cancelEdit(): void {
