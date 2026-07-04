@@ -42,6 +42,13 @@ interface RendererOption {
   readonly label: string;
 }
 
+interface DockRowProps {
+  readonly track: TrackView;
+  readonly job: JobView;
+  readonly multiJob: boolean;
+  readonly singleTrack: boolean;
+}
+
 interface PinnedScrollLocal {
   readonly containerRef: React.RefObject<HTMLDivElement | null>;
   readonly pinned: boolean;
@@ -55,7 +62,9 @@ const RENDERERS: readonly RendererOption[] = [
 
 const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
-const DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
+const DOCK_EXPANDED_KEY = "fleet-plugin.terminal.stream-dock-expanded";
+// Signal Strip 개편 이전 접힘 키 — 신규 코드는 읽지 않으며 초기화 시 1회 제거만 한다.
+const LEGACY_DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
 const PIN_SLACK_PX = 56;
 
 export const agentOperationKind = defineOperationKind({
@@ -164,29 +173,31 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
   return { containerRef, pinned, jumpToLatest };
 }
 
-function useDockCollapsed(): [boolean, (next: boolean) => void] {
-  const [collapsed, setCollapsedState] = React.useState(() => {
+function useDockExpanded(): [boolean, (next: boolean) => void] {
+  // 기본값 접힘(false). 펼치면 "true" 저장, 접으면 키 제거.
+  const [expanded, setExpandedState] = React.useState(() => {
     try {
-      return localStorage.getItem(DOCK_COLLAPSED_KEY) === "true";
+      localStorage.removeItem(LEGACY_DOCK_COLLAPSED_KEY);
+      return localStorage.getItem(DOCK_EXPANDED_KEY) === "true";
     } catch {
       return false;
     }
   });
 
-  const setCollapsed = React.useCallback((next: boolean) => {
+  const setExpanded = React.useCallback((next: boolean) => {
     try {
       if (next) {
-        localStorage.setItem(DOCK_COLLAPSED_KEY, "true");
+        localStorage.setItem(DOCK_EXPANDED_KEY, "true");
       } else {
-        localStorage.removeItem(DOCK_COLLAPSED_KEY);
+        localStorage.removeItem(DOCK_EXPANDED_KEY);
       }
     } catch {
       // localStorage 비가용 환경 무시
     }
-    setCollapsedState(next);
+    setExpandedState(next);
   }, []);
 
-  return [collapsed, setCollapsed];
+  return [expanded, setExpanded];
 }
 
 function useElapsed(startedAt: number | undefined): string {
@@ -309,7 +320,7 @@ function StreamDock({
   readonly onOpenDetail: () => void;
   readonly detailBtnRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
-  const [collapsed, setCollapsed] = useDockCollapsed();
+  const [expanded, setExpanded] = useDockExpanded();
   const primaryJob = activeJobs[0];
   const elapsed = useElapsed(primaryJob?.startedAt);
   const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
@@ -325,14 +336,26 @@ function StreamDock({
 
   const tailText = getDockTailText(activeJobs);
   const contentKey = activeJobs.map((j) => `${j.jobId}:${j.lastEventId}`).join(",");
-  const resetKey = `${!collapsed}:${activeJobs.map((j) => j.jobId).join(",")}`;
+  const resetKey = `${expanded}:${activeJobs.map((j) => j.jobId).join(",")}`;
   const { containerRef, pinned, jumpToLatest } = usePinnedScrollLocal(resetKey, contentKey);
+
+  // 스트립 라인 라이브 캐럿: 활성 트랙 중 하나라도 라이브면 표시
+  const stripIsLive = activeJobs.some((job) =>
+    job.trackOrder.some((id) => {
+      const t = job.tracks[id];
+      return t ? isTrackLive(t.status) : false;
+    })
+  );
 
   return (
     <div className="job-dock" data-signature={sig}>
-      <div className="job-dock-header">
+      <div className="job-dock-strip">
         <span className="job-dock-dot" aria-hidden="true" />
-        <span className="job-dock-carrier" data-captain={captain}>{carrierLabel}</span>
+        <span className="job-dock-carrier" data-captain={captain} title={jobLabel}>{carrierLabel}</span>
+        <span className="job-dock-strip-line" style={expanded ? { display: "none" } : undefined} aria-hidden="true">
+          {tailText}
+          {!expanded && stripIsLive && tailText ? <span className="job-dock-caret" aria-hidden="true" /> : null}
+        </span>
         <span className="job-dock-meta">
           {elapsed ? <span>{elapsed}</span> : null}
           {tokenLabel ? <span>{tokenLabel}</span> : null}
@@ -340,11 +363,11 @@ function StreamDock({
         <button
           type="button"
           className="job-dock-grip"
-          aria-label={collapsed ? "Expand stream dock" : "Collapse stream dock"}
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed(!collapsed)}
+          aria-label={expanded ? "Collapse stream dock" : "Expand stream dock"}
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
         >
-          {collapsed ? "▲" : "▼"}
+          {expanded ? "▼" : "▲"}
         </button>
         <button
           ref={detailBtnRef}
@@ -355,18 +378,29 @@ function StreamDock({
           Details
         </button>
       </div>
-      {jobLabel ? <div className="job-dock-label" title={jobLabel}>{jobLabel}</div> : null}
-      {collapsed ? (
-        tailText ? <div className="job-dock-tail" aria-hidden="true">{tailText}</div> : null
-      ) : null}
-      <div className={`job-dock-body-wrap${collapsed ? " is-collapsed" : ""}`}>
+      <div className={`job-dock-body-wrap${expanded ? "" : " is-collapsed"}`}>
         <div ref={containerRef} className="job-dock-body" tabIndex={-1}>
-          {activeJobs.map((job) =>
-            job.trackOrder.map((trackId) => {
+          {activeJobs.length === 1 && jobLabel ? (
+            <div className="job-dock-row">
+              <span className="job-dock-row-label">{jobLabel}</span>
+            </div>
+          ) : null}
+          {activeJobs.map((job) => {
+            const multiJob = activeJobs.length > 1;
+            const singleTrack = !multiJob && job.trackOrder.length === 1;
+            return job.trackOrder.map((trackId) => {
               const track = job.tracks[trackId];
-              return track ? <DockTrackRow key={`${job.jobId}:${trackId}`} track={track} /> : null;
-            })
-          )}
+              return track ? (
+                <DockRow
+                  key={`${job.jobId}:${trackId}`}
+                  track={track}
+                  job={job}
+                  multiJob={multiJob}
+                  singleTrack={singleTrack}
+                />
+              ) : null;
+            });
+          })}
         </div>
         {!pinned ? (
           <button type="button" className="follow-button" onClick={jumpToLatest}>
@@ -378,42 +412,31 @@ function StreamDock({
   );
 }
 
-function DockTrackRow({ track }: { readonly track: TrackView }) {
-  const isLive = trackCardModifier(track.status) === "track-card--live";
+function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
+  const isLive = isTrackLive(track.status);
   const tailOutput = getLastLine(track.text);
   const tailThought = getLastLine(track.thought);
+  const displayLine = tailOutput || tailThought;
+  const isThought = !tailOutput && Boolean(tailThought);
+  const activeTool = isLive ? getActiveToolName(track) : undefined;
+
+  // 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략
+  const showName = multiJob || !singleTrack;
+  const nameCaptain = multiJob ? resolveCarrierCaptain(job.ownerCarrierId) : undefined;
+
   return (
-    <div className="job-dock-track">
-      <div className="job-dock-track-head">
-        <span className="job-dock-track-name">{track.displayName}</span>
-        <span className={`job-dock-track-status${isLive ? " job-dock-track-status--live" : ""}`}>
-          {track.status}
-        </span>
-      </div>
-      {!tailOutput && tailThought ? (
-        <div className="job-dock-track-thought" aria-label="Thinking">{tailThought}</div>
+    <div className="job-dock-row">
+      {showName ? (
+        <span className="job-dock-row-name" data-captain={nameCaptain}>{track.displayName}</span>
       ) : null}
-      {tailOutput ? (
-        <div className="job-dock-track-text">
-          {tailOutput}
+      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}`}>
+        {track.status}{activeTool ? ` · ${activeTool}` : ""}
+      </span>
+      {displayLine ? (
+        <span className={`job-dock-row-line${isThought ? " is-thought" : ""}`}>
+          {displayLine}
           {isLive ? <span className="job-dock-caret" aria-hidden="true" /> : null}
-        </div>
-      ) : null}
-      {track.tools.length > 0 ? (
-        <div className="job-dock-tools">
-          {track.tools.map((tool) => {
-            const isDone = tool.status === "completed" || tool.status === "failed" || tool.status === "error";
-            const chipLive = isLive && !isDone;
-            return (
-              <span
-                key={tool.id}
-                className={`job-dock-tool-chip${chipLive ? " job-dock-tool-chip--live" : ""}`}
-              >
-                {tool.name ?? tool.id}
-              </span>
-            );
-          })}
-        </div>
+        </span>
       ) : null}
     </div>
   );
@@ -614,6 +637,17 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function isTrackLive(status: string): boolean {
+  return status === "stream" || status === "live" || status === "running" || status === "active";
+}
+
+function getActiveToolName(track: TrackView): string | undefined {
+  const tool = track.tools.find(
+    (t) => t.status !== "completed" && t.status !== "failed" && t.status !== "error"
+  );
+  return tool ? (tool.name ?? tool.id) : undefined;
+}
+
 function getDockTailText(activeJobs: readonly JobView[]): string {
   // 모든 활성 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해, 가장 최근 활동 트랙의
   // latestLine(리듀서가 text/thought 델타 중 가장 최근 것으로 갱신)을 접힘 테일로 고른다.
@@ -789,7 +823,8 @@ function terminalFontResolveText(font: TerminalFontSettings): string {
 }
 
 function trackCardModifier(status: string): string {
-  if (status === "stream" || status === "live" || status === "running" || status === "active") {
+  // 라이브 판정은 isTrackLive 단일 소유 — 도크 행/스트립 캐럿과 판정이 갈라지지 않게 위임한다.
+  if (isTrackLive(status)) {
     return "track-card--live";
   }
   if (status === "error") return "track-card--bad";
