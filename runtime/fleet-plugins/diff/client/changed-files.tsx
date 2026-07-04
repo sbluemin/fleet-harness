@@ -182,8 +182,8 @@ function ListFileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
         {entry.status}
       </span>
       <span className="diff-file-name">
+        <span className="diff-file-fn">{name}</span>
         {dir && <span className="diff-file-dir">{dir}</span>}
-        {name}
       </span>
       <span className="diff-nums">
         {entry.additions > 0 && <span className="diff-additions">+{entry.additions}</span>}

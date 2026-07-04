@@ -88,24 +88,10 @@ function basename(p: string): string {
   return p.split("/").filter(Boolean).pop() ?? p;
 }
 
-// ─── RepoDropdown ─────────────────────────────────────────────────────────────
+// ─── CommandDeck (저장소 피커 — 패널 전면 불투명 시트) ──────────────────────────
 
-function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelect, onDepthChange, onRescan, onClose }: RepoPickerProps) {
-  // 현재 선택된 항목이 워크트리이면 해당 부모 그룹을 메뉴 열릴 때 자동 펼침
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
-    const active = repos.find((r) => r.relPath === activeSubPath);
-    if (active?.worktreeOf !== undefined) {
-      return new Set([active.worktreeOf]);
-    }
-    return new Set();
-  });
-
+function CommandDeck({ repos, loading, truncated, activeSubPath, depth, onSelect, onDepthChange, onRescan, onClose }: RepoPickerProps) {
   const { groups, topLevelCount } = groupRepos(repos);
-
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    // 메뉴 내부 클릭은 바깥 클릭 핸들러로 버블링되지 않도록 막는다
-    e.stopPropagation();
-  }, []);
 
   const handleDepthSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
@@ -113,64 +99,34 @@ function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelec
     if (!isNaN(val)) onDepthChange(val);
   }, [onDepthChange]);
 
-  const toggleGroup = useCallback((relPath: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(relPath)) {
-        next.delete(relPath);
-      } else {
-        next.add(relPath);
-      }
-      return next;
-    });
-  }, []);
-
-  // 메뉴가 열린 뒤에 repos fetch가 도착하는 경합에서도 현재 선택의 부모 그룹을 펼친다
-  useEffect(() => {
-    const active = repos.find((r) => r.relPath === activeSubPath);
-    const parent = active?.worktreeOf;
-    if (parent === undefined) return;
-    setExpandedGroups((prev) => {
-      if (prev.has(parent)) return prev;
-      const next = new Set(prev);
-      next.add(parent);
-      return next;
-    });
-  }, [repos, activeSubPath]);
-
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="diff-repo-menu"
       role="listbox"
       aria-label="Repositories"
-      onClick={handleClick}
     >
       <div className="diff-repo-menu-eyebrow">
-        <span>Repositories</span>
-        {!loading && <span>{topLevelCount} found</span>}
+        <span>REPOSITORIES</span>
+        {!loading && <span>{topLevelCount} found · depth {depth}</span>}
       </div>
 
-      {loading ? (
-        <div className="diff-repo-scan">
-          <span className="diff-repo-spin" aria-hidden="true" />
-          Scanning to depth {depth}…
-        </div>
-      ) : repos.length === 0 ? (
-        <div className="diff-repo-empty">
-          No Git repositories within depth {depth}.
-        </div>
-      ) : (
-        groups.map(({ repo, worktrees }) => {
-          const isCur = repo.relPath === activeSubPath;
-          const hasWorktrees = worktrees.length > 0;
-          const isExpanded = expandedGroups.has(repo.relPath);
-          const isOrphanWorktree = repo.isWorktree === true && repo.worktreeOf === undefined;
+      <div className="diff-repo-menu-scroll">
+        {loading ? (
+          <div className="diff-repo-scan">
+            <span className="diff-repo-spin" aria-hidden="true" />
+            Scanning to depth {depth}…
+          </div>
+        ) : repos.length === 0 ? (
+          <div className="diff-repo-empty">
+            No Git repositories within depth {depth}.
+          </div>
+        ) : (
+          groups.map(({ repo, worktrees }) => {
+            const isCur = repo.relPath === activeSubPath;
+            const isOrphanWorktree = repo.isWorktree === true && repo.worktreeOf === undefined;
 
-          return (
-            <div key={repo.relPath} className="diff-repo-group">
-              {/* 부모/최상위 저장소 행: 선택 버튼 + 워크트리 펼침 버튼(있을 때만) */}
-              <div className="diff-repo-group-row">
+            return (
+              <div key={repo.relPath} className="diff-repo-group">
                 <button
                   type="button"
                   role="option"
@@ -190,9 +146,8 @@ function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelec
                         <BranchIcon />
                         <span>{repo.branch}</span>
                       </span>
-                      {repo.relPath === "" && <span className="diff-repo-badge">root</span>}
-                      {/* 고아 워크트리(부모 theater 밖): worktree 뱃지 */}
-                      {isOrphanWorktree && <span className="diff-repo-badge">worktree</span>}
+                      {repo.relPath === "" && <span className="diff-repo-badge diff-repo-badge--root">ROOT</span>}
+                      {isOrphanWorktree && <span className="diff-repo-badge diff-repo-badge--worktree">WORKTREE</span>}
                     </span>
                     <span className="diff-repo-opt-path">
                       {repo.relPath === "" ? "· Theater root" : repo.relPath}
@@ -200,65 +155,54 @@ function RepoDropdown({ repos, loading, truncated, activeSubPath, depth, onSelec
                   </span>
                 </button>
 
-                {/* 워크트리 펼침 버튼 — button-in-button 금지로 형제 요소로 배치 */}
-                {hasWorktrees && (
-                  <button
-                    type="button"
-                    className="diff-repo-expand"
-                    aria-expanded={isExpanded}
-                    onClick={(e) => { e.stopPropagation(); toggleGroup(repo.relPath); }}
-                  >
-                    {isExpanded ? "▾" : "▸"} {worktrees.length} {worktrees.length === 1 ? "worktree" : "worktrees"}
-                  </button>
+                {/* 워크트리 자식 — 항상 인라인 트리 연결선 자식 행으로 렌더 */}
+                {worktrees.length > 0 && (
+                  <div className="diff-repo-children" role="group">
+                    {worktrees.map((wt) => {
+                      const isWtCur = wt.relPath === activeSubPath;
+                      const relLabel = relativeToParent(wt.relPath, repo.relPath);
+                      return (
+                        <div key={wt.relPath} className="diff-repo-child-row">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={isWtCur}
+                            className={`diff-repo-opt diff-repo-child-opt${isWtCur ? " is-cur" : ""}`}
+                            onClick={() => { onSelect(wt.relPath); onClose(); }}
+                          >
+                            <svg className="diff-repo-mark" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                              {isWtCur && (
+                                <path d="M3 7.5L6 10.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                              )}
+                            </svg>
+                            <span>
+                              <span className="diff-repo-line1">
+                                <span className="diff-repo-opt-name">{wt.name}</span>
+                                <span className="diff-repo-branch">
+                                  <BranchIcon />
+                                  <span>{wt.branch}</span>
+                                </span>
+                                <span className="diff-repo-badge diff-repo-badge--worktree">WORKTREE</span>
+                              </span>
+                              <span className="diff-repo-opt-path">{relLabel}</span>
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
+            );
+          })
+        )}
 
-              {/* 자식 워크트리 목록 — 기본 접힘, 펼쳤을 때만 렌더 */}
-              {isExpanded && (
-                <div className="diff-repo-children" role="group">
-                  {worktrees.map((wt) => {
-                    const isWtCur = wt.relPath === activeSubPath;
-                    const relLabel = relativeToParent(wt.relPath, repo.relPath);
-                    return (
-                      <div key={wt.relPath} className="diff-repo-child-row">
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={isWtCur}
-                          className={`diff-repo-opt diff-repo-child-opt${isWtCur ? " is-cur" : ""}`}
-                          onClick={() => { onSelect(wt.relPath); onClose(); }}
-                        >
-                          <svg className="diff-repo-mark" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                            {isWtCur && (
-                              <path d="M3 7.5L6 10.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                            )}
-                          </svg>
-                          <span>
-                            <span className="diff-repo-line1">
-                              <span className="diff-repo-opt-name">{wt.name}</span>
-                              <span className="diff-repo-branch">
-                                <BranchIcon />
-                                <span>{wt.branch}</span>
-                              </span>
-                            </span>
-                            <span className="diff-repo-opt-path">{relLabel}</span>
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })
-      )}
-
-      {!loading && truncated && (
-        <div className="diff-repo-truncated">
-          List capped — reduce depth to see all repos.
-        </div>
-      )}
+        {!loading && truncated && (
+          <div className="diff-repo-truncated">
+            List capped — reduce depth to see all repos.
+          </div>
+        )}
+      </div>
 
       <div className="diff-repo-menu-foot">
         {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
@@ -492,7 +436,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
           </button>
 
           {menuOpen && (
-            <RepoDropdown
+            <CommandDeck
               theaterId={ctx.theaterId ?? ""}
               repos={repos}
               loading={reposLoading}
