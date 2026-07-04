@@ -34,7 +34,7 @@
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
 .diff-plugin-toolbar {
-  position: relative; /* 저장소 피커 드롭다운(absolute)의 컨테이닝 블록 — 없으면 상위 기준으로 배치돼 화면 밖으로 클리핑됨 */
+  /* Command Deck(absolute inset:0)의 컨테이닝 블록은 .diff-tree-pane — 툴바에 relative를 두면 시트가 툴바 높이에 갇힌다 */
   display: flex;
   align-items: center;
   gap: 6px;

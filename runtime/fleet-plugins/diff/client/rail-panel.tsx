@@ -435,21 +435,6 @@ function DiffPanel({ ctx }: DiffPanelProps) {
             <ChevronIcon />
           </button>
 
-          {menuOpen && (
-            <CommandDeck
-              theaterId={ctx.theaterId ?? ""}
-              repos={repos}
-              loading={reposLoading}
-              truncated={reposTruncated}
-              activeSubPath={activeSubPath}
-              depth={depth}
-              onSelect={handleSelectRepo}
-              onDepthChange={handleDepthChange}
-              onRescan={handleRescan}
-              onClose={handleCloseMenu}
-            />
-          )}
-
           <div className="diff-view-toggle">
             <button
               type="button"
@@ -487,6 +472,20 @@ function DiffPanel({ ctx }: DiffPanelProps) {
           subPath={activeSubPath}
           onSelect={handleSelectFile}
         />
+        {menuOpen && (
+          <CommandDeck
+            theaterId={ctx.theaterId ?? ""}
+            repos={repos}
+            loading={reposLoading}
+            truncated={reposTruncated}
+            activeSubPath={activeSubPath}
+            depth={depth}
+            onSelect={handleSelectRepo}
+            onDepthChange={handleDepthChange}
+            onRescan={handleRescan}
+            onClose={handleCloseMenu}
+          />
+        )}
       </div>
     </div>
   );
