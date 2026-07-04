@@ -4784,6 +4784,28 @@
   -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
+/* CLI 시그니처: border-top rim + 저강도 bg tint (단일 잡에만 부착, aurora/brass 채널 불가침) */
+.job-dock[data-signature="claude"] {
+  border-top-color: color-mix(in oklch, var(--carrier-claude) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-claude) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="codex"] {
+  border-top-color: color-mix(in oklch, var(--carrier-codex) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-codex) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="opencode-go"] {
+  border-top-color: color-mix(in oklch, var(--carrier-opencode-go) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-opencode-go) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="cursor"] {
+  border-top-color: color-mix(in oklch, var(--carrier-cursor) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-cursor) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="taskforce"] {
+  border-top-color: color-mix(in oklch, var(--carrier-taskforce) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-taskforce) 6%, var(--surface-glass));
+}
+
 /* 헤더: 라이브 도트 · 캐리어명 · 경과 · 토큰 · 접기 그립 · 상세 버튼 */
 .job-dock-header {
   display: flex;
@@ -4820,6 +4842,16 @@
   font-weight: 600;
   color: var(--ink-spectral);
 }
+
+/* 캡틴 고유색 - 캐리어명 텍스트 채널만(오직 이 하나의 곳에만 적용) */
+.job-dock-carrier[data-captain="nimitz"] { color: var(--captain-nimitz); }
+.job-dock-carrier[data-captain="kirov"] { color: var(--captain-kirov); }
+.job-dock-carrier[data-captain="genesis"] { color: var(--captain-genesis); }
+.job-dock-carrier[data-captain="ohio"] { color: var(--captain-ohio); }
+.job-dock-carrier[data-captain="sentinel"] { color: var(--captain-sentinel); }
+.job-dock-carrier[data-captain="vanguard"] { color: var(--captain-vanguard); }
+.job-dock-carrier[data-captain="tempest"] { color: var(--captain-tempest); }
+.job-dock-carrier[data-captain="chronicle"] { color: var(--captain-chronicle); }
 
 .job-dock-meta {
   flex: none;
@@ -4870,6 +4902,18 @@
 .job-dock-detail-btn:hover {
   border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+/* 요청 라벨: 헤더 아래 1줄 ellipsis, 단일 잡에서만 렌더됨 */
+.job-dock-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-fog);
+  padding: 0 var(--space-3) var(--space-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* 테일: 접힘 상태의 최신 출력 1줄 */

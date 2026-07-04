@@ -1,5 +1,8 @@
 import type { JobView } from "./types.js";
 
+const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"]);
+const BACKEND_CLIS = new Set(["claude", "codex", "opencode-go", "cursor"]);
+
 export function formatElapsedDuration(elapsedMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
   if (totalSeconds < 60) return `${totalSeconds}s`;
@@ -22,4 +25,20 @@ export function estimateJobTokens(job: JobView): number {
     if (!track) return sum;
     return sum + Math.round((track.text.length + track.thought.length) / 4);
   }, 0);
+}
+
+export function resolveJobSignature(job: JobView): "claude" | "codex" | "opencode-go" | "cursor" | "taskforce" | undefined {
+  if (job.kind === "taskforce") return "taskforce";
+  for (const trackId of job.trackOrder) {
+    const track = job.tracks[trackId];
+    if (!track) continue;
+    const cli = track.displayCli;
+    if (cli && BACKEND_CLIS.has(cli)) return cli as "claude" | "codex" | "opencode-go" | "cursor";
+  }
+  return undefined;
+}
+
+export function resolveCarrierCaptain(carrierId: string | undefined): string | undefined {
+  if (!carrierId) return undefined;
+  return CAPTAIN_IDS.has(carrierId) ? carrierId : undefined;
 }

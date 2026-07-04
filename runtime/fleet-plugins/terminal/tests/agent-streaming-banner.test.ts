@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "../client/agent/helpers.js";
 import { isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -238,5 +238,112 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
       },
     });
     expect(estimateJobTokens(job)).toBe(100);
+  });
+});
+
+// ── resolveJobSignature 유닛 테스트 ───────────────────────────────────────────
+
+describe("resolveJobSignature (CLI 시그니처 해석)", () => {
+  function makeJob(overrides: Partial<JobView>): JobView {
+    return {
+      jobId: "j1",
+      tenantId: "t1",
+      status: "active",
+      updatedAt: 1000,
+      trackOrder: [],
+      tracks: {},
+      lastEventId: 1,
+      recentEvents: [],
+      ...overrides,
+    };
+  }
+
+  it("kind=taskforce → taskforce (트랙 무관)", () => {
+    expect(resolveJobSignature(makeJob({ kind: "taskforce" }))).toBe("taskforce");
+  });
+
+  it.each([["claude"], ["codex"], ["opencode-go"], ["cursor"]] as const)(
+    "첫 트랙 displayCli=%s → %s",
+    (cli) => {
+      const job = makeJob({
+        trackOrder: ["t1"],
+        tracks: {
+          t1: {
+            trackId: "t1",
+            displayName: "T",
+            status: "stream",
+            text: "",
+            thought: "",
+            sentTextLength: 0,
+            sentThoughtLength: 0,
+            tools: [],
+            displayCli: cli,
+          },
+        },
+      });
+      expect(resolveJobSignature(job)).toBe(cli);
+    }
+  );
+
+  it("displayCli가 알 수 없는 값 → undefined", () => {
+    const job = makeJob({
+      trackOrder: ["t1"],
+      tracks: {
+        t1: {
+          trackId: "t1",
+          displayName: "T",
+          status: "stream",
+          text: "",
+          thought: "",
+          sentTextLength: 0,
+          sentThoughtLength: 0,
+          tools: [],
+          displayCli: "unknown-cli",
+        },
+      },
+    });
+    expect(resolveJobSignature(job)).toBeUndefined();
+  });
+
+  it("빈 trackOrder → undefined", () => {
+    expect(resolveJobSignature(makeJob({}))).toBeUndefined();
+  });
+
+  it("displayCli 없는 트랙 → undefined", () => {
+    const job = makeJob({
+      trackOrder: ["t1"],
+      tracks: {
+        t1: {
+          trackId: "t1",
+          displayName: "T",
+          status: "stream",
+          text: "",
+          thought: "",
+          sentTextLength: 0,
+          sentThoughtLength: 0,
+          tools: [],
+        },
+      },
+    });
+    expect(resolveJobSignature(job)).toBeUndefined();
+  });
+});
+
+// ── resolveCarrierCaptain 유닛 테스트 ────────────────────────────────────────
+
+describe("resolveCarrierCaptain (캡틴 해석)", () => {
+  it.each([["nimitz"], ["kirov"], ["genesis"], ["ohio"], ["sentinel"], ["vanguard"], ["tempest"], ["chronicle"]] as const)(
+    "로스터 캡틴 %s → %s",
+    (id) => {
+      expect(resolveCarrierCaptain(id)).toBe(id);
+    }
+  );
+
+  it("로스터 외 id → undefined", () => {
+    expect(resolveCarrierCaptain("unknown-carrier")).toBeUndefined();
+  });
+
+  it("undefined → undefined", () => {
+    expect(resolveCarrierCaptain(undefined)).toBeUndefined();
   });
 });

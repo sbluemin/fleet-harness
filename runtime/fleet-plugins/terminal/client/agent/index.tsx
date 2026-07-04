@@ -10,7 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
@@ -315,6 +315,10 @@ function StreamDock({
   const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
   const tokenLabel = formatTokenEstimate(totalTokens);
 
+  const sig = activeJobs.length === 1 && primaryJob ? resolveJobSignature(primaryJob) : undefined;
+  const captain = activeJobs.length === 1 && primaryJob ? resolveCarrierCaptain(primaryJob.ownerCarrierId) : undefined;
+  const jobLabel = activeJobs.length === 1 && primaryJob ? primaryJob.label : undefined;
+
   const carrierLabel = activeJobs.length > 1
     ? `${activeJobs.length} carriers`
     : (primaryJob?.ownerCarrierId ?? "Carrier");
@@ -325,10 +329,10 @@ function StreamDock({
   const { containerRef, pinned, jumpToLatest } = usePinnedScrollLocal(resetKey, contentKey);
 
   return (
-    <div className="job-dock">
+    <div className="job-dock" data-signature={sig}>
       <div className="job-dock-header">
         <span className="job-dock-dot" aria-hidden="true" />
-        <span className="job-dock-carrier">{carrierLabel}</span>
+        <span className="job-dock-carrier" data-captain={captain}>{carrierLabel}</span>
         <span className="job-dock-meta">
           {elapsed ? <span>{elapsed}</span> : null}
           {tokenLabel ? <span>{tokenLabel}</span> : null}
@@ -351,6 +355,7 @@ function StreamDock({
           Details
         </button>
       </div>
+      {jobLabel ? <div className="job-dock-label" title={jobLabel}>{jobLabel}</div> : null}
       {collapsed ? (
         tailText ? <div className="job-dock-tail" aria-hidden="true">{tailText}</div> : null
       ) : null}
@@ -804,4 +809,4 @@ function AgentGlyph() {
   );
 }
 
-export { formatElapsedDuration, formatTokenEstimate, estimateJobTokens } from "./helpers.js";
+export { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "./helpers.js";
