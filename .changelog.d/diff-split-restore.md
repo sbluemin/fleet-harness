@@ -1,6 +1,4 @@
 ---
-name: diff-split-restore
-description: Restored drag-to-resize divider between diff document pane and changed-files list
 section: Fixed
 ---
 
