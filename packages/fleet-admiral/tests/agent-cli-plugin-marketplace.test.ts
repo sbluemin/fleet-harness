@@ -162,12 +162,10 @@ describe("agent CLI plugin marketplace rendering", () => {
     mkdirSync(cwd, { recursive: true });
 
     const plugin = await createAgentCliPlugin({
-      claudeDefinitions: [],
       cliId: "cursor",
       cwd,
       dataDir,
       doctrine: "Fleet doctrine",
-      hookExec: { command: "node", args: ["cli.mjs", "hook", "subagents-context"] },
       captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "cursor"] },
       turnStartHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-start"] },
       turnEndHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-end"] },

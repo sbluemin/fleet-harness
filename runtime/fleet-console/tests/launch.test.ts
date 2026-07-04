@@ -204,7 +204,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
       command: "/node",
       args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "cursor"],
     });
-    expect(injectedOptions[0]?.hookExec).toBeUndefined();
     expect(spec.args).toContain("/fleet/plugin");
   });
 
