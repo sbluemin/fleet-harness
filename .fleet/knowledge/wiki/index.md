@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `31`
+- total_entries: `32`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -268,6 +268,16 @@
 - raw_source_ref: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
 - raw_source_refs: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
 
+### prd-remove-system-prompt-injection
+
+- title: `PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정`
+- path: `wiki/prd-remove-system-prompt-injection.md`
+- tags: `decision-history, fleet-admiral, fleet-infra, fleet-cli, agent-cli, system-prompt, cognitive-debt, terminal-plugin`
+- updated: `2026-07-04T19:26:26.475Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-07-04-prd-remove-system-prompt-injection-source-fadb48c3.md`
+- raw_source_refs: `raw/2026-07-04-prd-remove-system-prompt-injection-source-fadb48c3.md`
+
 ### prd-tui-keyboard-protocol-architecture
 
 - title: `PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture`
@@ -331,6 +341,10 @@
 ### admiral
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
+
+### agent-cli
+
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 
 ### agent-core
 
@@ -413,6 +427,7 @@
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 - [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 
 ### comparison
 
@@ -461,6 +476,7 @@
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 - [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 
 ### dedicated-cli
 
@@ -500,6 +516,7 @@
 
 - [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 
 ### fleet-admiralty
 
@@ -530,6 +547,7 @@
 - [[wiki:prd-fleet-cli-native-terminal-exclusive-mode]] — PRD: fleet-cli native terminal exclusive mode 및 전역 단축키/모드 폐기
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 - [[wiki:synthesis-fleet-console-main-dashboard-research]] — Fleet Console 메인 대시보드 개선 조사
 
 ### fleet-console
@@ -560,6 +578,7 @@
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 - [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 
 ### fleet-infra-log
 
@@ -791,9 +810,17 @@
 
 - [[wiki:synthesis-fleet-console-main-dashboard-research]] — Fleet Console 메인 대시보드 개선 조사
 
+### system-prompt
+
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
+
 ### target
 
 - [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
+
+### terminal-plugin
+
+- [[wiki:prd-remove-system-prompt-injection]] — PRD: System Prompt Injection 토글 전면 제거 — Append 하드코딩 고정
 
 ### tool-scoping
 

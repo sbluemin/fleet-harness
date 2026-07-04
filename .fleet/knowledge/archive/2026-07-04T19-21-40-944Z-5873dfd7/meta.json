@@ -1,0 +1,9 @@
+{
+  "id": "2026-07-04T19-21-40-944Z-5873dfd7",
+  "status": "rejected",
+  "createdAt": "2026-07-04T19:21:40.944Z",
+  "rawSourceRef": "raw/2026-07-04-prd-remove-system-prompt-injection-source-e8db874b.md",
+  "warnings": [],
+  "decidedAt": "2026-07-04T19:23:38.230Z",
+  "reason": "findings-status 드리프트 정정 필요: Sentinel Medium-1(backward-compat 테스트 pin) + Low-1(terminal AGENTS.md) + Low-2(fleet-cli AGENTS.md) 3건은 동일 PR에서 이미 수정 완료됨(엔트리는 미수정/정정필요로 오기). Medium-2(cross-field 동시성)만 기각. fleet-infra 테스트는 58/58(57 아님). Acceptance Criteria/Open Questions 섹션을 최종 disposition으로 갱신해 재-ingest 요망."
+}

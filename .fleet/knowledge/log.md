@@ -3967,3 +3967,76 @@
 - result: `accepted`
 - target: `wiki/architecture-console-panel-plugin-platform.md`
 
+## 2026-07-04T19:19:15.248Z — drydock run
+
+- error_count: `0`
+- info_count: `9`
+- issue_count: `16`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-07-04T19:21:40.959Z — raw source added
+
+- id: `prd-remove-system-prompt-injection-source`
+- raw_source_ref: `raw/2026-07-04-prd-remove-system-prompt-injection-source-e8db874b.md`
+- source_type: `inline`
+- tag_count: `8`
+- title: `System Prompt Injection 제거 작전 증거 (Vanguard + Genesis + Sentinel)`
+
+## 2026-07-04T19:21:40.962Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-07-04T19-21-40-944Z-5873dfd7`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-07-04-prd-remove-system-prompt-injection-source-e8db874b.md`
+- target: `wiki/prd-remove-system-prompt-injection.md`
+- warning_count: `0`
+
+## 2026-07-04T19:23:38.233Z — patch rejected
+
+- patch_id: `2026-07-04T19-21-40-944Z-5873dfd7`
+- patch_set_id: `null`
+- reason: `findings-status 드리프트 정정 필요: Sentinel Medium-1(backward-compat 테스트 pin) + Low-1(terminal AGENTS.md) + Low-2(fleet-cli AGENTS.md) 3건은 동일 PR에서 이미 수정 완료됨(엔트리는 미수정/정정필요로 오기). Medium-2(cross-field 동시성)만 기각. fleet-infra 테스트는 58/58(57 아님). Acceptance Criteria/Open Questions 섹션을 최종 disposition으로 갱신해 재-ingest 요망.`
+- result: `rejected`
+
+## 2026-07-04T19:26:26.490Z — raw source added
+
+- id: `prd-remove-system-prompt-injection-source`
+- raw_source_ref: `raw/2026-07-04-prd-remove-system-prompt-injection-source-fadb48c3.md`
+- source_type: `inline`
+- tag_count: `8`
+- title: `System Prompt Injection 제거 작전 증거 (Vanguard + Genesis + Sentinel, 최종 disposition 반영)`
+
+## 2026-07-04T19:26:26.493Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-07-04T19-26-26-475Z-0c7a851e`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-07-04-prd-remove-system-prompt-injection-source-fadb48c3.md`
+- target: `wiki/prd-remove-system-prompt-injection.md`
+- warning_count: `0`
+
+## 2026-07-04T19:26:32.889Z — drydock run
+
+- error_count: `0`
+- info_count: `9`
+- issue_count: `16`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-07-04T19:27:20.938Z — index rebuilt
+
+- entry_count: `32`
+
+## 2026-07-04T19:27:20.939Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-07-04T19-26-26-475Z-0c7a851e`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-07-04-prd-remove-system-prompt-injection-source-fadb48c3.md`
+- result: `accepted`
+- target: `wiki/prd-remove-system-prompt-injection.md`
+
