@@ -130,4 +130,26 @@ describe("parseHunk", () => {
     expect(del?.oldLine).toBe(2);
     expect(add?.newLine).toBe(2);
   });
+
+  it("⑨ 개행으로 끝나는 diff 출력에서 마지막 빈 요소가 가짜 ctx 행이 되지 않는다", () => {
+    const trailing = [
+      "diff --git a/a.txt b/a.txt",
+      "index 111..222 100644",
+      "--- a/a.txt",
+      "+++ b/a.txt",
+      "@@ -1,2 +1,2 @@",
+      " first",
+      "-old",
+      "+new",
+      "", // ← git diff stdout의 마지막 개행이 만든 빈 요소
+    ].join("\n");
+    const lines = parseHunk(trailing);
+    const last = lines[lines.length - 1];
+    // 마지막 실제 라인은 +new — 빈 ctx 행이 뒤에 붙지 않는다
+    expect(last?.kind).toBe("add");
+    expect(last?.newLine).toBe(2);
+    // hunk 내부의 진짜 빈 컨텍스트 라인(" ")은 별개로 보존된다
+    const inner = parseHunk("@@ -1,3 +1,3 @@\n a\n \n b\n");
+    expect(inner.filter((l) => l.kind === "ctx")).toHaveLength(3);
+  });
 });

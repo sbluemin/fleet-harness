@@ -19,6 +19,8 @@ export function parseHunk(content: string): ParsedLine[] {
   if (!content) return [];
 
   const rawLines = content.split("\n");
+  // git diff 출력은 개행으로 끝나므로 split이 만든 마지막 빈 요소는 실제 라인이 아니다 — 거터 번호를 소모하기 전에 제거
+  if (rawLines[rawLines.length - 1] === "") rawLines.pop();
   const result: ParsedLine[] = [];
 
   // 첫 번째 @@ 이전까지 파일 레벨 헤더(diff --git, index, ---, +++ 등) 드롭
