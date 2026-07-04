@@ -5,6 +5,34 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-07-04
+
+### Added
+- [core-unified-agent] OpenCode Go model selection now includes GLM-5.2 and Kimi K2.7 Code.
+
+### Changed
+- [fleet-carriers] Carriers now wrap their final output in a `<report>` block; `carrier_jobs(format:"full")` extracts and returns only that block, falling back to the full archive when absent, and a new `format:"raw"` option returns the unprocessed archive for debugging.
+- [fleet-carriers] Removed redundant echo fields (`action`, `format`, `summary_available`) from `carrier_jobs` responses, and removed derived fields (`attribution`, `available`, `statLine`) from the workspace-changes DTO to reduce response payload size.
+- [fleet-console] Carrier streaming in the Agent panel is now a resident collapsible stream dock pinned to the panel bottom: live output, elapsed time, and a token estimate are always visible without clicking; the dock collapses to a single-line tail and its state persists per browser. Clicking "Details" in the dock header opens the existing full-stream overlay for complete track history. For single-carrier jobs, the dock border and background are tinted with the CLI signature color (claude, codex, opencode-go, cursor, or taskforce), the carrier name is colored by the captain token, and the dispatch request label is shown below the dock header.
+- [fleet-admiral][fleet-cli] Codex launches now use a fixed Fleet-managed profile with hooks enabled instead of session-scoped profiles or hook trust bypassing.
+- [core-unified-agent] Cursor Agent model selection now includes Kimi K2.7 Code and GLM 5.2 while removing older Sonnet and Opus 4.7 options.
+- [fleet-console] Selecting a file in the Diff panel now extends the panel into a two-pane bridge with an inline diff document view, replacing the draggable split divider.
+- [fleet-console] Diff panel file rows now lead with the file name, and the repository picker opens as an opaque in-panel deck with inline worktree rows.
+- [fleet-console] Diff panel repository dropdown now groups linked worktrees under their parent repository with a collapsible disclosure, instead of listing them as independent entries.
+- [fleet-admiral] The Artifact Inspection Gate now requires evidence before an Admiral classifies a carrier-diff deviation as harmless: a deviation is treated as a defect unless it is confirmed to change no observable behavior, contract, or output and to be unreachable by any real execution path.
+- [fleet-console] Repeated alerts from the same Operation panel now replace the previous alert instead of accumulating a count; ALERTS badges and Theater group tallies show the number of panels with an active alert, and the per-row repeat-count badge is removed.
+- [fleet-console] Skills panel shows update and install progress in a collapsible status dock docked to the bottom of the panel, keeping the skill list unobstructed; the dock auto-dismisses on success and keeps a Retry action on failure.
+- [fleet-console] Compacted the Agent panel carrier stream dock into a single-row signal strip (live pulse, carrier name, latest output line, elapsed time, and token estimate in one line) that expands to one compact row per track; the duplicated carrier name, redundant live badges, and the large fixed dead space below the stream are removed, and multi-carrier tracks now show captain-colored names.
+
+### Fixed
+- [fleet-admiral][fleet-cli] Fleet Codex profile rewrites now preserve persisted hook trust state for unchanged hooks.
+- [fleet-console] Restored the drag-to-resize divider between the diff document pane and the changed-files list in the Diff panel.
+- [fleet-console] Session rename panel names now stick: user-set names are never overwritten by auto-name, auto-name fires on every subsequent prompt (not just the first), and renames are reflected in the browser in real-time via a new SSE channel without requiring a page refresh.
+
+### Removed
+- [core-unified-agent][fleet-infra][fleet-admiral][fleet-cli][fleet-console] Removed Claude Kimi, Claude GLM, and Claude ZAI alias providers from active catalogs, launch profiles, authentication flows, Console model sign-in, and documentation while preserving OpenCode Go support.
+- [fleet-carriers] [fleet-admiral] [fleet-cli] [fleet-console] Remove Native Subagent mode; carriers always run in CLI dispatch mode while carrier_dispatch and Task Force remain unchanged.
+
 ## [1.17.1] - 2026-07-03
 
 ### Fixed
