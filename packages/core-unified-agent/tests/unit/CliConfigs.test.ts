@@ -46,11 +46,11 @@ describe('CliConfigs', () => {
     it('Cursor 모델은 acp subcommand 앞의 global --model 인자로 전달한다', () => {
       const config = createSpawnConfig('cursor', {
         cwd: '/tmp/workspace',
-        model: 'claude-4.6-sonnet-medium-thinking',
+        model: 'kimi-k2.7-code',
       });
 
       expect(config.command).toBe('cursor-agent');
-      expect(config.args).toEqual(['--model', 'claude-4.6-sonnet-medium-thinking', 'acp']);
+      expect(config.args).toEqual(['--model', 'kimi-k2.7-code', 'acp']);
       expect(config.useNpx).toBe(false);
     });
 
@@ -65,15 +65,15 @@ describe('CliConfigs', () => {
       expect(config.useNpx).toBe(false);
     });
 
-    it('Cursor Opus thinking 모델은 effort를 반영한 CLI 모델 ID로 spawn한다', () => {
+    it('Cursor GLM 5.2 모델은 effort를 반영한 CLI 모델 ID로 spawn한다', () => {
       const config = createSpawnConfig('cursor', {
         cwd: '/tmp/workspace',
-        model: 'claude-opus-4-7-thinking',
+        model: 'glm-5.2',
         effort: 'high',
       });
 
       expect(config.command).toBe('cursor-agent');
-      expect(config.args).toEqual(['--model', 'claude-opus-4-7-thinking-high', 'acp']);
+      expect(config.args).toEqual(['--model', 'glm-5.2-high', 'acp']);
       expect(config.useNpx).toBe(false);
     });
 

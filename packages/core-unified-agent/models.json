@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-16T00:00:00Z",
+  "updatedAt": "2026-07-04T00:00:00Z",
   "providers": {
     "claude": {
       "name": "Claude Code with Anthropic",
@@ -47,9 +47,9 @@
         { "modelId": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "effort": { "supported": false } },
         { "modelId": "gemini-3-flash", "name": "Gemini 3 Flash", "effort": { "supported": false } },
         { "modelId": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "effort": { "supported": false } },
-        { "modelId": "claude-opus-4-7-thinking", "name": "Claude Opus 4.7 Thinking", "spawnModelTemplate": "claude-opus-4-7-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-opus-4-8-thinking", "name": "Claude Opus 4.8 Thinking", "spawnModelTemplate": "claude-opus-4-8-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-4.6-sonnet-medium-thinking", "name": "Claude Sonnet 4.6 Medium Thinking", "effort": { "supported": false } }
+        { "modelId": "kimi-k2.7-code", "name": "Kimi K2.7 Code", "effort": { "supported": false } },
+        { "modelId": "glm-5.2", "name": "GLM 5.2", "spawnModelTemplate": "glm-5.2-{effort}", "effort": { "supported": true, "levels": ["high", "max"], "default": "max" } },
+        { "modelId": "claude-opus-4-8-thinking", "name": "Claude Opus 4.8 Thinking", "spawnModelTemplate": "claude-opus-4-8-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } }
       ]
     }
   }

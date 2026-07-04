@@ -21,8 +21,8 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
-      effort: 'medium',
+      model: 'glm-5.2',
+      effort: 'max',
       sessionId: 'old-session',
       systemPrompt: '시스템 지침',
       env: { CURSOR_TEST_ENV: '1' },
@@ -68,7 +68,7 @@ describe('UnifiedCursorAgentClient', () => {
     expect(capturedOptions[0]?.mcpServers).toEqual(internals.currentConnectOptions.mcpServers);
   });
 
-  it('setModel은 새 thinking 모델에 유효한 기존 effort를 보존한다', async () => {
+  it('setModel은 새 effort 모델에 유효한 기존 effort를 보존한다', async () => {
     const client = new UnifiedCursorAgentClient();
     const internals = client as unknown as CursorClientInternals;
     const capturedOptions: UnifiedClientOptions[] = [];
@@ -91,17 +91,17 @@ describe('UnifiedCursorAgentClient', () => {
       };
     };
 
-    await client.setModel('claude-opus-4-7-thinking');
+    await client.setModel('glm-5.2');
 
     expect(capturedOptions[0]).toMatchObject({
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
+      model: 'glm-5.2',
       effort: 'high',
     });
   });
 
-  it('setModel은 새 thinking 모델에서 부적합한 기존 effort를 기본값으로 보정한다', async () => {
+  it('setModel은 새 effort 모델에서 부적합한 기존 effort를 기본값으로 보정한다', async () => {
     const client = new UnifiedCursorAgentClient();
     const internals = client as unknown as CursorClientInternals;
     const capturedOptions: UnifiedClientOptions[] = [];
@@ -124,11 +124,11 @@ describe('UnifiedCursorAgentClient', () => {
       };
     };
 
-    await client.setModel('claude-opus-4-7-thinking');
+    await client.setModel('glm-5.2');
 
     expect(capturedOptions[0]).toMatchObject({
-      model: 'claude-opus-4-7-thinking',
-      effort: 'xhigh',
+      model: 'glm-5.2',
+      effort: 'max',
     });
   });
 
@@ -142,7 +142,7 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-4.6-sonnet-medium-thinking',
+      model: 'kimi-k2.7-code',
     };
 
     client.connect = async (options: UnifiedClientOptions): Promise<ConnectResult> => {
@@ -200,8 +200,8 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
-      effort: 'medium',
+      model: 'glm-5.2',
+      effort: 'max',
       sessionId: 'old-session',
       systemPrompt: '시스템 지침',
       env: { CURSOR_TEST_ENV: '1' },
@@ -223,7 +223,7 @@ describe('UnifiedCursorAgentClient', () => {
     expect(capturedOptions[0]).toMatchObject({
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
+      model: 'glm-5.2',
       effort: 'high',
       systemPrompt: '시스템 지침',
       env: { CURSOR_TEST_ENV: '1' },
@@ -242,7 +242,7 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
+      model: 'glm-5.2',
       effort: 'high',
     };
 
@@ -297,8 +297,8 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
-      effort: 'medium',
+      model: 'glm-5.2',
+      effort: 'high',
     };
 
     client.connect = async (options: UnifiedClientOptions): Promise<ConnectResult> => {
@@ -312,9 +312,9 @@ describe('UnifiedCursorAgentClient', () => {
       };
     };
 
-    await client.setConfigOption('reasoning_effort', 'xhigh');
+    await client.setConfigOption('reasoning_effort', 'max');
 
-    expect(capturedEfforts).toEqual(['xhigh']);
+    expect(capturedEfforts).toEqual(['max']);
   });
 
   it('setModel reconnect 실패 시 이전 연결 옵션으로 복구를 시도한다', async () => {
@@ -327,7 +327,7 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'claude-opus-4-7-thinking',
+      model: 'glm-5.2',
       effort: 'high',
     };
 
@@ -350,7 +350,7 @@ describe('UnifiedCursorAgentClient', () => {
     expect(capturedOptions).toHaveLength(2);
     expect(capturedOptions[0]).toMatchObject({ model: 'gemini-3-flash' });
     expect(capturedOptions[1]).toMatchObject({
-      model: 'claude-opus-4-7-thinking',
+      model: 'glm-5.2',
       effort: 'high',
     });
   });

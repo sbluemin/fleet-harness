@@ -41,16 +41,16 @@ describe('ModelRegistry', () => {
       'gemini-3.1-pro',
       'gemini-3-flash',
       'gemini-3.5-flash',
-      'claude-opus-4-7-thinking',
+      'kimi-k2.7-code',
+      'glm-5.2',
       'claude-opus-4-8-thinking',
-      'claude-4.6-sonnet-medium-thinking',
     ]);
   });
 
-  it('Cursor Opus thinking 모델은 effort로 실제 cursor-agent CLI 모델 ID를 조립한다', () => {
-    expect(resolveCursorSpawnModel('claude-opus-4-7-thinking')).toBe('claude-opus-4-7-thinking-xhigh');
-    expect(resolveCursorSpawnModel('claude-opus-4-7-thinking', 'high')).toBe('claude-opus-4-7-thinking-high');
-    expect(resolveCursorSpawnModel('claude-opus-4-7-thinking', 'invalid')).toBe('claude-opus-4-7-thinking-xhigh');
+  it('Cursor GLM 5.2 모델은 effort로 실제 cursor-agent CLI 모델 ID를 조립한다', () => {
+    expect(resolveCursorSpawnModel('glm-5.2')).toBe('glm-5.2-max');
+    expect(resolveCursorSpawnModel('glm-5.2', 'high')).toBe('glm-5.2-high');
+    expect(resolveCursorSpawnModel('glm-5.2', 'invalid')).toBe('glm-5.2-max');
   });
 
   it('effort 지원 spawnModelTemplate은 {effort} 플레이스홀더를 포함해야 한다', () => {
@@ -65,7 +65,7 @@ describe('ModelRegistry', () => {
             {
               modelId: 'bad-template',
               name: 'Bad Template',
-              spawnModelTemplate: 'claude-opus-4-7-thinking',
+              spawnModelTemplate: 'glm-5.2',
               effort: { supported: true, levels: ['low', 'high'], default: 'high' },
             },
           ],
