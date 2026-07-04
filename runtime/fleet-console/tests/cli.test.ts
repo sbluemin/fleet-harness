@@ -47,12 +47,12 @@ describe("fleet console CLI", () => {
   });
 
   it("parses hook capture-session commands", () => {
-    expect(parseConsoleHookCommand(["subagents-context"])).toEqual({ command: "subagents-context" });
     expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
     expect(parseConsoleHookCommand(["capture-session", "codex"])).toEqual({ command: "capture-session", provider: "codex" });
     expect(parseConsoleHookCommand(["attention"])).toEqual({ command: "attention" });
     expect(() => parseConsoleHookCommand(["attention", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(() => parseConsoleHookCommand(["capture-session"])).toThrow("Unknown fleet-console hook command");
+    expect(() => parseConsoleHookCommand(["subagents-context"])).toThrow("Unknown fleet-console hook command");
   });
 
   it("records capture-session hook stdin to the fleet session capture path atomically", () => {

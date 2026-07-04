@@ -7,10 +7,9 @@
 - Default carrier persona metadata under `src/personas/`
 - Carrier runtime constants under `src/constants.ts`
 - Carrier runtime construction through `createCarrierRuntime(deps)`
-- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, native-subagent-mode single-dispatch guard, request-block validation, status overlay, sortie helpers, and carrier job stream event types plus the Set-based stream handler registry (`dispatch/types.ts` + `dispatch/framework.ts`)
+- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, sortie helpers, and carrier job stream event types plus the Set-based stream handler registry (`dispatch/types.ts` + `dispatch/framework.ts`)
 - `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
-- `subagents/` — Claude native subagent definition conversion derived from carrier metadata
-- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/fleet-infra/fs-store`'s `withDirectoryLock`; persona `defaultAgentMode` defaults to `"subagent"` for all built-in carriers, and the store treats `"cli"` as the system-wide fallback when absent
+- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/fleet-infra/fs-store`'s `withDirectoryLock`; legacy `agentMode` values are ignored and carriers run through CLI dispatch mode.
 - Explicit default carrier registration via `registerDefaultCarriers()`
 - Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior
 

@@ -1,31 +1,14 @@
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 import { runApp } from "./app.js";
-import { buildFleetHelpText, parseFleetCliOptions, parseFleetHookCommand } from "./cli-args.js";
-import { runSubagentsContextHook } from "./hooks/subagents-context.js";
+import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
 import { runNativeApp } from "./native-app.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
 const require = createRequire(import.meta.url);
-const FLEET_ENTRY_PATH = fileURLToPath(import.meta.url);
-const PLUGIN_TSX_LOADER_PATH = resolveOptionalPackage("tsx");
-const PLUGIN_ENTRY = {
-  entryPath: FLEET_ENTRY_PATH,
-  execPath: process.execPath,
-  ...(PLUGIN_TSX_LOADER_PATH ? { tsxLoaderPath: PLUGIN_TSX_LOADER_PATH } : {}),
-};
 const argv = process.argv.slice(2);
-
-if (argv[0] === "hook") {
-  const hookCommand = parseFleetHookCommandOrExit(argv.slice(1));
-  if (hookCommand === "subagents-context") {
-    process.stdout.write(`${runSubagentsContextHook(process.env)}\n`);
-    process.exit(0);
-  }
-}
 
 if (argv[0] === "console") {
   process.exit(await relayToPackageCli("@dotobokuri/fleet-console/cli", argv.slice(1)));
@@ -56,7 +39,6 @@ const runFleetApp = options.nativeTerminal ? runNativeApp : runApp;
 runFleetApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
-  pluginEntry: PLUGIN_ENTRY,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`${message}\n`);
@@ -70,24 +52,6 @@ function parseFleetCliOptionsOrExit(argv: readonly string[]): ReturnType<typeof 
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
     process.exit(1);
-  }
-}
-
-function parseFleetHookCommandOrExit(argv: readonly string[]): ReturnType<typeof parseFleetHookCommand> {
-  try {
-    return parseFleetHookCommand(argv);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exit(1);
-  }
-}
-
-function resolveOptionalPackage(id: string): string | undefined {
-  try {
-    return require.resolve(id);
-  } catch {
-    return undefined;
   }
 }
 

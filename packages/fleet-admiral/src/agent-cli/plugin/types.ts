@@ -1,5 +1,3 @@
-import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
-
 import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "../types.js";
 export type { CodexCommandResult, CodexPluginRegistrationCommand } from "../types.js";
 
@@ -12,13 +10,11 @@ export interface CodexCommandRunner {
 }
 
 export interface CreateAgentCliPluginOptions {
-  readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
   readonly captureSessionHookExec?: FleetHookExec;
   readonly cliId: string;
   readonly codexCommandRunner?: CodexCommandRunner;
   readonly cwd: string;
   readonly dataDir: string;
-  readonly hookExec?: FleetHookExec;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
@@ -57,7 +53,6 @@ export interface PluginBundleBase {
 }
 
 export interface AssetPluginBundle extends PluginBundleBase {
-  readonly includeClaudeAgents: boolean;
   readonly source: "asset";
 }
 

@@ -16,7 +16,7 @@ import {
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir, type GlobalOptionsService } from "@dotobokuri/fleet-infra";
 
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 
 export interface TerminalLaunchResolverDeps {
@@ -146,7 +146,6 @@ async function createAgentCliLaunchSpec(options: {
     const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
-      carrierRuntime: agentRuntime.carrierRuntime,
       codexCommandRunner: runCodexCommand,
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
@@ -156,7 +155,6 @@ async function createAgentCliLaunchSpec(options: {
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
-      hookExec: buildConsoleHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       replaceSystemPrompt: globalSettings.replaceSystemPrompt,
       resumeSessionId: options.resumeSessionId,

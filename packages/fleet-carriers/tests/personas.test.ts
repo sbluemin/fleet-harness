@@ -53,17 +53,6 @@ const EXPECTED_DEFAULTS = {
   ohio: { slot: 4, defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
-const EXPECTED_CLAUDE_SUBAGENT_DEFAULTS = {
-  genesis: { defaultModel: "sonnet", defaultEffort: "medium" },
-  kirov: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
-  nimitz: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
-  sentinel: { defaultModel: "sonnet", defaultEffort: "xhigh" },
-  vanguard: { defaultModel: "haiku", defaultEffort: "low" },
-  tempest: { defaultModel: "sonnet", defaultEffort: "medium" },
-  chronicle: { defaultModel: "sonnet", defaultEffort: "low" },
-  ohio: { defaultModel: "sonnet", defaultEffort: "low" },
-} as const;
-
 const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
   "wiki_briefing",
   "wiki_drydock",
@@ -153,12 +142,9 @@ describe("persona defaults", () => {
       expect(persona.defaults.slot).toBe(EXPECTED_DEFAULTS[id].slot);
       expect(persona.defaults.agent.dispatch).toEqual({
         defaultCliType: "claude",
-        defaultAgentMode: "subagent",
         defaultModel: EXPECTED_DEFAULTS[id].defaultModel,
         defaultEffort: EXPECTED_DEFAULTS[id].defaultEffort,
       });
-      expect(persona.defaults.agent.nativeSubagents?.byHost?.claude).toEqual(EXPECTED_CLAUDE_SUBAGENT_DEFAULTS[id]);
-      expect(Object.keys(persona.defaults.agent.nativeSubagents?.byHost ?? {})).not.toContain("codex");
     }
   });
 
@@ -191,20 +177,7 @@ describe("explicit default registration", () => {
         expected?.meta.title,
       );
       expect(config?.defaultCliType).toBe(expected?.defaults.agent.dispatch.defaultCliType);
-      expect(config?.defaultAgentMode).toBe("subagent");
-      expect(config?.subagent?.defaultModel).toBe(expected?.defaults.agent.nativeSubagents?.byHost?.claude?.defaultModel);
-      expect(config?.subagent?.defaultEffort).toBe(expected?.defaults.agent.nativeSubagents?.byHost?.claude?.defaultEffort);
     }
   });
 
-  it("모든 기본 carrier가 Claude native subagent 기본값만 가진다", () => {
-    registerDefaultCarriers(registry);
-
-    for (const id of EXPECTED_IDS) {
-      const config = getRegisteredCarrierConfig(registry, id);
-
-      expect(config?.subagent?.byHost?.claude).toEqual(EXPECTED_CLAUDE_SUBAGENT_DEFAULTS[id]);
-      expect(Object.keys(config?.subagent?.byHost ?? {})).not.toContain("codex");
-    }
-  });
 });

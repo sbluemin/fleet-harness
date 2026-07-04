@@ -49,23 +49,13 @@ export function registerDefaultCarriers(registry: CarrierRegistry): void {
 
 function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): CarrierConfig {
   const { defaults, metadata } = registration;
-  const claudeSubagentDefaults = defaults.agent.nativeSubagents?.byHost?.claude;
   return {
     id: defaults.id,
     defaultCliType: defaults.agent.dispatch.defaultCliType,
-    defaultAgentMode: defaults.agent.dispatch.defaultAgentMode,
     defaultEffort: defaults.agent.dispatch.defaultEffort,
     defaultModel: defaults.agent.dispatch.defaultModel,
     slot: defaults.slot,
     displayName: defaults.displayName,
     carrierMetadata: metadata,
-    subagent: {
-      provider: "claude",
-      defaultModel: claudeSubagentDefaults?.defaultModel,
-      defaultEffort: claudeSubagentDefaults?.defaultEffort,
-      byHost: {
-        claude: claudeSubagentDefaults,
-      },
-    },
   };
 }

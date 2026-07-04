@@ -1,5 +1,4 @@
 import type { CliType } from "@dotobokuri/core-unified-agent";
-import type { CarrierAgentMode } from "@dotobokuri/fleet-carriers";
 
 export interface CarrierSettingsModelOption {
   readonly modelId: string;
@@ -13,7 +12,6 @@ export interface CarrierSettingsModelOption {
 export interface CarrierSettingsCliOption {
   readonly id: CliType;
   readonly displayName: string;
-  readonly supportsSubagent: boolean;
   readonly models: readonly CarrierSettingsModelOption[];
   readonly defaultModel: string;
 }
@@ -43,8 +41,6 @@ export interface CarrierSettingsCarrier {
   readonly defaultCliType: CliType;
   readonly model: string;
   readonly effort?: string;
-  readonly agentMode: CarrierAgentMode;
-  readonly subagentMode: boolean;
   readonly taskForceBackendCount: number;
   readonly taskforce: {
     readonly backends: readonly CarrierSettingsTaskForceBackend[];

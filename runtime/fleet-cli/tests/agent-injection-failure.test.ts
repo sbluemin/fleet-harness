@@ -5,7 +5,6 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { injectAgentCliProfile, type AgentCliProfile } from "@dotobokuri/fleet-admiral";
-import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 const TEST_PROFILE: AgentCliProfile = {
   args: [],
@@ -27,7 +26,6 @@ describe("agent CLI injection failure cleanup", () => {
     try {
       await expect(injectAgentCliProfile({ ...TEST_PROFILE, env: { CODEX_HOME: codexHome } }, {
         buildSystemPrompt: () => "prompt",
-        carrierRuntime: createCarrierRuntime(),
         codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
         dataDir: codexHome,
         dedicatedMcpSession: {

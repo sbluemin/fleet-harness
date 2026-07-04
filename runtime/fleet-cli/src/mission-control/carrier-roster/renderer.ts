@@ -8,7 +8,6 @@ import {
 import {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
-  SUBAGENT_PRESENTATION_ANSI,
   TASKFORCE_BADGE_COLOR,
 } from "../../styles/carriers.js";
 import { maxVisibleWidth, padEndVisible } from "../layout.js";
@@ -56,7 +55,6 @@ const CARRIER_ACTION_LABELS = [
   "Agent CLI",
   "Model",
   "Configure TaskForce",
-  "Configure SubAgent",
   "Rename Carrier",
   "Toggle Details",
 ] as const;
@@ -416,7 +414,6 @@ function isWarningFeedback(message: string): boolean {
 }
 
 function getEntryColor(entry: CarrierStatusEntry): string {
-  if (entry.subagentMode) return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
   if (entry.taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
   return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
 }
@@ -435,10 +432,6 @@ function getCliEntryColor(cliType: CarrierCliType): string {
 
 function getCliDisplayName(cliType: string): string {
   return CLI_DISPLAY_NAMES[cliType] ?? cliType;
-}
-
-function getSubagentSignatureColor(): string {
-  return SUBAGENT_PRESENTATION_ANSI;
 }
 
 function getFooterHint(model: CarrierStatusRenderModel): string {
@@ -480,14 +473,10 @@ function renderEntryLine(
   const effortSupported = deps.getModelEffortLevels(entry.cliType, entry.model).length > 0;
   const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
   const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
-  const taskForceTag = !entry.subagentMode && entry.taskForceBackendCount >= 2
+  const taskForceTag = entry.taskForceBackendCount >= 2
     ? `  ${TASKFORCE_BADGE_COLOR}[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  // subagentMode일 때 [SA] 뱃지만 표시 (pending '*' 마커 제거)
-  const subagentTag = entry.subagentMode
-    ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}`
-    : "";
-  return `${selectedPrefix} ${slotCell} ${coloredName}  ${modelStr}${effortStr}${roleStr}${subagentTag}${taskForceTag}`;
+  return `${selectedPrefix} ${slotCell} ${coloredName}  ${modelStr}${effortStr}${roleStr}${taskForceTag}`;
 }
 
 function renderRosterActionsRow(isSelected: boolean, deps: CarrierStatusRenderDeps): string {

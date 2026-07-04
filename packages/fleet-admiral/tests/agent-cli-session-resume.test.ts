@@ -4,7 +4,6 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as Admiral from "../src/index.js";
@@ -51,7 +50,6 @@ describe("agent CLI session resume and capture hooks", () => {
       env: { HOME: root },
     });
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      hookExec: hookExec("node", ["cli.js", "hook", "subagents-context"]),
       resumeSessionId: "claude-session-123",
     }));
 
@@ -131,30 +129,25 @@ describe("agent CLI session resume and capture hooks", () => {
     });
   });
 
-  it("renders Claude capture on UserPromptSubmit and subagents-context on SessionStart", async () => {
+  it("renders Claude capture on UserPromptSubmit", async () => {
     const root = createTempRoot("fleet-admiral-claude-hooks-");
     const dataDir = path.join(root, "data");
     const plugin = await createAgentCliPlugin({
       captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "claude"]),
-      claudeDefinitions: [],
       cliId: "claude",
       cwd: root,
       dataDir,
-      hookExec: hookExec("node", ["console.js", "hook", "subagents-context"]),
       withMarketplaceLock: async (_target, fn) => fn(),
     });
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks: {
-        readonly SessionStart: readonly { readonly hooks: readonly unknown[] }[];
+        readonly SessionStart?: readonly { readonly hooks: readonly unknown[] }[];
         readonly UserPromptSubmit: readonly { readonly hooks: readonly unknown[] }[];
       };
     };
     const codexPluginJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"), "utf8")) as CodexPluginManifest;
 
-    expect(hooksJson.hooks.SessionStart).toHaveLength(1);
-    expect(hooksJson.hooks.SessionStart[0]?.hooks).toEqual([
-      { args: ["console.js", "hook", "subagents-context"], command: "node", type: "command" },
-    ]);
+    expect(hooksJson.hooks.SessionStart).toBeUndefined();
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },
@@ -226,19 +219,16 @@ function baseInjectOptions(
   root: string,
   overrides: {
     readonly captureSessionHookExec?: FleetHookExec;
-    readonly hookExec?: FleetHookExec;
     readonly resumeSessionId?: string;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
     buildSystemPrompt: () => "Fleet doctrine",
-    carrierRuntime: createCarrierRuntime(),
     codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: createDedicatedMcpSession(),
     replaceSystemPrompt: true,
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
-    ...(overrides.hookExec ? { hookExec: overrides.hookExec } : {}),
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };

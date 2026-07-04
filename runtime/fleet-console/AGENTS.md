@@ -48,7 +48,7 @@
 
 - `runtime/fleet-console/core/host/**` may import `@dotobokuri/fleet-carriers` public root exports to consume Carrier Readiness read models and mutate global Carrier Settings through the carrier store.
 - `runtime/fleet-console/core/client/**` must not import `@dotobokuri/fleet-carriers`, carrier persona modules, deep carrier paths, or Node-only carrier runtime modules.
-- Fleet Console may render and edit display-safe carrier settings data such as carrier id, display name, role/category, resolved CLI/model/effort, Task Force backend count/configuration, and subagent mode/tag.
+- Fleet Console may render and edit display-safe carrier settings data such as carrier id, display name, role/category, resolved CLI/model/effort, and Task Force backend count/configuration.
 - `fleet-carriers` remains the source of truth for carrier persona defaults, carrier-store interpretation, store mutation, and carrier read-model construction. Console must not copy or reconstruct carrier persona policy or carrier runtime state.
 - Console must not deep-import `@dotobokuri/fleet-carriers/src/**`, `packages/fleet-carriers/src/**`, `runtime/fleet-cli/**`, or `@dotobokuri/fleet-cli`.
 - Carrier readiness/settings browser payloads must not serialize prompt bodies, raw persona instructions, executor tool allowlists, tokens, credential values, auth env details, terminal/session/admin tickets, or raw filesystem paths.

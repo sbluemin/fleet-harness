@@ -13,7 +13,6 @@ import {
 import type { IDisposable, IPty } from "node-pty";
 
 import {
-  buildFleetHookCommand,
   runCodexCommand,
   withFleetMarketplaceLock,
 } from "./agent-cli/host-hooks.js";
@@ -154,14 +153,10 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     injectProfile: (profile, launchOptions) =>
       injectAgentCliProfile(profile, {
         buildSystemPrompt,
-        carrierRuntime: runtime.carrierRuntime,
         codexCommandRunner: runCodexCommand,
         dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
-        hookExec: profile.id === "claude"
-          ? buildFleetHookCommand(options.pluginEntry)
-          : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
         replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
         withMarketplaceLock: withFleetMarketplaceLock,

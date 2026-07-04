@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { assetBundle, renderAssetPluginRoot, validateClaudeAgentFileStems } from "./fleet.js";
+import { assetBundle, renderAssetPluginRoot } from "./fleet.js";
 import { cleanupPrivateRoot, ensurePrivateDir, removePrivatePath, writePrivateJson } from "./fs.js";
 import type {
   AgentCliPlugin,
@@ -60,7 +60,6 @@ export async function createAgentCliPlugin(
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   const pluginRoots = new Map<PluginBundle, string>();
   const contentHashes = new Map<string, string>();
-  validateClaudeAgentFileStems(options.claudeDefinitions);
   for (const marketplace of marketplaceBundles) {
     await options.withMarketplaceLock(marketplace.target.root, () => {
       for (const { bundle, target } of marketplace.bundles) {

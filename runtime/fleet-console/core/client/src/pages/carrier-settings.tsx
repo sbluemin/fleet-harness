@@ -9,7 +9,7 @@ import {
   updateCarrierSettingsTaskForceDraft,
   useCarrierSettingsStore,
 } from "../carrier-settings-store.js";
-import type { CarrierSettingsAgentMode, CarrierSettingsCarrier, CarrierSettingsCliOption, CarrierSettingsModelOption } from "../types.js";
+import type { CarrierSettingsCarrier, CarrierSettingsCliOption, CarrierSettingsModelOption } from "../types.js";
 
 type CaptainColorStyle = CSSProperties & { "--cap-color": string };
 type SaveStatus = "idle" | "saving" | "saved";
@@ -19,7 +19,6 @@ interface CarrierSettingsDraftView {
   readonly model: string;
   readonly effort: string;
   readonly displayName: string;
-  readonly agentMode: CarrierSettingsAgentMode;
   readonly taskforce: Readonly<Record<string, { readonly model: string; readonly effort: string }>>;
 }
 
@@ -44,11 +43,6 @@ export function CarrierSettings() {
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [taskForceRows, setTaskForceRows] = useState<readonly string[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-  const taskForceDraftActive = taskForceRows.length > 0;
-  // raw draft.agentMode 기준. TF 백엔드가 함께 있는 불일치 상태에서도 subagent가 켜진 것으로
-  // 보고 끌 수 있어야 하므로 !taskForceDraftActive로 배제하지 않는다.
-  const subagentSelected = settings.draft.agentMode === "subagent";
-  const taskForceDisabled = settings.draft.agentMode === "subagent";
   const isSavingAll = settings.savingActionId === "save-all";
   const dirty = activeCarrier ? hasCarrierDraftChanges(activeCarrier, settings.draft, taskForceRows) : false;
   const taskForceConfigKey = activeCarrier?.taskforce.backends.map((backend) => `${backend.cliType}:${backend.model}:${backend.effort ?? ""}`).join("|") ?? "";
@@ -222,35 +216,12 @@ export function CarrierSettings() {
                 </div>
               </div>
 
-              <div className="carrier-settings-control-group">
-                <div className="carrier-settings-toggle-row">
-                  <div>
-                    <p className="carrier-settings-resp-title">SubAgent</p>
-                    <p className="carrier-settings-help">{taskForceDraftActive ? "Task Force draft is present. Remove every backend to enable SubAgent." : activeCli.supportsSubagent ? "Enabling SubAgent clears Task Force backends when saved." : "This CLI does not support SubAgent mode."}</p>
-                  </div>
-                  {/* 켜는 경로만 막는다. 이미 subagent로 켜진 캐리어는 비지원 CLI든 TF 백엔드가 함께
-                      있는 불일치 상태든 끌 수 있어야 한다(서버는 어느 CLI에서도 cli 전환을 허용). 끄기까지
-                      막으면 codex+subagent 또는 subagent+TF 같은 상태에서 양쪽 다 못 끄는 교착에 갇힌다.
-                      SA를 끄면 TF 패널 비활성이 풀려 TF 행을 정리할 수 있다. */}
-                  <button
-                    type="button"
-                    className={`carrier-settings-toggle ${subagentSelected ? "is-on" : ""}`}
-                    disabled={isSavingAll || (!subagentSelected && (!activeCli.supportsSubagent || taskForceDraftActive))}
-                    aria-pressed={subagentSelected}
-                    onClick={() => updateCarrierSettingsDraft({ agentMode: subagentSelected ? "cli" : "subagent" })}
-                  >
-                    <span>{subagentSelected ? "On" : "Off"}</span>
-                  </button>
-                </div>
-              </div>
-
               <TaskForcePanel
                 carrier={activeCarrier}
                 cliOptions={settings.options.cliTypes}
                 minBackends={settings.options.taskForceConstraints.minBackends}
                 savingActionId={settings.savingActionId}
                 rows={taskForceRows}
-                disabled={taskForceDisabled}
                 onRowsChange={setTaskForceRows}
               />
             </div>
@@ -275,7 +246,6 @@ function CarrierRow({ carrier, active, minBackends, onSelect }: { readonly carri
         <span className="carrier-settings-row-role">{carrier.role}</span>
       </span>
       <span className="carrier-settings-row-live" aria-hidden="true">
-        <span className={`carrier-settings-live-dot ${carrier.subagentMode ? "is-live" : ""}`} />
         <span className={`carrier-settings-live-dot ${tfReady ? "is-live" : ""}`} />
       </span>
     </button>
@@ -318,7 +288,6 @@ function TaskForcePanel({
   minBackends,
   savingActionId,
   rows,
-  disabled,
   onRowsChange,
 }: {
   readonly carrier: CarrierSettingsCarrier;
@@ -326,7 +295,6 @@ function TaskForcePanel({
   readonly minBackends: number;
   readonly savingActionId: string | null;
   readonly rows: readonly string[];
-  readonly disabled: boolean;
   readonly onRowsChange: (rows: readonly string[]) => void;
 }) {
   const settings = useCarrierSettingsStore();
@@ -339,14 +307,12 @@ function TaskForcePanel({
   const availableCliOptions = cliOptions.filter((cli) => !rows.includes(cli.id));
   const selectedAddCliType = addCliType || availableCliOptions[0]?.id || "";
   return (
-    <div className={`carrier-settings-control-group carrier-settings-control-group--taskforce ${expanded ? "is-expanded" : ""} ${disabled ? "is-disabled" : ""}`}>
+    <div className={`carrier-settings-control-group carrier-settings-control-group--taskforce ${expanded ? "is-expanded" : ""}`}>
       <div className="carrier-settings-section-head">
         <div>
           <p className="carrier-settings-resp-title">Task Force</p>
           <p className="carrier-settings-help">
-            {disabled
-              ? "Disabled while SubAgent is on. Turn SubAgent off before composing Task Force backends."
-              : configuredCount > 0
+            {configuredCount > 0
               ? `${configuredCount} backend${configuredCount === 1 ? "" : "s"} configured${active ? " · active" : ` · needs ${minBackends}+ to activate`}.`
               : `Run this carrier across multiple CLI backends. Needs at least ${minBackends} to activate.`}
           </p>
@@ -372,10 +338,10 @@ function TaskForcePanel({
                 <span className={`carrier-settings-live-dot ${active ? "is-live" : ""}`} aria-hidden="true" />
                 <strong>{cli.displayName}</strong>
               </div>
-              <ModelSelect id={`tf-${cli.id}-model`} label="Model" models={cli.models} value={draft.model} disabled={disabled} onChange={(modelId) => handleTaskForceModelDraftChange(cli, modelId)} />
-              <EffortSelect id={`tf-${cli.id}-effort`} model={model} value={draft.effort} disabled={disabled} onChange={(effort) => updateCarrierSettingsTaskForceDraft(cli.id, { effort })} />
+              <ModelSelect id={`tf-${cli.id}-model`} label="Model" models={cli.models} value={draft.model} onChange={(modelId) => handleTaskForceModelDraftChange(cli, modelId)} />
+              <EffortSelect id={`tf-${cli.id}-effort`} model={model} value={draft.effort} onChange={(effort) => updateCarrierSettingsTaskForceDraft(cli.id, { effort })} />
               <div className="carrier-settings-tf-actions">
-                <button type="button" className="carrier-settings-ghost-button" disabled={disabled || savingActionId === "save-all"} onClick={() => onRowsChange(rows.filter((item) => item !== cli.id))}>
+                <button type="button" className="carrier-settings-ghost-button" disabled={savingActionId === "save-all"} onClick={() => onRowsChange(rows.filter((item) => item !== cli.id))}>
                   Remove
                 </button>
               </div>
@@ -388,7 +354,7 @@ function TaskForcePanel({
               {availableCliOptions.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
             </select>
           ) : null}
-          <button type="button" className="carrier-settings-ghost-button" disabled={disabled || availableCliOptions.length === 0 || savingActionId === "save-all"} onClick={() => {
+          <button type="button" className="carrier-settings-ghost-button" disabled={availableCliOptions.length === 0 || savingActionId === "save-all"} onClick={() => {
             if (!addOpen) {
               setAddOpen(true);
               return;
@@ -414,13 +380,11 @@ function TaskForcePanel({
 function handleCliDraftChange(cliType: string, cliOptions: readonly CarrierSettingsCliOption[]): void {
   const cli = cliOptions.find((item) => item.id === cliType);
   const model = cli?.models.find((item) => item.modelId === cli.defaultModel) ?? cli?.models[0] ?? null;
-  const patch: { cliType: string; model: string; effort: string; agentMode?: CarrierSettingsAgentMode } = {
+  updateCarrierSettingsDraft({
     cliType,
     model: model?.modelId ?? "",
     effort: model?.effort?.default ?? "",
-  };
-  if (!cli?.supportsSubagent) patch.agentMode = "cli";
-  updateCarrierSettingsDraft(patch);
+  });
 }
 
 function handleModelDraftChange(cli: CarrierSettingsCliOption, modelId: string): void {
@@ -444,10 +408,6 @@ function hasCarrierDraftChanges(carrier: CarrierSettingsCarrier, draft: CarrierS
   if (draft.cliType !== carrier.cliType) return true;
   if (draft.model !== carrier.model) return true;
   if ((draft.effort || "") !== (carrier.effort || "")) return true;
-  if (draft.agentMode !== carrier.agentMode) return true;
-  // subagent인데 서버에 TF 백엔드가 남아 있으면(불일치 데이터) 정리 대상이므로 dirty로 본다.
-  // 그래야 Save가 활성화되어 saveCarrierAll의 stale TF 정리 경로가 실제로 실행된다.
-  if (draft.agentMode === "subagent") return carrier.taskForceBackendCount > 0;
   return hasTaskForceChanges(carrier, rows, draft.taskforce);
 }
 

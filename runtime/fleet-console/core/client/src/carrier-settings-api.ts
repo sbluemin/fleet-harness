@@ -1,6 +1,5 @@
 import { ApiError } from "./api.js";
 import type {
-  CarrierSettingsAgentMode,
   CarrierSettingsCarrier,
   CarrierSettingsCliOption,
   CarrierSettingsModelOption,
@@ -19,7 +18,6 @@ interface CarrierPatch {
   readonly cli?: string;
   readonly model?: ModelSelection;
   readonly displayName?: string;
-  readonly agentMode?: CarrierSettingsAgentMode;
 }
 
 const LEAKED_FIELD_NAMES = new Set([
@@ -126,8 +124,6 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     || typeof payload.defaultCliType !== "string"
     || typeof payload.model !== "string"
     || (payload.effort !== undefined && typeof payload.effort !== "string")
-    || (payload.agentMode !== "cli" && payload.agentMode !== "subagent")
-    || typeof payload.subagentMode !== "boolean"
     || typeof payload.taskForceBackendCount !== "number"
     || !payload.taskforce
     || !Array.isArray(payload.taskforce.backends)
@@ -146,8 +142,6 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     defaultCliType: payload.defaultCliType,
     model: payload.model,
     ...(payload.effort ? { effort: payload.effort } : {}),
-    agentMode: payload.agentMode,
-    subagentMode: payload.subagentMode,
     taskForceBackendCount: payload.taskForceBackendCount,
     taskforce: { backends: payload.taskforce.backends.map((backend) => assertTaskForceBackend(backend, status)) },
   };
@@ -159,7 +153,6 @@ function assertCliOption(value: unknown, status: number): CarrierSettingsCliOpti
     !payload
     || typeof payload.id !== "string"
     || typeof payload.displayName !== "string"
-    || typeof payload.supportsSubagent !== "boolean"
     || !Array.isArray(payload.models)
     || typeof payload.defaultModel !== "string"
   ) {
@@ -168,7 +161,6 @@ function assertCliOption(value: unknown, status: number): CarrierSettingsCliOpti
   return {
     id: payload.id,
     displayName: payload.displayName,
-    supportsSubagent: payload.supportsSubagent,
     models: payload.models.map((model) => assertModelOption(model, status)),
     defaultModel: payload.defaultModel,
   };

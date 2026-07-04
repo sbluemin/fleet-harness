@@ -54,7 +54,6 @@ function buildCarrierStatusEntriesFromSnapshot(registry: CarrierRegistry, snapsh
       role,
       roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
-      subagentMode: state?.agentMode === "subagent",
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
     });
   }
@@ -79,7 +78,6 @@ function buildCarrierDefaults(config: CarrierConfig): CarrierModelDefaults {
   const cliDefaults = buildCarrierModelDefaults(config, cliType);
   return {
     cliType,
-    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
     ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
     ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
   };

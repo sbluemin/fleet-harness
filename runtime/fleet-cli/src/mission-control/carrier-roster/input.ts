@@ -22,7 +22,6 @@ export interface CarrierStatusInputController {
   readonly startCliTypeEdit: () => void;
   readonly startModelEdit: () => void;
   readonly startRenameEdit: () => void;
-  readonly toggleSubagentMode: () => void;
   readonly toggleDetails: () => void;
 }
 

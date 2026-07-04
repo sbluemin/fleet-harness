@@ -10,7 +10,6 @@ import {
   initStore,
   registerCarrier,
   resetStoreForTests,
-  setCarrierAgentMode,
 } from "@dotobokuri/fleet-carriers";
 
 import { buildStatusEntries } from "../src/mission-control/carrier-roster/view-model.js";
@@ -59,20 +58,6 @@ describe("carrier status view model", () => {
 
     expect(entry?.role).toBe("Chief Engineer");
     expect(entry?.roleDescription).toBe("Chief Engineer - Full-stack implementation workhorse");
-  });
-
-  it("reads subagent mode independently of carrier cliType", () => {
-    const runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createCarrierConfig({
-      summary: "Runs with Codex by default",
-      title: "Operator",
-    }, "codex"));
-    setCarrierAgentMode("metadata_test", true);
-
-    const entry = buildStatusEntries(runtime)[0];
-
-    expect(entry?.cliType).toBe("codex");
-    expect(entry?.subagentMode).toBe(true);
   });
 
   it("heals codex-only carriers with provider defaults", () => {

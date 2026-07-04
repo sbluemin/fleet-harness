@@ -100,7 +100,6 @@ export function registerCarrier(
     existing.defaultModel = config.defaultModel;
     existing.defaultEffort = config.defaultEffort;
     existing.carrierMetadata = config.carrierMetadata;
-    existing.subagent = config.subagent;
   } else {
     gs.modes.set(config.id, { config });
   }
