@@ -192,8 +192,8 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(hooksJson.version).toBe(1);
     expect(hooksJson.hooks?.sessionStart?.map((hook) => hook.command)).toEqual([
       "'node' 'cli.mjs' 'hook' 'capture-session' 'cursor'",
-      "'node' 'cli.mjs' 'hook' 'subagents-context'",
     ]);
+    expect(JSON.stringify(hooksJson)).not.toContain("subagents-context");
     expect(hooksJson.hooks?.beforeSubmitPrompt?.map((hook) => hook.command)).toEqual([
       "'node' 'cli.mjs' 'hook' 'turn-start'",
       "'node' 'cli.mjs' 'hook' 'auto-name'",
