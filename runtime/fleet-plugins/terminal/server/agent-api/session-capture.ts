@@ -23,6 +23,8 @@ export type ProviderSession = AgentProviderSession;
 
 type HookInput = {
   readonly session_id?: unknown;
+  readonly conversation_id?: unknown;
+  readonly chat_id?: unknown;
   readonly transcript_path?: unknown;
   readonly cwd?: unknown;
   readonly source?: unknown;
@@ -89,7 +91,7 @@ function captureSessionStrict(options: CaptureSessionOptions): CaptureSessionRes
 }
 
 function parseProvider(value: string): ProviderSession["provider"] {
-  if (value === "claude" || value === "codex") return value;
+  if (isProvider(value)) return value;
   throw new Error("invalid_provider");
 }
 
@@ -117,10 +119,10 @@ function toProviderSession(
   input: HookInput,
   now: () => Date,
 ): ProviderSession {
-  if (typeof input.session_id !== "string" || input.session_id.length === 0) throw new Error("missing_provider_session_id");
+  const sessionId = readProviderSessionId(input);
   return {
     provider,
-    sessionId: input.session_id,
+    sessionId,
     ...(typeof input.transcript_path === "string" && input.transcript_path.length > 0 ? { transcriptPath: input.transcript_path } : {}),
     ...(typeof input.source === "string" && input.source.length > 0 ? { source: input.source } : {}),
     capturedAt: now().toISOString(),
@@ -130,7 +132,7 @@ function toProviderSession(
 function sanitizeProviderSession(value: unknown): ProviderSession | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as { readonly provider?: unknown; readonly sessionId?: unknown; readonly transcriptPath?: unknown; readonly source?: unknown; readonly capturedAt?: unknown };
-  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return null;
+  if (!isProvider(candidate.provider) || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return null;
   return {
     provider: candidate.provider,
     sessionId: candidate.sessionId,
@@ -138,6 +140,17 @@ function sanitizeProviderSession(value: unknown): ProviderSession | null {
     ...(typeof candidate.source === "string" && candidate.source.length > 0 ? { source: candidate.source } : {}),
     capturedAt: candidate.capturedAt,
   };
+}
+
+function readProviderSessionId(input: HookInput): string {
+  for (const value of [input.session_id, input.conversation_id, input.chat_id]) {
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  throw new Error("missing_provider_session_id");
+}
+
+function isProvider(value: unknown): value is ProviderSession["provider"] {
+  return value === "claude" || value === "codex" || value === "cursor";
 }
 
 function isSafeCaptureId(value: string): boolean {

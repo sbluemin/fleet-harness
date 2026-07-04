@@ -154,6 +154,56 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
   });
 
+  it("renders Cursor plugin rules, hooks, and MCP config", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-cursor-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    mkdirSync(cwd, { recursive: true });
+
+    const plugin = await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "cursor",
+      cwd,
+      dataDir,
+      doctrine: "Fleet doctrine",
+      hookExec: { command: "node", args: ["cli.mjs", "hook", "subagents-context"] },
+      captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "cursor"] },
+      turnStartHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-start"] },
+      turnEndHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-end"] },
+      autoNameHookExec: { command: "node", args: ["cli.mjs", "hook", "auto-name"] },
+      mcpServers: [{ name: "fleet", endpointUrl: "http://127.0.0.1:48123/mcp", bearerToken: "token-123" }],
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    const manifest = JSON.parse(readFileSync(path.join(plugin.pluginRoot, ".cursor-plugin", "plugin.json"), "utf8")) as { readonly name?: unknown };
+    const rule = readFileSync(path.join(plugin.pluginRoot, "rules", "fleet-doctrine.mdc"), "utf8");
+    const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+      readonly version?: unknown;
+      readonly hooks?: Record<string, ReadonlyArray<{ readonly command?: string }>>;
+    };
+    const mcpJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "mcp.json"), "utf8")) as {
+      readonly mcpServers?: Record<string, { readonly headers?: { readonly Authorization?: string } }>;
+    };
+
+    expect(manifest.name).toBe("fleet");
+    expect(rule).toContain("alwaysApply: true");
+    expect(rule).toContain("Fleet doctrine");
+    expect(hooksJson.version).toBe(1);
+    expect(hooksJson.hooks?.sessionStart?.map((hook) => hook.command)).toEqual([
+      "'node' 'cli.mjs' 'hook' 'capture-session' 'cursor'",
+      "'node' 'cli.mjs' 'hook' 'subagents-context'",
+    ]);
+    expect(hooksJson.hooks?.beforeSubmitPrompt?.map((hook) => hook.command)).toEqual([
+      "'node' 'cli.mjs' 'hook' 'turn-start'",
+      "'node' 'cli.mjs' 'hook' 'auto-name'",
+    ]);
+    expect(hooksJson.hooks?.stop?.map((hook) => hook.command)).toEqual([
+      "'node' 'cli.mjs' 'hook' 'turn-end'",
+    ]);
+    expect(mcpJson.mcpServers?.fleet?.headers?.Authorization).toBe("Bearer token-123");
+  });
+
   it("prunes stale plugin directories left by removed bundles", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-stale-"));
     tempDirs.push(root);

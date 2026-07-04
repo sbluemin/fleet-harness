@@ -1,9 +1,13 @@
 import path from "node:path";
 
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
+import { buildHostShellCommand } from "../builders/toml.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
+import type { AgentCliMcpServerArg } from "../types.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
+
+const CURSOR_DOCTRINE_RULE_FILE = "fleet-doctrine.mdc";
 
 export const assetBundle: AssetPluginBundle = {
   description: "Fleet carrier delegation and wiki evidence plugin",
@@ -22,6 +26,9 @@ export function renderAssetPluginRoot(
   renderEmbeddedSkillAssets(pluginRoot);
   if (options.cliId === "claude") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
+  }
+  if (options.cliId === "cursor") {
+    renderCursorPluginRoot(pluginRoot, options);
   }
 }
 
@@ -70,6 +77,70 @@ function claudeCommandHook(hookExec: FleetHookExec): unknown {
     args: [...hookExec.args],
     command: hookExec.command,
     type: "command",
+  };
+}
+
+function renderCursorPluginRoot(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
+  if (options.doctrine !== undefined) {
+    writePrivateFile(path.join(pluginRoot, "rules", CURSOR_DOCTRINE_RULE_FILE), cursorDoctrineRule(options.doctrine), pluginRoot);
+  }
+  if ((options.mcpServers ?? []).length > 0) {
+    writePrivateJson(path.join(pluginRoot, "mcp.json"), cursorMcpConfig(options.mcpServers ?? []), pluginRoot);
+  }
+  const hooks = cursorHooks(options);
+  if (hooks !== undefined) {
+    writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), hooks, pluginRoot);
+  }
+}
+
+function cursorDoctrineRule(doctrine: string): string {
+  return [
+    "---",
+    "alwaysApply: true",
+    "---",
+    "",
+    doctrine,
+    "",
+  ].join("\n");
+}
+
+function cursorMcpConfig(servers: readonly AgentCliMcpServerArg[]): unknown {
+  return {
+    mcpServers: Object.fromEntries(
+      servers.map((server) => [server.name, {
+        type: "http",
+        url: server.endpointUrl,
+        headers: {
+          Authorization: `Bearer ${server.bearerToken}`,
+        },
+      }]),
+    ),
+  };
+}
+
+function cursorHooks(options: CreateAgentCliPluginOptions): unknown | undefined {
+  // Cursor는 Claude native subagent 정의를 렌더하지 않으므로 SessionStart에는 세션 캡처만 건다.
+  const sessionStartExecs = [options.captureSessionHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  const beforeSubmitPromptExecs = [options.turnStartHookExec, options.autoNameHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  const stopExecs = [options.turnEndHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  if (sessionStartExecs.length === 0 && beforeSubmitPromptExecs.length === 0 && stopExecs.length === 0) return undefined;
+  return {
+    version: 1,
+    hooks: {
+      ...(sessionStartExecs.length > 0 ? { sessionStart: sessionStartExecs.map(cursorCommandHook) } : {}),
+      ...(beforeSubmitPromptExecs.length > 0 ? { beforeSubmitPrompt: beforeSubmitPromptExecs.map(cursorCommandHook) } : {}),
+      ...(stopExecs.length > 0 ? { stop: stopExecs.map(cursorCommandHook) } : {}),
+    },
+  };
+}
+
+function cursorCommandHook(hookExec: FleetHookExec): unknown {
+  return {
+    type: "command",
+    command: buildHostShellCommand([hookExec.command, ...hookExec.args]),
   };
 }
 

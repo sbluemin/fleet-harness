@@ -24,6 +24,7 @@ describe("agent CLI catalog", () => {
     expect(getAgentCliIds()).toEqual([
       "claude",
       "codex",
+      "cursor",
     ]);
   });
 
@@ -32,6 +33,9 @@ describe("agent CLI catalog", () => {
 
     await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "codex" })).resolves.toMatchObject({
       id: "codex",
+    });
+    await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "cursor" })).resolves.toMatchObject({
+      id: "cursor",
     });
     await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "codex" }, "/tmp")).resolves.toMatchObject({
       id: "codex",
@@ -72,6 +76,10 @@ describe("agent CLI catalog", () => {
 
     expect(profile.args).toContain("--model");
     expect(profile.args).toContain("gpt-5.2");
+
+    const cursor = await resolveAgentCliProfile(env, "/tmp", { cliId: "cursor", model: "gpt-5" });
+    expect(cursor.args).toContain("--model");
+    expect(cursor.args).toContain("gpt-5");
   });
 
   it("omits model args when no model is provided", async () => {
@@ -91,6 +99,10 @@ describe("agent CLI catalog", () => {
       builderId: "codex-native",
       enabled: true,
     });
+    expect(getAgentCliInjectionCapability("cursor")).toEqual({
+      builderId: "cursor-native",
+      enabled: true,
+    });
   });
 });
 
@@ -99,6 +111,7 @@ function createEnvWithBins(): NodeJS.ProcessEnv {
   tempRoots.push(tempRoot);
   fs.writeFileSync(path.join(tempRoot, "claude"), "");
   fs.writeFileSync(path.join(tempRoot, "codex"), "");
+  fs.writeFileSync(path.join(tempRoot, "cursor-agent"), "");
   return {
     PATH: tempRoot,
   };
