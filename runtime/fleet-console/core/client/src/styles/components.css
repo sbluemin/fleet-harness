@@ -4807,13 +4807,13 @@
   background: color-mix(in oklch, var(--carrier-taskforce) 6%, var(--surface-glass));
 }
 
-/* 헤더: 라이브 도트 · 캐리어명 · 경과 · 토큰 · 접기 그립 · 상세 버튼 */
-.job-dock-header {
+/* 스트립: 기본 상태 단일 행 계기판 — 펄스닷 · 캐리어명 · 최신 라인 · meta · 그립 · Details */
+.job-dock-strip {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  min-height: 30px;
 }
 
 /* aurora 라이브 펄스닷 */
@@ -4832,9 +4832,10 @@
   }
 }
 
+/* 캐리어명: 스트립 고정폭(flex: none), 캡틴색 적용 대상 — 긴 이름은 잘라 우측 컨트롤을 보호 */
 .job-dock-carrier {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  max-width: 12em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -4853,6 +4854,18 @@
 .job-dock-carrier[data-captain="vanguard"] { color: var(--captain-vanguard); }
 .job-dock-carrier[data-captain="tempest"] { color: var(--captain-tempest); }
 .job-dock-carrier[data-captain="chronicle"] { color: var(--captain-chronicle); }
+
+/* 스트립 최신 라인: 가변폭 ellipsis, 접힘 상태에서만 가시 */
+.job-dock-strip-line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-spectral);
+}
 
 .job-dock-meta {
   flex: none;
@@ -4905,29 +4918,6 @@
   background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
-/* 요청 라벨: 헤더 아래 1줄 ellipsis, 단일 잡에서만 렌더됨 */
-.job-dock-label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--ink-fog);
-  padding: 0 var(--space-3) var(--space-1);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* 테일: 접힘 상태의 최신 출력 1줄 */
-.job-dock-tail {
-  padding: 0 var(--space-3) var(--space-2);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-fog);
-}
-
 /* 바디 래퍼: follow-button 위치 기준(position: relative) */
 .job-dock-body-wrap {
   position: relative;
@@ -4938,42 +4928,54 @@
   display: none;
 }
 
-/* 바디: 스크롤 가능한 트랙 스택 */
+/* 바디: 스크롤 가능한 트랙 행 스택, 하단 고정 여백 제거 */
 .job-dock-body {
   overflow-y: auto;
-  max-height: 240px;
-  padding: var(--space-2) var(--space-3) var(--space-12);
+  max-height: 200px;
+  padding: var(--space-1) var(--space-3) var(--space-2);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
 }
 
-/* 트랙 행: 컴팩트 뷰 */
-.job-dock-track {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+/* follow 버튼 도크 스코프 오버라이드 — 바디 상하 여백에 맞게 위치 조정 */
+.job-dock-body-wrap .follow-button {
+  bottom: var(--space-2);
 }
 
-.job-dock-track-head {
+/* 트랙 행: 단일 flex 행 — [이름(조건부)] + 상태 + 최신 라인 */
+.job-dock-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: 22px;
+  overflow: hidden;
 }
 
-.job-dock-track-name {
-  flex: 1;
-  min-width: 0;
+/* 행 이름: 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략 — 긴 이름은 잘라 상태·라인을 보호 */
+.job-dock-row-name {
+  flex: none;
+  max-width: 12em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--font-display);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-spectral);
 }
 
-.job-dock-track-status {
+/* 캡틴 고유색 — 멀티잡 캐리어 식별용, 행 이름 텍스트 채널 */
+.job-dock-row-name[data-captain="nimitz"] { color: var(--captain-nimitz); }
+.job-dock-row-name[data-captain="kirov"] { color: var(--captain-kirov); }
+.job-dock-row-name[data-captain="genesis"] { color: var(--captain-genesis); }
+.job-dock-row-name[data-captain="ohio"] { color: var(--captain-ohio); }
+.job-dock-row-name[data-captain="sentinel"] { color: var(--captain-sentinel); }
+.job-dock-row-name[data-captain="vanguard"] { color: var(--captain-vanguard); }
+.job-dock-row-name[data-captain="tempest"] { color: var(--captain-tempest); }
+.job-dock-row-name[data-captain="chronicle"] { color: var(--captain-chronicle); }
+
+/* 행 상태: 9.5px mono uppercase, 라이브 시 aurora */
+.job-dock-row-status {
   flex: none;
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -4981,31 +4983,40 @@
   color: var(--ink-fog);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.job-dock-track-status--live {
+.job-dock-row-status--live {
   color: var(--aurora);
 }
 
-/* 사고: dim 단일 행 */
-.job-dock-track-thought {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-fog);
-  opacity: 0.65;
-}
-
-/* 출력: mono 단일 행 + aurora 캐럿 */
-.job-dock-track-text {
+/* 행 최신 라인: 가변폭 ellipsis + aurora 캐럿 */
+.job-dock-row-line {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-spectral);
+}
+
+/* thought 라인: 텍스트 없을 때 디밍 */
+.job-dock-row-line.is-thought {
+  opacity: 0.65;
+}
+
+/* 요청 라벨: 단일 잡 펼침 첫 행, 디밍 mono 10.5px */
+.job-dock-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-fog);
 }
 
 /* aurora 스트림 캐럿 */
@@ -5028,28 +5039,6 @@
   .job-dock-detail-btn {
     transition: none;
   }
-}
-
-/* 툴 칩 목록 */
-.job-dock-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.job-dock-tool-chip {
-  padding: 1px var(--space-2);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  color: var(--ink-fog);
-}
-
-/* running 툴 칩: aurora 테두리 */
-.job-dock-tool-chip--live {
-  border-color: color-mix(in oklch, var(--aurora) 45%, var(--surface-rim));
-  color: var(--aurora);
 }
 
 .follow-button {
