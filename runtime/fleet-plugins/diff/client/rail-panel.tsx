@@ -37,6 +37,9 @@ const PREFS_DEPTH = "fleet-console.diff.depth";
 const PREFS_REPO_PREFIX = "fleet-console.diff.repo.";
 
 const EXTENDED_EXTRA_WIDTH = 400;
+// 호스트가 뷰포트 클램프로 400 미만만 부여했을 때: 문서 페인부터 축소(min 140)하고 리스트 페인(min 220)을 보존한다
+const HUNK_PANE_MIN_WIDTH = 140;
+const LIST_PANE_MIN_WIDTH = 220;
 const DEFAULT_DEPTH = 3;
 
 const DEPTH_OPTS: readonly { readonly value: number; readonly label: string }[] = [
@@ -387,7 +390,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   return (
     <div
       className={`diff-root${selectedFile ? " has-hunk" : ""}`}
-      style={selectedFile ? { gridTemplateColumns: `${EXTENDED_EXTRA_WIDTH}px minmax(0, 1fr)` } : undefined}
+      style={selectedFile ? { gridTemplateColumns: `minmax(${HUNK_PANE_MIN_WIDTH}px, ${EXTENDED_EXTRA_WIDTH}px) minmax(${LIST_PANE_MIN_WIDTH}px, 1fr)` } : undefined}
     >
       {selectedFile && (
         <div className="diff-hunk-pane">
