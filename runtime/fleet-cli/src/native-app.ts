@@ -94,7 +94,6 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     defaults: {
       cliId: getDefaultAgentCliId(),
       enableMetaphor: false,
-      replaceSystemPrompt: false,
     },
     env: process.env,
     globalOptionsService: runtime.infraServices.globalOptionsService,
@@ -158,7 +157,6 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
-        replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
         withMarketplaceLock: withFleetMarketplaceLock,
       }),
     launchProfile,

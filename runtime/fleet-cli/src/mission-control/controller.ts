@@ -344,10 +344,6 @@ export function createMissionControlController(options: CreateMissionControlCont
         options.sessionOptions?.toggleEnableMetaphor();
         options.onRenderRequest();
       },
-      toggleReplaceSystemPrompt: () => {
-        options.sessionOptions?.toggleReplaceSystemPrompt();
-        options.onRenderRequest();
-      },
     });
     stack = createPanelStack({
       root,
@@ -497,7 +493,6 @@ function createMissionRootPanel(options: {
   readonly selectedCliId: () => AgentCliId;
   readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
   readonly toggleEnableMetaphor: () => void;
-  readonly toggleReplaceSystemPrompt: () => void;
 }): MenuPanel {
   return createSectionedListPanel({
     id: "mission-control:launcher-root",
@@ -538,13 +533,6 @@ function createMissionRootRows(options: Parameters<typeof createMissionRootPanel
       // Native 모드 제거로 선택값은 "Fleet Action" 하나뿐 — Mode 개념/행은 유지하되 토글은 no-op.
       value: "Fleet Action",
       toggle: () => {},
-    },
-    {
-      kind: "toggle",
-      id: "option:system-prompt",
-      label: "System prompt",
-      value: formatSystemPromptOption(options.sessionOptions),
-      toggle: options.toggleReplaceSystemPrompt,
     },
     {
       kind: "toggle",
@@ -661,14 +649,6 @@ function formatLauncherStatusLines(
     lines.push(MISSION_CONTROL_THEME.warning("Update Available"));
   }
   return lines;
-}
-
-function formatSystemPromptOption(sessionOptions: CreateMissionControlControllerOptions["sessionOptions"]): string {
-  const values = sessionOptions?.getResolved().values;
-  if (values === undefined) {
-    return "Unavailable";
-  }
-  return values.replaceSystemPrompt ? "Replace" : "Append";
 }
 
 function isFailedExit(event: PtyExitEvent): boolean {

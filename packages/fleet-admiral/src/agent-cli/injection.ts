@@ -22,7 +22,6 @@ export interface InjectAgentCliProfileOptions {
   readonly dataDir: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
-  readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
   readonly captureSessionHookExec?: FleetHookExec;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
@@ -163,7 +162,6 @@ export async function injectAgentCliProfile(
       pluginRoot: plugin.pluginRoot,
       pluginRoots: plugin.pluginRoots,
       codexProfileName: codexProfile?.profileName,
-      replaceSystemPrompt: options.replaceSystemPrompt ?? false,
       resumeSessionId: options.resumeSessionId,
       systemPromptFile,
     };

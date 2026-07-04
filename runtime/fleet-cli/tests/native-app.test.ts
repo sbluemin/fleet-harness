@@ -192,13 +192,11 @@ describe("native terminal app", () => {
         getDraft: () => ({
           cliId: "codex",
           enableMetaphor: false,
-          replaceSystemPrompt: true,
         }),
         getResolved: () => ({
           values: {
             cliId: "codex",
             enableMetaphor: false,
-            replaceSystemPrompt: true,
           },
         }),
       }),
@@ -363,13 +361,11 @@ describe("native terminal app", () => {
         getDraft: () => ({
           cliId: "codex",
           enableMetaphor: false,
-          replaceSystemPrompt: true,
         }),
         getResolved: () => ({
           values: {
             cliId: "codex",
             enableMetaphor: false,
-            replaceSystemPrompt: true,
           },
         }),
       }),

@@ -8,8 +8,8 @@
 - `GET /plugins/terminal/settings` returns the Terminal prompt settings DTO. Loopback host validation is enforced by the upstream console host gate before plugin route dispatch.
 - `PUT /plugins/terminal/settings` requires the terminal Origin authorization gate and updates only Terminal prompt settings.
 - The Terminal plugin owns one Settings section: `Agent CLI`.
-- The `Agent CLI` Settings section renders exactly four blocks in order: System Prompt / Metaphor, Agent CLI Available, Terminal Font, and Terminal Renderer.
-- `Agent CLI` owns `replaceSystemPrompt` and `enableMetaphor` UI controls for Terminal-launched agent sessions.
+- The `Agent CLI` Settings section renders exactly four blocks in order: System Prompt, Agent CLI Available, Terminal Font, and Terminal Renderer.
+- `Agent CLI` owns `enableMetaphor` UI controls for Terminal-launched agent sessions.
 - Prompt settings persist through `@dotobokuri/fleet-infra` global options in `~/.fleet/settings.json`. Do not move these settings into plugin storage.
 - Terminal Font and Terminal Renderer settings are Terminal plugin-owned end-to-end: state, persistence, UI, and consumption all live in the plugin. Core/client must not touch these values.
 - **Terminal Font** (name + size) is persisted on the console server under `plugins.terminal.font` via `ClientSettingsCapability` (`/api/v1/settings/plugins/terminal`). This survives browser changes and console restarts. **Terminal Renderer** remains in localStorage under `fleet-plugin.terminal.renderer` — do not move it to server storage.

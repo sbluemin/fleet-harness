@@ -156,7 +156,6 @@ async function createAgentCliLaunchSpec(options: {
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
-      replaceSystemPrompt: globalSettings.replaceSystemPrompt,
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
@@ -255,14 +254,11 @@ function resolveOptionalPackage(id: string): string | undefined {
 // 세션 launch 직전에 전역 옵션(~/.fleet/settings.json)을 1회 스냅샷한다. daemon 재시작 없이도
 // 신규 세션이 최신 토글 값을 반영하도록 부팅 캐시가 아닌 launch 시점에 읽는다. 로드 실패(락 타임아웃 등)는
 // 세션 launch를 막지 않고 기본값(append / 메타포 off)으로 폴백한다.
-function readGlobalSettingsSnapshot(infraServices: { readonly globalOptionsService: GlobalOptionsService }): { readonly enableMetaphor: boolean; readonly replaceSystemPrompt: boolean } {
+function readGlobalSettingsSnapshot(infraServices: { readonly globalOptionsService: GlobalOptionsService }): { readonly enableMetaphor: boolean } {
   try {
     const data = infraServices.globalOptionsService.load();
-    return {
-      enableMetaphor: data.enableMetaphor ?? false,
-      replaceSystemPrompt: data.replaceSystemPrompt ?? false,
-    };
+    return { enableMetaphor: data.enableMetaphor ?? false };
   } catch {
-    return { enableMetaphor: false, replaceSystemPrompt: false };
+    return { enableMetaphor: false };
   }
 }

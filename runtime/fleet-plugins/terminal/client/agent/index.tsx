@@ -496,15 +496,6 @@ function SystemPromptSettingsBlock() {
       {state ? (
         <>
           <SettingToggleRow
-            title="System Prompt Injection"
-            help="Append keeps the Agent CLI's built-in system prompt and layers Fleet doctrine on top. Replace swaps it entirely for Fleet doctrine. Affects Claude Code only; Codex always receives doctrine through its profile."
-            onLabel="Replace"
-            offLabel="Append"
-            value={state.replaceSystemPrompt}
-            disabled={saving}
-            onToggle={() => void setSystemPromptSettingsField("replaceSystemPrompt", !state.replaceSystemPrompt)}
-          />
-          <SettingToggleRow
             title="Metaphor"
             help="Enabled layers the naval tone overlay — clipped reporting cadence and Fleet vocabulary — onto every session. Off keeps the Admiral persona without the tone."
             onLabel="Enabled"

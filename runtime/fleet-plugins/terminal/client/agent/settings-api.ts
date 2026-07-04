@@ -1,5 +1,4 @@
 export interface SystemPromptSettingsState {
-  readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
 
@@ -46,13 +45,11 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   const payload = value as Partial<SystemPromptSettingsState>;
   if (
     !payload
-    || typeof payload.replaceSystemPrompt !== "boolean"
     || typeof payload.enableMetaphor !== "boolean"
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
-    replaceSystemPrompt: payload.replaceSystemPrompt,
     enableMetaphor: payload.enableMetaphor,
   };
 }

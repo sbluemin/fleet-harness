@@ -9,17 +9,14 @@ interface TerminalSettingsRouteDeps {
 }
 
 interface TerminalSettingsBody {
-  readonly replaceSystemPrompt?: unknown;
   readonly enableMetaphor?: unknown;
 }
 
 interface TerminalSettingsUpdate {
-  readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
 
 export interface TerminalSettingsState {
-  readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
 
@@ -46,7 +43,6 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
       }
       const updated = deps.globalOptionsService.update((current) => ({
         ...current,
-        replaceSystemPrompt: body.replaceSystemPrompt,
         enableMetaphor: body.enableMetaphor,
       }));
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(updated));
@@ -59,17 +55,16 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
 
 export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettingsState {
   return {
-    replaceSystemPrompt: data.replaceSystemPrompt ?? false,
     enableMetaphor: data.enableMetaphor ?? false,
   };
 }
 
 function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  // 계약: replaceSystemPrompt·enableMetaphor 두 키만 허용한다(추가 키는 거부).
-  if (Object.keys(value).length !== 2) return false;
+  // 계약: enableMetaphor 단일 키만 허용한다(추가 키는 거부).
+  if (Object.keys(value).length !== 1) return false;
   const body = value as TerminalSettingsBody;
-  return typeof body.replaceSystemPrompt === "boolean" && typeof body.enableMetaphor === "boolean";
+  return typeof body.enableMetaphor === "boolean";
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {

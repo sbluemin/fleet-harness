@@ -21,46 +21,46 @@ interface HarnessOptions {
 describe("terminal settings routes", () => {
   it("GET /plugins/terminal/settings returns only prompt booleans", async () => {
     const harness = createRouteHarness({
-      data: { version: 1, replaceSystemPrompt: true, enableMetaphor: false },
+      data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: true, enableMetaphor: false } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
-  it("PUT /plugins/terminal/settings updates both booleans in global options", async () => {
+  it("PUT /plugins/terminal/settings updates enableMetaphor in global options", async () => {
     const harness = createRouteHarness({
-      body: { replaceSystemPrompt: false, enableMetaphor: true },
-      data: { version: 1, replaceSystemPrompt: true, enableMetaphor: false },
+      body: { enableMetaphor: true },
+      data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: false, enableMetaphor: true } }]);
-    expect(harness.currentData()).toEqual({ version: 1, replaceSystemPrompt: false, enableMetaphor: true });
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: true } }]);
+    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: true });
   });
 
   it("PUT /plugins/terminal/settings rejects non-boolean payloads", async () => {
-    const harness = createRouteHarness({ body: { replaceSystemPrompt: true, enableMetaphor: "yes" } });
+    const harness = createRouteHarness({ body: { enableMetaphor: "yes" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings rejects payloads with unknown extra keys", async () => {
-    const harness = createRouteHarness({ body: { replaceSystemPrompt: true, enableMetaphor: true, consolePortMode: "static" } });
+    const harness = createRouteHarness({ body: { enableMetaphor: true, consolePortMode: "static" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings enforces terminal-origin authorization", async () => {
-    const harness = createRouteHarness({ terminalAuthorized: false, body: { replaceSystemPrompt: true, enableMetaphor: true } });
+    const harness = createRouteHarness({ terminalAuthorized: false, body: { enableMetaphor: true } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes).toEqual([{ status: 401, body: { error: "unauthorized" } }]);
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings rejects non-JSON content types", async () => {
-    const harness = createRouteHarness({ body: { replaceSystemPrompt: true, enableMetaphor: true } });
+    const harness = createRouteHarness({ body: { enableMetaphor: true } });
     await harness.handle({ req: req("PUT", "text/plain"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(415);
     expect(harness.updateCalls).toBe(0);

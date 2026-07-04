@@ -59,12 +59,10 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
 
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
-    ...(typeof value.replaceSystemPrompt === "boolean" ? { replaceSystemPrompt: value.replaceSystemPrompt } : {}),
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
   };
-  const allowedKeys = new Set(["version", "replaceSystemPrompt", "enableMetaphor"]);
+  const allowedKeys = new Set(["version", "enableMetaphor"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("replaceSystemPrompt" in value && typeof value.replaceSystemPrompt !== "boolean") ||
     ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean");
 
   return { data, changed };
