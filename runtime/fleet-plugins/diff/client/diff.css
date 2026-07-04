@@ -43,7 +43,6 @@
   cursor: col-resize;
   background: var(--surface-rim);
   transition: background 140ms;
-  flex-shrink: 0;
 }
 
 .diff-divider:hover {
