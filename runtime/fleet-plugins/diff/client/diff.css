@@ -46,10 +46,10 @@
 .diff-toolbar-label {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 10.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-rim);
+  color: var(--ink-fog);
 }
 
 .diff-view-toggle {
@@ -194,7 +194,7 @@
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-rim);
+  color: var(--ink-fog);
 }
 
 /* ── 파일 행 (리스트뷰 + 트리 리프 공유) ── */
@@ -557,8 +557,8 @@
 
 .diff-repo-opt-path {
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-rim);
+  font-size: 10.5px;
+  color: var(--ink-fog);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
