@@ -33,6 +33,7 @@ interface RepoPickerProps {
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
+const PREFS_SPLIT_RATIO = "fleet-console.diff.splitRatio";
 const PREFS_DEPTH = "fleet-console.diff.depth";
 const PREFS_REPO_PREFIX = "fleet-console.diff.repo.";
 
@@ -40,6 +41,8 @@ const EXTENDED_EXTRA_WIDTH = 400;
 // 호스트가 뷰포트 클램프로 400 미만만 부여했을 때: 문서 페인부터 축소(min 140)하고 리스트 페인(min 220)을 보존한다
 const HUNK_PANE_MIN_WIDTH = 140;
 const LIST_PANE_MIN_WIDTH = 220;
+// 기본값 0.56: 확장 패널 총폭 ~712px 기준 문서 페인 ~400px 배분과 시각적으로 동등
+const DEFAULT_SPLIT_RATIO = 0.56;
 const DEFAULT_DEPTH = 3;
 
 const DEPTH_OPTS: readonly { readonly value: number; readonly label: string }[] = [
@@ -59,6 +62,17 @@ function readViewMode(): ViewMode {
     if (v === "list" || v === "tree") return v;
   } catch { /* ignore */ }
   return "list";
+}
+
+function readSplitRatio(): number {
+  try {
+    const v = localStorage.getItem(PREFS_SPLIT_RATIO);
+    if (v !== null) {
+      const n = parseFloat(v);
+      if (!isNaN(n) && n > 0 && n < 1) return n;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_SPLIT_RATIO;
 }
 
 function readDepth(): number {
@@ -268,6 +282,10 @@ function ChevronIcon() {
 function DiffPanel({ ctx }: DiffPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const selectedFile = useSelectedFile(ctx.theaterId ?? null);
+  const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
+  const splitRatioRef = useRef(splitRatio);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // 저장소 피커 상태
   const [activeSubPath, setActiveSubPath] = useState<string>(
@@ -374,6 +392,37 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     try { localStorage.setItem(PREFS_VIEW_MODE, next); } catch { /* ignore */ }
   }, []);
 
+  const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const container = rootRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+    const startX = e.clientX;
+    const startRatio = splitRatioRef.current;
+    setIsDragging(true);
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const lower = HUNK_PANE_MIN_WIDTH / containerWidth;
+      const upper = 1 - LIST_PANE_MIN_WIDTH / containerWidth;
+      const raw = startRatio + dx / containerWidth;
+      // 컨테이너가 두 최소폭 합보다 좁으면 lower > upper로 클램프 범위가 역전된다.
+      const newRatio = lower <= upper ? Math.max(lower, Math.min(upper, raw)) : startRatio;
+      splitRatioRef.current = newRatio;
+      setSplitRatioState(newRatio);
+    };
+
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      setIsDragging(false);
+      try { localStorage.setItem(PREFS_SPLIT_RATIO, String(splitRatioRef.current)); } catch { /* ignore */ }
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, []);
+
   // 파일 선택 시 패널 좌측 400px 확장, 해제 시 원복 — 단일 지점 호출
   useLayoutEffect(() => {
     ctx.requestExtraWidth?.(selectedFile ? EXTENDED_EXTRA_WIDTH : null);
@@ -389,8 +438,11 @@ function DiffPanel({ ctx }: DiffPanelProps) {
 
   return (
     <div
-      className={`diff-root${selectedFile ? " has-hunk" : ""}`}
-      style={selectedFile ? { gridTemplateColumns: `minmax(${HUNK_PANE_MIN_WIDTH}px, ${EXTENDED_EXTRA_WIDTH}px) minmax(${LIST_PANE_MIN_WIDTH}px, 1fr)` } : undefined}
+      ref={rootRef}
+      className={`diff-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`}
+      style={selectedFile ? {
+        gridTemplateColumns: `minmax(${HUNK_PANE_MIN_WIDTH}px, ${splitRatio}fr) 4px minmax(${LIST_PANE_MIN_WIDTH}px, ${1 - splitRatio}fr)`,
+      } : undefined}
     >
       {selectedFile && (
         <div className="diff-hunk-pane">
@@ -420,6 +472,13 @@ function DiffPanel({ ctx }: DiffPanelProps) {
             <HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} />
           </div>
         </div>
+      )}
+      {selectedFile && (
+        <div
+          className="diff-divider"
+          onPointerDown={handleDividerDown}
+          aria-hidden="true"
+        />
       )}
       <div className="diff-tree-pane">
         <div className="diff-plugin-toolbar">

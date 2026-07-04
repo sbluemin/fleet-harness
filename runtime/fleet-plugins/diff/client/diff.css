@@ -15,6 +15,11 @@
   }
 }
 
+/* 드래그 중에는 grid-template-columns transition을 끈다. 살려두면 split이 커서를 ease로
+   지연 추적해 멈춰야 따라잡는다(우측 Rail 폭 드래그와 동일 원인). */
+.diff-root.is-dragging {
+  transition: none;
+}
 
 .diff-tree-pane {
   display: grid;
@@ -30,6 +35,23 @@
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
   position: relative;
+}
+
+/* ── hunk↔tree 디바이더 ── */
+.diff-divider {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--surface-rim);
+  transition: background 140ms;
+  flex-shrink: 0;
+}
+
+.diff-divider:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.diff-divider:active {
+  background: color-mix(in oklch, var(--brass) 80%, transparent);
 }
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
