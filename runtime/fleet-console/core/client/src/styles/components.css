@@ -4951,10 +4951,13 @@
   overflow: hidden;
 }
 
-/* 행 이름: 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략 */
+/* 행 이름: 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략 — 긴 이름은 잘라 상태·라인을 보호 */
 .job-dock-row-name {
   flex: none;
+  max-width: 12em;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 600;
