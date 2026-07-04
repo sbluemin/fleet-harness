@@ -31,13 +31,8 @@ export function estimateJobTokens(job: JobView): number {
 
 export function resolveJobSignature(job: JobView): "claude" | "codex" | "opencode-go" | "cursor" | "taskforce" | undefined {
   if (job.kind === "taskforce") return "taskforce";
-  for (const trackId of job.trackOrder) {
-    const track = job.tracks[trackId];
-    if (!track) continue;
-    const cli = track.displayCli;
-    if (cli && BACKEND_CLIS.has(cli)) return cli as "claude" | "codex" | "opencode-go" | "cursor";
-  }
-  return undefined;
+  const cli = job.signatureCli;
+  return cli && BACKEND_CLIS.has(cli) ? cli as "claude" | "codex" | "opencode-go" | "cursor" : undefined;
 }
 
 export function resolveCarrierCaptain(carrierId: string | undefined): string | undefined {

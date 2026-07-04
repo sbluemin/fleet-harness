@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import type { GlobalOptionsService } from "@dotobokuri/fleet-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
@@ -84,7 +85,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const unsubscribeStream = runtime.carrierRuntime.jobs.streaming.register((event) => {
     const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
     if (!sessionId) return;
-    observability.appendTerminalRuntimeEvent(sessionId, event);
+    observability.appendTerminalRuntimeEvent(sessionId, withSignatureCli(event, runtime.carrierRuntime.registry));
   });
   const unsubscribeReminder = createCarrierResultReminderRouter({
     streamRegister: runtime.carrierRuntime.jobs.streaming.register,
@@ -603,4 +604,14 @@ function readHookPrompt(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function withSignatureCli(event: unknown, registry: Parameters<typeof getCarrierConfig>[0]): unknown {
+  if (typeof event !== "object" || event === null) return event;
+  const obj = event as Record<string, unknown>;
+  if (obj.type !== "job:registered" || typeof obj.ownerCarrierId !== "string") return event;
+  const config = getCarrierConfig(registry, obj.ownerCarrierId);
+  if (!config) return event;
+  const signatureCli = resolveAgentCliType(obj.ownerCarrierId, config.defaultCliType);
+  return { ...obj, signatureCli };
 }

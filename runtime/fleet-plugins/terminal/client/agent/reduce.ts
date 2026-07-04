@@ -129,6 +129,7 @@ function applyJobRegistered(job: JobView, payload: Record<string, unknown>): Job
     label: readString(payload.label) ?? job.label,
     ownerCarrierId: readString(payload.ownerCarrierId) ?? job.ownerCarrierId,
     kind: readString(payload.kind) ?? job.kind,
+    signatureCli: readString(payload.signatureCli) ?? job.signatureCli,
     startedAt: readNumber(payload.startedAt) ?? job.startedAt,
     trackOrder,
     tracks,

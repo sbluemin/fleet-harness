@@ -279,74 +279,23 @@ describe("resolveJobSignature (CLI 시그니처 해석)", () => {
     };
   }
 
-  it("kind=taskforce → taskforce (트랙 무관)", () => {
+  it("kind=taskforce → taskforce (signatureCli 무관)", () => {
     expect(resolveJobSignature(makeJob({ kind: "taskforce" }))).toBe("taskforce");
   });
 
   it.each([["claude"], ["codex"], ["opencode-go"], ["cursor"]] as const)(
-    "첫 트랙 displayCli=%s → %s",
+    "signatureCli=%s → %s",
     (cli) => {
-      const job = makeJob({
-        trackOrder: ["t1"],
-        tracks: {
-          t1: {
-            trackId: "t1",
-            displayName: "T",
-            status: "stream",
-            text: "",
-            thought: "",
-            sentTextLength: 0,
-            sentThoughtLength: 0,
-            tools: [],
-            displayCli: cli,
-          },
-        },
-      });
-      expect(resolveJobSignature(job)).toBe(cli);
+      expect(resolveJobSignature(makeJob({ signatureCli: cli }))).toBe(cli);
     }
   );
 
-  it("displayCli가 알 수 없는 값 → undefined", () => {
-    const job = makeJob({
-      trackOrder: ["t1"],
-      tracks: {
-        t1: {
-          trackId: "t1",
-          displayName: "T",
-          status: "stream",
-          text: "",
-          thought: "",
-          sentTextLength: 0,
-          sentThoughtLength: 0,
-          tools: [],
-          displayCli: "unknown-cli",
-        },
-      },
-    });
-    expect(resolveJobSignature(job)).toBeUndefined();
+  it("signatureCli가 알 수 없는 값 → undefined", () => {
+    expect(resolveJobSignature(makeJob({ signatureCli: "unknown-cli" }))).toBeUndefined();
   });
 
-  it("빈 trackOrder → undefined", () => {
+  it("signatureCli 없음 → undefined", () => {
     expect(resolveJobSignature(makeJob({}))).toBeUndefined();
-  });
-
-  it("displayCli 없는 트랙 → undefined", () => {
-    const job = makeJob({
-      trackOrder: ["t1"],
-      tracks: {
-        t1: {
-          trackId: "t1",
-          displayName: "T",
-          status: "stream",
-          text: "",
-          thought: "",
-          sentTextLength: 0,
-          sentThoughtLength: 0,
-          tools: [],
-        },
-      },
-    });
-    expect(resolveJobSignature(job)).toBeUndefined();
   });
 });
 
