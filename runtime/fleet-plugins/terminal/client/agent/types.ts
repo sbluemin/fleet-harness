@@ -101,6 +101,8 @@ export interface TrackView {
   readonly subtitle?: string;
   readonly kind?: string;
   readonly status: string;
+  readonly lastEventId: number;
+  readonly latestLine?: string;
   readonly text: string;
   readonly thought: string;
   readonly sentTextLength: number;
@@ -118,6 +120,7 @@ export interface JobView {
   readonly label?: string;
   readonly ownerCarrierId?: string;
   readonly kind?: string;
+  readonly signatureCli?: string;
   readonly status: string;
   readonly startedAt?: number;
   readonly updatedAt: number;

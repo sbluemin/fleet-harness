@@ -45,30 +45,38 @@ export function applyEvent(job: JobView, observed: ObservedEvent): JobView {
         error: readString(payload.error),
       };
     case "track:begin":
-      return mutateTrack(base, payload, (track) => ({
+      return mutateTrack(base, payload, observed.id, (track) => ({
         ...track,
         startedAt: readNumber(payload.startedAt) ?? observed.at,
         requestPreview: readString(payload.requestPreview),
       }));
     case "track:status":
-      return mutateTrack(base, payload, (track) => ({ ...track, status: readString(payload.status) ?? track.status }));
+      return mutateTrack(base, payload, observed.id, (track) => ({ ...track, status: readString(payload.status) ?? track.status }));
     case "track:text":
-      return mutateTrack(base, payload, (track) => ({
-        ...track,
-        status: "stream",
-        text: track.text + (readString(payload.text) ?? ""),
-        sentTextLength: track.sentTextLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
-      }));
+      return mutateTrack(base, payload, observed.id, (track) => {
+        const text = track.text + (readString(payload.text) ?? "");
+        return {
+          ...track,
+          status: "stream",
+          text,
+          sentTextLength: track.sentTextLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
+          latestLine: lastNonEmptyLine(text) || track.latestLine,
+        };
+      });
     case "track:thought":
-      return mutateTrack(base, payload, (track) => ({
-        ...track,
-        thought: track.thought + (readString(payload.text) ?? ""),
-        sentThoughtLength: track.sentThoughtLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
-      }));
+      return mutateTrack(base, payload, observed.id, (track) => {
+        const thought = track.thought + (readString(payload.text) ?? "");
+        return {
+          ...track,
+          thought,
+          sentThoughtLength: track.sentThoughtLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
+          latestLine: lastNonEmptyLine(thought) || track.latestLine,
+        };
+      });
     case "track:tool":
-      return mutateTrack(base, payload, (track) => ({ ...track, status: "stream", tools: upsertTool(track.tools, payload) }));
+      return mutateTrack(base, payload, observed.id, (track) => ({ ...track, status: "stream", tools: upsertTool(track.tools, payload) }));
     case "track:finalized":
-      return mutateTrack(base, payload, (track) => {
+      return mutateTrack(base, payload, observed.id, (track) => {
         const body = adoptFinalBody(track.text, track.sentTextLength, readString(payload.fallbackText), readNumber(payload.fallbackTextLength));
         const thought = adoptFinalBody(track.thought, track.sentThoughtLength, readString(payload.fallbackThought), readNumber(payload.fallbackThoughtLength));
         return {
@@ -129,17 +137,19 @@ function applyJobRegistered(job: JobView, payload: Record<string, unknown>): Job
     label: readString(payload.label) ?? job.label,
     ownerCarrierId: readString(payload.ownerCarrierId) ?? job.ownerCarrierId,
     kind: readString(payload.kind) ?? job.kind,
+    signatureCli: readString(payload.signatureCli) ?? job.signatureCli,
     startedAt: readNumber(payload.startedAt) ?? job.startedAt,
     trackOrder,
     tracks,
   };
 }
 
-function mutateTrack(job: JobView, payload: Record<string, unknown>, mutate: (track: TrackView) => TrackView): JobView {
+function mutateTrack(job: JobView, payload: Record<string, unknown>, eventId: number, mutate: (track: TrackView) => TrackView): JobView {
   const trackId = readString(payload.trackId);
   if (!trackId) return job;
   const existing = job.tracks[trackId];
-  const next = mutate(existing ?? createEmptyTrack(trackId));
+  // 트랙별 lastEventId를 이 이벤트로 갱신한다(전역 단조 증가) — 접힘 테일이 가장 최근 활동 트랙을 고를 근거.
+  const next = { ...mutate(existing ?? createEmptyTrack(trackId)), lastEventId: eventId };
   return {
     ...job,
     trackOrder: existing ? job.trackOrder : [...job.trackOrder, trackId],
@@ -152,6 +162,7 @@ function createEmptyTrack(trackId: string): TrackView {
     trackId,
     displayName: trackId,
     status: "active",
+    lastEventId: 0,
     text: "",
     thought: "",
     sentTextLength: 0,
@@ -182,6 +193,13 @@ function adoptFinalBody(existing: string, sentLength: number, fallback: string |
 
 function appendRecentEvent(events: readonly ObservedEvent[], event: ObservedEvent): readonly ObservedEvent[] {
   return [...events, event].slice(-JOB_RECENT_EVENT_LIMIT);
+}
+
+function lastNonEmptyLine(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const lines = trimmed.split("\n");
+  return lines[lines.length - 1]?.trim() ?? "";
 }
 
 function readString(value: unknown): string | undefined {

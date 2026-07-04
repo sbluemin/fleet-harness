@@ -1,7 +1,6 @@
 .topbar,
 .stage,
-.timeline-dock,
-.job-summary {
+.timeline-dock {
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
@@ -288,7 +287,6 @@
   background: color-mix(in oklch, var(--coral) 15%, transparent);
 }
 
-.job-summary-eyebrow,
 .job-meta,
 .job-id,
 .track-tag,
@@ -3077,7 +3075,7 @@
 .operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
 .operations-canvas.is-perimeter-anim-off .status-dot--live,
 .operations-canvas.is-perimeter-anim-off .tenant-beacon.is-awaiting,
-.operations-canvas.is-perimeter-anim-off .job-summary-dot,
+.operations-canvas.is-perimeter-anim-off .job-dock-dot,
 .operations-canvas.is-perimeter-anim-off .tool-chip--live .tool-chip-glyph {
   animation: none;
 }
@@ -4024,8 +4022,8 @@
   min-height: 0;
 }
 
-/* agent-stream-host: 배너(조건부) + 터미널을 flex 컬럼으로 쌓는 호스트.
-   배너가 없으면 terminal-stage가 전체 높이를 회복한다. */
+/* agent-stream-host: 터미널(flex:1, 위) + 도크(flex:none, 하단)를 flex 컬럼으로 쌓는 호스트.
+   도크가 없으면 terminal-stage가 전체 높이를 회복한다. */
 .agent-stream-host {
   display: flex;
   flex-direction: column;
@@ -4033,7 +4031,7 @@
   min-height: 0;
 }
 
-/* 배너 존재 시 terminal-stage가 남은 높이를 flex로 채우도록 보정.
+/* 도크 존재 시 terminal-stage가 남은 높이를 flex로 채우도록 보정.
    .canvas-operation-terminal의 height:100% 규칙을 덮는다. */
 .agent-stream-host .terminal-stage {
   flex: 1;
@@ -4773,93 +4771,53 @@
   word-break: break-word;
 }
 
-.job-summary {
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
+/* ══════════════════════════════════════════════════════════════
+   StreamDock: 패널 하단 상주 접이식 스트림 도크.
+   agent-stream-host flex 컬럼 내 마지막 자식(flex:none).
+   ══════════════════════════════════════════════════════════════ */
+.job-dock {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
+  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-glass));
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
-/* 배너 변형: 패널 상단 클릭 가능한 요약 스트립.
-   button reset + full-width + 클릭 어포던스를 제공한다. */
-.job-summary--banner {
-  display: block;
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--surface-rim);
-  border-radius: 0;
-  background: color-mix(in oklch, var(--surface-glass-strong) 72%, transparent);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-glide),
-    border-color var(--duration-fast) var(--ease-glide);
+/* CLI 시그니처: border-top rim + 저강도 bg tint (단일 잡에만 부착, aurora/brass 채널 불가침) */
+.job-dock[data-signature="claude"] {
+  border-top-color: color-mix(in oklch, var(--carrier-claude) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-claude) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="codex"] {
+  border-top-color: color-mix(in oklch, var(--carrier-codex) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-codex) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="opencode-go"] {
+  border-top-color: color-mix(in oklch, var(--carrier-opencode-go) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-opencode-go) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="cursor"] {
+  border-top-color: color-mix(in oklch, var(--carrier-cursor) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-cursor) 6%, var(--surface-glass));
+}
+.job-dock[data-signature="taskforce"] {
+  border-top-color: color-mix(in oklch, var(--carrier-taskforce) 40%, var(--surface-rim));
+  background: color-mix(in oklch, var(--carrier-taskforce) 6%, var(--surface-glass));
 }
 
-.job-summary--banner:hover,
-.job-summary--banner:focus-visible {
-  background: color-mix(in oklch, var(--surface-glass-strong) 90%, transparent);
-  outline: none;
-}
-
-.job-summary--banner.job-summary--live {
-  border-bottom-color: color-mix(in oklch, var(--aurora) 36%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-glass-strong));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .job-summary--banner {
-    transition: none;
-  }
-}
-
-.job-summary--live {
-  border-color: color-mix(in oklch, var(--aurora) 36%, var(--surface-rim));
-}
-
-.job-summary--ok {
-  border-color: color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
-}
-
-.job-summary--bad {
-  border-color: color-mix(in oklch, var(--coral) 44%, var(--surface-rim));
-}
-
-.job-summary--idle {
-  border-color: var(--surface-rim);
-}
-
-.job-summary-eyebrow {
-  margin: 0 0 var(--space-1);
-}
-
-.job-summary-text {
-  margin: 0;
-  color: var(--ink-spectral);
-  font-size: 12.5px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.job-summary-error {
-  margin: var(--space-2) 0 0;
-  color: var(--coral);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-/* ── job-summary 배너 신호 요소 (F3) ─────────────────────
-   배너 변형 전용: dot(aurora 펄스), count 뱃지, chev(brass). */
-
-/* 헤더 행: dot + eyebrow + count + chev 가로 정렬 */
-.job-summary-row {
+/* 헤더: 라이브 도트 · 캐리어명 · 경과 · 토큰 · 접기 그립 · 상세 버튼 */
+.job-dock-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  min-height: 32px;
 }
 
 /* aurora 라이브 펄스닷 */
-.job-summary-dot {
+.job-dock-dot {
   flex: none;
   width: 6px;
   height: 6px;
@@ -4868,38 +4826,230 @@
   animation: aurora-pulse 1.4s ease-in-out infinite;
 }
 
-/* 활성 트랙 수 뱃지 */
-.job-summary-count {
+@media (prefers-reduced-motion: reduce) {
+  .job-dock-dot {
+    animation: none;
+  }
+}
+
+.job-dock-carrier {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-spectral);
+}
+
+/* 캡틴 고유색 - 캐리어명 텍스트 채널만(오직 이 하나의 곳에만 적용) */
+.job-dock-carrier[data-captain="nimitz"] { color: var(--captain-nimitz); }
+.job-dock-carrier[data-captain="kirov"] { color: var(--captain-kirov); }
+.job-dock-carrier[data-captain="genesis"] { color: var(--captain-genesis); }
+.job-dock-carrier[data-captain="ohio"] { color: var(--captain-ohio); }
+.job-dock-carrier[data-captain="sentinel"] { color: var(--captain-sentinel); }
+.job-dock-carrier[data-captain="vanguard"] { color: var(--captain-vanguard); }
+.job-dock-carrier[data-captain="tempest"] { color: var(--captain-tempest); }
+.job-dock-carrier[data-captain="chronicle"] { color: var(--captain-chronicle); }
+
+.job-dock-meta {
   flex: none;
-  padding: 1px 6px;
-  border: 1px solid color-mix(in oklch, var(--aurora) 35%, var(--surface-rim));
-  border-radius: var(--radius-xs);
-  color: var(--aurora);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.04em;
+  color: var(--ink-fog);
 }
 
-/* 확장 셰브론 — brass(보는 곳/구조) */
-.job-summary-chev {
+/* 접기/펼치기 그립 버튼 — brass(보는 곳/구조) */
+.job-dock-grip {
   flex: none;
-  margin-left: auto;
+  padding: 2px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
   color: var(--brass);
-  font-size: 16px;
+  font-size: 11px;
   line-height: 1;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide);
 }
 
-/* 배너 변형: 텍스트 한 줄 말줄임 (pre-wrap 재정의) */
-.job-summary--banner .job-summary-text {
+.job-dock-grip:hover {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* 상세 열기 버튼 — brass */
+.job-dock-detail-btn {
+  flex: none;
+  padding: 2px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 28%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide);
+}
+
+.job-dock-detail-btn:hover {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+/* 요청 라벨: 헤더 아래 1줄 ellipsis, 단일 잡에서만 렌더됨 */
+.job-dock-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-fog);
+  padding: 0 var(--space-3) var(--space-1);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+/* 테일: 접힘 상태의 최신 출력 1줄 */
+.job-dock-tail {
+  padding: 0 var(--space-3) var(--space-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-fog);
+}
+
+/* 바디 래퍼: follow-button 위치 기준(position: relative) */
+.job-dock-body-wrap {
+  position: relative;
+  border-top: 1px solid var(--surface-rim);
+}
+
+.job-dock-body-wrap.is-collapsed {
+  display: none;
+}
+
+/* 바디: 스크롤 가능한 트랙 스택 */
+.job-dock-body {
+  overflow-y: auto;
+  max-height: 240px;
+  padding: var(--space-2) var(--space-3) var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 트랙 행: 컴팩트 뷰 */
+.job-dock-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.job-dock-track-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.job-dock-track-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-spectral);
+}
+
+.job-dock-track-status {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--ink-fog);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.job-dock-track-status--live {
+  color: var(--aurora);
+}
+
+/* 사고: dim 단일 행 */
+.job-dock-track-thought {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-fog);
+  opacity: 0.65;
+}
+
+/* 출력: mono 단일 행 + aurora 캐럿 */
+.job-dock-track-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-spectral);
+}
+
+/* aurora 스트림 캐럿 */
+.job-dock-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--aurora);
+  animation: caret-blink 1s step-start infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .job-summary-dot {
+  .job-dock-caret {
     animation: none;
+    opacity: 1;
   }
+  .job-dock-grip,
+  .job-dock-detail-btn {
+    transition: none;
+  }
+}
+
+/* 툴 칩 목록 */
+.job-dock-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.job-dock-tool-chip {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-fog);
+}
+
+/* running 툴 칩: aurora 테두리 */
+.job-dock-tool-chip--live {
+  border-color: color-mix(in oklch, var(--aurora) 45%, var(--surface-rim));
+  color: var(--aurora);
 }
 
 .follow-button {

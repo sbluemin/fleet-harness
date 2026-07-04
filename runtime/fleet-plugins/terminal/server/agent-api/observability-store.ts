@@ -523,6 +523,7 @@ function normalizeEventPayload(event: unknown): Record<string, unknown> {
         startedAt: safeNumber(obj.startedAt),
         activeJobToolCallId: safeOptionalString(obj.activeJobToolCallId),
         tracks: Array.isArray(obj.tracks) ? obj.tracks.map(normalizeTrackMeta) : [],
+        signatureCli: safeOptionalString(obj.signatureCli),
       };
     case "job:finalized":
       return {
