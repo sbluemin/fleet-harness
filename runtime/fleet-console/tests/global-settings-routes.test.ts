@@ -54,10 +54,10 @@ describe("global settings routes", () => {
     expect(harness.currentGeneral()).toMatchObject({ theme: "carbon" });
   });
 
-  it("PUT /global-settings ignores replaceSystemPrompt/enableMetaphor body fields", async () => {
+  it("PUT /global-settings ignores enableMetaphor body field", async () => {
     const harness = createRouterHarness({
       authorized: true,
-      body: { replaceSystemPrompt: false, enableMetaphor: true },
+      body: { enableMetaphor: true },
       general: { consolePortMode: "static", consoleStaticPort: 8080, theme: "maritime" },
     });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });

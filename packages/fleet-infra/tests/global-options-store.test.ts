@@ -74,6 +74,22 @@ describe("global options store", () => {
     });
   });
 
+  it("drops the legacy replaceSystemPrompt option while preserving enableMetaphor", () => {
+    // 이전 릴리스가 남긴 ~/.fleet/settings.json의 replaceSystemPrompt(boolean) 키는
+    // 이제 미허용 키이므로 changed=true와 함께 안전 드롭되고 enableMetaphor는 보존되어야 한다.
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      replaceSystemPrompt: true,
+      enableMetaphor: false,
+    })).toEqual({
+      changed: true,
+      data: {
+        version: 1,
+        enableMetaphor: false,
+      },
+    });
+  });
+
   it("ignores stale settings files without the current schema marker", () => {
     expect(sanitizeGlobalOptionsData({
       obsoleteOption: true,
@@ -108,14 +124,12 @@ describe("global options store", () => {
 
     service.save({
       version: 1,
-      replaceSystemPrompt: true,
-      enableMetaphor: false,
+      enableMetaphor: true,
     });
 
     expect(JSON.parse(fs.readFileSync(path.join(dataDir, "settings.json"), "utf-8"))).toEqual({
       version: 1,
-      replaceSystemPrompt: true,
-      enableMetaphor: false,
+      enableMetaphor: true,
     });
     expect(fs.readdirSync(dataDir).filter((name) => name.startsWith(".tmp-settings.json"))).toEqual([]);
   });
@@ -123,7 +137,6 @@ describe("global options store", () => {
   it("sanitizes stale console port fields that migrated to console-settings store", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
-      replaceSystemPrompt: true,
       enableMetaphor: false,
       consolePortMode: "static",
       consoleStaticPort: 8080,
@@ -131,7 +144,6 @@ describe("global options store", () => {
       changed: true,
       data: {
         version: 1,
-        replaceSystemPrompt: true,
         enableMetaphor: false,
       },
     });
@@ -189,13 +201,12 @@ describe("global options store", () => {
     const second = createGlobalOptionsStore({ dataDir, timeoutMs: 1_000 });
 
     await Promise.all([
-      Promise.resolve().then(() => first.update((current) => ({ ...current, replaceSystemPrompt: false }))),
+      Promise.resolve().then(() => first.update((current) => ({ ...current, enableMetaphor: false }))),
       Promise.resolve().then(() => second.update((current) => ({ ...current, enableMetaphor: true }))),
     ]);
 
     expect(first.load()).toEqual({
       version: 1,
-      replaceSystemPrompt: false,
       enableMetaphor: true,
     });
   });

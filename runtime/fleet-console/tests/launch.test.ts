@@ -38,9 +38,9 @@ const baseProfile = {
 
 const TEMP_DIRS: string[] = [];
 
-// 전역 옵션(replaceSystemPrompt/enableMetaphor)을 고정 반환하는 InfraServices 스텁 —
+// 전역 옵션(enableMetaphor)을 고정 반환하는 InfraServices 스텁 —
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
-function createFakeInfraServices(globalOptions: { readonly replaceSystemPrompt?: boolean; readonly enableMetaphor?: boolean } = {}) {
+function createFakeInfraServices(globalOptions: { readonly enableMetaphor?: boolean } = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
     authService: {},
@@ -65,7 +65,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile, options) => {
       expect(options.enableMetaphor).toBe(false);
-      expect(options.replaceSystemPrompt).toBe(false);
       expect(options.buildSystemPrompt).toEqual(expect.any(Function));
       expect(options.captureSessionHookExec).toMatchObject({ command: process.execPath });
       expect(options.captureSessionHookExec?.args).toContain("capture-session");
@@ -113,7 +112,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: runtime as never,
-      infraServices: createFakeInfraServices({ replaceSystemPrompt: true, enableMetaphor: true }) as never,
+      infraServices: createFakeInfraServices({ enableMetaphor: true }) as never,
       injectProfile: injectProfile as never,
       resolveProfile: resolveProfile as never,
     });
@@ -122,7 +121,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(captured).not.toBeNull();
     expect(captured!.enableMetaphor).toBe(true);
-    expect(captured!.replaceSystemPrompt).toBe(true);
   });
 
   it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {

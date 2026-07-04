@@ -1,10 +1,9 @@
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
 export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string[] {
-  const systemPromptArg = context.replaceSystemPrompt ? "--system-prompt-file" : "--append-system-prompt-file";
   return [
     ...buildResumeArgs(context.resumeSessionId),
-    systemPromptArg,
+    "--append-system-prompt-file",
     requireSystemPromptFile(context),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",

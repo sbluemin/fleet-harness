@@ -278,7 +278,7 @@ describe("Mission Control controller", () => {
       },
     });
 
-    openRootItem(controller, 7);
+    openRootItem(controller, 6);
 
     expect(exitCalls).toEqual(["exit"]);
   });
@@ -328,10 +328,8 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\r");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
 
-    expect(sessionOptions.calls).toEqual(["toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
+    expect(sessionOptions.calls).toEqual(["toggleEnableMetaphor"]);
   });
 
   it("renders auto-save failures without unhandled rejections", async () => {
@@ -368,12 +366,8 @@ describe("Mission Control controller", () => {
 
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toMatch(/System prompt\s+Append/);
-
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
     expect(renderPlain(controller)).toMatch(/Metaphor\s+Enabled/);
-    expect(sessionOptions.calls).toEqual(["toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
+    expect(sessionOptions.calls).toEqual(["toggleEnableMetaphor"]);
   });
 
   it("edits launch-time model override from the Start panel", () => {
@@ -888,7 +882,6 @@ describe("Mission Control controller", () => {
         cliId: "codex" as const,
         enableMetaphor: true,
         model: "draft-model",
-        replaceSystemPrompt: false,
       }),
     };
     const controller = createMissionControlController({
@@ -970,7 +963,6 @@ describe("Mission Control controller", () => {
       cliId: "codex",
       enableMetaphor: true,
       model: "draft-test",
-      replaceSystemPrompt: false,
     });
 
     expect(launchProfile.args).toEqual(["--no-alt-screen", "--model", "draft-test"]);
@@ -1025,13 +1017,11 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
     cliId: "claude" as const,
     enableMetaphor: false,
     model: "preset-model",
-    replaceSystemPrompt: true,
   };
   let sources: ResolvedSessionOptions["sources"] = {
     cliId: "default" as const,
     enableMetaphor: "default" as const,
     model: "session" as const,
-    replaceSystemPrompt: "default" as const,
   };
   return {
     calls,
@@ -1054,11 +1044,6 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
       calls.push("toggleEnableMetaphor");
       draft = { ...draft, enableMetaphor: !draft.enableMetaphor };
       sources = { ...sources, enableMetaphor: "session" };
-    },
-    toggleReplaceSystemPrompt: () => {
-      calls.push("toggleReplaceSystemPrompt");
-      draft = { ...draft, replaceSystemPrompt: !draft.replaceSystemPrompt };
-      sources = { ...sources, replaceSystemPrompt: "session" };
     },
   };
 }
@@ -1162,13 +1147,13 @@ function openStart(controller: ReturnType<typeof createTestController>): void {
 
 function openOptions(controller: ReturnType<typeof createTestController>): void {
   controller.component.render(80);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     controller.ptyHost.write("\x1b[B");
   }
 }
 
 function openSystemMenu(controller: ReturnType<typeof createTestController>): void {
-  openRootItem(controller, 6);
+  openRootItem(controller, 5);
 }
 
 function openSystemMenuItem(controller: ReturnType<typeof createTestController>, index: number): void {

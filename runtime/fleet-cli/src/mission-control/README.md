@@ -12,7 +12,7 @@ Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane
 - **Programmatic child input** — `writeChildInput(data)` writes directly to the active child PTY for system reminders even when a Mission Control panel exists.
 - **Launch flow** — `LAUNCH` lists the configured Agent CLIs directly. `Enter` launches the selected CLI, and `→` edits the session-only launch-time model override through `sessionOptions.setModel()`. It remains separate from Carrier Roster per-carrier model editing.
 - **Gradient shimmer** — The Fleet banner animates on inactive screens with a smooth right-to-left RGB-lerped shimmer over a ~4-second cycle and stops while the active Agent CLI PTY is running.
-- **Options** — `OPTION` contains Mode, System prompt, and Metaphor toggle rows. Toggles update optimistic in-memory state immediately and schedule automatic `fleet-options.json` persistence without blocking render or input.
+- **Options** — `OPTION` contains Mode and Metaphor toggle rows. Toggles update optimistic in-memory state immediately and schedule automatic `fleet-options.json` persistence without blocking render or input.
 - **Legacy presets** — Mission Control no longer reads or migrates the old `presets.json`; operators may delete that stale file manually after confirming they no longer need the old saved presets.
 - **System** — `SYSTEM` contains Carrier Roster, System Menu, and Exit. Diagnostics and About are reached through `System Menu`.
 - **Exit Fleet** — Exit is a root navigate row and is not duplicated in nested panels.

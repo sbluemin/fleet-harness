@@ -11,7 +11,6 @@ import type { SessionOptions } from "../src/mission-control/options/types.js";
 const DEFAULTS: SessionOptions = {
   cliId: "claude",
   enableMetaphor: false,
-  replaceSystemPrompt: true,
 };
 const EMPTY_GLOBAL_OPTIONS = {
   version: 1 as const,
@@ -26,11 +25,9 @@ describe("session options resolver", () => {
       env: {
         FLEET_AGENT_CLI: "claude",
         FLEET_ENABLE_METAPHOR: "1",
-        FLEET_REPLACE_SYSTEM_PROMPT: "0",
       },
       globalOptions: {
         version: 1,
-        replaceSystemPrompt: true,
         enableMetaphor: false,
       },
       parseCliId: parseAgentCliId,
@@ -39,13 +36,11 @@ describe("session options resolver", () => {
     expect(resolved.values).toEqual({
       cliId: "codex",
       enableMetaphor: true,
-      replaceSystemPrompt: false,
     });
     expect(resolved.sources).toEqual({
       cliId: "arg",
       enableMetaphor: "env",
       model: "default",
-      replaceSystemPrompt: "env",
     });
   });
 
@@ -56,7 +51,6 @@ describe("session options resolver", () => {
       env: { FLEET_AGENT_CLI: "codex" },
       globalOptions: {
         version: 1,
-        replaceSystemPrompt: true,
         enableMetaphor: true,
       },
       parseCliId: parseAgentCliId,
@@ -100,8 +94,8 @@ describe("session options resolver", () => {
       parseCliId: parseAgentCliId,
     });
 
-    expect(resolved.values.replaceSystemPrompt).toBe(true);
-    expect(resolved.sources.replaceSystemPrompt).toBe("default");
+    expect(resolved.values.enableMetaphor).toBe(false);
+    expect(resolved.sources.enableMetaphor).toBe("default");
   });
 });
 
@@ -200,13 +194,11 @@ describe("session options runtime", () => {
       parseCliId: parseAgentCliId,
     });
 
-    runtime.toggleReplaceSystemPrompt();
     runtime.toggleEnableMetaphor();
     await Promise.resolve();
 
     expect(calls.at(-1)).toEqual({
       version: 1,
-      replaceSystemPrompt: false,
       enableMetaphor: true,
     });
   });

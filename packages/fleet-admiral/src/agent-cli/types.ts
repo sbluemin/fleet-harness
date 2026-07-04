@@ -51,7 +51,6 @@ export interface AgentCliInjectionContext {
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
-  readonly replaceSystemPrompt?: boolean;
   readonly resumeSessionId?: string;
   readonly systemPromptFile?: string;
 }

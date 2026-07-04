@@ -8,26 +8,26 @@ describe("system prompt settings api", () => {
   });
 
   it("loads Terminal prompt settings from the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ replaceSystemPrompt: true, enableMetaphor: false }));
+    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: false }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(fetchSystemPromptSettings()).resolves.toEqual({ replaceSystemPrompt: true, enableMetaphor: false });
+    await expect(fetchSystemPromptSettings()).resolves.toEqual({ enableMetaphor: false });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
   });
 
-  it("saves exactly the two prompt booleans to the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ replaceSystemPrompt: false, enableMetaphor: true }));
+  it("saves the prompt boolean to the plugin route", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: true }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(saveSystemPromptSettings({ replaceSystemPrompt: false, enableMetaphor: true })).resolves.toEqual({ replaceSystemPrompt: false, enableMetaphor: true });
+    await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toEqual({ enableMetaphor: true });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ replaceSystemPrompt: false, enableMetaphor: true }),
+      body: JSON.stringify({ enableMetaphor: true }),
       signal: undefined,
     });
   });
 
-  it("rejects responses with fields outside the two-boolean DTO", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ replaceSystemPrompt: true, consolePortMode: "dynamic" })));
+  it("rejects responses missing the enableMetaphor boolean field", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ consolePortMode: "dynamic" })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 });

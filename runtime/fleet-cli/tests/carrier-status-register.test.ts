@@ -55,7 +55,7 @@ describe("Carrier Roster Mission Control registration", () => {
 
     expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster");
 
-    moveRootSelection(controller, 4);
+    moveRootSelection(controller, 3);
     controller.ptyHost.write("\r");
 
     expect(controller.hasActivePanel()).toBe(true);
@@ -75,7 +75,7 @@ describe("Carrier Roster Mission Control registration", () => {
   it("pushes TaskForce config inside the Carrier Roster panel stack", () => {
     const controller = createTestController();
 
-    moveRootSelection(controller, 4);
+    moveRootSelection(controller, 3);
     controller.ptyHost.write("\r");
     controller.ptyHost.write("\r");
 

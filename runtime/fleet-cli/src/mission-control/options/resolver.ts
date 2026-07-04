@@ -9,11 +9,6 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
   const envCliId = input.parseCliId(input.env.FLEET_AGENT_CLI);
   const cliId = input.cliIdOverride ?? envCliId ?? input.defaults.cliId;
   const cliIdSource = input.cliIdOverride !== undefined ? "arg" : envCliId !== undefined ? "env" : "default";
-  const replaceSystemPrompt = chooseBooleanWithoutArg({
-    env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT),
-    globalOptions: input.globalOptions.replaceSystemPrompt,
-    fallback: input.defaults.replaceSystemPrompt,
-  });
   const enableMetaphor = chooseBooleanWithoutArg({
     env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR),
     globalOptions: input.globalOptions.enableMetaphor,
@@ -24,13 +19,11 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
     values: {
       cliId,
       model: input.defaults.model,
-      replaceSystemPrompt: replaceSystemPrompt.value,
       enableMetaphor: enableMetaphor.value,
     },
     sources: {
       cliId: cliIdSource,
       model: "default",
-      replaceSystemPrompt: replaceSystemPrompt.source,
       enableMetaphor: enableMetaphor.source,
     },
   };
