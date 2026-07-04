@@ -104,6 +104,9 @@ function CommandDeck({ repos, loading, truncated, activeSubPath, depth, onSelect
       className="diff-repo-menu"
       role="listbox"
       aria-label="Repositories"
+      // 시트 내부(헤더·빈 영역·스크롤 등) 클릭이 document 닫기 리스너로 버블링되지 않게 루트에서 차단 —
+      // 저장소 선택 시 닫힘은 opt 버튼의 명시적 onClose() 호출이 담당한다
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="diff-repo-menu-eyebrow">
         <span>REPOSITORIES</span>
