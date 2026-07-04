@@ -342,4 +342,12 @@ describe("applyEvent (트랙 lastEventId 스탬프)", () => {
     expect(job.tracks.a?.lastEventId).toBe(3);
     expect(job.tracks.b?.lastEventId).toBe(7);
   });
+
+  it("latestLine은 text/thought 델타 중 가장 최근 것으로 갱신된다", () => {
+    let job = createEmptyJob("t1", "j1", 1000);
+    job = applyEvent(job, { id: 2, tenantId: "t1", type: "track:text", at: 1001, event: { trackId: "a", text: "output line" } });
+    expect(job.tracks.a?.latestLine).toBe("output line");
+    job = applyEvent(job, { id: 4, tenantId: "t1", type: "track:thought", at: 1002, event: { trackId: "a", text: "thinking now" } });
+    expect(job.tracks.a?.latestLine).toBe("thinking now");
+  });
 });

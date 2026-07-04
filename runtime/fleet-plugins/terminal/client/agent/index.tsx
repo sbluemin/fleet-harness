@@ -615,15 +615,15 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
 }
 
 function getDockTailText(activeJobs: readonly JobView[]): string {
-  // 모든 활성 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해,
-  // 가장 최근 활동한 트랙의 출력 1줄을 접힘 테일로 고른다. 잡·트랙 삽입 순서가 아닌 실제 이벤트 순서를 따른다.
+  // 모든 활성 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해, 가장 최근 활동 트랙의
+  // latestLine(리듀서가 text/thought 델타 중 가장 최근 것으로 갱신)을 접힘 테일로 고른다.
+  // 잡·트랙 삽입 순서나 text/thought 우선순위가 아니라 실제 이벤트 순서를 따른다.
   const tracks = activeJobs
     .flatMap((job) => job.trackOrder.map((trackId) => job.tracks[trackId]))
     .filter((track): track is TrackView => Boolean(track))
     .sort((a, b) => b.lastEventId - a.lastEventId);
   for (const track of tracks) {
-    const last = getLastLine(track.text) || getLastLine(track.thought);
-    if (last) return last;
+    if (track.latestLine) return track.latestLine;
   }
   return "";
 }

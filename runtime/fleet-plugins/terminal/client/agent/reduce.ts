@@ -53,18 +53,26 @@ export function applyEvent(job: JobView, observed: ObservedEvent): JobView {
     case "track:status":
       return mutateTrack(base, payload, observed.id, (track) => ({ ...track, status: readString(payload.status) ?? track.status }));
     case "track:text":
-      return mutateTrack(base, payload, observed.id, (track) => ({
-        ...track,
-        status: "stream",
-        text: track.text + (readString(payload.text) ?? ""),
-        sentTextLength: track.sentTextLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
-      }));
+      return mutateTrack(base, payload, observed.id, (track) => {
+        const text = track.text + (readString(payload.text) ?? "");
+        return {
+          ...track,
+          status: "stream",
+          text,
+          sentTextLength: track.sentTextLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
+          latestLine: lastNonEmptyLine(text) || track.latestLine,
+        };
+      });
     case "track:thought":
-      return mutateTrack(base, payload, observed.id, (track) => ({
-        ...track,
-        thought: track.thought + (readString(payload.text) ?? ""),
-        sentThoughtLength: track.sentThoughtLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
-      }));
+      return mutateTrack(base, payload, observed.id, (track) => {
+        const thought = track.thought + (readString(payload.text) ?? "");
+        return {
+          ...track,
+          thought,
+          sentThoughtLength: track.sentThoughtLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
+          latestLine: lastNonEmptyLine(thought) || track.latestLine,
+        };
+      });
     case "track:tool":
       return mutateTrack(base, payload, observed.id, (track) => ({ ...track, status: "stream", tools: upsertTool(track.tools, payload) }));
     case "track:finalized":
@@ -185,6 +193,13 @@ function adoptFinalBody(existing: string, sentLength: number, fallback: string |
 
 function appendRecentEvent(events: readonly ObservedEvent[], event: ObservedEvent): readonly ObservedEvent[] {
   return [...events, event].slice(-JOB_RECENT_EVENT_LIMIT);
+}
+
+function lastNonEmptyLine(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const lines = trimmed.split("\n");
+  return lines[lines.length - 1]?.trim() ?? "";
 }
 
 function readString(value: unknown): string | undefined {

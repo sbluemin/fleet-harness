@@ -102,6 +102,7 @@ export interface TrackView {
   readonly kind?: string;
   readonly status: string;
   readonly lastEventId: number;
+  readonly latestLine?: string;
   readonly text: string;
   readonly thought: string;
   readonly sentTextLength: number;
