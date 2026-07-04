@@ -5,7 +5,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
-import { closeRailPanel, toggleRailPanel, useActiveRailPanelId } from "./rail-store.js";
+import { closeRailPanel, requestRailPanelExtraWidth, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -37,7 +37,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
 
-  const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0);
+  const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
 
@@ -70,7 +70,13 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
-  const ctx: RailPanelContext = useMemo(() => ({ theaterId, api }), [theaterId, api]);
+  const ctx: RailPanelContext = useMemo(() => ({
+    theaterId,
+    api,
+    requestExtraWidth: (px: number | null) => {
+      if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
+    },
+  }), [theaterId, api, activeId]);
 
   return (
     <div
