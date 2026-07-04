@@ -160,7 +160,7 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
     expect(estimateJobTokens(makeJob({}))).toBe(0);
   });
 
-  it("text+thought 길이 합산 /4 반올림", () => {
+  it("방출 길이(sentTextLength+sentThoughtLength) 합산 /4 반올림", () => {
     const job = makeJob({
       trackOrder: ["t1"],
       tracks: {
@@ -170,14 +170,35 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           status: "stream",
           text: "a".repeat(400),
           thought: "b".repeat(400),
-          sentTextLength: 0,
-          sentThoughtLength: 0,
+          sentTextLength: 400,
+          sentThoughtLength: 400,
           tools: [],
         },
       },
     });
     // (400 + 400) / 4 = 200
     expect(estimateJobTokens(job)).toBe(200);
+  });
+
+  it("retention clamp: 보존 text가 잘려도 방출 길이로 추정한다", () => {
+    const job = makeJob({
+      trackOrder: ["t1"],
+      tracks: {
+        t1: {
+          trackId: "t1",
+          displayName: "T1",
+          status: "stream",
+          // 보존 text는 clamp되어 20자만 남았지만 실제 방출은 4000자
+          text: "a".repeat(20),
+          thought: "",
+          sentTextLength: 4000,
+          sentThoughtLength: 0,
+          tools: [],
+        },
+      },
+    });
+    // text.length(20)/4=5가 아니라 sentTextLength(4000)/4=1000
+    expect(estimateJobTokens(job)).toBe(1000);
   });
 
   it("복수 트랙은 모든 트랙 합산", () => {
@@ -188,9 +209,9 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           trackId: "t1",
           displayName: "T1",
           status: "stream",
-          text: "a".repeat(100),
+          text: "",
           thought: "",
-          sentTextLength: 0,
+          sentTextLength: 100,
           sentThoughtLength: 0,
           tools: [],
         },
@@ -198,10 +219,10 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           trackId: "t2",
           displayName: "T2",
           status: "active",
-          text: "b".repeat(300),
-          thought: "c".repeat(100),
-          sentTextLength: 0,
-          sentThoughtLength: 0,
+          text: "",
+          thought: "",
+          sentTextLength: 300,
+          sentThoughtLength: 100,
           tools: [],
         },
       },
@@ -218,9 +239,9 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           trackId: "t1",
           displayName: "T1",
           status: "stream",
-          text: "a".repeat(400),
+          text: "",
           thought: "",
-          sentTextLength: 0,
+          sentTextLength: 400,
           sentThoughtLength: 0,
           tools: [],
         },
@@ -229,9 +250,9 @@ describe("estimateJobTokens (잡 토큰 추정)", () => {
           trackId: "t2",
           displayName: "T2",
           status: "active",
-          text: "z".repeat(9999),
+          text: "",
           thought: "",
-          sentTextLength: 0,
+          sentTextLength: 9999,
           sentThoughtLength: 0,
           tools: [],
         },

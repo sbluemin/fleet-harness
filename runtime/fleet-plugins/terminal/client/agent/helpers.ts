@@ -23,7 +23,9 @@ export function estimateJobTokens(job: JobView): number {
   return job.trackOrder.reduce((sum, trackId) => {
     const track = job.tracks[trackId];
     if (!track) return sum;
-    return sum + Math.round((track.text.length + track.thought.length) / 4);
+    // 보존된 text/thought는 백엔드 retention clamp로 잘린 tail일 수 있으므로,
+    // 리듀서가 유지하는 실제 방출 길이(sentTextLength/sentThoughtLength)로 추정한다.
+    return sum + Math.round((track.sentTextLength + track.sentThoughtLength) / 4);
   }, 0);
 }
 
