@@ -92,12 +92,34 @@ describe("parseHunk", () => {
     expect(parseHunk("")).toEqual([]);
   });
 
-  it("⑥ Binary 라인을 포함한 입력에서 크래시 없이 처리된다", () => {
+  it("⑦ Binary 라인을 포함한 입력에서 크래시 없이 처리된다", () => {
     const binary = [
       "diff --git a/img.png b/img.png",
       "index abc..def 100644",
       "Binary files a/img.png and b/img.png differ",
     ].join("\n");
     expect(() => parseHunk(binary)).not.toThrow();
+  });
+
+  it("⑧ '\\ No newline at end of file' 어노테이션은 결과에서 제외되고 라인번호를 소모하지 않는다", () => {
+    const noNewline = [
+      "diff --git a/a.txt b/a.txt",
+      "index 111..222 100644",
+      "--- a/a.txt",
+      "+++ b/a.txt",
+      "@@ -1,2 +1,2 @@",
+      " first",
+      "-old",
+      "\\ No newline at end of file",
+      "+new",
+      "\\ No newline at end of file",
+    ].join("\n");
+    const lines = parseHunk(noNewline);
+    expect(lines.some((l) => l.text.includes("No newline"))).toBe(false);
+    const add = lines.find((l) => l.kind === "add");
+    const del = lines.find((l) => l.kind === "del");
+    // 어노테이션이 라인번호를 소모하지 않으므로 add/del 모두 2행을 가리킨다
+    expect(del?.oldLine).toBe(2);
+    expect(add?.newLine).toBe(2);
   });
 });

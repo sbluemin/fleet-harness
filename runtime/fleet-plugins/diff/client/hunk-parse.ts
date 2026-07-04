@@ -31,6 +31,9 @@ export function parseHunk(content: string): ParsedLine[] {
   let newLine = 0;
 
   for (const line of rawLines.slice(headerEnd)) {
+    // "\ No newline at end of file" — 파일 내용이 아닌 diff 메타 어노테이션이므로 라인번호를 소모하지 않는다
+    if (line.startsWith("\\")) continue;
+
     if (line.startsWith("@@")) {
       const m = HUNK_HEADER_RE.exec(line);
       if (m) {
