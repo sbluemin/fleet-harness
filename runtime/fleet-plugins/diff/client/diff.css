@@ -15,15 +15,6 @@
   }
 }
 
-.diff-root.has-hunk {
-  grid-template-columns: minmax(130px, 1fr) 4px minmax(100px, auto);
-}
-
-/* 드래그 중에는 grid-template-columns transition을 끈다. 살려두면 split이 커서를 ease로
-   지연 추적해 멈춰야 따라잡는다(우측 Rail 폭 드래그와 동일 원인). */
-.diff-root.is-dragging {
-  transition: none;
-}
 
 .diff-tree-pane {
   display: grid;
@@ -34,26 +25,10 @@
 
 .diff-hunk-pane {
   display: grid;
-  grid-template-rows: 46px 1fr;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
-}
-
-/* ── hunk↔tree 디바이더 ── */
-.diff-divider {
-  width: 4px;
-  cursor: col-resize;
-  background: var(--surface-rim);
-  transition: background 140ms;
-  flex-shrink: 0;
-}
-
-.diff-divider:hover {
-  background: color-mix(in oklch, var(--brass) 50%, transparent);
-}
-
-.diff-divider:active {
-  background: color-mix(in oklch, var(--brass) 80%, transparent);
+  position: relative;
 }
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
@@ -766,12 +741,15 @@
   font-family: var(--font-mono);
 }
 
-/* ── Hunk 뷰어 헤더 ── */
+/* ── Hunk 뷰어 헤더 (sticky) ── */
 .diff-hunk-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--surface-rim);
   min-height: 46px;
   background: var(--surface-glass);
@@ -785,6 +763,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .diff-hunk-close {
@@ -795,7 +774,10 @@
   color: var(--ink-fog);
   font-size: 14px;
   line-height: 1;
-  padding: 4px;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-grid;
+  place-items: center;
   border-radius: var(--radius-sm);
   transition: color 0.12s;
 }
@@ -869,4 +851,43 @@
 
 .diff-line-del .diff-line-code {
   color: var(--coral);
+}
+
+/* ── 라인번호 거터 ── */
+.diff-gutter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  text-align: right;
+  padding: 0 6px 0 4px;
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: top;
+  min-width: 2.5ch;
+}
+
+.diff-marker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  padding: 0 3px;
+  user-select: none;
+  vertical-align: top;
+  color: inherit;
+  width: 1ch;
+}
+
+.diff-line-add .diff-marker { color: var(--positive); }
+.diff-line-del .diff-marker { color: var(--coral); }
+
+/* ── @@ 요약 라벨 행 ── */
+.diff-line-hunk-label {
+  background: color-mix(in oklch, var(--aurora) 8%, transparent);
+}
+
+.diff-line-label {
+  padding: 2px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
 }

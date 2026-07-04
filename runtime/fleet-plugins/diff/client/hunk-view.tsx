@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
+import { parseHunk } from "./hunk-parse.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -18,22 +19,7 @@ type LoadState =
   | { readonly kind: "ok"; readonly result: DiffHunkResult }
   | { readonly kind: "error"; readonly message: string };
 
-type HunkLine =
-  | { readonly kind: "header"; readonly text: string }
-  | { readonly kind: "add"; readonly text: string }
-  | { readonly kind: "del"; readonly text: string }
-  | { readonly kind: "ctx"; readonly text: string };
-
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function parseHunk(content: string): HunkLine[] {
-  return content.split("\n").map((line): HunkLine => {
-    if (line.startsWith("@@")) return { kind: "header", text: line };
-    if (line.startsWith("+")) return { kind: "add", text: line };
-    if (line.startsWith("-")) return { kind: "del", text: line };
-    return { kind: "ctx", text: line };
-  });
-}
 
 function escapeHtml(s: string): string {
   return s
@@ -86,11 +72,27 @@ export function HunkView({ ctx, file, mode, subPath }: HunkViewProps) {
           <tbody>
             {lines.map((line, i) => (
               <tr key={i} className={`diff-line diff-line-${line.kind}`}>
-                <td
-                  className="diff-line-code"
-                  // eslint-disable-next-line react/no-danger
-                  dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
-                />
+                {line.kind === "hunk-label" ? (
+                  <td
+                    colSpan={4}
+                    className="diff-line-label"
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
+                  />
+                ) : (
+                  <>
+                    <td className="diff-gutter diff-gutter-old">{line.oldLine ?? ""}</td>
+                    <td className="diff-gutter diff-gutter-new">{line.newLine ?? ""}</td>
+                    <td className="diff-marker">
+                      {line.kind === "add" ? "+" : line.kind === "del" ? "−" : ""}
+                    </td>
+                    <td
+                      className="diff-line-code"
+                      // eslint-disable-next-line react/no-danger
+                      dangerouslySetInnerHTML={{ __html: escapeHtml(line.text.length > 0 ? line.text.slice(1) : line.text) }}
+                    />
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
