@@ -615,7 +615,8 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
 }
 
 function getDockTailText(activeJobs: readonly JobView[]): string {
-  for (let jobIdx = activeJobs.length - 1; jobIdx >= 0; jobIdx--) {
+  // activeJobs는 newest-first(신규 잡이 앞에 prepend)이므로, 접힘 테일은 가장 최근 잡부터 훑어 최신 출력 1줄을 고른다.
+  for (let jobIdx = 0; jobIdx < activeJobs.length; jobIdx++) {
     const job = activeJobs[jobIdx];
     if (!job) continue;
     for (let trackIdx = job.trackOrder.length - 1; trackIdx >= 0; trackIdx--) {
