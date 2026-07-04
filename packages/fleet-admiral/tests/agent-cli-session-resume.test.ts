@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -35,6 +35,7 @@ interface CodexPluginManifest {
 }
 
 const tempDirs: string[] = [];
+const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex profile";
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
@@ -191,6 +192,76 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
     expect(toml).not.toContain("SessionStart =");
     expect(toml).not.toContain("subagents-context");
+  });
+
+  it("preserves Codex hook trust state while rewriting the fixed Fleet profile", async () => {
+    const root = createTempRoot("fleet-admiral-codex-trust-state-");
+    const codexHome = path.join(root, "codex-home");
+    const profilePath = path.join(codexHome, "fleet.config.toml");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(profilePath, [
+      CODEX_FLEET_PROFILE_MARKER,
+      'developer_instructions = """',
+      "old doctrine",
+      '"""',
+      "",
+      '[hooks.state."/Users/sbluemin/.codex/fleet.config.toml:user_prompt_submit:0:0"]',
+      'trusted_hash = "sha256:user-prompt-submit"',
+      "",
+      '[plugins."stale@marketplace"]',
+      "enabled = true",
+      "",
+      '[hooks.state."/Users/sbluemin/.codex/fleet.config.toml:stop:0:0"]',
+      'trusted_hash = "sha256:stop"',
+      "",
+    ].join("\n"), { encoding: "utf8" });
+    const profile = baseProfile("codex", {
+      args: ["--no-alt-screen"],
+      cwd: root,
+      env: { CODEX_HOME: codexHome, HOME: root },
+    });
+
+    await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "codex"]),
+    }));
+    const toml = readFileSync(profilePath, "utf8");
+
+    expect(toml).toContain("[hooks]\n");
+    expect(toml).toContain("[hooks.state.\"/Users/sbluemin/.codex/fleet.config.toml:user_prompt_submit:0:0\"]");
+    expect(toml).toContain('trusted_hash = "sha256:user-prompt-submit"');
+    expect(toml).toContain("[hooks.state.\"/Users/sbluemin/.codex/fleet.config.toml:stop:0:0\"]");
+    expect(toml).toContain('trusted_hash = "sha256:stop"');
+    expect(toml).not.toContain('[plugins."stale@marketplace"]');
+  });
+
+  it("does not preserve hook trust state from a non-Fleet fixed profile", async () => {
+    const root = createTempRoot("fleet-admiral-codex-user-profile-");
+    const codexHome = path.join(root, "codex-home");
+    const profilePath = path.join(codexHome, "fleet.config.toml");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(profilePath, [
+      "# User-managed Codex profile",
+      "[features]",
+      "hooks = true",
+      "",
+      '[hooks.state."/Users/sbluemin/.codex/fleet.config.toml:user_prompt_submit:0:0"]',
+      'trusted_hash = "sha256:user-managed"',
+      "",
+    ].join("\n"), { encoding: "utf8" });
+    const profile = baseProfile("codex", {
+      args: ["--no-alt-screen"],
+      cwd: root,
+      env: { CODEX_HOME: codexHome, HOME: root },
+    });
+
+    await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "codex"]),
+    }));
+    const toml = readFileSync(profilePath, "utf8");
+
+    expect(toml.startsWith(CODEX_FLEET_PROFILE_MARKER)).toBe(true);
+    expect(toml).not.toContain("[hooks.state.");
+    expect(toml).not.toContain("trusted_hash");
   });
 });
 

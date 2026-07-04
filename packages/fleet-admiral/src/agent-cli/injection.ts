@@ -253,6 +253,7 @@ function writeCodexFleetProfile(
   pruneLegacyCodexFleetProfiles(codexHome);
   const profileName = CODEX_FLEET_PROFILE_NAME;
   const profilePath = path.join(codexHome, CODEX_FLEET_PROFILE_FILE_NAME);
+  const hookTrustState = readCodexFleetHookTrustState(profilePath);
   writeFileNoFollow(profilePath, [
     CODEX_FLEET_PROFILE_MARKER,
     // doctrine를 멀티라인 TOML 문자열로 직렬화해 실제 줄바꿈을 보존(pretty)한다.
@@ -270,6 +271,7 @@ function writeCodexFleetProfile(
       "",
     ]),
     ...codexHooksConfig(hookExecs),
+    ...hookTrustState,
   ].join("\n"));
   chmodBestEffort(profilePath, SYSTEM_PROMPT_FILE_MODE);
   return { profileName, profilePath };
@@ -311,6 +313,51 @@ function writeFileNoFollow(filePath: string, content: string): void {
   } finally {
     closeSync(fd);
   }
+}
+
+function readCodexFleetHookTrustState(profilePath: string): string[] {
+  try {
+    const content = readFileNoFollow(profilePath);
+    if ((content.split(/\r?\n/, 1)[0] ?? "") !== CODEX_FLEET_PROFILE_MARKER) return [];
+    return extractCodexHookTrustStateSections(content);
+  } catch {
+    return [];
+  }
+}
+
+function readFileNoFollow(filePath: string): string {
+  const fd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    return readFileSync(fd, "utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function extractCodexHookTrustStateSections(content: string): string[] {
+  const sections: string[] = [];
+  let current: string[] | undefined;
+  for (const line of content.split(/\r?\n/)) {
+    if (/^\[hooks\.state\./.test(line)) {
+      if (current !== undefined) pushCodexHookTrustStateSection(sections, current);
+      current = [line];
+      continue;
+    }
+    if (current === undefined) continue;
+    if (/^\s*\[/.test(line)) {
+      pushCodexHookTrustStateSection(sections, current);
+      current = undefined;
+      continue;
+    }
+    current.push(line);
+  }
+  if (current !== undefined) pushCodexHookTrustStateSection(sections, current);
+  return sections;
+}
+
+function pushCodexHookTrustStateSection(sections: string[], section: readonly string[]): void {
+  sections.push(...section);
+  if (section[section.length - 1] !== "") sections.push("");
 }
 
 function pruneLegacyCodexFleetProfiles(codexHome: string): void {
