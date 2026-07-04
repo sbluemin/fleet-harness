@@ -27,6 +27,25 @@ export function parseHunk(content: string): ParsedLine[] {
     headerEnd++;
   }
 
+  // hunk가 하나도 없는 diff(바이너리 수정, 모드 변경 등)는 파일 헤더 4종만 걷어내고
+  // 나머지 정보성 라인("Binary files ... differ" 등)을 라인번호 없는 ctx로 보존한다
+  if (headerEnd === rawLines.length) {
+    for (const line of rawLines) {
+      if (line === "") continue;
+      if (
+        line.startsWith("diff --git") ||
+        line.startsWith("index ") ||
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ")
+      ) {
+        continue;
+      }
+      // 뷰가 unified 프리픽스 1글자(slice(1))를 걷어내므로 ctx 규약대로 앞 공백을 붙인다
+      result.push({ kind: "ctx", text: ` ${line}` });
+    }
+    return result;
+  }
+
   let oldLine = 0;
   let newLine = 0;
 

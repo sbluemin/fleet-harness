@@ -92,13 +92,21 @@ describe("parseHunk", () => {
     expect(parseHunk("")).toEqual([]);
   });
 
-  it("⑦ Binary 라인을 포함한 입력에서 크래시 없이 처리된다", () => {
+  it("⑦ hunk 없는 diff(바이너리)는 정보성 라인을 ctx로 보존한다", () => {
     const binary = [
       "diff --git a/img.png b/img.png",
       "index abc..def 100644",
       "Binary files a/img.png and b/img.png differ",
     ].join("\n");
     expect(() => parseHunk(binary)).not.toThrow();
+    const lines = parseHunk(binary);
+    // 파일 헤더(diff --git/index)는 드롭, 바이너리 안내는 살아남는다
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.kind).toBe("ctx");
+    // 뷰의 slice(1) 규약에 맞춰 앞 공백 프리픽스가 붙는다
+    expect(lines[0]?.text).toBe(" Binary files a/img.png and b/img.png differ");
+    expect(lines[0]?.oldLine).toBeUndefined();
+    expect(lines[0]?.newLine).toBeUndefined();
   });
 
   it("⑧ '\\ No newline at end of file' 어노테이션은 결과에서 제외되고 라인번호를 소모하지 않는다", () => {
