@@ -32,6 +32,8 @@
 .right-rail-panel-slot {
   position: relative;
   width: 0;
+  /* 요청 시점 클램프(rail-store) 이후 뷰포트가 줄어도 슬롯이 캔버스를 밀어내지 않도록 렌더 시점 상한 — 드래그 클램프(148px 여유)와 동일 시맨틱 */
+  max-width: calc(100vw - 148px);
   overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr;

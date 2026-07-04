@@ -5,6 +5,7 @@ import type { ClientApiCapability } from "../plugin/types.js";
 export interface RailPanelContext {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
+  readonly requestExtraWidth?: (px: number | null) => void;
 }
 
 export interface RailPanelDescriptor {

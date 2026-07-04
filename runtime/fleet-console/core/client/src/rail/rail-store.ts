@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 interface RailStore {
   readonly activeRailPanelId: string | null;
+  readonly panelExtraWidth: number;
 }
 
 type Listener = () => void;
@@ -20,7 +21,7 @@ function saveStoredPanelId(id: string | null): void {
 }
 
 const listeners = new Set<Listener>();
-let store: RailStore = { activeRailPanelId: readStoredPanelId() };
+let store: RailStore = { activeRailPanelId: readStoredPanelId(), panelExtraWidth: 0 };
 
 function notify(): void {
   for (const listener of listeners) listener();
@@ -37,25 +38,42 @@ export function getRailStoreSnapshot(): RailStore {
 
 export function setActiveRailPanel(id: string): void {
   if (store.activeRailPanelId === id) return;
-  store = { activeRailPanelId: id };
+  store = { activeRailPanelId: id, panelExtraWidth: 0 };
   saveStoredPanelId(id);
   notify();
 }
 
 export function toggleRailPanel(id: string): void {
   const next = store.activeRailPanelId === id ? null : id;
-  store = { activeRailPanelId: next };
+  store = { activeRailPanelId: next, panelExtraWidth: 0 };
   saveStoredPanelId(next);
   notify();
 }
 
 export function closeRailPanel(): void {
   if (store.activeRailPanelId === null) return;
-  store = { activeRailPanelId: null };
+  store = { activeRailPanelId: null, panelExtraWidth: 0 };
   saveStoredPanelId(null);
+  notify();
+}
+
+export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
+  if (panelId !== store.activeRailPanelId) return;
+  const raw = (px === null || !Number.isFinite(px)) ? 0 : px;
+  const normalized = Math.max(0, Math.round(raw));
+  const clamped =
+    typeof window !== "undefined"
+      ? Math.min(normalized, Math.max(0, window.innerWidth - 548))
+      : normalized;
+  if (clamped === store.panelExtraWidth) return;
+  store = { ...store, panelExtraWidth: clamped };
   notify();
 }
 
 export function useActiveRailPanelId(): string | null {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).activeRailPanelId;
+}
+
+export function useRailPanelExtraWidth(): number {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
 }

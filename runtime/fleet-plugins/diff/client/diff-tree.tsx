@@ -162,7 +162,10 @@ function DiffTreeLeaf({ entry, depth, selectedPath, onSelect }: TreeLeafProps) {
       <span className={`diff-status-glyph diff-status-${entry.status.toLowerCase()}`} aria-label={entry.status}>
         {STATUS_GLYPHS[entry.status] ?? entry.status}
       </span>
-      <span className="diff-file-name">{name}</span>
+      {/* 파일명 타이포/색·is-cur brass는 .diff-file-fn이 소유하므로 리스트 행과 동일 마크업을 유지한다 */}
+      <span className="diff-file-name">
+        <span className="diff-file-fn">{name}</span>
+      </span>
       <span className="diff-nums">
         {entry.additions > 0 && <span className="diff-additions">+{entry.additions}</span>}
         {entry.deletions > 0 && <span className="diff-deletions">−{entry.deletions}</span>}

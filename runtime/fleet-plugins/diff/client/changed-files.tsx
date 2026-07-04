@@ -164,9 +164,11 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect }:
 
 function ListFileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
   const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
-  const lastSlash = entry.path.lastIndexOf("/");
-  const dir = lastSlash >= 0 ? entry.path.slice(0, lastSlash + 1) : "";
-  const name = lastSlash >= 0 ? entry.path.slice(lastSlash + 1) : entry.path;
+  // 미추적 디렉터리는 trailing slash 경로로 오므로, 이름은 마지막 비어있지 않은 세그먼트로 취한다
+  const trimmed = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;
+  const lastSlash = trimmed.lastIndexOf("/");
+  const dir = lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : "";
+  const name = (lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed) + (entry.path.endsWith("/") ? "/" : "");
 
   return (
     <button
@@ -182,8 +184,8 @@ function ListFileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
         {entry.status}
       </span>
       <span className="diff-file-name">
+        <span className="diff-file-fn">{name}</span>
         {dir && <span className="diff-file-dir">{dir}</span>}
-        {name}
       </span>
       <span className="diff-nums">
         {entry.additions > 0 && <span className="diff-additions">+{entry.additions}</span>}
