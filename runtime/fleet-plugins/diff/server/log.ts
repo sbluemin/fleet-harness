@@ -102,9 +102,12 @@ export async function handleDiffLog(
         ctx.host.http.writeJson(res, 422, { error: error.code });
         return;
       }
-    }
-    if (isNoHeadError(error)) {
-      ctx.host.http.writeJson(res, 200, { commits: [] });
+      // no-HEAD 신규 저장소(HEAD 미존재)는 빈 배열 graceful; 그 외 비정상 종료는 500 — 500 분기보다 먼저 검사한다
+      if (isNoHeadError(error)) {
+        ctx.host.http.writeJson(res, 200, { commits: [] });
+        return;
+      }
+      ctx.host.http.writeJson(res, 500, { error: "git_failed" });
       return;
     }
     throw error;

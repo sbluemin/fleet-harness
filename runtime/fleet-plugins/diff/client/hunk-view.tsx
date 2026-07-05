@@ -79,7 +79,10 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
   }
 
   const { result } = state;
-  const lines = parseHunk(result.content);
+  // 커밋(git show)은 다중 파일이라 파일 경계 라벨이 필요하지만, 단일 파일 뷰는 페인 헤더가 이미
+  // 파일명을 표시하므로 file-label 행은 중복이다 — 커밋 모드에서만 렌더한다.
+  const parsed = parseHunk(result.content);
+  const lines = commit ? parsed : parsed.filter((l) => l.kind !== "file-label");
 
   return (
     <div className="diff-hunk-wrap">
