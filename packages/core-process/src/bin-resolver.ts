@@ -34,12 +34,16 @@ export function resolveBinary(defaultBin: string, overrideName: string, env: Nod
 }
 
 export function resolvePathBinary(command: string, env: NodeJS.ProcessEnv, options: ResolveBinaryOptions = {}): ResolvedBinary | undefined {
+  const resolved = findBinaryPath(command, env, options);
+  return resolved ? wrapWindowsShim(resolved, env, options.platform ?? process.platform) : undefined;
+}
+
+export function findBinaryPath(command: string, env: NodeJS.ProcessEnv, options: ResolveBinaryOptions = {}): string | undefined {
   const platform = options.platform ?? process.platform;
   const isWindows = platform === "win32";
   const pathValue = isWindows ? (env.Path ?? env.PATH ?? "") : (env.PATH ?? "");
   const pathExts = isWindows ? parsePathExt(env.PATHEXT) : [""];
-  const resolved = findOnPath(command, pathValue, pathExts, platform);
-  return resolved ? wrapWindowsShim(resolved, env, platform) : undefined;
+  return findOnPath(command, pathValue, pathExts, platform);
 }
 
 export function createChildEnv(env: NodeJS.ProcessEnv, overlay: Readonly<Record<string, string | undefined>>): Record<string, string> {

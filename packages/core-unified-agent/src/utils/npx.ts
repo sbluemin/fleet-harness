@@ -2,7 +2,7 @@
  * npx 경로 해석 유틸리티
  */
 
-import { resolvePathBinary } from '@dotobokuri/core-process';
+import { findBinaryPath } from '@dotobokuri/core-process';
 import { isWindows } from './env.js';
 
 /**
@@ -14,9 +14,9 @@ import { isWindows } from './env.js';
 export function resolveNpxPath(
   env?: Record<string, string | undefined>,
 ): string {
-  const resolved = resolvePathBinary('npx', (env ?? process.env) as NodeJS.ProcessEnv);
+  const resolved = findBinaryPath('npx', (env ?? process.env) as NodeJS.ProcessEnv);
   if (resolved) {
-    return resolved.bin;
+    return resolved;
   }
   return isWindows() ? 'npx.cmd' : 'npx';
 }

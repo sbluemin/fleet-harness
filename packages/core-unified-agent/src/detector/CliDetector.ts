@@ -4,7 +4,7 @@
  */
 
 import { execFile } from 'child_process';
-import { resolvePathBinary, withHidden } from '@dotobokuri/core-process';
+import { findBinaryPath, withHidden } from '@dotobokuri/core-process';
 import { CLI_BACKENDS, type CliType } from '../config/CliConfigs.js';
 import type { CliDetectionResult, ProtocolType } from '../types/config.js';
 
@@ -138,7 +138,7 @@ export class CliDetector {
    * @returns 사용 가능 여부
    */
   private async isCliAvailable(command: string): Promise<boolean> {
-    const resolved = resolvePathBinary(command, process.env);
+    const resolved = findBinaryPath(command, process.env);
     if (resolved !== undefined) {
       return true;
     }
@@ -182,8 +182,8 @@ export class CliDetector {
    * @returns 전체 경로 또는 커맨드 이름
    */
   private async getCliPath(command: string): Promise<string> {
-    const resolved = resolvePathBinary(command, process.env);
-    return resolved ? resolved.bin : command;
+    const resolved = findBinaryPath(command, process.env);
+    return resolved ?? command;
   }
 
   /**

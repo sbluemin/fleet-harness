@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolvePathBinary } from "../src/bin-resolver.js";
+import { findBinaryPath, resolvePathBinary } from "../src/bin-resolver.js";
 
 const TEMP_DIRS: string[] = [];
 
@@ -115,6 +115,53 @@ describe("process binary resolution", () => {
       bin: npmBin,
       prefixArgs: [],
     });
+  });
+});
+
+describe("findBinaryPath — raw 경로 반환 (shim 래핑 없음)", () => {
+  afterEach(() => {
+    for (const dir of TEMP_DIRS.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("win32에서 .cmd shim을 cmd.exe로 변환하지 않고 raw 경로를 반환한다", () => {
+    const binDir = makeTempDir();
+    const npxShim = touch(path.join(binDir, "npx.CMD"));
+    const env = {
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      PATHEXT: ".CMD;.EXE",
+      Path: binDir,
+    };
+
+    const result = findBinaryPath("npx", env, { platform: "win32" });
+    expect(result).toBe(npxShim);
+  });
+
+  it("win32에서 .exe 바이너리는 그대로 raw 경로를 반환한다", () => {
+    const binDir = makeTempDir();
+    const nodeBin = touch(path.join(binDir, "node.EXE"));
+    const env = {
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      PATHEXT: ".CMD;.EXE",
+      Path: binDir,
+    };
+
+    const result = findBinaryPath("node", env, { platform: "win32" });
+    expect(result).toBe(nodeBin);
+  });
+
+  it("POSIX에서 raw 실행 파일 경로를 반환한다", () => {
+    const binDir = makeTempDir();
+    const npxBin = touch(path.join(binDir, "npx"));
+
+    const result = findBinaryPath("npx", { PATH: binDir }, { platform: "linux" });
+    expect(result).toBe(npxBin);
+  });
+
+  it("존재하지 않는 바이너리에 undefined를 반환한다", () => {
+    const result = findBinaryPath("does-not-exist-xyz-fleet", { PATH: "" }, { platform: "linux" });
+    expect(result).toBeUndefined();
   });
 });
 
