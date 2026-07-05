@@ -18,6 +18,11 @@ describe("file explorer markdown links", () => {
     expect(resolveMarkdownFileRef("./setup.md#install", "docs/guides/README.md")).toBe("docs/guides/setup.md");
   });
 
+  it("Windows 경로 구분자로 전달된 현재 문서 위치도 정규화한다", () => {
+    expect(resolveMarkdownFileRef("./image.png", "docs\\guides\\README.md")).toBe("docs/guides/image.png");
+    expect(resolveMarkdownFileRef("../assets/logo.png", "docs\\guides\\README.md")).toBe("docs/assets/logo.png");
+  });
+
   it("외부 링크와 root 밖으로 나가는 링크는 내부 파일 링크로 바꾸지 않는다", () => {
     expect(resolveMarkdownFileRef("https://example.com/badge.svg", "README.md")).toBeNull();
     expect(resolveMarkdownFileRef("//example.com/badge.svg", "README.md")).toBeNull();

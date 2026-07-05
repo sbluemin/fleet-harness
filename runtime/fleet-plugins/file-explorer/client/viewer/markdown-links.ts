@@ -49,8 +49,9 @@ function decodeMarkdownPath(value: string): string | null {
 
 function normalizeRelativePath(rawPath: string, currentRelativePath: string): string | null {
   const normalizedInput = rawPath.replace(/\\/g, "/");
-  const baseDir = currentRelativePath.includes("/")
-    ? currentRelativePath.slice(0, currentRelativePath.lastIndexOf("/"))
+  const normalizedCurrentPath = currentRelativePath.replace(/\\/g, "/");
+  const baseDir = normalizedCurrentPath.includes("/")
+    ? normalizedCurrentPath.slice(0, normalizedCurrentPath.lastIndexOf("/"))
     : "";
   const candidate = normalizedInput.startsWith("/")
     ? normalizedInput
