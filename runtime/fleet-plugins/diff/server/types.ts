@@ -32,3 +32,25 @@ export interface ReposDiscoveryResult {
   readonly repos: readonly RepoEntry[];
   readonly truncated?: boolean;
 }
+
+export interface LogCommitEntry {
+  readonly shortHash: string;
+  readonly fullHash: string;
+  readonly subject: string;
+  readonly authorName: string;
+  readonly relTime: string;
+  readonly refs: readonly string[];
+  readonly parents: readonly string[];
+  readonly additions: number;
+  readonly deletions: number;
+}
+
+export interface LogResult {
+  readonly commits: readonly LogCommitEntry[];
+  readonly truncated?: boolean;
+}
+
+export interface CommitDiffResult {
+  readonly content: string;
+  readonly truncated?: boolean;
+}

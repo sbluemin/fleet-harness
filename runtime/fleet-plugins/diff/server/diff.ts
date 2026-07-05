@@ -69,7 +69,7 @@ function isNoHeadError(error: unknown): boolean {
 
 // subPath 포함·realpath 이중 containment 검증 후 gitCwd 반환.
 // 검증 실패 시 null 반환 — 호출자가 적절한 HTTP 오류를 반환한다.
-async function resolveGitCwd(
+export async function resolveGitCwd(
   theaterPath: string,
   rawSubPath: string,
 ): Promise<{ gitCwd: string } | null> {

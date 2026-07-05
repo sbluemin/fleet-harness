@@ -1,0 +1,166 @@
+import { describe, expect, it } from "vitest";
+
+import { layoutGraph } from "../client/graph-layout.js";
+import type { LogCommitEntry } from "../server/types.js";
+
+function makeCommit(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
+  return {
+    shortHash: "abc1234",
+    fullHash: "abc1234def5678abc1234def5678abc1234def56",
+    subject: "test commit",
+    authorName: "Author",
+    relTime: "1 hour ago",
+    refs: [],
+    parents: [],
+    additions: 0,
+    deletions: 0,
+    ...overrides,
+  };
+}
+
+describe("layoutGraph — Phase 1 단일 레인 skeleton", () => {
+  it("① 빈 커밋 배열에서 빈 레이아웃을 반환한다", () => {
+    const layout = layoutGraph([]);
+    expect(layout.nodes).toHaveLength(0);
+    expect(layout.activeLaneCount).toBe(0);
+    expect(layout.collapsed).toBe(false);
+  });
+
+  it("② 단일 커밋에서 lane=0, connectAbove=false, connectBelow=false", () => {
+    const layout = layoutGraph([makeCommit()]);
+    expect(layout.nodes).toHaveLength(1);
+    expect(layout.nodes[0]?.lane).toBe(0);
+    expect(layout.nodes[0]?.connectAbove).toBe(false);
+    expect(layout.nodes[0]?.connectBelow).toBe(false);
+    expect(layout.activeLaneCount).toBe(1);
+    expect(layout.collapsed).toBe(false);
+  });
+
+  it("③ 여러 커밋에서 모든 lane=0, 양 끝 연결선 규칙을 따른다", () => {
+    const commits = [
+      makeCommit({ fullHash: "aaa" }),
+      makeCommit({ fullHash: "bbb" }),
+      makeCommit({ fullHash: "ccc" }),
+    ];
+    const layout = layoutGraph(commits);
+    expect(layout.nodes).toHaveLength(3);
+    expect(layout.nodes.every((n) => n.lane === 0)).toBe(true);
+    // 첫 커밋: connectAbove=false, connectBelow=true
+    expect(layout.nodes[0]?.connectAbove).toBe(false);
+    expect(layout.nodes[0]?.connectBelow).toBe(true);
+    // 중간 커밋: connectAbove=true, connectBelow=true
+    expect(layout.nodes[1]?.connectAbove).toBe(true);
+    expect(layout.nodes[1]?.connectBelow).toBe(true);
+    // 마지막 커밋: connectAbove=true, connectBelow=false
+    expect(layout.nodes[2]?.connectAbove).toBe(true);
+    expect(layout.nodes[2]?.connectBelow).toBe(false);
+  });
+
+  it("④ 첫 커밋(index 0)은 항상 isHead=true", () => {
+    const layout = layoutGraph([makeCommit({ refs: [] })]);
+    expect(layout.nodes[0]?.isHead).toBe(true);
+  });
+
+  it("⑤ refs에 'HEAD'가 포함된 커밋은 isHead=true", () => {
+    const commits = [
+      makeCommit({ refs: [] }),
+      makeCommit({ refs: ["HEAD", "refs/heads/main"] }),
+      makeCommit({ refs: [] }),
+    ];
+    const layout = layoutGraph(commits);
+    // index 0는 항상 isHead=true
+    expect(layout.nodes[0]?.isHead).toBe(true);
+    // index 1는 refs에 HEAD 포함
+    expect(layout.nodes[1]?.isHead).toBe(true);
+    // index 2는 refs에 HEAD 없음, index 0 아님 → isHead=false
+    expect(layout.nodes[2]?.isHead).toBe(false);
+  });
+
+  it("⑥ Phase 1에서 passThroughLanes/mergeFromLanes/branchToLanes는 모두 빈 배열", () => {
+    const layout = layoutGraph([makeCommit(), makeCommit(), makeCommit()]);
+    for (const node of layout.nodes) {
+      expect(node.passThroughLanes).toEqual([]);
+      expect(node.mergeFromLanes).toEqual([]);
+      expect(node.branchToLanes).toEqual([]);
+    }
+  });
+
+  it("⑦ activeLaneCount는 커밋이 있으면 1", () => {
+    const layout = layoutGraph([makeCommit(), makeCommit()]);
+    expect(layout.activeLaneCount).toBe(1);
+  });
+
+  it("⑧ collapsed는 항상 false (Phase 1)", () => {
+    const layout = layoutGraph([makeCommit(), makeCommit()]);
+    expect(layout.collapsed).toBe(false);
+  });
+});
+
+describe("layoutGraph — Phase 2 다중 레인 topology", () => {
+  it("① linear 5 commits → 모든 lane=0, passThrough=[], activeLaneCount=1, collapsed=false", () => {
+    const commits = [
+      makeCommit({ fullHash: "aaa", parents: ["bbb"] }),
+      makeCommit({ fullHash: "bbb", parents: ["ccc"] }),
+      makeCommit({ fullHash: "ccc", parents: ["ddd"] }),
+      makeCommit({ fullHash: "ddd", parents: ["eee"] }),
+      makeCommit({ fullHash: "eee", parents: [] }),
+    ];
+    const layout = layoutGraph(commits);
+    expect(layout.nodes.every((n) => n.lane === 0)).toBe(true);
+    expect(layout.nodes.every((n) => n.passThroughLanes.length === 0)).toBe(true);
+    expect(layout.activeLaneCount).toBe(1);
+    expect(layout.collapsed).toBe(false);
+  });
+
+  it("② merge commit(2 parents) → 병합 커밋 이후 새 lane 개설, mergeFromLanes/branchToLanes 정확 배정", () => {
+    // merge: hash=M, parents=[A, B]
+    // A: hash=A, parents=[]
+    // B: hash=B, parents=[]
+    const commits = [
+      makeCommit({ fullHash: "M", parents: ["A", "B"] }),
+      makeCommit({ fullHash: "A", parents: [] }),
+      makeCommit({ fullHash: "B", parents: [] }),
+    ];
+    const layout = layoutGraph(commits);
+    // M은 lane 0 (새로 개설)
+    expect(layout.nodes[0]?.lane).toBe(0);
+    // M의 branchToLanes에는 B를 기다리는 새 레인이 있어야 함
+    expect(layout.nodes[0]?.branchToLanes.length).toBeGreaterThan(0);
+    // A는 laneHeads[0] = A 이므로 lane 0 매치
+    expect(layout.nodes[1]?.lane).toBe(0);
+    // B는 branchToLanes에서 개설된 레인 매치
+    const bLane = layout.nodes[0]?.branchToLanes[0] ?? -1;
+    expect(layout.nodes[2]?.lane).toBe(bLane);
+    // A에서 mergeFromLanes는 빈 배열 (A는 M의 첫 번째 부모이므로 닫힘이 없음)
+    expect(layout.nodes[1]?.mergeFromLanes).toEqual([]);
+    // collapsed는 false (2레인 = 캡 3 이하)
+    expect(layout.collapsed).toBe(false);
+  });
+
+  it("③ octopus 4 parents → 활성 레인이 3 초과 즉시 collapsed=true", () => {
+    // C의 parents: [A, B, D, E] — 4개 부모 → 4개 레인 개설 → 캡 3 초과
+    const commits = [
+      makeCommit({ fullHash: "C", parents: ["A", "B", "D", "E"] }),
+      makeCommit({ fullHash: "A", parents: [] }),
+      makeCommit({ fullHash: "B", parents: [] }),
+      makeCommit({ fullHash: "D", parents: [] }),
+      makeCommit({ fullHash: "E", parents: [] }),
+    ];
+    const layout = layoutGraph(commits);
+    expect(layout.collapsed).toBe(true);
+    // 활성 레인은 3 이하
+    const activeLanes = new Set<number>();
+    for (const node of layout.nodes) activeLanes.add(node.lane);
+    expect(activeLanes.size).toBeLessThanOrEqual(3);
+  });
+
+  it("④ dangling parent(로그 범위 밖) → 남은 laneHead가 매치 없이 종료해도 크래시 없음", () => {
+    const commits = [
+      makeCommit({ fullHash: "A", parents: ["MISSING"] }),
+      makeCommit({ fullHash: "B", parents: [] }),
+    ];
+    expect(() => layoutGraph(commits)).not.toThrow();
+    const layout = layoutGraph(commits);
+    expect(layout.nodes).toHaveLength(2);
+  });
+});
