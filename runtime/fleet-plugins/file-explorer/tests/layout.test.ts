@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   EXTRA_WIDTH,
+  DIVIDER_WIDTH_PX,
+  MIN_VIEWER_PX,
   MIN_TREE_PX,
+  buildSplitGridTemplate,
   canResizeTreePane,
   clampTreePaneWidth,
   resolveExtraWidth,
@@ -23,5 +26,12 @@ describe("file explorer rail layout", () => {
   it("컨테이너가 최소폭 합보다 좁으면 드래그를 no-op으로 처리한다", () => {
     expect(canResizeTreePane(360)).toBe(false);
     expect(clampTreePaneWidth(248, -80, 360)).toBe(248);
+  });
+
+  it("저장된 트리 폭을 viewer 최소폭 보존 CSS clamp로 감싼다", () => {
+    const preservedViewerWidth = MIN_VIEWER_PX + DIVIDER_WIDTH_PX;
+    expect(buildSplitGridTemplate(468)).toBe(
+      `minmax(0, 1fr) ${DIVIDER_WIDTH_PX}px minmax(0, min(468px, calc(100% - ${preservedViewerWidth}px)))`,
+    );
   });
 });

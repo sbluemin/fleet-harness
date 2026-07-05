@@ -15,7 +15,7 @@ import {
 } from "./diff-view-store.js";
 import { HistorySection } from "./history-section.js";
 import { HunkView } from "./hunk-view.js";
-import { clampListPaneWidth } from "./rail-layout.js";
+import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
 import { groupRepos, relativeToParent } from "./repo-grouping.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -49,10 +49,8 @@ const PREFS_REPO_PREFIX = "fleet-console.diff.repo.";
 const PREFS_HISTORY_GRAPH_MODE = "fleet-console.diff.historyGraphMode";
 
 const EXTENDED_EXTRA_WIDTH = 400;
-const HUNK_PANE_MIN_WIDTH = 140;
 const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
-const DIFF_DIVIDER_WIDTH = 4;
 const DEFAULT_DEPTH = 3;
 
 const DEPTH_OPTS: readonly { readonly value: number; readonly label: string }[] = [
@@ -486,7 +484,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       ref={rootRef}
       className={`diff-root${hasHunk ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`}
       style={hasHunk ? {
-        gridTemplateColumns: `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, ${listPaneWidth}px)`,
+        gridTemplateColumns: buildDiffGridTemplate(listPaneWidth),
       } : undefined}
     >
       {hasHunk && (

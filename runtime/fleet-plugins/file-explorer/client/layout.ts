@@ -14,6 +14,11 @@ export function clampTreePaneWidth(startWidth: number, dx: number, containerWidt
   return Math.max(MIN_TREE_PX, Math.min(max, startWidth - dx));
 }
 
+export function buildSplitGridTemplate(treePaneWidth: number): string {
+  const preservedViewerWidth = MIN_VIEWER_PX + DIVIDER_WIDTH_PX;
+  return `minmax(0, 1fr) ${DIVIDER_WIDTH_PX}px minmax(0, min(${treePaneWidth}px, calc(100% - ${preservedViewerWidth}px)))`;
+}
+
 export function resolveExtraWidth(isViewerActive: boolean): number | null {
   return isViewerActive ? EXTRA_WIDTH : null;
 }

@@ -28,6 +28,7 @@
   border-left: 1px solid var(--surface-rim);
   position: relative;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .diff-hunk-pane {
@@ -949,6 +950,7 @@
   align-items: center;
   gap: 0 8px;
   width: 100%;
+  overflow: hidden;
   padding: 5px 12px;
   background: none;
   border: none;
@@ -1037,6 +1039,18 @@
   color: var(--ink-fog);
   white-space: nowrap;
   flex: none;
+}
+
+@container (max-width: 300px) {
+  .diff-commit-row .diff-commit-meta {
+    display: none;
+  }
+}
+
+@container (max-width: 248px) {
+  .diff-commit-row .diff-commit-badges {
+    display: none;
+  }
 }
 
 /* ── 커밋 모드 hunk 헤더 ── */

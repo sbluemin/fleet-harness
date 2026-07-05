@@ -10,7 +10,7 @@ import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
 import { MarkdownViewer } from "./viewer/markdown.js";
 import {
-  DIVIDER_WIDTH_PX,
+  buildSplitGridTemplate,
   canResizeTreePane,
   clampTreePaneWidth,
   resolveExtraWidth,
@@ -140,7 +140,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       ref={rootRef}
       className={`fexp-root${isViewerActive ? " is-split" : " is-tree-only"}${isDragging ? " is-dragging" : ""}`}
       style={isViewerActive
-        ? { gridTemplateColumns: `minmax(0, 1fr) ${DIVIDER_WIDTH_PX}px minmax(0, ${treePaneWidth}px)` }
+        ? { gridTemplateColumns: buildSplitGridTemplate(treePaneWidth) }
         : undefined}
     >
       {isViewerActive && (

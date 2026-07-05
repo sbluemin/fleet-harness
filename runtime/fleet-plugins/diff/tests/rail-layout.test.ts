@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { clampListPaneWidth } from "../client/rail-layout.js";
+import {
+  DIFF_DIVIDER_WIDTH,
+  HUNK_PANE_MIN_WIDTH,
+  buildDiffGridTemplate,
+  clampListPaneWidth,
+} from "../client/rail-layout.js";
 
 describe("clampListPaneWidth", () => {
   it("keeps the right list pane at its px width when the divider does not move", () => {
@@ -45,5 +50,14 @@ describe("clampListPaneWidth", () => {
       hunkPaneMinWidth: 140,
       dividerWidth: 4,
     })).toBeNull();
+  });
+});
+
+describe("buildDiffGridTemplate", () => {
+  it("저장된 우측 폭을 좌측 최소폭 보존 CSS clamp로 감싼다", () => {
+    const preservedLeftWidth = HUNK_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
+    expect(buildDiffGridTemplate(568)).toBe(
+      `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(568px, calc(100% - ${preservedLeftWidth}px)))`,
+    );
   });
 });
