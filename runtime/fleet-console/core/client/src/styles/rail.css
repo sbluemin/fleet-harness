@@ -51,7 +51,7 @@
   padding: 9px 10px;
   border-bottom: 1px solid var(--surface-rim);
   min-height: 46px;
-  min-width: 312px;
+  min-width: 240px;
 }
 
 .right-rail-panel-title {
@@ -88,7 +88,7 @@
 .right-rail-panel-body {
   overflow: hidden;
   min-height: 0;
-  min-width: 312px;
+  min-width: 240px;
 }
 
 /* ── 아이콘 레일 ────────────────────────────────────────────────── */

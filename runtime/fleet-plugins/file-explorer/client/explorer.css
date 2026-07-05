@@ -47,11 +47,14 @@
   --fexp-ic-default: oklch(67% 0.005 250);
 }
 
-/* ── 루트 레이아웃 — 상시 2-Pane (뷰어 + 디바이더 + 트리) ── */
+/* ── 루트 레이아웃 — 트리 단독 ↔ 뷰어+트리 2단계 전환 ── */
 .fexp-root {
   display: grid;
-  grid-template-columns: minmax(200px, 0.55fr) 4px minmax(160px, 0.45fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   transition: grid-template-columns var(--duration-base) var(--ease-spring);
 }
@@ -70,7 +73,14 @@
 .fexp-tree-pane {
   display: grid;
   grid-template-rows: 1fr;
+  /* 암시적 auto 열이 내용 min-content로 pane보다 넓어지지 않게 클램프 */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
+}
+
+.fexp-root.is-split .fexp-tree-pane {
   border-left: 1px solid var(--surface-rim);
 }
 
@@ -94,6 +104,10 @@
 .fexp-viewer-pane {
   display: grid;
   grid-template-rows: 46px 1fr;
+  /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
 }
@@ -141,19 +155,6 @@
   position: relative;
 }
 
-.fexp-viewer-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 24px 16px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  color: var(--ink-fog);
-  text-align: center;
-  line-height: 1.5;
-}
-
 .fexp-viewer-loading,
 .fexp-viewer-error {
   padding: 16px;
@@ -171,6 +172,8 @@
   display: grid;
   grid-template-rows: auto 1fr;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -178,6 +181,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   padding: 5px 8px;
   border-bottom: 1px solid var(--surface-rim);
 }
@@ -219,6 +223,7 @@
 
 /* ── 파일 트리 ── */
 .fexp-tree {
+  min-width: 0;
   padding: 8px 0;
   overflow-y: auto;
 }
@@ -245,6 +250,7 @@
   align-items: center;
   gap: 6px;
   width: 100%;
+  min-width: 0;
   padding: 5px 12px;
   background: none;
   border: none;
