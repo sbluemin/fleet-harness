@@ -14,10 +14,10 @@ describe("terminal font settings", () => {
 
   it("pins curated terminal fonts to the measured fontsource variable family names", () => {
     expect(CURATED_TERMINAL_FONTS.map((font) => [font.name, font.family])).toEqual([
-      ["Cascadia Code", "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace"],
-      ["JetBrains Mono", "\"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, monospace"],
-      ["Fira Code", "\"Fira Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace"],
-      ["Source Code Pro", "\"Source Code Pro Variable\", ui-monospace, \"SF Mono\", Menlo, monospace"],
+      ["Cascadia Code", "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["JetBrains Mono", "\"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["Fira Code", "\"Fira Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["Source Code Pro", "\"Source Code Pro Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
     ]);
   });
 
@@ -29,7 +29,7 @@ describe("terminal font settings", () => {
     }))).toMatchObject({
       source: "custom",
       customName: "MesloLGS NF",
-      family: "\"MesloLGS NF\", \"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      family: "\"MesloLGS NF\", \"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace",
       size: 22,
     });
   });
@@ -55,9 +55,19 @@ describe("terminal font settings", () => {
     expect(settings).toMatchObject({
       source: "custom",
       customName: "",
-      family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace",
       size: 14,
     });
+  });
+
+  it("keeps Symbols Nerd Font Mono immediately before final monospace in every generated chain", () => {
+    const custom = createCustomTerminalFontSettings("MesloLGS NF", 14);
+    const families = [...CURATED_TERMINAL_FONTS.map((font) => font.family), custom.family];
+
+    for (const family of families) {
+      expect(family).toMatch(/"Symbols Nerd Font Mono", monospace$/);
+      expect(family).not.toMatch(/"Symbols Nerd Font Mono".*"Symbols Nerd Font Mono"/);
+    }
   });
 
   it("uses canvas width comparison to distinguish resolved custom fonts from fallback", () => {

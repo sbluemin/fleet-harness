@@ -2,7 +2,9 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection } from "./agent/index.js";
 import { shellOperationKind, shellPlugin } from "./shell/index.js";
+import { preloadSymbolsNerdFontMono } from "./shared/symbols-font.js";
 import { connectTerminalSettings } from "./shared/terminal-prefs-store.js";
+import "./assets/fonts/symbols-nerd-font-mono.css";
 
 const AGENT_OPERATION_TYPES = new Set(["agent"]);
 
@@ -11,7 +13,7 @@ export const terminalPlugin = definePlugin({
   operationKinds: [shellOperationKind, agentOperationKind],
   settingsSections: [agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
-  install: (ctx) => { connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
+  install: (ctx) => { void preloadSymbolsNerdFontMono(); connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
   closeOperation: async (operationId) => {
     const operation = await fetchOperation(operationId);
     if (operation?.type === "shell") {

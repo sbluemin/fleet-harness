@@ -20,7 +20,8 @@ interface StoredTerminalFontSettings {
   readonly size?: unknown;
 }
 
-const TERMINAL_FONT_FALLBACK_STACK = "ui-monospace, \"SF Mono\", Menlo, monospace";
+const SYMBOLS_NERD_FONT_MONO_FAMILY = "Symbols Nerd Font Mono";
+const TERMINAL_FONT_FALLBACK_STACK = `ui-monospace, "SF Mono", Menlo, "${SYMBOLS_NERD_FONT_MONO_FAMILY}", monospace`;
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
 const MIN_TERMINAL_FONT_SIZE = 10;
 const MAX_TERMINAL_FONT_SIZE = 22;
@@ -41,28 +42,28 @@ export const CURATED_TERMINAL_FONTS: readonly CuratedTerminalFont[] = [
     id: "cascadia",
     name: "Cascadia Code",
     familyName: "Cascadia Code Variable",
-    family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+    family: `"Cascadia Code Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
     meta: "Variable · terminal tuned",
   },
   {
     id: "jetbrains",
     name: "JetBrains Mono",
     familyName: "JetBrains Mono Variable",
-    family: "\"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+    family: `"JetBrains Mono Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
     meta: "Variable · console mono",
   },
   {
     id: "fira-code",
     name: "Fira Code",
     familyName: "Fira Code Variable",
-    family: "\"Fira Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+    family: `"Fira Code Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
     meta: "Variable · ligatures",
   },
   {
     id: "source-code-pro",
     name: "Source Code Pro",
     familyName: "Source Code Pro Variable",
-    family: "\"Source Code Pro Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+    family: `"Source Code Pro Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
     meta: "Variable · Adobe mono",
   },
 ];

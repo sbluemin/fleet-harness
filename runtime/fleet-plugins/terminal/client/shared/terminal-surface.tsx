@@ -10,6 +10,7 @@ import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-prefs-store.js";
+import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
 export interface TerminalSurfaceProps {
   readonly operationId: string;
@@ -113,106 +114,121 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
     if (!container) return;
 
     let disposed = false;
-    const terminal = new XtermTerminal({
-      ...TERMINAL_OPTIONS,
-      fontFamily: terminalFontSettings.family,
-      fontSize: terminalFontSettings.size * appliedZoom,
-      theme: terminalThemeFor(activeTheme),
-    });
-    terminalRef.current = terminal;
-    const fitAddon = new FitAddon();
-    fitAddonRef.current = fitAddon;
-    terminal.loadAddon(fitAddon);
-    terminal.open(container);
-    terminal.loadAddon(new Unicode11Addon());
-    terminal.unicode.activeVersion = "11";
-
-    // Shift+Enter를 LF(\n)로 처리한다. xterm 기본 동작은 Shift 무관하게 Enter를 CR(\r)로 보내
-    // TUI가 "제출"로 해석하므로, Shift+Enter는 LF를 직접 전송하고 기본 CR 전송을 막는다.
-    // IME composition 중에는 xterm helper textarea의 compositionend 뒤 setTimeout(0)으로 LF를 예약해
-    // xterm CompositionHelper의 최종 한글 전송(compositionend→setTimeout(0)) 뒤에 LF가 붙게 한다.
-    const imeHandler = createImeShiftEnterHandler(() => terminal.input("\n"));
-    const imeEventTarget = container.querySelector<HTMLElement>("textarea.xterm-helper-textarea, textarea") ?? container;
-    imeEventTarget.addEventListener("compositionstart", imeHandler.onCompositionStart);
-    imeEventTarget.addEventListener("compositionend", imeHandler.onCompositionEnd);
-    imeEventTarget.addEventListener("focusout", imeHandler.onCompositionCancel);
-    terminal.attachCustomKeyEventHandler(imeHandler.handleKeyEvent);
-
-    const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false);
-    outputSchedulerRef.current = outputScheduler;
-    const connection = createTerminalConnection({
-      operationId,
-      ticketPath,
-      wsPath,
-      terminal: {
-        onData: (listener) => terminal.onData(listener),
-        write: outputScheduler.write,
-      },
-      onExit: () => onExitRef.current?.(),
-      onStatus: (nextStatus, message) => {
-        setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
-      },
-    });
-    connectionRef.current = connection;
-
+    let resizeObserver: ResizeObserver | null = null;
     let resizeDebounce: ReturnType<typeof setTimeout> | null = null;
-    const fitAndResize = () => {
-      fitAddon.fit();
-      connection.resize(terminal.cols, terminal.rows);
-    };
-    const fitResizeAndRefresh = () => {
-      fitAndResize();
-      terminal.refresh(0, terminal.rows - 1);
-    };
-    const scheduleFitAndResize = () => {
-      if (resizeDebounce) clearTimeout(resizeDebounce);
-      resizeDebounce = setTimeout(() => {
-        resizeDebounce = null;
-        if (!disposed) fitResizeAndRefresh();
-      }, RESIZE_DEBOUNCE_MS);
-    };
+    let cleanupMountedTerminal: (() => void) | null = null;
 
-    const runInitialFit = async () => {
-      await document.fonts?.ready;
-      // 폰트 로딩 대기 중 세션이 전환되면(effect cleanup) 이미 dispose된 터미널에
-      // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
+    const mountTerminal = async () => {
+      // WebGL glyph atlas는 첫 open 시점의 폰트 측정을 공유 캐시에 고정하므로, 심볼 폰트만 짧게 선대기한다.
+      await waitForSymbolsNerdFontMono();
       if (disposed) return;
-      fitResizeAndRefresh();
-      connection.start();
-      // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
-      // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
-      // 단일 셸 터미널(active===undefined)은 기존대로 포커스한다.
-      if (activeRef.current !== false) terminal.focus();
+
+      const terminal = new XtermTerminal({
+        ...TERMINAL_OPTIONS,
+        fontFamily: terminalFontSettings.family,
+        fontSize: terminalFontSettings.size * appliedZoom,
+        theme: terminalThemeFor(activeTheme),
+      });
+      terminalRef.current = terminal;
+      const fitAddon = new FitAddon();
+      fitAddonRef.current = fitAddon;
+      terminal.loadAddon(fitAddon);
+      terminal.open(container);
+      terminal.loadAddon(new Unicode11Addon());
+      terminal.unicode.activeVersion = "11";
+
+      // Shift+Enter를 LF(\n)로 처리한다. xterm 기본 동작은 Shift 무관하게 Enter를 CR(\r)로 보내
+      // TUI가 "제출"로 해석하므로, Shift+Enter는 LF를 직접 전송하고 기본 CR 전송을 막는다.
+      // IME composition 중에는 xterm helper textarea의 compositionend 뒤 setTimeout(0)으로 LF를 예약해
+      // xterm CompositionHelper의 최종 한글 전송(compositionend→setTimeout(0)) 뒤에 LF가 붙게 한다.
+      const imeHandler = createImeShiftEnterHandler(() => terminal.input("\n"));
+      const imeEventTarget = container.querySelector<HTMLElement>("textarea.xterm-helper-textarea, textarea") ?? container;
+      imeEventTarget.addEventListener("compositionstart", imeHandler.onCompositionStart);
+      imeEventTarget.addEventListener("compositionend", imeHandler.onCompositionEnd);
+      imeEventTarget.addEventListener("focusout", imeHandler.onCompositionCancel);
+      terminal.attachCustomKeyEventHandler(imeHandler.handleKeyEvent);
+
+      const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false);
+      outputSchedulerRef.current = outputScheduler;
+      const connection = createTerminalConnection({
+        operationId,
+        ticketPath,
+        wsPath,
+        terminal: {
+          onData: (listener) => terminal.onData(listener),
+          write: outputScheduler.write,
+        },
+        onExit: () => onExitRef.current?.(),
+        onStatus: (nextStatus, message) => {
+          setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
+        },
+      });
+      connectionRef.current = connection;
+
+      const fitAndResize = () => {
+        fitAddon.fit();
+        connection.resize(terminal.cols, terminal.rows);
+      };
+      const fitResizeAndRefresh = () => {
+        fitAndResize();
+        terminal.refresh(0, terminal.rows - 1);
+      };
+      const scheduleFitAndResize = () => {
+        if (resizeDebounce) clearTimeout(resizeDebounce);
+        resizeDebounce = setTimeout(() => {
+          resizeDebounce = null;
+          if (!disposed) fitResizeAndRefresh();
+        }, RESIZE_DEBOUNCE_MS);
+      };
+
+      const runInitialFit = async () => {
+        await document.fonts?.ready;
+        // 폰트 로딩 대기 중 세션이 전환되면(effect cleanup) 이미 dispose된 터미널에
+        // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
+        if (disposed) return;
+        fitResizeAndRefresh();
+        connection.start();
+        // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
+        // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
+        // 단일 셸 터미널(active===undefined)은 기존대로 포커스한다.
+        if (activeRef.current !== false) terminal.focus();
+      };
+
+      resizeObserver = new ResizeObserver(scheduleFitAndResize);
+      resizeObserver.observe(container);
+      void runInitialFit();
+
+      cleanupMountedTerminal = () => {
+        if (resizeDebounce) clearTimeout(resizeDebounce);
+        imeEventTarget.removeEventListener("compositionstart", imeHandler.onCompositionStart);
+        imeEventTarget.removeEventListener("compositionend", imeHandler.onCompositionEnd);
+        imeEventTarget.removeEventListener("focusout", imeHandler.onCompositionCancel);
+        imeHandler.dispose();
+        connection.dispose();
+        outputScheduler.dispose();
+        terminalRef.current = null;
+        connectionRef.current = null;
+        outputSchedulerRef.current = null;
+        fitAddonRef.current = null;
+        // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
+        // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
+        // useEffect cleanup 밖으로 전파되면 error boundary가 없는 React 트리가 통째로 언마운트되어
+        // (빈 화면) 새로고침 전까지 복구되지 않는다. 정리 단계의 예외이므로 컴포넌트 경계에서
+        // 격리해 트리를 보호한다 — DOM 노드는 key 재마운트로 어차피 교체된다.
+        try {
+          terminal.dispose();
+        } catch {
+          // xterm 내부 dispose 버그(위 주석)를 흡수한다.
+        }
+      };
     };
 
-    const resizeObserver = new ResizeObserver(scheduleFitAndResize);
-    resizeObserver.observe(container);
-    void runInitialFit();
+    void mountTerminal();
 
     return () => {
       disposed = true;
-      resizeObserver.disconnect();
-      if (resizeDebounce) clearTimeout(resizeDebounce);
-      imeEventTarget.removeEventListener("compositionstart", imeHandler.onCompositionStart);
-      imeEventTarget.removeEventListener("compositionend", imeHandler.onCompositionEnd);
-      imeEventTarget.removeEventListener("focusout", imeHandler.onCompositionCancel);
-      imeHandler.dispose();
-      connection.dispose();
-      outputScheduler.dispose();
-      terminalRef.current = null;
-      connectionRef.current = null;
-      outputSchedulerRef.current = null;
-      fitAddonRef.current = null;
-      // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
-      // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
-      // useEffect cleanup 밖으로 전파되면 error boundary가 없는 React 트리가 통째로 언마운트되어
-      // (빈 화면) 새로고침 전까지 복구되지 않는다. 정리 단계의 예외이므로 컴포넌트 경계에서
-      // 격리해 트리를 보호한다 — DOM 노드는 key 재마운트로 어차피 교체된다.
-      try {
-        terminal.dispose();
-      } catch {
-        // xterm 내부 dispose 버그(위 주석)를 흡수한다.
-      }
+      resizeObserver?.disconnect();
+      cleanupMountedTerminal?.();
     };
   }, [operationId, ticketPath, wsPath]);
 
