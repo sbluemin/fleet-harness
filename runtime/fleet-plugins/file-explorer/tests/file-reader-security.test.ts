@@ -22,6 +22,7 @@ beforeAll(async () => {
   // Theater 안 정상 파일
   await fs.promises.writeFile(path.join(theaterPath, "normal.txt"), "hello");
   await fs.promises.writeFile(path.join(theaterPath, "normal.png"), Buffer.alloc(4, 0));
+  await fs.promises.writeFile(path.join(theaterPath, "readme-demo.gif"), Buffer.alloc(10 * 1024 * 1024, 0));
 
   // Theater 안에서 Theater 밖을 가리키는 심링크
   await fs.promises.symlink(
@@ -62,6 +63,12 @@ describe("readFileForTheater — symlink containment", () => {
 });
 
 describe("readImageForTheater — symlink containment", () => {
+  it("serves README-scale local GIF assets inside the Theater", async () => {
+    const result = await readImageForTheater(theaterPath, "readme-demo.gif");
+    expect(result.mimeType).toBe("image/gif");
+    expect(result.buffer.byteLength).toBe(10 * 1024 * 1024);
+  });
+
   it("rejects a symlinked image that resolves outside the Theater", async () => {
     await expect(
       readImageForTheater(theaterPath, "link-outside.png"),

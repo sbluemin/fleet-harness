@@ -3,7 +3,7 @@ import type http from "node:http";
 // connect-src에 https://api.github.com만 명시 허용한다 — GNB의 GitHub star 카운트가 토큰 없이 공개
 // REST(stargazers_count)를 클라이언트에서 직접 읽기 위함. 와일드카드/서브도메인은 열지 않는다.
 export const CONSOLE_SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com; object-src 'none'; base-uri 'none'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://img.shields.io; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com; object-src 'none'; base-uri 'none'",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
   "Cache-Control": "no-store",
