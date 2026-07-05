@@ -6,7 +6,7 @@ import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, fo
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import type { GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
-import type { OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { createWorkspaceChangeScanner } from "./shared/index.js";
@@ -27,6 +27,7 @@ type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
 type HookCaptureBody = { readonly provider?: unknown; readonly input?: unknown };
+type AgentLaunchKindBackfillOperation = Pick<OperationNode, "pluginId" | "type" | "payload">;
 type OperationRenamedEvent = {
   readonly operationId: string;
   readonly pluginId: string;
@@ -55,6 +56,14 @@ export function registerAgentRoutes(
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle);
   return api.launchKinds;
+}
+
+export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBackfillOperation): Pick<OperationPatchInput, "payload"> | null {
+  if (operation.pluginId !== TERMINAL_PLUGIN_ID || operation.type !== AGENT_OPERATION_TYPE) return null;
+  const cliId = operation.payload.cliId;
+  if (typeof cliId !== "string" || cliId.length === 0) return null;
+  if (operation.payload.launchKindId !== undefined) return null;
+  return { payload: { ...operation.payload, launchKindId: cliId } };
 }
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -113,6 +122,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     injectRenameCommand(payload.operationId, payload.title);
   });
+  backfillAgentOperationLaunchKinds();
   rehydrateDormantAgentOperations();
 
   async function handle({ req, res, pathname }: Parameters<FleetPluginServerContext["registerRouter"]>[1] extends (arg: infer T) => unknown ? T : never): Promise<boolean> {
@@ -499,6 +509,14 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
   }
 
+  function backfillAgentOperationLaunchKinds(): void {
+    for (const operation of ctx.host.operations.list()) {
+      const patch = buildAgentLaunchKindBackfillPatch(operation);
+      if (!patch) continue;
+      ctx.host.operations.patch(operation.id, patch);
+    }
+  }
+
   return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
@@ -516,6 +534,7 @@ function toOperationPayload(cwd: string, session: AgentTerminalSessionInfo, prov
   return {
     cwd,
     ...(session.cliId ? { cliId: session.cliId } : {}),
+    ...(session.cliId ? { launchKindId: session.cliId } : {}),
     ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
     ...(providerSession ? { providerSession } : {}),
     ...(session.labelSource ? { labelSource: session.labelSource } : {}),

@@ -13,6 +13,7 @@ import { applyVisibleReorder, dropIndexFromPoint, dropTargetFromPoint, insertInt
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, tierFromWidth, useSideBarState } from "./operations-side-bar-store.js";
+import { resolveOperationLaunchKind } from "./resolve-launch-kind.js";
 
 interface OperationsSideBarProps {
   readonly operations: readonly OperationNode[];
@@ -116,7 +117,7 @@ export function OperationsSideBar({
   const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
   const allEntries: SideBarEntry[] = sortOperationsByOrder(operations, canvas.operationOrder).map((operation) => {
-    const kind = catalog.find((p) => p.id === operation.pluginId)?.kinds.find((k) => k.type === operation.type) ?? null;
+    const kind = resolveOperationLaunchKind(catalog, operation);
     const icon = kind ? renderKindIcon(operation.pluginId, kind) : null;
     return {
       operation,
