@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -109,7 +109,7 @@ describe("process binary resolution", () => {
 
   it("keeps POSIX executables as bare argv targets", () => {
     const binDir = makeTempDir();
-    const npmBin = touch(path.join(binDir, "npm"));
+    const npmBin = touchExecutable(path.join(binDir, "npm"));
 
     expect(resolvePathBinary("npm", { PATH: binDir }, { platform: "linux" })).toEqual({
       bin: npmBin,
@@ -153,7 +153,7 @@ describe("findBinaryPath — raw 경로 반환 (shim 래핑 없음)", () => {
 
   it("POSIX에서 raw 실행 파일 경로를 반환한다", () => {
     const binDir = makeTempDir();
-    const npxBin = touch(path.join(binDir, "npx"));
+    const npxBin = touchExecutable(path.join(binDir, "npx"));
 
     const result = findBinaryPath("npx", { PATH: binDir }, { platform: "linux" });
     expect(result).toBe(npxBin);
@@ -165,6 +165,54 @@ describe("findBinaryPath — raw 경로 반환 (shim 래핑 없음)", () => {
   });
 });
 
+describe("findBinaryPath — POSIX 실행권한(X_OK) 검사", () => {
+  afterEach(() => {
+    for (const dir of TEMP_DIRS.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform !== "win32")("PATH 앞 비실행(0644) 파일을 건너뛰고 뒤쪽 실행(0755) 파일을 반환한다", () => {
+    const nonExecDir = makeTempDir();
+    const execDir = makeTempDir();
+    touch(path.join(nonExecDir, "npx"));
+    const execBin = touchExecutable(path.join(execDir, "npx"));
+    const pathValue = `${nonExecDir}:${execDir}`;
+
+    const result = findBinaryPath("npx", { PATH: pathValue }, { platform: "linux" });
+    expect(result).toBe(execBin);
+  });
+
+  it.runIf(process.platform !== "win32")("후보가 비실행(0644)뿐이면 undefined를 반환한다", () => {
+    const binDir = makeTempDir();
+    touch(path.join(binDir, "npx"));
+
+    const result = findBinaryPath("npx", { PATH: binDir }, { platform: "linux" });
+    expect(result).toBeUndefined();
+  });
+
+  it.runIf(process.platform !== "win32")("실행 파일(0755)은 정상 반환한다 (X_OK 회귀 없음)", () => {
+    const binDir = makeTempDir();
+    const npxBin = touchExecutable(path.join(binDir, "npx"));
+
+    const result = findBinaryPath("npx", { PATH: binDir }, { platform: "linux" });
+    expect(result).toBe(npxBin);
+  });
+
+  it("win32는 파일 권한 무관하게 확장자 기반으로 반환한다", () => {
+    const binDir = makeTempDir();
+    const npxShim = touch(path.join(binDir, "npx.CMD"));
+    const env = {
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      PATHEXT: ".CMD;.EXE",
+      Path: binDir,
+    };
+
+    const result = findBinaryPath("npx", env, { platform: "win32" });
+    expect(result).toBe(npxShim);
+  });
+});
+
 function makeTempDir(prefix = "fleet-resolve-bin-"): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), prefix));
   TEMP_DIRS.push(dir);
@@ -173,5 +221,11 @@ function makeTempDir(prefix = "fleet-resolve-bin-"): string {
 
 function touch(filePath: string): string {
   closeSync(openSync(filePath, "w"));
+  return filePath;
+}
+
+function touchExecutable(filePath: string): string {
+  closeSync(openSync(filePath, "w"));
+  chmodSync(filePath, 0o755);
   return filePath;
 }

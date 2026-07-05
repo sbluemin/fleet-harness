@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
 
 export interface ResolveBinaryOptions {
@@ -101,7 +101,7 @@ function findOnPath(bin: string, pathValue: string, pathExts: readonly string[],
 
 function resolveWithExtensions(candidate: string, pathExts: readonly string[], platform: NodeJS.Platform): string | undefined {
   if (platform !== "win32" || path.extname(candidate).length > 0) {
-    return existsSync(candidate) ? candidate : undefined;
+    return isAccessibleExecutable(candidate, platform) ? candidate : undefined;
   }
   for (const ext of pathExts) {
     if (ext.length === 0) {
@@ -112,7 +112,18 @@ function resolveWithExtensions(candidate: string, pathExts: readonly string[], p
       return withExt;
     }
   }
-  return existsSync(candidate) ? candidate : undefined;
+  return isAccessibleExecutable(candidate, platform) ? candidate : undefined;
+}
+
+function isAccessibleExecutable(candidate: string, platform: NodeJS.Platform): boolean {
+  if (!existsSync(candidate)) return false;
+  if (platform === "win32") return true;
+  try {
+    accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function hasPathSeparator(value: string, platform: NodeJS.Platform): boolean {
