@@ -10,11 +10,11 @@
 | Path | Description |
 |------|-------------|
 | `docs/` | **Developer Reference** — `fleet-development-reference.md` and `fleet-lightweight-followup.md`; **Operational Doctrine** — `admiral-workflow-reference.md`; **Admiral-only prompt/runtime architecture note** — `admiral-prompt-architecture.md`; plus the static landing page (`index.html`, `app.jsx`) |
-| `packages/` | First-party workspace packages: `core-agent` (`@dotobokuri/core-agent`), `core-unified-agent` (`@dotobokuri/core-unified-agent`), `fleet-admiral`, `fleet-carriers`, `fleet-infra`, and `fleet-wiki` |
+| `packages/` | First-party workspace packages: `core-agent` (`@dotobokuri/core-agent`), `core-unified-agent` (`@dotobokuri/core-unified-agent`), `fleet-admiral`, `fleet-carriers`, `core-infra`, and `fleet-wiki` |
 | `runtime/` | Runtime workspace packages: `fleet-cli` (CLI host and entry point — `runtime/fleet-cli/bin/fleet`, or `pnpm fleet` from the repo root), `fleet-console` (Console plus Codex/Fleet Wiki web surface), and `fleet-plugins/*` (built-in console plugins such as `terminal`) |
 | `scripts/` | Repo maintenance scripts: core/agent boundary guards, publish helpers, and the node-pty postinstall fix |
 
-> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `runtime/fleet-console/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-admiral/AGENTS.md`, `packages/fleet-carriers/AGENTS.md`, `packages/fleet-infra/AGENTS.md`, and `packages/fleet-wiki/AGENTS.md`.
+> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `runtime/fleet-console/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-admiral/AGENTS.md`, `packages/fleet-carriers/AGENTS.md`, `packages/core-infra/AGENTS.md`, and `packages/fleet-wiki/AGENTS.md`.
 
 ## TypeScript File Structure
 
@@ -44,5 +44,5 @@ Do **not** interleave constants and functions, or declare types mid-file.
 - **Versioning:** Each release maps to a git tag (e.g., `## [0.1.1] - YYYY-MM-DD`). The `[Unreleased]` section stays present but empty; do not manually add unreleased entries to `CHANGELOG.md`.
 - **Fragment SSoT:** Unreleased notes live in one unique `.changelog.d/*.md` fragment per PR. Do not add `.changelog.d/README.md`; only `.gitkeep` and fragment files belong there.
 - **Fragment Format:** Each fragment uses frontmatter with exactly one `section: Added|Changed|Fixed|Removed|Breaking Changes`, followed by one or more English bullet lines.
-- **Package Prefixes:** Fragment bullets must begin with one or more package tags from this vocabulary only: `[core-agent]`, `[core-unified-agent]`, `[fleet-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, `[fleet-cli]`. The retired tag names `core`, `wiki`, `wiki-web`, `agent-core`, `unified-agent`, `mcp-server`, `agent`, and `carriers` must not be used as bracketed changelog prefixes. Do not include `@dotobokuri/` scopes in changelog tags.
+- **Package Prefixes:** Fragment bullets must begin with one or more package tags from this vocabulary only: `[core-agent]`, `[core-unified-agent]`, `[core-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, `[fleet-cli]`. The retired tag names `core`, `wiki`, `wiki-web`, `agent-core`, `unified-agent`, `mcp-server`, `agent`, `carriers`, and `fleet-infra` must not be used as bracketed changelog prefixes. Do not include `@dotobokuri/` scopes in changelog tags.
 - **Entry Granularity:** Each entry is a single-line summary of the change. Describe the user-/operator-visible behavior change in plain English; do **not** reference source files, function names, line numbers, or implementation details. Implementation specifics belong in the commit message, not in `CHANGELOG.md`.

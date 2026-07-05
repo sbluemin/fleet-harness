@@ -7,7 +7,7 @@ const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
 const TAGS = [
   'core-agent',
   'core-unified-agent',
-  'fleet-infra',
+  'core-infra',
   'fleet-admiral',
   'fleet-carriers',
   'fleet-wiki',
@@ -23,6 +23,7 @@ const RETIRED_TAGS = [
   'mcp-server',
   'agent',
   'carriers',
+  'fleet-infra',
 ];
 const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_FRAGMENTS_DIR = '.changelog.d';

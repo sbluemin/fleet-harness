@@ -9,7 +9,7 @@
 - Carrier runtime construction through `createCarrierRuntime(deps)`
 - `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, sortie helpers, and carrier job stream event types plus the Set-based stream handler registry (`dispatch/types.ts` + `dispatch/framework.ts`)
 - `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
-- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/fleet-infra/fs-store`'s `withDirectoryLock`; legacy `agentMode` values are ignored and carriers run through CLI dispatch mode.
+- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/core-infra/fs-store`'s `withDirectoryLock`; `initStore(dir?)` resolves the data directory via `getFleetDataDir()` from `@dotobokuri/core-infra/data-dir` when no `dir` override is supplied; legacy `agentMode` values are ignored and carriers run through CLI dispatch mode.
 - Explicit default carrier registration via `registerDefaultCarriers()`
 - Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior
 
@@ -21,10 +21,10 @@
 
 ## Dependency Rules
 
-- The DI layer order is one-way: `fleet-cli` -> `fleet-carriers` -> `fleet-infra`.
-- This package sits above `fleet-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
+- The DI layer order is one-way: `fleet-cli` -> `fleet-carriers` -> `core-infra`.
+- This package sits above `core-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
 - `createCarrierRuntime(deps)` is the public construction boundary for carrier runtime services. Do not require callers to assemble dispatch/jobs/store/stream internals independently.
-- This package may import `@dotobokuri/fleet-infra`, `@dotobokuri/core-agent`, `@dotobokuri/core-unified-agent`, and `typebox`.
+- This package may import `@dotobokuri/core-infra`, `@dotobokuri/core-agent`, `@dotobokuri/core-unified-agent`, and `typebox`.
 - This package MUST NOT import `fleet-cli`, host UI/runtime packages, or host adapters.
 - Personas may declare executor tool IDs and builtin external MCP server IDs as opaque strings without importing host/UI/wiki packages.
 

@@ -20,9 +20,10 @@
 
 ## Import Boundaries
 
-- May depend on `@dotobokuri/fleet-carriers` and `@dotobokuri/core-agent`.
-- Must not import `@dotobokuri/fleet-cli`, `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-console`, `@dotobokuri/fleet-infra`, `runtime/fleet-cli`, `node-pty`, `ws`, or host process-spawn adapters.
-- Fleet Infra capabilities such as auth resolution, data-dir selection, durable advisory locks, and filesystem services enter only through explicit `create*(deps)` dependency objects supplied by hosts.
+- May depend on `@dotobokuri/fleet-carriers`, `@dotobokuri/core-agent`, and `@dotobokuri/core-infra`.
+- Must not import `@dotobokuri/fleet-cli`, `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-console`, `runtime/fleet-cli`, `node-pty`, `ws`, or host process-spawn adapters.
+- `getFleetDataDir()` from `@dotobokuri/core-infra/data-dir` is the self-contained default for data-dir resolution; hosts may supply an optional `dataDir` override for test isolation, but are not required to inject it.
+- Auth resolution, durable advisory locks, and non-data-dir filesystem services still enter only through explicit `create*(deps)` dependency objects supplied by hosts.
 - Codex command execution, hook executable commands, workspace scanners, and optional Fleet Wiki tool specs enter only through explicit host DI.
 - Consumers import only from the root package entry `@dotobokuri/fleet-admiral`; do not add subpath exports or deep-import compatibility paths.
 

@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `core-agent`, `core-unified-agent`, `fleet-infra`, `fleet-admiral`, `fleet-carriers`, and `fleet-wiki`. The `fleet-cli` and `fleet-console` workspaces live under `runtime/`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `core-agent`, `core-unified-agent`, `core-infra`, `fleet-admiral`, `fleet-carriers`, and `fleet-wiki`. The `fleet-cli` and `fleet-console` workspaces live under `runtime/`.
 
 ## Architecture Philosophy
 
@@ -13,7 +13,7 @@ The final Fleet graph is layered and enforced by build/grep gates:
 - `fleet-cli` owns CLI host assembly and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy, Agent CLI launch/runtime assembly, and Fleet activation rendering.
 - `fleet-console` owns the Console server/browser product and consumes `@dotobokuri/fleet-admiral` server-side for direct terminal Agent CLI launch/runtime assembly.
 - `fleet-cli` and `fleet-console` assemble host-specific Fleet Infra dependencies through direct leaf service calls, then pass narrow dependency objects into fleet-admiral factories.
-- Host packages consume `fleet-admiral`, `fleet-carriers`, `core-agent`, and `fleet-infra` through public package surfaces only.
+- Host packages consume `fleet-admiral`, `fleet-carriers`, `core-agent`, and `core-infra` through public package surfaces only.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the host side (`fleet-cli` or `fleet-console`).
 - The embedded TUI engine under `src/tui/` is owned exclusively by `fleet-cli`.
 - Mixed modules must keep host adapters in the host package and domain policy in the owning Fleet package.
@@ -41,12 +41,12 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/core-agent` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
 | Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/core-agent` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/core-agent/src/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-cli` registers the two-method `ExecutorPort` at boot. |
-| Durable filesystem I/O primitive | `packages/fleet-infra/src/fs-store/` | Atomic writes, advisory directory locks with quarantine-based stale recovery, and secure filesystem guards. Consumed by preset, auth, and carriers storage through explicit DI factories. |
+| Durable filesystem I/O primitive | `packages/core-infra/src/fs-store/` | Atomic writes, advisory directory locks with quarantine-based stale recovery, and secure filesystem guards. Consumed by preset, auth, and carriers storage through explicit DI factories. |
 | Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, detached job infrastructure, carrier jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline
 
-Consumers use public package root barrels: `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/fleet-infra` for infrastructure, and `@dotobokuri/core-agent` for generic agent executor and tool registry APIs. Internal helpers under `packages/core-agent/src/internal/` are never consumer imports.
+Consumers use public package root barrels: `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/core-infra` for infrastructure, and `@dotobokuri/core-agent` for generic agent executor and tool registry APIs. Internal helpers under `packages/core-agent/src/internal/` are never consumer imports.
 
 ### 5. DI Factory Discipline
 
@@ -67,7 +67,7 @@ createThing(deps): ThingInterface
 - Push-style "ports" passed into tool execution. Tools depend on explicit Fleet service APIs directly.
 - `on*` callback parameters threaded through Fleet public APIs, except executor callback options owned by `executeWithPool` / `executeOneShot`.
 - Builder functions injected by hosts. Prompt assembly is `@dotobokuri/fleet-admiral` responsibility; host adapters pass raw `userRequest` + optional `history`.
-- `fleet-carriers` importing upper-layer packages; dependencies flow one way from `fleet-cli` down to `fleet-infra`.
+- `fleet-carriers` importing upper-layer packages; dependencies flow one way from `fleet-cli` down to `core-infra`.
 - DI containers, decorator-based injection, and service-locator frameworks are forbidden; use explicit `create*(deps): Interface` factories instead.
 
 ## Domain Boundary Rules
