@@ -19,7 +19,7 @@ export interface ImageReadResult {
   readonly buffer: Buffer;
 }
 
-const IMAGE_SIZE_CAP = 4 * 1024 * 1024;
+const IMAGE_SIZE_CAP = 16 * 1024 * 1024;
 
 const MIME_ALLOWLIST: Readonly<Record<string, string>> = {
   ".png": "image/png",

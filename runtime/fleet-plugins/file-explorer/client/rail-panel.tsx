@@ -55,17 +55,20 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
 
-  const handleSelect = useCallback(async (entry: FolderEntry) => {
-    if (entry.kind !== "file") return;
-    setSelectedPath(theaterId, entry.relativePath);
-    const name = entry.name;
+  const openFilePath = useCallback(async (relativePath: string, displayName?: string) => {
+    if (!theaterId) {
+      setViewState(theaterId, { kind: "error", message: "no_theater" });
+      return;
+    }
+    setSelectedPath(theaterId, relativePath);
+    const name = displayName ?? relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
     if (IMAGE_EXTS.has(ext)) {
       const src = theaterId
-        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(entry.relativePath)}`
+        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`
         : "";
-      setViewState(theaterId, { kind: "image", relativePath: entry.relativePath, name, src });
+      setViewState(theaterId, { kind: "image", relativePath, name, src });
       return;
     }
 
@@ -75,7 +78,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       const res = await fetch("/plugins/file-explorer/files/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId, relativePath: entry.relativePath }),
+        body: JSON.stringify({ theaterId, relativePath }),
       });
       if (!res.ok) {
         const payload = await res.json() as { error?: string };
@@ -96,6 +99,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       }
     }
   }, [theaterId]);
+  const handleSelect = useCallback(async (entry: FolderEntry) => {
+    if (entry.kind !== "file") return;
+    await openFilePath(entry.relativePath, entry.name);
+  }, [openFilePath]);
 
   const handleCloseViewer = useCallback(() => {
     setViewState(theaterId, { kind: "none" });
@@ -160,7 +167,13 @@ function FileExplorerPanel(ctx: RailPanelContext) {
               {viewState.kind === "loading" && <div className="fexp-viewer-loading">Loading…</div>}
               {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
               {viewState.kind === "code" && viewState.lang === "markdown" && (
-                <MarkdownViewer content={viewState.content} truncated={viewState.truncated} />
+                <MarkdownViewer
+                  content={viewState.content}
+                  onOpenPath={openFilePath}
+                  relativePath={viewState.relativePath}
+                  theaterId={theaterId}
+                  truncated={viewState.truncated}
+                />
               )}
               {viewState.kind === "code" && viewState.lang !== "markdown" && (
                 <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} />

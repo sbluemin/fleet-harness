@@ -389,6 +389,20 @@
   padding: 16px;
 }
 
+.fexp-md-blocked-image {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px dashed color-mix(in oklch, var(--ink-fog) 48%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
 /* ── 이미지 뷰어 ── */
 .fexp-img-wrap {
   height: 100%;
