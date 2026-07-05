@@ -3,6 +3,7 @@ import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-c
 import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { registerAgentRoutes } from "./server/agent.js";
+import { registerGlobalShellRoutes } from "./server/global.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
 import { createTerminalRuntime } from "./server/shared/index.js";
 import { registerShellRoutes } from "./server/shell.js";
@@ -29,6 +30,7 @@ export default definePlugin({
     });
     ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
     registerShellRoutes(ctx, runtime);
+    registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
       globalOptionsService: infraServices.globalOptionsService,
