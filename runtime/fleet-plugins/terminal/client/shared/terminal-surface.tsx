@@ -108,6 +108,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
   const activeRef = useRef(active);
   activeRef.current = active;
   const [status, setStatus] = useState("connecting");
+  // 터미널 인스턴스는 심볼 폰트 선대기 때문에 비동기로 생성된다. 같은 커밋에서 이미 실행된
+  // WebGL/테마/폰트 effect는 null 터미널을 보고 건너뛰므로, 생성 완료를 epoch로 알려 재실행시킨다.
+  const [mountedTerminalEpoch, setMountedTerminalEpoch] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -221,6 +224,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
           // xterm 내부 dispose 버그(위 주석)를 흡수한다.
         }
       };
+
+      // 비동기 생성 완료 신호 — null 터미널을 보고 건너뛴 effect들을 재실행시킨다.
+      setMountedTerminalEpoch((epoch) => epoch + 1);
     };
 
     void mountTerminal();
@@ -290,20 +296,20 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
         // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
       }
     };
-  }, [terminalRenderer, operationId]);
+  }, [terminalRenderer, operationId, mountedTerminalEpoch]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.theme = terminalThemeFor(activeTheme);
-  }, [activeTheme]);
+  }, [activeTheme, mountedTerminalEpoch]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.fontFamily = terminalFontSettings.family;
     fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current);
-  }, [terminalFontSettings.family]);
+  }, [terminalFontSettings.family, mountedTerminalEpoch]);
 
   // 줌 settle 감지: zoom prop은 rAF 보간 중 매 프레임 바뀌므로, 마지막 변경 후 ZOOM_SETTLE_MS가 지나야
   // appliedZoom에 반영한다(타이머가 매 변경마다 리셋됨). 보간 중에는 부모 transform에 맡겨 글자가 부드럽게
@@ -330,7 +336,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
     // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
     // fit + refresh로 재배치/재도색한다.
     fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current);
-  }, [appliedZoom, terminalFontSettings.size]);
+  }, [appliedZoom, terminalFontSettings.size, mountedTerminalEpoch]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
