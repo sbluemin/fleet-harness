@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import { sanitizeOneLineText } from "@dotobokuri/fleet-carriers";
-import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { renderChoiceBlock, renderKeyValueBlock, type ChoiceBlockRow, type KeyValueBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../theme.js";

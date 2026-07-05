@@ -34,6 +34,25 @@ importers:
         specifier: ^4.0.13
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
+  packages/core-infra:
+    dependencies:
+      '@dotobokuri/core-unified-agent':
+        specifier: workspace:*
+        version: link:../core-unified-agent
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+
   packages/core-unified-agent:
     dependencies:
       '@agentclientprotocol/sdk':
@@ -83,34 +102,15 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../core-agent
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../core-infra
       '@dotobokuri/core-unified-agent':
         specifier: workspace:*
         version: link:../core-unified-agent
-      '@dotobokuri/fleet-infra':
-        specifier: workspace:*
-        version: link:../fleet-infra
       typebox:
         specifier: ^1.1.24
         version: 1.1.34
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/fleet-infra:
-    dependencies:
-      '@dotobokuri/core-unified-agent':
-        specifier: workspace:*
-        version: link:../core-unified-agent
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -155,6 +155,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../packages/core-agent
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../../packages/core-infra
       '@dotobokuri/fleet-admiral':
         specifier: workspace:*
         version: link:../../packages/fleet-admiral
@@ -164,9 +167,6 @@ importers:
       '@dotobokuri/fleet-console':
         specifier: workspace:*
         version: link:../fleet-console
-      '@dotobokuri/fleet-infra':
-        specifier: workspace:*
-        version: link:../../packages/fleet-infra
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
@@ -198,6 +198,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../packages/core-agent
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../../packages/core-infra
       '@dotobokuri/core-unified-agent':
         specifier: workspace:*
         version: link:../../packages/core-unified-agent
@@ -207,9 +210,6 @@ importers:
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../../packages/fleet-carriers
-      '@dotobokuri/fleet-infra':
-        specifier: workspace:*
-        version: link:../../packages/fleet-infra
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
@@ -435,6 +435,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../../packages/core-agent
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../../../packages/core-infra
       '@dotobokuri/core-unified-agent':
         specifier: workspace:*
         version: link:../../../packages/core-unified-agent
@@ -444,9 +447,6 @@ importers:
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../../../packages/fleet-carriers
-      '@dotobokuri/fleet-infra':
-        specifier: workspace:*
-        version: link:../../../packages/fleet-infra
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../../packages/fleet-wiki

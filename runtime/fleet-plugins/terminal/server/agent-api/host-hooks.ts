@@ -9,7 +9,7 @@ import type {
   FleetHookExec,
 } from "@dotobokuri/fleet-admiral";
 import { createSessionCaptureHookExec, type AgentCliId } from "@dotobokuri/fleet-admiral";
-import { withDirectoryLock } from "@dotobokuri/fleet-infra";
+import { withDirectoryLock } from "@dotobokuri/core-infra";
 
 export interface ConsoleHookCommandEntry {
   readonly entryPath: string;

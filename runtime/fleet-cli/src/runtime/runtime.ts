@@ -4,8 +4,8 @@ import {
 	type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
-import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
-import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
+import { createInfraServices, type InfraServices } from "@dotobokuri/core-infra";
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import { reconcileRuntimeState } from "./reconciliation.js";

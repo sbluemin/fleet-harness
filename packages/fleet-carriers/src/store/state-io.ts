@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { ensureSafeDirectory, NOFOLLOW_FLAG, withDirectoryLock, writeAtomicSync } from "@dotobokuri/fleet-infra/fs-store";
+import { ensureSafeDirectory, NOFOLLOW_FLAG, withDirectoryLock, writeAtomicSync } from "@dotobokuri/core-infra/fs-store";
 
 import {
   sanitizeCarriersMap,

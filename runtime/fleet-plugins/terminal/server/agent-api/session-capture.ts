@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { getFleetDataDir } from "@dotobokuri/fleet-infra";
+import { getFleetDataDir } from "@dotobokuri/core-infra";
 import type { AgentProviderSession } from "./types.js";
 
 export interface CaptureSessionOptions {

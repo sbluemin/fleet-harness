@@ -28,7 +28,7 @@
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/core-unified-agent": "workspace:*",
-    "@dotobokuri/fleet-infra": "workspace:*",
+    "@dotobokuri/core-infra": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

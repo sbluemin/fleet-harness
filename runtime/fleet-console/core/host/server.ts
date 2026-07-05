@@ -8,7 +8,7 @@ import {
   initStore,
   registerDefaultCarriers,
 } from "@dotobokuri/fleet-carriers";
-import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
+import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";

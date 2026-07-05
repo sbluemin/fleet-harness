@@ -6,7 +6,7 @@ import type {
   CodexCommandResult,
   CodexPluginRegistrationCommand,
 } from "@dotobokuri/fleet-admiral";
-import { withDirectoryLock } from "@dotobokuri/fleet-infra";
+import { withDirectoryLock } from "@dotobokuri/core-infra";
 
 const MARKETPLACE_LOCK_DIR_SUFFIX = ".lock";
 

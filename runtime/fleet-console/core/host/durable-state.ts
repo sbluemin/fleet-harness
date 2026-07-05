@@ -4,7 +4,7 @@ import {
   createDurableJsonStore,
   type CreateDurableJsonStoreDeps,
   type DurableJsonStore,
-} from "@dotobokuri/fleet-infra";
+} from "@dotobokuri/core-infra";
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "./operations/types.js";
