@@ -1,5 +1,5 @@
 import type { AgentCliId } from "@dotobokuri/fleet-admiral";
-import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra/global-options";
+import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra/data-dir/settings";
 
 import type { FleetCliOptions } from "../../cli-args.js";
 

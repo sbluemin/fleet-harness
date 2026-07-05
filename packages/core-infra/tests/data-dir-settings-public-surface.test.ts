@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { createDurableJsonStore, withDirectoryLock, writeAtomicSync } from "../src/fs-store/index.js";
-import { createGlobalOptionsService, createGlobalOptionsStore } from "../src/global-options/index.js";
+import { createGlobalOptionsService, createGlobalOptionsStore } from "../src/data-dir/settings/index.js";
 import * as rootBarrel from "../src/index.js";
 import { createInfraServices } from "../src/index.js";
 
-describe("global options public surface", () => {
+describe("data-dir settings public surface", () => {
   it("exports global-options APIs from the root and subpath barrels", () => {
     const services = createInfraServices();
 
