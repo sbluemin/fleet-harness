@@ -5,6 +5,7 @@ import "@fleet-console/markdown/styles.css";
 
 import {
   buildFileExplorerImageSrc,
+  isAllowedExternalMarkdownImageSrc,
   isSupportedMarkdownImagePath,
   resolveMarkdownFileRef,
 } from "./markdown-links.js";
@@ -109,7 +110,7 @@ export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, t
 
 // 신뢰 불가 미리보기에서 위험 요소를 무력화한다(구 정규식 렌더러의 안전 수준 보존):
 // - 로컬 상대 링크는 href 대신 data-fexp-open-path로 바꿔 SPA URL hijack을 차단한다.
-// - 로컬 이미지는 same-origin 이미지 라우트로만 되살리고, 외부 이미지는 auto-fetch를 차단한다.
+// - 로컬 이미지는 same-origin 이미지 라우트로 되살리고, allowlist 밖 외부 이미지는 auto-fetch를 차단한다.
 function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): void {
   for (const anchor of root.querySelectorAll("a[href]")) {
     const href = anchor.getAttribute("href") ?? "";
@@ -141,6 +142,11 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
       continue;
     }
     element.removeAttribute("data-fexp-local-image-path");
+    if (element.tagName === "IMG" && isAllowedExternalMarkdownImageSrc(src)) {
+      element.removeAttribute("srcset");
+      element.removeAttribute("aria-hidden");
+      continue;
+    }
     const localPath = resolveMarkdownFileRef(src, options.currentRelativePath);
     element.removeAttribute("srcset");
     if (element.tagName === "IMG" && options.theaterId && localPath && isSupportedMarkdownImagePath(localPath)) {

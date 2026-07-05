@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildFileExplorerImageSrc,
+  isAllowedExternalMarkdownImageSrc,
   isSupportedMarkdownImagePath,
   resolveMarkdownFileRef,
 } from "../client/viewer/markdown-links.js";
@@ -34,5 +35,11 @@ describe("file explorer markdown links", () => {
     expect(isSupportedMarkdownImagePath(".github/logo.png")).toBe(true);
     expect(isSupportedMarkdownImagePath(".github/fleet-harness.gif")).toBe(true);
     expect(isSupportedMarkdownImagePath(".github/logo.svg")).toBe(false);
+  });
+
+  it("README badge용 shields.io HTTPS 이미지만 외부 auto-fetch를 허용한다", () => {
+    expect(isAllowedExternalMarkdownImageSrc("https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=blue")).toBe(true);
+    expect(isAllowedExternalMarkdownImageSrc("http://img.shields.io/npm/v/pkg")).toBe(false);
+    expect(isAllowedExternalMarkdownImageSrc("https://example.com/tracker.png")).toBe(false);
   });
 });

@@ -2,4 +2,4 @@
 section: Fixed
 ---
 
-- [fleet-console] Restore local images and file links in File Explorer markdown previews.
+- [fleet-console] Restore README images and file links in File Explorer markdown previews.

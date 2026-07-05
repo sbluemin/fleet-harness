@@ -1,5 +1,6 @@
 export const MARKDOWN_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
+const ALLOWED_EXTERNAL_IMAGE_HOSTS = new Set(["img.shields.io"]);
 const EXTERNAL_REF_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 export function resolveMarkdownFileRef(rawRef: string, currentRelativePath: string): string | null {
@@ -22,6 +23,15 @@ export function isSupportedMarkdownImagePath(relativePath: string): boolean {
 
 export function buildFileExplorerImageSrc(theaterId: string, relativePath: string): string {
   return `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`;
+}
+
+export function isAllowedExternalMarkdownImageSrc(rawSrc: string): boolean {
+  try {
+    const url = new URL(rawSrc);
+    return url.protocol === "https:" && ALLOWED_EXTERNAL_IMAGE_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 function stripQueryAndHash(value: string): string {
