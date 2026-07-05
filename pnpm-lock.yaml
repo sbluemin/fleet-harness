@@ -80,6 +80,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../core-agent
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../core-infra
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../fleet-carriers

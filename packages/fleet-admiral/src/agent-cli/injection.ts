@@ -3,6 +3,8 @@ import { chmodSync, closeSync, constants, lstatSync, mkdirSync, mkdtempSync, ope
 import os from "node:os";
 import path from "node:path";
 
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
+
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { buildPosixShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
@@ -19,7 +21,7 @@ import type {
 
 export interface InjectAgentCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
-  readonly dataDir: string;
+  readonly dataDir?: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
   readonly enableMetaphor?: boolean;
@@ -128,7 +130,7 @@ export async function injectAgentCliProfile(
         env: { ...profile.env },
       }, requireCodexCommandRunner(options.codexCommandRunner), options.withMarketplaceLock, {
         homeMarketplaceName: FLEET_MARKETPLACE_NAME,
-        homeMarketplaceRoot: path.join(options.pluginRootDir ?? options.dataDir, "marketplace"),
+        homeMarketplaceRoot: path.join(options.pluginRootDir ?? options.dataDir ?? getFleetDataDir(), "marketplace"),
         projectMarketplaceRoot: path.join(profile.cwd, ".fleet"),
       });
       if (cleanupWarning !== undefined) {

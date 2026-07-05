@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import { ensureSafeDirectory, NOFOLLOW_FLAG, withDirectoryLock, writeAtomicSync } from "@dotobokuri/core-infra/fs-store";
 
 import {
@@ -31,12 +32,13 @@ const runtimeState: StateIoRuntimeState = {
   lastLocalWriteFingerprint: null,
 };
 
-export function initStore(dir: string): void {
-  runtimeState.storeDir = dir;
+export function initStore(dir?: string): void {
+  const resolvedDir = dir ?? getFleetDataDir();
+  runtimeState.storeDir = resolvedDir;
   // [LOW #10] ensureSafeDirectory로 0o700 보장 — 심볼릭링크 방어
-  ensureSafeDirectory(dir);
+  ensureSafeDirectory(resolvedDir);
   withStoreLock(() => {
-    unlinkStaleSubagentModeFile(dir);
+    unlinkStaleSubagentModeFile(resolvedDir);
   });
 }
 
