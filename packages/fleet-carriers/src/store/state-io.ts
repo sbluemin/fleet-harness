@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
@@ -21,7 +20,6 @@ interface StateIoRuntimeState {
 }
 
 const FILENAME = "carriers.json";
-const DEFAULT_STORE_DIRNAME = ".fleet";
 const STALE_SUBAGENT_MODE_FILENAME = "carrier-subagent.json";
 const LOCK_DIRNAME = "carriers.json.lock";
 const LOCK_OWNER_FILENAME = "owner.json";
@@ -35,7 +33,7 @@ const runtimeState: StateIoRuntimeState = {
 export function initStore(dir?: string): void {
   const resolvedDir = dir ?? getFleetDataDir();
   runtimeState.storeDir = resolvedDir;
-  // [LOW #10] ensureSafeDirectory로 0o700 보장 — 심볼릭링크 방어
+  // 부트 시 선제 ensureSafeDirectory로 0o700 보장 — 심볼릭링크 방어
   ensureSafeDirectory(resolvedDir);
   withStoreLock(() => {
     unlinkStaleSubagentModeFile(resolvedDir);
@@ -53,16 +51,14 @@ export function readRawCarriers(): FleetCarriers {
 }
 
 export function readRawCarriersOrDefaultStore(): FleetCarriers {
-  return runtimeState.storeDir ? readCarriers() : readCarriersFromDir(resolveDefaultStoreDir());
+  return readCarriers();
 }
 
-export function getCarriersFilePath(): string | null {
-  if (!runtimeState.storeDir) return null;
-  return path.join(runtimeState.storeDir, FILENAME);
+export function getCarriersFilePath(): string {
+  return path.join(resolveStoreDir(), FILENAME);
 }
 
 export function updateCarriers(mutator: (states: FleetCarriers) => void): void {
-  if (!runtimeState.storeDir) return;
   withStoreLock(() => {
     const carriers = readCarriers();
     const snapshot = structuredClone(carriers);
@@ -74,22 +70,22 @@ export function updateCarriers(mutator: (states: FleetCarriers) => void): void {
 }
 
 export function withStoreLock<T>(operation: () => T): T {
-  if (!runtimeState.storeDir) return operation();
-  fs.mkdirSync(runtimeState.storeDir, { recursive: true });
-  const lockDir = path.join(runtimeState.storeDir, LOCK_DIRNAME);
+  const dir = resolveStoreDir();
+  // storeDir 미세팅 시 getFleetDataDir() 폴백 경로에서도 0o700 보장 — 심링크 방어
+  ensureSafeDirectory(dir);
+  const lockDir = path.join(dir, LOCK_DIRNAME);
   return withDirectoryLock(
     { lockDir, ownerFileName: LOCK_OWNER_FILENAME },
     operation,
   );
 }
 
-function readCarriers(): FleetCarriers {
-  if (!runtimeState.storeDir) return {};
-  return readCarriersFromDir(runtimeState.storeDir);
+function resolveStoreDir(): string {
+  return runtimeState.storeDir ?? getFleetDataDir();
 }
 
-function resolveDefaultStoreDir(): string {
-  return path.join(os.homedir(), DEFAULT_STORE_DIRNAME);
+function readCarriers(): FleetCarriers {
+  return readCarriersFromDir(resolveStoreDir());
 }
 
 function readCarriersFromDir(dir: string): FleetCarriers {
@@ -121,9 +117,8 @@ function recordLastLocalWriteFingerprint(filePath: string, generation: number): 
 }
 
 function writeCarriers(s: FleetCarriers): void {
-  if (!runtimeState.storeDir) throw new Error("Fleet store is not initialized.");
-  fs.mkdirSync(runtimeState.storeDir, { recursive: true });
-  const filePath = path.join(runtimeState.storeDir, FILENAME);
+  const dir = resolveStoreDir();
+  const filePath = path.join(dir, FILENAME);
   const next = serializeFleetCarriers(s);
   // 동작 보존: 현행 무fsync 유지 (atomic write + rename, fsync 없음)
   // carriers.json은 비민감 데이터 — 0o644 명시로 sensitivity 모델 정합
