@@ -54,6 +54,13 @@ export interface ConsoleStopDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop">;
 }
 
+export type ConsoleHookCommand =
+  | { readonly command: "capture-session"; readonly provider: string }
+  | { readonly command: "turn-start" }
+  | { readonly command: "turn-end" }
+  | { readonly command: "attention" }
+  | { readonly command: "auto-name" };
+
 export interface ConsoleRestartDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop" | "ensureDaemon" | "probe">;
   readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void;
@@ -96,7 +103,7 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   return mode;
 }
 
-export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "turn-start" } | { readonly command: "turn-end" } | { readonly command: "attention" } | { readonly command: "auto-name" } {
+export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCommand {
   const [commandName, ...rest] = argv;
   if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName)) {
     throw new Error("Unknown fleet-console hook command");

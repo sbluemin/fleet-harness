@@ -7,6 +7,7 @@ import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
+import { buildCursorNativeArgs } from "./builders/cursor.js";
 import { buildPosixShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
@@ -103,7 +104,9 @@ export async function injectAgentCliProfile(
       codexCommandRunner: options.codexCommandRunner,
       cwd: profile.cwd,
       dataDir: options.dataDir,
+      doctrine,
       rootDir: options.pluginRootDir,
+      mcpServers,
       captureSessionHookExec: options.captureSessionHookExec,
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
@@ -394,7 +397,7 @@ function requireCodexCommandRunner(
 }
 
 function buildAgentCliArgs(
-  builderId: "claude-native" | "codex-native",
+  builderId: "claude-native" | "codex-native" | "cursor-native",
   context: AgentCliInjectionContext,
 ): string[] {
   switch (builderId) {
@@ -402,12 +405,14 @@ function buildAgentCliArgs(
       return buildClaudeNativeArgs(context);
     case "codex-native":
       return buildCodexNativeArgs(context);
+    case "cursor-native":
+      return buildCursorNativeArgs(context);
   }
 }
 
 function mergeAgentCliArgs(
   profile: AgentCliProfile,
-  builderId: "claude-native" | "codex-native",
+  builderId: "claude-native" | "codex-native" | "cursor-native",
   context: AgentCliInjectionContext,
   injectedArgs: readonly string[],
 ): string[] {

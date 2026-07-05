@@ -35,11 +35,12 @@ const BINARY_DISPLAY_NAMES: Record<string, string> = {
 };
 
 // cliCommand → launch가 참조하는 바이너리 경로 override 환경변수(fleet-admiral resolveBinary와 동일).
-// claude 계열은 CLAUDE_BIN, codex는 CODEX_BIN을 쓴다. opencode/cursor-agent는 launch override가 없어 PATH로만
+// claude 계열은 CLAUDE_BIN, codex는 CODEX_BIN, cursor-agent는 CURSOR_AGENT_BIN을 쓴다. opencode는 PATH로만
 // 해석한다. 이 매핑을 두지 않으면 PATH 밖 절대경로 override 사용자가 미설치로 오판돼 게이트(409)에 막힌다.
 const OVERRIDE_ENV_BY_COMMAND: Record<string, string> = {
   claude: "CLAUDE_BIN",
   codex: "CODEX_BIN",
+  "cursor-agent": "CURSOR_AGENT_BIN",
 };
 
 // `--version` 실행 타임아웃(ms). 미설치/무응답이어도 설정 화면 로드를 막지 않도록 짧게 잡는다.

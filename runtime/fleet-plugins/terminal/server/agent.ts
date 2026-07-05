@@ -571,7 +571,7 @@ function readProviderSession(value: Record<string, unknown> | undefined): Provid
   const providerSession = value?.providerSession;
   if (!providerSession || typeof providerSession !== "object") return undefined;
   const candidate = providerSession as { readonly provider?: unknown; readonly sessionId?: unknown; readonly capturedAt?: unknown; readonly transcriptPath?: unknown; readonly source?: unknown };
-  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
+  if (!isProvider(candidate.provider) || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
   return {
     provider: candidate.provider,
     sessionId: candidate.sessionId,
@@ -579,6 +579,10 @@ function readProviderSession(value: Record<string, unknown> | undefined): Provid
     ...(typeof candidate.transcriptPath === "string" ? { transcriptPath: candidate.transcriptPath } : {}),
     ...(typeof candidate.source === "string" ? { source: candidate.source } : {}),
   };
+}
+
+function isProvider(value: unknown): value is ProviderSession["provider"] {
+  return value === "claude" || value === "codex" || value === "cursor";
 }
 
 function resolveCarrierEventOrigin(event: { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById: Map<string, string>): string | null {

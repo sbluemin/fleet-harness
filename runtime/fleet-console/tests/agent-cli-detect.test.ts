@@ -96,4 +96,18 @@ describe("agent cli detector", () => {
       },
     ]);
   });
+
+  it("keeps Cursor Agent in the distinct binary catalog", async () => {
+    const detector = createAgentCliDetector({
+      resolve: (command) => (command === "cursor-agent" ? { bin: "/usr/local/bin/cursor-agent", prefixArgs: [] } : undefined),
+      runVersion: async () => "2026.07.01-41b2de7",
+    });
+    const result = await detector.detect();
+    expect(result.find((cli) => cli.id === "cursor-agent")).toEqual({
+      id: "cursor-agent",
+      displayName: "Cursor Agent",
+      available: true,
+      version: "2026.07.01",
+    });
+  });
 });
