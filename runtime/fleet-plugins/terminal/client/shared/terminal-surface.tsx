@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
+import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-prefs-store.js";
 
 export interface TerminalSurfaceProps {
@@ -30,16 +31,6 @@ interface TerminalOutputScheduler {
   readonly setActive: (active: boolean) => void;
   readonly dispose: () => void;
 }
-
-const TERMINAL_OPTIONS = {
-  // Unicode11Addon은 terminal.unicode(proposed API)를 사용하므로 이 옵션이 true여야 한다.
-  // false이면 addon.activate()가 "must set allowProposedApi" 오류를 던져 터미널 마운트가 깨진다.
-  allowProposedApi: true,
-  convertEol: true,
-  cursorBlink: true,
-  cursorStyle: "block" as const,
-  lineHeight: 1,
-};
 
 const RESIZE_DEBOUNCE_MS = 80;
 const ACTIVE_OUTPUT_FLUSH_MS = 16;
@@ -186,7 +177,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
       // 폰트 로딩 대기 중 세션이 전환되면(effect cleanup) 이미 dispose된 터미널에
       // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
       if (disposed) return;
-      fitAndResize();
+      fitResizeAndRefresh();
       connection.start();
       // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
       // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
