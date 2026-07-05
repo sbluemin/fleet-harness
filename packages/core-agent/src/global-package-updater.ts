@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { accessSync, constants, realpathSync } from "node:fs";
 import path from "node:path";
 
-import { resolvePathBinary, type ResolveBinaryOptions, type ResolvedBinary } from "./bin-resolver.js";
+import { resolvePathBinary, type ResolveBinaryOptions, type ResolvedBinary } from "@dotobokuri/core-process";
 import { fetchLatestVersion, isVersionGreater } from "./version-check.js";
 
 export type GlobalPackageManagerCommand = "npm" | "pnpm";

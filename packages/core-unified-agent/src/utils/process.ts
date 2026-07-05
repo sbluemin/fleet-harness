@@ -5,6 +5,7 @@
 
 import { ChildProcess } from 'child_process';
 import { execSync } from 'child_process';
+import { withHidden } from '@dotobokuri/core-process';
 import { isWindows } from './env.js';
 
 export interface IntentionalKillMarkedChildProcess extends ChildProcess {
@@ -29,12 +30,7 @@ export function killProcess(child: ChildProcess, forceTimeoutMs = 3000): void {
 
   if (isWindows()) {
     try {
-      execSync(`taskkill /PID ${child.pid} /T /F`, {
-        stdio: 'pipe',
-        timeout: 5000,
-        // 콘솔 없는 호스트에서 taskkill 호출 시 새 콘솔 창이 깜빡이는 것을 방지한다.
-        windowsHide: true,
-      });
+      execSync(`taskkill /PID ${child.pid} /T /F`, withHidden({ stdio: 'pipe', timeout: 5000 }));
     } catch {
       // taskkill 실패 시 일반 kill 시도
       child.kill('SIGKILL');

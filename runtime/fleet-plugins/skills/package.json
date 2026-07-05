@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-process": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "react": "^19.2.3",

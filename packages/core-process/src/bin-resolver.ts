@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
 
 export interface ResolveBinaryOptions {
@@ -34,12 +34,16 @@ export function resolveBinary(defaultBin: string, overrideName: string, env: Nod
 }
 
 export function resolvePathBinary(command: string, env: NodeJS.ProcessEnv, options: ResolveBinaryOptions = {}): ResolvedBinary | undefined {
+  const resolved = findBinaryPath(command, env, options);
+  return resolved ? wrapWindowsShim(resolved, env, options.platform ?? process.platform) : undefined;
+}
+
+export function findBinaryPath(command: string, env: NodeJS.ProcessEnv, options: ResolveBinaryOptions = {}): string | undefined {
   const platform = options.platform ?? process.platform;
   const isWindows = platform === "win32";
   const pathValue = isWindows ? (env.Path ?? env.PATH ?? "") : (env.PATH ?? "");
   const pathExts = isWindows ? parsePathExt(env.PATHEXT) : [""];
-  const resolved = findOnPath(command, pathValue, pathExts, platform);
-  return resolved ? wrapWindowsShim(resolved, env, platform) : undefined;
+  return findOnPath(command, pathValue, pathExts, platform);
 }
 
 export function createChildEnv(env: NodeJS.ProcessEnv, overlay: Readonly<Record<string, string | undefined>>): Record<string, string> {
@@ -97,7 +101,7 @@ function findOnPath(bin: string, pathValue: string, pathExts: readonly string[],
 
 function resolveWithExtensions(candidate: string, pathExts: readonly string[], platform: NodeJS.Platform): string | undefined {
   if (platform !== "win32" || path.extname(candidate).length > 0) {
-    return existsSync(candidate) ? candidate : undefined;
+    return isAccessibleExecutable(candidate, platform) ? candidate : undefined;
   }
   for (const ext of pathExts) {
     if (ext.length === 0) {
@@ -108,7 +112,18 @@ function resolveWithExtensions(candidate: string, pathExts: readonly string[], p
       return withExt;
     }
   }
-  return existsSync(candidate) ? candidate : undefined;
+  return isAccessibleExecutable(candidate, platform) ? candidate : undefined;
+}
+
+function isAccessibleExecutable(candidate: string, platform: NodeJS.Platform): boolean {
+  if (!existsSync(candidate)) return false;
+  if (platform === "win32") return true;
+  try {
+    accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function hasPathSeparator(value: string, platform: NodeJS.Platform): boolean {

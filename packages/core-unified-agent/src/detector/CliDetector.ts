@@ -4,9 +4,9 @@
  */
 
 import { execFile } from 'child_process';
+import { findBinaryPath, withHidden } from '@dotobokuri/core-process';
 import { CLI_BACKENDS, type CliType } from '../config/CliConfigs.js';
 import type { CliDetectionResult, ProtocolType } from '../types/config.js';
-import { isWindows } from '../utils/env.js';
 
 /** 감지 대상 CLI 목록 */
 const CLI_DETECT_LIST: Array<{
@@ -138,27 +138,25 @@ export class CliDetector {
    * @returns 사용 가능 여부
    */
   private async isCliAvailable(command: string): Promise<boolean> {
-    const whichCommand = isWindows() ? 'where' : 'which';
-
-    try {
-      await this.execCommand(whichCommand, [command], 3000);
+    const resolved = findBinaryPath(command, process.env);
+    if (resolved !== undefined) {
       return true;
-    } catch {
-      if (isWindows()) {
-        // Windows: PowerShell Get-Command 폴백
-        try {
-          await this.execCommand(
-            'powershell',
-            ['-NoProfile', '-Command', `Get-Command -All ${command}`],
-            5000,
-          );
-          return true;
-        } catch {
-          return false;
-        }
-      }
-      return false;
     }
+
+    // Windows: PowerShell Get-Command 폴백
+    if (process.platform === 'win32') {
+      try {
+        await this.execCommand(
+          'powershell',
+          ['-NoProfile', '-Command', `Get-Command -All ${command}`],
+          5000,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
   }
 
   /**
@@ -184,14 +182,8 @@ export class CliDetector {
    * @returns 전체 경로 또는 커맨드 이름
    */
   private async getCliPath(command: string): Promise<string> {
-    const whichCommand = isWindows() ? 'where' : 'which';
-
-    try {
-      const result = await this.execCommand(whichCommand, [command], 3000);
-      return result.split(/\r?\n/)[0].trim();
-    } catch {
-      return command;
-    }
+    const resolved = findBinaryPath(command, process.env);
+    return resolved ?? command;
   }
 
   /**
@@ -206,11 +198,7 @@ export class CliDetector {
       execFile(
         command,
         args,
-        {
-          encoding: 'utf-8',
-          timeout,
-          windowsHide: true,
-        },
+        withHidden({ encoding: 'utf-8' as const, timeout }),
         (error, stdout) => {
           if (error) {
             reject(error);

@@ -55,7 +55,7 @@ export type {
 export type {
   ResolvedBinary,
   ResolveBinaryOptions,
-} from "./bin-resolver.js";
+} from "@dotobokuri/core-process";
 export type {
   UpdateChannel,
 } from "./version-check.js";
@@ -122,7 +122,7 @@ export {
   createChildEnv,
   resolveBinary,
   resolvePathBinary,
-} from "./bin-resolver.js";
+} from "@dotobokuri/core-process";
 export {
   disconnect,
   disconnectAll,

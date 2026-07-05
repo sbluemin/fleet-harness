@@ -30,6 +30,7 @@
     }
   },
   "dependencies": {
+    "@dotobokuri/core-process": "workspace:*",
     "@dotobokuri/core-unified-agent": "workspace:*"
   },
   "devDependencies": {

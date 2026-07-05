@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { withHidden } from "@dotobokuri/core-process";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ async function runNpmInstall(cliHome: string): Promise<void> {
       file,
       args,
       // windowsHide: GUI 콘솔에서 하위 프로세스(cmd.exe 심 래퍼) 콘솔 창이 순간 표시되는 것을 막는다.
-      { shell: false, windowsHide: true, timeout: BOOTSTRAP_TIMEOUT_MS },
+      withHidden({ shell: false, timeout: BOOTSTRAP_TIMEOUT_MS }),
     );
     child.on("close", (code) => {
       if (code === 0) resolve();
@@ -144,7 +145,7 @@ export function createDefaultExecutor(cliHome: string): CliExecutor {
             process.execPath,
             [mjsPath, ...args],
             // windowsHide: GUI 콘솔에서 하위 node.exe 콘솔 창이 순간 표시되는 것을 막는다.
-            { shell: false, windowsHide: true, cwd, timeout, maxBuffer: 10 * 1024 * 1024 },
+            withHidden({ shell: false, cwd, timeout, maxBuffer: 10 * 1024 * 1024 }),
           );
 
           const stdoutParts: string[] = [];
