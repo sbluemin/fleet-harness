@@ -16,3 +16,19 @@
 - On first load the store attempts to hydrate font from the server. If the server has no value but `fleet-plugin.terminal.font` exists in localStorage, the local value is seeded to the server via a single PUT and the localStorage key is deleted (1-time migration, idempotent — if the server already has a value on any subsequent load, the local key is deleted without re-seeding). Legacy keys (`fleet-console.terminalRenderer`, `fleet-console.terminalFont`) are migrated once on first access to the new namespace keys before server hydration.
 - **Hydration race guard**: if the user calls `setTerminalFont*`/`setTerminalFontSize` while a server `read` is still pending, the `fontWriteEpoch` counter is bumped and the hydration result is discarded on resolve — the user's explicit write always wins.
 - All prefs state is module-scoped in `client/shared/terminal-prefs-store.ts` and subscribed via `useSyncExternalStore`. Every mounted terminal panel (active, inactive, dormant) reacts instantly to settings card changes.
+
+## Global Shell Ownership
+
+- The Terminal plugin owns the right-rail Global Shell panel (`client/global-shell/rail-panel.tsx`) and the singleton ticket route `/plugins/terminal/global/ticket` (`server/global.ts`).
+- Global Shell is Theater-independent: the rail panel ignores `RailPanelContext.theaterId`, uses the fixed session id `global-shell`, and reuses `/plugins/terminal/ws`.
+- Global Shell tickets use `cwd: os.homedir()` and must not call `ctx.host.operations.get()` or `ctx.host.paths.resolveTheaterPath()`.
+- Because the fixed session id and fixed `$HOME` cwd let any caller open the home shell with no prior knowledge, the ticket route additionally rejects requests without an `Origin` header (browser-only surface); do not relax this below the upstream terminal authorization gate.
+- Do not add stale-session cleanup (empty-write probing then terminate) in the ticket route. The session manager self-removes PTYs on exit via `onExit`; probing risks killing a live session on a transient write error.
+- Rail collapse/reopen relies on server scrollback replay. Do not add client-side session destruction for the Global Shell panel.
+
+## Symbols Nerd Font Fallback
+
+- The Terminal plugin vendors `Symbols Nerd Font Mono` under `client/assets/fonts/` and imports its `@font-face` from plugin client code. Do not move this into fleet-console core.
+- Every curated and custom terminal font chain must keep `"Symbols Nerd Font Mono"` immediately before the final `monospace` fallback.
+- WebGL glyph atlas caching makes preload order part of the contract: fire `preloadSymbolsNerdFontMono()` during plugin install and await `waitForSymbolsNerdFontMono()` before `terminal.open()`.
+- Do not call `WebglAddon.clearTextureAtlas()` to recover font glyphs; the atlas is shared across terminals and must remain untouched.
