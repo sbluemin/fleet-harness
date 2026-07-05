@@ -24,6 +24,8 @@
 .diff-tree-pane {
   display: grid;
   grid-template-rows: auto 1fr;
+  /* 열 미선언 시 암시적 auto 트랙이 내용 min-content(툴바 고정폭 합)로 pane보다 넓어진다 */
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   border-left: 1px solid var(--surface-rim);
   position: relative;
@@ -34,6 +36,8 @@
 .diff-hunk-pane {
   display: grid;
   grid-template-rows: auto 1fr;
+  /* .diff-tree-pane과 동일한 암시적 auto 열 클램프 */
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
   position: relative;

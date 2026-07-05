@@ -73,6 +73,8 @@
 .fexp-tree-pane {
   display: grid;
   grid-template-rows: 1fr;
+  /* 암시적 auto 열이 내용 min-content로 pane보다 넓어지지 않게 클램프 */
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -102,6 +104,8 @@
 .fexp-viewer-pane {
   display: grid;
   grid-template-rows: 46px 1fr;
+  /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
