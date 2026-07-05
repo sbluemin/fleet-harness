@@ -4,11 +4,11 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGlobalOptionsService, createGlobalOptionsStore, sanitizeGlobalOptionsData } from "../src/global-options/index.js";
+import { createGlobalOptionsService, createGlobalOptionsStore, sanitizeGlobalOptionsData } from "../src/data-dir/settings/index.js";
 
 const tempDirs: string[] = [];
 
-describe("global options store", () => {
+describe("data-dir settings store", () => {
   afterEach(() => {
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData } from "@dotobokuri/fleet-infra";
+import type { GlobalOptionsData } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it } from "vitest";
 

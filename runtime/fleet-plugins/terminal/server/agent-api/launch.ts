@@ -14,7 +14,7 @@ import {
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, getFleetDataDir, type GlobalOptionsService } from "@dotobokuri/fleet-infra";
+import { createInfraServices, getFleetDataDir, type GlobalOptionsService } from "@dotobokuri/core-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";

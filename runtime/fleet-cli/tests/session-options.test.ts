@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseAgentCliId } from "@dotobokuri/fleet-admiral";
-import type { GlobalOptionsData } from "@dotobokuri/fleet-infra/global-options";
+import type { GlobalOptionsData } from "@dotobokuri/core-infra/data-dir/settings";
 
 import { parseFleetCliOptions } from "../src/cli-args.js";
 import { resolveSessionOptions } from "../src/mission-control/options/resolver.js";

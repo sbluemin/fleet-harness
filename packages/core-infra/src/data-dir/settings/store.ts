@@ -1,7 +1,7 @@
 import * as path from "node:path";
 
-import { getFleetDataDir } from "../data-dir/paths.js";
-import { createDurableJsonStore } from "../fs-store/json-store.js";
+import { getFleetDataDir } from "../paths.js";
+import { createDurableJsonStore } from "../../fs-store/json-store.js";
 import type { GlobalOptionsData, GlobalOptionsStore, GlobalOptionsValidationResult } from "./types.js";
 
 interface CreateGlobalOptionsStoreDeps {

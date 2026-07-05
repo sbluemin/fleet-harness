@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/fleet-infra";
+import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 

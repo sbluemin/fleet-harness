@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import type { UpdateChannel } from "./registry.js";
 

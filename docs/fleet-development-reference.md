@@ -9,7 +9,7 @@ Fleet development follows a hard one-way dependency graph:
 - `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral`; owns one in-process MCP HTTP/JSON-RPC server per CLI process and the console register publisher.
 - `packages/fleet-carriers` — carrier runtime, personas, jobs (including detached jobs), and carrier state.
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
-- `packages/fleet-infra` — host-agnostic auth, data-dir resolution, global options, and durable `fs-store` I/O primitives.
+- `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
 - `runtime/fleet-console` — standalone loopback HTTP backend for CLI register ingest, observer SSE, terminal WebSocket, and static console serving for a single workspace.
 - `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
 - `packages/core-unified-agent` — independent execution engine client package.
@@ -24,9 +24,9 @@ Put code here when it requires terminal rendering, CLI process lifecycle managem
 
 Put code here when it owns carrier persona metadata, carrier dispatch, carrier job surfaces, or carrier state persistence.
 
-### 2.3 `packages/fleet-infra`
+### 2.3 `packages/core-infra`
 
-Put code here when it owns generic auth, data-dir resolution, global options, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`; detached-job infrastructure belongs to `packages/fleet-carriers`.
+Put code here when it owns generic auth, data-dir resolution, data-dir/settings, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`; detached-job infrastructure belongs to `packages/fleet-carriers`.
 
 ### 2.4 `runtime/fleet-console`
 

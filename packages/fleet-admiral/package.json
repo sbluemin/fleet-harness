@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*"
   },
   "devDependencies": {

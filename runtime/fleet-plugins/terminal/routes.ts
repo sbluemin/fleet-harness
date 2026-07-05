@@ -1,6 +1,6 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
-import { createInfraServices } from "@dotobokuri/fleet-infra";
+import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";

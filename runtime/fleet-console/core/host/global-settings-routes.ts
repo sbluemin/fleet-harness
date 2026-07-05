@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { DurableJsonStore } from "@dotobokuri/fleet-infra";
+import type { DurableJsonStore } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleSettingsData } from "./console-settings.js";

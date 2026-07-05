@@ -8,7 +8,7 @@ This document is the operational doctrine for Admiral and Carrier agents working
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs (including detached jobs), store, and carrier runtime state.
 - `packages/core-agent` owns the host-agnostic executor/session/model runtime engine (`executeWithPool` / `executeOneShot`), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
-- `packages/fleet-infra` owns host-agnostic auth, data-dir resolution, global options, and the durable `fs-store` I/O primitives.
+- `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback HTTP backend for CLI register ingest, observer SSE, terminal WebSocket, and static console serving for a single workspace.
 
 ## 2. Ownership Model
@@ -28,11 +28,11 @@ fleet-cli
   -> fleet-admiral
   -> fleet-carriers
   -> core-agent
-  -> fleet-infra
+  -> core-infra
   -> fleet-console
   -> fleet-wiki / fleet-console Codex surface
 
-core-agent / fleet-carriers / fleet-infra
+core-agent / fleet-carriers / core-infra
   -> core-unified-agent
 ```
 

@@ -5,10 +5,9 @@ import path from "node:path";
 
 import {
   createCarrierRegistry,
-  initStore,
   registerDefaultCarriers,
 } from "@dotobokuri/fleet-carriers";
-import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
+import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
@@ -217,9 +216,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const operations = createOperationStore();
   const folderGrants = createFolderGrantStore();
   const infraServices = createInfraServices();
-  const dataDir = deps.dataDir ?? getFleetDataDir();
-  initStore(dataDir);
-  // 명시 dataDir override가 있으면(테스트 등) 그 경로를, 없으면 채널 기반 경로를 durable state 루트로 쓴다.
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
@@ -309,7 +305,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       registerSseChannel: () => () => undefined,
     },
     paths: {
-      dataDir: durablePaths.dir,
       capturesDir: durablePaths.capturesDir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.path ?? null,

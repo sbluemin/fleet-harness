@@ -5,7 +5,7 @@ edit_policy: |
   DO NOT MODIFY VIA CHRONICLE.
   This document is the Admiral persona's self-model — its operational reference
   for how the system prompt and live Fleet state flow through fleet-cli,
-  fleet-carriers, and fleet-infra. Chronicle (the chronicle carrier) is
+  fleet-carriers, and core-infra. Chronicle (the chronicle carrier) is
   FORBIDDEN from editing this file under any tool path, including documentation
   sweeps, change-impact audits, .md cascade synchronization, PR summary
   generation, release-note compilation, or AGENTS.md doctrine alignment. Updates

@@ -5,7 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     auth: "src/auth/index.ts",
     "data-dir": "src/data-dir/index.ts",
-    "global-options": "src/global-options/index.ts",
+    "data-dir/settings": "src/data-dir/settings/index.ts",
     "fs-store": "src/fs-store/index.ts",
   },
   format: ["esm", "cjs"],

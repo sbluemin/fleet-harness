@@ -1,10 +1,10 @@
 {
-  "name": "@dotobokuri/fleet-infra",
+  "name": "@dotobokuri/core-infra",
   "version": "1.18.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
-    "directory": "packages/fleet-infra"
+    "directory": "packages/core-infra"
   },
   "private": true,
   "author": "sbluemin",
@@ -38,10 +38,10 @@
       "import": "./dist/data-dir.js",
       "require": "./dist/data-dir.cjs"
     },
-    "./global-options": {
-      "types": "./dist/global-options/index.d.ts",
-      "import": "./dist/global-options.js",
-      "require": "./dist/global-options.cjs"
+    "./data-dir/settings": {
+      "types": "./dist/data-dir/settings/index.d.ts",
+      "import": "./dist/data-dir/settings.js",
+      "require": "./dist/data-dir/settings.cjs"
     },
     "./fs-store": {
       "types": "./dist/fs-store/index.d.ts",
@@ -57,8 +57,8 @@
       "data-dir": [
         "dist/data-dir/index.d.ts"
       ],
-      "global-options": [
-        "dist/global-options/index.d.ts"
+      "data-dir/settings": [
+        "dist/data-dir/settings/index.d.ts"
       ],
       "fs-store": [
         "dist/fs-store/index.d.ts"

@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
+
 import { assetBundle, renderAssetPluginRoot } from "./fleet.js";
 import { cleanupPrivateRoot, ensurePrivateDir, removePrivatePath, writePrivateJson } from "./fs.js";
 import type {
@@ -55,7 +57,7 @@ const HASH_IGNORED_RELATIVE_PATHS = new Set(PLUGIN_BUNDLES.map((bundle) => bundl
 export async function createAgentCliPlugin(
   options: CreateAgentCliPluginOptions,
 ): Promise<AgentCliPlugin> {
-  const fleetRoot = options.rootDir ?? options.dataDir;
+  const fleetRoot = options.rootDir ?? options.dataDir ?? getFleetDataDir();
   const renderableBundles = resolveRenderablePluginBundles(fleetRoot);
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   const pluginRoots = new Map<PluginBundle, string>();

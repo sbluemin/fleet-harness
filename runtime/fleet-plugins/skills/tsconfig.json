@@ -23,7 +23,7 @@
       "@dotobokuri/core-unified-agent": ["../../../packages/core-unified-agent/dist/index.d.ts"],
       "@dotobokuri/fleet-admiral": ["../../../packages/fleet-admiral/dist/index.d.ts"],
       "@dotobokuri/fleet-carriers": ["../../../packages/fleet-carriers/dist/index.d.ts"],
-      "@dotobokuri/fleet-infra": ["../../../packages/fleet-infra/dist/index.d.ts"],
+      "@dotobokuri/core-infra": ["../../../packages/core-infra/dist/index.d.ts"],
       "@dotobokuri/fleet-wiki": ["../../../packages/fleet-wiki/dist/index.d.ts"],
       "react": ["../../fleet-console/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["../../fleet-console/node_modules/@types/react/jsx-runtime.d.ts"]

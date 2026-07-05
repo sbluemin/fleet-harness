@@ -1,7 +1,7 @@
 packages:
   - "packages/core-agent"
   - "packages/core-unified-agent"
-  - "packages/fleet-infra"
+  - "packages/core-infra"
   - "packages/fleet-admiral"
   - "packages/fleet-carriers"
   - "packages/fleet-wiki"

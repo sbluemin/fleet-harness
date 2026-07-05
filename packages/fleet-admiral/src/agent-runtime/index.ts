@@ -13,6 +13,7 @@ import {
 	type McpToolSnapshotStore,
 	type RegisterExecutorToolOptions,
 } from "@dotobokuri/core-agent";
+import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import {
 	createCarrierRuntime,
 	type CarrierRuntime,
@@ -31,7 +32,7 @@ export interface FleetAgentRuntimeToolRegistration {
 }
 
 export interface FleetAgentRuntimeLifecycleDeps {
-	readonly dataDir: string;
+	readonly dataDir?: string;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
 	readonly wikiToolSpecs?: readonly AgentToolSpec[];
@@ -76,6 +77,7 @@ export function createFleetAgentRuntimeLifecycle(
 	deps: FleetAgentRuntimeLifecycleDeps,
 ): FleetAgentRuntimeLifecycle {
 	let active = true;
+	const resolvedDataDir = deps.dataDir ?? getFleetDataDir();
 	const mcpRuntime = createFleetAgentRuntimeMcpServices();
 	const carrierRuntime = createCarrierRuntime();
 	const dedicatedMcpSession = createExecutorSessionManager({
@@ -92,7 +94,7 @@ export function createFleetAgentRuntimeLifecycle(
 	});
 
 	registerExecutorPort(mcpRuntime.mcpRegistry, carrierRuntime, () => active);
-	carrierRuntime.store.initStore(deps.dataDir);
+	carrierRuntime.store.initStore(resolvedDataDir);
 	carrierRuntime.registerCarrierDefaults();
 	registerFleetAgentRuntimeTools(mcpRuntime.mcpRegistry, carrierRuntime, deps);
 	registerExecutorMcpRuntimeProvider(mcpRuntime, dedicatedMcpSession, () => active);

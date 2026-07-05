@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 
-import { getFleetDataDir } from "@dotobokuri/fleet-infra";
+import { getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { readFleetConsoleRelease, type FleetConsoleChannel } from "./release.js";
 
