@@ -22,6 +22,8 @@
 - The Terminal plugin owns the right-rail Global Shell panel (`client/global-shell/rail-panel.tsx`) and the singleton ticket route `/plugins/terminal/global/ticket` (`server/global.ts`).
 - Global Shell is Theater-independent: the rail panel ignores `RailPanelContext.theaterId`, uses the fixed session id `global-shell`, and reuses `/plugins/terminal/ws`.
 - Global Shell tickets use `cwd: os.homedir()` and must not call `ctx.host.operations.get()` or `ctx.host.paths.resolveTheaterPath()`.
+- Because the fixed session id and fixed `$HOME` cwd let any caller open the home shell with no prior knowledge, the ticket route additionally rejects requests without an `Origin` header (browser-only surface); do not relax this below the upstream terminal authorization gate.
+- Do not add stale-session cleanup (empty-write probing then terminate) in the ticket route. The session manager self-removes PTYs on exit via `onExit`; probing risks killing a live session on a transient write error.
 - Rail collapse/reopen relies on server scrollback replay. Do not add client-side session destruction for the Global Shell panel.
 
 ## Symbols Nerd Font Fallback

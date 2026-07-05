@@ -85,6 +85,17 @@ describe("global shell routes", () => {
     expect(harness.readJsonBody).not.toHaveBeenCalled();
   });
 
+  it("rejects no-Origin requests so CLI clients cannot open the home shell without sensitive knowledge", async () => {
+    const harness = createRouteHarness({ body: { operationId: "global-shell" } });
+    // default 파라미터가 명시적 undefined에도 발동하므로, Origin 부재는 인라인 req로 헤더를 실제 누락시킨다.
+    const noOriginReq = { method: "POST", headers: { "content-type": "application/json" } } as unknown as http.IncomingMessage;
+    await harness.handle({ req: noOriginReq, res: res(), pathname: "/plugins/terminal/global/ticket" });
+
+    expect(harness.writes).toEqual([{ status: 401, body: { error: "Unauthorized" } }]);
+    expect(harness.readJsonBody).not.toHaveBeenCalled();
+    expect(harness.issueTicket).not.toHaveBeenCalled();
+  });
+
   it("rejects missing operationId/sessionId payloads", async () => {
     const harness = createRouteHarness({ body: {} });
     await harness.handle({ req: req("POST"), res: res(), pathname: "/plugins/terminal/global/ticket" });
@@ -100,12 +111,13 @@ describe("global shell routes", () => {
     expect(harness.issueTicket).not.toHaveBeenCalled();
   });
 
-  it("terminates a stale singleton session before issuing a replacement ticket", async () => {
-    const harness = createRouteHarness({ body: { sessionId: "global-shell" }, writeResult: false });
+  it("issues the ticket via sessionId alias without touching stale-session cleanup", async () => {
+    const harness = createRouteHarness({ body: { sessionId: "global-shell" } });
     await harness.handle({ req: req("POST"), res: res(), pathname: "/plugins/terminal/global/ticket" });
 
-    expect(harness.write).toHaveBeenCalledWith("global-shell", "");
-    expect(harness.terminate).toHaveBeenCalledWith("global-shell");
+    // 세션 정리는 session-manager onExit가 담당하므로 ticket 발급 경로는 write/terminate를 호출하지 않는다.
+    expect(harness.write).not.toHaveBeenCalled();
+    expect(harness.terminate).not.toHaveBeenCalled();
     expect(harness.writes[0]?.status).toBe(200);
   });
 
@@ -173,8 +185,10 @@ function createRouteHarness(options: HarnessOptions = {}) {
   return { handle, writes, operationGet, resolveTheaterPath, readJsonBody, issueTicket, write, terminate };
 }
 
-function req(method: string): http.IncomingMessage {
-  return { method, headers: { "content-type": "application/json" } } as unknown as http.IncomingMessage;
+function req(method: string, origin: string | undefined = "http://127.0.0.1:7777"): http.IncomingMessage {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (origin !== undefined) headers.origin = origin;
+  return { method, headers } as unknown as http.IncomingMessage;
 }
 
 function res(): http.ServerResponse {
