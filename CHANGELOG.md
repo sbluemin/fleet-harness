@@ -5,6 +5,34 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-07-05
+
+### Added
+- [fleet-admiral][fleet-cli][fleet-console] Cursor Agent can now be launched as a first-class Agent CLI runtime with rules-delivered Fleet doctrine, MCP, and session-capture support.
+- [fleet-console] Diff panel now shows a collapsible "History" section under Changes, listing recent commits with a single-lane graph gutter (Flat/Graph toggle). Selecting a commit renders its full multi-file patch in the extended diff pane. A multi-lane topology (up to three active lanes, with overflow collapsed) visualises merges and branches within HEAD-reachable history.
+- [fleet-console] Added bundled Nerd Font symbol fallback support for terminal glyph rendering.
+- [fleet-console] Added a Theater-independent Global Shell panel in the right rail.
+
+### Changed
+- [core-process][core-agent][core-unified-agent] Windows executable path resolution and child-process console-window suppression are now provided by a shared internal core-process package, replacing the logic that was previously duplicated across the agent CLI and console runtimes.
+- [core-unified-agent] Renamed the Claude and Codex provider display names to "Claude Code" and "Codex".
+- [core-infra] Renamed the Fleet infrastructure package to reflect its domain-agnostic role; all consumers are updated transparently with no behavior change.
+- [fleet-admiral] [fleet-carriers] Data directory resolution is now self-contained, so carrier storage and marketplace assets always resolve to the single Fleet home directory no matter which host launches them.
+- [fleet-console] [fleet-cli] Removed host-side data directory injection, fixing duplicate marketplace rendering and carrier settings that previously failed to persist when changed from the console.
+- [fleet-console] Removed the raw data directory path from the plugin host contract so plugins no longer receive it.
+- [fleet-console] Terminal launch menus and SideBar chips now show distinct official-style brand icons for Claude and Codex agent sessions instead of one shared glyph.
+- [fleet-console] Terminal launch menus and SideBar chips now show the official-style Cursor brand icon for Cursor agent sessions instead of the neutral fallback glyph.
+
+### Fixed
+- [fleet-console] Restore README images and file links in File Explorer markdown previews.
+- [fleet-console] Terminal Shell sessions now preserve raw TUI cursor movement so nvim-style fullscreen apps repaint reliably.
+- [fleet-console] Diff and File Explorer rail panels now keep the right-hand list or tree column at a fixed width when opening a file or diff, assigning all extra panel width to the left document or viewer pane.
+- [fleet-console] Narrow or aggressively resized rail panes progressively hide secondary labels and badges instead of clipping content, so extreme drags and tight panel widths no longer collapse the layout.
+- [fleet-console] File Explorer expands the rail panel only while a file preview is open, returning to a single-column tree when the viewer is closed.
+
+### Removed
+- [fleet-cli][fleet-console] Removed the System Prompt Injection option (the Append/Replace toggle in Console Terminal settings and the CLI Mission Control "System prompt" row, plus the `FLEET_REPLACE_SYSTEM_PROMPT` environment override). Fleet doctrine is now always layered on top of Claude Code's built-in system prompt (Append) and always delivered to Codex through its profile's developer instructions.
+
 ## [1.18.0] - 2026-07-04
 
 ### Added
