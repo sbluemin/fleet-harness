@@ -1,8 +1,7 @@
 ---
 section: Changed
 ---
-- [core-infra] Renamed package from `fleet-infra` to `core-infra` (`@dotobokuri/core-infra`) to reflect its Fleet-domain-agnostic nature; all consumers updated transparently.
-- [core-infra] Moved the global-options store subpath to `@dotobokuri/core-infra/data-dir/settings`; the old `@dotobokuri/fleet-infra/global-options` export is removed.
-- [fleet-admiral] [fleet-carriers] Data-dir resolution is now self-contained via `getFleetDataDir()` from `core-infra`; hosts no longer need to supply a `dataDir` argument at startup.
-- [fleet-console] [fleet-cli] Removed `dataDir` host-injection from the console server and CLI runtime; each package resolves its own data directory without host assembly.
-- [fleet-console] Removed `FleetPluginPathsHost.dataDir` from the SDK plugin contract; plugins no longer receive a raw data-directory path.
+- [core-infra] Renamed the Fleet infrastructure package to reflect its domain-agnostic role; all consumers are updated transparently with no behavior change.
+- [fleet-admiral] [fleet-carriers] Data directory resolution is now self-contained, so carrier storage and marketplace assets always resolve to the single Fleet home directory no matter which host launches them.
+- [fleet-console] [fleet-cli] Removed host-side data directory injection, fixing duplicate marketplace rendering and carrier settings that previously failed to persist when changed from the console.
+- [fleet-console] Removed the raw data directory path from the plugin host contract so plugins no longer receive it.
