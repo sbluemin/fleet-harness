@@ -317,7 +317,7 @@ describe("job bar renderer", () => {
     const text = stripAnsi(rendered);
 
     expect(text).toContain("gpt safe - high");
-    expect(text).toContain("OpenAI Codex CLI");
+    expect(text).toContain("Codex");
     expect(rendered).not.toContain("\x1b]52");
     expect(rendered).not.toContain("\u009b31m");
     expect(rendered).not.toContain("\u202e");

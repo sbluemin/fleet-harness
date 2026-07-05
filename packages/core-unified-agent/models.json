@@ -3,7 +3,7 @@
   "updatedAt": "2026-07-04T00:00:00Z",
   "providers": {
     "claude": {
-      "name": "Claude Code with Anthropic",
+      "name": "Claude Code",
       "defaultModel": "opus[1m]",
       "models": [
         { "modelId": "haiku", "name": "Claude Haiku", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "low" } },
@@ -16,7 +16,7 @@
       ]
     },
     "codex": {
-      "name": "OpenAI Codex CLI",
+      "name": "Codex",
       "defaultModel": "gpt-5.4",
       "models": [
         { "modelId": "gpt-5.4", "name": "GPT-5.4", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },

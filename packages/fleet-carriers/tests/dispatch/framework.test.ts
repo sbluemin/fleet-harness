@@ -578,14 +578,14 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     expect(registered.tracks).toEqual([
       expect.objectContaining({
         displayCli: "claude",
-        displayName: "Claude Code with Anthropic",
+        displayName: "Claude Code",
         effort: claudeEffort,
         kind: "backend",
         model: claudeModel,
       }),
       expect.objectContaining({
         displayCli: "codex",
-        displayName: "OpenAI Codex CLI",
+        displayName: "Codex",
         effort: codexEffort,
         kind: "backend",
         model: codexModel,
