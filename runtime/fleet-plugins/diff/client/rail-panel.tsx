@@ -5,13 +5,22 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { DiffFileEntry, DiffFileMode, RepoEntry, ReposDiscoveryResult } from "../server/types.js";
 import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
-import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./diff-view-store.js";
+import {
+  clearSelectedCommit,
+  clearSelectedFile,
+  setSelectedFile,
+  type SelectedFile,
+  useSelectedCommit,
+  useSelectedFile,
+} from "./diff-view-store.js";
+import { HistorySection } from "./history-section.js";
 import { HunkView } from "./hunk-view.js";
 import { groupRepos, relativeToParent } from "./repo-grouping.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 type ViewMode = "list" | "tree";
+type GraphMode = "flat" | "graph";
 
 interface DiffPanelProps {
   readonly ctx: RailPanelContext;
@@ -36,6 +45,7 @@ const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
 const PREFS_SPLIT_RATIO = "fleet-console.diff.splitRatio";
 const PREFS_DEPTH = "fleet-console.diff.depth";
 const PREFS_REPO_PREFIX = "fleet-console.diff.repo.";
+const PREFS_HISTORY_GRAPH_MODE = "fleet-console.diff.historyGraphMode";
 
 const EXTENDED_EXTRA_WIDTH = 400;
 // 호스트가 뷰포트 클램프로 400 미만만 부여했을 때: 문서 페인부터 축소(min 140)하고 리스트 페인(min 220)을 보존한다
@@ -84,6 +94,14 @@ function readDepth(): number {
     }
   } catch { /* ignore */ }
   return DEFAULT_DEPTH;
+}
+
+function readGraphMode(): GraphMode {
+  try {
+    const v = localStorage.getItem(PREFS_HISTORY_GRAPH_MODE);
+    if (v === "flat" || v === "graph") return v;
+  } catch { /* ignore */ }
+  return "flat";
 }
 
 function readSubPath(theaterId: string): string {
@@ -281,7 +299,9 @@ function ChevronIcon() {
 
 function DiffPanel({ ctx }: DiffPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
+  const [graphMode, setGraphModeState] = useState<GraphMode>(readGraphMode);
   const selectedFile = useSelectedFile(ctx.theaterId ?? null);
+  const selectedCommit = useSelectedCommit(ctx.theaterId ?? null);
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -335,6 +355,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     setReposTruncated(false);
     setMenuOpen(false);
     clearSelectedFile();
+    clearSelectedCommit();
     fetchRepos(depthRef.current);
   }, [ctx.theaterId, fetchRepos]);
 
@@ -349,7 +370,8 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     if (relPath === activeSubPath) return;
     setActiveSubPath(relPath);
     if (ctx.theaterId) saveSubPath(ctx.theaterId, relPath);
-    clearSelectedFile(); // 저장소 변경 시 선택 파일 초기화
+    clearSelectedFile();
+    clearSelectedCommit();
   }, [activeSubPath, ctx.theaterId]);
 
   const handleDepthChange = useCallback((newDepth: number) => {
@@ -385,11 +407,19 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     setSelectedFile(entry, activeSubPath, ctx.theaterId);
   }, [ctx.theaterId, activeSubPath]);
 
-  const handleCloseHunk = useCallback(() => { clearSelectedFile(); }, []);
+  const handleCloseHunk = useCallback(() => {
+    clearSelectedFile();
+    clearSelectedCommit();
+  }, []);
 
   const handleViewMode = useCallback((next: ViewMode) => {
     setViewMode(next);
     try { localStorage.setItem(PREFS_VIEW_MODE, next); } catch { /* ignore */ }
+  }, []);
+
+  const handleGraphMode = useCallback((next: GraphMode) => {
+    setGraphModeState(next);
+    try { localStorage.setItem(PREFS_HISTORY_GRAPH_MODE, next); } catch { /* ignore */ }
   }, []);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -423,10 +453,10 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
-  // 파일 선택 시 패널 좌측 400px 확장, 해제 시 원복 — 단일 지점 호출
+  // 파일/커밋 선택 시 패널 좌측 400px 확장, 해제 시 원복
   useLayoutEffect(() => {
-    ctx.requestExtraWidth?.(selectedFile ? EXTENDED_EXTRA_WIDTH : null);
-  }, [ctx, selectedFile]);
+    ctx.requestExtraWidth?.((selectedFile || selectedCommit) ? EXTENDED_EXTRA_WIDTH : null);
+  }, [ctx, selectedFile, selectedCommit]);
 
   // 활성 저장소 정보 — 스캔 전에는 subPath 기반 표시 이름만 사용
   const activeRepo = repos.find((r) => r.relPath === activeSubPath) ?? null;
@@ -435,30 +465,41 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const activeBranch = activeRepo?.branch ?? null;
 
   const hunkMode: DiffFileMode = selectedFile ? getHunkMode(selectedFile) : "unified";
+  const hasHunk = !!(selectedFile || selectedCommit);
 
   return (
     <div
       ref={rootRef}
-      className={`diff-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`}
-      style={selectedFile ? {
+      className={`diff-root${hasHunk ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`}
+      style={hasHunk ? {
         gridTemplateColumns: `minmax(${HUNK_PANE_MIN_WIDTH}px, ${splitRatio}fr) 4px minmax(${LIST_PANE_MIN_WIDTH}px, ${1 - splitRatio}fr)`,
       } : undefined}
     >
-      {selectedFile && (
+      {hasHunk && (
         <div className="diff-hunk-pane">
           <div className="diff-hunk-head">
-            <span className={`diff-status-glyph diff-status-${selectedFile.entry.status.toLowerCase()}`}>
-              {selectedFile.entry.status}
-            </span>
-            <span className="diff-hunk-filename">{selectedFile.entry.path}</span>
-            <span className="diff-nums">
-              {selectedFile.entry.additions > 0 && (
-                <span className="diff-additions">+{selectedFile.entry.additions}</span>
-              )}
-              {selectedFile.entry.deletions > 0 && (
-                <span className="diff-deletions">−{selectedFile.entry.deletions}</span>
-              )}
-            </span>
+            {selectedCommit ? (
+              <>
+                <span className="diff-hunk-commit-icon" aria-hidden="true">⊙</span>
+                <span className="diff-hunk-sha">{selectedCommit.commit.shortHash}</span>
+                <span className="diff-hunk-filename">{selectedCommit.commit.subject}</span>
+              </>
+            ) : selectedFile ? (
+              <>
+                <span className={`diff-status-glyph diff-status-${selectedFile.entry.status.toLowerCase()}`}>
+                  {selectedFile.entry.status}
+                </span>
+                <span className="diff-hunk-filename">{selectedFile.entry.path}</span>
+                <span className="diff-nums">
+                  {selectedFile.entry.additions > 0 && (
+                    <span className="diff-additions">+{selectedFile.entry.additions}</span>
+                  )}
+                  {selectedFile.entry.deletions > 0 && (
+                    <span className="diff-deletions">−{selectedFile.entry.deletions}</span>
+                  )}
+                </span>
+              </>
+            ) : null}
             <button
               type="button"
               className="diff-hunk-close"
@@ -469,11 +510,21 @@ function DiffPanel({ ctx }: DiffPanelProps) {
             </button>
           </div>
           <div className="diff-hunk-body">
-            <HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} />
+            {selectedCommit ? (
+              <HunkView
+                ctx={ctx}
+                file={{ path: "", status: "M", additions: 0, deletions: 0 }}
+                mode="unified"
+                subPath={selectedCommit.subPath}
+                commit={selectedCommit}
+              />
+            ) : selectedFile ? (
+              <HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} />
+            ) : null}
           </div>
         </div>
       )}
-      {selectedFile && (
+      {hasHunk && (
         <div
           className="diff-divider"
           onPointerDown={handleDividerDown}
@@ -529,6 +580,42 @@ function DiffPanel({ ctx }: DiffPanelProps) {
               </svg>
             </button>
           </div>
+          <div className="diff-graph-toggle">
+            <button
+              type="button"
+              className={`diff-toggle-btn${graphMode === "flat" ? " is-active" : ""}`}
+              title="Flat history"
+              aria-pressed={graphMode === "flat"}
+              onClick={() => handleGraphMode("flat")}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="3" y1="4" x2="3" y2="10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <circle cx="3" cy="4" r="1.5" fill="currentColor" />
+                <circle cx="3" cy="7" r="1.5" fill="currentColor" />
+                <circle cx="3" cy="10" r="1.5" fill="currentColor" />
+                <line x1="6" y1="4" x2="12" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="6" y1="7" x2="11" y2="7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="6" y1="10" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={`diff-toggle-btn${graphMode === "graph" ? " is-active" : ""}`}
+              title="Graph history"
+              aria-pressed={graphMode === "graph"}
+              onClick={() => handleGraphMode("graph")}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="3" y1="2" x2="3" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="8" y1="5" x2="8" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <path d="M3 5 Q5 5 8 5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+                <circle cx="3" cy="3" r="1.8" fill="currentColor" />
+                <circle cx="3" cy="8" r="1.5" fill="currentColor" />
+                <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+                <circle cx="3" cy="11.5" r="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
         </div>
         <ChangedFiles
           ctx={ctx}
@@ -537,6 +624,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
           subPath={activeSubPath}
           onSelect={handleSelectFile}
         />
+        <HistorySection ctx={ctx} subPath={activeSubPath} graphMode={graphMode} />
         {menuOpen && (
           <CommandDeck
             theaterId={ctx.theaterId ?? ""}

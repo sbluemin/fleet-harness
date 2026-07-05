@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
+import type { CommitDiffResult, DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
+import type { SelectedCommit } from "./diff-view-store.js";
 import { parseHunk } from "./hunk-parse.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -12,11 +13,12 @@ interface HunkViewProps {
   readonly file: DiffFileEntry;
   readonly mode: DiffFileMode;
   readonly subPath: string;
+  readonly commit?: SelectedCommit | null;
 }
 
 type LoadState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly result: DiffHunkResult }
+  | { readonly kind: "ok"; readonly result: DiffHunkResult | CommitDiffResult }
   | { readonly kind: "error"; readonly message: string };
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -30,7 +32,7 @@ function escapeHtml(s: string): string {
 
 // ─── HunkView ────────────────────────────────────────────────────────────────
 
-export function HunkView({ ctx, file, mode, subPath }: HunkViewProps) {
+export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
@@ -40,18 +42,33 @@ export function HunkView({ ctx, file, mode, subPath }: HunkViewProps) {
     }
     let cancelled = false;
     setState({ kind: "loading" });
-    ctx.api.fetch("diff", "file", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, subPath }),
-    }).then(async (res) => {
-      const result = await res.json() as DiffHunkResult;
-      if (!cancelled) setState({ kind: "ok", result });
-    }).catch((err: unknown) => {
-      if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
-    });
+
+    if (commit) {
+      ctx.api.fetch("diff", "commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.commit.fullHash, subPath: commit.subPath }),
+      }).then(async (res) => {
+        const result = await res.json() as CommitDiffResult;
+        if (!cancelled) setState({ kind: "ok", result });
+      }).catch((err: unknown) => {
+        if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
+      });
+    } else {
+      ctx.api.fetch("diff", "file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, subPath }),
+      }).then(async (res) => {
+        const result = await res.json() as DiffHunkResult;
+        if (!cancelled) setState({ kind: "ok", result });
+      }).catch((err: unknown) => {
+        if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
+      });
+    }
+
     return () => { cancelled = true; };
-  }, [ctx.api, file.path, mode, subPath, ctx.theaterId]);
+  }, [ctx.api, ctx.theaterId, file.path, mode, subPath, commit]);
 
   if (state.kind === "loading") {
     return <div className="diff-hunk-loading">Loading…</div>;
@@ -76,6 +93,13 @@ export function HunkView({ ctx, file, mode, subPath }: HunkViewProps) {
                   <td
                     colSpan={4}
                     className="diff-line-label"
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
+                  />
+                ) : line.kind === "file-label" ? (
+                  <td
+                    colSpan={4}
+                    className="diff-line-file-label"
                     // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />

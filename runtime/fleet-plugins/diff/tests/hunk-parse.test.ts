@@ -74,7 +74,7 @@ describe("parseHunk", () => {
   });
 
   it("④ add/del/ctx가 정확히 분류된다", () => {
-    const lines = parseHunk(SAMPLE_UNIFIED).filter((l) => l.kind !== "hunk-label");
+    const lines = parseHunk(SAMPLE_UNIFIED).filter((l) => l.kind !== "hunk-label" && l.kind !== "file-label");
     const kinds = lines.map((l) => l.kind);
     expect(kinds).toEqual(["ctx", "del", "add", "add", "ctx"]);
   });
@@ -100,13 +100,14 @@ describe("parseHunk", () => {
     ].join("\n");
     expect(() => parseHunk(binary)).not.toThrow();
     const lines = parseHunk(binary);
-    // 파일 헤더(diff --git/index)는 드롭, 바이너리 안내는 살아남는다
-    expect(lines).toHaveLength(1);
-    expect(lines[0]?.kind).toBe("ctx");
+    // diff --git는 file-label로 변환, index는 드롭, 바이너리 안내는 ctx로 살아남는다
+    const ctxLines = lines.filter((l) => l.kind === "ctx");
+    expect(ctxLines).toHaveLength(1);
+    expect(ctxLines[0]?.kind).toBe("ctx");
     // 뷰의 slice(1) 규약에 맞춰 앞 공백 프리픽스가 붙는다
-    expect(lines[0]?.text).toBe(" Binary files a/img.png and b/img.png differ");
-    expect(lines[0]?.oldLine).toBeUndefined();
-    expect(lines[0]?.newLine).toBeUndefined();
+    expect(ctxLines[0]?.text).toBe(" Binary files a/img.png and b/img.png differ");
+    expect(ctxLines[0]?.oldLine).toBeUndefined();
+    expect(ctxLines[0]?.newLine).toBeUndefined();
   });
 
   it("⑧ '\\ No newline at end of file' 어노테이션은 결과에서 제외되고 라인번호를 소모하지 않는다", () => {
