@@ -7,7 +7,7 @@ export default defineConfig({
   format: ["esm"],
   dts: true,
   target: "node20",
-  noExternal: [/^@dotobokuri\/(?!fleet-console$)/],
+  noExternal: [/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\/(?!fleet-console$)/],
   external: ["node-pty", "@dotobokuri/fleet-console"],
   splitting: false,
   clean: true,

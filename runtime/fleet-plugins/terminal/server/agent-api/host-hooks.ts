@@ -3,6 +3,8 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { withHidden } from "@dotobokuri/core-process";
+
 import type {
   CodexCommandResult,
   CodexPluginRegistrationCommand,
@@ -65,13 +67,7 @@ export function toCaptureProvider(cliId: AgentCliId): ConsoleCaptureProvider {
 }
 
 export function runCodexCommand(command: CodexPluginRegistrationCommand): CodexCommandResult {
-  const result = spawnSync(command.bin, command.args, {
-    cwd: command.cwd,
-    encoding: "utf8",
-    env: command.env,
-    // 콘솔 없는 fleet-console 백엔드에서 codex 등록 명령 실행 시 콘솔 창이 깜빡이는 것을 방지한다.
-    windowsHide: true,
-  });
+  const result = spawnSync(command.bin, command.args, withHidden({ cwd: command.cwd, encoding: "utf8" as const, env: command.env }));
   return {
     status: result.status,
     stderr: result.stderr ?? "",

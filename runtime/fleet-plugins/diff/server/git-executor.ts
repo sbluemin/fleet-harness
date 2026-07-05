@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { withHidden } from "@dotobokuri/core-process";
 
 export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo" | "git_unavailable";
 
@@ -35,7 +36,7 @@ export function runGit(
     let child;
     try {
       // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
-      child = spawn("git", args as string[], { cwd: opts.cwd, shell: false, windowsHide: true });
+      child = spawn("git", args as string[], withHidden({ cwd: opts.cwd, shell: false }));
     } catch (error) {
       // spawn 동기 예외에서도 ENOENT는 git 바이너리 미설치로 분류한다(방어적 처리).
       const code = (error as NodeJS.ErrnoException).code === "ENOENT" ? "git_unavailable" : "spawn_failed";

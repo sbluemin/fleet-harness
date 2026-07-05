@@ -10,6 +10,7 @@
 import { execFile } from "node:child_process";
 
 import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-agent";
+import { withHidden } from "@dotobokuri/core-process";
 import { CLI_BACKENDS } from "@dotobokuri/core-unified-agent";
 
 import type { AgentCliStatus } from "./agent-cli-types.js";
@@ -119,7 +120,7 @@ function execFileVersion(bin: string, args: readonly string[]): Promise<string> 
     execFile(
       bin,
       [...args],
-      { encoding: "utf-8", timeout: VERSION_PROBE_TIMEOUT_MS, windowsHide: true },
+      withHidden({ encoding: "utf-8" as const, timeout: VERSION_PROBE_TIMEOUT_MS }),
       (error, stdout, stderr) => {
         if (error) {
           reject(error);

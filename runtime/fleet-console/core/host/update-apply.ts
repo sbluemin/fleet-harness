@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { createGlobalPackageUpdater } from "@dotobokuri/core-agent";
 import type { GlobalPackageManagerCommand } from "@dotobokuri/core-agent";
+import { withHidden } from "@dotobokuri/core-process";
 
 export interface ConsoleUpdateApplyService {
   start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult>;
@@ -429,7 +430,7 @@ function spawnDetachedWorker(
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawnWorker(execPath, args, { detached: true, env, stdio: "ignore", windowsHide: true });
+    const child = spawnWorker(execPath, args, withHidden({ detached: true, env, stdio: "ignore" as const }));
     let settled = false;
     child.once("error", (error) => {
       if (settled) return;

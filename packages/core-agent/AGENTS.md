@@ -7,7 +7,7 @@
 - Executor pool lifecycle, session reuse, status tracking, model/effort helpers, and builtin external MCP catalog.
 - Generic in-process MCP HTTP/JSON-RPC server primitives and executor session manager primitives.
 - The two-method `ExecutorPort` policy surface and the separate executor MCP runtime provider.
-- Windows binary resolution helpers (`resolveBinary`, `resolvePathBinary`, `createChildEnv`) for PATH/PATHEXT lookup and `.cmd`/`.bat` wrapping.
+- Re-exports Windows binary resolution helpers from `@dotobokuri/core-process` (`resolveBinary`, `resolvePathBinary`, `createChildEnv`) so downstream consumers keep the existing root-barrel import path. The primitives themselves live in `core-process`.
 - Domain-agnostic version check pure functions shared by callers.
 - Generic global package updater factory for package-manager detection, global-root checks, version resolution, install spawning, and manual fallback messages.
 - Package-local tests for executor reuse, MCP setup, model helpers, and reset behavior.

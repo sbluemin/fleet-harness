@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-process": "workspace:*",
     "@dotobokuri/core-unified-agent": "workspace:*",
     "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*",

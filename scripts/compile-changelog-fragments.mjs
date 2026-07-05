@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
 const TAGS = [
+  'core-process',
   'core-agent',
   'core-unified-agent',
   'core-infra',

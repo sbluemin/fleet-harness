@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `core-agent`, `core-unified-agent`, `core-infra`, `fleet-admiral`, `fleet-carriers`, and `fleet-wiki`. The `fleet-cli` and `fleet-console` workspaces live under `runtime/`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `core-process`, `core-agent`, `core-unified-agent`, `core-infra`, `fleet-admiral`, `fleet-carriers`, and `fleet-wiki`. The `fleet-cli` and `fleet-console` workspaces live under `runtime/`.
 
 ## Architecture Philosophy
 

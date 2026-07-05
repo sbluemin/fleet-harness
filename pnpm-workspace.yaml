@@ -1,5 +1,6 @@
 packages:
   - "packages/core-agent"
+  - "packages/core-process"
   - "packages/core-unified-agent"
   - "packages/core-infra"
   - "packages/fleet-admiral"

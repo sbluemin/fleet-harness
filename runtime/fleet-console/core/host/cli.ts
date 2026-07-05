@@ -4,6 +4,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { withHidden } from "@dotobokuri/core-process";
+
 import type { ConsoleLockPayload } from "./api-types.js";
 import { openBrowser, type OpenBrowserDeps } from "./browser.js";
 import { createConsoleHealthClient } from "./health.js";
@@ -200,7 +202,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
     if (current) await stop();
-    spawnDetached(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore", windowsHide: true });
+    spawnDetached(execPath, [serverModulePath, "serve"], withHidden({ detached: true, env, stdio: "ignore" as const }));
     for (let i = 0; i < 30; i += 1) {
       await sleep(100);
       const next = await probe();

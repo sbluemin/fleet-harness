@@ -7,6 +7,7 @@ import { ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'events';
 import { Readable, Writable } from 'node:stream';
 import { ndJsonStream, type Stream } from '@agentclientprotocol/sdk';
+import { withHidden } from '@dotobokuri/core-process';
 import type { ConnectionState, StructuredLogEntry } from '../types/common.js';
 import { isWindows } from '../utils/env.js';
 import { killProcess } from '../utils/process.js';
@@ -120,17 +121,12 @@ export class BaseConnection extends EventEmitter {
       ? spawn(
           (this.env.ComSpec as string) ?? 'cmd.exe',
           buildWindowsCmdArgs(this.command, this.args),
-          {
+          withHidden({
             cwd: this.cwd,
-            stdio: ['pipe', 'pipe', 'pipe'],
+            stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'],
             env: this.env as NodeJS.ProcessEnv,
             windowsVerbatimArguments: true,
-            // 콘솔이 없는 호스트(예: fleet-console 백엔드)에서 cmd.exe를 spawn하면
-            // Windows가 새 콘솔 창을 할당해 깜빡인다. stdio는 모두 pipe라 가시 콘솔이
-            // 불필요하므로 CREATE_NO_WINDOW로 창 생성을 억제한다. (fleet-cli처럼 콘솔이
-            // 이미 있는 경우에도 무해하다.)
-            windowsHide: true,
-          },
+          }),
         )
       : spawn(this.command, this.args, {
           cwd: this.cwd,
