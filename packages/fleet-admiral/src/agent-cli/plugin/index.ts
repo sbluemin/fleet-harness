@@ -35,9 +35,11 @@ const MARKETPLACE_MANAGED_ENTRIES = [
   ".agents",
   ".claude-plugin",
   ".codex-plugin",
+  ".cursor-plugin",
   "hooks",
   "skills",
   "agents",
+  "mcp.json",
   "claude",
   "codex-marketplace",
   "plugins",
@@ -46,9 +48,11 @@ const MARKETPLACE_PRUNE_ENTRIES = [
   ".agents",
   ".claude-plugin",
   ".codex-plugin",
+  ".cursor-plugin",
   "hooks",
   "skills",
   "agents",
+  "mcp.json",
   "claude",
   "codex-marketplace",
 ] as const;
@@ -136,12 +140,15 @@ function renderPluginRoot(
     writePrivateJson(path.join(stagedPluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), stagedPluginRoot);
     switch (bundle.source) {
       case "asset":
-        ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
+        if (options.cliId === "claude") {
+          ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
+        }
         ensurePrivateDir(path.join(stagedPluginRoot, "skills"), stagedPluginRoot);
         renderAssetPluginRoot(stagedPluginRoot, bundle, options);
         break;
     }
     writePrivateJson(path.join(stagedPluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle, stagedPluginRoot), stagedPluginRoot);
+    writePrivateJson(path.join(stagedPluginRoot, ".cursor-plugin", "plugin.json"), cursorManifest(bundle, stagedPluginRoot), stagedPluginRoot);
     removePrivatePath(pluginRoot, parentRoot);
     renameSync(stagedPluginRoot, pluginRoot);
   } finally {
@@ -156,6 +163,7 @@ function renderMarketplaceRoot(target: MarketplaceTarget, bundles: readonly Plug
   try {
     writePrivateJson(path.join(stagedRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(target, bundles), stagedRoot);
     writePrivateJson(path.join(stagedRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(target, bundles), stagedRoot);
+    writePrivateJson(path.join(stagedRoot, ".cursor-plugin", "marketplace.json"), cursorMarketplace(target, bundles), stagedRoot);
     pruneMarketplaceRoot(target);
     pruneStalePluginDirs(target, bundles);
     for (const entry of readdirSync(stagedRoot)) {
@@ -305,6 +313,18 @@ function claudeMarketplace(target: MarketplaceTarget, bundles: readonly PluginBu
   };
 }
 
+function cursorMarketplace(target: MarketplaceTarget, bundles: readonly PluginBundle[]): unknown {
+  return {
+    name: target.name,
+    owner: "fleet",
+    plugins: bundles.map((bundle) => ({
+      name: bundle.name,
+      description: bundle.description,
+      source: marketplacePluginPath(target, bundle),
+    })),
+  };
+}
+
 function pluginRootForTarget(target: MarketplaceTarget, bundle: PluginBundle): string {
   return path.join(target.root, PLUGIN_BUNDLES_DIR_NAME, bundle.directoryName);
 }
@@ -320,6 +340,30 @@ function codexManifest(bundle: PluginBundle, pluginRoot: string): unknown {
     description: bundle.description,
     skills: "./skills/",
   };
+}
+
+function cursorManifest(bundle: PluginBundle, pluginRoot: string): unknown {
+  return {
+    name: bundle.name,
+    version: cursorManifestVersion(bundle, pluginRoot),
+    description: bundle.description,
+  };
+}
+
+function cursorManifestVersion(bundle: PluginBundle, pluginRoot: string): string {
+  const hash = crypto.createHash("sha256");
+  hash.update(bundle.name);
+  hash.update("\0");
+  hash.update(bundle.description);
+  hash.update("\0");
+  for (const filePath of listCursorEffectivePluginFiles(pluginRoot)) {
+    const relativePath = path.relative(pluginRoot, filePath);
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(readFileSync(filePath));
+    hash.update("\0");
+  }
+  return `0.0.0+${hash.digest("hex").slice(0, 12)}`;
 }
 
 function codexManifestVersion(bundle: PluginBundle, pluginRoot: string): string {
@@ -343,6 +387,25 @@ function listCodexEffectivePluginFiles(pluginRoot: string): string[] {
   if (!existsSync(skillsPath)) return [];
   const files: string[] = [];
   collectRenderableFiles(pluginRoot, skillsPath, files, new Set());
+  return files.sort();
+}
+
+function listCursorEffectivePluginFiles(pluginRoot: string): string[] {
+  const files: string[] = [];
+  // mcp.json에는 세션별 bearer 토큰이 들어가므로 의도적으로 해시에 포함한다.
+  // Cursor가 새 세션마다 최신 MCP 토큰을 재적재하도록 플러그인 버전을 갱신한다.
+  for (const entry of ["skills", "rules", "hooks", "mcp.json"]) {
+    const entryPath = path.join(pluginRoot, entry);
+    if (!existsSync(entryPath)) continue;
+    const stat = lstatSync(entryPath);
+    if (stat.isFile()) {
+      files.push(entryPath);
+      continue;
+    }
+    if (stat.isDirectory()) {
+      collectRenderableFiles(pluginRoot, entryPath, files, new Set());
+    }
+  }
   return files.sort();
 }
 

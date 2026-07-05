@@ -19,7 +19,7 @@ export interface ConsoleHookCommandEntry {
   readonly tsxLoaderPath?: string;
 }
 
-export type ConsoleCaptureProvider = "claude" | "codex";
+export type ConsoleCaptureProvider = "claude" | "codex" | "cursor";
 
 export type ConsoleTurnPhase = "start" | "end";
 
@@ -63,7 +63,9 @@ export function buildConsoleCaptureHookCommand(entry: ConsoleHookCommandEntry, c
 }
 
 export function toCaptureProvider(cliId: AgentCliId): ConsoleCaptureProvider {
-  return cliId === "codex" ? "codex" : "claude";
+  if (cliId === "codex") return "codex";
+  if (cliId === "cursor") return "cursor";
+  return "claude";
 }
 
 export function runCodexCommand(command: CodexPluginRegistrationCommand): CodexCommandResult {

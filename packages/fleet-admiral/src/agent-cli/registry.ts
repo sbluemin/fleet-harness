@@ -1,5 +1,6 @@
 import { claudeCli } from "./claude/claude.js";
 import { codexCli } from "./codex/codex.js";
+import { cursorCli } from "./cursor/cursor.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
@@ -17,6 +18,7 @@ const DEFAULT_CLI_ID: AgentCliId = "claude";
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   claude: claudeCli,
   codex: codexCli,
+  cursor: cursorCli,
 };
 
 export async function resolveAgentCliProfile(

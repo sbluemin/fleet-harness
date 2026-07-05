@@ -49,10 +49,64 @@ describe("fleet console CLI", () => {
   it("parses hook capture-session commands", () => {
     expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
     expect(parseConsoleHookCommand(["capture-session", "codex"])).toEqual({ command: "capture-session", provider: "codex" });
+    expect(parseConsoleHookCommand(["capture-session", "cursor"])).toEqual({ command: "capture-session", provider: "cursor" });
     expect(parseConsoleHookCommand(["attention"])).toEqual({ command: "attention" });
     expect(() => parseConsoleHookCommand(["attention", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(() => parseConsoleHookCommand(["capture-session"])).toThrow("Unknown fleet-console hook command");
+    expect(() => parseConsoleHookCommand(["capture-session", "cursor", "--additional-context-file", "/tmp/fleet-context.txt"])).toThrow("Unknown fleet-console hook command");
     expect(() => parseConsoleHookCommand(["subagents-context"])).toThrow("Unknown fleet-console hook command");
+  });
+
+  it("records Cursor capture-session hook stdin with conversation_id", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cursor-"));
+    TEMP_DIRS.push(dir);
+    const paths = {
+      dir: path.join(dir, "console"),
+      stateFile: path.join(dir, "console", "state.json"),
+      capturesDir: path.join(dir, "console", "captures"),
+    };
+
+    const result = captureSession({
+      env: { FLEET_CONSOLE_SESSION_ID: "fleet-session-cursor" } as NodeJS.ProcessEnv,
+      input: JSON.stringify({
+        conversation_id: "cursor-conversation-secret",
+        source: "sessionStart",
+      }),
+      now: () => new Date("2026-06-16T00:00:00.000Z"),
+      paths,
+      provider: "cursor",
+    });
+    const written = JSON.parse(fs.readFileSync(path.join(paths.capturesDir, "fleet-session-cursor.json"), "utf8")) as Record<string, unknown>;
+
+    if (!result) throw new Error("expected capture result");
+    expect(written).toEqual({
+      provider: "cursor",
+      sessionId: "cursor-conversation-secret",
+      source: "sessionStart",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+  });
+
+  it("skips Cursor capture-session hook stdin without a provider session id", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cursor-missing-id-"));
+    TEMP_DIRS.push(dir);
+    const paths = {
+      dir: path.join(dir, "console"),
+      stateFile: path.join(dir, "console", "state.json"),
+      capturesDir: path.join(dir, "console", "captures"),
+    };
+    const diagnostics: string[] = [];
+
+    expect(captureSession({
+      diagnostics: { write: (chunk: string | Uint8Array) => { diagnostics.push(String(chunk)); return true; } },
+      env: { FLEET_CONSOLE_SESSION_ID: "fleet-session-cursor" } as NodeJS.ProcessEnv,
+      input: JSON.stringify({ chatId: "cursor-chat-unrecognized", source: "sessionStart" }),
+      paths,
+      provider: "cursor",
+    })).toBeNull();
+
+    expect(fs.existsSync(paths.capturesDir)).toBe(false);
+    expect(diagnostics.join("")).toContain("missing_provider_session_id");
   });
 
   it("records capture-session hook stdin to the fleet session capture path atomically", () => {
