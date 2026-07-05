@@ -15,6 +15,7 @@ import {
 } from "./diff-view-store.js";
 import { HistorySection } from "./history-section.js";
 import { HunkView } from "./hunk-view.js";
+import { clampListPaneWidth } from "./rail-layout.js";
 import { groupRepos, relativeToParent } from "./repo-grouping.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -42,17 +43,16 @@ interface RepoPickerProps {
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
-const PREFS_SPLIT_RATIO = "fleet-console.diff.splitRatio";
+const PREFS_LIST_PANE_WIDTH = "fleet-console.diff.listPaneWidth";
 const PREFS_DEPTH = "fleet-console.diff.depth";
 const PREFS_REPO_PREFIX = "fleet-console.diff.repo.";
 const PREFS_HISTORY_GRAPH_MODE = "fleet-console.diff.historyGraphMode";
 
 const EXTENDED_EXTRA_WIDTH = 400;
-// 호스트가 뷰포트 클램프로 400 미만만 부여했을 때: 문서 페인부터 축소(min 140)하고 리스트 페인(min 220)을 보존한다
 const HUNK_PANE_MIN_WIDTH = 140;
+const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
-// 기본값 0.56: 확장 패널 총폭 ~712px 기준 문서 페인 ~400px 배분과 시각적으로 동등
-const DEFAULT_SPLIT_RATIO = 0.56;
+const DIFF_DIVIDER_WIDTH = 4;
 const DEFAULT_DEPTH = 3;
 
 const DEPTH_OPTS: readonly { readonly value: number; readonly label: string }[] = [
@@ -74,15 +74,15 @@ function readViewMode(): ViewMode {
   return "list";
 }
 
-function readSplitRatio(): number {
+function readListPaneWidth(): number {
   try {
-    const v = localStorage.getItem(PREFS_SPLIT_RATIO);
+    const v = localStorage.getItem(PREFS_LIST_PANE_WIDTH);
     if (v !== null) {
       const n = parseFloat(v);
-      if (!isNaN(n) && n > 0 && n < 1) return n;
+      if (Number.isFinite(n) && n > 0) return clampLoadedListPaneWidth(n);
     }
   } catch { /* ignore */ }
-  return DEFAULT_SPLIT_RATIO;
+  return LIST_PANE_DEFAULT_WIDTH;
 }
 
 function readDepth(): number {
@@ -110,6 +110,14 @@ function readSubPath(theaterId: string): string {
 
 function saveSubPath(theaterId: string, relPath: string): void {
   try { localStorage.setItem(PREFS_REPO_PREFIX + theaterId, relPath); } catch { /* ignore */ }
+}
+
+function clampLoadedListPaneWidth(width: number): number {
+  const viewportMax = typeof window === "undefined"
+    ? LIST_PANE_DEFAULT_WIDTH
+    : window.innerWidth - HUNK_PANE_MIN_WIDTH - DIFF_DIVIDER_WIDTH;
+  const maxWidth = Math.max(LIST_PANE_MIN_WIDTH, viewportMax);
+  return Math.max(LIST_PANE_MIN_WIDTH, Math.min(maxWidth, width));
 }
 
 // subPath 상태+entry.status에서 HunkView용 모드 결정
@@ -302,8 +310,8 @@ function DiffPanel({ ctx }: DiffPanelProps) {
   const [graphMode, setGraphModeState] = useState<GraphMode>(readGraphMode);
   const selectedFile = useSelectedFile(ctx.theaterId ?? null);
   const selectedCommit = useSelectedCommit(ctx.theaterId ?? null);
-  const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
-  const splitRatioRef = useRef(splitRatio);
+  const [listPaneWidth, setListPaneWidthState] = useState(readListPaneWidth);
+  const listPaneWidthRef = useRef(listPaneWidth);
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -428,25 +436,31 @@ function DiffPanel({ ctx }: DiffPanelProps) {
     if (!container) return;
     const containerWidth = container.getBoundingClientRect().width;
     const startX = e.clientX;
-    const startRatio = splitRatioRef.current;
+    const startWidth = listPaneWidthRef.current;
+    const maxWidth = containerWidth - HUNK_PANE_MIN_WIDTH - DIFF_DIVIDER_WIDTH;
+    if (maxWidth < LIST_PANE_MIN_WIDTH) return;
     setIsDragging(true);
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
-      const lower = HUNK_PANE_MIN_WIDTH / containerWidth;
-      const upper = 1 - LIST_PANE_MIN_WIDTH / containerWidth;
-      const raw = startRatio + dx / containerWidth;
-      // 컨테이너가 두 최소폭 합보다 좁으면 lower > upper로 클램프 범위가 역전된다.
-      const newRatio = lower <= upper ? Math.max(lower, Math.min(upper, raw)) : startRatio;
-      splitRatioRef.current = newRatio;
-      setSplitRatioState(newRatio);
+      const nextWidth = clampListPaneWidth({
+        startWidth,
+        dx,
+        containerWidth,
+        listPaneMinWidth: LIST_PANE_MIN_WIDTH,
+        hunkPaneMinWidth: HUNK_PANE_MIN_WIDTH,
+        dividerWidth: DIFF_DIVIDER_WIDTH,
+      });
+      if (nextWidth === null) return;
+      listPaneWidthRef.current = nextWidth;
+      setListPaneWidthState(nextWidth);
     };
 
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       setIsDragging(false);
-      try { localStorage.setItem(PREFS_SPLIT_RATIO, String(splitRatioRef.current)); } catch { /* ignore */ }
+      try { localStorage.setItem(PREFS_LIST_PANE_WIDTH, String(listPaneWidthRef.current)); } catch { /* ignore */ }
     };
 
     document.addEventListener("pointermove", onMove);
@@ -472,7 +486,7 @@ function DiffPanel({ ctx }: DiffPanelProps) {
       ref={rootRef}
       className={`diff-root${hasHunk ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`}
       style={hasHunk ? {
-        gridTemplateColumns: `minmax(${HUNK_PANE_MIN_WIDTH}px, ${splitRatio}fr) 4px minmax(${LIST_PANE_MIN_WIDTH}px, ${1 - splitRatio}fr)`,
+        gridTemplateColumns: `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, ${listPaneWidth}px)`,
       } : undefined}
     >
       {hasHunk && (

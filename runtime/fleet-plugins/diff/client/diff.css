@@ -27,6 +27,7 @@
   overflow: hidden;
   border-left: 1px solid var(--surface-rim);
   position: relative;
+  min-width: 0;
 }
 
 .diff-hunk-pane {
@@ -35,6 +36,7 @@
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
   position: relative;
+  min-width: 0;
 }
 
 /* ── hunk↔tree 디바이더 ── */
@@ -225,6 +227,7 @@
   align-items: center;
   gap: 0 8px;
   width: 100%;
+  min-width: 0;
   padding: 5px 12px;
   background: none;
   border: none;
@@ -387,7 +390,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 128px;
 }
 
@@ -941,7 +945,7 @@
 /* ── 커밋 행 ── */
 .diff-commit-row {
   display: grid;
-  grid-template-columns: 16px 7ch 1fr auto auto auto;
+  grid-template-columns: 16px 7ch minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 0 8px;
   width: 100%;
