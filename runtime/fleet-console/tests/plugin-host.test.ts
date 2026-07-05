@@ -30,7 +30,6 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     registerSseChannel: () => () => {},
   },
   paths: {
-    dataDir: "/tmp/fleet-console-test",
     capturesDir: "/tmp/fleet-console-test/captures",
     pluginDataDir: (pluginId) => `/tmp/fleet-console-test/plugins/${pluginId}`,
     canonicalizeTheaterPath: (cwd) => path.resolve(cwd),

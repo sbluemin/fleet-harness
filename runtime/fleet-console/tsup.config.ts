@@ -33,7 +33,7 @@ export default defineConfig([
         "@dotobokuri/core-unified-agent": path.join(workspaceRoot, "packages/core-unified-agent/src"),
         "@dotobokuri/fleet-admiral": path.join(workspaceRoot, "packages/fleet-admiral/src"),
         "@dotobokuri/fleet-carriers": path.join(workspaceRoot, "packages/fleet-carriers/src"),
-        "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/fleet-infra/src"),
+        "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/core-infra/src"),
         "@dotobokuri/fleet-wiki": path.join(workspaceRoot, "packages/fleet-wiki/src"),
       };
     },

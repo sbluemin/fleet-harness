@@ -58,9 +58,7 @@ export function registerAgentRoutes(
 }
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
-  const dataDir = ctx.host.paths.dataDir;
   const runtime = createFleetAgentRuntimeLifecycle({
-    dataDir,
     onMcpServerStartError: (error) => {
       console.error("[fleet-console] Failed to start MCP server", error);
     },
@@ -76,7 +74,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
-    dataDir,
     infraServices: deps,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
