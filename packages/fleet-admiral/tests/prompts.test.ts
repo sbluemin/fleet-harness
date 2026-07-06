@@ -33,7 +33,7 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain('<fleet section="standing-orders" type="mission-anchor">');
     expect(prompt).not.toContain('<fleet section="tool-guide"');
     expect(prompt).not.toContain("Every task progresses through the following phases");
-    expect(getAllStandingOrders()).toHaveLength(5);
+    expect(getAllStandingOrders()).toHaveLength(6);
   });
 
   it("renders the intent and mode gate instead of the old full protocol body", () => {
@@ -59,8 +59,9 @@ describe("Admiral prompts", () => {
       carrierRuntime: createRuntimeWithDefaults(),
     }).build(false);
 
-    // Lock the five-order identity and ordering against silent reorder/rename regressions.
+    // Lock the six-order identity and ordering against silent reorder/rename regressions.
     expect(getAllStandingOrders().map((order) => order.id)).toEqual([
+      "command-integrity",
       "mission-anchor",
       "context-confidence",
       "carrier-operations-policy",
@@ -91,6 +92,11 @@ describe("Admiral prompts", () => {
     expect(prompt.match(/<prior_jobs>/g)).toHaveLength(1);
     expect(prompt).toContain("Multi-agent Filesystem Safety");
     expect(prompt).toContain("Artifact Inspection Gate");
+    expect(prompt).toContain("Professional Pushback");
+    expect(prompt).toContain("Never assume requirements");
+    expect(prompt).toContain("Never infer implicit permissions");
+    expect(prompt).toContain("the deepest applicable file wins on conflict");
+    expect(prompt).toContain("the six always-injected Standing Orders");
     expect(prompt.replace(/\s+/g, " ")).toContain("never against the carrier's narrative");
     expect(prompt).toContain("Mutating job finalized");
     expect(prompt).toContain("Re-read files before modifying");
@@ -102,8 +108,8 @@ describe("Admiral prompts", () => {
       carrierRuntime: createRuntimeWithDefaults(),
     }).build(false);
 
-    // Protocol overhaul budget was 32500; Artifact Inspection Gate measured 32152, capped with tight headroom.
-    expect(prompt.length).toBeLessThanOrEqual(33000);
+    // Protocol overhaul budget was 32500; Artifact Inspection Gate measured 32152; Command Integrity Standing Order measured 34594, capped with tight headroom.
+    expect(prompt.length).toBeLessThanOrEqual(35500);
   });
 
 });

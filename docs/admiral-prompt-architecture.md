@@ -50,7 +50,7 @@ the Admiral prompt. The static prompt includes:
 - `<fleet section="tone">` — only when tone injection is enabled
 - `<fleet section="roster">` when carriers are registered, with one shared optional `<prior_jobs>` hint before carrier entries
 - `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work
-- `<fleet section="standing-orders" type="<id>">` as five separate always-on Standing Order blocks
+- `<fleet section="standing-orders" type="<id>">` as six separate always-on Standing Order blocks, with Command Integrity injected first as the order-reception contract upstream of Mission Anchor
 
 The preamble describes only the rendered `<fleet section="...">` blocks and
 optional `type` narrowing. It does not describe per-tool block narrowing. Output
@@ -86,6 +86,16 @@ the verification-loop routing table: received results run the three integrity
 checks, mutating finalized jobs run the Artifact Inspection Gate, speculation
 routes to Deep Dive, and contradictions with verified facts route back to
 Context Confidence.
+
+Command Integrity completes the integrity pipeline upstream: order reception
+(Command Integrity) → evidence sufficiency (Context Confidence) → outcome
+verification (Result Integrity). It owns professional pushback on technically
+flawed orders, scope discipline against implicit permissions, priority
+arbitration on conflicting directives, and the pre-engagement clarification
+trigger that routes decision-shaped requirements ambiguity to
+`assumption-audit` before a protocol mode loads. `assumption-audit` therefore
+has three callers: the active protocol, Standing Order re-entry, and the
+Command Integrity pre-engagement trigger.
 
 ---
 

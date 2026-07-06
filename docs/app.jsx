@@ -59,7 +59,7 @@ const UI = {
   phaseLabel:    { ko: "Mode", en: "Mode" },
 
   ordersEy:    { ko: "Standing Orders · Always Active", en: "Standing Orders · Always Active" },
-  ordersTitle: { ko: ["항상 켜져 있는", "다섯 개의 명령."], en: ["Five orders,", "always on."] },
+  ordersTitle: { ko: ["항상 켜져 있는", "여섯 개의 명령."], en: ["Six orders,", "always on."] },
   ordersLede:  { ko: "어떤 프로토콜 모드에도 종속되지 않고 모든 작전 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every mission, bound to no protocol mode — and never switched off, even on conversational requests." },
   active:      { ko: "Active", en: "Active" },
 
@@ -268,6 +268,11 @@ const MODES = [
 ];
 
 const ORDERS = [
+  {
+    name: "Command Integrity",
+    kr: { ko: "명령 무결성", en: "Command Integrity" },
+    desc: { ko: "명령 수령 단계의 무결성을 지킨다. 기술적으로 결함 있는 명령에는 근거를 갖춰 진언하고, 착수 전 결정형 모호함은 질문으로 해소하며, 명시 범위 밖 권한을 가정하지 않고, 지침 충돌은 안전·정확·명료·효율 순으로 중재한다.", en: "Guards integrity at order reception. Technically flawed orders get a reasoned pushback, decision-shaped ambiguity is clarified before work starts, no permission is assumed beyond the granted scope, and conflicting directives resolve by safety, correctness, clarity, then efficiency." },
+  },
   {
     name: "Mission Anchor",
     kr: { ko: "임무 정렬", en: "Mission Anchor" },

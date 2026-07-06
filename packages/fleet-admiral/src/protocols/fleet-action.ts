@@ -37,7 +37,7 @@ Choose exactly one mode for every operational request:
 If operational mode is ambiguous, fall back to ${"`"}protocol-midline${"`"} unless the downward guard applies.
 
 ## Auxiliary Skills
-${"`"}assumption-audit${"`"} is not a protocol mode and is outside the Mode Gate list. It may be invoked by the active protocol or by Standing Order re-entry for decision-shaped blocking gaps, and it does not replace the chosen mode.
+${"`"}assumption-audit${"`"} is not a protocol mode and is outside the Mode Gate list. It may be invoked by the active protocol, by Standing Order re-entry for decision-shaped blocking gaps, or by the Command Integrity pre-engagement clarification trigger before a protocol mode loads, and it does not replace the chosen mode.
 
 ## Downward Guard
 Never choose ${"`"}protocol-baseline${"`"} or ${"`"}protocol-midline${"`"} when irreversible operations, structural/API changes, multi-module edits, or doctrine/prompt-policy edits are in scope. Choose ${"`"}protocol-redline${"`"} unless coordination across multiple Carriers or parallel ownership boundaries makes ${"`"}protocol-frontline${"`"} the better fit.
@@ -56,4 +56,4 @@ Representative Admiral of the Navy requests mapped to a mode. Match an incoming 
 | Ask a question, request an explanation, brainstorm, or get wording help | conversational — load no skill | non-operational; answer directly while Standing Orders stay active |
 
 ## Binding Order
-The binding doctrine is this protocol gate, the active protocol skill when loaded, and the five always-injected Standing Orders. Standing Orders remain active for both conversational and operational requests.`;
+The binding doctrine is this protocol gate, the active protocol skill when loaded, and the six always-injected Standing Orders. Standing Orders remain active for both conversational and operational requests.`;
