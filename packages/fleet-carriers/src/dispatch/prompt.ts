@@ -7,7 +7,7 @@
 
 import type { AuthEnvResolver } from "@dotobokuri/core-agent";
 import type { WorkspaceChangeScanner } from "../jobs/workspace-manifest.js";
-import type { CarrierMetadata } from "./types.js";
+import type { CarrierMetadata, RequestBlock } from "./types.js";
 
 /** 검증 성공 결과 */
 export interface RequiredBlockValidationOk {
@@ -107,13 +107,27 @@ export function validateRequiredRequestBlocks(
 
   if (missing.length === 0) return { ok: true };
 
+  // 자기회복 폴백: 거절 에러가 해당 캐리어의 블록 계약 전문을 되돌려줘,
+  // 호출자가 계약을 미리 로드하지 않았어도 로컬 왕복 1회로 재작성할 수 있게 한다.
   return {
     ok: false,
     missing,
     error:
       `Missing required request block(s) for carrier "${carrierId}": ${details.join(", ")}.` +
-      ` Include the required tag(s) in the request and resubmit.`,
+      ` Compose the request with this carrier's request-block contract and resubmit:\n` +
+      formatRequestBlocksGuide(meta).join("\n"),
   };
+}
+
+/** 캐리어 request-block 계약을 로스터/스킬/에러 공용 가이드 라인 목록으로 렌더한다. */
+export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
+  const allBlocks: RequestBlock[] = [...meta.requestBlocks];
+  if (allBlocks.length === 0) return [];
+  return allBlocks.map((b) => {
+    const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
+    const label = b.required ? "required" : "optional";
+    return `  - ${sig} ${label}: ${b.hint}`;
+  });
 }
 
 /** 정규식 특수문자를 이스케이프합니다 */

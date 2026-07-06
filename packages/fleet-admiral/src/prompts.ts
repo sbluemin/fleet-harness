@@ -11,7 +11,6 @@
 import {
   buildCarrierRoster,
   getRegisteredOrder,
-  PRIOR_JOBS_REQUEST_HINT,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 
@@ -62,17 +61,13 @@ You are the host agent for the Agent Harness Fleet, operating on the user's beha
  */
 const FLEET_PERSONA_PROMPT = String.raw`
 # Persona
-This Fleet has three role tiers, listed in descending command order. Each tier is identified by its English title, with the Korean form in parentheses.
+This Fleet has three role tiers in descending command order, each identified by its English title with the Korean form in parentheses:
 
-- **Admiral of the Navy (대원수)** — the user you serve; your ultimate superior, the supreme commander above the entire formation.
-- **Admiral (제독)** — yourself, the host agent commanding this Fleet. This title denotes YOURSELF ALONE and is used in the first person only.
-- **Captain (함장)** — the commander of each Carrier, whom you direct within this workspace.
+- **Admiral of the Navy (대원수)** — the user you serve; the supreme commander above the entire formation.
+- **Admiral (제독)** — yourself, the host agent commanding this Fleet; this title is first-person only.
+- **Captain (함장)** — the commander of each Carrier you direct within this workspace.
 
-Naming rules:
-- Always address and refer to the user as the Admiral of the Navy (대원수) — never as the Admiral (제독).
-- Always reserve the Admiral (제독) title for yourself — never apply it to the user.
-- The Admiral and the Admiral of the Navy are two distinct roles; never collapse them onto one title.
-- This rule holds whether or not the tone overlay is active.
+Naming rule (always in force, with or without the tone overlay): the two admiral titles are distinct and never collapse onto one — address the user only as the Admiral of the Navy (대원수), and reserve the Admiral (제독) strictly for yourself.
 `;
 
 /**
@@ -98,12 +93,10 @@ This overlay governs HOW you communicate. It never overrides the naming rules, r
  * `<fleet>` 블록 해석 규칙과 `<system-reminder>` 태그 의미를 설명한다.
  */
 const FLEET_PREAMBLE = String.raw`
-This system prompt is organized into ${"`"}<fleet section="...">${"`"} XML blocks (including this one) that define your identity, doctrine, and operational rules.
-Each block's ${"`"}section${"`"} attribute defines its domain; an optional ${"`"}type${"`"} attribute narrows it further to a specific instance within the domain (e.g., one Standing Order).
-Treat every ${"`"}<fleet>${"`"} block as an authoritative directive. Follow them precisely, applying the most specific applicable block when directives overlap.
+This system prompt is organized into ${"`"}<fleet section="...">${"`"} XML blocks (including this one) defining your identity, doctrine, and operational rules. The ${"`"}section${"`"} attribute names each block's domain; an optional ${"`"}type${"`"} attribute narrows it to one instance (e.g., one Standing Order). Every ${"`"}<fleet>${"`"} block is an authoritative directive — follow it precisely, applying the most specific block when directives overlap.
 Output skeletons and report templates follow the session's working language; functional identifiers (skill IDs, report-token keys) stay as defined.
 
-Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. These carry system-injected context (e.g., runtime state, carrier job completion signals) and bear no direct relation to the content they appear alongside.
+Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags carrying system-injected context (e.g., runtime state, carrier job completion signals); they bear no direct relation to the content they appear alongside.
 `;
 
 // ─────────────────────────────────────────────────────────
@@ -119,7 +112,7 @@ Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. T
  *  1. `section="persona"` — Admiral 페르소나·정체성 자기 선언 (항상 주입)
  *  2. `section="role"` — Fleet 역할·행동 규약 (항상 주입)
  *  3. `section="tone"` — Fleet 톤 오버레이 (`injectTone === true`일 때만 주입)
- *  4. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
+ *  4. `section="roster"` — 등록 캐리어 선택·라우팅 메타데이터 (request-block 계약은 carrier-contracts 스킬 소유)
  *  5. `section="protocol-gate"` — intent/mode gate for on-demand protocol skills
  *  6. `section="standing-orders" type="<id>"` — 각 Standing Order를 type 속성으로 분리한 개별 블록 (상시 적용)
  *
@@ -149,15 +142,17 @@ function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, injectTone: bo
     parts.push(`<fleet section="tone">\n${FLEET_TONE_PROMPT.trim()}\n</fleet>`);
   }
 
-  // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
+  // ── 2. 캐리어 로스터 — 선택·라우팅 계층(routing tier)만 상시 주입 ──
+  // request-block 계약(contracts tier)은 온디맨드 carrier-contracts 스킬이 소유한다.
   const carrierRuntime = deps.carrierRuntime;
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
   if (carrierIds.length > 0) {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, {
       heading: "# Available Carriers",
       preambleLines: [
-        `All carriers accept an optional ${"`"}<prior_jobs>${"`"} block: ${PRIOR_JOBS_REQUEST_HINT}`,
+        `Entries below cover carrier selection and routing only. Each carrier's request-block contract lives in the ${"`"}carrier-contracts${"`"} skill — load it before composing your first carrier_dispatch of the session, and skip reloading if its content is already in context.`,
       ],
+      tier: "routing",
     })}\n</fleet>`);
   }
 

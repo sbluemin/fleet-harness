@@ -21,6 +21,21 @@ describe("Admiral prompts", () => {
     expect(prompt).not.toContain('<fleet section="subagents">');
   });
 
+  it("keeps the roster at the routing tier with a carrier-contracts skill pointer", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build(false);
+
+    // 라우팅 계층은 상시 유지된다.
+    expect(prompt).toContain("Use for:");
+    expect(prompt).toContain("NOT for:");
+    // request-block 계약은 온디맨드 carrier-contracts 스킬이 소유한다 — 상시 프롬프트에서 제외.
+    expect(prompt).not.toContain("Request blocks — wrap content in these");
+    expect(prompt).not.toContain("<prior_jobs>");
+    expect(prompt).toContain("`carrier-contracts` skill");
+    expect(prompt).toContain("skip reloading if its content is already in context");
+  });
+
   it("renders static doctrine without per-tool guide blocks", () => {
     const prompt = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
@@ -88,8 +103,6 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("For carrier tool usage mechanics");
     expect(prompt).not.toContain("Request Brevity");
     expect(prompt).not.toContain("No-polling");
-    expect(prompt).toContain("<prior_jobs>");
-    expect(prompt.match(/<prior_jobs>/g)).toHaveLength(1);
     expect(prompt).toContain("Multi-agent Filesystem Safety");
     expect(prompt).toContain("Artifact Inspection Gate");
     expect(prompt).toContain("Professional Pushback");
@@ -104,12 +117,23 @@ describe("Admiral prompts", () => {
   });
 
   it("keeps the system prompt within the approved size budget", () => {
+    const builder = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    });
+
+    // Command Integrity Standing Order measured 34594 (budget 35500); prompt token diet
+    // (routing-tier roster + dedup/compression) measured 28154 tone-off / 29140 tone-on,
+    // re-capped with tight headroom. Both build variants are locked.
+    expect(builder.build(false).length).toBeLessThanOrEqual(29000);
+    expect(builder.build(true).length).toBeLessThanOrEqual(30000);
+  });
+
+  it("teaches idempotent per-session skill loading in the protocol gate", () => {
     const prompt = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
     }).build(false);
 
-    // Protocol overhaul budget was 32500; Artifact Inspection Gate measured 32152; Command Integrity Standing Order measured 34594, capped with tight headroom.
-    expect(prompt.length).toBeLessThanOrEqual(35500);
+    expect(prompt).toContain("Skill loading is idempotent per session");
   });
 
 });

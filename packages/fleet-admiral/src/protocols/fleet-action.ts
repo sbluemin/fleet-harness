@@ -23,6 +23,8 @@ Every request flows through these gates in order:
 
 Conversational requests skip the Mode Gate and load no skill; Standing Orders still apply.
 
+Skill loading is idempotent per session: when a required skill's content is already loaded in this session's context, apply it without reloading.
+
 ## Intent Gate
 - **Conversational**: answer normally without loading a protocol skill when the user's request is chat, explanation, brainstorming, wording help, or another non-operational exchange that does not require workspace action.
 - **Operational**: before planning or execution, load exactly one active protocol skill from the mode gate below, then follow that skill together with the always-injected Standing Orders. Workspace action includes file reads or grep, carrier dispatch, read-only reconnaissance, and auxiliary operational skill invocation.
@@ -31,7 +33,7 @@ Conversational requests skip the Mode Gate and load no skill; Standing Orders st
 Choose exactly one mode for every operational request:
 - ${"`"}protocol-baseline${"`"} — simple, reversible, single-surface work with minimal planning needs.
 - ${"`"}protocol-midline${"`"} — ordinary bounded operational work that does not trigger the downward guard.
-- ${"`"}protocol-redline${"`"} — irreversible operations, structural or API changes, cross-module edits, doctrine or prompt-policy edits, security-sensitive work, or any work needing explicit risk controls.
+- ${"`"}protocol-redline${"`"} — any Downward Guard trigger (defined below), security-sensitive work, or any work needing explicit risk controls.
 - ${"`"}protocol-frontline${"`"} — work that needs multiple Carriers, independent parallel workstreams, cross-carrier review loops, or file-ownership coordination.
 
 If operational mode is ambiguous, fall back to ${"`"}protocol-midline${"`"} unless the downward guard applies.

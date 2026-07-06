@@ -40,3 +40,14 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 6. Cross-carrier review loop: route implementation outputs to review Carriers, send actionable findings back to owners, and re-review changed surfaces.
 7. Verification: run integrated tests and apply Deep Dive to speculative or conflicting Carrier claims.
 8. Documentation and completion report: update directly affected docs and report executed waves, Carrier ownership, QA, unresolved risks, and final Result Integrity checks.
+
+## Cross-Carrier Feedback Patterns
+
+When composing waves and review loops, select the structured feedback pattern that fits the task:
+
+| Pattern | Flow | When |
+|---------|------|------|
+| **Build → Review** | implementation carrier → review carrier → findings back to implementation carrier → re-review | Standard implementation cycle |
+| **Analyze → Execute** | implementation or refactoring carrier → review carrier verifies | Refactoring workflow |
+| **Decide → Plan → Execute** | judgment carrier → planning carrier → execution carrier | Complex features |
+| **Research → Act** | reconnaissance carrier → appropriate follow-up carrier from the active roster | Unknown scope tasks |
