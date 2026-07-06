@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent } from "react";
+import { useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { OperationGroup } from "../types.js";
 import { resolveAccentColor } from "../canvas/operation-accent.js";
@@ -8,8 +8,12 @@ interface GroupHeaderProps {
   readonly count: number;
   readonly collapsed: boolean;
   readonly tier: "rail" | "list" | "detail";
+  readonly dragging: boolean;
+  readonly dropTarget: boolean;
+  readonly dragOffsetY: number;
   readonly onToggle: (groupId: string) => void;
   readonly onContextMenu: (groupId: string, anchor: DOMRect) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => void;
 }
 
 export function OperationsSideBarGroupHeader({
@@ -17,29 +21,59 @@ export function OperationsSideBarGroupHeader({
   count,
   collapsed,
   tier,
+  dragging,
+  dropTarget,
+  dragOffsetY,
   onToggle,
   onContextMenu,
+  onPointerDragStart,
 }: GroupHeaderProps) {
+  const suppressClickRef = useRef(false);
   const grpColor = resolveAccentColor(group.color);
-  const headerStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
+  const headerClassName = [
+    "side-bar-group-header",
+    tier === "rail" ? "side-bar-group-header--rail" : "",
+    dragging ? "side-bar-group-header--dragging" : "",
+    dropTarget ? "side-bar-group-header--drop-target" : "",
+  ].filter(Boolean).join(" ");
+  const headerStyle = {
+    ...(grpColor ? { "--grp-color": grpColor } : {}),
+    ...(dragging ? { "--drag-dy": `${Math.round(dragOffsetY)}px` } : {}),
+  } as CSSProperties;
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     onContextMenu(group.id, event.currentTarget.getBoundingClientRect());
   };
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    onPointerDragStart(event, group.id);
+  };
+  const handlePointerUp = () => {
+    if (dragging) suppressClickRef.current = true;
+  };
+  const toggle = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onToggle(group.id);
+  };
 
   if (tier === "rail") {
     return (
       <div
-        className="side-bar-group-header side-bar-group-header--rail"
+        className={headerClassName}
         data-tier="rail"
         style={headerStyle}
-        onClick={() => onToggle(group.id)}
+        onClick={toggle}
         onContextMenu={handleContextMenu}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         role="button"
         tabIndex={0}
         aria-label={`Group ${group.name}`}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(group.id); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
       >
         <span className="side-bar-group-header__dot" aria-hidden="true" />
       </div>
@@ -48,9 +82,11 @@ export function OperationsSideBarGroupHeader({
 
   return (
     <div
-      className="side-bar-group-header"
+      className={headerClassName}
       style={headerStyle}
       onContextMenu={handleContextMenu}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       role="group"
       aria-label={group.name}
     >

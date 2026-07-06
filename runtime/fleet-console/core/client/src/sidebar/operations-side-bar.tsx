@@ -9,7 +9,7 @@ import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
 import { sortOperationsByOrder } from "../store.js";
-import { applyVisibleReorder, dropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
+import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, tierFromWidth, useSideBarState } from "./operations-side-bar-store.js";
@@ -40,6 +40,7 @@ interface OperationsSideBarProps {
   readonly onCreateGroup: (theaterId: string, name: string, operationId: string) => void;
   readonly onSetGroupColor: (groupId: string, color: string | null) => void;
   readonly onRenameGroup: (groupId: string, name: string) => void;
+  readonly onReorderGroups: (orderedGroupIds: readonly string[]) => void;
   readonly onUngroupAll: (groupId: string) => void;
 }
 
@@ -52,7 +53,8 @@ interface NewMenuState {
   readonly viewportBounds?: { readonly width: number; readonly height: number };
 }
 
-interface DragState {
+interface ChipDragState {
+  readonly kind: "chip";
   readonly sourceId: string;
   readonly sourceGroupId: string | null;
   readonly pointerId: number;
@@ -63,6 +65,19 @@ interface DragState {
   readonly dropIndex: number;
   readonly dropGroupId: string | null;
 }
+
+interface GroupDragState {
+  readonly kind: "group";
+  readonly sourceGroupId: string;
+  readonly pointerId: number;
+  readonly startX: number;
+  readonly startY: number;
+  readonly currentY: number;
+  readonly dragging: boolean;
+  readonly dropIndex: number;
+}
+
+type DragState = ChipDragState | GroupDragState;
 
 const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
@@ -94,6 +109,7 @@ export function OperationsSideBar({
   onCreateGroup,
   onSetGroupColor,
   onRenameGroup,
+  onReorderGroups,
   onUngroupAll,
 }: OperationsSideBarProps) {
   const chipsRef = useRef<HTMLOListElement | null>(null);
@@ -108,7 +124,9 @@ export function OperationsSideBar({
   const entriesRef = useRef<SideBarEntry[]>([]);
   const currentOrderRef = useRef<string[]>([]);
   const dropSectionsRef = useRef<DropSectionInfo[]>([]);
+  const orderedGroupIdsRef = useRef<string[]>([]);
   const onSetGroupIdRef = useRef(onSetGroupId);
+  const onReorderGroupsRef = useRef(onReorderGroups);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
@@ -128,6 +146,7 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, groups, canvas.operationOrder);
+  const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
   const visibleEntries = groupedSections.flatMap((section) =>
     collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
   );
@@ -196,7 +215,9 @@ export function OperationsSideBar({
     entriesRef.current = allEntries;
     currentOrderRef.current = currentOrder;
     dropSectionsRef.current = dropSections;
+    orderedGroupIdsRef.current = orderedGroupIds;
     onSetGroupIdRef.current = onSetGroupId;
+    onReorderGroupsRef.current = onReorderGroups;
   });
 
   const updateDrag = (next: DragState | null) => {
@@ -220,9 +241,14 @@ export function OperationsSideBar({
       const distance = Math.hypot(event.clientX - current.startX, event.clientY - current.startY);
       if (!current.dragging && distance < DRAG_THRESHOLD_PX) return;
       if (current.dragging) event.preventDefault();
-      const dropTarget = dropTargetFromPoint(event.clientY, dropSectionsRef.current, chipsRef.current, current.sourceId);
       autoScrollSideBar(event.clientY, chipsRef.current);
-      updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
+      if (current.kind === "chip") {
+        const dropTarget = dropTargetFromPoint(event.clientY, dropSectionsRef.current, chipsRef.current, current.sourceId);
+        updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
+        return;
+      }
+      const dropIndex = groupDropIndexFromPoint(event.clientY, orderedGroupIdsRef.current, chipsRef.current, current.sourceGroupId);
+      updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex });
     };
 
     const onUp = (event: PointerEvent) => {
@@ -230,6 +256,13 @@ export function OperationsSideBar({
       const snap = dragRef.current;
       updateDrag(null);
       if (!snap?.dragging) return;
+
+      if (snap.kind === "group") {
+        const nextGroupIds = reorderGroupIds(orderedGroupIdsRef.current, snap.sourceGroupId, snap.dropIndex);
+        if (nextGroupIds.join("\0") === orderedGroupIdsRef.current.join("\0")) return;
+        onReorderGroupsRef.current(nextGroupIds);
+        return;
+      }
 
       const { sourceId, sourceGroupId, dropIndex, dropGroupId } = snap;
       const sections = dropSectionsRef.current;
@@ -275,6 +308,7 @@ export function OperationsSideBar({
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
     const sourceGroupId = sourceEntry?.operation.groupId ?? null;
     updateDrag({
+      kind: "chip",
       sourceId: operationId,
       sourceGroupId,
       pointerId: event.pointerId,
@@ -284,6 +318,24 @@ export function OperationsSideBar({
       dragging: false,
       dropIndex: currentOrder.indexOf(operationId),
       dropGroupId: sourceGroupId,
+    });
+  };
+
+  const beginGroupPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => {
+    if (event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    if (!orderedGroupIds.includes(groupId)) return;
+    setActiveContextMenu(null);
+    disarmClose();
+    updateDrag({
+      kind: "group",
+      sourceGroupId: groupId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentY: event.clientY,
+      dragging: false,
+      dropIndex: orderedGroupIds.indexOf(groupId),
     });
   };
 
@@ -433,16 +485,38 @@ export function OperationsSideBar({
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
+          const groupIndex = section.groupId ? orderedGroupIds.indexOf(section.groupId) : -1;
+          const isGroupDragging = drag?.kind === "group" && drag.sourceGroupId === section.groupId && drag.dragging;
+          const groupDropBefore = drag?.kind === "group"
+            && drag.dragging
+            && section.groupId !== null
+            && drag.sourceGroupId !== section.groupId
+            && drag.dropIndex === groupIndex;
+          const groupDropAfter = drag?.kind === "group"
+            && drag.dragging
+            && section.groupId !== null
+            && drag.sourceGroupId !== section.groupId
+            && groupIndex === orderedGroupIds.length - 1
+            && drag.dropIndex === orderedGroupIds.length;
+          const sectionClassName = [
+            section.groupId ? "side-bar-group-section" : "side-bar-ungrouped-section",
+            groupDropBefore ? "side-bar-group-section--drop-before" : "",
+            groupDropAfter ? "side-bar-group-section--drop-after" : "",
+          ].filter(Boolean).join(" ");
           return (
-            <li key={section.groupId ?? "__ungrouped__"} data-drop-zone-group-id={section.groupId ?? "__ungrouped__"} className={section.groupId ? "side-bar-group-section" : "side-bar-ungrouped-section"} style={sectionStyle}>
+            <li key={section.groupId ?? "__ungrouped__"} data-drop-zone-group-id={section.groupId ?? "__ungrouped__"} className={sectionClassName} style={sectionStyle}>
               {section.group ? (
                 <OperationsSideBarGroupHeader
                   group={section.group}
                   count={section.entries.length}
                   collapsed={isCollapsed}
                   tier={tier}
+                  dragging={isGroupDragging}
+                  dragOffsetY={isGroupDragging ? drag.currentY - drag.startY : 0}
+                  dropTarget={groupDropBefore}
                   onToggle={toggleGroupCollapsed}
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
+                  onPointerDragStart={beginGroupPointerDrag}
                 />
               ) : section.entries.length > 0 ? (
                 <div className="side-bar-ungrouped-label" aria-label="Ungrouped operations">
@@ -453,7 +527,7 @@ export function OperationsSideBar({
                 <ol
                   className={[
                     "side-bar-group-chips",
-                    drag?.dragging && drag.dropGroupId === section.groupId && drag.dropGroupId !== drag.sourceGroupId
+                    drag?.kind === "chip" && drag.dragging && drag.dropGroupId === section.groupId && drag.dropGroupId !== drag.sourceGroupId
                       ? "side-bar-section--drop-target"
                       : "",
                   ].filter(Boolean).join(" ")}
@@ -472,10 +546,11 @@ export function OperationsSideBar({
                         index={globalIndex}
                         isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
-                        dragging={drag?.sourceId === entry.operation.id && drag.dragging}
-                        dragOffsetY={drag?.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
+                        dragging={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging}
+                        dragOffsetY={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
                         dropTarget={
-                          drag?.dragging === true
+                          drag?.kind === "chip"
+                          && drag.dragging === true
                           && drag.dropGroupId === section.groupId
                           && drag.dropGroupId === drag.sourceGroupId
                           && drag.dropIndex === sectionLocalIndex

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { dropIndexFromPoint } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
+import { dropIndexFromPoint, groupDropIndexFromPoint, reorderGroupIds } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
 
 describe("operations side bar reorder hit testing", () => {
   it("ignores the dragged source chip when resolving the drop index", () => {
@@ -32,6 +32,52 @@ describe("operations side bar reorder hit testing", () => {
   });
 });
 
+describe("groupDropIndexFromPoint", () => {
+  it("uses section wrapper midpoints and skips the dragged source group", () => {
+    const sections = document.createElement("ol");
+    sections.append(
+      createGroupSection("g-a", 0, 40),
+      createGroupSection("g-b", 40, 100),
+      createGroupSection("g-c", 100, 150),
+    );
+
+    expect(groupDropIndexFromPoint(70, ["g-a", "g-b", "g-c"], sections, "g-b")).toBe(2);
+  });
+
+  it("ignores the ungrouped wrapper as a group drop target", () => {
+    const sections = document.createElement("ol");
+    sections.append(
+      createGroupSection("g-a", 0, 40),
+      createGroupSection("__ungrouped__", 40, 100),
+    );
+
+    expect(groupDropIndexFromPoint(50, ["g-a"], sections)).toBe(1);
+  });
+});
+
+describe("reorderGroupIds", () => {
+  it("moves a group upward", () => {
+    expect(reorderGroupIds(["g-a", "g-b", "g-c"], "g-c", 0)).toEqual(["g-c", "g-a", "g-b"]);
+  });
+
+  it("moves a group downward with source-inclusive drop index adjustment", () => {
+    expect(reorderGroupIds(["g-a", "g-b", "g-c"], "g-a", 3)).toEqual(["g-b", "g-c", "g-a"]);
+  });
+
+  it("returns stable order when dropped on itself", () => {
+    expect(reorderGroupIds(["g-a", "g-b", "g-c"], "g-b", 1)).toEqual(["g-a", "g-b", "g-c"]);
+  });
+
+  it("clamps to first and last positions", () => {
+    expect(reorderGroupIds(["g-a", "g-b", "g-c"], "g-b", -10)).toEqual(["g-b", "g-a", "g-c"]);
+    expect(reorderGroupIds(["g-a", "g-b", "g-c"], "g-b", 99)).toEqual(["g-a", "g-c", "g-b"]);
+  });
+
+  it("keeps a single group unchanged", () => {
+    expect(reorderGroupIds(["g-a"], "g-a", 1)).toEqual(["g-a"]);
+  });
+});
+
 function createChip(id: string, top: number, bottom: number): HTMLElement {
   const chip = document.createElement("li");
   chip.dataset.sideBarChipId = id;
@@ -47,4 +93,21 @@ function createChip(id: string, top: number, bottom: number): HTMLElement {
     toJSON: () => ({}),
   });
   return chip;
+}
+
+function createGroupSection(id: string, top: number, bottom: number): HTMLElement {
+  const section = document.createElement("li");
+  section.dataset.dropZoneGroupId = id;
+  section.getBoundingClientRect = () => ({
+    x: 0,
+    y: top,
+    top,
+    left: 0,
+    right: 200,
+    bottom,
+    width: 200,
+    height: bottom - top,
+    toJSON: () => ({}),
+  });
+  return section;
 }
