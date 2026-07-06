@@ -5,7 +5,7 @@ description: Use the risk-controlled Fleet protocol mode for irreversible, struc
 
 # Fleet Protocol: Redline
 
-Use this mode for irreversible operations, structural/API changes, cross-module edits, doctrine or prompt-policy edits, security-sensitive work, or any operational request needing explicit risk controls. Escalate to `protocol-frontline` when multiple Carriers or parallel ownership boundaries are required.
+Use this mode when any Downward Guard trigger defined in the Protocol Gate is in scope, for security-sensitive work, or for any operational request needing explicit risk controls. Escalate to `protocol-frontline` when multiple Carriers or parallel ownership boundaries are required.
 
 ## Checkpoints
 

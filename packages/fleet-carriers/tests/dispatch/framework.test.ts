@@ -200,6 +200,51 @@ describe("carrier roster rendering", () => {
     expect(roster.match(/<prior_jobs>/g)).toHaveLength(1);
     expect(roster.indexOf(preamble)).toBeLessThan(roster.indexOf("**ohio**"));
   });
+
+  it("renders the routing tier without request-block contracts", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+
+    const roster = buildCarrierRoster(registry, ["ohio"], { tier: "routing" });
+
+    expect(roster).toContain("Use for:");
+    expect(roster).toContain("NOT for:");
+    expect(roster).not.toContain("Request blocks");
+    expect(roster).not.toContain("<plan_file>");
+  });
+
+  it("renders the contracts tier with request blocks only", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+
+    const roster = buildCarrierRoster(registry, ["ohio"], { tier: "contracts" });
+
+    expect(roster).toContain("<plan_file> required:");
+    expect(roster).toContain("<objective?> optional:");
+    expect(roster).not.toContain("Use for:");
+    expect(roster).not.toContain("NOT for:");
+    expect(roster).not.toContain('carrier_id: "ohio"');
+  });
+
+  it("renders blockless carriers as free-form in the contracts tier", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+
+    const roster = buildCarrierRoster(registry, ["ohio"], { tier: "contracts" });
+
+    expect(roster).toContain("free-form request body — no structured request blocks");
+  });
+
+  it("omits full render entries for default (tierless) calls unchanged", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+
+    const roster = buildCarrierRoster(registry, ["ohio"]);
+
+    expect(roster).toContain("Use for:");
+    expect(roster).toContain("Request blocks — wrap content in these (? = optional):");
+    expect(roster).toContain("<plan_file> required:");
+  });
 });
 
 describe("carrier_dispatch effort resolution", () => {
@@ -870,6 +915,25 @@ function createConfig(id: string, displayName: string): CarrierConfig {
     defaultCliType: "claude",
     slot: 1,
     displayName,
+  };
+}
+
+function createConfigWithBlocks(id: string, displayName: string): CarrierConfig {
+  return {
+    ...createConfig(id, displayName),
+    carrierMetadata: {
+      category: "operations",
+      outputFormat: "",
+      permissions: [],
+      requestBlocks: [
+        { tag: "plan_file", required: true, hint: "Repo-relative plan path." },
+        { tag: "objective", required: false, hint: "Optional goal restatement." },
+      ],
+      summary: "Executes plan-driven waves",
+      title: "Operator",
+      whenNotToUse: ["single-file edits (→genesis)"],
+      whenToUse: ["multi-wave builds"],
+    },
   };
 }
 

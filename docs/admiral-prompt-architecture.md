@@ -48,7 +48,10 @@ the Admiral prompt. The static prompt includes:
 - `<fleet section="persona">` — always injected, before role
 - `<fleet section="role">` — always injected
 - `<fleet section="tone">` — only when tone injection is enabled
-- `<fleet section="roster">` when carriers are registered, with one shared optional `<prior_jobs>` hint before carrier entries
+- `<fleet section="roster">` when carriers are registered, rendered at the
+  routing tier only (selection metadata — summary, `Use for`, `NOT for`); each
+  carrier's request-block contract and the shared `<prior_jobs>` hint live in
+  the on-demand `carrier-contracts` skill, and the roster preamble points to it
 - `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work
 - `<fleet section="standing-orders" type="<id>">` as six separate always-on Standing Order blocks, with Command Integrity injected first as the order-reception contract upstream of Mission Anchor
 
@@ -60,7 +63,10 @@ functional identifiers such as skill IDs and report-token keys remain fixed.
 The full protocol workflows are not inlined into the static Admiral prompt.
 Operational requests load exactly one built-in protocol skill on demand:
 `protocol-baseline`, `protocol-midline`,
-`protocol-redline`, or `protocol-frontline`. `packages/fleet-admiral` owns those packaged skill assets and Fleet plugin/persona/marketplace rendering; `fleet-cli` and `fleet-console` consume them through the public root package API. `fleet-admiral` owns the prompt gate and Standing Order policy. There is still no protocol
+`protocol-redline`, or `protocol-frontline`. The per-carrier request-block
+contracts are likewise on-demand via the `carrier-contracts` skill. Skill
+loading is idempotent per session: content already in context is applied
+without reloading. `packages/fleet-admiral` owns those packaged skill assets and Fleet plugin/persona/marketplace rendering; `fleet-cli` and `fleet-console` consume them through the public root package API. `fleet-admiral` owns the prompt gate and Standing Order policy. There is still no protocol
 registry, persisted mode setting, runtime switching API, or Fleet CLI protocol
 selector UI.
 
@@ -104,7 +110,7 @@ Command Integrity pre-engagement trigger.
 Runtime state is read through direct owners:
 
 - Protocol gate and Standing Order policy: `packages/fleet-admiral/src/protocols/**`
-- Built-in protocol skill assets: committed source at `packages/fleet-admiral/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline}/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`
+- Built-in protocol skill assets: committed source at `packages/fleet-admiral/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline,assumption-audit,carrier-contracts}/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. The `carrier-contracts` body mirrors the registry's contracts-tier roster render and is locked by a sync test in `packages/fleet-admiral/tests/carrier-contracts-skill.test.ts`
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store, job stream state, and per-job workspace change manifest policy: `@dotobokuri/fleet-carriers`
 - Workspace git-status scanner implementation: `runtime/fleet-cli`

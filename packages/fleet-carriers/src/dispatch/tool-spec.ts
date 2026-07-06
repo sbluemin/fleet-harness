@@ -15,7 +15,6 @@ import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type {
   CarrierJobStatus,
   CarrierMetadata,
-  RequestBlock,
   TrackMeta,
 } from "./types.js";
 
@@ -35,6 +34,7 @@ import { launchTaskForceJob } from "./taskforce.js";
 import { buildCarrierExecutorPoolKey } from "./pool-key.js";
 import {
   buildCarrierSystemPrompt,
+  formatRequestBlocksGuide,
   validateRequiredRequestBlocks,
   type CarrierToolSpecDeps,
 } from "./prompt.js";
@@ -97,6 +97,12 @@ export interface CarrierRosterOptions {
   preambleLines?: string[];
   /** 특정 carrierId에 대해 로스터 엔트리 뒤에 추가할 라인 생성기 */
   extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
+  /**
+   * 렌더 계층. 생략 시 전체 렌더(기존 동작).
+   * - "routing": 선택·라우팅 메타만 — request-block 계약을 제외한다 (상시 시스템 프롬프트용).
+   * - "contracts": request-block 계약만 — 선택·라우팅 메타를 제외한다 (온디맨드 스킬 본문용).
+   */
+  tier?: "routing" | "contracts";
 }
 
 // ═════════════════════════════════════════════════════════
@@ -144,8 +150,9 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
         ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
       `Some carriers require structured request blocks (e.g., <objective>, <context>).` +
-        ` See <fleet section="roster"> for each carrier's required and optional tags.` +
-        ` Missing required tags cause hard-error rejection by the dispatcher.`,
+        ` The per-carrier request-block contract lives in the carrier-contracts skill —` +
+        ` load it before composing a dispatch (skip reloading if its content is already in context).` +
+        ` Missing required tags cause hard-error rejection that echoes the carrier's block contract.`,
       CARRIER_REQUEST_BREVITY_GUIDELINE,
     ],
     guardrails: [
@@ -169,7 +176,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         }),
         request: Type.String({
           description:
-            `The task/prompt to send to the carrier. Required blocks per carrier -- see <fleet section="roster">.` +
+            `The task/prompt to send to the carrier. Required blocks per carrier -- see the carrier-contracts skill.` +
             ` Missing blocks cause hard-error rejection.`,
         }),
         cwd: Type.Optional(Type.String({
@@ -560,7 +567,7 @@ export function buildCarrierRoster(
   carrierIds: string[],
   options?: CarrierRosterOptions,
 ): string {
-  const { excludeCarrierIds, heading, preambleLines, extraLines } = options ?? {};
+  const { excludeCarrierIds, heading, preambleLines, extraLines, tier } = options ?? {};
   const excluded = new Set(excludeCarrierIds ?? []);
   const lines: string[] = [];
 
@@ -576,6 +583,10 @@ export function buildCarrierRoster(
 
     const meta = config.carrierMetadata;
     if (!meta) {
+      if (tier === "contracts") {
+        lines.push(`- **${carrierId}** (${config.displayName}): free-form request body — no structured request blocks.`);
+        continue;
+      }
       lines.push(`- **${carrierId}** (${config.displayName}): Delegate tasks to ${config.displayName}.`);
       lines.push(`  carrier_id: "${carrierId}"`);
       if (extraLines) {
@@ -586,6 +597,17 @@ export function buildCarrierRoster(
     }
 
     const name = config.displayName;
+    if (tier === "contracts") {
+      const blockLines = formatRequestBlocksGuide(meta);
+      if (blockLines.length === 0) {
+        lines.push(`- **${carrierId}** (${name} · ${meta.title}): free-form request body — no structured request blocks.`);
+        continue;
+      }
+      lines.push(`- **${carrierId}** (${name} · ${meta.title}) — wrap request content in these blocks (? = optional):`);
+      lines.push(...blockLines);
+      continue;
+    }
+
     lines.push(`- **${carrierId}** (${name} · ${meta.title}): ${meta.summary}`);
     lines.push(`  carrier_id: "${carrierId}"`);
     lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
@@ -595,10 +617,12 @@ export function buildCarrierRoster(
         lines.push(`    - ${item}`);
       }
     }
-    const blockLines = formatRequestBlocksGuide(meta);
-    if (blockLines.length > 0) {
-      lines.push(`  Request blocks — wrap content in these (? = optional):`);
-      lines.push(...blockLines);
+    if (tier !== "routing") {
+      const blockLines = formatRequestBlocksGuide(meta);
+      if (blockLines.length > 0) {
+        lines.push(`  Request blocks — wrap content in these (? = optional):`);
+        lines.push(...blockLines);
+      }
     }
     if (extraLines) {
       const extras = extraLines(carrierId, meta);
@@ -607,14 +631,4 @@ export function buildCarrierRoster(
   }
 
   return lines.join("\n");
-}
-
-export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
-  const allBlocks: RequestBlock[] = [...meta.requestBlocks];
-  if (allBlocks.length === 0) return [];
-  return allBlocks.map((b) => {
-    const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
-    const label = b.required ? "required" : "optional";
-    return `  - ${sig} ${label}: ${b.hint}`;
-  });
 }
