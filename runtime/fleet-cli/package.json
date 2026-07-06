@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-cli",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "description": "Fleet CLI — a multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface.",
   "repository": {
     "type": "git",
