@@ -1,9 +1,9 @@
 ---
 name: assumption-audit
-description: Resolve decision-shaped Context Confidence gate failures one blocking gap at a time before the active protocol re-applies its planning boundary.
+description: Resolve decision-shaped blocking gaps one at a time — Context Confidence gate failures during an active protocol, or pre-engagement requirements ambiguity routed by the Command Integrity Standing Order.
 ---
 
-Use this auxiliary skill only when the active protocol or Context Confidence re-entry path has already found an unresolved blocking gap and the gap is decision-shaped. This skill is not a protocol mode, does not replace the active protocol, and cannot declare the planning boundary passed by itself.
+Use this auxiliary skill only when a decision-shaped blocking gap has been found: either the active protocol or Context Confidence re-entry path surfaced it, or the Command Integrity Standing Order routed a pre-engagement requirements ambiguity here before a protocol mode loads. This skill is not a protocol mode, does not replace the active protocol, and cannot declare the planning boundary passed by itself.
 
 For each unresolved blocking gap, triage the gap before questioning:
 
@@ -13,4 +13,4 @@ For each unresolved blocking gap, triage the gap before questioning:
 
 When a gap is decision-shaped, ask one question at a time. Present your recommended answer first, then give one or two concrete alternatives when useful. Walk decision dependencies one branch at a time until the current gap is resolved; do not bundle unrelated gaps into the same question.
 
-After the gap is answered, report the resolved decision in one short line and return control to the active protocol or Context Confidence Standing Order. The active workflow must re-evaluate confidence and re-apply the required planning boundary gate before planning proceeds.
+After the gap is answered, report the resolved decision in one short line and return control to the caller: the active protocol or Context Confidence Standing Order on re-entry, or the Protocol Gate when invoked pre-engagement. An active workflow must re-evaluate confidence and re-apply the required planning boundary gate before planning proceeds.

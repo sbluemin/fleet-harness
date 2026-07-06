@@ -54,12 +54,12 @@ const UI = {
 
   protocolEy:    { ko: "Fleet Action Protocol · 04", en: "Fleet Action Protocol · 04" },
   protocolTitle: { ko: ["하나의 게이트,", "네 개의 모드."], en: ["One gate,", "four modes."] },
-  protocolLede:  { ko: "모든 요청은 Intent Gate에서 대화형과 작전형으로 갈린다. 작전형은 Mode Gate에서 정확히 하나의 모드를 고르고, 진입 전 Gate Declaration 한 줄을 반드시 선언한다. 하향 가드가 가벼운 모드로의 도피를 막는다.", en: "Every request splits at the Intent Gate — conversational or operational. Operational work picks exactly one mode at the Mode Gate and must emit a one-line Gate Declaration before entry. The downward guard blocks any escape into a lighter mode." },
+  protocolLede:  { ko: "모든 요청은 Intent Gate에서 대화형과 작전형으로 갈린다. 작전형은 Mode Gate에서 정확히 하나의 모드 스킬을 온디맨드로 적재하고, General Quarters 준비 점검을 마친 뒤 brief 한 줄로 작전 계획을 보고하고 진입한다. 하향 가드가 가벼운 모드로의 도피를 막는다.", en: "Every request splits at the Intent Gate — conversational or operational. Operational work loads exactly one mode skill on demand at the Mode Gate, runs the General Quarters readiness checks, then reports a one-line brief before entry. The downward guard blocks any escape into a lighter mode." },
   protocolAria:  { ko: "Fleet Action Protocol 모드", en: "Fleet Action Protocol modes" },
   phaseLabel:    { ko: "Mode", en: "Mode" },
 
   ordersEy:    { ko: "Standing Orders · Always Active", en: "Standing Orders · Always Active" },
-  ordersTitle: { ko: ["항상 켜져 있는", "다섯 개의 명령."], en: ["Five orders,", "always on."] },
+  ordersTitle: { ko: ["항상 켜져 있는", "여섯 개의 명령."], en: ["Six orders,", "always on."] },
   ordersLede:  { ko: "어떤 프로토콜 모드에도 종속되지 않고 모든 작전 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every mission, bound to no protocol mode — and never switched off, even on conversational requests." },
   active:      { ko: "Active", en: "Active" },
 
@@ -113,7 +113,7 @@ const CAPTAINS = [
   {
     id: "Vanguard",
     role: { ko: "Scout Specialist", en: "Scout Specialist" },
-    cli: "Codex CLI",
+    cli: "Claude Code",
     color: "#5fd673",
     mission: { ko: "안개를 먼저 가르는 자. 함대 어떤 작전보다 먼저 정찰을 띄운다.", en: "First to part the fog. Sails ahead of every fleet operation." },
     duties: [
@@ -126,7 +126,7 @@ const CAPTAINS = [
   {
     id: "Tempest",
     role: { ko: "External Intelligence Strike", en: "External Intelligence Strike" },
-    cli: "Gemini CLI",
+    cli: "Claude Code",
     color: "#3dd5f3",
     mission: { ko: "수평선 너머의 코드를 가져온다. 외부 저장소·API·SDK는 모두 그의 사정거리.", en: "Brings back code from beyond the horizon. External repos, APIs, SDKs are all in range." },
     duties: [
@@ -165,7 +165,7 @@ const CAPTAINS = [
   {
     id: "Genesis",
     role: { ko: "Chief Engineer", en: "Chief Engineer" },
-    cli: "Codex CLI",
+    cli: "Claude Code",
     color: "#ff6b6b",
     mission: { ko: "단일 결정타. 신규 모듈·통합·마이그레이션을 한 번의 항해로 종결한다.", en: "The decisive blow. Closes new modules, integrations, and migrations in a single voyage." },
     duties: [
@@ -178,7 +178,7 @@ const CAPTAINS = [
   {
     id: "Ohio",
     role: { ko: "Multi-Wave Strike Execution", en: "Multi-Wave Strike Execution" },
-    cli: "Codex CLI",
+    cli: "Claude Code",
     color: "#a78bfa",
     mission: { ko: "Kirov의 명령서를 받아 파(Wave) 단위로 발사한다. 다단 작전의 실집행 잠수함.", en: "Receives Kirov's orders and fires by wave. The submarine that actually executes multi-stage ops." },
     duties: [
@@ -191,7 +191,7 @@ const CAPTAINS = [
   {
     id: "Sentinel",
     role: { ko: "The Inquisitor · QA & Security Lead", en: "The Inquisitor · QA & Security Lead" },
-    cli: "Codex CLI",
+    cli: "Claude Code",
     color: "#fb7185",
     mission: { ko: "함대의 검열관. 어떤 코드도 그의 의심을 거치지 않고는 실전에 투입되지 않는다.", en: "The fleet's inquisitor. No code reaches the front line without surviving his doubt." },
     duties: [
@@ -204,7 +204,7 @@ const CAPTAINS = [
   {
     id: "Chronicle",
     role: { ko: "Chief Knowledge Officer", en: "Chief Knowledge Officer" },
-    cli: "Gemini CLI",
+    cli: "Claude Code",
     color: "#3dd5f3",
     mission: { ko: "함대의 기억. 작전이 끝나기 전 마지막으로 항해일지를 닫는 자.", en: "The fleet's memory. The last hand to close the captain's log before the operation ends." },
     duties: [
@@ -219,7 +219,7 @@ const CAPTAINS = [
 const MODES = [
   {
     n: "01",
-    name: "Trivial",
+    name: "Baseline",
     kr: { ko: "사소", en: "Trivial" },
     tag: { ko: "단일 표면", en: "Single surface" },
     required: false,
@@ -231,19 +231,19 @@ const MODES = [
   },
   {
     n: "02",
-    name: "Standard",
+    name: "Midline",
     kr: { ko: "표준", en: "Standard" },
     tag: { ko: "기본", en: "Default" },
     required: false,
     desc: { ko: "하향 가드를 건드리지 않는 일반적인 경계형 작전. 모드가 모호할 때의 기본 폴백이기도 하다.", en: "Ordinary bounded work that doesn't trip the downward guard — and the default fallback when the mode is ambiguous." },
     points: [
       { m: "FLOW", t: { ko: "**정찰 → 계획 경계 → 인라인 계획 → 실집행 → 검증 → 문서**.", en: "**Recon → planning boundary → inline plan → execution → verification → docs**." } },
-      { m: "GATE", t: { ko: "계획 경계 진입엔 complete 확신 — 차단 갭이 남으면 못 들어간다.", en: "The planning boundary demands complete confidence — no entry with blocking gaps open." } },
+      { m: "GATE", t: { ko: "계획 경계 진입엔 sufficient 확신 — 차단 갭이 남으면 못 들어간다.", en: "The planning boundary demands sufficient confidence — no entry with blocking gaps open." } },
     ],
   },
   {
     n: "03",
-    name: "High-Risk",
+    name: "Redline",
     kr: { ko: "고위험", en: "High-Risk" },
     tag: { ko: "강제 통제", en: "Hard controls" },
     required: true,
@@ -255,7 +255,7 @@ const MODES = [
   },
   {
     n: "04",
-    name: "Multi-Agent",
+    name: "Frontline",
     kr: { ko: "다중 함장", en: "Multi-Agent" },
     tag: { ko: "병렬 협조", en: "Coordinated" },
     required: true,
@@ -268,6 +268,11 @@ const MODES = [
 ];
 
 const ORDERS = [
+  {
+    name: "Command Integrity",
+    kr: { ko: "명령 무결성", en: "Command Integrity" },
+    desc: { ko: "명령 수령 단계의 무결성을 지킨다. 기술적으로 결함 있는 명령에는 근거를 갖춰 진언하고, 착수 전 결정형 모호함은 질문으로 해소하며, 명시 범위 밖 권한을 가정하지 않고, 지침 충돌은 안전·정확·명료·효율 순으로 중재한다.", en: "Guards integrity at order reception. Technically flawed orders get a reasoned pushback, decision-shaped ambiguity is clarified before work starts, no permission is assumed beyond the granted scope, and conflicting directives resolve by safety, correctness, clarity, then efficiency." },
+  },
   {
     name: "Mission Anchor",
     kr: { ko: "임무 정렬", en: "Mission Anchor" },
@@ -311,7 +316,7 @@ const DIFFS = [
   {
     n: "03",
     name: "Task Force & Squadron",
-    kr: { ko: "Wave", en: "Wave" },
+    kr: { ko: "태스크 포스 & 스쿼드론", en: "Task Force & Squadron" },
     body: { ko: "Task Force는 여러 백엔드의 결과를 합의 알고리즘으로 통합. Squadron은 동일 작전을 병렬 분기로 동시에 시도하고 가장 우수한 줄기를 채택한다.", en: "Task Force fuses outputs from multiple backends through a consensus algorithm. Squadron tries the same operation along parallel branches and adopts the strongest one." },
   },
   {
@@ -401,16 +406,16 @@ function Nav() {
 
 // ───── Hero ─────
 function Hero() {
-  const nodeCount = 6;
+  const nodeCount = 8;
   const radius = 38;
   const nodes = Array.from({ length: nodeCount }, (_, i) => {
     const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
     return {
       x: 50 + Math.cos(angle) * radius,
       y: 50 + Math.sin(angle) * radius,
-      label: ["VG", "TP", "NM", "KV", "GN", "OH"][i],
-      full: ["Vanguard", "Tempest", "Nimitz", "Kirov", "Genesis", "Ohio"][i],
-      color: ["#5fd673", "#3dd5f3", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa"][i],
+      label: ["VG", "TP", "NM", "KV", "GN", "OH", "SN", "CH"][i],
+      full: ["Vanguard", "Tempest", "Nimitz", "Kirov", "Genesis", "Ohio", "Sentinel", "Chronicle"][i],
+      color: ["#5fd673", "#3dd5f3", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa", "#fb7185", "#3dd5f3"][i],
     };
   });
 
@@ -444,7 +449,7 @@ function Hero() {
             <div className="hero-meta">
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaBackends)}</div>
-                <div className="value"><em>6</em> · {t(UI.metaBackendsVal)}</div>
+                <div className="value"><em>4</em> · {t(UI.metaBackendsVal)}</div>
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaCaptains)}</div>
