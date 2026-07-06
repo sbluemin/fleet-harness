@@ -219,6 +219,22 @@ export function Operations({ state }: OperationsProps) {
       .catch(() => {});
   }, []);
 
+  const handleReorderGroups = useCallback((orderedGroupIds: readonly string[]) => {
+    const groupById = new Map(stateRef.current.groups.map((group) => [group.id, group]));
+    const patches = orderedGroupIds.flatMap((groupId, order) => {
+      const group = groupById.get(groupId);
+      if (!group || group.order === order) return [];
+      return [updateGroup(groupId, { order })];
+    });
+    if (patches.length === 0) return;
+    // 일부 PATCH가 실패해도 항상 서버 실제 순서로 재동기화한다 — Promise.all은 첫 실패에서 reject되어
+    // refetch를 건너뛰므로, 성공/실패가 섞이면 낙관적 순서가 서버와 어긋난 채 UI에 남는다.
+    void Promise.allSettled(patches)
+      .then(() => fetchGroups(null))
+      .then(hydrateGroups)
+      .catch(() => {});
+  }, []);
+
   const handleUngroupAll = useCallback((groupId: string) => {
     void deleteGroup(groupId)
       .then(() => Promise.all([
@@ -266,6 +282,7 @@ export function Operations({ state }: OperationsProps) {
         onCreateGroup={handleCreateGroup}
         onSetGroupColor={handleSetGroupColor}
         onRenameGroup={handleRenameGroup}
+        onReorderGroups={handleReorderGroups}
         onUngroupAll={handleUngroupAll}
       />
       <OperationsCanvas

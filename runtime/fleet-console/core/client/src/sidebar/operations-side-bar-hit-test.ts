@@ -59,6 +59,25 @@ export function dropTargetFromPoint(
   return { groupId: last?.groupId ?? null, index: last?.entryIds.length ?? 0 };
 }
 
+export function groupDropIndexFromPoint(
+  clientY: number,
+  orderedGroupIds: readonly string[],
+  container: HTMLOListElement | null,
+  sourceGroupId?: string,
+): number {
+  if (!container) return 0;
+  const groupElements = Array.from(container.querySelectorAll<HTMLElement>("[data-drop-zone-group-id]"));
+  for (const groupEl of groupElements) {
+    const id = groupEl.dataset.dropZoneGroupId;
+    if (!id || id === "__ungrouped__" || id === sourceGroupId) continue;
+    const index = orderedGroupIds.indexOf(id);
+    if (index === -1) continue;
+    const rect = groupEl.getBoundingClientRect();
+    if (clientY <= rect.top + rect.height / 2) return index;
+  }
+  return orderedGroupIds.length;
+}
+
 // cross-group 드롭용: sourceId를 allIds에서 제거하고 대상 segment의 dropIndex 위치에 삽입한다.
 // dropIndex = source가 없는 대상 entryIds 기준 타깃 슬롯; 보정 없음(source가 segment에 없음).
 // sourceId는 segment에 속하지 않으며, segment의 기존 순서는 allIds 내에서의 순서를 따른다.
@@ -119,6 +138,21 @@ export function applyVisibleReorder(
   return currentOrder.map((id) =>
     visibleSet.has(id) ? (nextVisibleOrder[visIdx++] ?? id) : id,
   );
+}
+
+// group 드롭용: dropIndex = source를 포함한 orderedGroupIds 기준 포인터 슬롯; downward 드래그 시 -1 보정한다.
+export function reorderGroupIds(
+  orderedGroupIds: readonly string[],
+  sourceGroupId: string,
+  dropIndex: number,
+): string[] {
+  const sourceIndex = orderedGroupIds.indexOf(sourceGroupId);
+  if (sourceIndex === -1) return [...orderedGroupIds];
+  const next = orderedGroupIds.filter((id) => id !== sourceGroupId);
+  const adjusted = dropIndex > sourceIndex ? dropIndex - 1 : dropIndex;
+  const bounded = Math.max(0, Math.min(adjusted, next.length));
+  next.splice(bounded, 0, sourceGroupId);
+  return next;
 }
 
 // keyboard 이동 전용: targetIndex = source가 제거된 목록 기준 삽입 위치(보정 없음).
