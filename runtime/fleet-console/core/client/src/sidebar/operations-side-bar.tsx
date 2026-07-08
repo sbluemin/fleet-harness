@@ -604,7 +604,8 @@ export function OperationsSideBar({
               operations,
               operationOrder: canvas.operationOrder,
               minimizedSet,
-              activeOperationId,
+              // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
+              activeOperationId: null,
               operationNotifications,
               catalog,
               renderKindIcon,

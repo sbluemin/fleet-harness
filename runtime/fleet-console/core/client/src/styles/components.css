@@ -3454,7 +3454,25 @@
   pointer-events: auto;
 }
 
-/* peek 섹션의 그룹 라벨 — 활성 그룹 헤더의 축약형(비인터랙티브, 색 레일은 side-bar-group-section 공유). */
+/* peek 섹션의 그룹 표식 — 세로 레일은 peek 불투명도(0.62↔0.9) 변화와 겹치면
+   유령선처럼 읽히므로(대원수 지적) 레일을 끄고 그룹명 앞 색 도트로 대체한다.
+   베이스 .side-bar-group-section이 파일 후반에 선언되므로 복합 셀렉터로 이긴다. */
+.side-bar-group-section.side-bar-group-section--peek {
+  border-left: none;
+  margin-left: 0;
+  padding-left: var(--space-1);
+}
+
+.side-bar-peek-group-label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--grp-color, var(--ink-rim));
+  flex-shrink: 0;
+}
+
+/* peek 섹션의 그룹 라벨 — 활성 그룹 헤더의 축약형(비인터랙티브). */
 .side-bar-peek-group-label {
   display: flex;
   align-items: center;
