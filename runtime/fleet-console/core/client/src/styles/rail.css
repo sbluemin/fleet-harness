@@ -20,8 +20,6 @@
   border: 1px solid var(--surface-rim);
   border-right: none;
   border-bottom: none;
-  /* 사이드바와 동일 — blur 표면의 유령 심 차단(발생원 격납과 짝). */
-  contain: paint;
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
@@ -180,9 +178,7 @@
   z-index: 1;
 }
 
-.right-rail-resize-handle:hover {
-  background: color-mix(in oklch, var(--brass) 50%, transparent);
-}
+/* hover 도색 금지 — 사이드바 핸들과 동일한 스테일-hover 유령선 방지. 드래그 중 표시만 유지. */
 
 .right-rail.is-dragging .right-rail-resize-handle {
   background: color-mix(in oklch, var(--brass) 70%, transparent);

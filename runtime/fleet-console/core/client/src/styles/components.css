@@ -2405,10 +2405,6 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  /* 발생원 격납 — radar sweep(122vmax 회전 레이어)과 패널 글로우의 컴포지터 damage를
-     캔버스 안에 가둔다. 이것이 없으면 sweep OFF 전환/글로우 리페인트 시 사이드바의
-     backdrop-filter 표면에 1px 유령 심이 남는다(유저 하드웨어 의존, radar 토글로 재현). */
-  contain: paint;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   background: var(--canvas-abyss);
@@ -2511,16 +2507,6 @@
   animation-play-state: paused;
 }
 
-/* OFF 상태 — unmount 대신 은닉(레이어 급파괴로 인한 유령 심 방지). will-change 해제로
-   숨김 중에는 122vmax 레이어를 GPU에 유지하지 않는다. */
-.operations-radar.is-disabled {
-  opacity: 0;
-  visibility: hidden;
-}
-
-.operations-radar.is-disabled .operations-radar-sweep {
-  will-change: auto;
-}
 
 .operations-canvas.is-panel-maximized .canvas-minimap,
 .operations-canvas.is-panel-maximized .canvas-minimap-fab {
@@ -3188,10 +3174,6 @@
   border-left: none;
   border-bottom: none;
   border-radius: 0 var(--radius-xl) 0 0;
-  /* 독립 페인트 경계 — blur 표면은 인접 대형 레이어(radar sweep 122vmax, 글로우)의 stale
-     damage가 1px 유령 심으로 남는 Chromium 아티팩트의 피해자 측이다. 발생원 격납
-     (.operations-canvas contain:paint)과 짝을 이룬다. 포털은 body 소속이라 영향 없음. */
-  contain: paint;
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -3981,9 +3963,9 @@
   z-index: 2;
 }
 
-.operations-side-bar-resize-handle:hover {
-  background: color-mix(in oklch, var(--aurora) 30%, transparent);
-}
+/* hover 도색 금지 — 4px 전고 핸들의 :hover 배경은 정적 화면(radar OFF)에서 hover가
+   스테일로 남을 때 '유령 세로선'으로 보인다(대원수 브라우저 실측으로 시각 동일성 입증).
+   커서(col-resize)와 드래그 중 표시만 어포던스로 남긴다. */
 
 
 .canvas-operation-titlebar {
