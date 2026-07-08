@@ -121,7 +121,6 @@ const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
-const REVEAL_ACTIVE_THEATER_EVENT = "fleet-console:reveal-active-theater";
 const PEEK_CHIP_LIMIT = 4;
 
 export function OperationsSideBar({
@@ -161,7 +160,6 @@ export function OperationsSideBar({
   onForgetTheater,
 }: OperationsSideBarProps) {
   const chipsRef = useRef<HTMLOListElement | null>(null);
-  const activeTheaterSectionRef = useRef<HTMLLIElement | null>(null);
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
   const tier = collapsed ? "rail" : tierFromWidth(width);
@@ -245,16 +243,6 @@ export function OperationsSideBar({
   const contextMenuTheater = activeContextMenu?.kind === "theater"
     ? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
-
-  useEffect(() => {
-    const handleReveal = (event: Event) => {
-      const theaterId = event instanceof CustomEvent ? event.detail?.theaterId : null;
-      if (typeof theaterId !== "string" || theaterId !== activeTheaterId) return;
-      activeTheaterSectionRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    };
-    window.addEventListener(REVEAL_ACTIVE_THEATER_EVENT, handleReveal);
-    return () => window.removeEventListener(REVEAL_ACTIVE_THEATER_EVENT, handleReveal);
-  }, [activeTheaterId]);
 
   const keyboardMove = (operationId: string, direction: -1 | 1) => {
     const index = visibleEntries.findIndex((e) => e.operation.id === operationId);
@@ -629,7 +617,6 @@ export function OperationsSideBar({
           return (
             <li
               key={theater.id}
-              ref={activeTheaterSectionRef}
               className="side-bar-theater-section side-bar-theater-section--active"
               data-theater-id={theater.id}
             >

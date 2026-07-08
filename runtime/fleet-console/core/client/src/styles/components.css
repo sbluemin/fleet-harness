@@ -1,4 +1,3 @@
-.statusbar,
 .stage,
 .timeline-dock {
   border: 1px solid var(--surface-rim);
@@ -12,6 +11,7 @@
   border-radius: var(--radius-xl);
 }
 
+/* 하단 StatusBar — 브라우저 모서리에 밀착하는 풀블리드 스트립. 카드(레디우스·그림자) 문법을 쓰지 않는다. */
 .statusbar {
   position: relative;
   z-index: 10;
@@ -21,7 +21,10 @@
   min-width: 0;
   min-height: var(--console-statusbar-height, 28px);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
+  border-top: 1px solid var(--surface-rim);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   color: var(--ink-spectral);
 }
 
@@ -65,7 +68,6 @@
 
 .statusbar-brand {
   flex: none;
-  gap: 7px;
   color: var(--ink-pearl);
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -74,110 +76,19 @@
   opacity: 0.82;
 }
 
-.statusbar-sigil {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 1px solid color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
-  border-radius: var(--radius-sm);
-  background:
-    radial-gradient(circle at 32% 24%, color-mix(in oklch, var(--brass-bright) 28%, transparent), transparent 68%),
-    var(--surface-glass-strong);
-  color: var(--brass-bright);
-  box-shadow: var(--shadow-anchor);
-}
-
-.statusbar-sigil svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-
 .statusbar-wordmark {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 15px;
   font-variation-settings: "opsz" 24;
   font-weight: 560;
   line-height: 1;
 }
 
-.statusbar-connection {
-  gap: 6px;
-  min-height: 20px;
-  padding: 0 var(--space-2);
-  border-left: 1px solid var(--surface-rim);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.statusbar-connection-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--aurora);
-  box-shadow: 0 0 14px -2px var(--aurora-glow);
-}
-
-.statusbar-connection.is-live .statusbar-connection-dot {
-  animation: statusbar-beacon-pulse 1800ms var(--ease-glide) infinite;
-}
-
-.statusbar-connection.is-error {
-  color: var(--coral);
-}
-
-.statusbar-connection.is-error .statusbar-connection-dot {
-  background: var(--coral);
-  box-shadow: 0 0 14px -2px var(--coral-glow);
-}
-
-.statusbar-theater {
-  gap: 6px;
-  min-width: 0;
-  max-width: 34vw;
-  min-height: 22px;
-  padding: 0 var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--brass) 30%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 760;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.statusbar-theater:hover,
-.statusbar-theater:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
-  background: color-mix(in oklch, var(--brass) 13%, transparent);
-  color: var(--ink-pearl);
-  outline: none;
-}
-
-.statusbar-theater-anchor,
 .statusbar-github-link svg,
 .statusbar-github-stars svg {
   display: block;
   width: 14px;
   height: 14px;
-}
-
-.statusbar-theater-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .statusbar-github {
@@ -229,8 +140,7 @@
   color: var(--brass-bright);
 }
 
-.statusbar-update,
-.statusbar-version {
+.statusbar-update {
   appearance: none;
   flex: 0 0 auto;
   min-height: 22px;
@@ -253,6 +163,35 @@
     background var(--duration-fast) var(--ease-spring),
     box-shadow var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
+}
+
+/* 버전 칩 — 조용한 중립 텍스트. 강조는 미열람 도트 하나만 진다. */
+.statusbar-version {
+  appearance: none;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-version:hover:not(:disabled) {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
 .statusbar-update:hover:not(:disabled) {
@@ -292,42 +231,11 @@
   background: color-mix(in oklch, var(--coral) 15%, transparent);
 }
 
-.statusbar-version {
-  position: relative;
-  gap: 5px;
-  border-color: color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 9%, transparent);
-  box-shadow: none;
-  color: var(--brass-bright);
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.statusbar-version:hover:not(:disabled),
-.statusbar-version:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 58%, transparent);
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-  color: var(--ink-pearl);
-  outline: none;
-}
-
 .statusbar-version-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: var(--aurora);
-  box-shadow: 0 0 14px -2px var(--aurora-glow);
-}
-
-@keyframes statusbar-beacon-pulse {
-  0%, 100% {
-    transform: scale(0.92);
-    opacity: 0.72;
-  }
-  50% {
-    transform: scale(1.24);
-    opacity: 1;
-  }
 }
 
 .job-meta,
@@ -3164,7 +3072,9 @@
   overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
+  /* 좌측 가장자리에 밀착 — 바깥(왼쪽) 모서리는 각지게, 안쪽만 둥글게. */
+  border-left: none;
+  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);

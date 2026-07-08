@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { openWhatsNew } from "../store.js";
@@ -29,19 +29,10 @@ const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargaz
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
-const REVEAL_ACTIVE_THEATER_EVENT = "fleet-console:reveal-active-theater";
 
 export function StatusBar({ state }: StatusBarProps) {
-  const pathname = useLocation().pathname;
-  const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
-  const showTheater = pathname.startsWith("/operations") && activeTheater !== null;
   const latestReleaseVersion = state.releaseNotes.find((note) => note.version !== "Unreleased")?.version ?? null;
   const hasUnreadRelease = state.automaticWhatsNewVersion !== null && state.automaticWhatsNewVersion === latestReleaseVersion;
-
-  const handleRevealTheater = () => {
-    if (!showTheater) return;
-    window.dispatchEvent(new CustomEvent(REVEAL_ACTIVE_THEATER_EVENT, { detail: { theaterId: activeTheater.id } }));
-  };
 
   const handleOpenWhatsNew = () => {
     openWhatsNew();
@@ -51,29 +42,8 @@ export function StatusBar({ state }: StatusBarProps) {
     <footer className="statusbar" role="contentinfo" aria-label="Console status">
       <div className="statusbar-left">
         <Link className="statusbar-brand" to="/operations" aria-label="Operations">
-          <span className="statusbar-sigil" aria-hidden="true"><FleetSigil /></span>
           <span className="statusbar-wordmark">Fleet</span>
         </Link>
-        <span
-          className={`statusbar-connection ${state.connectionError ? "is-error" : "is-live"}`}
-          title={state.connectionError ?? "Console stream connected"}
-          aria-label={state.connectionError ? `Connection error: ${state.connectionError}` : "Console stream connected"}
-        >
-          <span className="statusbar-connection-dot" aria-hidden="true" />
-          <span className="statusbar-connection-label">{state.connectionError ? "Link interrupted" : "Live"}</span>
-        </span>
-        {showTheater ? (
-          <button
-            type="button"
-            className="statusbar-theater"
-            onClick={handleRevealTheater}
-            title={activeTheater.label}
-            aria-label={`Reveal Theater ${activeTheater.label}`}
-          >
-            <span className="statusbar-theater-anchor" aria-hidden="true"><AnchorIcon /></span>
-            <span className="statusbar-theater-label">{activeTheater.label}</span>
-          </button>
-        ) : null}
       </div>
       <div className="statusbar-right">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
@@ -285,24 +255,6 @@ function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
-}
-
-function FleetSigil() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16">
-      <path d="M8 1.8 9.5 6.5 14.2 8 9.5 9.5 8 14.2 6.5 9.5 1.8 8 6.5 6.5Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M8 4.7 8.7 7.3 11.3 8 8.7 8.7 8 11.3 7.3 8.7 4.7 8 7.3 7.3Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function AnchorIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="3.2" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M8 4.7v8.1M4.3 8.2H11.7M3.4 9.1A4.7 4.7 0 0 0 12.6 9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 function GithubMarkIcon() {

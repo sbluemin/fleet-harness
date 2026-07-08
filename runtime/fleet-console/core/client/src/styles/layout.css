@@ -1,20 +1,17 @@
+/* 셸은 브라우저 모서리에 밀착한다(패딩·행간 0) — StatusBar는 하단 풀블리드 스트립,
+   좌/우 컬럼(사이드바·Rail)도 브라우저 가장자리와 여백 없이 맞닿는다. */
 .console-shell {
   --console-statusbar-height: 28px;
   display: grid;
   grid-template-rows: minmax(0, 1fr) var(--console-statusbar-height);
   height: 100%;
-  padding: var(--space-4);
-  gap: var(--space-3);
-  transition:
-    grid-template-rows var(--duration-slow) var(--ease-spring),
-    gap var(--duration-slow) var(--ease-spring),
-    padding var(--duration-slow) var(--ease-spring);
+  padding: 0;
+  gap: 0;
+  transition: grid-template-rows var(--duration-slow) var(--ease-spring);
 }
 
 .console-shell.is-map-fullscreen {
   grid-template-rows: minmax(0, 1fr) 0;
-  gap: 0;
-  padding: 0;
 }
 
 .console-shell.is-map-fullscreen .statusbar {
@@ -103,11 +100,6 @@
 }
 
 @media (max-width: 1100px) {
-  .console-shell {
-    padding: var(--space-3);
-    gap: var(--space-3);
-  }
-
   .stage-content {
     padding: var(--space-4) var(--space-5) var(--space-8);
   }
@@ -122,7 +114,6 @@
 @media (max-width: 760px) {
   .console-shell {
     grid-template-rows: minmax(0, 1fr) var(--console-statusbar-height);
-    padding: var(--space-2);
   }
 
   .console-body.is-canvas {
