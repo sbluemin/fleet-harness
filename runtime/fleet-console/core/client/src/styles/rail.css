@@ -178,7 +178,9 @@
   z-index: 1;
 }
 
-/* hover 도색 금지 — 사이드바 핸들과 동일한 스테일-hover 유령선 방지. 드래그 중 표시만 유지. */
+.right-rail-resize-handle:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
 
 .right-rail.is-dragging .right-rail-resize-handle {
   background: color-mix(in oklch, var(--brass) 70%, transparent);
