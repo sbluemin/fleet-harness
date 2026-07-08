@@ -3102,7 +3102,6 @@
   justify-content: flex-start;
 }
 
-.side-bar-new-btn,
 .side-bar-theater-add-btn {
   display: flex;
   align-items: center;
@@ -3123,15 +3122,12 @@
     border-color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-new-btn svg,
 .side-bar-theater-add-btn svg {
   flex: none;
   width: 18px;
   height: 18px;
 }
 
-.side-bar-new-btn:hover,
-.side-bar-new-btn:focus-visible,
 .side-bar-theater-add-btn:hover:not(:disabled),
 .side-bar-theater-add-btn:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
@@ -3263,6 +3259,7 @@
     background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
+  user-select: none;
 }
 
 .side-bar-theater-header:hover,
@@ -3303,6 +3300,49 @@
   margin-left: auto;
   color: var(--ink-fog);
   font-variant-numeric: tabular-nums;
+}
+
+.side-bar-theater-row-controls {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 1px;
+  margin-left: 2px;
+}
+
+.side-bar-theater-row-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-theater-row-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.side-bar-theater-row-btn:hover,
+.side-bar-theater-row-btn:focus-visible {
+  background: color-mix(in oklch, var(--ink-pearl) 9%, transparent);
+  border-color: color-mix(in oklch, var(--ink-fog) 24%, transparent);
+  color: var(--ink-pearl);
+  outline: none;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-theater-row-controls {
+  display: none;
 }
 
 .side-bar-theater-groups,
@@ -4351,13 +4391,27 @@
   font-size: 11px;
 }
 
+.theater-menu-new-group {
+  color: var(--ink-pearl);
+}
+
+.theater-menu-new-group-input {
+  width: calc(100% - var(--space-2));
+  margin: 0 var(--space-1);
+}
+
 .theater-menu-forget {
-  color: var(--ink-fog);
+  color: var(--coral);
+}
+
+.theater-menu-forget .theater-menu-check {
+  color: var(--coral);
 }
 
 .theater-menu-forget:hover,
 .theater-menu-forget:focus-visible {
   color: var(--coral);
+  background: color-mix(in oklch, var(--coral) 12%, transparent);
 }
 
 .job-head {

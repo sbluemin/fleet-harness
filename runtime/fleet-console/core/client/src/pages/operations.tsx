@@ -196,9 +196,9 @@ export function Operations({ state }: OperationsProps) {
       .catch(() => {});
   }, []);
 
-  const handleCreateGroup = useCallback((theaterId: string, name: string, operationId: string) => {
+  const handleCreateGroup = useCallback((theaterId: string, name: string, operationId?: string) => {
     void createGroup({ theaterId, name, color: "blue" })
-      .then((group) => patchOperation(operationId, { groupId: group.id }))
+      .then((group) => operationId ? patchOperation(operationId, { groupId: group.id }).then(() => {}) : undefined)
       .then(() => Promise.all([
         fetchOperations(null).then(hydrateOperations),
         fetchGroups(null).then(hydrateGroups),

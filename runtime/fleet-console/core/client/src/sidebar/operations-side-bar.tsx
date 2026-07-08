@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -13,7 +13,7 @@ import { sortOperationsByOrder } from "../store.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, tierFromWidth, useSideBarState } from "./operations-side-bar-store.js";
+import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, setTheaterCollapsed, tierFromWidth, useCollapsedTheaters, useSideBarState, type Tier } from "./operations-side-bar-store.js";
 import { resolveOperationLaunchKind } from "./resolve-launch-kind.js";
 
 interface OperationsSideBarProps {
@@ -42,7 +42,7 @@ interface OperationsSideBarProps {
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
   readonly onRename: (operationId: string, title: string) => void;
   readonly onSetGroupId: (operationId: string, groupId: string | null) => void;
-  readonly onCreateGroup: (theaterId: string, name: string, operationId: string) => void;
+  readonly onCreateGroup: (theaterId: string, name: string, operationId?: string) => void;
   readonly onSetGroupColor: (groupId: string, color: string | null) => void;
   readonly onRenameGroup: (groupId: string, name: string) => void;
   readonly onReorderGroups: (orderedGroupIds: readonly string[]) => void;
@@ -56,7 +56,7 @@ interface OperationsSideBarProps {
 type ActiveContextMenu =
   | { readonly kind: "chip"; readonly operationId: string; readonly anchor: DOMRect }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect }
-  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect };
+  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLButtonElement | null };
 
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
@@ -104,7 +104,12 @@ interface TheaterSectionHeaderProps {
   readonly theater: TheaterInfo;
   readonly operationCount: number;
   readonly active: boolean;
+  readonly collapsed: boolean;
+  readonly tier: Tier;
   readonly onSelectTheater: (theaterId: string) => void;
+  readonly onToggleCollapsed: (theaterId: string) => void;
+  readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
+  readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect) => void;
 }
 
@@ -112,9 +117,23 @@ interface TheaterPeekSectionProps {
   readonly theater: TheaterInfo;
   readonly entries: readonly SideBarEntry[];
   readonly operationCount: number;
+  readonly collapsed: boolean;
+  readonly tier: Tier;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onFocus: (operationId: string) => void;
+  readonly onToggleCollapsed: (theaterId: string) => void;
+  readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
+  readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect) => void;
+}
+
+interface TheaterActionsMenuProps {
+  readonly theater: TheaterInfo;
+  readonly groupCount: number;
+  readonly anchor: DOMRect;
+  readonly onCreateGroup: (name: string) => void;
+  readonly onForgetTheater: () => void;
+  readonly onClose: () => void;
 }
 
 const CLOSE_ARM_DURATION_MS = 1500;
@@ -179,6 +198,7 @@ export function OperationsSideBar({
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const collapsedGroups = useCollapsedGroups();
+  const collapsedTheaters = useCollapsedTheaters();
 
   const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
@@ -416,19 +436,6 @@ export function OperationsSideBar({
     if (!collapsed) setSideBarWidth(MIN_RAIL_PX);
   };
 
-  const openNewMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (newMenu) {
-      setNewMenu(null);
-      return;
-    }
-    setSettingsMenu(null);
-    const rect = event.currentTarget.getBoundingClientRect();
-    setNewMenu({
-      anchor: { x: rect.right + 8, y: rect.top },
-      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
-    });
-  };
-
   const openTheaterBrowser = () => {
     setNewMenu(null);
     setSettingsMenu(null);
@@ -473,6 +480,28 @@ export function OperationsSideBar({
     });
   };
 
+  const closeActiveContextMenu = useCallback(() => {
+    const returnFocus = activeContextMenu?.kind === "theater" ? activeContextMenu.returnFocus : null;
+    setActiveContextMenu(null);
+    returnFocus?.focus();
+  }, [activeContextMenu]);
+
+  const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
+    event.stopPropagation();
+    if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
+    setSettingsMenu(null);
+    setActiveContextMenu(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setNewMenu({
+      anchor: { x: rect.right + 8, y: rect.top },
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+    });
+  };
+
+  const toggleTheaterSectionCollapsed = (theaterId: string) => {
+    setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
+  };
+
   const displayWidth = collapsed ? MIN_RAIL_PX : width;
 
   if (allEntries.length === 0 && tier === "rail") {
@@ -485,15 +514,6 @@ export function OperationsSideBar({
         onContextMenu={openNewMenuAtCursor}
       >
         <header className="operations-side-bar-header">
-          <button
-            type="button"
-            className="side-bar-new-btn"
-            onClick={openNewMenu}
-            aria-label="New Operation"
-            title="New Operation"
-          >
-            <NewIcon />
-          </button>
           <button
             type="button"
             className="side-bar-theater-add-btn"
@@ -536,17 +556,6 @@ export function OperationsSideBar({
       onContextMenu={openNewMenuAtCursor}
     >
       <header className="operations-side-bar-header">
-        <button
-          type="button"
-          className="side-bar-new-btn"
-          onClick={openNewMenu}
-          aria-label="New Operation"
-          aria-expanded={newMenu !== null}
-          title="New Operation"
-        >
-          <NewIcon />
-          {tier !== "rail" ? <span>Operation</span> : null}
-        </button>
         {tier !== "rail" ? (
           <button
             type="button"
@@ -590,6 +599,7 @@ export function OperationsSideBar({
         {theaters.map((theater) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperationCount = operations.filter((operation) => operation.theaterId === theater.id).length;
+          const theaterCollapsed = collapsedTheaters.includes(theater.id);
           if (tier === "rail" && !isActiveTheater) return null;
           if (!isActiveTheater) {
             const peekEntries = buildTheaterEntries({
@@ -606,11 +616,24 @@ export function OperationsSideBar({
               <TheaterPeekSection
                 key={theater.id}
                 theater={theater}
-                entries={peekEntries}
+                entries={theaterCollapsed ? [] : peekEntries}
                 operationCount={theaterOperationCount}
+                collapsed={theaterCollapsed}
+                tier={tier}
                 onSelectTheater={onSelectTheater}
                 onFocus={onFocus}
-                onContextMenu={(anchor) => setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor })}
+                onToggleCollapsed={toggleTheaterSectionCollapsed}
+                onOpenActions={(anchor, returnFocus) => {
+                  setNewMenu(null);
+                  setSettingsMenu(null);
+                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
+                }}
+                onOpenLaunch={openTheaterLaunchMenu}
+                onContextMenu={(anchor) => {
+                  setNewMenu(null);
+                  setSettingsMenu(null);
+                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
+                }}
               />
             );
           }
@@ -625,10 +648,24 @@ export function OperationsSideBar({
                   theater={theater}
                   operationCount={theaterOperationCount}
                   active
+                  collapsed={theaterCollapsed}
+                  tier={tier}
                   onSelectTheater={onSelectTheater}
-                  onContextMenu={(anchor) => setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor })}
+                  onToggleCollapsed={toggleTheaterSectionCollapsed}
+                  onOpenActions={(anchor, returnFocus) => {
+                    setNewMenu(null);
+                    setSettingsMenu(null);
+                    setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
+                  }}
+                  onOpenLaunch={openTheaterLaunchMenu}
+                  onContextMenu={(anchor) => {
+                    setNewMenu(null);
+                    setSettingsMenu(null);
+                    setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
+                  }}
                 />
               ) : null}
+              {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
                 {groupedSections.map((section) => {
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
@@ -722,6 +759,7 @@ export function OperationsSideBar({
           );
         })}
               </ol>
+              ) : null}
             </li>
           );
         })}
@@ -800,30 +838,21 @@ export function OperationsSideBar({
           }}
           onClose={() => setActiveContextMenu(null)}
         />
-      ) : activeContextMenu?.kind === "theater" && contextMenuTheater ? createPortal(
-        <div
-          className="theater-menu side-bar-theater-menu"
-          role="menu"
-          style={{
-            position: "fixed",
-            left: activeContextMenu.anchor.left,
-            top: activeContextMenu.anchor.bottom + 6,
+      ) : activeContextMenu?.kind === "theater" && contextMenuTheater ? (
+        <TheaterActionsMenu
+          theater={contextMenuTheater}
+          groupCount={groups.filter((group) => group.theaterId === contextMenuTheater.id).length}
+          anchor={activeContextMenu.anchor}
+          onCreateGroup={(name) => {
+            onCreateGroup(contextMenuTheater.id, name);
+            closeActiveContextMenu();
           }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className="theater-menu-item theater-menu-forget"
-            onClick={() => {
-              setActiveContextMenu(null);
-              onForgetTheater(contextMenuTheater.id);
-            }}
-          >
-            <span className="theater-menu-check" aria-hidden="true"><CloseIcon /></span>
-            <span className="theater-menu-label">Forget Theater</span>
-          </button>
-        </div>,
-        document.body,
+          onForgetTheater={() => {
+            onForgetTheater(contextMenuTheater.id);
+            closeActiveContextMenu();
+          }}
+          onClose={closeActiveContextMenu}
+        />
       ) : null}
       <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
     </aside>
@@ -890,35 +919,111 @@ function buildTheaterEntries({
   });
 }
 
-function TheaterSectionHeader({ theater, operationCount, active, onSelectTheater, onContextMenu }: TheaterSectionHeaderProps) {
-  const handleContextMenu = (event: MouseEvent<HTMLButtonElement>) => {
+function TheaterSectionHeader({
+  theater,
+  operationCount,
+  active,
+  collapsed,
+  tier,
+  onSelectTheater,
+  onToggleCollapsed,
+  onOpenActions,
+  onOpenLaunch,
+  onContextMenu,
+}: TheaterSectionHeaderProps) {
+  const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     onContextMenu(event.currentTarget.getBoundingClientRect());
   };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelectTheater(theater.id);
+  };
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`side-bar-theater-header${active ? " is-active" : ""}`}
       onClick={() => onSelectTheater(theater.id)}
+      onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
       aria-current={active ? "true" : undefined}
+      aria-expanded={!collapsed}
       title={theater.label}
     >
       <span className="side-bar-theater-anchor" aria-hidden="true"><AnchorIcon /></span>
       <span className="side-bar-theater-name">{theater.label}</span>
       <span className="side-bar-theater-count">{operationCount}</span>
-    </button>
+      {tier !== "rail" ? (
+        <span className="side-bar-theater-row-controls" aria-label={`${theater.label} controls`}>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
+            aria-label={collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand" : "Collapse"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleCollapsed(theater.id);
+            }}
+          >
+            <ChevronIcon collapsed={collapsed} />
+          </button>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn"
+            aria-label="Theater actions"
+            title="Theater actions"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenActions(event.currentTarget.getBoundingClientRect(), event.currentTarget);
+            }}
+          >
+            <MoreIcon />
+          </button>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn"
+            aria-label={`New Operation in ${theater.label}`}
+            title={`New Operation in ${theater.label}`}
+            onClick={(event) => onOpenLaunch(event, theater.id)}
+          >
+            <PlusIcon />
+          </button>
+        </span>
+      ) : null}
+    </div>
   );
 }
 
-function TheaterPeekSection({ theater, entries, operationCount, onSelectTheater, onFocus, onContextMenu }: TheaterPeekSectionProps) {
+function TheaterPeekSection({
+  theater,
+  entries,
+  operationCount,
+  collapsed,
+  tier,
+  onSelectTheater,
+  onFocus,
+  onToggleCollapsed,
+  onOpenActions,
+  onOpenLaunch,
+  onContextMenu,
+}: TheaterPeekSectionProps) {
   return (
     <li className="side-bar-theater-section side-bar-theater-section--peek" data-theater-id={theater.id}>
       <TheaterSectionHeader
         theater={theater}
         operationCount={operationCount}
         active={false}
+        collapsed={collapsed}
+        tier={tier}
         onSelectTheater={onSelectTheater}
+        onToggleCollapsed={onToggleCollapsed}
+        onOpenActions={onOpenActions}
+        onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
       />
       {entries.length > 0 ? (
@@ -950,6 +1055,95 @@ function TheaterPeekSection({ theater, entries, operationCount, onSelectTheater,
   );
 }
 
+function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForgetTheater, onClose }: TheaterActionsMenuProps) {
+  const [showNewInput, setShowNewInput] = useState(false);
+  const [newName, setNewName] = useState(`Group ${groupCount + 1}`);
+  const composingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (showNewInput) inputRef.current?.select();
+  }, [showNewInput]);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [onClose]);
+
+  const confirmNewGroup = () => {
+    const name = newName.trim();
+    if (!name) return;
+    onCreateGroup(name);
+  };
+
+  return createPortal(
+    <div className="group-context-menu-overlay" role="presentation" onPointerDown={onClose}>
+      <div
+        className="theater-menu side-bar-theater-menu"
+        role="menu"
+        aria-label={`${theater.label} actions`}
+        style={{
+          position: "fixed",
+          left: anchor.left,
+          top: anchor.bottom + 6,
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {showNewInput ? (
+          <input
+            ref={inputRef}
+            className="group-context-menu-new-input theater-menu-new-group-input"
+            type="text"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !composingRef.current) { event.preventDefault(); confirmNewGroup(); }
+              if (event.key === "Escape") { event.preventDefault(); setShowNewInput(false); }
+            }}
+            onBlur={() => setShowNewInput(false)}
+            aria-label="New group name"
+            placeholder="Group name"
+          />
+        ) : (
+          <button
+            type="button"
+            role="menuitem"
+            className="theater-menu-item theater-menu-new-group"
+            onClick={() => setShowNewInput(true)}
+          >
+            <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
+            <span className="theater-menu-label">New group…</span>
+          </button>
+        )}
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button
+          type="button"
+          role="menuitem"
+          className="theater-menu-item theater-menu-forget"
+          onClick={onForgetTheater}
+        >
+          <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
+          <span className="theater-menu-label">Forget Theater</span>
+        </button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | null): void {
   if (!chipsElement) return;
   const rect = chipsElement.getBoundingClientRect();
@@ -960,12 +1154,32 @@ function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | nul
   }
 }
 
-function NewIcon() {
+function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M12 2.4v3.4M12 18.2v3.4M2.4 12h3.4M18.2 12h3.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12 9.2v5.6M9.2 12h5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      {collapsed ? (
+        <path d="M6 3.8 10.2 8 6 12.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="3.5" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
     </svg>
   );
 }
@@ -994,10 +1208,11 @@ function AnchorIcon() {
   );
 }
 
-function CloseIcon() {
+function TrashIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.7 4.7 11.3 11.3M11.3 4.7 4.7 11.3" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+      <path d="M5.2 5.8v6.1M8 5.8v6.1M10.8 5.8v6.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M3.7 4.1h8.6M6.4 4.1l.4-1h2.4l.4 1M4.6 4.1l.5 9.1h5.8l.5-9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

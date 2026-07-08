@@ -9,6 +9,7 @@ interface SideBarState {
 
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
 const STORAGE_KEY_COLLAPSED = "fleet-console.operations.side-collapsed";
+const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.operations.theater-collapsed";
 export const MIN_RAIL_PX = 56;
 export const MIN_LIST_PX = 180;
 export const MIN_DETAIL_PX = 280;
@@ -43,6 +44,8 @@ let sideBarState: SideBarState = {
   collapsed: readInitialCollapsed(),
 };
 const sideBarListeners = new Set<() => void>();
+let collapsedTheaterIds = readInitialCollapsedTheaters();
+const collapsedTheaterListeners = new Set<() => void>();
 
 function notifyListeners(): void {
   for (const listener of sideBarListeners) listener();
@@ -59,8 +62,39 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+function readInitialCollapsedTheaters(): readonly string[] {
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = localStorage.getItem(STORAGE_KEY_THEATER_COLLAPSED);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string");
+  } catch { /* ignore */ }
+  return [];
+}
+
+function notifyCollapsedTheaterListeners(): void {
+  for (const listener of collapsedTheaterListeners) listener();
+}
+
+function getCollapsedTheatersSnapshot(): readonly string[] {
+  return collapsedTheaterIds;
+}
+
+function subscribeCollapsedTheaters(listener: () => void): () => void {
+  collapsedTheaterListeners.add(listener);
+  return () => {
+    collapsedTheaterListeners.delete(listener);
+  };
+}
+
 export function useSideBarState(): SideBarState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function useCollapsedTheaters(): readonly string[] {
+  return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
 }
 
 export function setSideBarWidth(width: number): void {
@@ -78,6 +112,22 @@ export function setSideBarCollapsed(collapsed: boolean): void {
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
   } catch { /* ignore */ }
   notifyListeners();
+}
+
+export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void {
+  const current = new Set(collapsedTheaterIds);
+  if (collapsed) {
+    current.add(theaterId);
+  } else {
+    current.delete(theaterId);
+  }
+  const next = Array.from(current);
+  if (next.join("\0") === collapsedTheaterIds.join("\0")) return;
+  collapsedTheaterIds = next;
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_THEATER_COLLAPSED, JSON.stringify(next));
+  } catch { /* ignore */ }
+  notifyCollapsedTheaterListeners();
 }
 
 export function tierFromWidth(width: number): Tier {
