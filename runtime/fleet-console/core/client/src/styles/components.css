@@ -8118,7 +8118,10 @@ body[data-codex-side="true"] .command-card {
 
 .codex-reading-sheet-read {
   overflow-y: auto;
-  padding: var(--space-6) var(--space-7) var(--space-10);
+  /* --space-7은 미정의 토큰이라 shorthand 전체가 무효화되어 padding 0이 됐었다(.document
+     패딩이 가리던 잠복 결함). .document 플랫화로 이 거터가 유일한 가터가 되므로 정의된
+     토큰만 사용해야 한다. */
+  padding: var(--space-6) var(--space-8) var(--space-10);
 }
 
 .codex-reading-sheet-toc {
@@ -8252,13 +8255,6 @@ body[data-codex-reading="true"] .operations-side-bar {
 .codex-doc-scroll .document-header,
 .codex-doc-scroll .related-list {
   max-inline-size: none;
-}
-
-/* .document의 reading 거터(padding-inline:48px)는 좁은 split에서 본문 폭을 과하게
-   잠식하므로 0으로 — 거터는 doc-scroll(24px)이 제공. 오버레이(.codex-reading-sheet-read
-   .document)는 48px 거터를 그대로 유지한다. */
-.codex-doc-scroll .document {
-  padding-inline: 0;
 }
 
 /* split 좌측은 문서 본문이 전체 높이를 갖고 스크롤되도록, 인라인 ToC 슬롯은 숨긴다
