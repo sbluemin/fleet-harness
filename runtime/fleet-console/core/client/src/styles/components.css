@@ -3966,9 +3966,6 @@
 /* hover 도색 금지 — 4px 전고 핸들의 :hover 배경은 정적 화면(radar OFF)에서 hover가
    스테일로 남을 때 '유령 세로선'으로 보인다(대원수 브라우저 실측으로 시각 동일성 입증).
    커서(col-resize)와 드래그 중 표시만 어포던스로 남긴다. */
-.operations-side-bar.is-resizing .operations-side-bar-resize-handle {
-  background: color-mix(in oklch, var(--aurora) 45%, transparent);
-}
 
 
 .canvas-operation-titlebar {

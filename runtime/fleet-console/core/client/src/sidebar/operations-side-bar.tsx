@@ -194,7 +194,6 @@ export function OperationsSideBar({
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [resizingSideBar, setResizingSideBar] = useState(false);
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
 
@@ -414,8 +413,6 @@ export function OperationsSideBar({
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = sideBar.width;
-    // 리사이즈 시각 피드백은 드래그 중에만 — hover 도색은 스테일 hover 유령선 때문에 금지.
-    setResizingSideBar(true);
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
@@ -423,7 +420,6 @@ export function OperationsSideBar({
     };
 
     const onUp = () => {
-      setResizingSideBar(false);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
     };
@@ -508,7 +504,7 @@ export function OperationsSideBar({
   if (allEntries.length === 0 && tier === "rail") {
     return (
       <aside
-        className={`operations-side-bar${resizingSideBar ? " is-resizing" : ""}`}
+        className="operations-side-bar"
         data-tier={tier}
         data-canvas-blocker
         style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
@@ -550,7 +546,7 @@ export function OperationsSideBar({
 
   return (
     <aside
-      className={`operations-side-bar${resizingSideBar ? " is-resizing" : ""}`}
+      className="operations-side-bar"
       data-tier={tier}
       data-canvas-blocker
       style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
