@@ -3181,6 +3181,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-1);
   flex: none;
   padding: var(--space-2) var(--space-2) var(--space-1);
   border-bottom: 1px solid var(--surface-rim);
@@ -3191,7 +3192,8 @@
   justify-content: flex-start;
 }
 
-.side-bar-new-btn {
+.side-bar-new-btn,
+.side-bar-theater-add-btn {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -3211,17 +3213,41 @@
     border-color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-new-btn svg {
+.side-bar-new-btn svg,
+.side-bar-theater-add-btn svg {
   flex: none;
   width: 18px;
   height: 18px;
 }
 
 .side-bar-new-btn:hover,
-.side-bar-new-btn:focus-visible {
+.side-bar-new-btn:focus-visible,
+.side-bar-theater-add-btn:hover:not(:disabled),
+.side-bar-theater-add-btn:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   outline: none;
+}
+
+.side-bar-theater-add-btn {
+  color: var(--brass);
+}
+
+.side-bar-theater-add-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-theater-add-btn span {
+  display: none;
+}
+
+.side-bar-theater-error {
+  margin: var(--space-2);
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 /* 설정 버튼 — Map/Radar/PanelPulse 컨트롤 팝오버 트리거 */
@@ -3274,6 +3300,119 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.side-bar-theater-section,
+.side-bar-theater-groups,
+.side-bar-peek-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.side-bar-theater-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.side-bar-theater-section--active {
+  border-top: 1px solid color-mix(in oklch, var(--brass) 18%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--brass) 12%, transparent);
+  background: color-mix(in oklch, var(--brass) 4%, transparent);
+}
+
+.side-bar-theater-section--peek {
+  opacity: 0.62;
+}
+
+.side-bar-theater-section--peek:hover,
+.side-bar-theater-section--peek:focus-within {
+  opacity: 0.9;
+}
+
+.side-bar-theater-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 3px var(--space-1);
+  padding: 5px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-theater-header:hover,
+.side-bar-theater-header:focus-visible {
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 25%, transparent);
+  color: var(--ink-spectral);
+  outline: none;
+}
+
+.side-bar-theater-header.is-active {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 38%, transparent);
+  background: color-mix(in oklch, var(--brass) 11%, transparent);
+}
+
+.side-bar-theater-anchor {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--brass);
+}
+
+.side-bar-theater-anchor svg {
+  width: 14px;
+  height: 14px;
+}
+
+.side-bar-theater-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-theater-count {
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-fog);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-bar-theater-groups,
+.side-bar-peek-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.side-bar-peek-chips .side-bar-chip {
+  pointer-events: auto;
+}
+
+.side-bar-theater-menu {
+  min-width: 180px;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-theater-section {
+  border: none;
+  background: transparent;
 }
 
 /* ── SideBar Chip ──────────────────────────────────────────────────────────────── */

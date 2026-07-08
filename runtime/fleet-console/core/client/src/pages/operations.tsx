@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
-import { createGroup, deleteGroup, fetchGroups, fetchOperations, patchOperation, renameOperation, updateGroup } from "../api.js";
+import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -13,7 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { compareOperationCreatedAt, consumeOperationFocus, flattenGroupedOrder, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, setActiveOperation, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, flattenGroupedOrder, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -112,8 +112,6 @@ export function Operations({ state }: OperationsProps) {
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
-  const theaterGroups = (state.groups ?? []).filter((g) => g.theaterId === state.activeTheaterId);
-
   const renderKindIcon = useCallback((pluginId: string, kind: OperationLaunchKind): ReactNode => {
     const plugin = registry.plugins.find((p) => p.id === pluginId);
     return plugin?.renderLaunchIcon?.(kind) ?? null;
@@ -156,6 +154,10 @@ export function Operations({ state }: OperationsProps) {
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
+    if (operation.theaterId !== stateRef.current.activeTheaterId) {
+      focusOperation(operationId);
+      return;
+    }
     // 최대화 중인 패널이 있고 클릭 대상이 다른 op면 최대화 패널을 전환하고 끝낸다.
     // Alt+←/→ 순환(operations.tsx:73-76)과 동일 정책. getMaximizedOperationId()는 store 스냅샷에서 live로 읽으므로 [] deps 유지 가능.
     const currentMaximized = getMaximizedOperationId();
@@ -252,19 +254,47 @@ export function Operations({ state }: OperationsProps) {
     void closeOperation(operationId, plugin).finally(() => closingOperationIds.delete(operationId));
   }, [registry.plugins]);
 
+  const handleAddTheater = useCallback(async (path: string) => {
+    beginAddTheater();
+    try {
+      const folderGrantId = await issueTheaterFolderGrant(path);
+      const result = await addTheater(folderGrantId);
+      completeAddTheater(result);
+    } catch (error) {
+      failAddTheater(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const handleForgetTheater = useCallback(async (theaterId: string) => {
+    try {
+      await forgetTheater(theaterId);
+      removeTheater(theaterId);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        removeTheater(theaterId);
+        return;
+      }
+      failAddTheater(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
   return (
     <div
       className="console-body is-canvas"
       ref={bodyRef}
     >
       <OperationsSideBar
-        operations={theaterOperations}
-        groups={theaterGroups}
+        theaters={state.theaters}
+        activeTheaterId={state.activeTheaterId}
+        operations={state.operations}
+        groups={state.groups}
         minimized={minimized}
         activeOperationId={state.activeOperationId}
         operationNotifications={state.operationNotifications}
         catalog={catalog}
         canLaunch={canLaunch}
+        addingTheater={state.addingTheater}
+        theaterError={state.theaterError}
         mapFullscreen={mapFullscreen}
         radarEnabled={radarEnabled}
         perimeterEnabled={perimeterEnabled}
@@ -284,6 +314,10 @@ export function Operations({ state }: OperationsProps) {
         onRenameGroup={handleRenameGroup}
         onReorderGroups={handleReorderGroups}
         onUngroupAll={handleUngroupAll}
+        onSelectTheater={setActiveTheater}
+        onAddTheater={handleAddTheater}
+        onCancelAddTheater={cancelAddTheater}
+        onForgetTheater={handleForgetTheater}
       />
       <OperationsCanvas
         state={state}
