@@ -27,7 +27,7 @@ export type {
   SearchEntry,
 };
 
-// 하위 호환 별칭 — reading-controller·copy-context-actions 참조
+// 하위 호환 별칭 — navigator 참조
 export type WikiEntryResponse = EntryResponse;
 export type WikiIndexEntry = SearchEntry;
 

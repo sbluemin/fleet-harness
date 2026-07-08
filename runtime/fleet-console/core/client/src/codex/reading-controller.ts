@@ -12,11 +12,9 @@ import type {
   DrydockDetailResponse,
   DrydockListItem,
   DrydockMeta,
-  EntryResponse,
 } from "./api.js";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { renderMarkdown } from "@fleet-console/markdown/core";
-import { buildCompactContext, buildProvenanceContext, buildRelatedContextPack, renderCopyContextActions } from "./components/copy-context-actions.js";
 import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { getState } from "./state.js";
@@ -98,26 +96,6 @@ export function mountReadingInto(
       event.preventDefault();
       handleDrydockAction(drydockBtn.dataset.drydockAction);
       return;
-    }
-
-    // 복사 컨텍스트 액션 (엔트리 전용)
-    const actionBtn = target.closest<HTMLElement>("[data-action]");
-    if (!actionBtn) return;
-    const action = actionBtn.dataset.action;
-    const entry = (readContainer as HTMLElement & { _currentEntry?: EntryResponse })._currentEntry;
-    if (!entry) return;
-
-    if (action === "copy-compact-context") {
-      void navigator.clipboard.writeText(buildCompactContext(entry));
-    } else if (action === "copy-provenance-context") {
-      void navigator.clipboard.writeText(buildProvenanceContext(entry));
-    } else if (action === "copy-related-context") {
-      void navigator.clipboard.writeText(buildRelatedContextPack(entry, getState().index));
-    } else if (action === "toggle-why-matched") {
-      const whyEl = actionBtn.nextElementSibling as HTMLElement | null;
-      if (whyEl?.classList.contains("context-why-matched")) {
-        whyEl.hidden = !whyEl.hidden;
-      }
     }
   }
 
@@ -215,8 +193,6 @@ export function mountReadingInto(
         resolveWikiLink: (id) => entryPath(id),
       });
 
-      (readContainer as HTMLElement & { _currentEntry?: EntryResponse })._currentEntry = entry;
-
       readContainer.innerHTML = `
         <article class="document">
           <header class="document-header">
@@ -228,7 +204,6 @@ export function mountReadingInto(
             ${markdownHtml}
           </div>
           ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
-          ${renderCopyContextActions(entry, index)}
         </article>
       `;
 
