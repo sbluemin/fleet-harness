@@ -2511,6 +2511,17 @@
   animation-play-state: paused;
 }
 
+/* OFF 상태 — unmount 대신 은닉(레이어 급파괴로 인한 유령 심 방지). will-change 해제로
+   숨김 중에는 122vmax 레이어를 GPU에 유지하지 않는다. */
+.operations-radar.is-disabled {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.operations-radar.is-disabled .operations-radar-sweep {
+  will-change: auto;
+}
+
 .operations-canvas.is-panel-maximized .canvas-minimap,
 .operations-canvas.is-panel-maximized .canvas-minimap-fab {
   display: none;
