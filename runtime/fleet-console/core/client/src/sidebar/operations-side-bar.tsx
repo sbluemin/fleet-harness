@@ -140,6 +140,7 @@ const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
 const PEEK_CHIP_LIMIT = 4;
+const SETTINGS_MENU_CANVAS_OFFSET_PX = 36;
 
 export function OperationsSideBar({
   theaters,
@@ -175,6 +176,7 @@ export function OperationsSideBar({
   onCancelAddTheater,
   onForgetTheater,
 }: OperationsSideBarProps) {
+  const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
@@ -194,6 +196,7 @@ export function OperationsSideBar({
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [sideBarResizing, setSideBarResizing] = useState(false);
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
 
@@ -413,19 +416,23 @@ export function OperationsSideBar({
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = sideBar.width;
+    setSideBarResizing(true);
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
       setSideBarWidth(startWidth + dx);
     };
 
-    const onUp = () => {
+    const onEnd = () => {
+      setSideBarResizing(false);
       document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
     };
 
     document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointerup", onEnd);
+    document.addEventListener("pointercancel", onEnd);
   }, [sideBar.width]);
 
   const handleResizeDoubleClick = () => {
@@ -471,8 +478,9 @@ export function OperationsSideBar({
     }
     setNewMenu(null);
     const rect = event.currentTarget.getBoundingClientRect();
+    const sideBarRight = rootRef.current?.getBoundingClientRect().right ?? rect.right;
     setSettingsMenu({
-      anchor: { x: rect.right + 8, y: rect.top },
+      anchor: { x: Math.max(rect.right + 8, sideBarRight + SETTINGS_MENU_CANVAS_OFFSET_PX), y: rect.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
@@ -505,7 +513,9 @@ export function OperationsSideBar({
     return (
       <aside
         className="operations-side-bar"
+        ref={rootRef}
         data-tier={tier}
+        data-resizing={sideBarResizing ? "true" : undefined}
         data-canvas-blocker
         style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
         onContextMenu={openNewMenuAtCursor}
@@ -547,7 +557,9 @@ export function OperationsSideBar({
   return (
     <aside
       className="operations-side-bar"
+      ref={rootRef}
       data-tier={tier}
+      data-resizing={sideBarResizing ? "true" : undefined}
       data-canvas-blocker
       style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
       onContextMenu={openNewMenuAtCursor}
