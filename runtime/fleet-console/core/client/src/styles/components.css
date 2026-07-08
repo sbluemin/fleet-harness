@@ -3173,6 +3173,10 @@
   border-left: none;
   border-bottom: none;
   border-radius: 0 var(--radius-xl) 0 0;
+  /* 독립 페인트 경계 — 캔버스 쪽 대형 글로우(예: Resume hover)의 damage rect가
+     backdrop-filter 레이어와 교차하며 남기는 1px 유령 심(Chromium 컴포지팅 아티팩트)을 차단한다.
+     Radar sweep OFF(정적 화면)에서만 관측되던 현상. 포털(fixed 메뉴)은 body 소속이라 영향 없음. */
+  contain: paint;
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
