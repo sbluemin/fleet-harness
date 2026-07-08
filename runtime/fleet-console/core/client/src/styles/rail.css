@@ -20,7 +20,7 @@
   border: 1px solid var(--surface-rim);
   border-right: none;
   border-bottom: none;
-  /* 사이드바와 동일한 유령 심 차단 — 독립 페인트 경계(컴포지팅 아티팩트 방지). */
+  /* 사이드바와 동일 — blur 표면의 유령 심 차단(발생원 격납과 짝). */
   contain: paint;
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
