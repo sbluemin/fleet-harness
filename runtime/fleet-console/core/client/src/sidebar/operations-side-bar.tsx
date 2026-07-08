@@ -664,7 +664,8 @@ export function OperationsSideBar({
                   }}
                 />
               ) : null}
-              {!theaterCollapsed ? (
+              {/* rail 티어에는 헤더(셰브런)가 없어 접힘을 풀 수 없다 — rail에서는 접힘을 무시하고 항상 칩을 노출한다(Codex P2). */}
+              {tier === "rail" || !theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
                 {groupedSections.map((section) => {
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
