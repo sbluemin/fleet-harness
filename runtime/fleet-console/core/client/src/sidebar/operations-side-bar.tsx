@@ -791,7 +791,7 @@ export function OperationsSideBar({
         <GroupContextMenu
           kind="chip"
           operation={contextMenuOperation}
-          groups={groups}
+          groups={groups.filter((group) => group.theaterId === contextMenuOperation.theaterId)}
           accentKey={canvas.operationAccent[contextMenuOperation.id] ?? operationAccentFromNode(contextMenuOperation)}
           anchor={activeContextMenu.anchor}
           actions={{
@@ -946,6 +946,7 @@ function TheaterPeekSection({ theater, entries, operationCount, onSelectTheater,
               dragging={false}
               dragOffsetY={0}
               dropTarget={false}
+              preview
               onArmClose={() => {}}
               onDisarmClose={() => {}}
               onClose={() => {}}

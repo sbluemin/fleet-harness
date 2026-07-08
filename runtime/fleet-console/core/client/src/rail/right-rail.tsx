@@ -100,16 +100,18 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} />
         )}
       </div>
-      <nav className="right-rail-icons" role="tablist" aria-label="Activity tools">
-        {builtInPanels.map((panel) => (
-          <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
-        ))}
-        {builtInPanels.length > 0 && pluginPanels.length > 0 ? (
-          <div className="right-rail-divider" role="separator" aria-hidden="true" />
-        ) : null}
-        {pluginPanels.map((panel) => (
-          <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
-        ))}
+      <nav className="right-rail-icons" aria-label="Activity tools">
+        <div className="right-rail-tabs" role="tablist" aria-label="Activity panels">
+          {builtInPanels.map((panel) => (
+            <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
+          ))}
+          {builtInPanels.length > 0 && pluginPanels.length > 0 ? (
+            <div className="right-rail-divider" role="separator" aria-hidden="true" />
+          ) : null}
+          {pluginPanels.map((panel) => (
+            <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
+          ))}
+        </div>
         <div className="right-rail-route-spacer" aria-hidden="true" />
         <div className="right-rail-divider right-rail-route-divider" role="separator" aria-hidden="true" />
         <div className="right-rail-route-nav" aria-label="Console routes">

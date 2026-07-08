@@ -205,6 +205,12 @@
   align-self: center;
 }
 
+/* 패널 탭(tablist)만 감싸는 래퍼 — 라우트 NavLink를 tablist 밖에 두기 위한 a11y 경계.
+   display: contents로 아이콘 컬럼 flex 배치는 그대로 통과시킨다. */
+.right-rail-tabs {
+  display: contents;
+}
+
 .right-rail-route-spacer {
   flex: 1 1 auto;
   min-height: var(--space-2);

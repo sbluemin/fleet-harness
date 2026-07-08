@@ -82,7 +82,7 @@
   border: 1px solid color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
   border-radius: var(--radius-sm);
   background:
-    radial-gradient(circle at 32% 24%, oklch(86% 0.16 78 / 28%), transparent 68%),
+    radial-gradient(circle at 32% 24%, color-mix(in oklch, var(--brass-bright) 28%, transparent), transparent 68%),
     var(--surface-glass-strong);
   color: var(--brass-bright);
   box-shadow: var(--shadow-anchor);
