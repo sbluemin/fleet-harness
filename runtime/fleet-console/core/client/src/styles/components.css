@@ -66,6 +66,66 @@
   justify-content: flex-end;
 }
 
+/* 접기 토글 — 조용한 고스트 셰브런. 접힘 상태 자체는 map-fullscreen 상태를 재사용한다. */
+.statusbar-collapse {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-collapse:hover,
+.statusbar-collapse:focus-visible {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+.statusbar-collapse svg,
+.statusbar-reveal svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* 접힌 StatusBar를 되살리는 좌하단 리빌 핸들 — 접힘 중 유일하게 남는 어포던스. */
+.statusbar-reveal {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-reveal:hover,
+.statusbar-reveal:focus-visible {
+  color: var(--ink-pearl);
+  border-color: var(--surface-rim-strong);
+}
+
 .statusbar-brand {
   flex: none;
   color: var(--ink-pearl);
@@ -2943,6 +3003,18 @@
    드래그/리사이즈가 차단된 상태이므로 타이틀바의 grab 어포던스 커서도 기본값으로 되돌린다. */
 .canvas-operation.is-maximized {
   border-radius: calc(var(--radius-xl) - 1px);
+}
+
+/* 패널 최대화 시 이음새 제거 — 컬럼 갭 0(layout.css)과 짝을 이뤄 캔버스 카드의 측면
+   보더/라운드를 걷어내고, 최대화 패널 라운드도 클립에 맞춰 각지게 만든다. */
+.console-body.is-canvas.is-panel-maximized .operations-canvas {
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+}
+
+.console-body.is-canvas.is-panel-maximized .canvas-operation.is-maximized {
+  border-radius: 0;
 }
 
 .canvas-operation.is-maximized .canvas-operation-titlebar {

@@ -16,14 +16,12 @@ interface CanvasContextMenuProps {
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   // Map 탭 — 기존 canvas-store 토글 함수와 영속 키를 그대로 사용한다.
-  readonly mapFullscreen?: boolean;
   readonly radarEnabled?: boolean;
   readonly perimeterEnabled?: boolean;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
-  readonly onMaximizeMap?: () => void;
   readonly onToggleRadar?: () => void;
   readonly onTogglePerimeter?: () => void;
   readonly onClose: () => void;
@@ -54,7 +52,7 @@ const CANVAS_CONTROL_TABS: readonly CanvasControlTabDefinition[] = [
 // 대소문자 무시(i)로 두 표기를 모두 Apple 플랫폼으로 인식해야 ⌘가 올바르게 표시된다.
 const MAC_PLATFORM_PATTERN = /mac|iphone|ipad|ipod/i;
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", mode = "full", catalog, canLaunch, mapFullscreen, radarEnabled, perimeterEnabled, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onTogglePerimeter, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", mode = "full", catalog, canLaunch, radarEnabled, perimeterEnabled, renderKindIcon, onLaunchKind, onResetView, onToggleRadar, onTogglePerimeter, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null, help: null });
@@ -194,11 +192,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               </button>
               <div className="theater-menu-divider" role="separator" />
               <p className="canvas-context-menu-section">Settings</p>
-              {onMaximizeMap ? (
-                <SwitchRow checked={!!mapFullscreen} label="Maximized map" onClick={onMaximizeMap}>
-                  <MapMaximizeGlyph />
-                </SwitchRow>
-              ) : null}
               {onToggleRadar ? (
                 <SwitchRow checked={!!radarEnabled} label="Radar sweep" onClick={onToggleRadar}>
                   <RadarGlyph />
@@ -322,14 +315,6 @@ function ResetGlyph() {
   );
 }
 
-// 맵 전체화면 — 사방 모서리로 펼치는 확장 마크. Map 탭 스위치와 동일 의미.
-function MapMaximizeGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M9.5 3.5h3v3M12.5 3.5 9 7M6.5 12.5h-3v-3M3.5 12.5 7 9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 // 레이더 스윕 — 스코프 링 + 한 방향 스윕 + 중심점. 배경 레이더 토글과 동일 의미.
 function RadarGlyph() {

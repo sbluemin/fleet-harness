@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -28,13 +28,11 @@ interface OperationsSideBarProps {
   readonly canLaunch: boolean;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
-  readonly mapFullscreen: boolean;
   readonly radarEnabled: boolean;
   readonly perimeterEnabled: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
-  readonly onMaximizeMap: () => void;
   readonly onToggleRadar: () => void;
   readonly onTogglePerimeter: () => void;
   readonly onClose: (operationId: string) => void;
@@ -154,13 +152,11 @@ export function OperationsSideBar({
   canLaunch,
   addingTheater,
   theaterError,
-  mapFullscreen,
   radarEnabled,
   perimeterEnabled,
   renderKindIcon,
   onLaunchKind,
   onResetView,
-  onMaximizeMap,
   onToggleRadar,
   onTogglePerimeter,
   onClose,
@@ -798,13 +794,11 @@ export function OperationsSideBar({
           mode="controls"
           catalog={catalog}
           canLaunch={canLaunch}
-          mapFullscreen={mapFullscreen}
           radarEnabled={radarEnabled}
           perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={onLaunchKind}
           onResetView={() => { setSettingsMenu(null); onResetView(); }}
-          onMaximizeMap={onMaximizeMap}
           onToggleRadar={onToggleRadar}
           onTogglePerimeter={onTogglePerimeter}
           onClose={() => setSettingsMenu(null)}
@@ -1060,6 +1054,16 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
   const [newName, setNewName] = useState(`Group ${groupCount + 1}`);
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
+  // Forget/New group에 도달할 수 없다(Codex P2) — 실측 높이로 상단을 클램프한다.
+  const [menuTop, setMenuTop] = useState(anchor.bottom + 6);
+
+  useLayoutEffect(() => {
+    const height = menuRef.current?.getBoundingClientRect().height ?? 0;
+    const maxTop = window.innerHeight - height - 8;
+    setMenuTop(Math.max(8, Math.min(anchor.bottom + 6, maxTop)));
+  }, [anchor, showNewInput]);
 
   useEffect(() => {
     if (showNewInput) inputRef.current?.select();
@@ -1090,13 +1094,14 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
   return createPortal(
     <div className="group-context-menu-overlay" role="presentation" onPointerDown={onClose}>
       <div
+        ref={menuRef}
         className="theater-menu side-bar-theater-menu"
         role="menu"
         aria-label={`${theater.label} actions`}
         style={{
           position: "fixed",
           left: anchor.left,
-          top: anchor.bottom + 6,
+          top: menuTop,
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >

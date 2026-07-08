@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
+import { toggleMapFullscreen, useMapFullscreen } from "../canvas/canvas-store.js";
 import { openWhatsNew } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
@@ -31,6 +33,10 @@ const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 
 export function StatusBar({ state }: StatusBarProps) {
+  const pathname = useLocation().pathname;
+  const collapsed = useMapFullscreen();
+  // 접기 토글은 접힘이 실제 적용되는 /operations에서만 노출한다(설정 라우트에서는 바가 항상 상주).
+  const collapsible = pathname.startsWith("/operations");
   const latestReleaseVersion = state.releaseNotes.find((note) => note.version !== "Unreleased")?.version ?? null;
   const hasUnreadRelease = state.automaticWhatsNewVersion !== null && state.automaticWhatsNewVersion === latestReleaseVersion;
 
@@ -39,14 +45,26 @@ export function StatusBar({ state }: StatusBarProps) {
   };
 
   return (
+    <>
     <footer className="statusbar" role="contentinfo" aria-label="Console status">
       <div className="statusbar-left">
-        <Link className="statusbar-brand" to="/operations" aria-label="Operations">
-          <span className="statusbar-wordmark">Fleet</span>
-        </Link>
+        {collapsible ? (
+          <button
+            type="button"
+            className="statusbar-collapse"
+            onClick={toggleMapFullscreen}
+            aria-label="Hide status bar"
+            title="Hide status bar"
+          >
+            <ChevronDownIcon />
+          </button>
+        ) : null}
       </div>
       <div className="statusbar-right">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
+        <Link className="statusbar-brand" to="/operations" aria-label="Operations">
+          <span className="statusbar-wordmark">Fleet</span>
+        </Link>
         <GithubLinks />
         <button
           type="button"
@@ -62,6 +80,21 @@ export function StatusBar({ state }: StatusBarProps) {
         </button>
       </div>
     </footer>
+    {collapsible && collapsed
+      ? createPortal(
+          <button
+            type="button"
+            className="statusbar-reveal"
+            onClick={toggleMapFullscreen}
+            aria-label="Show status bar"
+            title="Show status bar"
+          >
+            <ChevronUpIcon />
+          </button>,
+          document.body,
+        )
+      : null}
+    </>
   );
 }
 
@@ -255,6 +288,22 @@ function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.2 6.4 8 10.2 11.8 6.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronUpIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.2 9.6 8 5.8 11.8 9.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function GithubMarkIcon() {
