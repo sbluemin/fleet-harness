@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-07-08
+
+### Changed
+- [fleet-console] Codex wiki documents now render flat on the reading surfaces: the rounded glass card around the document body is removed while the document header (breadcrumb, title, tag chips, updated chip) is preserved.
+- [fleet-console] Replaced the console's primary navigation with a bottom command status bar, Theater tree, and right-rail route controls.
+
+### Removed
+- [fleet-console] Remove the copy-context action buttons (Compact context, Provenance, Context pack, Why this matched) from the bottom of Codex wiki entries.
+
 ## [1.21.0] - 2026-07-06
 
 ### Changed
