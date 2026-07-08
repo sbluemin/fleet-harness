@@ -295,26 +295,6 @@ kbd {
   box-shadow: 0 0 8px var(--brass-glow);
 }
 
-.document {
-  position: relative;
-  padding: clamp(28px, 4vw, 48px);
-  border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  border: 1px solid var(--surface-rim);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-}
-
-.document::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--brass) 50%, transparent) 30%, color-mix(in oklch, var(--aurora) 40%, transparent) 70%, transparent);
-}
-
 .document-header {
   display: grid;
   gap: var(--space-3);
@@ -2065,10 +2045,6 @@ kbd {
 
   .app-shell:has(.toc-panel) .manifest-card {
     order: 3;
-  }
-
-  .document {
-    padding: var(--space-6);
   }
 
   .command-result {

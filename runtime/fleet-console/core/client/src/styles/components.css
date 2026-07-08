@@ -8254,13 +8254,6 @@ body[data-codex-reading="true"] .operations-side-bar {
   max-inline-size: none;
 }
 
-/* .document의 reading 거터(padding-inline:48px)는 좁은 split에서 본문 폭을 과하게
-   잠식하므로 0으로 — 거터는 doc-scroll(24px)이 제공. 오버레이(.codex-reading-sheet-read
-   .document)는 48px 거터를 그대로 유지한다. */
-.codex-doc-scroll .document {
-  padding-inline: 0;
-}
-
 /* split 좌측은 문서 본문이 전체 높이를 갖고 스크롤되도록, 인라인 ToC 슬롯은 숨긴다
    (ToC 내비게이션은 Expand 오버레이의 200px ToC rail이 담당 — 중복 슬롯이 doc 높이를
    잠식하던 문제 제거). */
