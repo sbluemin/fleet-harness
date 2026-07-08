@@ -3356,8 +3356,12 @@
   pointer-events: auto;
 }
 
-.side-bar-theater-menu {
+/* 베이스 .theater-menu의 left/right:0(구 GNB 240px 컨테이너 전제)을 해제 —
+   fixed 포털에서 right:0을 상속하면 뷰포트 우측 끝까지 늘어난다(Codex P2).
+   .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
+.theater-menu.side-bar-theater-menu {
   min-width: 180px;
+  right: auto;
 }
 
 .operations-side-bar[data-tier="rail"] .side-bar-theater-section {
@@ -4400,16 +4404,18 @@
   margin: 0 var(--space-1);
 }
 
-.theater-menu-forget {
+/* 파괴적 항목(coral) — 베이스 .theater-menu-item(--ink-fog)이 파일 후반에 선언되므로
+   복합 셀렉터로 특이도를 올려 이긴다. */
+.theater-menu-item.theater-menu-forget {
   color: var(--coral);
 }
 
-.theater-menu-forget .theater-menu-check {
+.theater-menu-item.theater-menu-forget .theater-menu-check {
   color: var(--coral);
 }
 
-.theater-menu-forget:hover,
-.theater-menu-forget:focus-visible {
+.theater-menu-item.theater-menu-forget:hover:not(:disabled),
+.theater-menu-item.theater-menu-forget:focus-visible {
   color: var(--coral);
   background: color-mix(in oklch, var(--coral) 12%, transparent);
 }
