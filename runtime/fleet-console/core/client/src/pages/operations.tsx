@@ -261,12 +261,20 @@ export function Operations({ state }: OperationsProps) {
   }, []);
 
   const handleForgetTheater = useCallback(async (theaterId: string) => {
+    // 서버는 Theater 삭제 시 소속 Operation/Group 레코드도 정리한다 — 로컬 목록만 지우면
+    // stale 패널이 퀵서치 등에 남으므로(Codex P2) 두 컬렉션을 재수화한다.
+    const refreshCollections = () => Promise.all([
+      fetchOperations(null).then(hydrateOperations),
+      fetchGroups(null).then(hydrateGroups),
+    ]).then(() => {}).catch(() => {});
     try {
       await forgetTheater(theaterId);
       removeTheater(theaterId);
+      await refreshCollections();
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         removeTheater(theaterId);
+        await refreshCollections();
         return;
       }
       failAddTheater(error instanceof Error ? error.message : String(error));

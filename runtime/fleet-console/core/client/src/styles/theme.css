@@ -146,6 +146,9 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /* 셸은 뷰포트 고정 레이아웃 — 페이지 스크롤(클래식 스크롤바 거터 포함)을 원천 차단해
+     StatusBar·사이드바·Rail의 브라우저 가장자리 밀착을 모든 환경에서 보장한다. */
+  overflow: hidden;
 }
 
 html {

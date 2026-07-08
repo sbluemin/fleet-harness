@@ -114,6 +114,7 @@ interface TheaterSectionHeaderProps {
 interface TheaterPeekSectionProps {
   readonly theater: TheaterInfo;
   readonly entries: readonly SideBarEntry[];
+  readonly groups: readonly OperationGroup[];
   readonly operationCount: number;
   readonly collapsed: boolean;
   readonly tier: Tier;
@@ -607,12 +608,13 @@ export function OperationsSideBar({
               operationNotifications,
               catalog,
               renderKindIcon,
-            }).slice(0, PEEK_CHIP_LIMIT);
+            });
             return (
               <TheaterPeekSection
                 key={theater.id}
                 theater={theater}
                 entries={theaterCollapsed ? [] : peekEntries}
+                groups={groups.filter((group) => group.theaterId === theater.id)}
                 operationCount={theaterOperationCount}
                 collapsed={theaterCollapsed}
                 tier={tier}
@@ -931,6 +933,8 @@ function TheaterSectionHeader({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // 중첩 행 컨트롤(∨/⋯/＋)에서 버블된 Enter/Space를 가로채면 버튼 키보드 활성화가 죽는다(Codex P2).
+    if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     onSelectTheater(theater.id);
@@ -996,6 +1000,7 @@ function TheaterSectionHeader({
 function TheaterPeekSection({
   theater,
   entries,
+  groups,
   operationCount,
   collapsed,
   tier,
@@ -1006,6 +1011,19 @@ function TheaterPeekSection({
   onOpenLaunch,
   onContextMenu,
 }: TheaterPeekSectionProps) {
+  // peek에서도 활성 섹션과 같은 그룹 구조를 유지한다 — 총 칩 수만 PEEK_CHIP_LIMIT로 제한하고,
+  // 잘려나간 수는 "+N more"로 알린다(그룹 소속이 안 보이는 착시를 막는다).
+  const sections = groupOperations(entries, groups, []);
+  let remaining = PEEK_CHIP_LIMIT;
+  let truncated = 0;
+  const visibleSections: typeof sections = [];
+  for (const section of sections) {
+    if (section.entries.length === 0) continue;
+    const take = section.entries.slice(0, Math.max(0, remaining));
+    truncated += section.entries.length - take.length;
+    remaining -= take.length;
+    if (take.length > 0) visibleSections.push({ ...section, entries: take });
+  }
   return (
     <li className="side-bar-theater-section side-bar-theater-section--peek" data-theater-id={theater.id}>
       <TheaterSectionHeader
@@ -1020,29 +1038,49 @@ function TheaterPeekSection({
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
       />
-      {entries.length > 0 ? (
+      {visibleSections.length > 0 ? (
         <ol className="side-bar-peek-chips" aria-label={`${theater.label} preview operations`}>
-          {entries.map((entry, index) => (
-            <OperationsSideBarChip
-              key={entry.operation.id}
-              entry={entry}
-              index={index}
-              isCloseArmed={false}
-              accentValue={null}
-              dragging={false}
-              dragOffsetY={0}
-              dropTarget={false}
-              preview
-              onArmClose={() => {}}
-              onDisarmClose={() => {}}
-              onClose={() => {}}
-              onFocus={onFocus}
-              onKeyboardMove={() => {}}
-              onPointerDragStart={() => {}}
-              onOpenAccent={() => {}}
-              onRename={() => {}}
-            />
-          ))}
+          {visibleSections.map((section) => {
+            const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
+            return (
+              <li
+                key={section.groupId ?? "__ungrouped__"}
+                className={section.groupId ? "side-bar-group-section side-bar-group-section--peek" : "side-bar-ungrouped-section"}
+                style={grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined}
+              >
+                {section.group ? (
+                  <div className="side-bar-peek-group-label" aria-label={`Group ${section.group.name}`}>
+                    <span>{section.group.name}</span>
+                    <span className="side-bar-peek-group-count">{section.entries.length}</span>
+                  </div>
+                ) : null}
+                <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : "Ungrouped"}>
+                  {section.entries.map((entry, index) => (
+                    <OperationsSideBarChip
+                      key={entry.operation.id}
+                      entry={entry}
+                      index={index}
+                      isCloseArmed={false}
+                      accentValue={null}
+                      dragging={false}
+                      dragOffsetY={0}
+                      dropTarget={false}
+                      preview
+                      onArmClose={() => {}}
+                      onDisarmClose={() => {}}
+                      onClose={() => {}}
+                      onFocus={onFocus}
+                      onKeyboardMove={() => {}}
+                      onPointerDragStart={() => {}}
+                      onOpenAccent={() => {}}
+                      onRename={() => {}}
+                    />
+                  ))}
+                </ol>
+              </li>
+            );
+          })}
+          {truncated > 0 ? <li className="side-bar-peek-more">+{truncated} more</li> : null}
         </ol>
       ) : null}
     </li>

@@ -3132,9 +3132,10 @@
   overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
-  /* 좌측 가장자리에 밀착 — 바깥(왼쪽) 모서리는 각지게, 안쪽만 둥글게. */
+  /* 좌측 가장자리·하단 StatusBar에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
   border-left: none;
-  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+  border-bottom: none;
+  border-radius: 0 var(--radius-xl) 0 0;
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -3414,6 +3415,39 @@
 
 .side-bar-peek-chips .side-bar-chip {
   pointer-events: auto;
+}
+
+/* peek 섹션의 그룹 라벨 — 활성 그룹 헤더의 축약형(비인터랙티브, 색 레일은 side-bar-group-section 공유). */
+.side-bar-peek-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 6px 2px 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+}
+
+.side-bar-peek-group-label span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-peek-group-count {
+  color: var(--ink-rim);
+}
+
+.side-bar-peek-more {
+  list-style: none;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-rim);
 }
 
 /* 베이스 .theater-menu의 left/right:0(구 GNB 240px 컨테이너 전제)을 해제 —
