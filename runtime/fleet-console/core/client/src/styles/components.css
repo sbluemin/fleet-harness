@@ -66,6 +66,43 @@
   justify-content: flex-end;
 }
 
+/* 설정 라우트 전용 라우트 진입로 — Rail 부재 시 StatusBar가 승계(활성=brass). */
+.statusbar-routes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--surface-rim);
+}
+
+.statusbar-route-link {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-route-link:hover,
+.statusbar-route-link:focus-visible {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+.statusbar-route-link.is-active {
+  color: var(--brass-bright);
+}
+
+.statusbar-route-link svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
 /* 접기 토글 — 조용한 고스트 셰브런. 접힘 상태 자체는 map-fullscreen 상태를 재사용한다. */
 .statusbar-collapse {
   appearance: none;

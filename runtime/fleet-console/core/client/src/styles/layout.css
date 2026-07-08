@@ -32,12 +32,8 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   /* col1=사이드바(OperationsSideBar), col2=맵 캔버스, col3=우현 Activity Rail.
      패널 최대화는 col2(맵 캔버스) 안에서만 일어나며, 사이드바(col1)·Rail(col3)은 항상 독립적으로
-     유지된다. col1 폭은 --side-bar-width CSS 변수로 제어한다. */
-  column-gap: var(--space-3);
-}
-
-/* 패널 최대화 — 캔버스 컬럼의 좌/우 갭을 걷어내 최대화 패널이 사이드바·Rail에 밀착한다. */
-.console-body.is-canvas.is-panel-maximized {
+     유지된다. col1 폭은 --side-bar-width CSS 변수로 제어한다.
+     컬럼 갭 0 — 최대화 여부와 무관하게 캔버스가 사이드바·Rail에 상시 밀착한다. */
   column-gap: 0;
   overflow: hidden;
 }

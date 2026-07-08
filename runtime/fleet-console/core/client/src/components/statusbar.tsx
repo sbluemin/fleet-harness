@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { toggleMapFullscreen, useMapFullscreen } from "../canvas/canvas-store.js";
@@ -62,6 +62,27 @@ export function StatusBar({ state }: StatusBarProps) {
       </div>
       <div className="statusbar-right">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
+        {!collapsible ? (
+          // 설정 라우트에는 우현 Rail이 없어 라우트 진입로가 끊긴다(Codex P2) — StatusBar가 승계한다.
+          <span className="statusbar-routes" role="group" aria-label="Console routes">
+            <NavLink
+              to="/carrier-settings"
+              className={({ isActive }) => `statusbar-route-link${isActive ? " is-active" : ""}`}
+              aria-label="Carriers"
+              title="Carriers"
+            >
+              <CarriersGlyph />
+            </NavLink>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) => `statusbar-route-link${isActive ? " is-active" : ""}`}
+              aria-label="Settings"
+              title="Settings"
+            >
+              <SettingsGlyph />
+            </NavLink>
+          </span>
+        ) : null}
         <Link className="statusbar-brand" to="/operations" aria-label="Operations">
           <span className="statusbar-wordmark">Fleet</span>
         </Link>
@@ -288,6 +309,29 @@ function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
+// 우현 Rail의 라우트 아이콘과 동일 모티프 — Rail은 /operations 전용이라 여기 사본을 둔다.
+function CarriersGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="4" cy="4.2" r="1.15" fill="currentColor" />
+      <circle cx="4" cy="8" r="1.15" fill="currentColor" />
+      <circle cx="4" cy="11.8" r="1.15" fill="currentColor" />
+      <path d="M7.2 4.2h6M7.2 8h6M7.2 11.8h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SettingsGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
 }
 
 function ChevronDownIcon() {

@@ -283,7 +283,7 @@ export function Operations({ state }: OperationsProps) {
 
   return (
     <div
-      className={`console-body is-canvas${maximizedOperationId !== null ? " is-panel-maximized" : ""}`}
+      className="console-body is-canvas"
       ref={bodyRef}
     >
       <OperationsSideBar
