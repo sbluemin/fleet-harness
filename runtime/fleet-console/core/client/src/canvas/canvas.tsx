@@ -21,14 +21,12 @@ interface OperationsCanvasProps {
   readonly state: ConsoleState;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
-  readonly mapFullscreen: boolean;
   readonly radarEnabled: boolean;
   readonly perimeterEnabled: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => void;
   readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
   readonly onResetView: () => void;
-  readonly onMaximizeMap: () => void;
   readonly onToggleRadar: () => void;
   readonly onTogglePerimeter: () => void;
   readonly onClose: (operationId: string) => void;
@@ -62,14 +60,12 @@ export function OperationsCanvas({
   state,
   catalog,
   canLaunch,
-  mapFullscreen,
   radarEnabled,
   perimeterEnabled,
   renderKindIcon,
   onLaunchKind,
   onLaunchAtGeometry,
   onResetView,
-  onMaximizeMap,
   onToggleRadar,
   onTogglePerimeter,
   onClose,
@@ -241,13 +237,11 @@ export function OperationsCanvas({
           placement="cursor"
           catalog={catalog}
           canLaunch={canLaunch}
-          mapFullscreen={mapFullscreen}
           radarEnabled={radarEnabled}
           perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onResetView={handleContextMenuResetView}
-          onMaximizeMap={onMaximizeMap}
           onToggleRadar={onToggleRadar}
           onTogglePerimeter={onTogglePerimeter}
           onClose={() => setContextMenu(null)}

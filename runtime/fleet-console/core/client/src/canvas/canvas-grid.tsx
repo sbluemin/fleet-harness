@@ -11,6 +11,8 @@ const RADAR_PAUSED_CLASS = "is-animation-paused";
 
 export function CanvasGrid({ viewport, backgroundAnimationEnabled }: CanvasGridProps) {
   const [radarAnimationPaused, setRadarAnimationPaused] = useState(() => document.hidden);
+  const radarDisabled = !backgroundAnimationEnabled;
+  const radarPaused = radarAnimationPaused || radarDisabled;
 
   useEffect(() => {
     function handleVisibilityChange() {
@@ -34,14 +36,13 @@ export function CanvasGrid({ viewport, backgroundAnimationEnabled }: CanvasGridP
           backgroundSize: `${48 * viewport.zoom}px ${48 * viewport.zoom}px, ${12 * viewport.zoom}px ${12 * viewport.zoom}px`,
         }}
       />
-      {backgroundAnimationEnabled ? (
-        <div className={`operations-radar${radarAnimationPaused ? ` ${RADAR_PAUSED_CLASS}` : ""}`}>
-          <span className="operations-radar-ring operations-radar-ring--outer" />
-          <span className="operations-radar-ring operations-radar-ring--middle" />
-          <span className="operations-radar-ring operations-radar-ring--inner" />
-          <span className="operations-radar-sweep" />
-        </div>
-      ) : null}
+      {/* OFF에서도 unmount하지 않는다. 122vmax sweep 레이어 teardown이 인접 blur 표면에 잔상을 남길 수 있다. */}
+      <div className={`operations-radar${radarPaused ? ` ${RADAR_PAUSED_CLASS}` : ""}${radarDisabled ? " is-disabled" : ""}`}>
+        <span className="operations-radar-ring operations-radar-ring--outer" />
+        <span className="operations-radar-ring operations-radar-ring--middle" />
+        <span className="operations-radar-ring operations-radar-ring--inner" />
+        <span className="operations-radar-sweep" />
+      </div>
     </div>
   );
 }

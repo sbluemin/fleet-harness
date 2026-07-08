@@ -5,8 +5,8 @@ import { useMapFullscreen } from "./canvas/canvas-store.js";
 import { fetchGroups, fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
+import { StatusBar } from "./components/statusbar.js";
 import { Toast } from "./components/toast.js";
-import { Topbar } from "./components/topbar.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
@@ -42,25 +42,6 @@ export function App() {
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);
   }, [operationsViewVisible]);
-
-  useEffect(() => {
-    const topbar = document.querySelector(".topbar");
-    if (!topbar) return;
-    const sync = () => {
-      document.documentElement.style.setProperty(
-        "--console-topbar-offset",
-        `${Math.round(topbar.getBoundingClientRect().bottom)}px`,
-      );
-    };
-    sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(topbar);
-    window.addEventListener("resize", sync);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", sync);
-    };
-  }, []);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -111,7 +92,6 @@ export function App() {
 
   return (
     <div className={`console-shell ${mapFullscreenActive ? "is-map-fullscreen" : ""}`}>
-      <Topbar state={state} />
       <Routes>
         <Route path="/" element={<Navigate to="/operations" replace />} />
         <Route path="/operations" element={<Operations state={state} />} />
@@ -122,6 +102,7 @@ export function App() {
       <OperationSearch state={state} />
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
+      <StatusBar state={state} />
       <Toast
         open={state.connectionError !== null}
         tone="error"

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
-import type { OperationGroup, OperationNode, OperationNotification } from "../types.js";
+import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
+import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
@@ -12,10 +13,12 @@ import { sortOperationsByOrder } from "../store.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, tierFromWidth, useSideBarState } from "./operations-side-bar-store.js";
+import { MIN_RAIL_PX, setSideBarCollapsed, setSideBarWidth, setTheaterCollapsed, tierFromWidth, useCollapsedTheaters, useSideBarState, type Tier } from "./operations-side-bar-store.js";
 import { resolveOperationLaunchKind } from "./resolve-launch-kind.js";
 
 interface OperationsSideBarProps {
+  readonly theaters: readonly TheaterInfo[];
+  readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
   readonly groups: readonly OperationGroup[];
   readonly minimized: readonly string[];
@@ -23,13 +26,13 @@ interface OperationsSideBarProps {
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
-  readonly mapFullscreen: boolean;
+  readonly addingTheater: boolean;
+  readonly theaterError: string | null;
   readonly radarEnabled: boolean;
   readonly perimeterEnabled: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
-  readonly onMaximizeMap: () => void;
   readonly onToggleRadar: () => void;
   readonly onTogglePerimeter: () => void;
   readonly onClose: (operationId: string) => void;
@@ -37,16 +40,21 @@ interface OperationsSideBarProps {
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
   readonly onRename: (operationId: string, title: string) => void;
   readonly onSetGroupId: (operationId: string, groupId: string | null) => void;
-  readonly onCreateGroup: (theaterId: string, name: string, operationId: string) => void;
+  readonly onCreateGroup: (theaterId: string, name: string, operationId?: string) => void;
   readonly onSetGroupColor: (groupId: string, color: string | null) => void;
   readonly onRenameGroup: (groupId: string, name: string) => void;
   readonly onReorderGroups: (orderedGroupIds: readonly string[]) => void;
   readonly onUngroupAll: (groupId: string) => void;
+  readonly onSelectTheater: (theaterId: string) => void;
+  readonly onAddTheater: (path: string) => void;
+  readonly onCancelAddTheater: () => void;
+  readonly onForgetTheater: (theaterId: string) => void;
 }
 
 type ActiveContextMenu =
   | { readonly kind: "chip"; readonly operationId: string; readonly anchor: DOMRect }
-  | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect };
+  | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect }
+  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLButtonElement | null };
 
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
@@ -79,12 +87,64 @@ interface GroupDragState {
 
 type DragState = ChipDragState | GroupDragState;
 
+interface TheaterEntryBuildInput {
+  readonly theaterId: string;
+  readonly operations: readonly OperationNode[];
+  readonly operationOrder: readonly string[];
+  readonly minimizedSet: ReadonlySet<string>;
+  readonly activeOperationId: string | null;
+  readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
+  readonly catalog: readonly OperationCatalogPlugin[];
+  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
+}
+
+interface TheaterSectionHeaderProps {
+  readonly theater: TheaterInfo;
+  readonly operationCount: number;
+  readonly active: boolean;
+  readonly collapsed: boolean;
+  readonly tier: Tier;
+  readonly onSelectTheater: (theaterId: string) => void;
+  readonly onToggleCollapsed: (theaterId: string) => void;
+  readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
+  readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
+  readonly onContextMenu: (anchor: DOMRect) => void;
+}
+
+interface TheaterPeekSectionProps {
+  readonly theater: TheaterInfo;
+  readonly entries: readonly SideBarEntry[];
+  readonly groups: readonly OperationGroup[];
+  readonly operationCount: number;
+  readonly collapsed: boolean;
+  readonly tier: Tier;
+  readonly onSelectTheater: (theaterId: string) => void;
+  readonly onFocus: (operationId: string) => void;
+  readonly onToggleCollapsed: (theaterId: string) => void;
+  readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
+  readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
+  readonly onContextMenu: (anchor: DOMRect) => void;
+}
+
+interface TheaterActionsMenuProps {
+  readonly theater: TheaterInfo;
+  readonly groupCount: number;
+  readonly anchor: DOMRect;
+  readonly onCreateGroup: (name: string) => void;
+  readonly onForgetTheater: () => void;
+  readonly onClose: () => void;
+}
+
 const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
+const PEEK_CHIP_LIMIT = 4;
+const SETTINGS_MENU_CANVAS_OFFSET_PX = 36;
 
 export function OperationsSideBar({
+  theaters,
+  activeTheaterId,
   operations,
   groups,
   minimized,
@@ -92,13 +152,13 @@ export function OperationsSideBar({
   operationNotifications,
   catalog,
   canLaunch,
-  mapFullscreen,
+  addingTheater,
+  theaterError,
   radarEnabled,
   perimeterEnabled,
   renderKindIcon,
   onLaunchKind,
   onResetView,
-  onMaximizeMap,
   onToggleRadar,
   onTogglePerimeter,
   onClose,
@@ -111,7 +171,12 @@ export function OperationsSideBar({
   onRenameGroup,
   onReorderGroups,
   onUngroupAll,
+  onSelectTheater,
+  onAddTheater,
+  onCancelAddTheater,
+  onForgetTheater,
 }: OperationsSideBarProps) {
+  const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
@@ -130,11 +195,16 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [sideBarResizing, setSideBarResizing] = useState(false);
   const collapsedGroups = useCollapsedGroups();
+  const collapsedTheaters = useCollapsedTheaters();
 
+  const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
+  const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
   const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
-  const allEntries: SideBarEntry[] = sortOperationsByOrder(operations, canvas.operationOrder).map((operation) => {
+  const allEntries: SideBarEntry[] = sortOperationsByOrder(activeOperations, canvas.operationOrder).map((operation) => {
     const kind = resolveOperationLaunchKind(catalog, operation);
     const icon = kind ? renderKindIcon(operation.pluginId, kind) : null;
     return {
@@ -145,7 +215,7 @@ export function OperationsSideBar({
       icon,
     };
   });
-  const groupedSections = groupOperations(allEntries, groups, canvas.operationOrder);
+  const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
   const visibleEntries = groupedSections.flatMap((section) =>
     collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
@@ -189,6 +259,9 @@ export function OperationsSideBar({
     : null;
   const contextMenuGroup = activeContextMenu?.kind === "group"
     ? groups.find((g) => g.id === activeContextMenu.groupId) ?? null
+    : null;
+  const contextMenuTheater = activeContextMenu?.kind === "theater"
+    ? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
 
   const keyboardMove = (operationId: string, direction: -1 | 1) => {
@@ -343,19 +416,23 @@ export function OperationsSideBar({
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = sideBar.width;
+    setSideBarResizing(true);
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
       setSideBarWidth(startWidth + dx);
     };
 
-    const onUp = () => {
+    const onEnd = () => {
+      setSideBarResizing(false);
       document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
     };
 
     document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointerup", onEnd);
+    document.addEventListener("pointercancel", onEnd);
   }, [sideBar.width]);
 
   const handleResizeDoubleClick = () => {
@@ -363,17 +440,21 @@ export function OperationsSideBar({
     if (!collapsed) setSideBarWidth(MIN_RAIL_PX);
   };
 
-  const openNewMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (newMenu) {
-      setNewMenu(null);
-      return;
-    }
+  const openTheaterBrowser = () => {
+    setNewMenu(null);
     setSettingsMenu(null);
-    const rect = event.currentTarget.getBoundingClientRect();
-    setNewMenu({
-      anchor: { x: rect.right + 8, y: rect.top },
-      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
-    });
+    setActiveContextMenu(null);
+    setBrowserOpen(true);
+  };
+
+  const cancelTheaterBrowser = () => {
+    setBrowserOpen(false);
+    onCancelAddTheater();
+  };
+
+  const confirmTheaterBrowser = (path: string) => {
+    setBrowserOpen(false);
+    onAddTheater(path);
   };
 
   // 사이드바 빈 영역 우클릭 = ＋New 버튼과 동일한 launch 오버레이를 커서 위치에 연다.
@@ -397,10 +478,33 @@ export function OperationsSideBar({
     }
     setNewMenu(null);
     const rect = event.currentTarget.getBoundingClientRect();
+    const sideBarRight = rootRef.current?.getBoundingClientRect().right ?? rect.right;
     setSettingsMenu({
+      anchor: { x: Math.max(rect.right + 8, sideBarRight + SETTINGS_MENU_CANVAS_OFFSET_PX), y: rect.top },
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+    });
+  };
+
+  const closeActiveContextMenu = useCallback(() => {
+    const returnFocus = activeContextMenu?.kind === "theater" ? activeContextMenu.returnFocus : null;
+    setActiveContextMenu(null);
+    returnFocus?.focus();
+  }, [activeContextMenu]);
+
+  const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
+    event.stopPropagation();
+    if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
+    setSettingsMenu(null);
+    setActiveContextMenu(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setNewMenu({
       anchor: { x: rect.right + 8, y: rect.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
+  };
+
+  const toggleTheaterSectionCollapsed = (theaterId: string) => {
+    setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
   };
 
   const displayWidth = collapsed ? MIN_RAIL_PX : width;
@@ -409,7 +513,9 @@ export function OperationsSideBar({
     return (
       <aside
         className="operations-side-bar"
+        ref={rootRef}
         data-tier={tier}
+        data-resizing={sideBarResizing ? "true" : undefined}
         data-canvas-blocker
         style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
         onContextMenu={openNewMenuAtCursor}
@@ -417,12 +523,13 @@ export function OperationsSideBar({
         <header className="operations-side-bar-header">
           <button
             type="button"
-            className="side-bar-new-btn"
-            onClick={openNewMenu}
-            aria-label="New Operation"
-            title="New Operation"
+            className="side-bar-theater-add-btn"
+            onClick={openTheaterBrowser}
+            disabled={addingTheater}
+            aria-label="Add Theater"
+            title={addingTheater ? "Adding Theater" : "Add Theater"}
           >
-            <NewIcon />
+            <AnchorIcon />
           </button>
         </header>
         <div className="operations-side-bar-resize-handle" onPointerDown={handleResizeDragStart} onDoubleClick={handleResizeDoubleClick} aria-hidden="true" />
@@ -442,6 +549,7 @@ export function OperationsSideBar({
           />,
           document.body,
         ) : null}
+        <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
       </aside>
     );
   }
@@ -449,23 +557,38 @@ export function OperationsSideBar({
   return (
     <aside
       className="operations-side-bar"
+      ref={rootRef}
       data-tier={tier}
+      data-resizing={sideBarResizing ? "true" : undefined}
       data-canvas-blocker
       style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
       onContextMenu={openNewMenuAtCursor}
     >
       <header className="operations-side-bar-header">
-        <button
-          type="button"
-          className="side-bar-new-btn"
-          onClick={openNewMenu}
-          aria-label="New Operation"
-          aria-expanded={newMenu !== null}
-          title="New Operation"
-        >
-          <NewIcon />
-          {tier !== "rail" ? <span>Operation</span> : null}
-        </button>
+        {tier !== "rail" ? (
+          <button
+            type="button"
+            className="side-bar-theater-add-btn"
+            onClick={openTheaterBrowser}
+            disabled={addingTheater}
+            aria-label="Add Theater"
+            title={addingTheater ? "Adding Theater" : "Add Theater"}
+          >
+            <AnchorIcon />
+            <span>Theater</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="side-bar-theater-add-btn"
+            onClick={openTheaterBrowser}
+            disabled={addingTheater}
+            aria-label="Add Theater"
+            title={addingTheater ? "Adding Theater" : "Add Theater"}
+          >
+            <AnchorIcon />
+          </button>
+        )}
         {tier !== "rail" ? (
           <button
             type="button"
@@ -479,9 +602,84 @@ export function OperationsSideBar({
           </button>
         ) : null}
       </header>
+      {tier !== "rail" && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
-        {groupedSections.map((section) => {
+        {theaters.map((theater) => {
+          const isActiveTheater = theater.id === activeTheaterId;
+          const theaterOperationCount = operations.filter((operation) => operation.theaterId === theater.id).length;
+          const theaterCollapsed = collapsedTheaters.includes(theater.id);
+          if (tier === "rail" && !isActiveTheater) return null;
+          if (!isActiveTheater) {
+            const peekEntries = buildTheaterEntries({
+              theaterId: theater.id,
+              operations,
+              operationOrder: canvas.operationOrder,
+              minimizedSet,
+              // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
+              activeOperationId: null,
+              operationNotifications,
+              catalog,
+              renderKindIcon,
+            });
+            return (
+              <TheaterPeekSection
+                key={theater.id}
+                theater={theater}
+                entries={theaterCollapsed ? [] : peekEntries}
+                groups={groups.filter((group) => group.theaterId === theater.id)}
+                operationCount={theaterOperationCount}
+                collapsed={theaterCollapsed}
+                tier={tier}
+                onSelectTheater={onSelectTheater}
+                onFocus={onFocus}
+                onToggleCollapsed={toggleTheaterSectionCollapsed}
+                onOpenActions={(anchor, returnFocus) => {
+                  setNewMenu(null);
+                  setSettingsMenu(null);
+                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
+                }}
+                onOpenLaunch={openTheaterLaunchMenu}
+                onContextMenu={(anchor) => {
+                  setNewMenu(null);
+                  setSettingsMenu(null);
+                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
+                }}
+              />
+            );
+          }
+          return (
+            <li
+              key={theater.id}
+              className="side-bar-theater-section side-bar-theater-section--active"
+              data-theater-id={theater.id}
+            >
+              {tier !== "rail" ? (
+                <TheaterSectionHeader
+                  theater={theater}
+                  operationCount={theaterOperationCount}
+                  active
+                  collapsed={theaterCollapsed}
+                  tier={tier}
+                  onSelectTheater={onSelectTheater}
+                  onToggleCollapsed={toggleTheaterSectionCollapsed}
+                  onOpenActions={(anchor, returnFocus) => {
+                    setNewMenu(null);
+                    setSettingsMenu(null);
+                    setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
+                  }}
+                  onOpenLaunch={openTheaterLaunchMenu}
+                  onContextMenu={(anchor) => {
+                    setNewMenu(null);
+                    setSettingsMenu(null);
+                    setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
+                  }}
+                />
+              ) : null}
+              {/* rail 티어에는 헤더(셰브런)가 없어 접힘을 풀 수 없다 — rail에서는 접힘을 무시하고 항상 칩을 노출한다(Codex P2). */}
+              {tier === "rail" || !theaterCollapsed ? (
+              <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
+                {groupedSections.map((section) => {
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -572,6 +770,11 @@ export function OperationsSideBar({
             </li>
           );
         })}
+              </ol>
+              ) : null}
+            </li>
+          );
+        })}
       </ol>
 
       <div
@@ -607,13 +810,11 @@ export function OperationsSideBar({
           mode="controls"
           catalog={catalog}
           canLaunch={canLaunch}
-          mapFullscreen={mapFullscreen}
           radarEnabled={radarEnabled}
           perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={onLaunchKind}
           onResetView={() => { setSettingsMenu(null); onResetView(); }}
-          onMaximizeMap={onMaximizeMap}
           onToggleRadar={onToggleRadar}
           onTogglePerimeter={onTogglePerimeter}
           onClose={() => setSettingsMenu(null)}
@@ -625,7 +826,7 @@ export function OperationsSideBar({
         <GroupContextMenu
           kind="chip"
           operation={contextMenuOperation}
-          groups={groups}
+          groups={groups.filter((group) => group.theaterId === contextMenuOperation.theaterId)}
           accentKey={canvas.operationAccent[contextMenuOperation.id] ?? operationAccentFromNode(contextMenuOperation)}
           anchor={activeContextMenu.anchor}
           actions={{
@@ -647,7 +848,23 @@ export function OperationsSideBar({
           }}
           onClose={() => setActiveContextMenu(null)}
         />
+      ) : activeContextMenu?.kind === "theater" && contextMenuTheater ? (
+        <TheaterActionsMenu
+          theater={contextMenuTheater}
+          groupCount={groups.filter((group) => group.theaterId === contextMenuTheater.id).length}
+          anchor={activeContextMenu.anchor}
+          onCreateGroup={(name) => {
+            onCreateGroup(contextMenuTheater.id, name);
+            closeActiveContextMenu();
+          }}
+          onForgetTheater={() => {
+            onForgetTheater(contextMenuTheater.id);
+            closeActiveContextMenu();
+          }}
+          onClose={closeActiveContextMenu}
+        />
       ) : null}
+      <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
     </aside>
   );
 }
@@ -686,6 +903,303 @@ export function groupOperations(
   return [...sections, ungrouped];
 }
 
+function buildTheaterEntries({
+  theaterId,
+  operations,
+  operationOrder,
+  minimizedSet,
+  activeOperationId,
+  operationNotifications,
+  catalog,
+  renderKindIcon,
+}: TheaterEntryBuildInput): SideBarEntry[] {
+  return sortOperationsByOrder(
+    operations.filter((operation) => operation.theaterId === theaterId),
+    operationOrder,
+  ).map((operation) => {
+    const kind = resolveOperationLaunchKind(catalog, operation);
+    const icon = kind ? renderKindIcon(operation.pluginId, kind) : null;
+    return {
+      operation,
+      active: activeOperationId === operation.id,
+      minimized: minimizedSet.has(operation.id),
+      notificationCount: operationNotifications[operation.id] ? 1 : 0,
+      icon,
+    };
+  });
+}
+
+function TheaterSectionHeader({
+  theater,
+  operationCount,
+  active,
+  collapsed,
+  tier,
+  onSelectTheater,
+  onToggleCollapsed,
+  onOpenActions,
+  onOpenLaunch,
+  onContextMenu,
+}: TheaterSectionHeaderProps) {
+  const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    onContextMenu(event.currentTarget.getBoundingClientRect());
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // 중첩 행 컨트롤(∨/⋯/＋)에서 버블된 Enter/Space를 가로채면 버튼 키보드 활성화가 죽는다(Codex P2).
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelectTheater(theater.id);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`side-bar-theater-header${active ? " is-active" : ""}`}
+      onClick={() => onSelectTheater(theater.id)}
+      onKeyDown={handleKeyDown}
+      onContextMenu={handleContextMenu}
+      aria-current={active ? "true" : undefined}
+      aria-expanded={!collapsed}
+      title={theater.label}
+    >
+      <span className="side-bar-theater-anchor" aria-hidden="true"><AnchorIcon /></span>
+      <span className="side-bar-theater-name">{theater.label}</span>
+      <span className="side-bar-theater-count">{operationCount}</span>
+      {tier !== "rail" ? (
+        <span className="side-bar-theater-row-controls" aria-label={`${theater.label} controls`}>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
+            aria-label={collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand" : "Collapse"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleCollapsed(theater.id);
+            }}
+          >
+            <ChevronIcon collapsed={collapsed} />
+          </button>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn"
+            aria-label="Theater actions"
+            title="Theater actions"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenActions(event.currentTarget.getBoundingClientRect(), event.currentTarget);
+            }}
+          >
+            <MoreIcon />
+          </button>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn"
+            aria-label={`New Operation in ${theater.label}`}
+            title={`New Operation in ${theater.label}`}
+            onClick={(event) => onOpenLaunch(event, theater.id)}
+          >
+            <PlusIcon />
+          </button>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function TheaterPeekSection({
+  theater,
+  entries,
+  groups,
+  operationCount,
+  collapsed,
+  tier,
+  onSelectTheater,
+  onFocus,
+  onToggleCollapsed,
+  onOpenActions,
+  onOpenLaunch,
+  onContextMenu,
+}: TheaterPeekSectionProps) {
+  // peek에서도 활성 섹션과 같은 그룹 구조를 유지한다 — 총 칩 수만 PEEK_CHIP_LIMIT로 제한하고,
+  // 잘려나간 수는 "+N more"로 알린다(그룹 소속이 안 보이는 착시를 막는다).
+  const sections = groupOperations(entries, groups, []);
+  let remaining = PEEK_CHIP_LIMIT;
+  let truncated = 0;
+  const visibleSections: typeof sections = [];
+  for (const section of sections) {
+    if (section.entries.length === 0) continue;
+    const take = section.entries.slice(0, Math.max(0, remaining));
+    truncated += section.entries.length - take.length;
+    remaining -= take.length;
+    if (take.length > 0) visibleSections.push({ ...section, entries: take });
+  }
+  return (
+    <li className="side-bar-theater-section side-bar-theater-section--peek" data-theater-id={theater.id}>
+      <TheaterSectionHeader
+        theater={theater}
+        operationCount={operationCount}
+        active={false}
+        collapsed={collapsed}
+        tier={tier}
+        onSelectTheater={onSelectTheater}
+        onToggleCollapsed={onToggleCollapsed}
+        onOpenActions={onOpenActions}
+        onOpenLaunch={onOpenLaunch}
+        onContextMenu={onContextMenu}
+      />
+      {visibleSections.length > 0 ? (
+        <ol className="side-bar-peek-chips" aria-label={`${theater.label} preview operations`}>
+          {visibleSections.map((section) => {
+            const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
+            return (
+              <li
+                key={section.groupId ?? "__ungrouped__"}
+                className={section.groupId ? "side-bar-group-section side-bar-group-section--peek" : "side-bar-ungrouped-section"}
+                style={grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined}
+              >
+                {section.group ? (
+                  <div className="side-bar-peek-group-label" aria-label={`Group ${section.group.name}`}>
+                    <span>{section.group.name}</span>
+                    <span className="side-bar-peek-group-count">{section.entries.length}</span>
+                  </div>
+                ) : null}
+                <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : "Ungrouped"}>
+                  {section.entries.map((entry, index) => (
+                    <OperationsSideBarChip
+                      key={entry.operation.id}
+                      entry={entry}
+                      index={index}
+                      isCloseArmed={false}
+                      accentValue={null}
+                      dragging={false}
+                      dragOffsetY={0}
+                      dropTarget={false}
+                      preview
+                      onArmClose={() => {}}
+                      onDisarmClose={() => {}}
+                      onClose={() => {}}
+                      onFocus={onFocus}
+                      onKeyboardMove={() => {}}
+                      onPointerDragStart={() => {}}
+                      onOpenAccent={() => {}}
+                      onRename={() => {}}
+                    />
+                  ))}
+                </ol>
+              </li>
+            );
+          })}
+          {truncated > 0 ? <li className="side-bar-peek-more">+{truncated} more</li> : null}
+        </ol>
+      ) : null}
+    </li>
+  );
+}
+
+function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForgetTheater, onClose }: TheaterActionsMenuProps) {
+  const [showNewInput, setShowNewInput] = useState(false);
+  const [newName, setNewName] = useState(`Group ${groupCount + 1}`);
+  const composingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
+  // Forget/New group에 도달할 수 없다(Codex P2) — 실측 높이로 상단을 클램프한다.
+  const [menuTop, setMenuTop] = useState(anchor.bottom + 6);
+
+  useLayoutEffect(() => {
+    const height = menuRef.current?.getBoundingClientRect().height ?? 0;
+    const maxTop = window.innerHeight - height - 8;
+    setMenuTop(Math.max(8, Math.min(anchor.bottom + 6, maxTop)));
+  }, [anchor, showNewInput]);
+
+  useEffect(() => {
+    if (showNewInput) inputRef.current?.select();
+  }, [showNewInput]);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [onClose]);
+
+  const confirmNewGroup = () => {
+    const name = newName.trim();
+    if (!name) return;
+    onCreateGroup(name);
+  };
+
+  return createPortal(
+    <div className="group-context-menu-overlay" role="presentation" onPointerDown={onClose}>
+      <div
+        ref={menuRef}
+        className="theater-menu side-bar-theater-menu"
+        role="menu"
+        aria-label={`${theater.label} actions`}
+        style={{
+          position: "fixed",
+          left: anchor.left,
+          top: menuTop,
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {showNewInput ? (
+          <input
+            ref={inputRef}
+            className="group-context-menu-new-input theater-menu-new-group-input"
+            type="text"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !composingRef.current) { event.preventDefault(); confirmNewGroup(); }
+              if (event.key === "Escape") { event.preventDefault(); setShowNewInput(false); }
+            }}
+            onBlur={() => setShowNewInput(false)}
+            aria-label="New group name"
+            placeholder="Group name"
+          />
+        ) : (
+          <button
+            type="button"
+            role="menuitem"
+            className="theater-menu-item theater-menu-new-group"
+            onClick={() => setShowNewInput(true)}
+          >
+            <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
+            <span className="theater-menu-label">New group…</span>
+          </button>
+        )}
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button
+          type="button"
+          role="menuitem"
+          className="theater-menu-item theater-menu-forget"
+          onClick={onForgetTheater}
+        >
+          <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
+          <span className="theater-menu-label">Forget Theater</span>
+        </button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | null): void {
   if (!chipsElement) return;
@@ -697,12 +1211,32 @@ function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | nul
   }
 }
 
-function NewIcon() {
+function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M12 2.4v3.4M12 18.2v3.4M2.4 12h3.4M18.2 12h3.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12 9.2v5.6M9.2 12h5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      {collapsed ? (
+        <path d="M6 3.8 10.2 8 6 12.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="3.5" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
     </svg>
   );
 }
@@ -718,6 +1252,24 @@ function SettingsIcon() {
         strokeWidth="1.25"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function AnchorIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="3.2" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8 4.7v8.1M4.3 8.2H11.7M3.4 9.1A4.7 4.7 0 0 0 12.6 9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5.2 5.8v6.1M8 5.8v6.1M10.8 5.8v6.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M3.7 4.1h8.6M6.4 4.1l.4-1h2.4l.4 1M4.6 4.1l.5 9.1h5.8l.5-9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

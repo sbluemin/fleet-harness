@@ -20,6 +20,8 @@ interface SideBarChipProps {
   readonly dragging: boolean;
   readonly dragOffsetY: number;
   readonly dropTarget: boolean;
+  /** peek(비활성 Theater) 미리보기 칩 — focus만 살리고 close/rename/accent/재배치 어포던스를 렌더하지 않는다. */
+  readonly preview?: boolean;
   readonly onArmClose: (operationId: string) => void;
   readonly onDisarmClose: () => void;
   readonly onClose: (operationId: string) => void;
@@ -38,6 +40,7 @@ export function OperationsSideBarChip({
   dragging,
   dragOffsetY,
   dropTarget,
+  preview = false,
   onArmClose,
   onDisarmClose,
   onClose,
@@ -101,10 +104,10 @@ export function OperationsSideBarChip({
       tabIndex={0}
       aria-label={active ? `${title} (focused)` : `Focus operation ${title}`}
       aria-current={active ? "true" : undefined}
-      title={active ? "Focused · double-click to rename · right-click to set accent" : "Click to focus · double-click to rename · right-click to set accent"}
+      title={preview ? "Click to open in its Theater" : active ? "Focused · double-click to rename · right-click to set accent" : "Click to focus · double-click to rename · right-click to set accent"}
       style={chipStyle}
       onClick={focus}
-      onContextMenu={openAccent}
+      onContextMenu={preview ? undefined : openAccent}
       onFocus={() => {
         if (!isCloseArmed) onDisarmClose();
       }}
@@ -115,7 +118,7 @@ export function OperationsSideBarChip({
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
         // 재배치: Alt+Shift+↑/↓ — shift 없는 Alt+↑/↓는 operations의 Operation 순환이 가져간다.
-        if (event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        if (!preview && event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
           event.preventDefault();
           onKeyboardMove(operation.id, event.key === "ArrowUp" ? -1 : 1);
           return;
@@ -144,21 +147,23 @@ export function OperationsSideBarChip({
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="side-bar-chip-name" onDoubleClick={rename.begin}>{title}</span>
+        <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
       )}
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
       ) : null}
-      <button
-        type="button"
-        className={closeClassName}
-        onPointerDown={stopClosePointer}
-        onClick={close}
-        aria-label={isCloseArmed ? `Confirm close operation ${title}` : `Close operation ${title}`}
-        title={isCloseArmed ? "Confirm close" : "Close operation"}
-      >
-        {isCloseArmed ? "Close?" : <SideBarCloseIcon />}
-      </button>
+      {preview ? null : (
+        <button
+          type="button"
+          className={closeClassName}
+          onPointerDown={stopClosePointer}
+          onClick={close}
+          aria-label={isCloseArmed ? `Confirm close operation ${title}` : `Close operation ${title}`}
+          title={isCloseArmed ? "Confirm close" : "Close operation"}
+        >
+          {isCloseArmed ? "Close?" : <SideBarCloseIcon />}
+        </button>
+      )}
     </li>
   );
 }

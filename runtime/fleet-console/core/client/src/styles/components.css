@@ -1,4 +1,3 @@
-.topbar,
 .stage,
 .timeline-dock {
   border: 1px solid var(--surface-rim);
@@ -8,9 +7,25 @@
   -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
-.topbar,
 .stage {
   border-radius: var(--radius-xl);
+}
+
+/* 하단 StatusBar — 브라우저 모서리에 밀착하는 풀블리드 스트립. 카드(레디우스·그림자) 문법을 쓰지 않는다. */
+.statusbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: var(--console-statusbar-height, 28px);
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--surface-rim);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  color: var(--ink-spectral);
 }
 
 .stage {
@@ -26,122 +41,186 @@
   pointer-events: none;
 }
 
-.topbar {
-  position: relative;
-  /* GNB가 본문 위 stacking context를 형성해야 Theater 팝오버(z-index 40)가 본문을 덮고 클릭을 받는다. toast(40)는 별도 sibling이라 영향 없음. */
-  z-index: 10;
-  display: grid;
-  /* minmax(0, …)으로 양쪽 트랙의 수축을 허용한다 — 1fr의 암묵적 auto 최소폭이 meta(우측 toolbar)
-     고유폭만큼 트랙을 부풀려 그리드 전체를 밀어내고 중앙 THEATER를 침범하던 문제를 막는다.
-     트랙이 줄어드는 만큼 GNB 반응형 ladder가 라벨을 접어 meta가 트랙을 넘지 않도록 유지한다. */
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  padding: 0 var(--space-5);
-}
-
-.topbar-brand {
-  display: flex;
-  align-items: center;
-  justify-self: start;
-  min-width: 0;
-  gap: var(--space-3);
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-/* 브랜드 로고는 Operations로 가는 링크 — 클릭 가능함을 미세하게 알린다. */
-.topbar-brand:hover {
-  opacity: 0.82;
-}
-
-/* 브랜드 + 리서치 프리뷰 배지를 GNB 첫 컬럼에 함께 묶어 grid(1fr auto 1fr) 3컬럼 구조를 보존한다. */
-.topbar-lead {
-  display: flex;
-  align-items: center;
-  justify-self: start;
-  min-width: 0;
-  gap: var(--space-3);
-}
-
-/* 리서치 프리뷰 배지 — 보더리스 미니멀. brass dot + mono 대문자 텍스트만으로 GNB를 가볍게 유지한다.
-   brass는 '구조적/정체성' 역할이라 aurora=live, coral=error, warn=connecting 의미와 충돌하지 않는다. */
-.topbar-preview-badge {
-  flex: 0 0 auto;
-  display: inline-grid;
-  grid-template-rows: auto auto;
-  align-items: center;
-  row-gap: 2px;
-  color: var(--brass);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.topbar-preview-label {
-  color: var(--brass);
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.topbar-preview-version {
-  /* RESEARCH PREVIEW 라벨(col2 트랙 폭을 결정) 기준으로 버전을 가로 중앙 정렬한다. */
-  justify-self: center;
-  color: color-mix(in oklch, var(--brass) 64%, var(--ink-fog));
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0;
-}
-
-/* GitHub 홍보 링크 그룹 — preview 배지와 hairline으로 가른 한 묶음. 보더리스 미니멀로 GNB를 가볍게 유지한다. */
-.topbar-github {
+.statusbar-left,
+.statusbar-right,
+.statusbar-brand,
+.statusbar-connection,
+.statusbar-theater,
+.statusbar-github,
+.statusbar-github-link,
+.statusbar-github-stars,
+.statusbar-update,
+.statusbar-version {
   display: inline-flex;
   align-items: center;
-  flex: 0 0 auto;
+}
+
+.statusbar-left,
+.statusbar-right {
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.statusbar-right {
+  flex: none;
+  justify-content: flex-end;
+}
+
+/* 설정 라우트 전용 라우트 진입로 — Rail 부재 시 StatusBar가 승계(활성=brass). */
+.statusbar-routes {
+  display: inline-flex;
+  align-items: center;
   gap: 2px;
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--surface-rim);
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--surface-rim);
 }
 
-/* preview 배지가 접히는 폭(≤1800px)에서도 GitHub 마크는 끝까지 노출한다(홍보 목적). 배지 부재 시
-   hairline은 브랜드 타이틀과 GitHub를 가르므로 의미가 유지된다. */
-.topbar-github-link,
-.topbar-github-stars {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 7px;
-  border-radius: var(--radius-md);
+.statusbar-route-link {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
   color: var(--ink-fog);
   transition:
     color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring);
 }
 
-.topbar-github-link svg,
-.topbar-github-stars svg {
-  display: block;
-  width: 16px;
-  height: 16px;
+.statusbar-route-link:hover,
+.statusbar-route-link:focus-visible {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
-/* star 별 외곽선은 hover 시 brass로 채워지므로, 채움 전환이 부드럽게 보이도록 path에 transition을 건다. */
-.topbar-github-stars svg path {
+.statusbar-route-link.is-active {
+  color: var(--brass-bright);
+}
+
+.statusbar-route-link svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* 접기 토글 — 조용한 고스트 셰브런. 접힘 상태 자체는 map-fullscreen 상태를 재사용한다. */
+.statusbar-collapse {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-collapse:hover,
+.statusbar-collapse:focus-visible {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+.statusbar-collapse svg,
+.statusbar-reveal svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* 접힌 StatusBar를 되살리는 좌하단 리빌 핸들 — 접힘 중 유일하게 남는 어포던스. */
+.statusbar-reveal {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-reveal:hover,
+.statusbar-reveal:focus-visible {
+  color: var(--ink-pearl);
+  border-color: var(--surface-rim-strong);
+}
+
+.statusbar-brand {
+  flex: none;
+  color: var(--ink-pearl);
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-brand:hover {
+  opacity: 0.82;
+}
+
+.statusbar-wordmark {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-variation-settings: "opsz" 24;
+  font-weight: 560;
+  line-height: 1;
+}
+
+.statusbar-github-link svg,
+.statusbar-github-stars svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.statusbar-github {
+  gap: 2px;
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--surface-rim);
+}
+
+.statusbar-github-link,
+.statusbar-github-stars {
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-github-stars svg path {
   transition:
     fill var(--duration-fast) var(--ease-spring),
     stroke var(--duration-fast) var(--ease-spring);
 }
 
-.topbar-github-link:hover,
-.topbar-github-stars:hover {
+.statusbar-github-link:hover,
+.statusbar-github-stars:hover {
   color: var(--ink-pearl);
   background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
-/* star 수 — mono · tabular-nums로 폭을 안정시키고 brass 정체성 톤을 입힌다. */
-.topbar-github-stars-count {
+.statusbar-github-stars-count {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -149,96 +228,28 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* hover 시 별을 brass로 채워 '여기를 눌러 star' 의도를 시각화한다 — hover 한정이라 금지된 무한 모션이 아니다. */
-.topbar-github-stars:hover svg path {
+.statusbar-github-stars:hover svg path {
   fill: var(--brass-bright);
   stroke: var(--brass-bright);
 }
 
-.topbar-github-stars:hover .topbar-github-stars-count {
+.statusbar-github-stars:hover .statusbar-github-stars-count {
   color: var(--brass-bright);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .topbar-github-link,
-  .topbar-github-stars,
-  .topbar-github-stars svg path {
-    transition: none;
-  }
-}
-
-.topbar-sigil {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: none;
-  border: 1px solid color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  background:
-    radial-gradient(circle at 32% 24%, oklch(86% 0.16 78 / 34%), transparent 68%),
-    var(--surface-glass-strong);
-  color: var(--brass-bright);
-  box-shadow: var(--shadow-anchor);
-}
-
-.topbar-sigil svg {
-  display: block;
-  width: 22px;
-  height: 22px;
-}
-
-/* 연결 이상(connectionError) 시 브랜드 시질을 coral 경보색으로 전환한다 — 무한 모션은 쓰지 않고 색만 바꾼다 */
-.topbar-sigil.is-alert {
-  border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
-  background:
-    radial-gradient(circle at 32% 24%, var(--coral-glow), transparent 68%),
-    var(--surface-glass-strong);
-  color: var(--coral);
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--coral) 24%, transparent),
-    0 12px 32px -16px var(--coral-glow);
-}
-
-.topbar-title {
-  margin: 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: 23px;
-  font-variation-settings: "opsz" 28;
-  font-weight: 560;
-  line-height: 1;
-}
-
-.topbar-title-thin {
-  margin-left: 5px;
-  color: var(--ink-spectral);
-  font-weight: 340;
-}
-
-.topbar-meta {
-  display: flex;
-  align-items: center;
-  justify-self: end;
-  min-width: 0;
-  gap: var(--space-4);
-}
-
-.topbar-update-badge {
+.statusbar-update {
   appearance: none;
-  display: inline-flex;
-  align-items: center;
   flex: 0 0 auto;
-  min-height: 28px;
-  padding: 5px var(--space-3);
+  min-height: 22px;
+  padding: 0 var(--space-2);
   border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--warn) 13%, transparent);
   box-shadow: 0 0 18px -10px var(--warn-glow);
   color: var(--warn);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 1;
@@ -251,40 +262,77 @@
     color var(--duration-fast) var(--ease-spring);
 }
 
-.topbar-update-badge:hover:not(:disabled) {
+/* 버전 칩 — 조용한 중립 텍스트. 강조는 미열람 도트 하나만 진다. */
+.statusbar-version {
+  appearance: none;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.statusbar-version:hover:not(:disabled) {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+.statusbar-update:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--warn) 72%, var(--surface-rim));
   background: color-mix(in oklch, var(--warn) 18%, transparent);
   color: var(--ink-pearl);
 }
 
-.topbar-update-badge:disabled {
+.statusbar-update:disabled,
+.statusbar-version:disabled {
   cursor: default;
 }
 
-.topbar-update-badge--live {
+.statusbar-update--live {
   border-color: color-mix(in oklch, var(--aurora) 44%, var(--surface-rim));
   background: color-mix(in oklch, var(--aurora) 12%, transparent);
   box-shadow: 0 0 18px -10px var(--aurora-glow);
   color: var(--aurora);
 }
 
-.topbar-update-badge--blocked {
+.statusbar-update--blocked {
   border-color: color-mix(in oklch, var(--warn) 34%, var(--surface-rim));
   background: color-mix(in oklch, var(--warn) 8%, transparent);
   box-shadow: none;
   color: color-mix(in oklch, var(--warn) 84%, var(--ink-muted));
 }
 
-.topbar-update-badge--error {
+.statusbar-update--error {
   border-color: color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
   background: color-mix(in oklch, var(--coral) 10%, transparent);
   box-shadow: 0 0 18px -12px var(--coral-glow);
   color: var(--coral);
 }
 
-.topbar-update-badge--error:hover:not(:disabled) {
+.statusbar-update--error:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--coral) 70%, var(--surface-rim));
   background: color-mix(in oklch, var(--coral) 15%, transparent);
+}
+
+.statusbar-version-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--aurora);
 }
 
 .job-meta,
@@ -2357,10 +2405,12 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  contain: paint;
   border: 1px solid var(--surface-rim);
+  border-left-color: transparent;
   border-radius: var(--radius-xl);
   background: var(--canvas-abyss);
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
   touch-action: none;
   user-select: none;
   /* 기본 제스처가 맵 이동(pan)이므로 손 모양 커서. Shift를 누르면 생성 모드(crosshair)로 바뀐다. */
@@ -2458,6 +2508,16 @@
 .operations-radar.is-animation-paused .operations-radar-sweep {
   animation-play-state: paused;
 }
+
+.operations-radar.is-disabled {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.operations-radar.is-disabled .operations-radar-sweep {
+  will-change: auto;
+}
+
 
 .operations-canvas.is-panel-maximized .canvas-minimap,
 .operations-canvas.is-panel-maximized .canvas-minimap-fab {
@@ -3121,11 +3181,20 @@
   overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
+  /* 좌측 가장자리·하단 StatusBar에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
+  border-left: none;
+  border-bottom: none;
+  border-radius: 0 var(--radius-xl) 0 0;
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   transition: width var(--duration-base) var(--ease-spring);
+}
+
+.operations-side-bar[data-resizing="true"] {
+  transition: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3138,6 +3207,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-1);
   flex: none;
   padding: var(--space-2) var(--space-2) var(--space-1);
   border-bottom: 1px solid var(--surface-rim);
@@ -3148,7 +3218,7 @@
   justify-content: flex-start;
 }
 
-.side-bar-new-btn {
+.side-bar-theater-add-btn {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -3168,17 +3238,38 @@
     border-color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-new-btn svg {
+.side-bar-theater-add-btn svg {
   flex: none;
   width: 18px;
   height: 18px;
 }
 
-.side-bar-new-btn:hover,
-.side-bar-new-btn:focus-visible {
+.side-bar-theater-add-btn:hover:not(:disabled),
+.side-bar-theater-add-btn:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   outline: none;
+}
+
+.side-bar-theater-add-btn {
+  color: var(--brass);
+}
+
+.side-bar-theater-add-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-theater-add-btn span {
+  display: none;
+}
+
+.side-bar-theater-error {
+  margin: var(--space-2);
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 /* 설정 버튼 — Map/Radar/PanelPulse 컨트롤 팝오버 트리거 */
@@ -3231,6 +3322,201 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.side-bar-theater-section,
+.side-bar-theater-groups,
+.side-bar-peek-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.side-bar-theater-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.side-bar-theater-section--active {
+  border-top: 1px solid color-mix(in oklch, var(--brass) 18%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--brass) 12%, transparent);
+  background: color-mix(in oklch, var(--brass) 4%, transparent);
+}
+
+.side-bar-theater-section--peek {
+  opacity: 0.62;
+}
+
+.side-bar-theater-section--peek:hover,
+.side-bar-theater-section--peek:focus-within {
+  opacity: 0.9;
+}
+
+.side-bar-theater-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 3px var(--space-1);
+  padding: 5px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+  user-select: none;
+}
+
+.side-bar-theater-header:hover,
+.side-bar-theater-header:focus-visible {
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 25%, transparent);
+  color: var(--ink-spectral);
+  outline: none;
+}
+
+.side-bar-theater-header.is-active {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 38%, transparent);
+  background: color-mix(in oklch, var(--brass) 11%, transparent);
+}
+
+.side-bar-theater-anchor {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--brass);
+}
+
+.side-bar-theater-anchor svg {
+  width: 14px;
+  height: 14px;
+}
+
+.side-bar-theater-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-theater-count {
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-fog);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-bar-theater-row-controls {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 1px;
+  margin-left: 2px;
+}
+
+.side-bar-theater-row-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-theater-row-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.side-bar-theater-row-btn:hover,
+.side-bar-theater-row-btn:focus-visible {
+  background: color-mix(in oklch, var(--ink-pearl) 9%, transparent);
+  border-color: color-mix(in oklch, var(--ink-fog) 24%, transparent);
+  color: var(--ink-pearl);
+  outline: none;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-theater-row-controls {
+  display: none;
+}
+
+.side-bar-theater-groups,
+.side-bar-peek-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.side-bar-peek-chips .side-bar-chip {
+  pointer-events: auto;
+}
+
+/* peek 섹션의 그룹 라벨 — 활성 그룹 헤더의 축약형(비인터랙티브, 색 레일은 side-bar-group-section 공유).
+   과거 '유령 세로선' 보고의 진범은 그룹 레일이 아니라 컴포지팅 심(위 contain:paint로 격납)이었다. */
+.side-bar-peek-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 6px 2px 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+}
+
+.side-bar-peek-group-label span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-peek-group-count {
+  color: var(--ink-rim);
+}
+
+.side-bar-peek-more {
+  list-style: none;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-rim);
+}
+
+/* 베이스 .theater-menu의 left/right:0(구 GNB 240px 컨테이너 전제)을 해제 —
+   fixed 포털에서 right:0을 상속하면 뷰포트 우측 끝까지 늘어난다(Codex P2).
+   .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
+.theater-menu.side-bar-theater-menu {
+  min-width: 180px;
+  right: auto;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-theater-section {
+  border: none;
+  background: transparent;
 }
 
 /* ── SideBar Chip ──────────────────────────────────────────────────────────────── */
@@ -4259,13 +4545,29 @@
   font-size: 11px;
 }
 
-.theater-menu-forget {
-  color: var(--ink-fog);
+.theater-menu-new-group {
+  color: var(--ink-pearl);
 }
 
-.theater-menu-forget:hover,
-.theater-menu-forget:focus-visible {
+.theater-menu-new-group-input {
+  width: calc(100% - var(--space-2));
+  margin: 0 var(--space-1);
+}
+
+/* 파괴적 항목(coral) — 베이스 .theater-menu-item(--ink-fog)이 파일 후반에 선언되므로
+   복합 셀렉터로 특이도를 올려 이긴다. */
+.theater-menu-item.theater-menu-forget {
   color: var(--coral);
+}
+
+.theater-menu-item.theater-menu-forget .theater-menu-check {
+  color: var(--coral);
+}
+
+.theater-menu-item.theater-menu-forget:hover:not(:disabled),
+.theater-menu-item.theater-menu-forget:focus-visible {
+  color: var(--coral);
+  background: color-mix(in oklch, var(--coral) 12%, transparent);
 }
 
 .job-head {
@@ -5201,71 +5503,6 @@
   white-space: nowrap;
 }
 
-/* ── GNB (Topbar 내비게이션) ───────────────────────────── */
-.topbar-nav-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-3);
-  border-radius: var(--radius-xs);
-  color: var(--ink-fog);
-  font-size: 12px;
-  font-weight: 620;
-  letter-spacing: 0.01em;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.topbar-nav-icon {
-  display: grid;
-  place-items: center;
-  color: currentColor;
-}
-
-.topbar-nav-icon svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
-
-.topbar-nav-link:hover {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-}
-
-/* 활성 네비는 "지금 보고 있는 곳" — brass 강조 */
-.topbar-nav-link.is-active {
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-}
-
-/* GNB 보조 아이콘 버튼 — 박스 없이 이전 Workspaces stat(--ink-fog) 톤으로 클릭만 한다. */
-.topbar-icon-button {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: var(--space-2);
-  padding: 6px var(--space-1);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.topbar-icon-button:hover {
-  color: var(--ink-pearl);
-}
-
-.topbar-icon-button svg {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
 .theater-control {
   position: relative;
   display: flex;
@@ -6069,13 +6306,28 @@
   .operations-radar-sweep {
     animation: none;
   }
+
+  .statusbar-connection.is-live .statusbar-connection-dot {
+    animation: none;
+  }
+
+  .statusbar,
+  .statusbar-brand,
+  .statusbar-theater,
+  .statusbar-github-link,
+  .statusbar-github-stars,
+  .statusbar-github-stars svg path,
+  .statusbar-update,
+  .statusbar-version {
+    transition: none;
+  }
 }
 
 /* 토스트 — 우하단 고정 알림 스택. 재사용 컴포넌트(toast.tsx)가 렌더하며, tone으로 색을 바꾼다 */
 .app-toast-host {
   position: fixed;
   right: var(--space-5);
-  bottom: var(--space-5);
+  bottom: calc(var(--space-5) + var(--console-statusbar-height, 28px));
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -6999,70 +7251,6 @@
   .directory-browser-sector-advance { transition: none; }
 }
 
-/* === GNB 반응형 ladder — 중앙 THEATER 보존 (실측 기반) ===
-   .topbar는 minmax(0,1fr) auto minmax(0,1fr)로 중앙 240px THEATER를 양쪽 1fr가 감싸 중앙 정렬한다.
-   우측 toolbar(meta)의 고유폭이 한쪽 트랙을 넘으면 중앙 THEATER로 침범하므로, 폭이 줄수록 라벨을
-   단계적으로 아이콘화해 meta 고유폭을 트랙 이하로 유지하고, 단일행으로 더는 담을 수 없는 폭에서
-   2행으로 stack한다. 임계치는 meta 고유폭 실측(full 741 / 보조라벨숨김 518 / 전체아이콘 406)과
-   트랙폭 회귀(track ≈ 0.5·vw − 157, 겹침0 ⇔ vw ≳ 2·meta + 314)에서 도출했다. */
-
-/* Tier A (≤1800px) — full 라벨은 ~1796px 이상에서만 안 겹친다. 보조 컨트롤(Settings)
-   라벨과 상시 PREVIEW 배지를 접어 meta 고유폭을 줄인다(안전 하한 ~1350px). */
-@media (max-width: 1800px) {
-  .topbar-preview-badge {
-    display: none;
-  }
-
-  /* Settings(=.topbar-meta 직속 nav-link) 라벨을 숨겨 meta 고유폭을 줄인다. */
-  .topbar-meta > .topbar-nav-link > span:not(.topbar-nav-icon) {
-    display: none;
-  }
-
-  .topbar-meta {
-    gap: var(--space-3);
-  }
-}
-
-/* Tier B (≤1340px) — toolbar 간격을 더 좁혀 meta 고유폭을 줄인다(안전 하한 ~1050px). */
-@media (max-width: 1340px) {
-  .topbar-meta {
-    gap: var(--space-2);
-  }
-}
-
-/* Stack (≤1080px) — 단일행 중앙 정렬이 불가능한 폭. 브랜드행 + toolbar행 2행으로 분리한다.
-   toolbar는 아이콘 전용 상태를 그대로 유지해 컴팩트한 2행을 만든다. */
-@media (max-width: 1080px) {
-  .topbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    column-gap: var(--space-4);
-    row-gap: var(--space-2);
-    padding-block: var(--space-3);
-  }
-
-  .topbar-lead {
-    flex: 0 1 auto;
-  }
-
-  /* THEATER는 브랜드행 우측으로 밀고(좌측=브랜드), 폭을 내용에 맞춰 수축시킨다. */
-  .theater-control {
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 0;
-    max-width: 280px;
-    margin-left: auto;
-  }
-
-  /* toolbar는 자기 행(100%)을 차지하고 우측 정렬한다. */
-  .topbar-meta {
-    flex: 1 0 100%;
-    justify-content: flex-end;
-  }
-
-}
-
 @media (max-width: 760px) {
   .job-head {
     align-items: flex-start;
@@ -7216,12 +7404,9 @@
 }
 
 /* ============================ SIDE (우현 도킹) ============================ */
-/* topbar(64px) 아래에서 시작해 GNB 토글이 가려지지 않게 한다. 좌측 Operations 플로팅 사이드바와
-   충돌하지 않도록 우현 전용. 폭은 리사이즈로 --codex-side-width를 갱신한다. 폭 상한/하한은 두지
-   않고(대원수 지시) 뷰포트 넘침만 max-width로 막는다 — 좁아지면 Codex가 본문만 렌더(아래 컨테이너 쿼리). */
 .codex-side-layer {
   position: fixed;
-  top: var(--console-topbar-offset);
+  top: var(--space-4);
   right: var(--space-4);
   bottom: var(--space-4);
   z-index: 34;
@@ -7373,7 +7558,7 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
 
 /* ===== Side 모드 ⌘K 검색 국한 (항목③) — 전체 화면 모달을 Side 패널 영역으로 가둔다. ===== */
 body[data-codex-side="true"] .command-overlay {
-  inset: var(--console-topbar-offset) var(--space-4) var(--space-4) auto;
+  inset: var(--space-4) var(--space-4) var(--space-4) auto;
   width: var(--codex-side-width, 460px);
   max-width: calc(100vw - var(--space-8));
   padding: 0;
@@ -7386,29 +7571,6 @@ body[data-codex-side="true"] .command-card {
   width: 100%;
   max-height: 100%;
   overflow-y: auto;
-}
-
-/* GNB의 다른 텍스트 트리거(Shell/Shortcuts)와 동일한 톤으로 다운 — 테두리/배경/그림자 없이
-   ink-fog 라벨만, hover에서만 brass로 점등한다. 과강조 배지가 아니라 차분한 보조 액션이다. */
-.topbar-whatsnew-button {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: var(--space-2);
-  padding: 6px var(--space-1);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.topbar-whatsnew-button:hover,
-.topbar-whatsnew-button:focus-visible {
-  color: var(--brass-bright);
 }
 
 .whatsnew-overlay {
@@ -7961,7 +8123,6 @@ body[data-codex-side="true"] .command-card {
     transform: translateY(-50%);
   }
 
-  .topbar-whatsnew-button,
   .whatsnew-overlay,
   .whatsnew-card,
   .whatsnew-section {
@@ -7981,23 +8142,6 @@ body[data-codex-side="true"] .command-card {
 
   .fc-settings-row__control {
     justify-self: stretch;
-  }
-}
-
-@media (max-width: 860px) {
-  .topbar-whatsnew-button > span {
-    display: none;
-  }
-
-  .topbar-whatsnew-button {
-    width: 34px;
-    min-width: 34px;
-    padding: 0;
-  }
-
-  .topbar-whatsnew-button::before {
-    content: "New";
-    font-size: 9px;
   }
 }
 
