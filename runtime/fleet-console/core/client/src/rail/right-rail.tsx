@@ -1,4 +1,5 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -109,6 +110,12 @@ export function RightRail({ theaterId, api }: RightRailProps) {
         {pluginPanels.map((panel) => (
           <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
         ))}
+        <div className="right-rail-route-spacer" aria-hidden="true" />
+        <div className="right-rail-divider right-rail-route-divider" role="separator" aria-hidden="true" />
+        <div className="right-rail-route-nav" aria-label="Console routes">
+          <RouteNavIcon to="/carrier-settings" label="Carriers" icon={<CarriersIcon />} />
+          <RouteNavIcon to="/settings" label="Settings" icon={<SettingsIcon />} />
+        </div>
       </nav>
     </div>
   );
@@ -149,6 +156,12 @@ interface RailIconProps {
   readonly isActive: boolean;
 }
 
+interface RouteNavIconProps {
+  readonly to: string;
+  readonly label: string;
+  readonly icon: ReactNode;
+}
+
 function RailIcon({ panel, isActive }: RailIconProps) {
   const handleClick = useCallback(() => toggleRailPanel(panel.id), [panel.id]);
   const icon = typeof panel.icon === "function" ? panel.icon() : panel.icon;
@@ -166,5 +179,40 @@ function RailIcon({ panel, isActive }: RailIconProps) {
     >
       {icon}
     </button>
+  );
+}
+
+function RouteNavIcon({ to, label, icon }: RouteNavIconProps) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) => `right-rail-route-link${isActive ? " is-active" : ""}`}
+      aria-label={label}
+      title={label}
+    >
+      {icon}
+    </NavLink>
+  );
+}
+
+function CarriersIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="4" cy="4.2" r="1.15" fill="currentColor" />
+      <circle cx="4" cy="8" r="1.15" fill="currentColor" />
+      <circle cx="4" cy="11.8" r="1.15" fill="currentColor" />
+      <path d="M7.2 4.2h6M7.2 8h6M7.2 11.8h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
   );
 }

@@ -110,7 +110,8 @@
   border-left: 1px solid var(--surface-rim);
 }
 
-.right-rail-ico {
+.right-rail-ico,
+.right-rail-route-link {
   width: 34px;
   height: 34px;
   display: inline-grid;
@@ -122,22 +123,30 @@
   cursor: pointer;
   position: relative;
   font-size: 14px;
-  transition: color 140ms, background 140ms, border-color 140ms;
+  transition:
+    color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
 }
 
-.right-rail-ico:hover {
+.right-rail-ico:hover,
+.right-rail-route-link:hover,
+.right-rail-route-link:focus-visible {
   color: var(--ink-spectral);
   background: var(--surface-glass);
+  outline: none;
 }
 
-.right-rail-ico.is-active {
+.right-rail-ico.is-active,
+.right-rail-route-link.is-active {
   color: var(--brass);
   border-color: var(--surface-rim-strong);
   background: var(--ink-deep);
 }
 
 /* 활성 아이콘 좌측 2px brass bar */
-.right-rail-ico.is-active::before {
+.right-rail-ico.is-active::before,
+.right-rail-route-link.is-active::before {
   content: "";
   position: absolute;
   left: -1px;
@@ -146,6 +155,11 @@
   width: 2px;
   border-radius: 2px;
   background: var(--brass);
+}
+
+.right-rail-route-link svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ── 레일 패널 리사이즈 핸들 ────────────────────────────────────── */
@@ -191,9 +205,30 @@
   align-self: center;
 }
 
+.right-rail-route-spacer {
+  flex: 1 1 auto;
+  min-height: var(--space-2);
+}
+
+.right-rail-route-divider {
+  margin-top: var(--space-1);
+}
+
+.right-rail-route-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .right-rail-panel-slot {
+    transition-duration: 0.01ms !important;
+  }
+
+  .right-rail-ico,
+  .right-rail-route-link {
     transition-duration: 0.01ms !important;
   }
 }
