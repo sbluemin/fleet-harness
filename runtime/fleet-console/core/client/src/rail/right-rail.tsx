@@ -97,7 +97,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
   return (
     <div
-      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}${isPathContextDeckOpen ? " is-context-deck-open" : ""}`}
       role="complementary"
       aria-label="Activity Rail"
     >
@@ -157,11 +157,29 @@ interface RailPanelContentProps {
 // (activePanel·ctx·activeId) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
 const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx, theaterId, hasHydratedPathContext, isPathContextDeckOpen, pathContextLoading, pathContextMutationInProgress, pathContextError, onSelectPathContext }: RailPanelContentProps) {
   const chipRef = useRef<HTMLButtonElement>(null);
+  const deckRef = useRef<HTMLDivElement>(null);
+  const wasDeckOpenRef = useRef(false);
   const pathAware = activePanel.pathAware === true;
   const canRenderPathAwareBody = !pathAware || hasHydratedPathContext;
 
   useEffect(() => {
-    if (!isPathContextDeckOpen) chipRef.current?.focus();
+    if (wasDeckOpenRef.current && !isPathContextDeckOpen) {
+      const frame = requestAnimationFrame(() => chipRef.current?.focus());
+      wasDeckOpenRef.current = isPathContextDeckOpen;
+      return () => cancelAnimationFrame(frame);
+    }
+    wasDeckOpenRef.current = isPathContextDeckOpen;
+  }, [isPathContextDeckOpen]);
+
+  useEffect(() => {
+    if (!isPathContextDeckOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || chipRef.current?.contains(target) || deckRef.current?.contains(target)) return;
+      setRailPathContextDeckOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
   }, [isPathContextDeckOpen]);
 
   const closeDeck = useCallback(() => setRailPathContextDeckOpen(false), []);
@@ -182,7 +200,9 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
           title={pathContextError ?? ctx.pathContext.label}
           onClick={() => setRailPathContextDeckOpen(!isPathContextDeckOpen)}
         >
-          {pathAware ? (hasHydratedPathContext ? ctx.pathContext.label : "Loading…") : "Theater-wide"}
+          <span className="rail-context-chip-glyph" aria-hidden="true">⌂</span>
+          <span className="rail-context-chip-label">{pathAware ? (hasHydratedPathContext ? ctx.pathContext.label : "Loading…") : "Theater-wide"}</span>
+          <span className="rail-context-chip-caret" aria-hidden="true">⌄</span>
         </button>
         <button
           className="right-rail-close-btn"
@@ -196,7 +216,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
       <div className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
         {canRenderPathAwareBody ? activePanel.render(ctx) : <div className="rail-context-tree-status">Loading path context…</div>}
       </div>
-      {pathAware && hasHydratedPathContext && isPathContextDeckOpen && theaterId ? <PathContextDeck theaterId={theaterId} context={ctx.pathContext} isMutating={pathContextMutationInProgress} onSelect={selectContext} onClose={closeDeck} /> : null}
+      {pathAware && hasHydratedPathContext && isPathContextDeckOpen && theaterId ? <PathContextDeck ref={deckRef} theaterId={theaterId} context={ctx.pathContext} isMutating={pathContextMutationInProgress} onSelect={selectContext} onClose={closeDeck} /> : null}
     </>
   );
 });

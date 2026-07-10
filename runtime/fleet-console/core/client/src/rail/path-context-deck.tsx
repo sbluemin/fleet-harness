@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useState } from "react";
 
 import type { RailPathContext } from "@fleet-console/sdk/rail";
 
@@ -13,7 +13,7 @@ interface PathContextDeckProps {
   readonly onClose: () => void;
 }
 
-export function PathContextDeck({ theaterId, context, isMutating, onSelect, onClose }: PathContextDeckProps) {
+export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(function PathContextDeck({ theaterId, context, isMutating, onSelect, onClose }, ref) {
   const [worktrees, setWorktrees] = useState<RailPathWorktreesResult | null>(null);
 
   useEffect(() => {
@@ -34,24 +34,30 @@ export function PathContextDeck({ theaterId, context, isMutating, onSelect, onCl
   }, [isMutating, onSelect]);
 
   return (
-    <div className="rail-context-deck" role="dialog" aria-label="Path context">
+    <div ref={ref} className="rail-context-deck" role="dialog" aria-label="Path context">
+      <div className="rail-context-deck-caption">Path context · applies to all path-aware panels</div>
       <button className={`rail-context-row${context.relPath === null ? " is-selected" : ""}`} type="button" disabled={isMutating} onClick={() => selectContext(null)}>
-        <span className="rail-context-badge rail-context-badge--root">ROOT</span><span>Theater root</span>
+        <span className="rail-context-badge rail-context-badge--root">ROOT</span>
+        <span className="rail-context-row-label">{context.label}</span>
+        <span className="rail-context-row-secondary">THEATER</span>
       </button>
+      <section className="rail-context-section" aria-label="Directories">
+        <h3>DIRECTORIES</h3>
+        <PathContextTree key={`${theaterId}:${context.relPath ?? "root"}`} theaterId={theaterId} parentPath={null} selectedRelPath={context.relPath} isDisabled={isMutating} loadDirectories={loadDirectories} onSelect={selectContext} />
+      </section>
       {worktrees?.isGitRepo ? (
         <section className="rail-context-section" aria-label="Worktrees">
           <h3>WORKTREES</h3>
           {worktrees.worktrees.map((worktree) => (
-            <button key={worktree.relPath} className={`rail-context-row${context.relPath === worktree.relPath ? " is-selected" : ""}`} type="button" disabled={isMutating} onClick={() => selectContext(worktree.relPath)}>
-              <span className="rail-context-badge rail-context-badge--worktree">WORKTREE</span><span>{worktree.relPath}</span>{worktree.branch ? <small>{worktree.branch}</small> : null}
+            <button key={worktree.relPath} className={`rail-context-row${context.relPath === worktree.relPath ? " is-selected" : ""}`} type="button" title={worktree.relPath} disabled={isMutating} onClick={() => selectContext(worktree.relPath)}>
+              <span className="rail-context-badge rail-context-badge--worktree">WORKTREE</span>
+              <span className="rail-context-row-label">{worktree.relPath.split("/").at(-1)}</span>
+              {worktree.branch ? <span className="rail-context-row-secondary">{worktree.branch}</span> : null}
             </button>
           ))}
         </section>
       ) : null}
-      <section className="rail-context-section" aria-label="Directories">
-        <h3>DIRECTORIES</h3>
-        <PathContextTree theaterId={theaterId} parentPath={null} loadDirectories={loadDirectories} onSelect={selectContext} />
-      </section>
+      <div className="rail-context-deck-hint">Selected once · delivered to plugins via SDK</div>
     </div>
   );
-}
+});
