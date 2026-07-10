@@ -10,6 +10,7 @@ import type {
   ConnectionOptions,
   McpServerConfig,
 } from '../types/config.js';
+import type { CodexJsonValue } from '../types/codex-app-server.js';
 import { resolveNpxPath, buildNpxArgs } from '../utils/npx.js';
 import { cleanEnvironment } from '../utils/env.js';
 import { resolveCursorSpawnModel } from '../models/ModelRegistry.js';
@@ -193,17 +194,41 @@ export function getAllBackendConfigs(): CliBackendConfig[] {
 }
 
 /**
- * Codex developer instruction을 `-c` 오버라이드 값으로 변환합니다.
+ * Codex ACP 브릿지(`codex-acp`)가 읽는 `CODEX_CONFIG` 환경변수 값을 생성합니다.
+ * 브릿지는 이 JSON 맵을 `thread/start`/`thread/resume` config에 spread하므로,
+ * developer instruction과 설정 오버라이드를 argv 대신 env로 주입합니다.
  *
- * @param systemPrompt - 세션 시작 시 주입할 시스템 지침
- * @returns `developer_instructions="..."` 형태의 설정 배열
+ * @param systemPrompt - 세션 시작 시 주입할 시스템 지침 (있으면 최우선으로 developer_instructions에 반영)
+ * @param configOverrides - `key=value` 형태의 설정 오버라이드 배열 (dotted key는 중첩 객체로 확장)
+ * @param baseConfigJson - 호출자가 이미 지정한 CODEX_CONFIG(JSON) 값. 유효한 JSON 객체면 시작점으로 병합.
+ * @returns JSON 문자열(맵에 키가 하나 이상일 때) 또는 undefined(빈 맵)
  */
-export function buildCodexDeveloperInstructionConfig(systemPrompt?: string | null): string[] {
-  if (!systemPrompt) {
-    return [];
+export function buildCodexConfigEnv(
+  systemPrompt?: string | null,
+  configOverrides?: string[],
+  baseConfigJson?: string,
+): string | undefined {
+  const map = parseBaseConfigMap(baseConfigJson);
+
+  for (const override of configOverrides ?? []) {
+    const eqIndex = override.indexOf('=');
+    if (eqIndex < 0) {
+      continue;
+    }
+    const key = override.slice(0, eqIndex);
+    const rawValue = override.slice(eqIndex + 1);
+    assignNestedKey(map, key, parseOverrideValue(rawValue));
   }
 
-  return [`developer_instructions="${escapeTomlBasicString(systemPrompt)}"`];
+  if (systemPrompt) {
+    // developer_instructions는 base/override보다 우선하도록 마지막에 설정한다.
+    map.developer_instructions = systemPrompt;
+  }
+
+  if (Object.keys(map).length === 0) {
+    return undefined;
+  }
+  return JSON.stringify(map);
 }
 
 /**
@@ -261,27 +286,58 @@ export function mcpServerConfigsToAcp(servers: McpServerConfig[]): McpServer[] {
   })) as McpServer[];
 }
 
-// TOML basic string 이스케이프. 단축 이스케이프가 없는 제어문자(U+0000-U+001F)와
-// DEL(U+007F)은 \uXXXX 형태로 폴백 이스케이프해 깨진 TOML 생성을 방지한다.
-function escapeTomlBasicString(value: string): string {
-  return value.replace(/[\u0000-\u001f"\\\u007f]/g, (char) => {
-    switch (char) {
-      case '\b':
-        return '\\b';
-      case '\t':
-        return '\\t';
-      case '\n':
-        return '\\n';
-      case '\f':
-        return '\\f';
-      case '\r':
-        return '\\r';
-      case '"':
-        return '\\"';
-      case '\\':
-        return '\\\\';
-      default:
-        return `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;
+// baseConfigJson을 JSON 객체 맵으로 파싱한다. 유효한 JSON 객체가 아니면(부재/배열/스칼라/파싱 실패)
+// 조용히 빈 맵에서 시작한다.
+function parseBaseConfigMap(baseConfigJson?: string): Record<string, CodexJsonValue> {
+  if (!baseConfigJson) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(baseConfigJson) as unknown;
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, CodexJsonValue>;
     }
-  });
+  } catch {
+    // 잘못된 JSON은 무시하고 빈 맵에서 시작한다.
+  }
+  return {};
 }
+
+// 오버라이드 값을 파싱한다. JSON.parse를 우선 시도하고, 실패하면 감싼 큰따옴표 한 쌍만 제거해
+// 원시 문자열로 사용한다. TOML inline table 등 비-JSON TOML 값은 원시 문자열로 강등된다
+// (best-effort; 현재 이 경로에는 프로덕션 호출자가 없다).
+function parseOverrideValue(raw: string): CodexJsonValue {
+  try {
+    return JSON.parse(raw) as CodexJsonValue;
+  } catch {
+    if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+      return raw.slice(1, -1);
+    }
+    return raw;
+  }
+}
+
+// dotted key를 중첩 객체로 확장해 값을 할당한다.
+// (예: `mcp_servers.fleet.url` → `{ mcp_servers: { fleet: { url: ... } } }`)
+// 중간 경로에 객체가 아닌 값이 있으면 새 객체로 덮어쓴다.
+function assignNestedKey(
+  target: Record<string, CodexJsonValue>,
+  dottedKey: string,
+  value: CodexJsonValue,
+): void {
+  const segments = dottedKey.split('.');
+  let cursor = target;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const segment = segments[i];
+    const existing = cursor[segment];
+    if (typeof existing === 'object' && existing !== null && !Array.isArray(existing)) {
+      cursor = existing as Record<string, CodexJsonValue>;
+    } else {
+      const nested: Record<string, CodexJsonValue> = {};
+      cursor[segment] = nested;
+      cursor = nested;
+    }
+  }
+  cursor[segments[segments.length - 1]] = value;
+}
+

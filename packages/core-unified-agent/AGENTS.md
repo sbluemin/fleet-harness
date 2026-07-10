@@ -160,10 +160,11 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 7. **System Prompt Injection (Provider-aware)**:
    - **Claude**: `AcpConnection` appends to the native system prompt via `_meta.systemPrompt.append` when calling `session/new`. The `claude-agent-acp` bridge handles this.
    - **Codex (Dual-path)**: 
-     - **ACP path**: Passes `systemPrompt` via spawn args `-c developer_instructions="..."`.
+     - **ACP path**: `systemPrompt` (and `configOverrides`) are delivered via the `CODEX_CONFIG` env JSON; `codex-acp` merges it into `thread/start` and `thread/resume` config, so injection applies to fresh sessions, resets, and resumes on all platforms.
      - **AppServer path**: Passes `systemPrompt` as `developerInstructions` when creating/resuming a thread.
    - **OpenCode Go**: `UnifiedOpenCodeAgentClient` manages `firstPromptPending` state since `_meta.systemPrompt.append` is unsupported. Session reset is handled via disconnect + reconnect.
-   - **Session Persistence Contract**: Re-armed for new sessions after `resetSession()`. Codex resume/load paths via `sessionId` re-pass the current client's `systemPrompt`, policies (`approvalPolicy`/`sandbox`), and thread config to `thread/resume`. Claude session resume follows a best-effort policy prioritizing conversation continuity; if intentional drift cleanup is needed, the caller must invoke `resetSession()`.
+   - **Cursor**: `UnifiedCursorAgentClient` manages `firstPromptPending` (prepends `systemPrompt` as a text block on the first prompt) since the bridge does not support `_meta.systemPrompt.append`; session resume does not re-arm it.
+   - **Session Persistence Contract**: Re-armed for new sessions after `resetSession()`. On the Codex ACP path the `CODEX_CONFIG` env is process-level, so the injected instructions persist across `resetSession()`/`loadSession()` without re-sending; resume/load paths via `sessionId` still re-pass policies (`approvalPolicy`/`sandbox`) and thread config to `thread/resume`. Claude session resume follows a best-effort policy prioritizing conversation continuity; if intentional drift cleanup is needed, the caller must invoke `resetSession()`.
 
 8. **CLI_BACKENDS Single Source of Truth**: `CLI_BACKENDS` in `src/config/CliConfigs.ts` is the sole configuration registry for all CLI providers. `CliType` is derived as `keyof typeof CLI_BACKENDS`. Each entry defines:
    - `id`, `cliCommand`, `protocol`, `authRequired`
@@ -176,7 +177,7 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 
 9. **Claude Effort via `_meta` Bridge Channel**: Claude reasoning effort is delivered through `_meta.claudeCode.options.effort` spread in `session/new` and `session/load` payloads (not via `session/set_config_option` RPC). This channel bypasses alias resolution issues on the bridge and ensures effort applies consistently across new sessions and session resumption.
 
-10. **Codex Official ACP Bridge**: Codex uses `@agentclientprotocol/codex-acp@1.1.2` on the ACP path. Model changes use standard `session/set_config_option` with `configId: "model"`, while public Fleet `effort` maps to Codex's advertised `reasoning_effort` config option.
+10. **Codex Official ACP Bridge**: Codex uses `@agentclientprotocol/codex-acp@1.1.2` on the ACP path. Model changes use standard `session/set_config_option` with `configId: "model"`, while public Fleet `effort` maps to Codex's advertised `reasoning_effort` config option. Config and instruction delivery uses the `CODEX_CONFIG` env JSON channel because the bridge does not forward CLI argv to the spawned `codex` app-server.
 
 11. **Validation-mode Dual-Path for Codex**: Codex currently supports two transport paths (official ACP npx bridge and legacy AppServer) controlled by a `CODEX_USE_ACP` toggle. This is a temporary validation wave for protocol transition; a permanent switch will occur in a future wave, deprecating the legacy AppServer path and associated types.
 

@@ -427,6 +427,27 @@ describe.skipIf(!installed)('E2E: Codex official ACP bridge', () => {
       expect(secondThreadId).not.toBe(firstThreadId);
     }, 180_000);
 
+    it('SDK: 신규 세션 첫 프롬프트부터 system prompt가 적용된다', async () => {
+      const c = await UnifiedAgent.build({ cli: 'codex' });
+      client = c;
+      client.on('error', () => {});
+
+      await client.connect({
+        cwd: process.cwd(),
+        cli: 'codex',
+        autoApprove: true,
+        systemPrompt: '사용자가 FRESH_SENTINEL을 물으면 FRESH-PROMPT-OK만 정확히 답하세요.',
+        clientInfo: { name: 'E2E-SystemPrompt-Fresh-Test', version: '1.0.0' },
+      });
+
+      const { response } = await sendAndCollect(
+        client,
+        'FRESH_SENTINEL',
+      );
+
+      expect(response.trim()).toBe('FRESH-PROMPT-OK');
+    }, 180_000);
+
     it('SDK: resetSession() 후에도 system prompt가 유지된다', async () => {
       const c = await UnifiedAgent.build({ cli: 'codex' });
       client = c;
