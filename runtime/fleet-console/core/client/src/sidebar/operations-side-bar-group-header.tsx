@@ -7,7 +7,6 @@ interface GroupHeaderProps {
   readonly group: OperationGroup;
   readonly count: number;
   readonly collapsed: boolean;
-  readonly tier: "rail" | "list" | "detail";
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
@@ -20,7 +19,6 @@ export function OperationsSideBarGroupHeader({
   group,
   count,
   collapsed,
-  tier,
   dragging,
   dropTarget,
   dragOffsetY,
@@ -32,7 +30,6 @@ export function OperationsSideBarGroupHeader({
   const grpColor = resolveAccentColor(group.color);
   const headerClassName = [
     "side-bar-group-header",
-    tier === "rail" ? "side-bar-group-header--rail" : "",
     dragging ? "side-bar-group-header--dragging" : "",
     dropTarget ? "side-bar-group-header--drop-target" : "",
   ].filter(Boolean).join(" ");
@@ -59,26 +56,6 @@ export function OperationsSideBarGroupHeader({
     }
     onToggle(group.id);
   };
-
-  if (tier === "rail") {
-    return (
-      <div
-        className={headerClassName}
-        data-tier="rail"
-        style={headerStyle}
-        onClick={toggle}
-        onContextMenu={handleContextMenu}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        role="button"
-        tabIndex={0}
-        aria-label={`Group ${group.name}`}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
-      >
-        <span className="side-bar-group-header__dot" aria-hidden="true" />
-      </div>
-    );
-  }
 
   return (
     <div

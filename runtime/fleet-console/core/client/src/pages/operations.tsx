@@ -301,10 +301,7 @@ export function Operations({ state }: OperationsProps) {
   }, []);
 
   return (
-    <div
-      className="console-body is-canvas"
-      ref={bodyRef}
-    >
+    <div className="console-body is-canvas">
       <OperationsSideBar
         theaters={state.theaters}
         activeTheaterId={state.activeTheaterId}
@@ -335,19 +332,21 @@ export function Operations({ state }: OperationsProps) {
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
       />
-      <OperationsCanvas
-        state={state}
-        catalog={catalog}
-        canLaunch={canLaunch}
-        renderKindIcon={renderKindIcon}
-        onLaunchKind={handleCanvasLaunchKind}
-        onLaunchAtGeometry={handleLaunchAtGeometry}
-        onResetView={handleResetView}
-        onToggleFormation={handleToggleFormation}
-        onClose={handleClose}
-        onFocus={handleFocus}
-        onSetAccent={handleSetAccent}
-      />
+      <div className="operations-center-stage" ref={bodyRef}>
+        <OperationsCanvas
+          state={state}
+          catalog={catalog}
+          canLaunch={canLaunch}
+          renderKindIcon={renderKindIcon}
+          onLaunchKind={handleCanvasLaunchKind}
+          onLaunchAtGeometry={handleLaunchAtGeometry}
+          onResetView={handleResetView}
+          onToggleFormation={handleToggleFormation}
+          onClose={handleClose}
+          onFocus={handleFocus}
+          onSetAccent={handleSetAccent}
+        />
+      </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
       <CodexReadingSheet />
     </div>

@@ -15,7 +15,7 @@
   /* Glass 부유 카드 — 144df6c 이전 독립 ALERTS 도크의 함교 계기판 질감을 계승한다:
      우상단 brass 코너 조명 + glass 본체, 부유 그림자, 단일 blur 레이어.
      자식(panel-slot·icons)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다.
-     우측 가장자리·하단 StatusBar에 밀착 — 바깥(오른쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
+     우측 가장자리·하단 Global Navigation에 밀착 — 바깥(오른쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
   border-radius: var(--radius-lg) 0 0 0;
   border: 1px solid var(--surface-rim);
   border-right: none;
@@ -484,6 +484,23 @@
    display: contents로 아이콘 컬럼 flex 배치는 그대로 통과시킨다. */
 .right-rail-tabs {
   display: contents;
+}
+
+.right-rail-chrome-toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 44px;
+  border: 0;
+  border-bottom: 1px solid var(--surface-rim);
+  background: transparent;
+  color: var(--ink-spectral);
+}
+
+.right-rail.is-closed {
+  display: none;
+  width: 0;
 }
 
 .right-rail-route-spacer {

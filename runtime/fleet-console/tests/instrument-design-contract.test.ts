@@ -53,4 +53,20 @@ describe("Instrument core design contract", () => {
     expect(store).toContain("toggleMapFullscreen");
     expect(store).toContain("setMaximizedOperationId");
   });
+
+  it("pins the progressive shell, focus mode, and closed-chrome contracts", () => {
+    const app = source("app.tsx");
+    const layout = source("styles/layout.css");
+    const components = source("styles/components.css");
+    const rail = source("styles/rail.css");
+    expect(app).toContain("GlobalNavigation");
+    expect(app).toContain("is-focus-mode");
+    expect(layout).toContain("--console-gnb-height: 44px");
+    expect(layout).toContain("grid-template-rows: var(--console-gnb-height) minmax(0, 1fr)");
+    expect(layout).toContain(".console-shell.is-focus-mode .operations-side-bar");
+    expect(components).toContain(".operations-side-bar.is-closed");
+    expect(rail).toContain(".right-rail.is-closed");
+    expect(components).toContain("margin-inline: auto");
+    expect(components).not.toMatch(/\.global-navigation-search[^}]*position:\s*absolute/s);
+  });
 });

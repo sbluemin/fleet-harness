@@ -1,0 +1,62 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => {
+  vi.resetModules();
+  const localStorage = createStorage();
+  vi.stubGlobal("window", { innerWidth: 1440, localStorage });
+  vi.stubGlobal("localStorage", localStorage);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("two-state SideBar store", () => {
+  it("clamps legacy widths to the 280px expanded minimum", async () => {
+    window.localStorage.setItem("fleet-console.operations.side-width", "180");
+    const store = await loadStore();
+
+    expect(store.getSideBarState()).toMatchObject({ width: 280, collapsed: false });
+    store.setSideBarWidth(56);
+    expect(store.getSideBarState().width).toBe(280);
+  });
+
+  it("preserves expanded width and Theater state through close and reopen", async () => {
+    const store = await loadStore();
+    store.setSideBarWidth(356);
+    store.setTheaterCollapsed("theater-a", true);
+    store.setSideBarCollapsed(true);
+    store.setSideBarCollapsed(false);
+
+    expect(store.getSideBarState()).toEqual({ width: 356, collapsed: false });
+    expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
+  });
+
+  it("does not notify for no-op width or close state writes", async () => {
+    const store = await loadStore();
+    const listener = vi.fn();
+    const unsubscribe = store.subscribeSideBarState(listener);
+
+    store.setSideBarWidth(store.getSideBarState().width);
+    store.setSideBarCollapsed(store.getSideBarState().collapsed);
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+});
+
+async function loadStore() {
+  return import("../core/client/src/sidebar/operations-side-bar-store.js");
+}
+
+function createStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => { values.set(key, String(value)); },
+  };
+}

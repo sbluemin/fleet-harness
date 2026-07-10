@@ -11,6 +11,7 @@ interface RailPathContextState {
 
 interface RailStore {
   readonly activeRailPanelId: string | null;
+  readonly railChromeExpanded: boolean;
   readonly panelExtraWidth: number;
   readonly pathContextTheaterId: string | null;
   readonly pathContext: RailPathContext | null;
@@ -26,6 +27,7 @@ type PathContextLoader = (signal: AbortSignal) => Promise<RailPathContext>;
 type PathContextSaver = (signal: AbortSignal) => Promise<RailPathContext>;
 
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
+const PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
 const listeners = new Set<Listener>();
 const pathContexts = new Map<string, RailPathContextState>();
 const pathContextMutationChains = new Map<string, Promise<void>>();
@@ -35,6 +37,7 @@ let activePathRequest: AbortController | null = null;
 let activePathGeneration = 0;
 let store: RailStore = {
   activeRailPanelId: readStoredPanelId(),
+  railChromeExpanded: readStoredChromeExpanded(),
   panelExtraWidth: 0,
   pathContextTheaterId: null,
   pathContext: null,
@@ -76,6 +79,16 @@ export function closeRailPanel(): void {
   if (store.activeRailPanelId === null) return;
   setStore({ ...store, activeRailPanelId: null, panelExtraWidth: 0, isPathContextDeckOpen: false });
   saveStoredPanelId(null);
+}
+
+export function setRailChromeExpanded(expanded: boolean): void {
+  if (store.railChromeExpanded === expanded) return;
+  setStore({ ...store, railChromeExpanded: expanded, isPathContextDeckOpen: false });
+  saveStoredChromeExpanded(expanded);
+}
+
+export function toggleRailChrome(): void {
+  setRailChromeExpanded(!store.railChromeExpanded);
 }
 
 export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
@@ -151,6 +164,10 @@ export function useActiveRailPanelId(): string | null {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).activeRailPanelId;
 }
 
+export function useRailChromeExpanded(): boolean {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railChromeExpanded;
+}
+
 export function useRailPanelExtraWidth(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
 }
@@ -164,11 +181,19 @@ function readStoredPanelId(): string | null {
   try { return localStorage.getItem(PREFS_ACTIVE_PANEL); } catch { return null; }
 }
 
+function readStoredChromeExpanded(): boolean {
+  try { return localStorage.getItem(PREFS_CHROME_EXPANDED) !== "0"; } catch { return true; }
+}
+
 function saveStoredPanelId(id: string | null): void {
   try {
     if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
     else localStorage.setItem(PREFS_ACTIVE_PANEL, id);
   } catch { /* ignore */ }
+}
+
+function saveStoredChromeExpanded(expanded: boolean): void {
+  try { localStorage.setItem(PREFS_CHROME_EXPANDED, expanded ? "1" : "0"); } catch { /* ignore */ }
 }
 
 async function persistRailPathContextMutation(theaterId: string, save: PathContextSaver): Promise<RailPathContext | null> {
