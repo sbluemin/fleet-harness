@@ -74,11 +74,10 @@ interface CodexThreadDefaultsForResume {
   config?: Record<string, CodexJsonValue>;
 }
 
+type CodexConnection = CodexAppServerConnection | AcpConnection;
+
 const CODEX_TURN_LEVEL_CONFIG_KEYS = new Set(['effort', 'model']);
 const CODEX_THREAD_POLICY_CONFIG_KEYS = new Set(['approvalPolicy', 'sandbox']);
-const CODEX_USE_ACP = true;
-
-type CodexConnection = CodexAppServerConnection | AcpConnection;
 
 /**
  * Codex app-server 전용 내부 클라이언트.
@@ -127,7 +126,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     }
     this.validateModelEffort(options.model, options.effort);
 
-    if (CODEX_USE_ACP) {
+    if (shouldUseCodexAcp(options)) {
       return this.connectAcp(options);
     }
 
@@ -886,4 +885,11 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private matchAnyPattern(text: string, patterns: RegExp[]): boolean {
     return patterns.some((pattern) => pattern.test(text));
   }
+}
+
+// 호출별 환경변수로 Codex 전송 경로를 선택하며, 미설정은 ACP로 유지한다.
+function shouldUseCodexAcp(options: UnifiedClientOptions): boolean {
+  const value = options.env?.CODEX_USE_ACP ?? process.env.CODEX_USE_ACP;
+  const normalized = value?.trim().toLowerCase();
+  return normalized !== 'false' && normalized !== '0';
 }

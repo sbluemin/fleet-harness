@@ -74,6 +74,38 @@ describe("data-dir settings store", () => {
     });
   });
 
+  it("preserves valid codex launch modes and strips invalid values", () => {
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      codexLaunchMode: "acp",
+    })).toEqual({
+      changed: false,
+      data: {
+        version: 1,
+        codexLaunchMode: "acp",
+      },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      codexLaunchMode: "app-server",
+    })).toEqual({
+      changed: false,
+      data: {
+        version: 1,
+        codexLaunchMode: "app-server",
+      },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      codexLaunchMode: "legacy",
+    })).toEqual({
+      changed: true,
+      data: {
+        version: 1,
+      },
+    });
+  });
+
   it("drops the legacy replaceSystemPrompt option while preserving enableMetaphor", () => {
     // 이전 릴리스가 남긴 ~/.fleet/settings.json의 replaceSystemPrompt(boolean) 키는
     // 이제 미허용 키이므로 changed=true와 함께 안전 드롭되고 enableMetaphor는 보존되어야 한다.

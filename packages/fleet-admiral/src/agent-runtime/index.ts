@@ -12,7 +12,9 @@ import {
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
 	type RegisterExecutorToolOptions,
+	type AuthEnvResolver,
 } from "@dotobokuri/core-agent";
+import type { GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import {
 	createCarrierRuntime,
@@ -33,6 +35,7 @@ export interface FleetAgentRuntimeToolRegistration {
 
 export interface FleetAgentRuntimeLifecycleDeps {
 	readonly dataDir?: string;
+	readonly globalOptionsService?: GlobalOptionsService;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
 	readonly wikiToolSpecs?: readonly AgentToolSpec[];
@@ -156,7 +159,7 @@ function registerFleetAgentRuntimeTools(
 	deps: FleetAgentRuntimeLifecycleDeps,
 ): void {
 	registerAgentToolDefaults(mcpRegistry, carrierRuntime, {
-		authEnvResolver: async () => ({}),
+		authEnvResolver: createAuthEnvResolver(deps.globalOptionsService),
 		reservedExternalMcpServerIds: buildReservedExternalMcpServerIds(deps.reservedExternalMcpServerIds),
 		workspaceChangeScanner: deps.workspaceChangeScanner,
 	});
@@ -212,4 +215,18 @@ function buildReservedExternalMcpServerIds(
 	injectedIds: readonly string[] | undefined,
 ): readonly string[] {
 	return [...new Set([...DEFAULT_RESERVED_EXTERNAL_MCP_SERVER_IDS, ...(injectedIds ?? [])])];
+}
+
+function createAuthEnvResolver(
+	globalOptionsService: GlobalOptionsService | undefined,
+): AuthEnvResolver {
+	return async (cli): Promise<Record<string, string>> => {
+		if (cli !== "codex" || !globalOptionsService) return {};
+		try {
+			const mode = globalOptionsService.load().codexLaunchMode;
+			return { CODEX_USE_ACP: mode === "app-server" ? "false" : "true" };
+		} catch {
+			return {};
+		}
+	};
 }
