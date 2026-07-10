@@ -12,6 +12,7 @@ interface TestableAcpConnection {
   endSession: (sessionId: string) => Promise<void>;
   pushStderr: (chunk: string) => void;
   reconnectSession: (cwd: string, sessionId?: string) => Promise<NewSessionResponse>;
+  setModel: (sessionId: string, model: string) => Promise<void>;
 }
 
 class TestAcpConnection extends AcpConnection {
@@ -37,7 +38,6 @@ function createMockAgent(overrides?: Partial<Agent>): Agent {
     cancel: vi.fn().mockResolvedValue(undefined),
     closeSession: vi.fn().mockResolvedValue({}),
     setSessionMode: vi.fn().mockResolvedValue(undefined),
-    unstable_setSessionModel: vi.fn().mockResolvedValue(undefined),
     setSessionConfigOption: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as Agent;
@@ -201,5 +201,23 @@ describe('AcpConnection.reconnectSession()', () => {
     await conn.reconnectSession('/workspace');
 
     expect(conn.connectionState).toBe('ready');
+  });
+});
+
+// ─── setModel ─────────────────────────────────────────────
+
+describe('AcpConnection.setModel()', () => {
+  it('표준 session/set_config_option model config를 호출한다', async () => {
+    const conn = createConnection();
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await conn.setModel('session-1', 'gpt-5.6-sol');
+
+    expect(mockAgent.setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      configId: 'model',
+      value: 'gpt-5.6-sol',
+    });
   });
 });

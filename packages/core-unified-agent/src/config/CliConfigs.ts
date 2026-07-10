@@ -38,7 +38,7 @@ export const CLI_BACKENDS = {
     cliCommand: 'codex',
     protocol: 'codex-app-server',
     authRequired: true,
-    npxPackage: '@zed-industries/codex-acp@0.14.0',
+    npxPackage: '@agentclientprotocol/codex-acp@1.1.2',
     acpArgs: [],
     appServerArgs: ['app-server', '--listen', 'stdio://'],
     modes: [

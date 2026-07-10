@@ -314,7 +314,7 @@ export class AcpConnection extends BaseConnection {
       );
       this.activeSessionId = params.sessionId;
       this.setState('ready');
-      return result;
+      return result ?? {};
     } catch (error) {
       throw this.withStderrDiagnostics(error, 'ACP session/load');
     }
@@ -476,7 +476,7 @@ export class AcpConnection extends BaseConnection {
       ? ([{ type: 'text', text: content }] as Array<Extract<ContentBlock, { type: 'text' }>>)
       : content;
 
-    const rawPromise = agent.prompt({ sessionId, prompt });
+    const rawPromise = Promise.resolve(agent.prompt({ sessionId, prompt }));
 
     // idle timeout 래핑 (활동 기반 타임아웃)
     const [idleWrapped, keepAlive] = this.createIdleTimeoutRace(
@@ -542,23 +542,13 @@ export class AcpConnection extends BaseConnection {
 
   /**
    * 모델을 변경합니다.
-   * session/set_model (primary) → session/set_config_option (fallback)
+   * session/set_config_option(configId: "model") RPC를 사용합니다.
    *
    * @param sessionId - 세션 ID
    * @param model - 모델 이름
    */
   async setModel(sessionId: string, model: string): Promise<void> {
-    const agent = this.getAgent();
-
-    // session/set_model (unstable) 단일 채널.
-    // 과거 fallback이었던 session/set_config_option(configId:'model')은
-    // claude-agent-acp 0.33.1에서 alias(opus 등)를 거부해 dead path가 되어 폐기합니다.
-    // 호출자는 미지원/실패 시 disconnect/reconnect로 처리합니다.
-    await this.withFixedTimeout(
-      agent.unstable_setSessionModel?.({ sessionId, modelId: model }),
-      this.requestTimeout,
-      'session/set_model',
-    );
+    await this.setConfigOption(sessionId, 'model', model);
   }
 
   /**
@@ -861,7 +851,7 @@ export class AcpConnection extends BaseConnection {
    * connect, loadSession, cancel 등 제어 RPC에서 사용합니다.
    */
   private async withFixedTimeout<T>(
-    promise: Promise<T> | undefined,
+    promise: T | Promise<T> | undefined,
     timeoutMs: number,
     label: string,
   ): Promise<T> {
@@ -870,15 +860,16 @@ export class AcpConnection extends BaseConnection {
     }
 
     if (timeoutMs <= 0) {
-      return promise;
+      return Promise.resolve(promise);
     }
 
+    const wrappedPromise = Promise.resolve(promise);
     return new Promise<T>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error(`${label} 요청이 ${timeoutMs}ms 내에 완료되지 않았습니다`));
       }, timeoutMs);
 
-      promise
+      wrappedPromise
         .then((result) => {
           clearTimeout(timeoutId);
           resolve(result);

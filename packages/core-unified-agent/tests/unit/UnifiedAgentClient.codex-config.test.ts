@@ -48,6 +48,7 @@ vi.mock('../../src/detector/CliDetector.js', () => ({
 
 const { UnifiedCodexAgentClient } = await import('../../src/client/UnifiedCodexAgentClient.js');
 const { CodexAppServerConnection } = await import('../../src/connection/CodexAppServerConnection.js');
+const { AcpConnection } = await import('../../src/connection/AcpConnection.js');
 
 type CodexClient = InstanceType<typeof UnifiedCodexAgentClient>;
 
@@ -71,6 +72,61 @@ describe('UnifiedCodexAgentClient config staging', () => {
     mockCodexLoadSession.mockResolvedValue({ thread: { id: 'codex-thread-9' } });
     mockCodexSendMessage.mockResolvedValue(undefined);
     mockCodexCancelPrompt.mockResolvedValue(undefined);
+  });
+
+  it('ACP mode 매핑은 공식 codex-acp bridge mode ID를 사용한다', () => {
+    const client = new UnifiedCodexAgentClient();
+    const testClient = client as unknown as {
+      resolveAcpMode: (modeId: string) => string;
+    };
+
+    expect(testClient.resolveAcpMode('default')).toBe('read-only');
+    expect(testClient.resolveAcpMode('autoEdit')).toBe('agent');
+    expect(testClient.resolveAcpMode('yolo')).toBe('agent-full-access');
+  });
+
+  it('지원하지 않는 model+effort 조합은 ACP bridge 생성 전에 로컬 오류로 거부한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await expect(client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      model: 'gpt-5.6-luna',
+      effort: 'ultra',
+    })).rejects.toThrow(
+      'codex/gpt-5.6-luna 모델은 effort "ultra"을(를) 지원하지 않습니다. 사용 가능: low, medium, high, xhigh, max',
+    );
+    expect(AcpConnection).not.toHaveBeenCalled();
+  });
+
+  it('ACP resetSession 후 첫 프롬프트에 systemPrompt를 한 번만 재주입한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    const mockAcpConnection = Object.assign(Object.create(AcpConnection.prototype), {
+      canResetSession: true,
+      connectionState: 'ready',
+      endSession: vi.fn().mockResolvedValue(undefined),
+      reconnectSession: vi.fn().mockResolvedValue({ sessionId: 'acp-session-2' }),
+      sendPrompt: vi.fn().mockResolvedValue({ stopReason: 'endTurn' }),
+    });
+    Object.assign(client as unknown as Record<string, unknown>, {
+      connection: mockAcpConnection,
+      sessionId: 'acp-session-1',
+      sessionCwd: '/workspace',
+      currentSystemPrompt: '리셋 후 지침',
+      firstPromptPending: null,
+    });
+
+    await client.resetSession();
+    await client.sendMessage('첫 요청');
+    await client.sendMessage('두 번째 요청');
+
+    expect(mockAcpConnection.endSession).toHaveBeenCalledWith('acp-session-1');
+    expect(mockAcpConnection.reconnectSession).toHaveBeenCalledWith('/workspace');
+    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-2', [
+      { type: 'text', text: '리셋 후 지침' },
+      { type: 'text', text: '첫 요청' },
+    ]);
+    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-2', '두 번째 요청');
   });
 
   it('codex 연결 시 systemPrompt를 developerInstructions로 전달한다', async () => {

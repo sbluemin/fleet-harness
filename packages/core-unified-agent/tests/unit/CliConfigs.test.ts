@@ -23,7 +23,7 @@ describe('CliConfigs', () => {
       expect(config.command).toContain('npx');
       expect(config.args).toEqual([
         '--yes',
-        '--package=@zed-industries/codex-acp@0.14.0',
+        '--package=@agentclientprotocol/codex-acp@1.1.2',
         'codex-acp',
       ]);
       expect(config.useNpx).toBe(true);
@@ -38,7 +38,7 @@ describe('CliConfigs', () => {
       expect(config.command).toContain('npx');
       expect(config.args).toEqual([
         '--yes',
-        '--package=@zed-industries/codex-acp@0.14.0',
+        '--package=@agentclientprotocol/codex-acp@1.1.2',
         'codex-acp',
       ]);
     });
