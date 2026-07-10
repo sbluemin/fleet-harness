@@ -8,7 +8,7 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
+import { setOperationOrder, toggleFormationView, toggleGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationView } from "../canvas/canvas-store.js";
 import { sortOperationsByOrder } from "../store.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
@@ -182,6 +182,7 @@ export function OperationsSideBar({
   const { width, collapsed } = sideBar;
   const tier = collapsed ? "rail" : tierFromWidth(width);
   const canvas = useCanvasState();
+  const formationView = useFormationView();
   const closeArmTimeoutRef = useRef<number | null>(null);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -589,6 +590,19 @@ export function OperationsSideBar({
             <AnchorIcon />
           </button>
         )}
+        {tier !== "rail" ? (
+          <button
+            type="button"
+            className="side-bar-formation-btn"
+            onClick={toggleFormationView}
+            disabled={activeTheaterId === null}
+            aria-pressed={formationView}
+            aria-label="Formation view"
+            title="Formation view (Alt+F)"
+          >
+            <FormationIcon />
+          </button>
+        ) : null}
         {tier !== "rail" ? (
           <button
             type="button"
@@ -1252,6 +1266,14 @@ function SettingsIcon() {
         strokeWidth="1.25"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function FormationIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   );
 }

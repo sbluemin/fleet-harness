@@ -451,9 +451,10 @@ export function toggleFormationView(): void {
     clearFormationView();
     return;
   }
+  setState({ minimized: [] });
+  clearMaximizedOperationId();
   formationViewsByTheater.set(activeTheaterId, true);
   formationView = true;
-  clearMaximizedOperationId();
   emitFormationView();
 }
 

@@ -81,6 +81,29 @@ describe("canvas store", () => {
     expect(getSnapshot().minimized).toEqual(["op-a"]);
   });
 
+  it("restores every minimized Operation when entering Formation from maximize", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    setOperationGeometry("op-c", { ...GEOMETRY });
+    setMaximizedOperationId("op-b");
+
+    toggleFormationView();
+
+    expect(getFormationView()).toBe(true);
+    expect(getMaximizedOperationId()).toBeNull();
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("restores manually minimized Operations when entering Formation", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-b");
+
+    toggleFormationView();
+
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
   it("stores explicit Operation order and prunes stale Operation ids", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
