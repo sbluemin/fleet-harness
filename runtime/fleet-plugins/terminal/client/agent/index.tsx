@@ -10,7 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
@@ -391,11 +391,11 @@ function StreamDock({
   const resetKey = `${expanded}:${activeJobs.map((j) => j.jobId).join(",")}`;
   const { containerRef, pinned, jumpToLatest } = usePinnedScrollLocal(resetKey, contentKey);
 
-  // 스트립 라인 라이브 캐럿: 활성 트랙 중 하나라도 라이브면 표시
+  // 스트립 라인 라이브 캐럿: 비종결 잡의 라이브 트랙이 하나라도 있으면 표시(잔존 종결 잡 제외)
   const stripIsLive = activeJobs.some((job) =>
     job.trackOrder.some((id) => {
       const t = job.tracks[id];
-      return t ? isTrackLive(t.status) : false;
+      return t ? isDockTrackLive(job.status, t.status) : false;
     })
   );
   const hasActiveJob = activeJobs.some((job) => !isTerminalJobStatus(job.status));
@@ -470,7 +470,7 @@ function StreamDock({
 }
 
 function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
-  const isLive = isTrackLive(track.status);
+  const isLive = isDockTrackLive(job.status, track.status);
   const tailOutput = getLastLine(track.text);
   const displayLine = tailOutput;
   const showThinking = !displayLine && isLive && Boolean(track.thought);
@@ -613,15 +613,15 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
       <div className="job-overlay-tracks">
         {job.trackOrder.map((trackId) => {
           const track = job.tracks[trackId];
-          return track ? <TrackCard key={track.trackId} track={track} /> : null;
+          return track ? <TrackCard key={track.trackId} track={track} jobStatus={job.status} /> : null;
         })}
       </div>
     </>
   );
 }
 
-function TrackCard({ track }: { readonly track: TrackView }) {
-  const modifier = trackCardModifier(track.status);
+function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly jobStatus: string }) {
+  const modifier = trackCardModifier(track.status, jobStatus);
   const isLive = modifier === "track-card--live";
   return (
     <article className={modifier ? `track-card ${modifier}` : "track-card"}>
@@ -855,13 +855,14 @@ function terminalFontResolveText(font: TerminalFontSettings): string {
     : `"${font.customName}" not found — falls back to ${resolution.fallbackName}`;
 }
 
-function trackCardModifier(status: string): string {
-  // 라이브 판정은 isTrackLive 단일 소유 — 도크 행/스트립 캐럿과 판정이 갈라지지 않게 위임한다.
-  if (isTrackLive(status)) {
+function trackCardModifier(trackStatus: string, jobStatus: string): string {
+  // 라이브 판정은 isDockTrackLive 단일 소유 — 도크 행/스트립 캐럿과 판정이 갈라지지 않고,
+  // 종결 잡의 미종결(stale) 트랙이 라이브로 표시되지 않게 위임한다.
+  if (isDockTrackLive(jobStatus, trackStatus)) {
     return "track-card--live";
   }
-  if (isTrackError(status)) return "track-card--bad";
-  if (status === "done" || status === "aborted") return "track-card--idle";
+  if (isTrackError(trackStatus)) return "track-card--bad";
+  if (trackStatus === "done" || trackStatus === "aborted") return "track-card--idle";
   return "";
 }
 

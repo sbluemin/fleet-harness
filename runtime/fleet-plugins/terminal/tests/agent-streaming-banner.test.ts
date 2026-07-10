@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -186,6 +186,23 @@ describe("getDockTailText (접힘 스트립 테일)", () => {
   it("라이브 트랙이 없으면 잔존 종결 output으로 폴백한다", () => {
     const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 10, latestLine: "finished output" }]);
     expect(getDockTailText([retained])).toEqual({ text: "finished output", thinking: false });
+  });
+
+  it("종결 잡의 stale 라이브 트랙은 라이브 풀에 들어가지 않는다", () => {
+    // job:finalized가 트랙 상태를 바꾸지 않아 stream으로 남은 트랙 — 라이브로 취급 금지.
+    const staleRetained = makeTailJob("err-1", "error", [{ id: "a", status: "stream", lastEventId: 30, latestLine: "partial output" }]);
+    const live = makeTailJob("live-1", "active", [{ id: "b", status: "stream", lastEventId: 20, thought: "reasoning" }]);
+    expect(getDockTailText([staleRetained, live])).toEqual({ text: "", thinking: true });
+    expect(getDockTailText([staleRetained])).toEqual({ text: "partial output", thinking: false });
+  });
+});
+
+describe("isDockTrackLive (잡 종결 게이트 라이브 판정)", () => {
+  it("비종결 잡의 라이브 트랙만 라이브로 판정한다", () => {
+    expect(isDockTrackLive("active", "stream")).toBe(true);
+    expect(isDockTrackLive("done", "stream")).toBe(false);
+    expect(isDockTrackLive("error", "active")).toBe(false);
+    expect(isDockTrackLive("active", "done")).toBe(false);
   });
 });
 

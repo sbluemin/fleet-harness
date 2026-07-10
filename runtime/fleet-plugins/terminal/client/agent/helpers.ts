@@ -60,6 +60,12 @@ export function isTrackError(status: string): boolean {
   return status === "err" || status === "error";
 }
 
+export function isDockTrackLive(jobStatus: string, trackStatus: string): boolean {
+  // 종결 잡(잔존 표시 포함)의 트랙은 track:finalized가 누락돼 stale 라이브 상태로 남아도
+  // 라이브로 취급하지 않는다 — 완료/에러 잡이 잔존 중 라이브 캐럿·aurora 신호를 얻는 것 방지.
+  return !isTerminalJobStatus(jobStatus) && isTrackLive(trackStatus);
+}
+
 export function resolveDockRowStatusLabel(trackStatus: string, jobStatus: string): string {
   // 행 라벨은 트랙별 결과 우선 — 혼합 결과 taskforce가 잔존할 때 성공 트랙이 잡 레벨 "error"로
   // 오표기되지 않게 한다. 종결 잡 안에 미종결로 남은 트랙만 잡 상태로 폴백한다.
@@ -106,18 +112,18 @@ export function selectJobsByIds(jobs: readonly JobView[], jobIds: readonly strin
 
 export function getDockTailText(dockJobs: readonly JobView[]): DockTail {
   // 모든 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해 접힘 테일을 고른다.
-  // 라이브 트랙이 하나라도 있으면 라이브 풀만 대표로 삼는다 — 잔존 종결 잡의 stale output이
-  // 새 라이브 트랙의 thinking 상태를 가리고 라이브 캐럿까지 얻는 것을 막는다.
-  const tracks = dockJobs
-    .flatMap((job) => job.trackOrder.map((trackId) => job.tracks[trackId]))
-    .filter((track): track is TrackView => Boolean(track))
-    .sort((a, b) => b.lastEventId - a.lastEventId);
-  const liveTracks = tracks.filter((track) => isTrackLive(track.status));
-  const pool = liveTracks.length > 0 ? liveTracks : tracks;
-  for (const track of pool) {
+  // 라이브 트랙(잡 비종결 게이트 포함)이 하나라도 있으면 라이브 풀만 대표로 삼는다 —
+  // 잔존 종결 잡의 stale output이 새 라이브 트랙의 thinking 상태를 가리는 것을 막는다.
+  const entries = dockJobs
+    .flatMap((job) => job.trackOrder.map((trackId) => ({ job, track: job.tracks[trackId] })))
+    .filter((entry): entry is { readonly job: JobView; readonly track: TrackView } => Boolean(entry.track))
+    .sort((a, b) => b.track.lastEventId - a.track.lastEventId);
+  const liveEntries = entries.filter(({ job, track }) => isDockTrackLive(job.status, track.status));
+  const pool = liveEntries.length > 0 ? liveEntries : entries;
+  for (const { track } of pool) {
     if (track.latestLine) return { text: track.latestLine, thinking: false };
   }
-  return { text: "", thinking: liveTracks.some((track) => Boolean(track.thought)) };
+  return { text: "", thinking: liveEntries.some(({ track }) => Boolean(track.thought)) };
 }
 
 export function mergeDockJobs(activeJobs: readonly JobView[], allJobs: readonly JobView[], retainedJobs: readonly RetainedJob[]): readonly JobView[] {
