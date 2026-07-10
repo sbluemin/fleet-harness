@@ -3464,8 +3464,6 @@
   overflow: hidden;
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   cursor: grab;
   touch-action: none;
   transition:
@@ -3474,8 +3472,7 @@
     padding var(--duration-base) var(--ease-spring),
     border-color var(--duration-base) var(--ease-spring),
     background var(--duration-base) var(--ease-spring),
-    box-shadow var(--duration-base) var(--ease-spring),
-    backdrop-filter var(--duration-base) var(--ease-spring);
+    box-shadow var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-titlebar:active {
@@ -3494,8 +3491,6 @@
   overflow: visible;
   background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
   box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
 .canvas-operation-drag-edge {

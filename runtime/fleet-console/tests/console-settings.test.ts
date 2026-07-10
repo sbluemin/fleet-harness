@@ -77,10 +77,10 @@ describe("sanitizeConsoleSettingsData", () => {
   it("accepts valid general fields", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: "source-code-pro" },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
     })).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: "source-code-pro" },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
       plugins: {},
     });
   });
@@ -135,11 +135,11 @@ describe("sanitizeConsoleSettingsData", () => {
   it("sanitizes persisted system families without changing valid sibling settings", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { theme: "carbon", uiFont: { source: "system", familyName: " \u0000Noto Sans\u007f ", size: 14 } },
+      general: { theme: "instrument", uiFont: { source: "system", familyName: " \u0000Noto Sans\u007f ", size: 14 } },
       plugins: { terminal: { font: { size: 14 } } },
     })).toEqual({
       version: 1,
-      general: { theme: "carbon", uiFont: { source: "system", familyName: "Noto Sans", size: 14 } },
+      general: { theme: "instrument", uiFont: { source: "system", familyName: "Noto Sans", size: 14 } },
       plugins: { terminal: { font: { size: 14 } } },
     });
   });
@@ -179,9 +179,9 @@ describe("sanitizeConsoleSettingsData", () => {
 
   it("normalizes maritime and carbon saved values to Instrument without dropping siblings", () => {
     for (const theme of ["maritime", "carbon", "instrument"] as const) {
-      expect(sanitizeConsoleSettingsData({ version: 1, general: { theme, language: "ko", uiFont: "source-code-pro" } })).toEqual({
+      expect(sanitizeConsoleSettingsData({ version: 1, general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } })).toEqual({
         version: 1,
-        general: { theme: "instrument", language: "ko", uiFont: "source-code-pro" },
+        general: { theme: "instrument", language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
         plugins: {},
       });
     }
@@ -229,17 +229,17 @@ describe("sanitizeConsoleSettingsData", () => {
 
     store.update(() => ({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
     }));
 
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: {},
     });
 
     const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8")) as unknown;
-    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: "jetbrains-mono" } });
+    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } });
   });
 
   it("atomically normalizes a legacy saved theme while preserving general siblings and plugin settings", () => {
@@ -247,24 +247,24 @@ describe("sanitizeConsoleSettingsData", () => {
     const paths = makeFakePaths(dir);
     fs.writeFileSync(paths.settingsFile, JSON.stringify({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     }), "utf8");
     const store = createConsoleSettingsStore({ paths });
 
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
     expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
   });
@@ -278,7 +278,7 @@ describe("sanitizeConsoleSettingsData", () => {
       },
       latest: {
         version: 1,
-        general: { language: "en", theme: "instrument", uiFont: "source-code-pro" },
+        general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
         plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
       },
       shouldFailWrite: () => false,
@@ -286,12 +286,12 @@ describe("sanitizeConsoleSettingsData", () => {
 
     expect(controlled.store.load()).toEqual({
       version: 1,
-      general: { language: "en", theme: "instrument", uiFont: "source-code-pro" },
+      general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
       plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
     });
     expect(controlled.getRaw()).toEqual({
       version: 1,
-      general: { language: "en", theme: "instrument", uiFont: "source-code-pro" },
+      general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
       plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
     });
     expect(controlled.getUpdateCalls()).toBe(1);
