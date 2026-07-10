@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-07-10
+
+### Changed
+- [fleet-console] Carrier Stream keeps reasoning out of the dock while preserving it in collapsible Details and showing a thinking state.
+- [fleet-console] Carrier Stream Details can stay pinned to the latest output with a Follow control.
+- [fleet-console] Carrier Stream keeps completed jobs visible in Details and briefly in the dock.
+- [fleet-console] Carrier Stream makes error tracks coral and treats connecting tracks as live.
+- [fleet-admiral] Cursor Agent sessions now receive Fleet doctrine through a sessionStart hook additional_context injection instead of an alwaysApply rules file.
+
+### Fixed
+- [core-unified-agent] Codex system prompts and config overrides are now reliably applied on new ACP sessions across all platforms; previously they were silently dropped.
+- [fleet-console] Update Available badge now appears in open tabs without a page refresh when a new console release is detected.
+
 ## [1.22.1] - 2026-07-10
 
 ### Added
