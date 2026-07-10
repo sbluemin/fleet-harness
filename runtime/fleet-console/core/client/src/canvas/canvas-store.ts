@@ -30,6 +30,20 @@ export interface CanvasViewportSize {
   readonly height: number;
 }
 
+export interface CanvasWorldRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface GridSlotGeometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
@@ -40,6 +54,10 @@ const SAVE_DELAY_MS = 400;
 const DEFAULT_OPERATION_WIDTH = 640;
 const DEFAULT_OPERATION_HEIGHT = 400;
 const DEFAULT_OPERATION_OFFSET = 40;
+export const MIN_OPERATION_WIDTH = 320;
+export const MIN_OPERATION_HEIGHT = 200;
+export const OPERATION_GRID_GAP = 8;
+export const OPERATION_GRID_PADDING = 0;
 const OPERATION_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
 const FOCUS_MAX_ZOOM = 1;
@@ -56,7 +74,9 @@ const backgroundAnimationListeners = new Set<Listener>();
 const perimeterAnimationListeners = new Set<Listener>();
 const mapFullscreenListeners = new Set<Listener>();
 const maximizedOperationListeners = new Set<Listener>();
+const formationViewListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
+const formationViewsByTheater = new Map<string, true>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
@@ -64,6 +84,7 @@ let backgroundAnimationEnabled = readStoredBackgroundAnimation();
 let perimeterAnimationEnabled = readStoredPerimeterAnimation();
 let mapFullscreen = readStoredMapFullscreen();
 let maximizedOperationId: string | null = null;
+let formationView = false;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
@@ -84,6 +105,10 @@ export function getSnapshot(): CanvasState {
 
 export function getMaximizedOperationId(): string | null {
   return maximizedOperationId;
+}
+
+export function getFormationView(): boolean {
+  return formationView;
 }
 
 // canvas 스토어가 현재 로드한 Theater id. maximizedOperationId·maximizedOperationIdsByTheater 등
@@ -111,6 +136,10 @@ export function useMapFullscreen(): boolean {
 
 export function useMaximizedOperationId(): string | null {
   return useSyncExternalStore(subscribeMaximizedOperation, getMaximizedOperationSnapshot, getMaximizedOperationSnapshot);
+}
+
+export function useFormationView(): boolean {
+  return useSyncExternalStore(subscribeFormationView, getFormationView, getFormationView);
 }
 
 // 최소화 목록은 CanvasState의 일부라 메인 listeners/emit을 그대로 공유한다(별도 채널 불필요).
@@ -169,6 +198,44 @@ export function setOperationGeometry(sessionId: string, geometry: OperationGeome
       ...state.operations,
       [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex },
     },
+  });
+}
+
+// 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
+// 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
+// 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.
+export function calculateGridSlots(
+  rect: CanvasWorldRect,
+  count: number,
+  minimumWidth = MIN_OPERATION_WIDTH,
+  minimumHeight = MIN_OPERATION_HEIGHT,
+  gap = OPERATION_GRID_GAP,
+  padding = OPERATION_GRID_PADDING,
+): readonly GridSlotGeometry[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const columns = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / columns);
+  const innerWidth = Math.max(0, rect.width - padding * 2);
+  const innerHeight = Math.max(0, rect.height - padding * 2);
+  const availableHeight = Math.max(0, innerHeight - gap * (rows - 1));
+  const naturalHeight = availableHeight / rows;
+  const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
+  const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), availableHeight);
+  return Array.from({ length: count }, (_, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    // 마지막 행은 남은 패널 수 기준으로 폭을 재분배한다 — 3패널 2×2 그리드의 빈 셀 같은 공백을 없앤다.
+    const columnsInRow = row === rows - 1 ? count - (rows - 1) * columns : columns;
+    const availableWidth = Math.max(0, innerWidth - gap * (columnsInRow - 1));
+    const naturalWidth = availableWidth / columnsInRow;
+    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
+    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), availableWidth);
+    return {
+      x: rect.x + padding + column * (width + gap),
+      y: rect.y + padding + row * (height + gap),
+      width,
+      height,
+    };
   });
 }
 
@@ -282,11 +349,15 @@ export function loadForTheater(theaterId: string | null): void {
   const nextMaximizedOperationId = theaterId ? maximizedOperationIdsByTheater.get(theaterId) ?? null : null;
   const maximizedChanged = maximizedOperationId !== nextMaximizedOperationId;
   maximizedOperationId = nextMaximizedOperationId;
+  const nextFormationView = theaterId ? formationViewsByTheater.has(theaterId) : false;
+  const formationChanged = formationView !== nextFormationView;
+  formationView = nextFormationView;
   targetViewport = state.viewport;
   // 복원된 Operation의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.operations));
   emit();
   if (maximizedChanged) emitMaximizedOperation();
+  if (formationChanged) emitFormationView();
 }
 
 export function focusOperation(sessionId: string, viewportSize: CanvasViewportSize): void {
@@ -357,6 +428,7 @@ export function setMapFullscreen(value: boolean): void {
 }
 
 export function setMaximizedOperationId(operationId: string): void {
+  clearFormationView();
   if (activeTheaterId) maximizedOperationIdsByTheater.set(activeTheaterId, operationId);
   const minimized = minimizedForMaximizedOperation(operationId);
   const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
@@ -371,6 +443,33 @@ export function clearMaximizedOperationId(): void {
   if (maximizedOperationId === null) return;
   maximizedOperationId = null;
   emitMaximizedOperation();
+}
+
+export function toggleFormationView(): void {
+  if (!activeTheaterId) return;
+  if (formationView) {
+    clearFormationView();
+    return;
+  }
+  setState({ minimized: [] });
+  clearMaximizedOperationId();
+  formationViewsByTheater.set(activeTheaterId, true);
+  formationView = true;
+  emitFormationView();
+}
+
+export function clearFormationView(): void {
+  if (activeTheaterId) formationViewsByTheater.delete(activeTheaterId);
+  if (!formationView) return;
+  formationView = false;
+  emitFormationView();
+}
+
+export function subscribeFormationView(listener: Listener): () => void {
+  formationViewListeners.add(listener);
+  return () => {
+    formationViewListeners.delete(listener);
+  };
 }
 
 function subscribeBackgroundAnimation(listener: Listener): () => void {
@@ -427,6 +526,10 @@ function subscribeMaximizedOperation(listener: Listener): () => void {
 
 function getMaximizedOperationSnapshot(): string | null {
   return maximizedOperationId;
+}
+
+function emitFormationView(): void {
+  for (const listener of formationViewListeners) listener();
 }
 
 function getMinimizedSnapshot(): readonly string[] {

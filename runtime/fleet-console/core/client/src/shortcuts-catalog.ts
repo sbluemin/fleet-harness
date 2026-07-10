@@ -29,6 +29,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     title: "Map",
     entries: [
       { combos: [["Alt", "←"], ["Alt", "→"]], description: "Focus the previous / next Operation" },
+      { combos: [["Alt", "F"]], description: "Toggle Formation view" },
       { combos: [["Drag"]], description: "Pan the operations map" },
       { combos: [["Shift", "Drag"]], description: "Draw a new Operation terminal" },
       { combos: [["Space", "Drag"]], description: "Pan even while a terminal has focus" },

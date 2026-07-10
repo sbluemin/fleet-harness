@@ -4,11 +4,11 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations, renameOperation as renameOperationRequest } from "../api.js";
-import { hydrateOperations, setActiveOperation } from "../store.js";
+import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
@@ -29,6 +29,7 @@ interface OperationsCanvasProps {
   readonly onResetView: () => void;
   readonly onToggleRadar: () => void;
   readonly onTogglePerimeter: () => void;
+  readonly onToggleFormation: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
@@ -68,12 +69,14 @@ export function OperationsCanvas({
   onResetView,
   onToggleRadar,
   onTogglePerimeter,
+  onToggleFormation,
   onClose,
   onFocus,
   onSetAccent,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const canvas = useCanvasState();
+  const formationView = useFormationView();
   const maximizedOperationId = useMaximizedOperationId();
   const minimized = useMinimized();
   const activePluginOperationId = state.activeOperationId;
@@ -94,7 +97,9 @@ export function OperationsCanvas({
 
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
-    disabled,
+    // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
+    // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
+    disabled: disabled || formationView,
     onViewportChange: setViewport,
     onZoom: animateViewportTo,
     onCreate: (rect) => {
@@ -146,13 +151,21 @@ export function OperationsCanvas({
   const operationKindRegistry = registry.operationKinds;
   const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
+  const formationOperationIds = flattenGroupedOrder(
+    theaterOperations,
+    state.groups.filter((group) => group.theaterId === state.activeTheaterId),
+    canvas.operationOrder,
+    [],
+  ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
+  const formationSlots = formationView ? calculateGridSlots({ x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }, formationOperationIds.length) : [];
+  const formationSlotByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, formationSlots[index]!]));
   // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
-  const effectiveZoom = panelMaximized ? 1 : canvas.viewport.zoom;
+  const effectiveZoom = panelMaximized || formationView ? 1 : canvas.viewport.zoom;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${perimeterEnabled ? "" : "is-perimeter-anim-off"}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${formationView ? "is-formation-view" : ""} ${perimeterEnabled ? "" : "is-perimeter-anim-off"}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
@@ -163,19 +176,22 @@ export function OperationsCanvas({
     >
       <CanvasGrid viewport={canvas.viewport} backgroundAnimationEnabled={radarEnabled} />
       <div
-        className="operations-canvas-world"
         style={{
           // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해
           // will-change 합성 레이어의 서브픽셀 오프셋 리샘플(글자 번짐)을 제거한다.
-          transform: panelMaximized
+          transform: panelMaximized || formationView
             ? "none"
             : `translate(${Math.round(canvas.viewport.x)}px, ${Math.round(canvas.viewport.y)}px) scale(${canvas.viewport.zoom})`,
         }}
+        className="operations-canvas-world"
       >
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;
-          const frameGeometry = operationMaximized ? maximizedGeometryFor(canvasSize, topPanelZIndex) : baseGeometry;
+          const formationSlot = formationSlotByOperationId.get(operation.id);
+          const frameGeometry = operationMaximized
+            ? maximizedGeometryFor(canvasSize, topPanelZIndex)
+            : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
             geometry: frameGeometry,
@@ -185,10 +201,11 @@ export function OperationsCanvas({
             viewportZoom: effectiveZoom,
             minimized: minimizedSet.has(operation.id),
             maximized: operationMaximized,
+            formation: formationView,
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             onActivate: () => {
               setActiveOperation(operation.id);
-              if (!operationMaximized) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+              if (!operationMaximized && !formationView) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
             },
             onClose: () => {
               if (state.activeOperationId === operation.id) setActiveOperation(null);
@@ -214,10 +231,10 @@ export function OperationsCanvas({
               onSetAccent(operation.id, accentKey);
             },
             onGeometryChange: (geometry) => {
-              if (!operationMaximized) setOperationGeometry(operation.id, geometry);
+              if (!operationMaximized && !formationView) setOperationGeometry(operation.id, geometry);
             },
             onGeometryCommit: (geometry) => {
-              if (!operationMaximized) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
+              if (!operationMaximized && !formationView) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
             },
           });
         })}
@@ -236,7 +253,7 @@ export function OperationsCanvas({
           viewportBounds={viewportBoundsFor(canvasRef.current)}
           placement="cursor"
           catalog={catalog}
-          canLaunch={canLaunch}
+          canLaunch={canLaunch && !formationView}
           radarEnabled={radarEnabled}
           perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
@@ -244,6 +261,11 @@ export function OperationsCanvas({
           onResetView={handleContextMenuResetView}
           onToggleRadar={onToggleRadar}
           onTogglePerimeter={onTogglePerimeter}
+          formationView={formationView}
+          onToggleFormation={() => {
+            onToggleFormation();
+            setContextMenu(null);
+          }}
           onClose={() => setContextMenu(null)}
         />
       ) : null}
@@ -324,6 +346,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly viewportZoom: number;
   readonly minimized: boolean;
   readonly maximized: boolean;
+  readonly formation: boolean;
   readonly accentKey: string | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
@@ -351,6 +374,7 @@ function renderPluginOperation(operation: OperationNode, options: {
       status={options.status}
       minimized={options.minimized}
       maximized={options.maximized}
+      interactionDisabled={options.formation}
       accentKey={options.accentKey}
       onActivate={options.onActivate}
       onClose={options.onClose}
