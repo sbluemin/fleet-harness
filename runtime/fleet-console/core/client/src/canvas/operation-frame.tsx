@@ -186,6 +186,17 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
       aria-label={`Operation ${displayTitle}`}
       inert={minimized ? true : undefined}
     >
+      {!maximized && !interactionDisabled ? (
+        <div
+          className="canvas-operation-drag-edge"
+          onPointerDown={beginDrag}
+          onPointerMove={updateDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          data-canvas-blocker
+          aria-hidden="true"
+        />
+      ) : null}
       <div
         className="canvas-operation-titlebar"
         onPointerDown={beginDrag}
@@ -207,7 +218,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
             <span className={beaconStatusClass(status)} aria-hidden="true" />
           </button>
         ) : (
-          <span className={beaconStatusClass(status)} aria-hidden="true" />
+          <span className={beaconStatusClass(status)} onPointerDown={stopTitlePointer} aria-hidden="true" />
         )}
         {rename.renaming ? (
           <input
@@ -225,7 +236,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
             {displayTitle}
           </span>
         )}
-        {subtitle ? <span className="canvas-operation-cli">{subtitle}</span> : null}
+        {subtitle ? <span className="canvas-operation-cli" onPointerDown={stopTitlePointer}>{subtitle}</span> : null}
         <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={`Minimize operation ${displayTitle}`} title="Minimize operation">
           <MinimizeIcon />
         </button>

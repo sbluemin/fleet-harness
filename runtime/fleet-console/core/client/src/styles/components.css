@@ -2560,11 +2560,6 @@
   display: none;
 }
 
-/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
-.canvas-operation--shell .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
-}
-
 /* Operations Control 헤더 — 레티클 마크 + 타이틀.
    좌하단 런처와 우클릭 메뉴를 단순 'add'에서 작전 통제면으로 승격하는 정체성 블록. */
 .canvas-context-menu-head {
@@ -3058,7 +3053,7 @@
 .canvas-operation {
   position: absolute;
   display: grid;
-  grid-template-rows: 42px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 320px;
   min-height: 200px;
   overflow: hidden;
@@ -3091,7 +3086,7 @@
    코너에서 끊긴다. 부모 .operations-canvas는 radius-xl(24px) + 보더 1px이라 overflow:hidden 클립
    반경이 23px(=radius-xl − 보더). 패널 radius를 이 클립 반경에 정확히 맞추면 패널의 둥근 코너가
    클립과 일치해 검은 갭 없이 accent가 둥근 모서리를 그대로 감싼다.
-   드래그/리사이즈가 차단된 상태이므로 타이틀바의 grab 어포던스 커서도 기본값으로 되돌린다. */
+   드래그/리사이즈가 차단된 상태이므로 코너 필의 grab 어포던스 커서도 기본값으로 되돌린다. */
 .canvas-operation.is-maximized {
   border-radius: calc(var(--radius-xl) - 1px);
 }
@@ -4050,19 +4045,43 @@
 
 
 .canvas-operation-titlebar {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 6;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   min-width: 0;
-  height: 42px;
-  padding: 0 var(--space-2) 0 var(--space-3);
-  border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-deep) 28%, transparent);
+  max-width: calc(100% - (var(--space-2) * 2));
+  min-height: 36px;
+  padding: 4px 5px 4px 8px;
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 86%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
+  box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
   cursor: grab;
   touch-action: none;
 }
 
 .canvas-operation-titlebar:active {
+  cursor: grabbing;
+}
+
+.canvas-operation-drag-edge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 4;
+  height: 14px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas-operation-drag-edge:active {
   cursor: grabbing;
 }
 
@@ -4308,6 +4327,7 @@
 
 .canvas-operation-title {
   min-width: 0;
+  max-width: 15ch;
   overflow: hidden;
   color: var(--ink-pearl);
   font-weight: 700;
@@ -4326,7 +4346,7 @@
 
 /* 패널 이름 인라인 변경 입력 — Operations 사이드바 rename 입력과 같은 brass 포커스 언어를 띠바 폭에 맞춘다. */
 .canvas-operation-rename-input {
-  flex: 1 1 auto;
+  flex: 0 1 15ch;
   min-width: 0;
   padding: 4px 7px;
   border: 1px solid color-mix(in oklch, var(--brass) 44%, var(--surface-rim));
@@ -4360,7 +4380,7 @@
 }
 
 .canvas-operation-cli {
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .canvas-operation-job-count {
@@ -4389,6 +4409,14 @@
   color: var(--brass-bright);
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
+  outline-offset: 2px;
+}
+
+.canvas-operation:hover .canvas-operation-icon-button,
+.canvas-operation:focus-within .canvas-operation-icon-button {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
 }
 
 .canvas-operation-icon-button.is-active {
