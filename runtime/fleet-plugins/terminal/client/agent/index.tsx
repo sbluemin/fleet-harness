@@ -617,8 +617,6 @@ function AgentCliRow({
     <div className="agent-cli-row">
       <span className="agent-cli-name">{cli.displayName}</span>
       <span className="agent-cli-meta">
-        {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
-        <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? "Available" : "Missing"}</span>
         {cli.id === "codex" && codexLaunchMode ? (
           <span className="segmented" role="group" aria-label="Codex launch mode">
             <button
@@ -641,6 +639,8 @@ function AgentCliRow({
             </button>
           </span>
         ) : null}
+        {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
+        <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? "Available" : "Missing"}</span>
       </span>
     </div>
   );
