@@ -1,4 +1,7 @@
+import fs from "node:fs/promises";
 import type http from "node:http";
+import os from "node:os";
+import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it } from "vitest";
@@ -135,6 +138,44 @@ describe("handleRemove CLI 인자", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual(["remove", "-s", "pdf", "-y"]);
     expect(calls[0]).not.toContain("*");
+  });
+});
+
+describe("project scope cwd", () => {
+  it("resolves list's project command cwd from relPath", async () => {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-routes-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    const selectedDirectory = path.join(theaterRoot, "nested");
+    const calls: string[] = [];
+    await fs.mkdir(selectedDirectory, { recursive: true });
+
+    try {
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number })._status = status;
+              (res as unknown as { _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({}),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+      const executor: CliExecutor = async (_args, options) => {
+        calls.push(options.cwd);
+        return { stdout: "[]", stderr: "", exitCode: 0 };
+      };
+      const res = makeRes();
+
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1&relPath=nested"), res, ctx, executor);
+
+      expect(res._status).toBe(200);
+      expect(calls).toContain(await fs.realpath(selectedDirectory));
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
   });
 });
 

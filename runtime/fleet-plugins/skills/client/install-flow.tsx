@@ -9,6 +9,7 @@ interface InstallFlowProps {
   readonly source: string;
   readonly skill: string;
   readonly theaterId: string | null;
+  readonly relPath: string | null;
   readonly onCancel: () => void;
   readonly onStarted: (scope: Scope) => void;
   readonly jobLog: UseJobLogReturn;
@@ -30,7 +31,7 @@ const PERMISSION_WARNING =
 
 // ─── InstallFlow ──────────────────────────────────────────────────────────────
 
-export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, jobLog }: InstallFlowProps) {
+export function InstallFlow({ source, skill, theaterId, relPath, onCancel, onStarted, jobLog }: InstallFlowProps) {
   const [scope, setScope] = useState<Scope>(theaterId ? "project" : "global");
   const [allAgents, setAllAgents] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<Set<AgentId>>(new Set(AGENT_IDS));
@@ -63,13 +64,16 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
     if (agents.length === 0) return;
 
     const body: Record<string, unknown> = { source, skill, scope, agents };
-    if (scope === "project" && theaterId) body["theaterId"] = theaterId;
+    if (scope === "project" && theaterId) {
+      body["theaterId"] = theaterId;
+      body["relPath"] = relPath;
+    }
 
     start("/plugins/skills/install", body);
     // 완료 전파(설치 목록 새로고침·탭 전환)는 잡 소유자(FindTab)가 status로 구동하므로,
     // 이 transient 폼은 설치 대상 scope만 시작 시점에 상위로 알린다.
     onStarted(scope);
-  }, [allAgents, selectedAgents, source, skill, scope, theaterId, start, onStarted]);
+  }, [allAgents, selectedAgents, source, skill, scope, theaterId, relPath, start, onStarted]);
 
   return (
     <div className="skills-install-flow">

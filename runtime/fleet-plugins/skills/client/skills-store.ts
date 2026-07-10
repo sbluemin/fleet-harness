@@ -102,3 +102,8 @@ export function setInstallFormOpenId(id: string | null): void {
   state = { ...state, installFormOpenId: id };
   emit();
 }
+
+export function resetProjectContextState(): void {
+  state = { ...state, installedList: [], installedLoading: false, installFormOpenId: null };
+  emit();
+}

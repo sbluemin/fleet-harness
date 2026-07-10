@@ -16,14 +16,17 @@ import { useJobLog } from "./use-job-log.js";
 
 interface InstalledTabProps {
   readonly theaterId: string | null;
+  readonly relPath: string | null;
   readonly onReadMore: (skill: SkillListItem) => void;
   readonly refreshKey?: number;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-async function fetchInstalledList(theaterId: string | null): Promise<SkillListItem[]> {
-  const query = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
+async function fetchInstalledList(theaterId: string | null, relPath: string | null): Promise<SkillListItem[]> {
+  const query = theaterId
+    ? `?theaterId=${encodeURIComponent(theaterId)}&relPath=${encodeURIComponent(relPath ?? "")}`
+    : "";
   const res = await fetch(`/plugins/skills/list${query}`);
   if (!res.ok) return [];
   const data = await res.json() as { skills: SkillListItem[] };
@@ -32,48 +35,54 @@ async function fetchInstalledList(theaterId: string | null): Promise<SkillListIt
 
 // ─── InstalledTab ─────────────────────────────────────────────────────────────
 
-export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTabProps) {
+export function InstalledTab({ theaterId, relPath, onReadMore, refreshKey }: InstalledTabProps) {
   const { scope, filterText, installedList, installedLoading } = useSkillsStore();
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
 
-  const loadList = useCallback((tid: string | null) => {
+  const loadList = useCallback((tid: string | null, contextRelPath: string | null) => {
     setInstalledState([], true);
-    fetchInstalledList(tid)
+    fetchInstalledList(tid, contextRelPath)
       .then((skills) => setInstalledState(skills, false))
       .catch(() => setInstalledState([], false));
   }, []);
 
   useEffect(() => {
-    loadList(theaterId);
-  }, [theaterId, loadList, refreshKey]);
+    loadList(theaterId, relPath);
+  }, [theaterId, relPath, loadList, refreshKey]);
 
   useEffect(() => {
     if (updateLog.status === "done" || updateLog.status === "error") {
-      loadList(theaterId);
+      loadList(theaterId, relPath);
     }
-  }, [updateLog.status, theaterId, loadList]);
+  }, [updateLog.status, theaterId, relPath, loadList]);
 
   const handleUpdate = useCallback((updScope: string) => {
     const s = updScope as Scope;
     updateScopeRef.current = s;
     const body: Record<string, unknown> = { scope: s };
-    if (theaterId) body["theaterId"] = theaterId;
+    if (s === "project" && theaterId) {
+      body["theaterId"] = theaterId;
+      body["relPath"] = relPath;
+    }
     updateLog.start("/plugins/skills/update", body);
-  }, [theaterId, updateLog]);
+  }, [theaterId, relPath, updateLog]);
 
   const handleRemove = useCallback((name: string, removeScope: string) => {
     const body: Record<string, unknown> = { scope: removeScope, skill: name };
-    if (theaterId) body["theaterId"] = theaterId;
+    if (removeScope === "project" && theaterId) {
+      body["theaterId"] = theaterId;
+      body["relPath"] = relPath;
+    }
 
     void fetch("/plugins/skills/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(() => loadList(theaterId))
+      .then(() => loadList(theaterId, relPath))
       .catch(() => null);
-  }, [theaterId, loadList]);
+  }, [theaterId, relPath, loadList]);
 
   const handleRetry = useCallback(() => {
     if (updateScopeRef.current) handleUpdate(updateScopeRef.current);
