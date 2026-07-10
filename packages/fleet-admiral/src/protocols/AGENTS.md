@@ -24,13 +24,15 @@ The final system prompt is composed as:
 ```text
 System Prompt
   + [Always] <fleet section="preamble">
-  + [Always] <fleet section="persona">
+  + [Metaphor-gated] <fleet section="persona">
   + [Always] <fleet section="role">
-  + [Tone-gated] <fleet section="tone">
+  + [Metaphor-gated] <fleet section="tone">
   + [Always] <fleet section="roster">                         ← routing tier only; request-block contracts live in the carrier-contracts skill
   + [Always] <fleet section="protocol-gate">                  ← intent/mode gate for on-demand protocol skills
   + [Always] <fleet section="standing-orders" type="<id>">    ← one block per Standing Order
 ```
+
+The always-on role, protocol gate, Standing Orders, and carrier routing metadata use neutral actor terms. `enableMetaphor=true` adds both the naval Persona and Tone overlays; the Persona explicitly maps `user` → Admiral of the Navy, `host agent`/`you` → Admiral, and `Carrier` → Captain while preserving functional identifiers. `false` adds neither overlay.
 
 Tool-specific usage and argument details remain live MCP metadata exposed through tool descriptions and schemas, not static prompt sections.
 

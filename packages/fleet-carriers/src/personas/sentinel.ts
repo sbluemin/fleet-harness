@@ -25,8 +25,8 @@ export const SENTINEL_DEFAULTS: CarrierPersonaDefaults = {
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
-  title: "Captain · The Inquisitor / QA & Security Lead",
-  summary: "Bug hunter and security specialist — code review, defect detection, quality audits, vulnerability hunting, and penetration testing with ruthless precision. As the Captain (함장) of this Carrier, Sentinel commands the fleet's quality and security inspections.",
+  title: "QA & Security Lead",
+  summary: "Bug hunter and security specialist — code review, defect detection, quality audits, vulnerability hunting, and penetration testing with ruthless precision.",
   category: "strategy",
   whenToUse: [
     "code review, bug hunting, quality audits, test execution",

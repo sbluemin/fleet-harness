@@ -15,7 +15,7 @@ None. Selecting baseline implies Mission Anchor Compact Mode.
 
 ## Reporting Cadence
 
-As you move through this protocol, report progress to the Admiral of the Navy in order.
+As you move through this protocol, report progress to the user in order.
 
 1. Brief in one line how the Workflow will proceed. → report `brief: <…>`
 2. State that execution is beginning and run the Workflow. → report `status: executing`

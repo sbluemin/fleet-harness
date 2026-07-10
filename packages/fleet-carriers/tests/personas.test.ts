@@ -170,7 +170,7 @@ describe("Kirov and Ohio parallel execution contract", () => {
     expect(KIROV_METADATA.outputFormat).toContain("**Execution Topology**");
     expect(KIROV_METADATA.outputFormat).toContain("**Dispatch Manifest**");
     expect(KIROV_METADATA.permissions).toContain(
-      "MUST honor exact provided .fleet/plans/*.md paths. Keep one plan_file as the execution SSoT: Success means creating or updating that executable plan_file unless the Admiral explicitly requests draft-only work. Do not create split plan files for parallel lanes.",
+      "MUST honor exact provided .fleet/plans/*.md paths. Keep one plan_file as the execution SSoT: Success means creating or updating that executable plan_file unless the host agent explicitly requests draft-only work. Do not create split plan files for parallel lanes.",
     );
     expect(KIROV_METADATA.principles).toContain(
       "Execution Topology is mandatory for every plan. It MUST declare Execution mode: Sequential | Parallel, shared mutable resources, ordered waves, and stable Wave/Lane IDs; a lane may be marked parallel only when its exact non-overlapping write set and read dependencies prove it is safe to run concurrently.",
