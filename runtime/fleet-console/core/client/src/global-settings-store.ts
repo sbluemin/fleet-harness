@@ -30,6 +30,10 @@ export function getGlobalSettingsStoreState(): GlobalSettingsStoreState {
   return snapshot;
 }
 
+export function hydrateGlobalSettings(state: GlobalSettingsState): void {
+  setSnapshot({ loading: false, state, error: null });
+}
+
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => {

@@ -21,6 +21,7 @@ import "./styles/layout.css";
 import "./styles/components.css";
 import { App } from "./app.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
+import { hydrateGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "./store.js";
@@ -53,6 +54,7 @@ try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
   setActiveUiFont(settings.uiFont);
+  hydrateGlobalSettings(settings);
 } catch {
   // 서버 미응답 시 기본 Theme 및 Manrope UI font를 유지한다.
 }

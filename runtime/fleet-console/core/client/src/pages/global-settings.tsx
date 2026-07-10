@@ -8,6 +8,11 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "../store.js";
 import type { GlobalSettingsState, ThemeId, UiFontId } from "../types.js";
 
+interface LanguageOption {
+  readonly id: GlobalSettingsState["language"];
+  readonly label: string;
+}
+
 interface ThemeOption {
   readonly id: ThemeId;
   readonly label: string;
@@ -66,6 +71,12 @@ const UI_FONT_OPTIONS: readonly UiFontOption[] = [
   { id: "manrope", label: "Fleet UI", name: "Manrope", note: "Balanced · Fleet default", family: '"Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
   { id: "jetbrains-mono", label: "Instrument Mono", name: "JetBrains Mono", note: "Uniform · technical scan", family: '"JetBrains Mono Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
   { id: "source-code-pro", label: "Source Mono", name: "Source Code Pro", note: "Open forms · compact", family: '"Source Code Pro Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
+];
+
+const LANGUAGES: readonly LanguageOption[] = [
+  { id: "auto", label: "Auto" },
+  { id: "en", label: "English" },
+  { id: "ko", label: "한국어" },
 ];
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
@@ -323,12 +334,42 @@ function GeneralSettingsCard({
       {state ? (
         <>
           <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
+          <LanguageSettings state={state} saving={saving} />
         </>
       ) : (
         <p className="global-settings-help">Loading settings.</p>
       )}
       <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
     </section>
+  );
+}
+
+function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
+  return (
+    <div className="global-settings-row is-stack language-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">Release notes language</p>
+        <p className="global-settings-help">Choose the language for What's New. Auto follows this browser's language.</p>
+      </div>
+      <div className="segmented language-picker" role="group" aria-label="Release notes language">
+        {LANGUAGES.map((language) => {
+          const isActive = state.language === language.id;
+          return (
+            <button
+              key={language.id}
+              type="button"
+              aria-pressed={isActive}
+              className={`segmented-option ${isActive ? "is-active" : ""}`}
+              disabled={saving}
+              onClick={() => void setGlobalSettingsField("language", language.id)}
+            >
+              {language.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="console-port-note">Stored with Console settings and shared across every browser.</p>
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import { ApiError } from "./api.js";
-import type { GlobalSettingsMutationResult, GlobalSettingsState, UiFontId } from "./types.js";
+import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, UiFontId } from "./types.js";
 
 const DEFAULT_UI_FONT: UiFontId = "manrope";
 
@@ -43,6 +43,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
     || (payload.theme !== "maritime" && payload.theme !== "carbon")
+    || !isConsoleLanguagePreference(payload.language)
   ) {
     throw new ApiError(status, "Invalid global settings state response");
   }
@@ -51,6 +52,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     consoleStaticPort: payload.consoleStaticPort,
     theme: payload.theme,
     uiFont: isUiFontId(payload.uiFont) ? payload.uiFont : DEFAULT_UI_FONT,
+    language: payload.language,
   };
 }
 
@@ -60,4 +62,8 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 
 function isUiFontId(value: unknown): value is UiFontId {
   return value === "manrope" || value === "jetbrains-mono" || value === "source-code-pro";
+}
+
+function isConsoleLanguagePreference(value: unknown): value is ConsoleLanguagePreference {
+  return value === "auto" || value === "en" || value === "ko";
 }

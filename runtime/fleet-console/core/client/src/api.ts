@@ -1,4 +1,4 @@
-import type { ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -58,6 +58,7 @@ export interface PlansListResult {
 
 export interface ReleaseNotesFetchOptions {
   readonly force?: boolean;
+  readonly locale?: ReleaseNotesLocale;
   readonly signal?: AbortSignal;
 }
 
@@ -111,7 +112,10 @@ export async function fetchObserverStatus(theaterId: string | null, signal?: Abo
 }
 
 export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}): Promise<ReleaseNotesResponse> {
-  const suffix = options.force ? "?force=true" : "";
+  const query = new URLSearchParams();
+  if (options.locale) query.set("locale", options.locale);
+  if (options.force) query.set("force", "true");
+  const suffix = query.size > 0 ? `?${query}` : "";
   const response = await fetch(`/api/v1/updates/release-notes${suffix}`, { signal: options.signal });
   await assertOk(response);
   return assertReleaseNotesResponse(await response.json(), response.status);
@@ -427,6 +431,7 @@ function assertReleaseNotes(value: unknown, status: number): ReleaseNotes {
     || typeof payload.version !== "string"
     || (payload.date !== null && typeof payload.date !== "string")
     || !Array.isArray(payload.sections)
+    || typeof payload.localizationFallback !== "boolean"
   ) {
     throw new ApiError(status, "Invalid release notes response");
   }
@@ -434,6 +439,7 @@ function assertReleaseNotes(value: unknown, status: number): ReleaseNotes {
     version: payload.version,
     date: payload.date,
     sections: payload.sections.map((section) => assertReleaseNoteSection(section, status)),
+    localizationFallback: payload.localizationFallback,
   };
 }
 

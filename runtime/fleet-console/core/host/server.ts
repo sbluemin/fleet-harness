@@ -30,7 +30,7 @@ import { createFleetPluginHost } from "./plugin-host/host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/types.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "./release-notes/service.js";
-import { ConsoleReleaseNotesUnavailableError } from "./release-notes/types.js";
+import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/types.js";
 import { RouteRegistry } from "./route-registry/route-registry.js";
 import { UpgradeRegistry } from "./route-registry/upgrade-registry.js";
 import { withSecurityHeaders } from "./security-headers.js";
@@ -777,8 +777,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     try {
-      const force = readUrl(req).searchParams.get("force") === "true";
-      writeJson(res, 200, await releaseNotes.refresh({ force }));
+      const searchParams = readUrl(req).searchParams;
+      const force = searchParams.get("force") === "true";
+      const locale: ReleaseNotesLocale = searchParams.get("locale") === "ko" ? "ko" : "en";
+      writeJson(res, 200, await releaseNotes.refresh({ force, locale }));
     } catch (error) {
       if (error instanceof ConsoleReleaseNotesUnavailableError) {
         writeJson(res, 503, { error: "release_notes_unavailable" });

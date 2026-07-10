@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 
-import { fetchReleaseNotes } from "../api.js";
-import { applyReleaseNotes, beginReleaseNotesFetch, closeWhatsNew, failReleaseNotesFetch, selectReleaseNote } from "../store.js";
+import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { requestReleaseNotes } from "../release-notes-fetch.js";
+import { closeWhatsNew, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
+import { resolveReleaseNotesLocale } from "../whatsnew-i18n.js";
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;
@@ -28,6 +30,9 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
+  const globalSettings = useGlobalSettingsStore();
+  // 모달 크롬은 영어 원형을 유지한다 — locale은 릴리스 노트 "본문" 언어(fetch·폴백 배지·선택기 상태)에만 관여한다.
+  const locale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
 
   // What's new는 자동으로 열리므로, 다른 우선 오버레이가 떠 있거나 아직 theater bootstrap이 끝나지 않은
   // 동안에는 양보한다. 그렇지 않으면 뒤에 숨은 What's new의 window capture 리스너가 stopImmediatePropagation으로
@@ -70,10 +75,10 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const selected = state.releaseNotes[selectedIndex] ?? state.releaseNotes[0]!;
   const selectedValue = releaseNoteKey(selected.version, selectedIndex >= 0 ? selectedIndex : 0);
   const handleRefresh = () => {
-    beginReleaseNotesFetch();
-    void fetchReleaseNotes({ force: true })
-      .then(applyReleaseNotes)
-      .catch((error) => failReleaseNotesFetch(error instanceof Error ? error.message : String(error)));
+    void requestReleaseNotes({ force: true, locale });
+  };
+  const selectLanguage = async (nextLocale: "en" | "ko") => {
+    await setGlobalSettingsField("language", nextLocale);
   };
   // 셀렉터는 한 페이지에 최근 RELEASE_NOTE_PAGE_SIZE개만 노출한다. 현재 페이지는 선택된 버전에서 파생하므로
   // 별도 상태가 필요 없고, 선택이 항상 현재 페이지에 포함된다. 페이지 이동은 그 페이지의 가장 최신 버전을 선택한다.
@@ -101,6 +106,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
           <div className="whatsnew-meta-row">
             {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>Released {selected.date}</time> : <span className="whatsnew-date">Unreleased</span>}
             {state.releaseNotesStale ? <span className="whatsnew-stale">Stale</span> : null}
+            {locale === "ko" && selected.localizationFallback ? <span className="whatsnew-fallback">English fallback</span> : null}
           </div>
         </header>
         <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label="Close What's new">
@@ -129,6 +135,20 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
                 </button>
               </div>
             ) : null}
+            <div className="whatsnew-language-picker" role="group" aria-label="Release notes language">
+              {(["en", "ko"] as const).map((nextLocale) => (
+                <button
+                  key={nextLocale}
+                  type="button"
+                  className={locale === nextLocale ? "is-active" : ""}
+                  aria-pressed={locale === nextLocale}
+                  disabled={globalSettings.savingField === "language"}
+                  onClick={() => void selectLanguage(nextLocale)}
+                >
+                  {nextLocale === "en" ? "EN" : "한국어"}
+                </button>
+              ))}
+            </div>
             <button type="button" className="whatsnew-refresh" onClick={handleRefresh} disabled={state.releaseNotesLoading}>
               {state.releaseNotesLoading ? "Refreshing" : "Refresh"}
             </button>

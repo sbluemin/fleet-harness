@@ -14,6 +14,7 @@ export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 export interface ConsoleGeneralSettings {
   readonly consolePortMode?: "dynamic" | "static";
   readonly consoleStaticPort?: number;
+  readonly language?: "auto" | "en" | "ko";
   readonly theme?: ConsoleThemeId;
   readonly uiFont?: ConsoleUiFontId;
 }
@@ -77,6 +78,9 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const consoleStaticPort = isValidConsoleStaticPort(value.consoleStaticPort)
     ? value.consoleStaticPort
     : undefined;
+  const language = value.language === "auto" || value.language === "en" || value.language === "ko"
+    ? value.language
+    : undefined;
   const theme = value.theme === "maritime" || value.theme === "carbon"
     ? value.theme
     : undefined;
@@ -84,6 +88,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
+    ...(language !== undefined ? { language } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
   };

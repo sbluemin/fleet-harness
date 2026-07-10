@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyConsoleUpdate } from "../core/client/src/api.js";
+import { ApiError, applyConsoleUpdate, fetchReleaseNotes } from "../core/client/src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -26,5 +26,21 @@ describe("client api parsing", () => {
     }), { status: 202 })) as typeof fetch;
 
     await expect(applyConsoleUpdate()).resolves.toEqual({ status: "accepted" });
+  });
+
+  it("serializes locale before force and validates localization fallback", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      notes: [{ version: "1.0.0", date: null, sections: [], localizationFallback: false }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    })));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(fetchReleaseNotes({ locale: "ko", force: true })).resolves.toMatchObject({ notes: [{ localizationFallback: false }] });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/updates/release-notes?locale=ko&force=true", { signal: undefined });
+
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ notes: [{ version: "1", date: null, sections: [] }], sourceRef: "main", fetchedAt: 10, stale: false }))) as typeof fetch;
+    await expect(fetchReleaseNotes()).rejects.toBeInstanceOf(ApiError);
   });
 });
