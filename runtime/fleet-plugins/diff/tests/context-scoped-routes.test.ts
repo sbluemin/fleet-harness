@@ -191,3 +191,27 @@ describe("selected subdirectory diff route scope", () => {
     expect(commit.content).not.toContain(`${INSIDE_DIR}/committed.txt`);
   });
 });
+
+describe("changed route non-Git theater handling", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-diff-no-git-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns the client-friendly no_git_repo notice contract", async () => {
+    const writes: JsonWrite[] = [];
+
+    await handleDiffChanged(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater" }, writes),
+    );
+
+    expect(writes).toEqual([{ status: 422, payload: { error: "no_git_repo" } }]);
+  });
+});
