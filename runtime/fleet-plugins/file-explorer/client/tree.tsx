@@ -9,6 +9,7 @@ export interface PluginFilesClient {
 }
 
 interface FileTreeProps {
+  readonly contextKey: string;
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
@@ -85,7 +86,7 @@ function buildFlatRows(
   return rows;
 }
 
-export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeProps) {
+export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect }: FileTreeProps) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -114,7 +115,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     setExpandedDirs(new Set());
     setChildResults(new Map());
     setFilterText("");
-  }, [theaterId]);
+  }, [contextKey, theaterId]);
 
   useEffect(() => {
     if (!theaterId) return;
