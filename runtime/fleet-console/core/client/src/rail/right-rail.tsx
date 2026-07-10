@@ -40,7 +40,8 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
-  const { pathContext, pathContextLoading, pathContextError, isPathContextDeckOpen } = useRailPathContextStore();
+  const { pathContextTheaterId, pathContext, pathContextHydrated, pathContextLoading, pathContextMutationInProgress, pathContextError, isPathContextDeckOpen } = useRailPathContextStore();
+  const hasHydratedPathContext = theaterId !== null && pathContextTheaterId === theaterId && pathContextHydrated && pathContext !== null;
 
   const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
   const extraWidthRef = useRef(extraWidth);
@@ -112,7 +113,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} theaterId={theaterId} isPathContextDeckOpen={isPathContextDeckOpen} pathContextLoading={pathContextLoading} pathContextError={pathContextError} onSelectPathContext={selectPathContext} />
+          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} theaterId={theaterId} hasHydratedPathContext={hasHydratedPathContext} isPathContextDeckOpen={isPathContextDeckOpen} pathContextLoading={pathContextLoading} pathContextMutationInProgress={pathContextMutationInProgress} pathContextError={pathContextError} onSelectPathContext={selectPathContext} />
         )}
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
@@ -143,8 +144,10 @@ interface RailPanelContentProps {
   readonly activeId: string | null;
   readonly ctx: RailPanelContext;
   readonly theaterId: string | null;
+  readonly hasHydratedPathContext: boolean;
   readonly isPathContextDeckOpen: boolean;
   readonly pathContextLoading: boolean;
+  readonly pathContextMutationInProgress: boolean;
   readonly pathContextError: string | null;
   readonly onSelectPathContext: (relPath: string | null) => void;
 }
@@ -152,9 +155,10 @@ interface RailPanelContentProps {
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
 // 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
 // (activePanel·ctx·activeId) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx, theaterId, isPathContextDeckOpen, pathContextLoading, pathContextError, onSelectPathContext }: RailPanelContentProps) {
+const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx, theaterId, hasHydratedPathContext, isPathContextDeckOpen, pathContextLoading, pathContextMutationInProgress, pathContextError, onSelectPathContext }: RailPanelContentProps) {
   const chipRef = useRef<HTMLButtonElement>(null);
   const pathAware = activePanel.pathAware === true;
+  const canRenderPathAwareBody = !pathAware || hasHydratedPathContext;
 
   useEffect(() => {
     if (!isPathContextDeckOpen) chipRef.current?.focus();
@@ -173,12 +177,12 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
           ref={chipRef}
           className={`rail-context-chip${isPathContextDeckOpen ? " is-open" : ""}${ctx.pathContext.relPath !== null ? " is-non-root" : ""}`}
           type="button"
-          disabled={!pathAware || theaterId === null || pathContextLoading}
+          disabled={!pathAware || !hasHydratedPathContext || pathContextLoading || pathContextMutationInProgress}
           aria-expanded={pathAware ? isPathContextDeckOpen : undefined}
           title={pathContextError ?? ctx.pathContext.label}
           onClick={() => setRailPathContextDeckOpen(!isPathContextDeckOpen)}
         >
-          {pathAware ? (pathContextLoading ? "Loading…" : ctx.pathContext.label) : "Theater-wide"}
+          {pathAware ? (hasHydratedPathContext ? ctx.pathContext.label : "Loading…") : "Theater-wide"}
         </button>
         <button
           className="right-rail-close-btn"
@@ -190,9 +194,9 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
         </button>
       </div>
       <div className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
-        {activePanel.render(ctx)}
+        {canRenderPathAwareBody ? activePanel.render(ctx) : <div className="rail-context-tree-status">Loading path context…</div>}
       </div>
-      {pathAware && isPathContextDeckOpen && theaterId ? <PathContextDeck theaterId={theaterId} context={ctx.pathContext} onSelect={selectContext} onClose={closeDeck} /> : null}
+      {pathAware && hasHydratedPathContext && isPathContextDeckOpen && theaterId ? <PathContextDeck theaterId={theaterId} context={ctx.pathContext} isMutating={pathContextMutationInProgress} onSelect={selectContext} onClose={closeDeck} /> : null}
     </>
   );
 });

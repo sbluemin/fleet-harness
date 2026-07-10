@@ -73,7 +73,7 @@ export async function listTheaterDirectories(theaterRoot: string, parentRelPath:
 }
 
 export function isSafeRelativePath(value: string): boolean {
-  return value.length > 0 && value.length <= 4096 && !value.includes("\0") && !value.startsWith("/") && !value.startsWith("\\") && !/^[A-Za-z]:/.test(value) && !value.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  return value.length > 0 && value.length <= 4096 && !value.includes("\0") && !value.includes("\\") && !value.startsWith("/") && !/^[A-Za-z]:/.test(value) && !value.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
 }
 
 function isWithinRoot(candidate: string, root: string): boolean {

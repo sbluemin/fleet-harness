@@ -130,4 +130,35 @@ describe("path context state", () => {
     await first;
     expect(getRailStoreSnapshot().pathContext?.relPath).toBe("new");
   });
+
+  it("marks a Theater context unhydrated until its matching response arrives", async () => {
+    const { getRailStoreSnapshot, hydrateRailPathContext, selectRailPathContextTheater } = await freshStore();
+    await hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "packages/a", label: "a" }));
+    selectRailPathContextTheater("b");
+    expect(getRailStoreSnapshot()).toMatchObject({ pathContextTheaterId: "b", pathContext: null, pathContextHydrated: false });
+    await hydrateRailPathContext("b", async () => ({ kind: "root", relPath: null, label: "B" }));
+    expect(getRailStoreSnapshot()).toMatchObject({ pathContextTheaterId: "b", pathContextHydrated: true, pathContext: { kind: "root", relPath: null } });
+  });
+
+  it("serializes per-Theater mutations and exposes the pending mutation state", async () => {
+    const { getRailStoreSnapshot, hydrateRailPathContext, mutateRailPathContext } = await freshStore();
+    await hydrateRailPathContext("a", async () => ({ kind: "root", relPath: null, label: "A" }));
+    let resolveFirst!: (value: { kind: "directory"; relPath: string; label: string }) => void;
+    const calls: string[] = [];
+    const first = mutateRailPathContext("a", async () => new Promise((resolve) => {
+      calls.push("first");
+      resolveFirst = resolve;
+    }));
+    const second = mutateRailPathContext("a", async () => {
+      calls.push("second");
+      return { kind: "directory", relPath: "second", label: "second" };
+    });
+    expect(getRailStoreSnapshot().pathContextMutationInProgress).toBe(true);
+    await Promise.resolve();
+    expect(calls).toEqual(["first"]);
+    resolveFirst({ kind: "directory", relPath: "first", label: "first" });
+    await Promise.all([first, second]);
+    expect(calls).toEqual(["first", "second"]);
+    expect(getRailStoreSnapshot()).toMatchObject({ pathContextMutationInProgress: false, pathContext: { relPath: "second" } });
+  });
 });

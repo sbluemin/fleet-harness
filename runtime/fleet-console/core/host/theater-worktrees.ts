@@ -21,7 +21,7 @@ export interface WorktreeRecord {
 }
 
 export interface ListTheaterWorktreesDeps {
-  readonly execFile?: (file: string, args: readonly string[], options: { readonly cwd: string; readonly shell: false; readonly timeout: number; readonly maxBuffer: number }) => Promise<{ readonly stdout: string }>;
+  readonly execFile?: (file: string, args: readonly string[], options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly shell: false; readonly timeout: number; readonly maxBuffer: number }) => Promise<{ readonly stdout: string }>;
   readonly realpath?: typeof fs.promises.realpath;
 }
 
@@ -34,7 +34,7 @@ export async function listTheaterWorktrees(theaterRoot: string, deps: ListTheate
   const realpath = deps.realpath ?? fs.promises.realpath;
   let stdout: string;
   try {
-    ({ stdout } = await exec("git", ["worktree", "list", "--porcelain"], { cwd: theaterRoot, shell: false, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER }));
+    ({ stdout } = await exec("git", ["worktree", "list", "--porcelain"], { cwd: theaterRoot, env: { ...process.env, LC_ALL: "C" }, shell: false, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER }));
   } catch (error) {
     if (isNotGitError(error)) return { isGitRepo: false, worktrees: [] };
     throw error;

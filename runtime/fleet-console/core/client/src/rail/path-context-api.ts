@@ -112,7 +112,7 @@ function assertRelPath(value: string): void {
 }
 
 function isSafeRelPath(value: string): boolean {
-  return value.length > 0 && value.length <= 4096 && !value.includes("\0") && !value.startsWith("/") && !value.startsWith("\\") && !/^[A-Za-z]:/.test(value) && !value.split("/").some((part) => part === "" || part === "." || part === "..");
+  return value.length > 0 && value.length <= 4096 && !value.includes("\0") && !value.includes("\\") && !value.startsWith("/") && !/^[A-Za-z]:/.test(value) && !value.split("/").some((part) => part === "" || part === "." || part === "..");
 }
 
 function isValidLabel(value: unknown): value is string {

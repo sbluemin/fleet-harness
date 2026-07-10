@@ -4,6 +4,7 @@ import type { RailPathContext } from "@fleet-console/sdk/rail";
 
 interface RailPathContextState {
   readonly context: RailPathContext | null;
+  readonly isHydrated: boolean;
   readonly isLoading: boolean;
   readonly error: string | null;
 }
@@ -13,7 +14,9 @@ interface RailStore {
   readonly panelExtraWidth: number;
   readonly pathContextTheaterId: string | null;
   readonly pathContext: RailPathContext | null;
+  readonly pathContextHydrated: boolean;
   readonly pathContextLoading: boolean;
+  readonly pathContextMutationInProgress: boolean;
   readonly pathContextError: string | null;
   readonly isPathContextDeckOpen: boolean;
 }
@@ -25,6 +28,8 @@ type PathContextSaver = (signal: AbortSignal) => Promise<RailPathContext>;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const listeners = new Set<Listener>();
 const pathContexts = new Map<string, RailPathContextState>();
+const pathContextMutationChains = new Map<string, Promise<void>>();
+const pendingPathContextMutations = new Map<string, number>();
 let activePathRequest: AbortController | null = null;
 let activePathGeneration = 0;
 let store: RailStore = {
@@ -32,7 +37,9 @@ let store: RailStore = {
   panelExtraWidth: 0,
   pathContextTheaterId: null,
   pathContext: null,
+  pathContextHydrated: false,
   pathContextLoading: false,
+  pathContextMutationInProgress: false,
   pathContextError: null,
   isPathContextDeckOpen: false,
 };
@@ -82,7 +89,9 @@ export function selectRailPathContextTheater(theaterId: string | null): void {
     ...store,
     pathContextTheaterId: theaterId,
     pathContext: state?.context ?? null,
+    pathContextHydrated: state?.isHydrated ?? false,
     pathContextLoading: state?.isLoading ?? false,
+    pathContextMutationInProgress: theaterId !== null && hasPendingPathContextMutation(theaterId),
     pathContextError: state?.error ?? null,
     isPathContextDeckOpen: false,
   });
@@ -94,42 +103,29 @@ export async function hydrateRailPathContext(theaterId: string, load: PathContex
   const controller = new AbortController();
   activePathRequest = controller;
   const generation = ++activePathGeneration;
-  pathContexts.set(theaterId, { context: null, isLoading: true, error: null });
-  if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: null, pathContextLoading: true, pathContextError: null });
+  pathContexts.set(theaterId, { context: null, isHydrated: false, isLoading: true, error: null });
+  if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: null, pathContextHydrated: false, pathContextLoading: true, pathContextError: null });
   try {
     const context = await load(controller.signal);
     if (controller.signal.aborted || generation !== activePathGeneration) return;
-    const state = { context, isLoading: false, error: null };
+    const state = { context, isHydrated: true, isLoading: false, error: null };
     pathContexts.set(theaterId, state);
-    if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: context, pathContextLoading: false, pathContextError: null });
+    if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: context, pathContextHydrated: true, pathContextLoading: false, pathContextError: null });
   } catch (error) {
     if (controller.signal.aborted || generation !== activePathGeneration) return;
     const message = error instanceof Error ? error.message : "Unable to load path context";
-    pathContexts.set(theaterId, { context: null, isLoading: false, error: message });
-    if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: null, pathContextLoading: false, pathContextError: message });
+    pathContexts.set(theaterId, { context: null, isHydrated: false, isLoading: false, error: message });
+    if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: null, pathContextHydrated: false, pathContextLoading: false, pathContextError: message });
   }
 }
 
 export async function mutateRailPathContext(theaterId: string, save: PathContextSaver): Promise<RailPathContext | null> {
   if (store.pathContextTheaterId !== theaterId) return null;
-  activePathRequest?.abort();
-  const controller = new AbortController();
-  activePathRequest = controller;
-  const generation = ++activePathGeneration;
-  setStore({ ...store, pathContextLoading: true, pathContextError: null });
-  try {
-    const context = await save(controller.signal);
-    if (controller.signal.aborted || generation !== activePathGeneration || store.pathContextTheaterId !== theaterId) return null;
-    pathContexts.set(theaterId, { context, isLoading: false, error: null });
-    setStore({ ...store, pathContext: context, pathContextLoading: false, pathContextError: null, isPathContextDeckOpen: false });
-    return context;
-  } catch (error) {
-    if (controller.signal.aborted || generation !== activePathGeneration) return null;
-    const message = error instanceof Error ? error.message : "Unable to save path context";
-    pathContexts.set(theaterId, { context: store.pathContext, isLoading: false, error: message });
-    setStore({ ...store, pathContextLoading: false, pathContextError: message });
-    return null;
-  }
+  incrementPendingPathContextMutations(theaterId);
+  const previous = pathContextMutationChains.get(theaterId) ?? Promise.resolve();
+  const mutation = previous.then(() => persistRailPathContextMutation(theaterId, save));
+  pathContextMutationChains.set(theaterId, mutation.then(() => undefined));
+  return mutation;
 }
 
 export function setRailPathContextDeckOpen(open: boolean): void {
@@ -145,7 +141,7 @@ export function useRailPanelExtraWidth(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
 }
 
-export function useRailPathContextStore(): Pick<RailStore, "pathContext" | "pathContextLoading" | "pathContextError" | "isPathContextDeckOpen"> {
+export function useRailPathContextStore(): Pick<RailStore, "pathContextTheaterId" | "pathContext" | "pathContextHydrated" | "pathContextLoading" | "pathContextMutationInProgress" | "pathContextError" | "isPathContextDeckOpen"> {
   const snapshot = useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot);
   return snapshot;
 }
@@ -159,6 +155,42 @@ function saveStoredPanelId(id: string | null): void {
     if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
     else localStorage.setItem(PREFS_ACTIVE_PANEL, id);
   } catch { /* ignore */ }
+}
+
+async function persistRailPathContextMutation(theaterId: string, save: PathContextSaver): Promise<RailPathContext | null> {
+  try {
+    const context = await save(new AbortController().signal);
+    const state = { context, isHydrated: true, isLoading: false, error: null };
+    pathContexts.set(theaterId, state);
+    if (store.pathContextTheaterId === theaterId) {
+      setStore({ ...store, pathContext: context, pathContextHydrated: true, pathContextLoading: false, pathContextError: null, isPathContextDeckOpen: false });
+    }
+    return context;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to save path context";
+    const current = pathContexts.get(theaterId);
+    pathContexts.set(theaterId, { context: current?.context ?? null, isHydrated: current?.isHydrated ?? false, isLoading: false, error: message });
+    if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContextError: message });
+    return null;
+  } finally {
+    decrementPendingPathContextMutations(theaterId);
+  }
+}
+
+function hasPendingPathContextMutation(theaterId: string): boolean {
+  return (pendingPathContextMutations.get(theaterId) ?? 0) > 0;
+}
+
+function incrementPendingPathContextMutations(theaterId: string): void {
+  pendingPathContextMutations.set(theaterId, (pendingPathContextMutations.get(theaterId) ?? 0) + 1);
+  if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContextMutationInProgress: true, pathContextError: null });
+}
+
+function decrementPendingPathContextMutations(theaterId: string): void {
+  const next = (pendingPathContextMutations.get(theaterId) ?? 1) - 1;
+  if (next > 0) pendingPathContextMutations.set(theaterId, next);
+  else pendingPathContextMutations.delete(theaterId);
+  if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContextMutationInProgress: hasPendingPathContextMutation(theaterId) });
 }
 
 function setStore(next: RailStore): void {

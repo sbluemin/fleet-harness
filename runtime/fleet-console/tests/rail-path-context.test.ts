@@ -12,6 +12,7 @@ describe("rail path-context API validators", () => {
   it("rejects raw paths, traversal, and browser-sensitive fields", () => {
     expect(() => assertRailPathContext({ kind: "directory", relPath: "/private/tmp", label: "tmp" })).toThrow();
     expect(() => assertRailPathContext({ kind: "directory", relPath: "a/../b", label: "b" })).toThrow();
+    expect(() => assertRailPathContext({ kind: "directory", relPath: "nested\\..\\sibling", label: "sibling" })).toThrow();
     expect(() => assertRailPathContext({ kind: "directory", relPath: "a", label: "a", cwd: "/private/tmp" })).toThrow();
   });
 
