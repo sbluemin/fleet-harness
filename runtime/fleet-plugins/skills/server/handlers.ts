@@ -27,11 +27,19 @@ interface RawSkillEntry {
   agents: string[];
 }
 
+interface JobOutputRedactionPaths {
+  readonly cwd: string;
+  readonly homeDir: string;
+  readonly pluginDataDir: string;
+}
+
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const ALL_AGENTS: AgentId[] = ["claude-code", "codex", "cursor", "opencode"];
 const PREVIEW_TIMEOUT_MS = 30_000;
 const CLI_TIMEOUT_MS = 120_000;
+const USERINFO_URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
+const TOKEN_URL_PARAM_RE = /([?&](?:access_?token|token|api_?key|apikey|auth(?:orization)?|password|secret|credential)=)[^&#\s]*/gi;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -121,13 +129,40 @@ export function extractSkillMarkdown(raw: string): string {
   return text.trim();
 }
 
-function spawnJobAsync(jobId: string, args: string[], cwd: string, executor: CliExecutor): void {
+export function redactJobOutput(chunk: string, paths: JobOutputRedactionPaths): string {
+  let redacted = chunk
+    .replace(USERINFO_URL_RE, "[redacted credential URL]")
+    .replace(TOKEN_URL_PARAM_RE, "$1[redacted]");
+  const sensitivePaths = [...new Set([paths.cwd, paths.homeDir, paths.pluginDataDir])]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  for (const sensitivePath of sensitivePaths) {
+    redacted = redacted.replaceAll(sensitivePath, "[redacted path]");
+  }
+  return redacted;
+}
+
+function getJobOutputRedactionPaths(ctx: FleetPluginServerContext, cwd: string): JobOutputRedactionPaths {
+  return {
+    cwd,
+    homeDir: os.homedir(),
+    pluginDataDir: ctx.host.paths.pluginDataDir("skills"),
+  };
+}
+
+function spawnJobAsync(
+  jobId: string,
+  args: string[],
+  cwd: string,
+  redactionPaths: JobOutputRedactionPaths,
+  executor: CliExecutor,
+): void {
   setImmediate(() => {
     void executor(args, {
       cwd,
       timeout: CLI_TIMEOUT_MS,
-      onChunk: (chunk) => appendChunk(jobId, chunk),
-      onBootstrap: (line) => appendChunk(jobId, line + "\n"),
+      onChunk: (chunk) => appendChunk(jobId, redactJobOutput(chunk, redactionPaths)),
+      onBootstrap: (line) => appendChunk(jobId, redactJobOutput(line + "\n", redactionPaths)),
     })
       .then((result) => finishJob(jobId, result.exitCode))
       .catch(() => finishJob(jobId, 1));
@@ -279,7 +314,7 @@ export async function handleInstall(
   const scopeFlag = scope === "global" ? ["-g"] : [];
   const args = ["add", source, "-y", "--skill", skill, ...scopeFlag, ...agentArgs];
 
-  spawnJobAsync(jobId, args, cwd, executor);
+  spawnJobAsync(jobId, args, cwd, getJobOutputRedactionPaths(ctx, cwd), executor);
 
   ctx.host.http.writeJson(res, 202, { jobId });
 }
@@ -320,7 +355,7 @@ export async function handleUpdate(
   const scopeFlag = scope === "global" ? "-g" : "-p";
   const args = ["update", "-y", scopeFlag];
 
-  spawnJobAsync(jobId, args, cwd, executor);
+  spawnJobAsync(jobId, args, cwd, getJobOutputRedactionPaths(ctx, cwd), executor);
 
   ctx.host.http.writeJson(res, 202, { jobId });
 }

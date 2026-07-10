@@ -17,6 +17,7 @@ import {
   handleRemove,
   handleSearch,
   handleUpdate,
+  redactJobOutput,
 } from "../server/handlers.js";
 
 // ─── mock helpers ─────────────────────────────────────────────────────────────
@@ -205,5 +206,25 @@ describe("extractSkillMarkdown", () => {
   it("빈 태그 본문은 빈 문자열을 반환한다", () => {
     const raw = "<SKILL.md></SKILL.md>";
     expect(extractSkillMarkdown(raw)).toBe("");
+  });
+});
+
+describe("job output redaction", () => {
+  it("masks home, resolved cwd, plugin cache paths, and credential URLs before job output is stored", () => {
+    const output = redactJobOutput(
+      "cwd=/Users/operator/worktree/pkg cache=/Users/operator/.fleet/plugins/skills/cli/node_modules credential=https://alice:secret@example.com/pkg token=https://example.com/pkg?access_token=abc123",
+      {
+        cwd: "/Users/operator/worktree/pkg",
+        homeDir: "/Users/operator",
+        pluginDataDir: "/Users/operator/.fleet/plugins/skills",
+      },
+    );
+
+    expect(output).not.toContain("/Users/operator");
+    expect(output).not.toContain("alice:secret");
+    expect(output).not.toContain("abc123");
+    expect(output).toContain("[redacted path]");
+    expect(output).toContain("[redacted credential URL]");
+    expect(output).toContain("access_token=[redacted]");
   });
 });

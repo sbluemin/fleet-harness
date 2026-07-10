@@ -8,9 +8,11 @@ import { InstalledTab } from "./installed-tab.js";
 import { ReadingOverlay } from "./reading-overlay.js";
 import "./skills.css";
 import {
+  hasInstalledStateForContext,
   resetProjectContextState,
   setActiveTab,
   setInstallFormOpenId,
+  skillsContextKey,
   useSkillsStore,
 } from "./skills-store.js";
 import { Toast } from "./toast.js";
@@ -30,23 +32,25 @@ interface ReadMoreEntry {
 // ─── SkillsPanel ─────────────────────────────────────────────────────────────
 
 function SkillsPanel({ ctx }: SkillsPanelProps) {
-  const contextKey = JSON.stringify([ctx.theaterId, ctx.pathContext.relPath]);
+  const contextKey = skillsContextKey(ctx.theaterId, ctx.pathContext.relPath);
 
   return <SkillsPanelBody key={contextKey} ctx={ctx} />;
 }
 
 function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   const { theaterId } = ctx;
-  const { activeTab, installedList } = useSkillsStore();
+  const state = useSkillsStore();
+  const { activeTab } = state;
+  const contextKey = skillsContextKey(ctx.theaterId, ctx.pathContext.relPath);
   const [readMoreEntry, setReadMoreEntry] = useState<ReadMoreEntry | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [installedRefreshKey, setInstalledRefreshKey] = useState(0);
 
-  const installedCount = installedList.length;
+  const installedCount = hasInstalledStateForContext(state, contextKey) ? state.installedList.length : 0;
 
   useLayoutEffect(() => {
-    resetProjectContextState();
-  }, []);
+    resetProjectContextState(contextKey);
+  }, [contextKey]);
 
   const handleReadMoreInstalled = useCallback((skill: SkillListItem) => {
     setReadMoreEntry({ skill, isInstalled: true });

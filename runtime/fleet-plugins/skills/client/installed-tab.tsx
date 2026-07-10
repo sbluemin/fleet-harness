@@ -4,9 +4,11 @@ import type { SkillListItem } from "../server/types.js";
 import { JobStatusDock } from "./job-status-dock.js";
 import { SkillCard } from "./skill-card.js";
 import {
+  hasInstalledStateForContext,
   setFilterText,
   setInstalledState,
   setScope,
+  skillsContextKey,
   type Scope,
   useSkillsStore,
 } from "./skills-store.js";
@@ -36,15 +38,20 @@ async function fetchInstalledList(theaterId: string | null, relPath: string | nu
 // ─── InstalledTab ─────────────────────────────────────────────────────────────
 
 export function InstalledTab({ theaterId, relPath, onReadMore, refreshKey }: InstalledTabProps) {
-  const { scope, filterText, installedList, installedLoading } = useSkillsStore();
+  const state = useSkillsStore();
+  const { scope, filterText } = state;
+  const contextKey = skillsContextKey(theaterId, relPath);
+  const installedList = hasInstalledStateForContext(state, contextKey) ? state.installedList : [];
+  const installedLoading = hasInstalledStateForContext(state, contextKey) && state.installedLoading;
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
 
   const loadList = useCallback((tid: string | null, contextRelPath: string | null) => {
-    setInstalledState([], true);
+    const requestContextKey = skillsContextKey(tid, contextRelPath);
+    setInstalledState(requestContextKey, [], true);
     fetchInstalledList(tid, contextRelPath)
-      .then((skills) => setInstalledState(skills, false))
-      .catch(() => setInstalledState([], false));
+      .then((skills) => setInstalledState(requestContextKey, skills, false))
+      .catch(() => setInstalledState(requestContextKey, [], false));
   }, []);
 
   useEffect(() => {

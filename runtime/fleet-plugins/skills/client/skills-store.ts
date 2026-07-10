@@ -7,7 +7,7 @@ import type { SkillListItem, SkillSearchItem } from "../server/types.js";
 export type ActiveTab = "installed" | "find";
 export type Scope = "project" | "global";
 
-interface SkillsState {
+export interface SkillsState {
   readonly activeTab: ActiveTab;
   readonly scope: Scope;
   readonly filterText: string;
@@ -16,6 +16,7 @@ interface SkillsState {
   readonly searchLoading: boolean;
   readonly installedList: readonly SkillListItem[];
   readonly installedLoading: boolean;
+  readonly installedContextKey: string | null;
   readonly updateJobId: string | null;
   readonly updateJobScope: Scope | null;
   readonly installFormOpenId: string | null;
@@ -34,6 +35,7 @@ const DEFAULT_STATE: SkillsState = {
   searchLoading: false,
   installedList: [],
   installedLoading: false,
+  installedContextKey: null,
   updateJobId: null,
   updateJobScope: null,
   installFormOpenId: null,
@@ -88,7 +90,16 @@ export function setSearchState(results: readonly SkillSearchItem[], loading: boo
   emit();
 }
 
-export function setInstalledState(list: readonly SkillListItem[], loading: boolean): void {
+export function skillsContextKey(theaterId: string | null, relPath: string | null): string {
+  return JSON.stringify([theaterId, relPath]);
+}
+
+export function hasInstalledStateForContext(current: SkillsState, contextKey: string): boolean {
+  return current.installedContextKey === contextKey;
+}
+
+export function setInstalledState(contextKey: string, list: readonly SkillListItem[], loading: boolean): void {
+  if (state.installedContextKey !== contextKey) return;
   state = { ...state, installedList: list, installedLoading: loading };
   emit();
 }
@@ -103,7 +114,16 @@ export function setInstallFormOpenId(id: string | null): void {
   emit();
 }
 
-export function resetProjectContextState(): void {
-  state = { ...state, installedList: [], installedLoading: false, installFormOpenId: null };
+export function resetProjectContextState(contextKey: string): void {
+  state = { ...state, installedContextKey: contextKey, installedList: [], installedLoading: false, installFormOpenId: null };
+  emit();
+}
+
+export function getSkillsStateForTest(): SkillsState {
+  return state;
+}
+
+export function resetSkillsStateForTest(): void {
+  state = DEFAULT_STATE;
   emit();
 }
