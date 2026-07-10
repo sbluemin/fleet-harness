@@ -50,6 +50,15 @@ describe("refBadges", () => {
     expect(badges[0]).toEqual({ label: "v1.0.0", kind: "tag" });
   });
 
+  it("--decorate=full의 'tag: refs/tags/v1.0.0' 형식도 태그명만 남긴다", () => {
+    const badges = refBadges(makeEntry({ refs: ["tag: refs/tags/v1.0.0"] }));
+    expect(badges).toEqual([{ label: "v1.0.0", kind: "tag" }]);
+  });
+
+  it("'refs/remotes/origin/HEAD' 심볼릭 ref는 배지를 만들지 않는다", () => {
+    expect(refBadges(makeEntry({ refs: ["refs/remotes/origin/HEAD"] }))).toEqual([]);
+  });
+
   it("'refs/heads/main' 형식 ref를 branch 배지로 분류하고 접두사를 제거한다", () => {
     const badges = refBadges(makeEntry({ refs: ["refs/heads/main"] }));
     expect(badges).toHaveLength(1);

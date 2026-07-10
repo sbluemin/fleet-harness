@@ -34,10 +34,14 @@ export function refBadges(entry: LogCommitEntry): RefBadge[] {
       badges.push({ label: ref.slice("HEAD -> refs/heads/".length), kind: "branch" });
     } else if (ref.startsWith("HEAD -> ")) {
       badges.push({ label: ref.slice(8), kind: "branch" });
+    } else if (ref.startsWith("tag: refs/tags/")) {
+      badges.push({ label: ref.slice("tag: refs/tags/".length), kind: "tag" });
     } else if (ref.startsWith("tag: ")) {
       badges.push({ label: ref.slice(5), kind: "tag" });
     } else if (ref.startsWith("refs/remotes/")) {
-      badges.push({ label: ref.slice(13), kind: "remote" });
+      const label = ref.slice(13);
+      // origin/HEAD 심볼릭 ref는 기본 브랜치 칩과 중복이므로 표시하지 않는다
+      if (!label.endsWith("/HEAD")) badges.push({ label, kind: "remote" });
     } else if (ref.startsWith("refs/worktrees/")) {
       badges.push({ label: ref.slice(15), kind: "worktree" });
     } else if (ref.startsWith("refs/heads/")) {
