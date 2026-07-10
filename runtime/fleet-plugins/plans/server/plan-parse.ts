@@ -21,6 +21,16 @@ const TITLE_PATTERN = /^#\s+(.+)$/;
 const WAVE_PATTERN = /^##\s+wave\s+(\d+)\b/i;
 const SECTION_HEADING_PATTERN = /^#{1,2}\s/;
 const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
+// Kirov 기본 템플릿의 h1은 문서 제목이 아니라 섹션 헤딩이다 — title로 채택하지 않고 파일명 폴백에 맡긴다.
+const TEMPLATE_SECTION_TITLES = new Set([
+  "objective",
+  "file ownership",
+  "waves",
+  "qa gates",
+  "acceptance criteria",
+  "documentation updates",
+  "final review loop",
+]);
 
 export function parsePlan(content: string): ParsedPlan {
   const lines = content.split(/\r?\n/);
@@ -40,7 +50,10 @@ export function parsePlan(content: string): ParsedPlan {
 function findTitle(lines: readonly string[]): string | null {
   for (const line of lines) {
     const match = TITLE_PATTERN.exec(line);
-    if (match?.[1]) return match[1];
+    if (!match?.[1]) continue;
+    const heading = match[1].trim();
+    if (TEMPLATE_SECTION_TITLES.has(heading.toLowerCase())) return null;
+    return heading;
   }
   return null;
 }

@@ -278,7 +278,7 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
             return (
               <span key={wave.index} className={`plans-wave is-${progressState}`}>
                 <span className="plans-wave-heading">{wave.heading}</span>
-                <span className="plans-wave-count">{wave.tasksDone}/{wave.tasksTotal}</span>
+                {wave.tasksTotal > 0 && <span className="plans-wave-count">{wave.tasksDone}/{wave.tasksTotal}</span>}
               </span>
             );
           })}

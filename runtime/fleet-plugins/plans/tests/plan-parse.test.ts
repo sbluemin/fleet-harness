@@ -51,6 +51,11 @@ describe("parsePlan", () => {
     });
   });
 
+  it("does not adopt Kirov template section headings as the document title", () => {
+    const result = parsePlan("# Objective\n\nShip the thing.\n\n## Wave 1 — Build\n- [ ] step");
+    expect(result.title).toBeNull();
+  });
+
   it("matches wave and checkbox markers case-insensitively where specified", () => {
     expect(parsePlan("## wAvE 12 Build\n- [X] done\n- [x] also done\n- [ ] later")).toEqual({
       title: null,
