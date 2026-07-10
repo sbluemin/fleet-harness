@@ -7,13 +7,14 @@ import { PathContextTree } from "./path-context-tree.js";
 
 interface PathContextDeckProps {
   readonly theaterId: string;
+  readonly theaterLabel: string;
   readonly context: RailPathContext;
   readonly isMutating: boolean;
   readonly onSelect: (relPath: string | null) => void;
   readonly onClose: () => void;
 }
 
-export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(function PathContextDeck({ theaterId, context, isMutating, onSelect, onClose }, ref) {
+export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(function PathContextDeck({ theaterId, theaterLabel, context, isMutating, onSelect, onClose }, ref) {
   const [worktrees, setWorktrees] = useState<RailPathWorktreesResult | null>(null);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(
       <div className="rail-context-deck-caption">Path context · applies to all path-aware panels</div>
       <button className={`rail-context-row${context.relPath === null ? " is-selected" : ""}`} type="button" disabled={isMutating} onClick={() => selectContext(null)}>
         <span className="rail-context-badge rail-context-badge--root">ROOT</span>
-        <span className="rail-context-row-label">{context.label}</span>
+        <span className="rail-context-row-label">{theaterLabel}</span>
         <span className="rail-context-row-secondary">THEATER</span>
       </button>
       <section className="rail-context-section" aria-label="Directories">

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
@@ -7,6 +7,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { fetchRailPathContext, putRailPathContext } from "./path-context-api.js";
+import { getState, subscribe } from "../store.js";
 import { PathContextDeck } from "./path-context-deck.js";
 import { closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
@@ -160,6 +161,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
   const deckRef = useRef<HTMLDivElement>(null);
   const wasDeckOpenRef = useRef(false);
   const pathAware = activePanel.pathAware === true;
+  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? "Theater");
   const canRenderPathAwareBody = !pathAware || hasHydratedPathContext;
 
   useEffect(() => {
@@ -201,13 +203,16 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
             title={pathContextError ?? activePanel.title}
             onClick={() => setRailPathContextDeckOpen(!isPathContextDeckOpen)}
           >
-            <span>{activePanel.title}</span>
+            <span className="rail-context-title-text">{activePanel.title}</span>
+            <span className="rail-context-label" title={hasHydratedPathContext ? ctx.pathContext.label : "Loading…"}>{hasHydratedPathContext ? ctx.pathContext.label : "Loading…"}</span>
             <span className="rail-context-title-caret" aria-hidden="true">⌄</span>
           </button>
-        ) : <span className="right-rail-panel-title">{activePanel.title}</span>}
-        <span className="rail-context-label" title={pathAware ? (hasHydratedPathContext ? ctx.pathContext.label : "Loading…") : "Theater-wide"}>
-          {pathAware ? (hasHydratedPathContext ? ctx.pathContext.label : "Loading…") : "Theater-wide"}
-        </span>
+        ) : (
+          <>
+            <span className="right-rail-panel-title">{activePanel.title}</span>
+            <span className="rail-context-label">Theater-wide</span>
+          </>
+        )}
         <button
           className="right-rail-close-btn"
           type="button"
@@ -216,7 +221,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
         >
           ✕
         </button>
-        {pathAware && hasHydratedPathContext && isPathContextDeckOpen && theaterId ? <PathContextDeck ref={deckRef} theaterId={theaterId} context={ctx.pathContext} isMutating={pathContextMutationInProgress} onSelect={selectContext} onClose={closeDeck} /> : null}
+        {pathAware && hasHydratedPathContext && isPathContextDeckOpen && theaterId ? <PathContextDeck ref={deckRef} theaterId={theaterId} theaterLabel={theaterLabel} context={ctx.pathContext} isMutating={pathContextMutationInProgress} onSelect={selectContext} onClose={closeDeck} /> : null}
       </div>
       <div className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
         {canRenderPathAwareBody ? activePanel.render(ctx) : <div className="rail-context-tree-status">Loading path context…</div>}

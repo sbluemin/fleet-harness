@@ -83,8 +83,9 @@
 .rail-context-title-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 8px;
   min-width: 0;
+  max-width: calc(100% - 40px);
   margin: 0;
   padding: 0;
   border: 0;
@@ -94,10 +95,18 @@
   transition: color var(--duration-fast) var(--ease-glide);
 }
 
+.rail-context-title-text {
+  flex: none;
+}
+
 .rail-context-title-caret {
   flex: none;
   font-size: 13px;
   letter-spacing: 0;
+  line-height: 1;
+  align-self: center;
+  /* ⌄ 글리프는 잉크가 베이스라인 아래로 몰려 있어 광학 중앙으로 끌어올린다 */
+  margin-top: -4px;
 }
 
 .rail-context-title-trigger:hover:not(:disabled) {
@@ -114,14 +123,20 @@
 
 .rail-context-label {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
-  color: var(--ink-rim);
+  color: var(--ink-fog);
+  font-family: var(--font-body);
   font-size: 12px;
+  letter-spacing: -0.005em;
   line-height: 1.2;
   text-overflow: ellipsis;
   text-transform: none;
   white-space: nowrap;
+}
+
+.rail-context-title-trigger:hover:not(:disabled) .rail-context-label {
+  color: var(--ink-spectral);
 }
 
 .rail-context-deck {
