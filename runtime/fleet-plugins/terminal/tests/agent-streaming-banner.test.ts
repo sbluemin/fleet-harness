@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -139,6 +139,53 @@ describe("resolveDockRowStatusLabel (잔존 도크 행 라벨)", () => {
   it("종결 잡 안의 미종결 트랙만 잡 상태로 폴백하고, 진행 중에는 트랙 상태를 그대로 쓴다", () => {
     expect(resolveDockRowStatusLabel("stream", "error")).toBe("error");
     expect(resolveDockRowStatusLabel("stream", "active")).toBe("stream");
+  });
+});
+
+describe("getDockTailText (접힘 스트립 테일)", () => {
+  function makeTailJob(
+    jobId: string,
+    jobStatus: string,
+    tracks: readonly { id: string; status: string; lastEventId: number; latestLine?: string; thought?: string }[]
+  ): JobView {
+    return {
+      jobId,
+      tenantId: "tenant-1",
+      status: jobStatus,
+      updatedAt: 1_000,
+      trackOrder: tracks.map((t) => t.id),
+      tracks: Object.fromEntries(tracks.map((t) => [t.id, {
+        trackId: t.id,
+        displayName: t.id,
+        status: t.status,
+        lastEventId: t.lastEventId,
+        latestLine: t.latestLine,
+        text: t.latestLine ?? "",
+        thought: t.thought ?? "",
+        sentTextLength: 0,
+        sentThoughtLength: 0,
+        tools: [],
+      }])),
+      lastEventId: Math.max(0, ...tracks.map((t) => t.lastEventId)),
+      recentEvents: [],
+    };
+  }
+
+  it("잔존 종결 잡의 stale output이 라이브 thinking 트랙을 가리지 않는다", () => {
+    const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 10, latestLine: "finished output" }]);
+    const live = makeTailJob("live-1", "active", [{ id: "b", status: "stream", lastEventId: 20, thought: "reasoning" }]);
+    expect(getDockTailText([retained, live])).toEqual({ text: "", thinking: true });
+  });
+
+  it("라이브 트랙이 있으면 잔존 트랙의 이벤트가 더 최신이어도 라이브 output을 테일로 쓴다", () => {
+    const live = makeTailJob("live-1", "active", [{ id: "b", status: "stream", lastEventId: 20, latestLine: "live output", thought: "r" }]);
+    const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 30, latestLine: "finished output" }]);
+    expect(getDockTailText([live, retained])).toEqual({ text: "live output", thinking: false });
+  });
+
+  it("라이브 트랙이 없으면 잔존 종결 output으로 폴백한다", () => {
+    const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 10, latestLine: "finished output" }]);
+    expect(getDockTailText([retained])).toEqual({ text: "finished output", thinking: false });
   });
 });
 

@@ -1,9 +1,14 @@
 import { isTerminalJobStatus } from "./reduce.js";
-import type { JobView } from "./types.js";
+import type { JobView, TrackView } from "./types.js";
 
 export interface RetainedJob {
   readonly jobId: string;
   readonly expiresAt: number;
+}
+
+export interface DockTail {
+  readonly text: string;
+  readonly thinking: boolean;
 }
 
 const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"]);
@@ -97,6 +102,22 @@ export function selectJobsByIds(jobs: readonly JobView[], jobIds: readonly strin
     const job = byId.get(jobId);
     return job ? [job] : [];
   });
+}
+
+export function getDockTailText(dockJobs: readonly JobView[]): DockTail {
+  // 모든 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해 접힘 테일을 고른다.
+  // 라이브 트랙이 하나라도 있으면 라이브 풀만 대표로 삼는다 — 잔존 종결 잡의 stale output이
+  // 새 라이브 트랙의 thinking 상태를 가리고 라이브 캐럿까지 얻는 것을 막는다.
+  const tracks = dockJobs
+    .flatMap((job) => job.trackOrder.map((trackId) => job.tracks[trackId]))
+    .filter((track): track is TrackView => Boolean(track))
+    .sort((a, b) => b.lastEventId - a.lastEventId);
+  const liveTracks = tracks.filter((track) => isTrackLive(track.status));
+  const pool = liveTracks.length > 0 ? liveTracks : tracks;
+  for (const track of pool) {
+    if (track.latestLine) return { text: track.latestLine, thinking: false };
+  }
+  return { text: "", thinking: liveTracks.some((track) => Boolean(track.thought)) };
 }
 
 export function mergeDockJobs(activeJobs: readonly JobView[], allJobs: readonly JobView[], retainedJobs: readonly RetainedJob[]): readonly JobView[] {

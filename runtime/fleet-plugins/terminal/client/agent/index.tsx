@@ -10,7 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
@@ -54,11 +54,6 @@ interface PinnedScrollLocal {
   readonly containerRef: React.RefObject<HTMLDivElement | null>;
   readonly pinned: boolean;
   readonly jumpToLatest: () => void;
-}
-
-interface DockTail {
-  readonly text: string;
-  readonly thinking: boolean;
 }
 
 const RENDERERS: readonly RendererOption[] = [
@@ -698,20 +693,6 @@ function getActiveToolName(track: TrackView): string | undefined {
     (t) => t.status !== "completed" && t.status !== "failed" && t.status !== "error"
   );
   return tool ? (tool.name ?? tool.id) : undefined;
-}
-
-function getDockTailText(activeJobs: readonly JobView[]): DockTail {
-  // 모든 활성 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해, 가장 최근 활동 트랙의
-  // latestLine(리듀서가 output 델타에서만 갱신)을 접힘 테일로 고른다.
-  // 잡·트랙 삽입 순서나 text/thought 우선순위가 아니라 실제 이벤트 순서를 따른다.
-  const tracks = activeJobs
-    .flatMap((job) => job.trackOrder.map((trackId) => job.tracks[trackId]))
-    .filter((track): track is TrackView => Boolean(track))
-    .sort((a, b) => b.lastEventId - a.lastEventId);
-  for (const track of tracks) {
-    if (track.latestLine) return { text: track.latestLine, thinking: false };
-  }
-  return { text: "", thinking: tracks.some((track) => isTrackLive(track.status) && Boolean(track.thought)) };
 }
 
 function getLastLine(text: string): string {
