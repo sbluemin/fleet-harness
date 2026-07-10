@@ -623,11 +623,14 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
 function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly jobStatus: string }) {
   const modifier = trackCardModifier(track.status, jobStatus);
   const isLive = modifier === "track-card--live";
+  // 칩 텍스트도 modifier와 같은 해석에서 파생 — 종결 잡의 미종결 트랙이 coral 카드에
+  // raw "stream" 라벨을 다는 표기 분열을 막는다(라이브 트랙은 자기 상태 그대로).
+  const statusLabel = resolveDockRowStatusLabel(track.status, jobStatus);
   return (
     <article className={modifier ? `track-card ${modifier}` : "track-card"}>
       <header className="track-card-head">
         <span className="track-card-title">{track.displayName}</span>
-        <span className="track-card-status">{track.status}</span>
+        <span className="track-card-status">{statusLabel}</span>
       </header>
       {track.thought ? (
         <details className="track-card-thinking">
