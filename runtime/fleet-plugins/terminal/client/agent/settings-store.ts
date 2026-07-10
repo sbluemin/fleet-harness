@@ -61,9 +61,12 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
   // 진행 중인 로드 응답이 이 저장 결과를 덮지 않도록 세대값을 올린다.
   loadGeneration += 1;
   const optimistic = { ...current, [field]: value };
+  const update = field === "enableMetaphor"
+    ? { enableMetaphor: optimistic.enableMetaphor }
+    : { codexLaunchMode: optimistic.codexLaunchMode };
   setSnapshot({ state: optimistic, savingField: field, error: null });
   try {
-    const state = await saveSystemPromptSettings(optimistic);
+    const state = await saveSystemPromptSettings(update);
     setSnapshot({ state, savingField: null, error: null });
     return true;
   } catch (error) {
