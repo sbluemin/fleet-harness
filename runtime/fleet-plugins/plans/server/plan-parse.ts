@@ -1,3 +1,5 @@
+export type PlanExecutionMode = "sequential" | "parallel" | null;
+
 export interface PlanWave {
   readonly index: number;
   readonly heading: string;
@@ -7,6 +9,7 @@ export interface PlanWave {
 
 export interface ParsedPlan {
   readonly title: string | null;
+  readonly executionMode: PlanExecutionMode;
   readonly waves: readonly PlanWave[];
   readonly tasksDone: number;
   readonly tasksTotal: number;
@@ -29,6 +32,8 @@ interface WaveStart {
 }
 
 const TITLE_PATTERN = /^#\s+(.+)$/;
+// Execution Topology 섹션의 필드 불릿 — Kirov lane 템플릿(# Execution Topology / - Execution mode: Sequential | Parallel)
+const EXECUTION_MODE_PATTERN = /^-\s*Execution mode:\s*(sequential|parallel)\b/i;
 const WAVE_PATTERN = /^##\s+wave\s+(\d+)\b/i;
 const SECTION_HEADING_PATTERN = /^#{1,2}\s/;
 const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
@@ -47,6 +52,7 @@ const TEMPLATE_SECTION_TITLES = new Set([
 export function parsePlan(content: string): ParsedPlan {
   const lines = scanPlanLines(content.split(/\r?\n/));
   const title = findTitle(lines);
+  const executionMode = findExecutionMode(lines);
   const waveStarts = findWaveStarts(lines);
   const waves = waveStarts.map(({ index, heading, lineIndex }, waveIndex) => {
     const nextWaveLineIndex = waveStarts[waveIndex + 1]?.lineIndex ?? lines.length;
@@ -56,7 +62,7 @@ export function parsePlan(content: string): ParsedPlan {
     return { index, heading, ...counts };
   });
 
-  return { title, waves, ...countTasks(lines) };
+  return { title, executionMode, waves, ...countTasks(lines) };
 }
 
 function scanPlanLines(lines: readonly string[]): readonly PlanLine[] {
@@ -84,6 +90,15 @@ function findTitle(lines: readonly PlanLine[]): string | null {
     const heading = match[1].trim();
     if (TEMPLATE_SECTION_TITLES.has(heading.toLowerCase())) return null;
     return heading;
+  }
+  return null;
+}
+
+function findExecutionMode(lines: readonly PlanLine[]): PlanExecutionMode {
+  for (const line of lines) {
+    if (line.isFenced) continue;
+    const match = EXECUTION_MODE_PATTERN.exec(line.text.trim());
+    if (match?.[1]) return match[1].toLowerCase() as "sequential" | "parallel";
   }
   return null;
 }

@@ -10,6 +10,7 @@ import { formatRelativeTime, getProgressPercent, getWaveProgressState } from "./
 interface PlanListItem {
   readonly name: string;
   readonly title: string;
+  readonly executionMode: "sequential" | "parallel" | null;
   readonly waveCount: number;
   readonly tasksDone: number;
   readonly tasksTotal: number;
@@ -27,6 +28,7 @@ interface PlanWave {
 interface PlanReadResult {
   readonly name: string;
   readonly title: string;
+  readonly executionMode: "sequential" | "parallel" | null;
   readonly updatedAt: string;
   readonly content: string;
   readonly waves: readonly PlanWave[];
@@ -212,6 +214,7 @@ function PlansList({ selectedName, state, onRetry, onSelect }: PlansListProps) {
               <span className="plans-row-name">{plan.name}</span>
               <span className="plans-row-meta">
                 {plan.waveCount} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · {formatRelativeTime(plan.updatedAt)}
+                {plan.executionMode === "parallel" ? " · parallel" : ""}
               </span>
               {progress !== null && (
                 <span className="plans-progress-track" aria-label={`${progress}% complete`}>
@@ -266,6 +269,7 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
         <div className="plans-reader-heading">
           <h2 className="plans-reader-title">{plan.title}</h2>
           <span className="plans-reader-meta">
+            {plan.executionMode === "parallel" && <span className="plans-mode-badge">PARALLEL</span>}
             {plan.waves.length} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · updated {formatRelativeTime(plan.updatedAt)}
           </span>
         </div>

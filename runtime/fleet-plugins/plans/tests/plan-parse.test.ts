@@ -24,6 +24,7 @@ describe("parsePlan", () => {
 
     expect(result).toEqual({
       title: "Fleet rollout",
+      executionMode: null,
       waves: [
         { index: 1, heading: "Wave 1: Foundation", tasksDone: 2, tasksTotal: 3 },
         { index: 2, heading: "Wave 2: UI", tasksDone: 0, tasksTotal: 1 },
@@ -36,6 +37,7 @@ describe("parsePlan", () => {
   it("returns zero task counts for a plan without checkboxes", () => {
     expect(parsePlan("# Narrative plan\n\n## Wave 4: Review\nNo tasks yet.")).toEqual({
       title: "Narrative plan",
+      executionMode: null,
       waves: [{ index: 4, heading: "Wave 4: Review", tasksDone: 0, tasksTotal: 0 }],
       tasksDone: 0,
       tasksTotal: 0,
@@ -45,6 +47,7 @@ describe("parsePlan", () => {
   it("handles documents without waves", () => {
     expect(parsePlan("# Loose notes\n- [ ] one\n- [x] two")).toEqual({
       title: "Loose notes",
+      executionMode: null,
       waves: [],
       tasksDone: 1,
       tasksTotal: 2,
@@ -59,6 +62,7 @@ describe("parsePlan", () => {
   it("matches wave and checkbox markers case-insensitively where specified", () => {
     expect(parsePlan("## wAvE 12 Build\n- [X] done\n- [x] also done\n- [ ] later")).toEqual({
       title: null,
+      executionMode: null,
       waves: [{ index: 12, heading: "wAvE 12 Build", tasksDone: 2, tasksTotal: 3 }],
       tasksDone: 2,
       tasksTotal: 3,
@@ -78,9 +82,47 @@ describe("parsePlan", () => {
 - [x] shipped
 `)).toEqual({
       title: "Real plan",
+      executionMode: null,
       waves: [{ index: 1, heading: "Wave 1: Actual work", tasksDone: 1, tasksTotal: 1 }],
       tasksDone: 1,
       tasksTotal: 1,
     });
+  });
+
+  it("reads the Execution Topology mode and keeps lane checkboxes inside their wave", () => {
+    const result = parsePlan(`
+# Execution Topology
+- Execution mode: Parallel
+- Shared mutable resources: none
+
+# Waves
+
+## Wave 1 — Build
+### Lane W1-A — Server
+- Exact write set: server/**
+- Implementation summary:
+  - [x] add route
+  - [ ] add parser
+### Lane W1-B — Client
+- Implementation summary:
+  - [x] add panel
+
+## Wave 2 — Verify
+### Lane W2-A — QA
+- Implementation summary:
+  - [ ] run e2e
+`);
+
+    expect(result.executionMode).toBe("parallel");
+    expect(result.waves).toEqual([
+      { index: 1, heading: "Wave 1 — Build", tasksDone: 2, tasksTotal: 3 },
+      { index: 2, heading: "Wave 2 — Verify", tasksDone: 0, tasksTotal: 1 },
+    ]);
+    expect(result).toMatchObject({ tasksDone: 2, tasksTotal: 4 });
+  });
+
+  it("parses a Sequential execution mode and ignores fenced mode lines", () => {
+    expect(parsePlan("- Execution mode: Sequential\n## Wave 1 — Only").executionMode).toBe("sequential");
+    expect(parsePlan("```\n- Execution mode: Parallel\n```\n## Wave 1 — Only").executionMode).toBeNull();
   });
 });

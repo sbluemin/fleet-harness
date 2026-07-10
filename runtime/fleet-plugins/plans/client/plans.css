@@ -223,6 +223,17 @@
   line-height: 1.4;
 }
 
+.plans-mode-badge {
+  margin-right: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
 .plans-markdown {
   min-width: 0;
   overflow: auto;

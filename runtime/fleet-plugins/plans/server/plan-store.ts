@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parsePlan, type PlanWave } from "./plan-parse.js";
+import { parsePlan, type PlanExecutionMode, type PlanWave } from "./plan-parse.js";
 
 export type PlanStoreErrorCode = "path_outside_theater" | "not_found" | "too_large";
 
 export interface PlanListItem {
   readonly name: string;
   readonly title: string;
+  readonly executionMode: PlanExecutionMode;
   readonly waveCount: number;
   readonly tasksDone: number;
   readonly tasksTotal: number;
@@ -18,6 +19,7 @@ export interface PlanListItem {
 export interface PlanReadResult {
   readonly name: string;
   readonly title: string;
+  readonly executionMode: PlanExecutionMode;
   readonly updatedAt: string;
   readonly content: string;
   readonly waves: readonly PlanWave[];
@@ -99,6 +101,7 @@ export async function readPlanForTheater(theaterPath: string, name: string): Pro
   return {
     name,
     title: parsed.title ?? name,
+    executionMode: parsed.executionMode,
     updatedAt: file.stat.mtime.toISOString(),
     content,
     waves: parsed.waves,
@@ -114,6 +117,7 @@ async function toPlanListItem(plansRoot: PlansRoot, name: string): Promise<PlanL
     return {
       name,
       title: name,
+      executionMode: null,
       waveCount: 0,
       tasksDone: 0,
       tasksTotal: 0,
@@ -129,6 +133,7 @@ async function toPlanListItem(plansRoot: PlansRoot, name: string): Promise<PlanL
   return {
     name,
     title: parsed.title ?? name,
+    executionMode: parsed.executionMode,
     waveCount: parsed.waves.length,
     tasksDone: parsed.tasksDone,
     tasksTotal: parsed.tasksTotal,
