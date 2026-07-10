@@ -2,41 +2,11 @@ import path from "node:path";
 
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { buildHostShellCommand } from "../builders/toml.js";
+import { renderCursorDoctrineHookAssets } from "../doctrine-hook.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { AgentCliMcpServerArg } from "../types.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
-
-const CURSOR_DOCTRINE_RULE_FILE = "fleet-doctrine.mdc";
-const CURSOR_DOCTRINE_RULE_FRONTMATTER = `---
-description: Fleet Admiral operating doctrine. Always apply in Fleet-launched Cursor Agent sessions.
-globs:
-alwaysApply: true
----
-`;
-const CURSOR_DOCTRINE_RULE_PREAMBLE = `# Fleet Runtime Doctrine for Cursor Agent
-
-You are running as Cursor Agent inside Fleet. Cursor provides this file as a persistent rule, not as a native system prompt. For this Fleet-launched session, treat the embedded Fleet system prompt below as your active Fleet runtime doctrine.
-
-Priority and interpretation:
-
-- Follow higher-priority platform, system, developer, and direct user instructions first.
-- Within Cursor rules, project instructions, and other same-layer guidance, this Fleet doctrine is the governing instruction set for Fleet identity, roles, workflow, carrier operations, and reporting.
-- Treat Fleet identity and role names from the embedded prompt as the identity anchor for this session. Do not replace them with generic Cursor Agent identity when answering, planning, or delegating.
-- Do not treat this document as optional background or reference material. Apply it continuously when deciding who you are, how Fleet roles are named, which protocol applies, and how to report work.
-- Do not merely summarize or acknowledge the embedded prompt. Execute the operational requirements it defines, including protocol selection, evidence thresholds, carrier routing, and result reporting.
-- If other same-layer Cursor rules conflict with this doctrine, preserve the Fleet doctrine unless the user's latest explicit instruction requires a narrower task-specific exception.
-- When unsure whether a Fleet instruction applies, prefer following the Fleet doctrine and briefly surface the uncertainty instead of silently ignoring it.
-
-## Embedded Fleet System Prompt
-
-The following block is the Fleet system prompt content adapted for Cursor's rules mechanism. It is intentionally embedded verbatim after this wrapper.
-
-<fleet-system-prompt>
-`;
-const CURSOR_DOCTRINE_RULE_FOOTER = `
-</fleet-system-prompt>
-`;
 
 export const assetBundle: AssetPluginBundle = {
   description: "Fleet carrier delegation and wiki evidence plugin",
@@ -53,11 +23,18 @@ export function renderAssetPluginRoot(
   options: CreateAgentCliPluginOptions,
 ): void {
   renderEmbeddedSkillAssets(pluginRoot);
+  const doctrineHookExec = options.cliId === "cursor" && options.doctrine !== undefined
+    ? renderCursorDoctrineHookAssets(
+      pluginRoot,
+      options.doctrine,
+      options.installedPluginRoot ?? pluginRoot,
+    )
+    : undefined;
   if (options.cliId === "claude") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   }
   if (options.cliId === "cursor") {
-    renderCursorPluginRoot(pluginRoot, options);
+    renderCursorPluginRoot(pluginRoot, options, doctrineHookExec);
   }
 }
 
@@ -109,25 +86,18 @@ function claudeCommandHook(hookExec: FleetHookExec): unknown {
   };
 }
 
-function renderCursorPluginRoot(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
-  if (options.doctrine !== undefined) {
-    renderCursorDoctrineRule(pluginRoot, options.doctrine);
-  }
+function renderCursorPluginRoot(
+  pluginRoot: string,
+  options: CreateAgentCliPluginOptions,
+  doctrineHookExec: FleetHookExec | undefined,
+): void {
   if ((options.mcpServers ?? []).length > 0) {
     writePrivateJson(path.join(pluginRoot, "mcp.json"), cursorMcpConfig(options.mcpServers ?? []), pluginRoot);
   }
-  const hooks = cursorHooks(options);
+  const hooks = cursorHooks(options, doctrineHookExec);
   if (hooks !== undefined) {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), hooks, pluginRoot);
   }
-}
-
-function renderCursorDoctrineRule(pluginRoot: string, doctrine: string): void {
-  writePrivateFile(
-    path.join(pluginRoot, "rules", CURSOR_DOCTRINE_RULE_FILE),
-    `${CURSOR_DOCTRINE_RULE_FRONTMATTER}${CURSOR_DOCTRINE_RULE_PREAMBLE}${doctrine}${CURSOR_DOCTRINE_RULE_FOOTER}`,
-    pluginRoot,
-  );
 }
 
 function cursorMcpConfig(servers: readonly AgentCliMcpServerArg[]): unknown {
@@ -144,8 +114,11 @@ function cursorMcpConfig(servers: readonly AgentCliMcpServerArg[]): unknown {
   };
 }
 
-function cursorHooks(options: CreateAgentCliPluginOptions): unknown | undefined {
-  const sessionStartExecs = [options.captureSessionHookExec]
+function cursorHooks(
+  options: CreateAgentCliPluginOptions,
+  doctrineHookExec: FleetHookExec | undefined,
+): unknown | undefined {
+  const sessionStartExecs = [doctrineHookExec, options.captureSessionHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   const beforeSubmitPromptExecs = [options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);

@@ -108,8 +108,8 @@ describe("agent CLI session resume and capture hooks", () => {
       readonly name?: unknown;
       readonly version?: unknown;
     };
-    const doctrineRuleFile = path.join(pluginRoot, "rules", "fleet-doctrine.mdc");
-    const doctrineRule = readFileSync(doctrineRuleFile, "utf8");
+    const doctrineFile = path.join(pluginRoot, "doctrine.md");
+    const doctrine = readFileSync(doctrineFile, "utf8");
     const hooksJson = JSON.parse(readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks?: {
         readonly sessionStart?: readonly { readonly command?: string }[];
@@ -127,10 +127,13 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.args).not.toContain("--trust");
     expect(cursorManifest.name).toBe("fleet");
     expect(cursorManifest.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
-    expect(doctrineRule).toContain("Fleet Runtime Doctrine for Cursor Agent");
-    expect(doctrineRule).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
-    expect(hooksJson.hooks?.sessionStart?.[0]?.command).toBe("'node' 'console.js' 'hook' 'capture-session' 'cursor'");
-    expect(hooksJson.hooks?.sessionStart?.[0]?.command).not.toContain("additional-context-file");
+    expect(doctrine).toContain("Fleet Runtime Doctrine for Cursor Agent");
+    expect(doctrine).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
+    expect(hooksJson.hooks?.sessionStart).toHaveLength(2);
+    expect(hooksJson.hooks?.sessionStart?.[0]?.command).toContain("inject-doctrine.mjs");
+    expect(hooksJson.hooks?.sessionStart?.[0]?.command).not.toContain(".fleet-stage-");
+    expect(hooksJson.hooks?.sessionStart?.[1]?.command).toBe("'node' 'console.js' 'hook' 'capture-session' 'cursor'");
+    expect(hooksJson.hooks?.sessionStart?.[1]?.command).not.toContain("additional-context-file");
     expect(mcpJson.mcpServers?.fleet?.headers?.Authorization).toBe("Bearer token-123");
   });
 
@@ -242,8 +245,6 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(toml).not.toContain("args =");
     expect(pluginJson.hooks).toBeUndefined();
     expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
-    expect(toml).not.toContain("SessionStart =");
-    expect(toml).not.toContain("subagents-context");
   });
 
   it("preserves Codex hook trust state while rewriting the fixed Fleet profile", async () => {

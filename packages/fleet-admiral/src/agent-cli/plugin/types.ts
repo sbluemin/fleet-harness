@@ -23,6 +23,8 @@ export interface CreateAgentCliPluginOptions {
   // 입력 대기(AskUserQuestion의 PreToolUse · permission/idle/elicitation Notification) 신호를 호스트로
   // 알리는 hook. AskUserQuestion은 Notification 훅을 발화하지 않으므로 두 이벤트 경로로 건다. Claude 전용.
   readonly inputWaitingHookExec?: FleetHookExec;
+  // atomic install 시 staging 경로가 아닌 최종 plugin root를 hook command에 기록한다.
+  readonly installedPluginRoot?: string;
   // 작전명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook. claude/codex 양쪽에 와이어링된다.
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
