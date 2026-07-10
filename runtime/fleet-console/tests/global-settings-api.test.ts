@@ -4,7 +4,7 @@ import { ApiError } from "../core/client/src/api.js";
 import { fetchGlobalSettingsState, updateGlobalSettings } from "../core/client/src/global-settings-api.js";
 
 const originalFetch = globalThis.fetch;
-const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, theme: "maritime", language: "auto" } as const;
+const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, theme: "maritime", uiFont: "manrope", language: "auto" } as const;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
