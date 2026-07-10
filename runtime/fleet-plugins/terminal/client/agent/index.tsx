@@ -10,7 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
@@ -242,7 +242,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
   const dockJobs = mergeDockJobs(activeJobs, jobs, retainedJobs);
   const modalJobs = selectJobsByIds(jobs, modalJobIds);
-  const modalResetKey = `${modalOpen}:${modalJobIds.join(",")}`;
+  const modalResetKey = String(modalOpen);
   const modalContentKey = modalJobs.map((job) => `${job.jobId}:${job.lastEventId}`).join(",");
   const modalScroll = usePinnedScrollLocal(modalResetKey, modalContentKey);
 
@@ -350,7 +350,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
           <div className="job-overlay-card">
             <button ref={closeButtonRef} type="button" className="job-overlay-close" aria-label="Close" onClick={closeModal}>×</button>
             <div ref={modalScroll.containerRef} className="job-overlay-body" tabIndex={-1}>
-              {modalJobIds.length === 0 ? (
+              {modalJobs.length === 0 ? (
                 <p className="job-overlay-empty">No active streams.</p>
               ) : (
                 modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)
@@ -691,10 +691,6 @@ function readPayloadString(payload: Record<string, unknown>, key: string): strin
 function readPayloadNumber(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-export function isTrackLive(status: string): boolean {
-  return status === "conn" || status === "stream" || status === "live" || status === "running" || status === "active";
 }
 
 function getActiveToolName(track: TrackView): string | undefined {

@@ -45,6 +45,10 @@ export function resolveCarrierCaptain(carrierId: string | undefined): string | u
   return CAPTAIN_IDS.has(carrierId) ? carrierId : undefined;
 }
 
+export function isTrackLive(status: string): boolean {
+  return status === "conn" || status === "stream" || status === "live" || status === "running" || status === "active";
+}
+
 export function mergeJobIds(jobIds: readonly string[], additionalJobIds: readonly string[]): readonly string[] {
   const known = new Set(jobIds);
   const additions = additionalJobIds.filter((jobId) => {
