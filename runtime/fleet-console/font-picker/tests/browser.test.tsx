@@ -43,6 +43,24 @@ describe("FontPicker", () => {
     expect(onSelectionChange).toHaveBeenCalledWith({ source: "builtin", id: "jetbrains" });
   });
 
+  it("highlights a clicked row immediately by moving virtual focus to it", async () => {
+    const onSelectionChange = vi.fn();
+    const container = renderPicker({
+      builtIns: [
+        { id: "a", label: "Alpha", family: "'A', sans-serif" },
+        { id: "b", label: "Beta", family: "'B', sans-serif" },
+      ],
+      installedFonts: [],
+      selected: { source: "builtin", id: "a" },
+      onSelectionChange,
+    });
+    const beta = [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((option) => option.textContent?.includes("Beta"));
+    if (!beta) throw new Error("Beta row must render.");
+    await act(async () => beta.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSelectionChange).toHaveBeenCalledWith({ source: "builtin", id: "b" });
+    expect(beta.classList.contains("is-active")).toBe(true);
+  });
+
   it("uses a selected option as virtual focus with safe, instance-local ids", () => {
     const container = renderPicker({ selected: { source: "system", familyName: "Saved Font" } });
     const listbox = container.querySelector('[role="listbox"]') as HTMLDivElement;
@@ -78,6 +96,20 @@ describe("FontPicker", () => {
     expect(builtIn?.style.fontFamily).toContain("Manrope Variable");
     expect(system?.style.fontFamily).toContain("Comic Sans MS");
     expect(system?.style.fontFamily).toContain("sans-serif");
+  });
+
+  it("previews a selected built-in in its own stack rather than the fallback", () => {
+    const container = renderPicker({
+      builtIns: [{ id: "jb", label: "JetBrains", family: "'JetBrains Mono Variable', monospace" }],
+      installedFonts: [],
+      selected: { source: "builtin", id: "jb" },
+      fallbackStack: "sans-serif",
+    });
+    const preview = container.querySelector<HTMLElement>(".fc-font-browser__preview-copy");
+    // A full built-in stack must be applied directly; quoting it via the fallback helper
+    // would collapse it to one literal family and fall through to fallbackStack.
+    expect(preview?.style.fontFamily).toContain("JetBrains Mono Variable");
+    expect(preview?.style.fontFamily).not.toContain("sans-serif");
   });
 
   it("shows unavailable persisted rows plus loading and error states", () => {

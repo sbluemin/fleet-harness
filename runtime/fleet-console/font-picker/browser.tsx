@@ -89,6 +89,11 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
     if (activeRow && !activeRow.unavailable) props.onSelectionChange(activeRow.selection);
   }, [activeRow, props]);
 
+  const handleRowSelect = React.useCallback((index: number, selection: FontPickerSelection) => {
+    setActiveIndex(index);
+    props.onSelectionChange(selection);
+  }, [props]);
+
   const onListboxKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -134,9 +139,9 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
           aria-busy={props.loading || undefined}
           onKeyDown={onListboxKeyDown}
         >
-          <FontGroup groupId={builtInsGroupId} label="Built-in" rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={props.onSelectionChange} />
+          <FontGroup groupId={builtInsGroupId} label="Built-in" rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
-          <FontGroup groupId={installedGroupId} label="Installed on this machine" rows={indexedRows.filter(({ row }) => row.source === "system")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={props.onSelectionChange} />
+          <FontGroup groupId={installedGroupId} label="Installed on this machine" rows={indexedRows.filter(({ row }) => row.source === "system")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           {!props.loading && !indexedRows.length ? <p className="fc-font-browser__state">No fonts match this search.</p> : null}
         </div>
       </div>
@@ -147,7 +152,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
             {selectedRow?.unavailable ? "Unavailable" : "Available"}
           </span>
         </div>
-        <p className="fc-font-browser__preview-copy" style={{ fontFamily: withFontFallback(selectedRow?.family ?? "", props.fallbackStack), fontSize: `${draftSize}px` }}>
+        <p className="fc-font-browser__preview-copy" style={{ fontFamily: selectedRow?.previewFamily ?? props.fallbackStack, fontSize: `${draftSize}px` }}>
           {props.previewText}
         </p>
         <div className="fc-font-browser__size-control" role="group" aria-label="Font size">
@@ -174,7 +179,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   );
 }
 
-function FontGroup({ groupId, label, rows, activeRow, selected, listboxId, disabled, onSelect }: { readonly groupId: string; readonly label: string; readonly rows: readonly IndexedFontPickerRow[]; readonly activeRow: FontPickerRow | null; readonly selected: FontPickerSelection; readonly listboxId: string; readonly disabled?: boolean; readonly onSelect: (selection: FontPickerSelection) => void }): React.ReactElement {
+function FontGroup({ groupId, label, rows, activeRow, selected, listboxId, disabled, onSelect }: { readonly groupId: string; readonly label: string; readonly rows: readonly IndexedFontPickerRow[]; readonly activeRow: FontPickerRow | null; readonly selected: FontPickerSelection; readonly listboxId: string; readonly disabled?: boolean; readonly onSelect: (index: number, selection: FontPickerSelection) => void }): React.ReactElement {
   return (
     <div className="fc-font-browser__group" role="group" aria-labelledby={groupId}>
       <h3 id={groupId} className="fc-font-browser__group-label">{label}</h3>
@@ -188,7 +193,7 @@ function FontGroup({ groupId, label, rows, activeRow, selected, listboxId, disab
           tabIndex={-1}
           aria-selected={isSelected(row.selection, selected)}
           disabled={disabled || row.unavailable}
-          onClick={() => onSelect(row.selection)}
+          onClick={() => onSelect(index, row.selection)}
         >
           <span className="fc-font-browser__row-name" style={{ fontFamily: row.previewFamily }}>{row.label}</span>
           {row.description ? <span className="fc-font-browser__row-meta">{row.description}</span> : null}

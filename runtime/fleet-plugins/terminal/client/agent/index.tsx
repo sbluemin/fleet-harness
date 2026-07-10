@@ -60,7 +60,7 @@ const DOCK_EXPANDED_KEY = "fleet-plugin.terminal.stream-dock-expanded";
 const LEGACY_DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
 const PIN_SLACK_PX = 56;
 const DOCK_RETENTION_MS = 4_000;
-const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, defaultValue: 14 };
+const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
 const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
 
 export const agentOperationKind = defineOperationKind({
