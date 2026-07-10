@@ -60,6 +60,10 @@ async function fetchUntrackedFiles(cwd: string): Promise<DiffFileEntry[]> {
   }));
 }
 
+async function ensureGitRepository(cwd: string): Promise<void> {
+  await runGit(["rev-parse", "--is-inside-work-tree"], { cwd });
+}
+
 // no-HEAD repo(초기 커밋 없는 신규 저장소) 감지: git stderr에 "unknown revision" 또는 "bad revision" 포함
 function isNoHeadError(error: unknown): boolean {
   if (!(error instanceof GitExecutorError)) return false;
@@ -122,6 +126,7 @@ export async function handleDiffChanged(
   const { gitCwd } = cwdResult;
 
   try {
+    await ensureGitRepository(gitCwd);
     let files: DiffFileEntry[];
     let truncated = false;
 

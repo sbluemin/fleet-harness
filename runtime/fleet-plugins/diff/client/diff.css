@@ -21,6 +21,7 @@
   transition: none;
 }
 
+.diff-list-pane,
 .diff-tree-pane {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -565,7 +566,7 @@
 }
 
 .history-root.has-detail {
-  grid-template-columns: minmax(250px, 1fr) minmax(360px, 1.4fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
 }
 
 .history-list-pane,
