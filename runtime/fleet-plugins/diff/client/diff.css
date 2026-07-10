@@ -81,6 +81,7 @@
 }
 
 .diff-view-toggle {
+  margin-left: auto;
   display: inline-flex;
   background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
   border: 1px solid var(--surface-rim);
