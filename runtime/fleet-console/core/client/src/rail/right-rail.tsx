@@ -120,7 +120,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
         <button type="button" className="right-rail-chrome-toggle" aria-label={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} title={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} onClick={toggleRailChrome}>
-          <RailChromeToggleIcon expanded={railChromeExpanded} />
+          <RailChromeToggleIcon />
         </button>
         <div className="right-rail-tabs" role="tablist" aria-label="Activity panels">
           {builtInPanels.map((panel) => (
@@ -253,10 +253,10 @@ function RailIcon({ panel, isActive }: RailIconProps) {
   );
 }
 
-function RailChromeToggleIcon({ expanded }: { readonly expanded: boolean }) {
+function RailChromeToggleIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d={expanded ? "M10 3.5 6 8l4 4.5" : "M6 3.5 10 8l-4 4.5"} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 5.5h8.2M8.4 2.9l2.8 2.6-2.8 2.6M13 10.5H4.8M7.6 7.9l-2.8 2.6 2.8 2.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

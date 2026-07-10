@@ -1,19 +1,11 @@
 .console-shell {
-  --console-gnb-height: 44px;
-  display: grid;
-  grid-template-rows: var(--console-gnb-height) minmax(0, 1fr);
+  position: relative;
   height: 100%;
   min-height: 0;
 }
 
-.global-navigation {
-  grid-row: 1;
-  min-width: 0;
-  min-height: var(--console-gnb-height);
-}
-
 .console-route-content {
-  grid-row: 2;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -31,7 +23,20 @@
   overflow: hidden;
 }
 
-.console-shell.is-focus-mode .global-navigation,
+/* 명시적 열 고정 — 접힌 크롬이 display:none으로 슬롯을 비워도(auto-placement 시프트)
+   캔버스가 1열로, 레일이 1fr로 밀리지 않게 한다. */
+.console-body.is-canvas > .operations-side-bar {
+  grid-column: 1;
+}
+
+.console-body.is-canvas > .operations-center-stage {
+  grid-column: 2;
+}
+
+.console-body.is-canvas > .right-rail {
+  grid-column: 3;
+}
+
 .console-shell.is-focus-mode .operations-side-bar,
 .console-shell.is-focus-mode .right-rail {
   display: none;
@@ -39,6 +44,10 @@
 
 .console-shell.is-focus-mode .console-body.is-canvas {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.console-shell.is-focus-mode .console-body.is-canvas > .operations-center-stage {
+  grid-column: 1;
 }
 
 .console-shell.is-focus-mode .operations-canvas {

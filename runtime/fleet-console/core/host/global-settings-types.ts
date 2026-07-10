@@ -7,7 +7,7 @@ export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly language: "auto" | "en" | "ko";
-  readonly theme: "instrument" | "maritime" | "carbon";
+  readonly theme: "instrument";
   readonly uiFont: UiFontSettings;
 }
 

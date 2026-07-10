@@ -1,23 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Link, NavLink } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
+import { useConsoleState } from "../hooks/use-store.js";
 import { openWhatsNew } from "../store.js";
-import type { ConsoleState } from "../types.js";
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
-
-interface GlobalNavigationProps {
-  readonly state: ConsoleState;
-  readonly focusModeActive: boolean;
-  readonly sidebarClosed: boolean;
-  readonly railClosed: boolean;
-  readonly onOpenOperationSearch: () => void;
-  readonly onToggleFocusMode: () => void;
-  readonly onRestoreSidebar: () => void;
-  readonly onRestoreRail: () => void;
-}
 
 interface UpdateApplyCopy {
   readonly label: string;
@@ -38,128 +26,123 @@ const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harnes
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 
-export function GlobalNavigation({
-  state,
-  focusModeActive,
-  sidebarClosed,
-  railClosed,
-  onOpenOperationSearch,
-  onToggleFocusMode,
-  onRestoreSidebar,
-  onRestoreRail,
-}: GlobalNavigationProps) {
+/* v5 브랜드 푸터 — 구분선 아래 [시그니처+Fleet][버전(What's New)][GitHub][★][Update?][⚙ 드롭업(Settings/Carriers)].
+   GNB 퇴역으로 이식된 콘솔 크롬의 유일한 상주 진입점. */
+export function SideBarBrandFoot() {
+  const state = useConsoleState();
   const latestReleaseVersion = state.releaseNotes.find((note) => note.version !== "Unreleased")?.version ?? null;
   const hasUnreadRelease = state.automaticWhatsNewVersion !== null && state.automaticWhatsNewVersion === latestReleaseVersion;
 
   return (
-    <>
-      <header className="global-navigation" aria-label="Global navigation">
-        <div className="global-navigation-left" aria-label="Workspace controls">
-          <button
-            type="button"
-            className="global-navigation-focus-mode"
-            onClick={onToggleFocusMode}
-            aria-pressed={focusModeActive}
-            aria-label={focusModeActive ? "Exit focus mode" : "Enter focus mode"}
-            title={focusModeActive ? "Exit focus mode" : "Enter focus mode"}
-          >
-            <FocusModeIcon />
-          </button>
-          {sidebarClosed ? (
-            <button
-              type="button"
-              className="global-navigation-sidebar-restore"
-              onClick={onRestoreSidebar}
-              aria-label="Show Theater sidebar"
-              title="Show Theater sidebar"
-            >
-              <SidebarRestoreIcon />
-            </button>
-          ) : null}
-        </div>
-
-        <div className="global-navigation-search">
-          <button
-            type="button"
-            className="global-navigation-search-button"
-            onClick={onOpenOperationSearch}
-            aria-label="Search Operations"
-            title="Search Operations"
-          >
-            <SearchIcon />
-            <span>Search</span>
-            <kbd>⌘K</kbd>
-          </button>
-        </div>
-
-        <div className="global-navigation-right" aria-label="Console controls">
-          {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
-          <VersionControl state={state} hasUnreadRelease={hasUnreadRelease} />
-          <Link className="global-navigation-brand" to="/operations" aria-label="Operations">
-            <span className="global-navigation-wordmark">Fleet</span>
-          </Link>
-          <GithubLinks />
-          <NavLink
-            to="/carrier-settings"
-            className={({ isActive }) => `global-navigation-route-link${isActive ? " is-active" : ""}`}
-            aria-label="Carriers"
-            title="Carriers"
-          >
-            <CarriersGlyph />
-          </NavLink>
-          <NavLink
-            to="/settings"
-            className={({ isActive }) => `global-navigation-route-link${isActive ? " is-active" : ""}`}
-            aria-label="Settings"
-            title="Settings"
-          >
-            <SettingsGlyph />
-          </NavLink>
-          {railClosed ? (
-            <button
-              type="button"
-              className="global-navigation-rail-restore"
-              onClick={onRestoreRail}
-              aria-label="Show Activity Rail"
-              title="Show Activity Rail"
-            >
-              <RailRestoreIcon />
-            </button>
-          ) : null}
-        </div>
-      </header>
-      {focusModeActive
-        ? createPortal(
-            <button
-              type="button"
-              className="global-navigation-focus-reveal"
-              onClick={onToggleFocusMode}
-              aria-label="Exit focus mode"
-              title="Exit focus mode"
-            >
-              <FocusModeIcon />
-            </button>,
-            document.body,
-          )
-        : null}
-    </>
+    <div className="side-bar-brand-foot">
+      <Link className="brand-foot-home" to="/operations" aria-label="Operations">
+        <BrandMarkIcon />
+        <span className="brand-foot-wordmark">Fleet</span>
+      </Link>
+      <button
+        type="button"
+        className="brand-foot-version"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={openWhatsNew}
+        disabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)}
+        aria-label={`What's new for version ${state.version}`}
+        title={`What's new v${state.version}`}
+      >
+        {hasUnreadRelease ? <span className="brand-foot-version-dot" aria-hidden="true" /> : null}
+        <span>v{state.version}</span>
+      </button>
+      {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
+      <GithubLinks />
+      <SettingsDropup />
+    </div>
   );
 }
 
-function VersionControl({ state, hasUnreadRelease }: { readonly state: ConsoleState; readonly hasUnreadRelease: boolean }) {
+function SettingsDropup() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!open) return;
+    // menu-button 패턴: 열리면 첫 menuitem으로 포커스 이동.
+    const frame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
+    const handlePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+      if (items.length === 0) return;
+      event.preventDefault();
+      const currentIndex = items.findIndex((item) => item === document.activeElement);
+      const nextIndex = event.key === "Home" || (event.key === "ArrowDown" && currentIndex === items.length - 1)
+        ? 0
+        : event.key === "End" || (event.key === "ArrowUp" && currentIndex <= 0)
+          ? items.length - 1
+          : event.key === "ArrowDown" ? currentIndex + 1 : currentIndex - 1;
+      items[nextIndex]?.focus();
+    };
+    window.addEventListener("pointerdown", handlePointer, true);
+    window.addEventListener("keydown", handleKey, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointerdown", handlePointer, true);
+      window.removeEventListener("keydown", handleKey, true);
+    };
+  }, [open]);
+
+  const go = (path: string) => {
+    setOpen(false);
+    navigate(path);
+    // 라우트 전환으로 푸터가 사라지므로 새 페이지의 복귀 링크(없으면 heading)로 포커스를 전달한다.
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(".page-back-link") ?? document.querySelector<HTMLElement>("main h2, h2");
+      target?.focus?.();
+      if (target && document.activeElement !== target) {
+        target.setAttribute("tabindex", "-1");
+        target.focus();
+      }
+    });
+  };
+
   return (
-    <button
-      type="button"
-      className="global-navigation-version"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={openWhatsNew}
-      disabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)}
-      aria-label={`What's new for version ${state.version}`}
-      title={`What's new v${state.version}`}
-    >
-      {hasUnreadRelease ? <span className="global-navigation-version-dot" aria-hidden="true" /> : null}
-      <span>v{state.version}</span>
-    </button>
+    <div ref={rootRef} className="brand-foot-dropup">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="brand-foot-more"
+        onClick={() => setOpen((previous) => !previous)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Settings and Carriers"
+        title="Settings & Carriers"
+      >
+        <SettingsGlyph />
+      </button>
+      {open ? (
+        <div ref={menuRef} className="brand-foot-dropup-menu" role="menu" aria-label="Console pages">
+          <button type="button" role="menuitem" onClick={() => go("/settings")}>
+            <SettingsGlyph />
+            <span>Settings</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => go("/carrier-settings")}>
+            <CarriersGlyph />
+            <span>Carriers</span>
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -203,7 +186,7 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
   return (
     <button
       type="button"
-      className={`global-navigation-update global-navigation-update--${copy.tone}`}
+      className={`brand-foot-update brand-foot-update--${copy.tone}`}
       onClick={handleApply}
       disabled={copy.disabled}
       title={copy.title}
@@ -218,13 +201,13 @@ function GithubLinks() {
   const stars = useGithubStars();
   const hasCount = stars.count !== null;
   return (
-    <div className="global-navigation-github" role="group" aria-label="GitHub">
-      <a className="global-navigation-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Open GitHub repository" title="GitHub repository">
+    <div className="brand-foot-github" role="group" aria-label="GitHub">
+      <a className="brand-foot-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Open GitHub repository" title="GitHub repository">
         <GithubMarkIcon />
       </a>
-      <a className="global-navigation-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" aria-label={hasCount ? `GitHub stars ${stars.count!.toLocaleString()}` : "Star on GitHub"} title="Star on GitHub">
+      <a className="brand-foot-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" aria-label={hasCount ? `GitHub stars ${stars.count!.toLocaleString()}` : "Star on GitHub"} title="Star on GitHub">
         <StarIcon />
-        {hasCount ? <span className="global-navigation-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
+        {hasCount ? <span className="brand-foot-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
       </a>
     </div>
   );
@@ -318,28 +301,26 @@ function formatStarCount(count: number): string {
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
 }
 
+// 제품 favicon(bearing-scope 마크)의 인라인 축약판 — 브랜드 글리프는 파비콘과 동일 조형을 쓴다.
+function BrandMarkIcon() {
+  return (
+    <svg className="brand-foot-glyph" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="2" y="2" width="60" height="60" rx="14" fill="var(--ink-deep)" stroke="var(--surface-rim-strong)" strokeWidth="2" />
+      <circle cx="32" cy="32" r="18.5" fill="none" stroke="var(--brass)" strokeWidth="3.5" />
+      <circle cx="32" cy="32" r="10.5" fill="none" stroke="var(--brass)" strokeWidth="1.8" opacity="0.55" />
+      <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--brass)" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="32" cy="32" r="3" fill="var(--brass)" />
+      <circle cx="44.7" cy="19.3" r="5" fill="var(--aurora)" />
+    </svg>
+  );
+}
+
 function CarriersGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4.2" r="1.15" fill="currentColor" /><circle cx="4" cy="8" r="1.15" fill="currentColor" /><circle cx="4" cy="11.8" r="1.15" fill="currentColor" /><path d="M7.2 4.2h6M7.2 8h6M7.2 11.8h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function SettingsGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /><circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /><circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /></svg>;
-}
-
-function FocusModeIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function SidebarRestoreIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v9h-11zM6 3.5v9M4.5 8h7" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
-}
-
-function RailRestoreIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v9h-11zM10 3.5v9M4.5 8h7" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
-}
-
-function SearchIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="m10 10 3 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function GithubMarkIcon() {

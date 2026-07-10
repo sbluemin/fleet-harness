@@ -8,7 +8,7 @@ import {
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 
-export type ConsoleThemeId = "instrument" | "maritime" | "carbon";
+export type ConsoleThemeId = "instrument";
 export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
@@ -48,15 +48,44 @@ const MAX_CONSOLE_STATIC_PORT = 65535;
 export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> {
   const paths = deps.paths ?? createConsoleDataPaths();
   const createStore = deps.createStore ?? createDurableJsonStore;
-  return createStore({
+  let legacyThemeMigrationPending = false;
+  const store = createStore({
     filePath: paths.settingsFile,
     lockDir: path.join(paths.dir, SETTINGS_LOCK_DIR_NAME),
     lockOwnerFileName: SETTINGS_LOCK_OWNER_FILE_NAME,
     now: deps.now,
-    sanitize: sanitizeConsoleSettingsData,
+    sanitize: (value) => {
+      if (hasLegacyTheme(value)) legacyThemeMigrationPending = true;
+      return sanitizeConsoleSettingsData(value);
+    },
     sensitivity: "sensitive",
     tempCleanupPrefix: SETTINGS_TEMP_PREFIX,
   });
+
+  return {
+    path: store.path,
+    load: () => {
+      const current = store.load();
+      if (!legacyThemeMigrationPending) return current;
+      try {
+        const normalized = store.update((latest) => sanitizeConsoleSettingsData(latest));
+        legacyThemeMigrationPending = false;
+        return normalized;
+      } catch {
+        return current;
+      }
+    },
+    save: (data) => {
+      legacyThemeMigrationPending = false;
+      store.save(data);
+    },
+    update: (mutate) => {
+      legacyThemeMigrationPending = false;
+      const next = store.update(mutate);
+      legacyThemeMigrationPending = false;
+      return next;
+    },
+  };
 }
 
 export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData {
@@ -106,7 +135,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ? value.language
     : undefined;
   const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
-    ? value.theme
+    ? "instrument"
     : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   return {
@@ -131,6 +160,13 @@ function readConsolePluginSettings(value: unknown): Record<string, Record<string
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasLegacyTheme(value: unknown): boolean {
+  return isRecord(value)
+    && value.version === SETTINGS_VERSION
+    && isRecord(value.general)
+    && (value.general.theme === "maritime" || value.general.theme === "carbon");
 }
 
 function isValidConsoleStaticPort(value: unknown): value is number {

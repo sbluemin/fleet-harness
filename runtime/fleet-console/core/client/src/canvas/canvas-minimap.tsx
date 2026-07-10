@@ -19,7 +19,6 @@ interface CanvasMinimapProps {
 
 interface MiniRect {
   readonly id: string;
-  readonly kind: "op" | "plugin";
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -41,8 +40,8 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
   if (canvasSize.width <= 0 || canvasSize.height <= 0 || viewport.zoom <= 0) return null;
 
   const rects: MiniRect[] = [
-    ...Object.entries(operations).map(([id, g]) => ({ id, kind: "op" as const, x: g.x, y: g.y, width: g.width, height: g.height })),
-    ...Object.entries(pluginOperations).map(([id, e]) => ({ id, kind: "plugin" as const, x: e.geometry.x, y: e.geometry.y, width: e.geometry.width, height: e.geometry.height })),
+    ...Object.entries(operations).map(([id, g]) => ({ id, x: g.x, y: g.y, width: g.width, height: g.height })),
+    ...Object.entries(pluginOperations).map(([id, e]) => ({ id, x: e.geometry.x, y: e.geometry.y, width: e.geometry.width, height: e.geometry.height })),
   ];
   // 표시할 Operation이 없으면 위치 인지에 의미가 없으므로 미니맵(과 접힘 버튼)을 숨긴다.
   if (rects.length === 0) return null;
@@ -156,7 +155,7 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
         {rects.map((r) => (
           <div
             key={r.id}
-            className={`canvas-minimap-operation ${r.kind === "plugin" ? "is-plugin" : ""}`}
+            className="canvas-minimap-operation"
             style={{ left: miniLeft(r.x), top: miniTop(r.y), width: Math.max(2, r.width * scale), height: Math.max(2, r.height * scale) }}
           />
         ))}

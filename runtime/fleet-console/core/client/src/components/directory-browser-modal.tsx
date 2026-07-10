@@ -139,21 +139,21 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
         className="directory-browser-card"
         role="dialog"
         aria-modal="true"
-        aria-label="Establish Theater of Operations"
+        aria-label="Add Theater"
         onKeyDown={handleKeyDown}
       >
         <header className="directory-browser-header">
           <span className="directory-browser-sigil" aria-hidden="true"><TheaterSigil /></span>
           <div className="directory-browser-heading">
-            <span className="directory-browser-kicker">Theater of Operations</span>
-            <h2>Establish Theater</h2>
+            <span className="directory-browser-kicker">Project folder</span>
+            <h2>Add Theater</h2>
           </div>
           <button type="button" className="directory-browser-close" onClick={onCancel} aria-label="Close">×</button>
         </header>
 
         {showRoots ? (
           <div className="directory-browser-roots" role="group" aria-label="Drives">
-            <span className="directory-browser-kicker">Stations</span>
+            <span className="directory-browser-kicker">Locations</span>
             <div className="directory-browser-root-chips">
               {roots.map((root) => {
                 const isActive = activeDrive != null && getDrivePrefix(root) === activeDrive;
@@ -206,7 +206,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
               ref={filterRef}
               type="text"
               className="directory-browser-filter-input"
-              placeholder="Filter sectors…"
+              placeholder="Filter folders…"
               aria-label="Filter folders"
               aria-controls={LIST_ID}
               value={query}
@@ -222,7 +222,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
             type="button"
             className="directory-browser-up"
             disabled={listing?.parentPath == null || loadingPath !== null}
-            title="Up one sector (Backspace)"
+            title="Up one folder (Backspace)"
             onClick={goUp}
           >
             <UpGlyph />
@@ -271,9 +271,9 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           ref={listRef}
         >
           {loadingPath !== null ? (
-            <p className="directory-browser-state is-live"><span className="directory-browser-scan-dot" aria-hidden="true" />Scouting…</p>
+            <p className="directory-browser-state is-live"><span className="directory-browser-scan-dot" aria-hidden="true" />Loading folders…</p>
           ) : filtered.length === 0 ? (
-            <p className="directory-browser-state">{query !== "" ? "No sectors match the filter." : "No sectors to advance into."}</p>
+            <p className="directory-browser-state">{query !== "" ? "No folders match the filter." : "No folders available."}</p>
           ) : (
             filtered.map((entry, index) => (
               <div
@@ -302,12 +302,12 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           )}
         </div>
 
-        {listing?.truncated ? <p className="directory-browser-note">Charting first 500 sectors only.</p> : null}
+        {listing?.truncated ? <p className="directory-browser-note">Showing the first 500 folders.</p> : null}
 
         <footer className="directory-browser-actions">
           <div className="directory-browser-target">
             <span className="directory-browser-target-label">Theater Root</span>
-            <span className="directory-browser-target-path" title={currentPath ?? ""}>{currentPath ?? "Scouting…"}</span>
+            <span className="directory-browser-target-path" title={currentPath ?? ""}>{currentPath ?? "Loading…"}</span>
           </div>
           <div className="directory-browser-buttons">
             <button type="button" className="directory-browser-button" onClick={onCancel}>Cancel</button>
@@ -317,7 +317,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
               disabled={currentPath === null || loadingPath !== null}
               onClick={() => currentPath && onConfirm(currentPath)}
             >
-              Establish Theater
+              Add Theater
             </button>
           </div>
         </footer>
@@ -367,7 +367,7 @@ function formatRootLabel(root: string): string {
 }
 
 function TheaterSigil() {
-  // 작전구역(Theater of Operations) — 측위 레티클: 동심 링 + 십자 조준선으로 '구역을 조준해 지정'을 표상한다.
+  // Folder picker reticle.
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <circle cx="10" cy="10" r="6.6" fill="none" stroke="currentColor" strokeWidth="1.2" />

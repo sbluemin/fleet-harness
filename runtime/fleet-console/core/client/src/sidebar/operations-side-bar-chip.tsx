@@ -1,7 +1,9 @@
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
-import { useInlineRename } from "../use-inline-rename.js";
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { operationActivityLabel, operationActivityVisual } from "../operation-activity.js";
+import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
 
 export interface SideBarEntry {
@@ -9,6 +11,7 @@ export interface SideBarEntry {
   readonly active: boolean;
   readonly minimized: boolean;
   readonly notificationCount: number;
+  readonly status?: OperationActivity;
   readonly icon: ReactNode;
 }
 
@@ -51,7 +54,7 @@ export function OperationsSideBarChip({
   onRename,
 }: SideBarChipProps) {
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, notificationCount } = entry;
+  const { operation, active, minimized, notificationCount, status } = entry;
   const title = displayTitle(operation);
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
@@ -152,6 +155,12 @@ export function OperationsSideBarChip({
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
       ) : null}
+      <span
+        className={`side-bar-chip-status ${chipStatusClass(status)}`}
+        role="img"
+        aria-label={chipStatusLabel(status)}
+        title={chipStatusLabel(status)}
+      />
       {preview ? null : (
         <button
           type="button"
@@ -170,6 +179,18 @@ export function OperationsSideBarChip({
 
 function displayTitle(operation: OperationNode): string {
   return operation.title;
+}
+
+function chipStatusClass(status: OperationActivity | undefined): string {
+  const visual = operationActivityVisual(status);
+  if (visual === "running") return "tenant-beacon is-turn-running";
+  if (visual === "awaiting") return "tenant-beacon is-awaiting";
+  if (visual === "dormant") return "tenant-beacon is-dormant";
+  return "is-idle";
+}
+
+function chipStatusLabel(status: OperationActivity | undefined): string {
+  return operationActivityLabel(status);
 }
 
 function SideBarCloseIcon() {

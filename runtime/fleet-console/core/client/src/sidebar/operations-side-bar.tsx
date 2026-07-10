@@ -2,14 +2,17 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
+import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
-import { sortOperationsByOrder } from "../store.js";
+import { sortOperationsByOrder, toggleOperationSearch } from "../store.js";
+import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
@@ -90,6 +93,7 @@ interface TheaterEntryBuildInput {
   readonly minimizedSet: ReadonlySet<string>;
   readonly activeOperationId: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
+  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
 }
@@ -188,6 +192,7 @@ export function OperationsSideBar({
   const [sideBarResizing, setSideBarResizing] = useState(false);
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
+  const { operationStatus } = useConsoleState();
 
   const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
@@ -201,10 +206,12 @@ export function OperationsSideBar({
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
+      status: operationStatus[operation.id],
       icon,
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
+  const hasCustomGroups = groupedSections.some((section) => section.group !== null);
   const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
   const visibleEntries = groupedSections.flatMap((section) =>
     collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
@@ -508,14 +515,16 @@ export function OperationsSideBar({
       onContextMenu={openNewMenuAtCursor}
     >
       <header className="operations-side-bar-header">
-        <button type="button" className="side-bar-collapse-btn" onClick={() => setSideBarCollapsed(!collapsed)} aria-label={collapsed ? "Open Theater" : "Close Theater"} title={collapsed ? "Open Theater" : "Close Theater"}>
+        <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Theater</span></button>
+        <span className="side-bar-header-spacer" aria-hidden="true" />
+        <button type="button" className="side-bar-search-btn" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
+          <SearchIcon />
+        </button>
+        <button type="button" className="side-bar-settings-btn" onClick={openSettingsMenu} aria-expanded={settingsMenu !== null} aria-label="Canvas controls" title="Canvas controls"><SettingsIcon /></button>
+        <button type="button" className="side-bar-collapse-btn" onClick={() => setSideBarCollapsed(!collapsed)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
           <ChevronIcon collapsed={!collapsed} />
         </button>
       </header>
-      {!collapsed ? <div className="side-bar-tree-toolbar">
-        <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Theater</span></button>
-        <button type="button" className="side-bar-settings-btn" onClick={openSettingsMenu} aria-expanded={settingsMenu !== null} aria-label="Map and display controls" title="Map and display controls"><SettingsIcon /></button>
-      </div> : null}
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
@@ -532,6 +541,7 @@ export function OperationsSideBar({
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
               operationNotifications,
+              operationStatus,
               catalog,
               renderKindIcon,
             });
@@ -623,7 +633,7 @@ export function OperationsSideBar({
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
                   onPointerDragStart={beginGroupPointerDrag}
                 />
-              ) : section.entries.length > 0 ? (
+              ) : hasCustomGroups && section.entries.length > 0 ? (
                 <div className="side-bar-ungrouped-label" aria-label="Ungrouped operations">
                   <span>Ungrouped</span>
                 </div>
@@ -768,8 +778,13 @@ export function OperationsSideBar({
         />
       ) : null}
       <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
+      {!collapsed ? <SideBarBrandFoot /> : null}
     </aside>
   );
+}
+
+function SearchIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
 
 interface GroupSection {
@@ -813,6 +828,7 @@ function buildTheaterEntries({
   minimizedSet,
   activeOperationId,
   operationNotifications,
+  operationStatus,
   catalog,
   renderKindIcon,
 }: TheaterEntryBuildInput): SideBarEntry[] {
@@ -827,6 +843,7 @@ function buildTheaterEntries({
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
+      status: operationStatus[operation.id],
       icon,
     };
   });
@@ -868,7 +885,7 @@ function TheaterSectionHeader({
       aria-expanded={!collapsed}
       title={theater.label}
     >
-      <span className="side-bar-theater-anchor" aria-hidden="true"><FolderIcon /></span>
+      <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
       <span className="side-bar-theater-name">{theater.label}</span>
       <span className="side-bar-theater-count">{operationCount}</span>
       <span className="side-bar-theater-row-controls" aria-label={`${theater.label} controls`}>
@@ -1154,12 +1171,24 @@ function SettingsIcon() {
   );
 }
 
-function FolderIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M2.5 4.4h4l1.2 1.4h5.8v5.8a1.4 1.4 0 0 1-1.4 1.4H3.9a1.4 1.4 0 0 1-1.4-1.4z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
+export function theaterInitials(label: string): string {
+  // 하이픈/언더스코어/점도 단어 경계로 취급 — "fleet-harness" → "FH" (재가 시안 문법)
+  const words = label.trim().split(/[\s\-_.]+/).filter(Boolean);
+  const initials = words.length > 1
+    ? words.flatMap((word) => firstGrapheme(word))
+    : graphemes(label).filter((grapheme) => /[\p{L}\p{N}]/u.test(grapheme));
+  return initials.slice(0, 2).join("").toUpperCase() || "--";
+}
+
+function firstGrapheme(value: string): string[] {
+  return graphemes(value).slice(0, 1);
+}
+
+function graphemes(value: string): string[] {
+  if (typeof Intl.Segmenter === "function") {
+    return [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)].map((segment) => segment.segment);
+  }
+  return Array.from(value);
 }
 
 function TrashIcon() {

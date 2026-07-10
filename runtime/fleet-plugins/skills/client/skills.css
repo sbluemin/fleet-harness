@@ -467,7 +467,7 @@
 
 .skills-overlay-backdrop {
   align-items: center;
-  background: color-mix(in srgb, black 55%, transparent);
+  background: color-mix(in srgb, var(--ink-abyss) 55%, transparent);
   display: flex;
   inset: 0;
   justify-content: center;

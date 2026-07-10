@@ -1,6 +1,6 @@
 import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
 
-export type ThemeId = "instrument" | "maritime" | "carbon";
+export type ThemeId = "instrument";
 
 export type ReleaseNotesLocale = "en" | "ko";
 

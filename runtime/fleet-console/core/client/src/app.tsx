@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { toggleMapFullscreen, useMapFullscreen } from "./canvas/canvas-store.js";
+import { FloatingChromeHandles } from "./components/floating-chrome-handles.js";
+import { FocusModeReveal } from "./components/focus-mode-reveal.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
-import { GlobalNavigation } from "./components/global-navigation.js";
 import { Toast } from "./components/toast.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
@@ -26,6 +27,8 @@ import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 
+type ChromeRestoreFocusTarget = "sidebar" | "rail" | null;
+
 export function App() {
   const state = useConsoleState();
   const location = useLocation();
@@ -38,6 +41,7 @@ export function App() {
   const railChromeExpanded = useRailChromeExpanded();
   const mapFullscreenActive = mapFullscreen && pathname.startsWith("/operations");
   const operationsViewVisible = pathname.startsWith("/operations");
+  const [chromeRestoreFocusTarget, setChromeRestoreFocusTarget] = useState<ChromeRestoreFocusTarget>(null);
 
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
@@ -94,17 +98,18 @@ export function App() {
   }, []);
 
   return (
-    <div className={`console-shell ${mapFullscreenActive ? "is-focus-mode" : ""}`}>
-      <GlobalNavigation
-        state={state}
-        focusModeActive={mapFullscreenActive}
-        sidebarClosed={sideBar.collapsed}
-        railClosed={!railChromeExpanded}
-        onOpenOperationSearch={toggleOperationSearch}
-        onToggleFocusMode={toggleMapFullscreen}
-        onRestoreSidebar={() => setSideBarCollapsed(false)}
-        onRestoreRail={() => setRailChromeExpanded(true)}
-      />
+    <div
+      className={`console-shell ${mapFullscreenActive ? "is-focus-mode" : ""}`}
+      onClickCapture={(event) => {
+        if (!(event.target instanceof Element)) return;
+        if (!sideBar.collapsed && event.target.closest(".side-bar-collapse-btn")) {
+          setChromeRestoreFocusTarget("sidebar");
+        }
+        if (railChromeExpanded && event.target.closest(".right-rail-chrome-toggle")) {
+          setChromeRestoreFocusTarget("rail");
+        }
+      }}
+    >
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
@@ -114,6 +119,22 @@ export function App() {
           <Route path="*" element={<Navigate to="/operations" replace />} />
         </Routes>
       </main>
+      <FloatingChromeHandles
+        active={operationsViewVisible && !mapFullscreenActive}
+        sidebarClosed={sideBar.collapsed}
+        railClosed={!railChromeExpanded}
+        pendingTarget={chromeRestoreFocusTarget}
+        onRestoreSidebar={() => {
+          setSideBarCollapsed(false);
+          setChromeRestoreFocusTarget("sidebar");
+        }}
+        onRestoreRail={() => {
+          setRailChromeExpanded(true);
+          setChromeRestoreFocusTarget("rail");
+        }}
+        onFocusComplete={() => setChromeRestoreFocusTarget(null)}
+      />
+      {mapFullscreenActive ? <FocusModeReveal onExit={toggleMapFullscreen} /> : null}
       <OperationSearch state={state} />
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
+import { Link } from "react-router-dom";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
@@ -8,19 +9,13 @@ import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { setActiveTheme, setActiveUiFont } from "../store.js";
+import { setActiveUiFont } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
+import type { GlobalSettingsState, UiFontId, UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
   readonly label: string;
-}
-
-interface ThemeOption {
-  readonly id: ThemeId;
-  readonly label: string;
-  readonly swatch: readonly [string, string, string];
 }
 
 interface PortModeOption {
@@ -53,12 +48,6 @@ interface PluginSettingsNavGroup {
 }
 
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
-const THEMES: readonly ThemeOption[] = [
-  { id: "instrument", label: "Instrument", swatch: ["oklch(80% 0.085 78)", "oklch(77% 0.085 200)", "oklch(20% 0.018 245)"] },
-  { id: "maritime", label: "Maritime", swatch: ["oklch(78% 0.13 75)", "oklch(82% 0.13 195)", "oklch(32% 0.04 248)"] },
-  { id: "carbon", label: "Carbon", swatch: ["oklch(76% 0.115 62)", "oklch(80% 0.105 205)", "oklch(25% 0.007 252)"] },
-];
-
 const PORT_MODES: readonly PortModeOption[] = [
   { id: "dynamic", label: "Dynamic" },
   { id: "static", label: "Static" },
@@ -97,7 +86,8 @@ export function GlobalSettings() {
     <main className="global-settings-page">
       <section className="global-settings-hero" aria-labelledby="global-settings-title">
         <div>
-          <p className="bridge-kicker">Fleet Control Surface</p>
+          <Link className="page-back-link" to="/operations">← Operations</Link>
+          <p className="bridge-kicker">Console</p>
           <h2 id="global-settings-title">Settings</h2>
         </div>
         <div className="global-settings-status" role="status" aria-live="polite">
@@ -167,7 +157,6 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
     case "general":
       return (
         <>
-          <ThemeCard saving={saving} />
           <TypographyCard state={state} saving={saving} />
           <GeneralSettingsCard state={state} saving={saving} />
         </>
@@ -205,50 +194,6 @@ function groupPluginSettingsSections(sections: readonly PluginSettingsNavItem[])
 function formatPluginLabel(pluginId: string): string {
   if (pluginId === "terminal") return "Terminal";
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
-}
-
-function ThemeCard({ saving }: { readonly saving: boolean }) {
-  const selectTheme = (theme: ThemeId) => {
-    if (getGlobalSettingsStoreState().savingField !== null) return;
-    const previousTheme = getGlobalSettingsStoreState().state?.theme ?? "instrument";
-    setActiveTheme(theme);
-    void setGlobalSettingsField("theme", theme).then((saved) => {
-      if (!saved) setActiveTheme(previousTheme);
-    });
-  };
-  return (
-    <section className="global-settings-card" aria-label="Theme">
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">Theme</p>
-          <p className="global-settings-help">Console color scheme. Applies immediately and is saved server-side.</p>
-        </div>
-        {/* role="group" + aria-pressed — 단일선택 패턴. 선택 = brass(지금 보고 있는 곳). */}
-        <div className="theme-picker" role="group" aria-label="Theme">
-          {THEMES.map((theme) => {
-            const isActive = theme.id === getGlobalSettingsStoreState().state?.theme;
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                aria-pressed={isActive}
-                className={`theme-card ${isActive ? "is-active" : ""}`}
-                disabled={saving}
-                onClick={() => selectTheme(theme.id)}
-              >
-                <span className="theme-card-swatch" aria-hidden="true">
-                  {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
-                </span>
-                <span className="theme-card-label">{theme.label}</span>
-                <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <p className="global-settings-foot">Theme applies immediately and is stored server-side.</p>
-    </section>
-  );
 }
 
 function TypographyCard({

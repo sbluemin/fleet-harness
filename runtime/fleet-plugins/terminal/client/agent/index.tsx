@@ -83,7 +83,7 @@ export const agentAttentionNotification = defineNotificationKind({
 });
 
 // id에 ".end"를 포함시켜 core mapNotificationKind가 이 알림을 "ended"(turn 종료)로 분류하게 한다.
-// (idle 전이 = 에이전트 턴 종료이므로 ALERTS에서 "Stood down"으로 표시되어야 한다.)
+// (idle 전이는 에이전트 턴 종료이므로 ALERTS의 ended 상태로 분류해야 한다.)
 export const agentEndedNotification = defineNotificationKind({
   id: "agent.ended",
   title: "Agent turn ended",
@@ -372,7 +372,6 @@ function StreamDock({
   const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
   const tokenLabel = formatTokenEstimate(totalTokens);
 
-  const sig = activeJobs.length === 1 && primaryJob ? resolveJobSignature(primaryJob) : undefined;
   const captain = activeJobs.length === 1 && primaryJob ? resolveCarrierCaptain(primaryJob.ownerCarrierId) : undefined;
   const jobLabel = activeJobs.length === 1 && primaryJob ? primaryJob.label : undefined;
 
@@ -399,7 +398,7 @@ function StreamDock({
   const dotClassName = hasActiveJob ? "job-dock-dot" : hasError ? "job-dock-dot job-dock-dot--error" : "job-dock-dot job-dock-dot--idle";
 
   return (
-    <div className="job-dock" data-signature={sig}>
+    <div className="job-dock">
       <div className="job-dock-strip">
         <span className={dotClassName} aria-hidden="true" />
         <span className="job-dock-carrier" title={jobLabel}>
@@ -566,7 +565,7 @@ function SystemPromptSettingsBlock() {
         <>
           <SettingToggleRow
             title="Metaphor"
-            help="Enabled layers the naval tone overlay — clipped reporting cadence and Fleet vocabulary — onto every session. Off keeps the Admiral persona without the tone."
+            help="Adds concise Fleet wording to every session. Off uses the standard prompt."
             onLabel="Enabled"
             offLabel="Off"
             value={state.enableMetaphor}

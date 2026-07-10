@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
+import { toggleMapFullscreen, useMapFullscreen } from "./canvas-store.js";
 import { SHORTCUT_GROUPS } from "../shortcuts-catalog.js";
 
 export type CanvasContextMenuMode = "full" | "launch" | "controls";
@@ -56,6 +57,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // controls 모드에선 Map 패널을 기본으로, 그 외엔 Operations를 기본으로 시작한다.
   const [activeTab, setActiveTab] = useState<CanvasControlTab>(mode === "controls" ? "map" : "operations");
   const modLabel = resolveModLabel();
+  const focusModeActive = useMapFullscreen();
 
   const showTabs = mode === "full";
   const showOperations = mode === "full" || mode === "launch";
@@ -110,15 +112,15 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       style={clampedAnchorStyle(anchor, viewportBounds, placement)}
       data-canvas-blocker
     >
-      <div className="operation-launch-menu theater-menu canvas-context-menu" role="dialog" aria-label="Operations Control" tabIndex={-1} ref={menuRef}>
+      <div className="operation-launch-menu theater-menu canvas-context-menu" role="dialog" aria-label="Canvas controls" tabIndex={-1} ref={menuRef}>
         <div className="canvas-context-menu-head">
           <span className="canvas-context-menu-reticle" aria-hidden="true"><CommandReticleIcon /></span>
           <span className="canvas-context-menu-head-text">
-            <strong>Operations Control</strong>
+            <strong>Canvas controls</strong>
           </span>
         </div>
         {showTabs ? (
-          <div className="canvas-context-menu-tabs" role="tablist" aria-label="Operations Control sections">
+          <div className="canvas-context-menu-tabs" role="tablist" aria-label="Canvas control sections">
             {CANVAS_CONTROL_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -193,6 +195,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   <span className="theater-menu-label">Formation view</span>
                 </button>
               ) : null}
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={focusModeActive}
+                className="theater-menu-item canvas-context-menu-item"
+                onClick={() => {
+                  toggleMapFullscreen();
+                  onClose();
+                }}
+              >
+                <span className="theater-menu-check" aria-hidden="true"><FocusModeGlyph /></span>
+                <span className="theater-menu-label">Focus mode</span>
+              </button>
             </div>
             <div
               id="canvas-control-panel-help"
@@ -218,7 +233,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 }
 
 // 좌하단 런처 FAB와 메뉴 헤더가 공유하는 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +
-// 중앙의 '+'(생성 의미 보존). 브랜드 베어링 스코프 계열로, 단순 plus를 Operations Control 진입점으로 승격한다.
+// 중앙의 '+'(생성 의미 보존). 단순 plus를 Canvas controls 진입점으로 제공한다.
 export function CommandReticleIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -294,6 +309,14 @@ function FormationGlyph() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function FocusModeGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

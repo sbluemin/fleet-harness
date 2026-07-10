@@ -638,5 +638,5 @@ function isNotificationPreferencesBlob(value: unknown): value is {
 }
 
 function toPluginTheme(theme: ThemeId): ConsoleTheme {
-  return theme === "instrument" ? "maritime" : theme;
+  return "maritime";
 }

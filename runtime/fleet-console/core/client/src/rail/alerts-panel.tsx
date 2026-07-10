@@ -19,8 +19,8 @@ import type { NotificationKind, OperationNotification } from "../types.js";
 
 // kind별 사용자 표기 라벨
 const KIND_LABEL: Record<NotificationKind, string> = {
-  ended: "Stood down",
-  "input-waiting": "Awaiting orders",
+  ended: "Ended",
+  "input-waiting": "Waiting for input",
 };
 
 export const alertsPanel: RailPanelDescriptor = {
@@ -146,30 +146,12 @@ function AlertsIcon() {
   const totalCount = groups.reduce((sum, group) => sum + group.notifications.length, 0);
   const waitingCount = countByKind(groups, "input-waiting");
 
-  // 패널이 닫혀있을 때 신규 알림 도착 시 외곽 펄스 1회 재생
-  const latestSeq = useMemo(
-    () => filtered.reduce((max, n) => Math.max(max, n.lastRaisedSeq), 0),
-    [filtered],
-  );
-  const seenSeqRef = useRef(latestSeq);
-  const [pulseKey, setPulseKey] = useState(0);
-
-  useEffect(() => {
-    if (latestSeq > seenSeqRef.current && !isActive) {
-      setPulseKey((k) => k + 1);
-    }
-    seenSeqRef.current = latestSeq;
-  }, [latestSeq, isActive]);
-
   const signalState = totalCount === 0 ? "muted" : waitingCount > 0 ? "awaiting" : "ended";
 
   return (
     <span className={`alerts-icon is-${signalState}`} aria-hidden="true">
       <BellIcon />
       {totalCount > 0 ? <span className="alerts-icon-badge">{totalCount}</span> : null}
-      {pulseKey > 0 ? (
-        <span key={pulseKey} className="alerts-icon-pulse" aria-hidden="true" />
-      ) : null}
     </span>
   );
 }
