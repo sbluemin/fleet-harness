@@ -113,6 +113,21 @@ async function writeContext(res: http.ServerResponse, theater: TheaterRegistrati
   try {
     deps.writeJson(res, 200, await toContextDto(theater, deps));
   } catch (error) {
+    // 저장된 컨텍스트가 런타임에 사라진 경우(예: 워크트리 삭제/개명) — 기동 힐링과 동일하게
+    // root로 복구·영속하고 root 컨텍스트를 반환해 복구 불가 상태를 만들지 않는다.
+    if (error instanceof TheaterPathContextError && theater.pathContext !== null) {
+      const healed = deps.setPathContext(theater.id, null);
+      if (healed) {
+        deps.persist();
+        try {
+          deps.writeJson(res, 200, await toContextDto(healed, deps));
+          return;
+        } catch (rootError) {
+          writePathError(res, deps, rootError);
+          return;
+        }
+      }
+    }
     writePathError(res, deps, error);
   }
 }
