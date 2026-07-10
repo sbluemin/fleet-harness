@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -154,7 +156,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
   });
 
-  it("renders Cursor plugin rules hooks and MCP config", async () => {
+  it("renders Cursor doctrine hook, session hooks, and MCP config", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-cursor-"));
     tempDirs.push(root);
     const dataDir = path.join(root, "data");
@@ -175,8 +177,9 @@ describe("agent CLI plugin marketplace rendering", () => {
     });
 
     const manifest = JSON.parse(readFileSync(path.join(plugin.pluginRoot, ".cursor-plugin", "plugin.json"), "utf8")) as { readonly name?: unknown };
-    const doctrineRuleFile = path.join(plugin.pluginRoot, "rules", "fleet-doctrine.mdc");
-    const doctrineRule = readFileSync(doctrineRuleFile, "utf8");
+    const doctrineFile = path.join(plugin.pluginRoot, "doctrine.md");
+    const doctrine = readFileSync(doctrineFile, "utf8");
+    const doctrineHookScript = path.join(plugin.pluginRoot, "hooks", "inject-doctrine.mjs");
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly version?: unknown;
       readonly hooks?: Record<string, ReadonlyArray<{ readonly command?: string }>>;
@@ -184,19 +187,24 @@ describe("agent CLI plugin marketplace rendering", () => {
     const mcpJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "mcp.json"), "utf8")) as {
       readonly mcpServers?: Record<string, { readonly headers?: { readonly Authorization?: string } }>;
     };
+    const hookOutput = spawnSync(process.execPath, [doctrineHookScript], { encoding: "utf8" });
 
     expect(manifest.name).toBe("fleet");
-    expect(doctrineRule).toContain("alwaysApply: true");
-    expect(doctrineRule).toContain("Fleet Runtime Doctrine for Cursor Agent");
-    expect(doctrineRule).toContain("treat the embedded Fleet system prompt below as your active Fleet runtime doctrine");
-    expect(doctrineRule).toContain("identity anchor for this session");
-    expect(doctrineRule).toContain("Do not merely summarize or acknowledge the embedded prompt");
-    expect(doctrineRule).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
+    expect(doctrine).toContain("Fleet Runtime Doctrine for Cursor Agent");
+    expect(doctrine).toContain("sessionStart hook");
+    expect(doctrine).toContain("identity anchor for this session");
+    expect(doctrine).toContain("Do not merely summarize or acknowledge the embedded prompt");
+    expect(doctrine).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
+    expect(existsSync(path.join(plugin.pluginRoot, "rules", "fleet-doctrine.mdc"))).toBe(false);
     expect(existsSync(path.join(plugin.pluginRoot, "context", "fleet-system-prompt.txt"))).toBe(false);
+    expect(hookOutput.status).toBe(0);
+    expect(JSON.parse(hookOutput.stdout)).toEqual({
+      additional_context: doctrine,
+    });
     expect(hooksJson.version).toBe(1);
-    expect(hooksJson.hooks?.sessionStart?.map((hook) => hook.command)).toEqual([
-      "'node' 'cli.mjs' 'hook' 'capture-session' 'cursor'",
-    ]);
+    expect(hooksJson.hooks?.sessionStart).toHaveLength(2);
+    expect(hooksJson.hooks?.sessionStart?.[0]?.command).toContain("inject-doctrine.mjs");
+    expect(hooksJson.hooks?.sessionStart?.[1]?.command).toBe("'node' 'cli.mjs' 'hook' 'capture-session' 'cursor'");
     expect(JSON.stringify(hooksJson)).not.toContain("subagents-context");
     expect(JSON.stringify(hooksJson)).not.toContain("additional-context-file");
     expect(hooksJson.hooks?.beforeSubmitPrompt?.map((hook) => hook.command)).toEqual([

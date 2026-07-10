@@ -394,7 +394,7 @@ function listCursorEffectivePluginFiles(pluginRoot: string): string[] {
   const files: string[] = [];
   // mcp.json에는 세션별 bearer 토큰이 들어가므로 의도적으로 해시에 포함한다.
   // Cursor가 새 세션마다 최신 MCP 토큰을 재적재하도록 플러그인 버전을 갱신한다.
-  for (const entry of ["skills", "rules", "hooks", "mcp.json"]) {
+  for (const entry of ["skills", "hooks", "doctrine.md", "mcp.json"]) {
     const entryPath = path.join(pluginRoot, entry);
     if (!existsSync(entryPath)) continue;
     const stat = lstatSync(entryPath);
