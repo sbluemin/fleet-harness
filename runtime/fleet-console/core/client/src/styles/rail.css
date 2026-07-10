@@ -337,6 +337,7 @@
   width: 26px;
   height: 26px;
   flex: none;
+  margin-left: auto;
   display: inline-grid;
   place-items: center;
   border-radius: var(--radius-xs);
