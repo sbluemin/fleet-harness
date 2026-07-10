@@ -69,11 +69,10 @@
 
 .fc-font-browser__row:hover,
 .fc-font-browser__row.is-active { background: color-mix(in oklab, var(--surface-rim) 38%, transparent); }
-/* The chosen font stays marked with a brass edge (brass = current selection) even
-   when keyboard focus moves elsewhere, so a click highlights it immediately. */
+/* The chosen font stays marked with a soft brass fill (brass = current selection)
+   even when keyboard focus moves elsewhere, so a click highlights it immediately. */
 .fc-font-browser__row[aria-selected="true"] {
-  background: color-mix(in oklab, var(--brass) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
 }
 .fc-font-browser__row.is-unavailable,
 .fc-font-browser[data-disabled="true"] { opacity: 0.56; }
