@@ -97,7 +97,9 @@ export function OperationsCanvas({
 
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
-    disabled,
+    // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
+    // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
+    disabled: disabled || formationView,
     onViewportChange: setViewport,
     onZoom: animateViewportTo,
     onCreate: (rect) => {
@@ -251,7 +253,7 @@ export function OperationsCanvas({
           viewportBounds={viewportBoundsFor(canvasRef.current)}
           placement="cursor"
           catalog={catalog}
-          canLaunch={canLaunch}
+          canLaunch={canLaunch && !formationView}
           radarEnabled={radarEnabled}
           perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
