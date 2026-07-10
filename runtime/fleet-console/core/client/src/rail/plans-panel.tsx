@@ -229,6 +229,20 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
   }, [plan.content]);
   const markdownRootRef = useRef<HTMLDivElement | null>(null);
 
+  // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 위임 처리한다 — 준거: file-explorer.
+  const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+    if (!button) return;
+    const code = button.closest("pre")?.getAttribute("data-code");
+    if (!code) return;
+    void navigator.clipboard?.writeText(code);
+    const original = button.textContent;
+    button.textContent = "Copied";
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1200);
+  }, []);
+
   // mermaid 블록은 하이드레이터가 비동기로 SVG를 삽입한다 — mount-전 중화만으로는 비동기 삽입분이
   // 누락되므로, 삽입/속성 변화를 관찰해 즉시 재중화한다. 준거: file-explorer MarkdownViewer.
   useEffect(() => {
@@ -282,6 +296,7 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
         <div
           ref={markdownRootRef}
           className="plans-markdown markdown-body"
+          onClick={handleCopyClick}
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: html }}
         />
