@@ -1018,6 +1018,14 @@
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
+/* 현재 체크아웃 브랜치에서 도달 불가능한 커밋은 본문만 감광 — 그래프/배지는 유지 */
+.history-commit-row.is-off-head .history-commit-subject,
+.history-commit-row.is-off-head .history-commit-author,
+.history-commit-row.is-off-head .history-commit-sha,
+.history-commit-row.is-off-head .history-commit-time {
+  opacity: 0.45;
+}
+
 .history-graph-gutter {
   display: inline-flex;
   align-self: stretch;

@@ -42,6 +42,8 @@ export interface LogCommitEntry {
   readonly authorAt: number;
   readonly refs: readonly string[];
   readonly parents: readonly string[];
+  /** 현재 체크아웃 HEAD에서 도달 가능한 커밋인지 — false면 UI가 dim 처리한다 */
+  readonly onHead: boolean;
 }
 
 export interface WorktreeCheckout {

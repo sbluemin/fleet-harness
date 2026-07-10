@@ -56,6 +56,7 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
       authorAt: Number.isFinite(authorAt) ? authorAt : 0,
       refs,
       parents,
+      onHead: true,
     });
   }
 
@@ -100,6 +101,13 @@ export async function parseWorktreePorcelain(stdout: string, currentWorktreePath
   })));
 }
 
+export function annotateHeadReachability(commits: LogCommitEntry[], revListStdout: string): LogCommitEntry[] {
+  const reachable = new Set(revListStdout.split("\n").map((line) => line.trim()).filter(Boolean));
+  // rev-list 실패/빈 결과(HEAD 부재 등)에서는 전체 dim을 피하기 위해 모두 도달 가능으로 둔다
+  if (reachable.size === 0) return commits;
+  return commits.map((commit) => ({ ...commit, onHead: reachable.has(commit.fullHash) }));
+}
+
 function isNoHeadError(error: unknown): boolean {
   if (!(error instanceof GitExecutorError)) return false;
   if (error.code !== "non_zero_exit") return false;
@@ -112,6 +120,16 @@ async function normalizeWorktreePath(worktreePath: string): Promise<string> {
     return await fs.realpath(worktreePath);
   } catch {
     return worktreePath;
+  }
+}
+
+async function readHeadRevList(gitCwd: string): Promise<string> {
+  try {
+    // 표시 윈도가 200이므로 1000이면 도달성 판정에 충분한 여유다
+    return (await runGit(["rev-list", "-n", "1000", "HEAD"], { cwd: gitCwd })).stdout;
+  } catch (error) {
+    if (error instanceof GitExecutorError) return "";
+    throw error;
   }
 }
 
@@ -149,7 +167,7 @@ export async function handleDiffLog(
   const { gitCwd } = cwdResult;
 
   try {
-    const [result, worktrees, currentWorktreePath] = await Promise.all([
+    const [result, worktrees, currentWorktreePath, headRevList] = await Promise.all([
       runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD로 한정한다
         ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "HEAD"],
@@ -157,8 +175,9 @@ export async function handleDiffLog(
       ),
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
       readCurrentWorktreePath(gitCwd),
+      readHeadRevList(gitCwd),
     ]);
-    const commits = parseLogOutput(result.stdout);
+    const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
     const checkouts = await parseWorktreePorcelain(worktrees.stdout, currentWorktreePath);
     ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {

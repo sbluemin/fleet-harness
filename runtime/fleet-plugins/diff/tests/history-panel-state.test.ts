@@ -14,6 +14,7 @@ const COMMIT: LogCommitEntry = {
   authorAt: 1_700_000_000,
   refs: [],
   parents: [],
+  onHead: true,
 };
 
 // ─── functions ───────────────────────────────────────────────────────────────

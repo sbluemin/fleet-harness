@@ -13,6 +13,7 @@ function makeCommit(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
     authorAt: 1_700_000_000,
     refs: [],
     parents: [],
+    onHead: true,
     ...overrides,
   };
 }

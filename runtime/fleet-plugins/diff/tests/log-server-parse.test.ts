@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../server/git-executor.js";
-import { handleDiffLog, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
+import { annotateHeadReachability, handleDiffLog, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,26 @@ describe("parseLogOutput", () => {
       authorAt: 1_720_000_000,
       refs: ["HEAD -> refs/heads/main", "refs/remotes/origin/main", "tag: v1.2.3"],
       parents: ["parent-a", "parent-b"],
+      onHead: true,
     }]);
+  });
+});
+
+describe("annotateHeadReachability", () => {
+  const base = {
+    shortHash: "aaa", subject: "s", authorName: "a", relTime: "now", authorAt: 0,
+    refs: [], parents: [], onHead: true,
+  };
+
+  it("rev-list에 없는 커밋만 onHead=false로 표시한다", () => {
+    const commits = [{ ...base, fullHash: "aaa111" }, { ...base, fullHash: "bbb222" }];
+    const annotated = annotateHeadReachability(commits, "aaa111\nccc333\n");
+    expect(annotated.map((c) => c.onHead)).toEqual([true, false]);
+  });
+
+  it("rev-list가 비면(HEAD 부재 등) 전체를 도달 가능으로 둔다", () => {
+    const commits = [{ ...base, fullHash: "aaa111" }];
+    expect(annotateHeadReachability(commits, "").map((c) => c.onHead)).toEqual([true]);
   });
 });
 

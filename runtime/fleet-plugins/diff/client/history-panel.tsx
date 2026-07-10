@@ -144,7 +144,7 @@ function CommitRow({ entry, checkouts, selected, graphNode, laneCount, layoutCol
   const handleSelect = useCallback(() => onSelect(entry), [entry, onSelect]);
 
   return (
-    <button type="button" className={`history-commit-row${selected ? " is-selected" : ""}`} onClick={handleSelect}>
+    <button type="button" className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}`} onClick={handleSelect}>
       <span className="history-graph-gutter" aria-hidden="true">
         <GraphGutter node={graphNode} laneCount={laneCount} collapsed={layoutCollapsed} />
       </span>
