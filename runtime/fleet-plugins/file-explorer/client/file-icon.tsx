@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 
 // 파일 확장자/이름을 다채로운 컬러 아이콘으로 매핑하는 모듈.
 // 각 아이콘은 단색(currentColor) SVG이며, 색은 explorer.css의 --fexp-ic-* 토큰에서 온다.
-// 토큰은 maritime/carbon 테마별로 재정의되므로 아이콘 팔레트가 테마에 맞춰 자동 전환된다.
+// 아이콘 팔레트는 Instrument semantic token을 사용한다.
 
 type ShapeKey =
   | "angle"

@@ -4,14 +4,18 @@ import os from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { CreateDurableJsonStoreDeps, DurableJsonStore } from "@dotobokuri/core-infra";
+
 import {
   createConsoleSettingsStore,
   sanitizeConsoleSettingsData,
   emptyConsoleSettingsData,
+  type ConsoleSettingsData,
 } from "../core/host/console-settings.js";
 import type { ConsoleDataPaths } from "../core/host/paths.js";
 
 const tempDirs: string[] = [];
+const INSTRUMENT_THEME_PATH = new URL("../core/client/src/styles/theme.css", import.meta.url);
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -32,6 +36,28 @@ function makeFakePaths(dir: string): ConsoleDataPaths {
   };
 }
 
+function createControlledMigrationStore(input: { readonly raw: unknown; readonly latest: unknown; readonly shouldFailWrite: () => boolean }) {
+  let raw = input.raw;
+  let updateCalls = 0;
+  const dir = makeTempDir();
+  const store = createConsoleSettingsStore({
+    paths: makeFakePaths(dir),
+    createStore: (deps: CreateDurableJsonStoreDeps<ConsoleSettingsData>): DurableJsonStore<ConsoleSettingsData> => ({
+      path: deps.filePath,
+      load: () => deps.sanitize(raw),
+      save: (data) => { raw = data; },
+      update: (mutate) => {
+        updateCalls += 1;
+        if (input.shouldFailWrite()) throw new Error("write failed");
+        const next = mutate(deps.sanitize(input.latest));
+        raw = next;
+        return next;
+      },
+    }),
+  });
+  return { store, getUpdateCalls: () => updateCalls, getRaw: () => raw };
+}
+
 describe("sanitizeConsoleSettingsData", () => {
   it("returns empty for non-object input", () => {
     expect(sanitizeConsoleSettingsData(null)).toEqual({ version: 1, general: {}, plugins: {} });
@@ -40,8 +66,8 @@ describe("sanitizeConsoleSettingsData", () => {
   });
 
   it("returns empty for version mismatch", () => {
-    expect(sanitizeConsoleSettingsData({ version: 2, general: { theme: "carbon" } })).toEqual({ version: 1, general: {}, plugins: {} });
-    expect(sanitizeConsoleSettingsData({ general: { theme: "carbon" } })).toEqual({ version: 1, general: {}, plugins: {} });
+    expect(sanitizeConsoleSettingsData({ version: 2, general: { theme: "instrument" } })).toEqual({ version: 1, general: {}, plugins: {} });
+    expect(sanitizeConsoleSettingsData({ general: { theme: "instrument" } })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
   it("accepts valid version 1 with no general", () => {
@@ -51,10 +77,10 @@ describe("sanitizeConsoleSettingsData", () => {
   it("accepts valid general fields", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
     })).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
       plugins: {},
     });
   });
@@ -62,20 +88,20 @@ describe("sanitizeConsoleSettingsData", () => {
   it("drops invalid consolePortMode", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consolePortMode: "auto", theme: "maritime" },
-    })).toEqual({ version: 1, general: { theme: "maritime" }, plugins: {} });
+      general: { consolePortMode: "auto", theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
   });
 
   it("drops out-of-range consoleStaticPort", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consoleStaticPort: 80, theme: "maritime" },
-    })).toEqual({ version: 1, general: { theme: "maritime" }, plugins: {} });
+      general: { consoleStaticPort: 80, theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
 
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consoleStaticPort: 99999, theme: "maritime" },
-    })).toEqual({ version: 1, general: { theme: "maritime" }, plugins: {} });
+      general: { consoleStaticPort: 99999, theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
   });
 
   it("drops invalid theme", () => {
@@ -109,11 +135,11 @@ describe("sanitizeConsoleSettingsData", () => {
   it("sanitizes persisted system families without changing valid sibling settings", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { theme: "carbon", uiFont: { source: "system", familyName: " \u0000Noto Sans\u007f ", size: 14 } },
+      general: { theme: "instrument", uiFont: { source: "system", familyName: " \u0000Noto Sans\u007f ", size: 14 } },
       plugins: { terminal: { font: { size: 14 } } },
     })).toEqual({
       version: 1,
-      general: { theme: "carbon", uiFont: { source: "system", familyName: "Noto Sans", size: 14 } },
+      general: { theme: "instrument", uiFont: { source: "system", familyName: "Noto Sans", size: 14 } },
       plugins: { terminal: { font: { size: 14 } } },
     });
   });
@@ -133,15 +159,39 @@ describe("sanitizeConsoleSettingsData", () => {
   it("accepts maritime theme", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { theme: "maritime" },
-    })).toEqual({ version: 1, general: { theme: "maritime" }, plugins: {} });
+      general: { theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
   });
 
   it("accepts carbon theme", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { theme: "carbon" },
-    })).toEqual({ version: 1, general: { theme: "carbon" }, plugins: {} });
+      general: { theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
+  });
+
+  it("accepts instrument theme while preserving legacy maritime and carbon values", () => {
+    expect(sanitizeConsoleSettingsData({
+      version: 1,
+      general: { theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
+  });
+
+  it("normalizes maritime and carbon saved values to Instrument without dropping siblings", () => {
+    for (const theme of ["maritime", "carbon", "instrument"] as const) {
+      expect(sanitizeConsoleSettingsData({ version: 1, general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } })).toEqual({
+        version: 1,
+        general: { theme: "instrument", language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+        plugins: {},
+      });
+    }
+  });
+
+  it("snapshots the approved Instrument warn token below accent chroma", () => {
+    const source = fs.readFileSync(INSTRUMENT_THEME_PATH, "utf8");
+    const baseTokens = source.slice(0, source.indexOf(":root[data-ui-font"));
+    const warnToken = baseTokens.match(/--warn: oklch\(([^)]+)\);/)?.[1];
+    expect(warnToken).toMatchInlineSnapshot('"75% 0.08 90"');
   });
 
   it("accepts supported languages and drops invalid values", () => {
@@ -179,17 +229,107 @@ describe("sanitizeConsoleSettingsData", () => {
 
     store.update(() => ({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
     }));
 
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: {},
     });
 
     const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8")) as unknown;
-    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } });
+    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } });
+  });
+
+  it("atomically normalizes a legacy saved theme while preserving general siblings and plugin settings", () => {
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    fs.writeFileSync(paths.settingsFile, JSON.stringify({
+      version: 1,
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
+    }), "utf8");
+    const store = createConsoleSettingsStore({ paths });
+
+    expect(store.load()).toEqual({
+      version: 1,
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
+    });
+    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
+      version: 1,
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
+    });
+    expect(store.load()).toEqual({
+      version: 1,
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
+    });
+  });
+
+  it("normalizes inside the durable update lock from the latest interleaved settings", () => {
+    const controlled = createControlledMigrationStore({
+      raw: {
+        version: 1,
+        general: { language: "ko", theme: "maritime" },
+        plugins: { terminal: { font: { size: 14 } } },
+      },
+      latest: {
+        version: 1,
+        general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+        plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
+      },
+      shouldFailWrite: () => false,
+    });
+
+    expect(controlled.store.load()).toEqual({
+      version: 1,
+      general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+      plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
+    });
+    expect(controlled.getRaw()).toEqual({
+      version: 1,
+      general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+      plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
+    });
+    expect(controlled.getUpdateCalls()).toBe(1);
+  });
+
+  it("returns the normalized read and retries migration after an atomic write failure", () => {
+    let failWrite = true;
+    const controlled = createControlledMigrationStore({
+      raw: {
+        version: 1,
+        general: { language: "ko", theme: "carbon" },
+        plugins: { terminal: { font: { size: 14 } } },
+      },
+      latest: {
+        version: 1,
+        general: { language: "ko", theme: "carbon" },
+        plugins: { terminal: { font: { size: 14 } } },
+      },
+      shouldFailWrite: () => failWrite,
+    });
+
+    expect(controlled.store.load()).toEqual({
+      version: 1,
+      general: { language: "ko", theme: "instrument" },
+      plugins: { terminal: { font: { size: 14 } } },
+    });
+    failWrite = false;
+    expect(controlled.store.load()).toEqual({
+      version: 1,
+      general: { language: "ko", theme: "instrument" },
+      plugins: { terminal: { font: { size: 14 } } },
+    });
+    expect(controlled.getUpdateCalls()).toBe(2);
+    expect(controlled.getRaw()).toEqual({
+      version: 1,
+      general: { language: "ko", theme: "instrument" },
+      plugins: { terminal: { font: { size: 14 } } },
+    });
   });
 
   it("preserves valid plugins record on round-trip", () => {

@@ -96,20 +96,10 @@
   inset: -6px;
   border-radius: 50%;
   pointer-events: none;
-  animation: alerts-icon-wake-pulse 0.9s var(--ease-glide) both;
+  animation: legacy-alert 0.9s var(--ease-glide) both;
 }
 
-@keyframes alerts-icon-wake-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in oklch, var(--warn) 60%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 8px color-mix(in oklch, var(--warn) 0%, transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in oklch, var(--warn) 0%, transparent);
-  }
-}
+
 
 /* ── 이관: kind 합계 칩 ── */
 .notification-tally {

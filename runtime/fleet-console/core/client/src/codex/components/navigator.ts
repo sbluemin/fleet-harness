@@ -105,7 +105,7 @@ export function mountNavigatorInto(
       </div>
       <div class="codex-nav-quick-row">
         <button class="codex-nav-quick" data-action="drydock" type="button">
-          ⚓ Drydock <span class="badge" id="codex-nav-drydock-badge">0</span>
+          Review queue <span class="badge" id="codex-nav-drydock-badge">0</span>
         </button>
         <button class="codex-nav-quick" data-action="conflicts" type="button">Conflicts</button>
       </div>

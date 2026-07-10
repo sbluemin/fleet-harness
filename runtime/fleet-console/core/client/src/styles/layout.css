@@ -1,130 +1,46 @@
-/* 셸은 브라우저 모서리에 밀착한다(패딩·행간 0) — StatusBar는 하단 풀블리드 스트립,
-   좌/우 컬럼(사이드바·Rail)도 브라우저 가장자리와 여백 없이 맞닿는다. */
 .console-shell {
-  --console-statusbar-height: 28px;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) var(--console-statusbar-height);
+  position: relative;
   height: 100%;
-  padding: 0;
-  gap: 0;
-  transition: grid-template-rows var(--duration-slow) var(--ease-spring);
+  min-height: 0;
 }
 
-.console-shell.is-map-fullscreen {
-  grid-template-rows: minmax(0, 1fr) 0;
-}
-
-.console-shell.is-map-fullscreen .statusbar {
-  animation: none;
-  opacity: 0;
-  transform: translateY(12px);
-  pointer-events: none;
+.console-route-content {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
-.console-body {
-  position: relative;
+.console-body,
+.console-body.is-canvas {
+  height: 100%;
   min-height: 0;
 }
 
 .console-body.is-canvas {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  /* col1=사이드바(OperationsSideBar), col2=맵 캔버스, col3=우현 Activity Rail.
-     패널 최대화는 col2(맵 캔버스) 안에서만 일어나며, 사이드바(col1)·Rail(col3)은 항상 독립적으로
-     유지된다. col1 폭은 --side-bar-width CSS 변수로 제어한다.
-     컬럼 갭 0 — 캔버스가 사이드바·Rail에 상시 밀착한다. */
-  column-gap: 0;
   overflow: hidden;
 }
 
-.codex-host {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* 사이드 패널 폭(=컨테이너)에 따라 Codex 내부 레이아웃(nav/rail)을 접기 위한 컨테이너 컨텍스트.
-     Full(route)에서는 컨테이너가 넓어 3열을 유지하고, Side가 좁아지면 본문만 남는다(codex/styles/layout.css의 @container). */
-  container: codex-host / inline-size;
+/* 명시적 열 고정 — 접힌 크롬이 display:none으로 슬롯을 비워도(auto-placement 시프트)
+   캔버스가 1열로, 레일이 1fr로 밀리지 않게 한다. */
+.console-body.is-canvas > .operations-side-bar {
+  grid-column: 1;
 }
 
-.stage {
-  position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 0;
+.console-body.is-canvas > .operations-center-stage {
+  grid-column: 2;
 }
 
-.stage-stream {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
+.console-body.is-canvas > .right-rail {
+  grid-column: 3;
 }
 
-.stage-scroll {
-  height: 100%;
-  overflow-y: auto;
-  scroll-behavior: auto;
-}
-
-.stage-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: 100%;
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-8) var(--space-10);
-}
-
-.operations-canvas {
-  animation: codex-rise 720ms var(--ease-spring) both;
-  animation-delay: 200ms;
-}
-
-.stage {
-  animation: codex-rise 720ms var(--ease-spring) both;
-}
-
-.statusbar {
-  animation: codex-rise 720ms var(--ease-spring) both;
-  animation-delay: 40ms;
-  transition:
-    opacity var(--duration-base) ease,
-    transform var(--duration-slow) var(--ease-spring);
-}
-
-.stage,
-.operations-canvas {
-  animation-delay: 200ms;
-}
-
-@media (max-width: 1100px) {
-  .stage-content {
-    padding: var(--space-4) var(--space-5) var(--space-8);
-  }
-}
-
-@media (max-width: 1080px) {
-  .console-shell {
-    grid-template-rows: minmax(0, 1fr) var(--console-statusbar-height);
-  }
-}
-
-@media (max-width: 760px) {
-  .console-shell {
-    grid-template-rows: minmax(0, 1fr) var(--console-statusbar-height);
-  }
-
-  .console-body.is-canvas {
-    overflow: hidden;
-  }
-  .stage {
-    min-height: 68vh;
-  }
-
-  .stage-content {
-    padding: var(--space-4);
+@media (prefers-reduced-motion: reduce) {
+  .console-shell,
+  .operations-side-bar,
+  .right-rail {
+    transition-duration: 0.01ms;
   }
 }

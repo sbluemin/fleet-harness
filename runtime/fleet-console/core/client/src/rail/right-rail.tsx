@@ -1,5 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -9,7 +8,7 @@ import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { fetchRailPathContext, putRailPathContext } from "./path-context-api.js";
 import { getState, subscribe } from "../store.js";
 import { PathContextDeck } from "./path-context-deck.js";
-import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
+import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailChrome, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -36,6 +35,7 @@ function readStoredPanelWidth(): number {
 
 export function RightRail({ theaterId, api }: RightRailProps) {
   const activeId = useActiveRailPanelId();
+  const railChromeExpanded = useRailChromeExpanded();
   const pluginPanels = useRailPanels();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const allPanels = [...builtInPanels, ...pluginPanels];
@@ -98,7 +98,8 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
   return (
     <div
-      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}${isPathContextDeckOpen ? " is-context-deck-open" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}${isPathContextDeckOpen ? " is-context-deck-open" : ""}`}
+      data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
       role="complementary"
       aria-label="Activity Rail"
     >
@@ -118,6 +119,9 @@ export function RightRail({ theaterId, api }: RightRailProps) {
         )}
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
+        <button type="button" className="right-rail-chrome-toggle" aria-label={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} title={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} onClick={toggleRailChrome}>
+          <RailChromeToggleIcon />
+        </button>
         <div className="right-rail-tabs" role="tablist" aria-label="Activity panels">
           {builtInPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
@@ -128,12 +132,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           {pluginPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
           ))}
-        </div>
-        <div className="right-rail-route-spacer" aria-hidden="true" />
-        <div className="right-rail-divider right-rail-route-divider" role="separator" aria-hidden="true" />
-        <div className="right-rail-route-nav" aria-label="Console routes">
-          <RouteNavIcon to="/carrier-settings" label="Carriers" icon={<CarriersIcon />} />
-          <RouteNavIcon to="/settings" label="Settings" icon={<SettingsIcon />} />
         </div>
       </nav>
     </div>
@@ -235,12 +233,6 @@ interface RailIconProps {
   readonly isActive: boolean;
 }
 
-interface RouteNavIconProps {
-  readonly to: string;
-  readonly label: string;
-  readonly icon: ReactNode;
-}
-
 function RailIcon({ panel, isActive }: RailIconProps) {
   const handleClick = useCallback(() => toggleRailPanel(panel.id), [panel.id]);
   const icon = typeof panel.icon === "function" ? panel.icon() : panel.icon;
@@ -261,37 +253,12 @@ function RailIcon({ panel, isActive }: RailIconProps) {
   );
 }
 
-function RouteNavIcon({ to, label, icon }: RouteNavIconProps) {
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) => `right-rail-route-link${isActive ? " is-active" : ""}`}
-      aria-label={label}
-      title={label}
-    >
-      {icon}
-    </NavLink>
-  );
-}
-
-function CarriersIcon() {
+/* 패널 접기 아이콘 — 우측 영역을 선으로 구분한 패널 모양(#44 시안, 우측 미러). */
+function RailChromeToggleIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="4" cy="4.2" r="1.15" fill="currentColor" />
-      <circle cx="4" cy="8" r="1.15" fill="currentColor" />
-      <circle cx="4" cy="11.8" r="1.15" fill="currentColor" />
-      <path d="M7.2 4.2h6M7.2 8h6M7.2 11.8h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="1.75" y="3" width="12.5" height="10" rx="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M9.6 3v10" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }

@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-export type Tier = "rail" | "list" | "detail";
-
 interface SideBarState {
   readonly width: number;
   readonly collapsed: boolean;
@@ -10,22 +8,69 @@ interface SideBarState {
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
 const STORAGE_KEY_COLLAPSED = "fleet-console.operations.side-collapsed";
 const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.operations.theater-collapsed";
-export const MIN_RAIL_PX = 56;
-export const MIN_LIST_PX = 180;
-export const MIN_DETAIL_PX = 280;
-const DEFAULT_WIDTH = MIN_LIST_PX;
+export const MIN_EXPANDED_PX = 280;
+const DEFAULT_WIDTH = MIN_EXPANDED_PX;
+
+const sideBarListeners = new Set<() => void>();
+const collapsedTheaterListeners = new Set<() => void>();
+
+let sideBarState: SideBarState = {
+  width: readInitialWidth(),
+  collapsed: readInitialCollapsed(),
+};
+let collapsedTheaterIds = readInitialCollapsedTheaters();
+
+export function useSideBarState(): SideBarState {
+  return useSyncExternalStore(subscribeSideBarState, getSideBarState, getSideBarState);
+}
+
+export function useCollapsedTheaters(): readonly string[] {
+  return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
+}
+
+export function setSideBarWidth(width: number): void {
+  const clamped = Math.max(MIN_EXPANDED_PX, Math.min(getMaxPx(), width));
+  if (sideBarState.width === clamped) return;
+  sideBarState = { ...sideBarState, width: clamped };
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_WIDTH, String(clamped));
+  } catch { /* ignore */ }
+  notifyListeners();
+}
+
+export function setSideBarCollapsed(collapsed: boolean): void {
+  if (sideBarState.collapsed === collapsed) return;
+  sideBarState = { ...sideBarState, collapsed };
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
+  } catch { /* ignore */ }
+  notifyListeners();
+}
+
+export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void {
+  const current = new Set(collapsedTheaterIds);
+  if (collapsed) current.add(theaterId);
+  else current.delete(theaterId);
+  const next = Array.from(current);
+  if (next.join("\0") === collapsedTheaterIds.join("\0")) return;
+  collapsedTheaterIds = next;
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_THEATER_COLLAPSED, JSON.stringify(next));
+  } catch { /* ignore */ }
+  notifyCollapsedTheaterListeners();
+}
 
 function getMaxPx(): number {
-  return typeof window !== "undefined" ? window.innerWidth - 480 : 800;
+  return typeof window !== "undefined" ? Math.max(MIN_EXPANDED_PX, window.innerWidth - 480) : 800;
 }
 
 function readInitialWidth(): number {
   try {
     if (typeof window === "undefined") return DEFAULT_WIDTH;
-    const v = localStorage.getItem(STORAGE_KEY_WIDTH);
-    if (v !== null) {
-      const n = parseInt(v, 10);
-      if (!isNaN(n) && n >= MIN_RAIL_PX) return n;
+    const value = localStorage.getItem(STORAGE_KEY_WIDTH);
+    if (value !== null) {
+      const parsed = parseInt(value, 10);
+      if (!Number.isNaN(parsed)) return Math.max(MIN_EXPANDED_PX, Math.min(getMaxPx(), parsed));
     }
   } catch { /* ignore */ }
   return DEFAULT_WIDTH;
@@ -33,45 +78,30 @@ function readInitialWidth(): number {
 
 function readInitialCollapsed(): boolean {
   try {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(STORAGE_KEY_COLLAPSED) === "1";
-  } catch { /* ignore */ }
-  return false;
-}
-
-let sideBarState: SideBarState = {
-  width: readInitialWidth(),
-  collapsed: readInitialCollapsed(),
-};
-const sideBarListeners = new Set<() => void>();
-let collapsedTheaterIds = readInitialCollapsedTheaters();
-const collapsedTheaterListeners = new Set<() => void>();
-
-function notifyListeners(): void {
-  for (const listener of sideBarListeners) listener();
-}
-
-function getSnapshot(): SideBarState {
-  return sideBarState;
-}
-
-function subscribe(listener: () => void): () => void {
-  sideBarListeners.add(listener);
-  return () => {
-    sideBarListeners.delete(listener);
-  };
+    return typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_COLLAPSED) === "1";
+  } catch { return false; }
 }
 
 function readInitialCollapsedTheaters(): readonly string[] {
   try {
     if (typeof window === "undefined") return [];
     const raw = localStorage.getItem(STORAGE_KEY_THEATER_COLLAPSED);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((value): value is string => typeof value === "string");
-  } catch { /* ignore */ }
-  return [];
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+  } catch { return []; }
+}
+
+function notifyListeners(): void {
+  for (const listener of sideBarListeners) listener();
+}
+
+export function getSideBarState(): SideBarState {
+  return sideBarState;
+}
+
+export function subscribeSideBarState(listener: () => void): () => void {
+  sideBarListeners.add(listener);
+  return () => sideBarListeners.delete(listener);
 }
 
 function notifyCollapsedTheaterListeners(): void {
@@ -84,54 +114,5 @@ function getCollapsedTheatersSnapshot(): readonly string[] {
 
 function subscribeCollapsedTheaters(listener: () => void): () => void {
   collapsedTheaterListeners.add(listener);
-  return () => {
-    collapsedTheaterListeners.delete(listener);
-  };
-}
-
-export function useSideBarState(): SideBarState {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function useCollapsedTheaters(): readonly string[] {
-  return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
-}
-
-export function setSideBarWidth(width: number): void {
-  const clamped = Math.max(MIN_RAIL_PX, Math.min(getMaxPx(), width));
-  sideBarState = { ...sideBarState, width: clamped };
-  try {
-    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_WIDTH, String(clamped));
-  } catch { /* ignore */ }
-  notifyListeners();
-}
-
-export function setSideBarCollapsed(collapsed: boolean): void {
-  sideBarState = { ...sideBarState, collapsed };
-  try {
-    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
-  } catch { /* ignore */ }
-  notifyListeners();
-}
-
-export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void {
-  const current = new Set(collapsedTheaterIds);
-  if (collapsed) {
-    current.add(theaterId);
-  } else {
-    current.delete(theaterId);
-  }
-  const next = Array.from(current);
-  if (next.join("\0") === collapsedTheaterIds.join("\0")) return;
-  collapsedTheaterIds = next;
-  try {
-    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_THEATER_COLLAPSED, JSON.stringify(next));
-  } catch { /* ignore */ }
-  notifyCollapsedTheaterListeners();
-}
-
-export function tierFromWidth(width: number): Tier {
-  if (width < 120) return "rail";
-  if (width < 240) return "list";
-  return "detail";
+  return () => collapsedTheaterListeners.delete(listener);
 }

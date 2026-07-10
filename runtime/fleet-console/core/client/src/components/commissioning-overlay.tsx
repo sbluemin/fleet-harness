@@ -77,12 +77,12 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
 
   return (
     <div className="commissioning-overlay" role="dialog" aria-modal="true" aria-labelledby="commissioning-title">
-      <button type="button" className="commissioning-scrim" onClick={closeOnboarding} aria-label="Close Commissioning guide" />
+      <button type="button" className="commissioning-scrim" onClick={closeOnboarding} aria-label="Close setup guide" />
       <section className="commissioning-card" ref={cardRef}>
         <header className="commissioning-header">
           <span className="commissioning-eyebrow">COMMISSIONING · FLEET CONSOLE</span>
-          <h2 id="commissioning-title">Bring your fleet online</h2>
-          <p>Three steps to go from an empty bridge to live carrier operations.</p>
+          <h2 id="commissioning-title">Set up Fleet Console</h2>
+          <p>Add a project folder, start an Operation, and monitor Carriers.</p>
         </header>
 
         <ol className="commissioning-steps">
@@ -90,7 +90,7 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
             <span className="commissioning-step-node" aria-hidden="true">{theaterRegistered ? "✓" : "01"}</span>
             <div className="commissioning-step-body">
               <h3>Register a Theater</h3>
-              <p>A Theater is a project directory the fleet operates in. Choose the folder you want to work from.</p>
+              <p>A Theater is a project folder. Choose the folder you want to work from.</p>
               {theaterRegistered ? (
                 <Link
                   ref={(node) => {
@@ -133,8 +133,8 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
           <li className="commissioning-step">
             <span className="commissioning-step-node" aria-hidden="true">03</span>
             <div className="commissioning-step-body">
-              <h3>Observe carriers</h3>
-              <p>Carriers are specialist agents your Admiral dispatches. Their sorties stream here in real time as they run.</p>
+              <h3>Monitor Carriers</h3>
+              <p>Carriers are specialist agents. Their activity streams here while they run.</p>
             </div>
           </li>
         </ol>

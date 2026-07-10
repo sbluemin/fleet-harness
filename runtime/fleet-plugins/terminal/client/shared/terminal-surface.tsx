@@ -43,49 +43,26 @@ const MAX_BUFFERED_OUTPUT_BYTES = 1024 * 1024;
 const ZOOM_SETTLE_MS = 120;
 
 const MARITIME_TERMINAL_THEME: ITheme = {
-  background: "oklch(23% 0.03 248)",
-  foreground: "oklch(86% 0.018 90)",
-  cursor: "oklch(82% 0.13 195)",
-  selectionBackground: "oklch(78% 0.13 75 / 28%)",
-  black: "oklch(18% 0.045 248)",
-  brightBlack: "oklch(48% 0.03 248)",
-  red: "oklch(72% 0.17 25)",
-  green: "oklch(82% 0.13 195)",
-  yellow: "oklch(86% 0.16 78)",
-  blue: "oklch(70% 0.08 248)",
-  magenta: "oklch(75% 0.11 320)",
-  cyan: "oklch(82% 0.13 195)",
-  white: "oklch(82% 0.018 90)",
-  brightRed: "oklch(78% 0.18 25)",
-  brightGreen: "oklch(88% 0.14 195)",
-  brightYellow: "oklch(90% 0.16 78)",
-  brightBlue: "oklch(78% 0.09 248)",
-  brightMagenta: "oklch(82% 0.12 320)",
-  brightCyan: "oklch(88% 0.14 195)",
-  brightWhite: "oklch(96% 0.012 88)",
-};
-
-const CARBON_TERMINAL_THEME: ITheme = {
-  background: "oklch(19% 0.008 252)",
-  foreground: "oklch(85% 0.005 250)",
-  cursor: "oklch(80% 0.105 205)",
-  selectionBackground: "oklch(76% 0.115 62 / 28%)",
-  black: "oklch(16% 0.008 252)",
-  brightBlack: "oklch(46% 0.006 250)",
-  red: "oklch(72% 0.17 25)",
-  green: "oklch(80% 0.11 205)",
-  yellow: "oklch(84% 0.14 64)",
-  blue: "oklch(68% 0.05 250)",
-  magenta: "oklch(75% 0.11 320)",
-  cyan: "oklch(80% 0.11 205)",
-  white: "oklch(81% 0.005 250)",
-  brightRed: "oklch(78% 0.18 25)",
-  brightGreen: "oklch(86% 0.13 205)",
-  brightYellow: "oklch(88% 0.15 66)",
-  brightBlue: "oklch(74% 0.06 250)",
-  brightMagenta: "oklch(82% 0.12 320)",
-  brightCyan: "oklch(86% 0.13 205)",
-  brightWhite: "oklch(95% 0.003 250)",
+  background: "oklch(16.5% 0.016 245)",
+  foreground: "oklch(94% 0.008 90)",
+  cursor: "oklch(77% 0.085 200)",
+  selectionBackground: "oklch(80% 0.085 78 / 13%)",
+  black: "oklch(13% 0.014 245)",
+  brightBlack: "oklch(29% 0.018 245)",
+  red: "oklch(68% 0.13 25)",
+  green: "oklch(76% 0.11 160)",
+  yellow: "oklch(75% 0.08 90)",
+  blue: "oklch(77% 0.085 200)",
+  magenta: "oklch(70% 0.012 245)",
+  cyan: "oklch(77% 0.085 200)",
+  white: "oklch(94% 0.008 90)",
+  brightRed: "oklch(68% 0.13 25)",
+  brightGreen: "oklch(76% 0.11 160)",
+  brightYellow: "oklch(80% 0.085 78)",
+  brightBlue: "oklch(77% 0.085 200)",
+  brightMagenta: "oklch(70% 0.012 245)",
+  brightCyan: "oklch(77% 0.085 200)",
+  brightWhite: "oklch(94% 0.008 90)",
 };
 
 export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "maritime", onExit, active, zoom = 1 }: TerminalSurfaceProps) {
@@ -371,7 +348,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
 }
 
 function terminalThemeFor(theme: "maritime" | "carbon"): ITheme {
-  return theme === "carbon" ? CARBON_TERMINAL_THEME : MARITIME_TERMINAL_THEME;
+  void theme;
+  return MARITIME_TERMINAL_THEME;
 }
 
 function focusAndScrollTerminalToBottom(terminal: XtermTerminal | null): void {

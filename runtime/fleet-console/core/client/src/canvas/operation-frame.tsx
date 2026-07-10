@@ -3,6 +3,7 @@ import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointer
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { operationActivityVisual } from "../operation-activity.js";
 import { AccentPopover } from "./accent-popover.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { useInlineRename } from "../use-inline-rename.js";
@@ -302,15 +303,17 @@ function resizeGeometry(geometry: OperationGeometry, direction: ResizeDirection,
 }
 
 function frameStatusClass(status: OperationActivity | undefined): string {
-  if (status === "running") return "is-running is-running--turn";
-  if (status === "awaiting") return "is-running is-running--awaiting";
+  const visual = operationActivityVisual(status);
+  if (visual === "running") return "is-running is-running--turn";
+  if (visual === "awaiting") return "is-running is-running--awaiting";
   return "";
 }
 
 function beaconStatusClass(status: OperationActivity | undefined): string {
-  if (status === "running") return "tenant-beacon is-turn-running";
-  if (status === "awaiting") return "tenant-beacon is-awaiting";
-  if (status === "dormant") return "tenant-beacon is-dormant";
+  const visual = operationActivityVisual(status);
+  if (visual === "running") return "tenant-beacon is-turn-running";
+  if (visual === "awaiting") return "tenant-beacon is-awaiting";
+  if (visual === "dormant") return "tenant-beacon is-dormant";
   return "tenant-beacon is-idle";
 }
 

@@ -100,7 +100,7 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_language" });
     return;
   }
-  if (body.theme !== undefined && body.theme !== "maritime" && body.theme !== "carbon") {
+  if (body.theme !== undefined && body.theme !== "instrument" && body.theme !== "maritime" && body.theme !== "carbon") {
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
@@ -116,7 +116,7 @@ async function mutateGlobalSettings(
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
-      ...(body.theme === "maritime" || body.theme === "carbon" ? { theme: body.theme } : {}),
+      ...(body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon" ? { theme: "instrument" as const } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
     plugins: current.plugins,
@@ -131,7 +131,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
-    theme: general.theme ?? "maritime",
+    theme: "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
   };
 }

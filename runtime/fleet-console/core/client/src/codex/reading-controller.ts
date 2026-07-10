@@ -252,7 +252,7 @@ export function mountReadingInto(
         const list = await fetchDrydock(liveOpts.theaterId, "pending");
         if (destroyed) return;
         opts.tocContainer.innerHTML = "";
-        readContainer.innerHTML = renderDrydockList(list.items, "Drydock — Pending Patches");
+        readContainer.innerHTML = renderDrydockList(list.items, "Review queue — Pending patches");
       }
     } catch (error) {
       if (!destroyed) showError(readContainer, opts.tocContainer, error);
@@ -377,7 +377,7 @@ function renderDrydockList(items: DrydockListItem[], title: string): string {
         <nav class="breadcrumb" aria-label="Entry location">
           <ol>
             <li><span>Codex</span></li>
-            <li><span aria-current="page">Drydock</span></li>
+            <li><span aria-current="page">Review queue</span></li>
           </ol>
         </nav>
         <h1>${escapeHtml(title)}</h1>
@@ -424,7 +424,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string):
         <nav class="breadcrumb" aria-label="Entry location">
           <ol>
             <li><span>Codex</span></li>
-            <li><span>Drydock</span></li>
+            <li><span>Review queue</span></li>
             <li><span aria-current="page">${escapeHtml(opLabel)}</span></li>
           </ol>
         </nav>

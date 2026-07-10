@@ -41,7 +41,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     !payload
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
-    || (payload.theme !== "maritime" && payload.theme !== "carbon")
+    || payload.theme !== "instrument"
     || !isConsoleLanguagePreference(payload.language)
   ) {
     throw new ApiError(status, "Invalid global settings state response");

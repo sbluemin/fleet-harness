@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
-import { groupOperations } from "../core/client/src/sidebar/operations-side-bar.js";
+import { groupOperations, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
@@ -444,5 +444,24 @@ describe("moveByTargetIndex", () => {
 
   it("sourceId가 없으면 배열을 그대로 반환한다", () => {
     expect(moveByTargetIndex(["A", "B", "C"], "X", 1)).toEqual(["A", "B", "C"]);
+  });
+});
+
+describe("theaterInitials", () => {
+  it("uses two graphemes for a single word", () => {
+    expect(theaterInitials("fleet")).toBe("FL");
+  });
+
+  it("preserves Korean and CJK graphemes", () => {
+    expect(theaterInitials("함대")).toBe("함대");
+    expect(theaterInitials("東京")).toBe("東京");
+  });
+
+  it("keeps a supplementary-plane grapheme intact", () => {
+    expect(theaterInitials("𝔘nicode Lab")).toBe("𝔘L");
+  });
+
+  it("keeps an emoji-prefix grapheme in a multi-word Theater", () => {
+    expect(theaterInitials("🚀 Fleet")).toBe("🚀F");
   });
 });

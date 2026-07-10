@@ -12,18 +12,3 @@
   min-height: 0;
   overflow-y: auto;
 }
-
-/* 첫 진입 rise 모션 — prefers-reduced-motion 단락 유지 */
-.codex-navigator > * {
-  animation: codex-rise 720ms var(--ease-spring) both;
-}
-
-.is-revealed .codex-navigator > * {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .codex-navigator > * {
-    animation-duration: 0.01ms;
-  }
-}

@@ -1,4 +1,4 @@
-/* skills plugin — all vars use theme tokens only; no oklch() literals */
+/* Skills plugin surface consumes console theme tokens only. */
 
 /* ─── root ─────────────────────────────────────────────────────────────────── */
 
@@ -467,7 +467,7 @@
 
 .skills-overlay-backdrop {
   align-items: center;
-  background: color-mix(in srgb, black 55%, transparent);
+  background: color-mix(in srgb, var(--ink-abyss) 55%, transparent);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -501,7 +501,7 @@
 
 .skills-overlay-title {
   color: var(--ink-spectral);
-  font-family: "Fraunces Variable", serif;
+  font-family: var(--font-body);
   font-size: 1rem;
   font-weight: 500;
   white-space: nowrap;

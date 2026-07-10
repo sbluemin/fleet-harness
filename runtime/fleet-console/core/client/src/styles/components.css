@@ -3,30 +3,12 @@
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .stage {
   border-radius: var(--radius-xl);
 }
 
-/* 하단 StatusBar — 브라우저 모서리에 밀착하는 풀블리드 스트립. 카드(레디우스·그림자) 문법을 쓰지 않는다. */
-.statusbar {
-  position: relative;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  min-height: var(--console-statusbar-height, 28px);
-  padding: 0 var(--space-3);
-  border-top: 1px solid var(--surface-rim);
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  color: var(--ink-spectral);
-}
 
 .stage {
   overflow: hidden;
@@ -41,299 +23,33 @@
   pointer-events: none;
 }
 
-.statusbar-left,
-.statusbar-right,
-.statusbar-brand,
-.statusbar-connection,
-.statusbar-theater,
-.statusbar-github,
-.statusbar-github-link,
-.statusbar-github-stars,
-.statusbar-update,
-.statusbar-version {
-  display: inline-flex;
-  align-items: center;
-}
 
-.statusbar-left,
-.statusbar-right {
-  min-width: 0;
-  gap: var(--space-2);
-}
 
-.statusbar-right {
-  flex: none;
-  justify-content: flex-end;
-}
 
-/* 설정 라우트 전용 라우트 진입로 — Rail 부재 시 StatusBar가 승계(활성=brass). */
-.statusbar-routes {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding-right: var(--space-2);
-  border-right: 1px solid var(--surface-rim);
-}
 
-.statusbar-route-link {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-xs);
-  color: var(--ink-fog);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-route-link:hover,
-.statusbar-route-link:focus-visible {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-}
 
-.statusbar-route-link.is-active {
-  color: var(--brass-bright);
-}
 
-.statusbar-route-link svg {
-  display: block;
-  width: 13px;
-  height: 13px;
-}
 
-/* 접기 토글 — 조용한 고스트 셰브런. 접힘 상태 자체는 map-fullscreen 상태를 재사용한다. */
-.statusbar-collapse {
-  appearance: none;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--ink-fog);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-collapse:hover,
-.statusbar-collapse:focus-visible {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-}
 
-.statusbar-collapse svg,
-.statusbar-reveal svg {
-  display: block;
-  width: 13px;
-  height: 13px;
-}
 
-/* 접힌 StatusBar를 되살리는 좌하단 리빌 핸들 — 접힘 중 유일하게 남는 어포던스. */
-.statusbar-reveal {
-  position: fixed;
-  left: 10px;
-  bottom: 10px;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  color: var(--ink-fog);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-reveal:hover,
-.statusbar-reveal:focus-visible {
-  color: var(--ink-pearl);
-  border-color: var(--surface-rim-strong);
-}
 
-.statusbar-brand {
-  flex: none;
-  color: var(--ink-pearl);
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-brand:hover {
-  opacity: 0.82;
-}
 
-.statusbar-wordmark {
-  font-family: var(--font-display);
-  font-size: 15px;
-  font-variation-settings: "opsz" 24;
-  font-weight: 560;
-  line-height: 1;
-}
 
-.statusbar-github-link svg,
-.statusbar-github-stars svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
 
-.statusbar-github {
-  gap: 2px;
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--surface-rim);
-}
 
-.statusbar-github-link,
-.statusbar-github-stars {
-  gap: 5px;
-  min-height: 22px;
-  padding: 0 6px;
-  border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-github-stars svg path {
-  transition:
-    fill var(--duration-fast) var(--ease-spring),
-    stroke var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-github-link:hover,
-.statusbar-github-stars:hover {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-}
 
-.statusbar-github-stars-count {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  color: var(--brass);
-  font-variant-numeric: tabular-nums;
-}
 
-.statusbar-github-stars:hover svg path {
-  fill: var(--brass-bright);
-  stroke: var(--brass-bright);
-}
 
-.statusbar-github-stars:hover .statusbar-github-stars-count {
-  color: var(--brass-bright);
-}
 
-.statusbar-update {
-  appearance: none;
-  flex: 0 0 auto;
-  min-height: 22px;
-  padding: 0 var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--warn) 13%, transparent);
-  box-shadow: 0 0 18px -10px var(--warn-glow);
-  color: var(--warn);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    box-shadow var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
 
-/* 버전 칩 — 조용한 중립 텍스트. 강조는 미열람 도트 하나만 진다. */
-.statusbar-version {
-  appearance: none;
-  flex: 0 0 auto;
-  gap: 5px;
-  min-height: 22px;
-  padding: 0 var(--space-2);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink-fog);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  line-height: 1;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
 
-.statusbar-version:hover:not(:disabled) {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-}
 
-.statusbar-update:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--warn) 72%, var(--surface-rim));
-  background: color-mix(in oklch, var(--warn) 18%, transparent);
-  color: var(--ink-pearl);
-}
-
-.statusbar-update:disabled,
-.statusbar-version:disabled {
-  cursor: default;
-}
-
-.statusbar-update--live {
-  border-color: color-mix(in oklch, var(--aurora) 44%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 12%, transparent);
-  box-shadow: 0 0 18px -10px var(--aurora-glow);
-  color: var(--aurora);
-}
-
-.statusbar-update--blocked {
-  border-color: color-mix(in oklch, var(--warn) 34%, var(--surface-rim));
-  background: color-mix(in oklch, var(--warn) 8%, transparent);
-  box-shadow: none;
-  color: color-mix(in oklch, var(--warn) 84%, var(--ink-muted));
-}
-
-.statusbar-update--error {
-  border-color: color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
-  background: color-mix(in oklch, var(--coral) 10%, transparent);
-  box-shadow: 0 0 18px -12px var(--coral-glow);
-  color: var(--coral);
-}
-
-.statusbar-update--error:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--coral) 70%, var(--surface-rim));
-  background: color-mix(in oklch, var(--coral) 15%, transparent);
-}
-
-.statusbar-version-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: var(--aurora);
-}
 
 .job-meta,
 .job-id,
@@ -380,8 +96,7 @@
 .global-settings-hero h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -420,8 +135,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .global-settings-nav-item {
@@ -436,7 +149,6 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -464,8 +176,7 @@
 .global-settings-nav-label {
   overflow: hidden;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -541,8 +252,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .global-settings-row {
@@ -864,91 +573,10 @@
   }
 }
 
-/* Appearance — 테마/렌더러 단일선택 컨트롤. 선택 상태는 brass(지금 보고 있는 곳)로만 표기하고 aurora와 혼용하지 않는다. */
-
-/* 테마 선택 — GNB 드롭다운의 3톤 스와치를 보존한 카드형 단일선택 그룹. */
-.theme-picker {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.theme-card {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px var(--space-3);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.theme-card:hover:not(:disabled) {
-  color: var(--ink-pearl);
-  border-color: color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
-}
-
-.theme-card.is-active {
-  color: var(--ink-pearl);
-  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent), var(--shadow-soft);
-}
-
-.theme-card:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.theme-card:disabled,
-.typography-reset:disabled {
+.typography-reset:disabled,
+.font-card:disabled {
   cursor: not-allowed;
   opacity: 0.52;
-}
-
-.theme-card-swatch {
-  display: inline-flex;
-  flex: none;
-  gap: 3px;
-}
-
-.theme-card-swatch i {
-  width: 10px;
-  height: 10px;
-  flex: none;
-  border: 1px solid var(--surface-rim);
-  border-radius: 999px;
-}
-
-.theme-card-label {
-  line-height: 1;
-}
-
-.theme-card-check {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--brass);
-}
-
-.theme-card-check svg {
-  display: block;
-  width: 13px;
-  height: 13px;
 }
 
 .typography-reset {
@@ -1003,6 +631,150 @@
   flex-direction: column;
   gap: var(--space-4);
   width: 100%;
+}
+
+.current-readout {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 50%, transparent);
+}
+
+.current-readout .cr-label {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.current-readout .cr-value {
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.current-readout .cr-value.is-ok {
+  color: var(--positive);
+}
+
+.current-readout .cr-value.is-fallback {
+  color: var(--warn);
+}
+
+.current-readout .cr-sep {
+  color: var(--ink-rim);
+}
+
+.font-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.font-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 128px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 70%, transparent);
+  color: var(--ink-fog);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring),
+    transform var(--duration-base) var(--ease-spring);
+}
+
+.font-card:hover:not(:disabled) {
+  border-color: var(--surface-rim-strong);
+  transform: translateY(-2px);
+}
+
+.font-card.is-active {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 1px var(--brass-glow), 0 14px 30px -18px var(--brass-glow);
+}
+
+.font-card:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.font-card:disabled {
+  transform: none;
+}
+
+.font-card .fc-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink-pearl);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.font-card .fc-check {
+  color: var(--brass);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.font-card.is-active .fc-check {
+  opacity: 1;
+}
+
+.font-card .fc-sample {
+  color: var(--ink-spectral);
+  font-size: 19px;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+}
+
+.font-card .fc-sample.is-custom {
+  color: var(--ink-fog);
+  font-family: var(--font-body);
+  font-style: italic;
+}
+
+.font-card .fc-meta {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.font-card .fc-bundled {
+  color: var(--positive);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.font-card .fc-addon {
+  color: var(--warn);
+}
+
+.custom-reveal {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.custom-reveal.is-open {
+  display: flex;
 }
 
 .font-field-wrap {
@@ -1407,8 +1179,7 @@
 .carrier-settings-hero h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -1437,8 +1208,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .carrier-settings-row {
@@ -1453,7 +1222,6 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -1502,8 +1270,7 @@
 .carrier-settings-row-name {
   overflow: hidden;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -1564,9 +1331,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .carrier-settings-detail::before {
@@ -1617,8 +1381,7 @@
 .carrier-settings-captain-name {
   margin: 0 0 8px;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(40px, 5.6vw, 64px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -1628,7 +1391,7 @@
 .carrier-settings-captain-role {
   margin-bottom: 0;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 16px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -1679,7 +1442,7 @@
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
   color: var(--ink-spectral);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-style: italic;
   font-size: 22px;
   font-weight: 300;
@@ -1791,8 +1554,7 @@
 .carrier-settings-name-input {
   min-height: 54px;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(32px, 4.5vw, 52px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -2219,7 +1981,7 @@
 
 .operation-launch-control--canvas .operation-launch-menu {
   top: 0;
-  /* 'Operations Control' 헤더가 한 줄에 들어가도록 폭을 넓힌다. */
+  /* 'Canvas controls' 헤더가 한 줄에 들어가도록 폭을 넓힌다. */
   min-width: 256px;
 }
 
@@ -2273,8 +2035,7 @@
 
 .operations-canvas-background,
 .operations-canvas-sea,
-.operations-canvas-grid,
-.operations-radar {
+.operations-canvas-grid {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -2295,77 +2056,18 @@
   opacity: 0.42;
 }
 
-.operations-radar {
-  z-index: 1;
-  opacity: 0.62;
-  overflow: hidden;
-}
-
-.operations-radar-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 1px dashed color-mix(in oklch, var(--brass) 16%, transparent);
-  transform: translate(-50%, -50%);
-}
-
-.operations-radar-ring--outer {
-  width: 86vmax;
-}
-
-.operations-radar-ring--middle {
-  width: 58vmax;
-  border-color: color-mix(in oklch, var(--aurora) 12%, transparent);
-}
-
-.operations-radar-ring--inner {
-  width: 34vmax;
-  border-color: color-mix(in oklch, var(--ink-rim) 42%, transparent);
-}
-
-.operations-radar-sweep {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 122vmax;
-  aspect-ratio: 1;
-  background: conic-gradient(
-    from 0deg at 50% 50%,
-    transparent 0deg,
-    transparent 326deg,
-    color-mix(in oklch, var(--aurora) 7%, transparent) 348deg,
-    color-mix(in oklch, var(--brass) 15%, transparent) 357deg,
-    transparent 360deg
-  );
-  transform: translate(-50%, -50%) rotate(0deg);
-  transform-origin: 50% 50%;
-  animation: radar-sweep 18s linear infinite;
-  will-change: transform;
-}
-
-.operations-radar.is-animation-paused .operations-radar-sweep {
-  animation-play-state: paused;
-}
-
-.operations-radar.is-disabled {
-  opacity: 0;
-  visibility: hidden;
-}
-
-.operations-radar.is-disabled .operations-radar-sweep {
-  will-change: auto;
-}
-
 
 .operations-canvas.is-panel-maximized .canvas-minimap,
 .operations-canvas.is-panel-maximized .canvas-minimap-fab {
   display: none;
 }
 
-/* Operations Control 헤더 — 레티클 마크 + 타이틀.
-   좌하단 런처와 우클릭 메뉴를 단순 'add'에서 작전 통제면으로 승격하는 정체성 블록. */
+/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
+.canvas-operation--shell .canvas-operation-titlebar {
+  background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
+}
+
+/* Canvas controls 헤더 — 마크 + 타이틀. */
 .canvas-context-menu-head {
   display: flex;
   align-items: center;
@@ -2397,7 +2099,7 @@
 }
 
 .canvas-context-menu-head-text strong {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 500;
   font-size: 15px;
   letter-spacing: -0.01em;
@@ -2682,10 +2384,7 @@
   box-shadow:
     var(--shadow-floating),
     inset 0 1px 0 color-mix(in oklch, var(--brass) 24%, transparent);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
   overflow: hidden;
-  animation: codex-rise 520ms var(--ease-spring) both;
 }
 
 /* 계기 캡션 — JetBrains Mono 대문자 트래킹. */
@@ -2739,21 +2438,14 @@
   pointer-events: none;
 }
 
-/* Operation 패널 블립 — 중립 진주 톤 글래스(브래스/아우로라 역할과 섞지 않는다). */
+/* Operation 패널 블립 — 중립 잉크 계조. 위치 인지는 viewport 헤어라인만 맡는다. */
 .canvas-minimap-operation {
   position: absolute;
   z-index: 1;
   border-radius: 3px;
-  background: color-mix(in oklch, var(--ink-pearl) 16%, transparent);
-  border: 1px solid color-mix(in oklch, var(--ink-pearl) 40%, transparent);
-  box-shadow: 0 0 7px color-mix(in oklch, var(--ink-rim) 45%, transparent);
-}
-
-/* 순정 셸 블립 — '살아있는 것' 아우로라 발광. */
-.canvas-minimap-operation.is-plugin {
-  background: color-mix(in oklch, var(--aurora) 22%, transparent);
-  border-color: color-mix(in oklch, var(--aurora) 58%, transparent);
-  box-shadow: 0 0 9px color-mix(in oklch, var(--aurora) 38%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 17%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 38%, transparent);
+  box-shadow: 0 0 7px color-mix(in oklch, var(--ink-rim) 36%, transparent);
 }
 
 /* 현재 뷰포트 렌즈 — '지금 보고 있는 곳' 발광 브래스 스코프. */
@@ -2770,7 +2462,7 @@
   pointer-events: none;
 }
 
-/* Radar 접기 토글 — 미니맵 우상단 모서리. */
+/* Map 접기 토글 — 미니맵 우상단 모서리. */
 .canvas-minimap-toggle {
   position: absolute;
   top: 5px;
@@ -2790,7 +2482,7 @@
     background var(--duration-fast) var(--ease-spring);
 }
 
-/* 접힌 Radar — 우하단 단일 맵 아이콘 버튼(레이더 계기와 같은 브래스 글래스). */
+/* 접힌 Map — 우하단 단일 Map 아이콘 버튼. */
 .canvas-minimap-fab {
   position: absolute;
   right: var(--space-4);
@@ -2807,9 +2499,6 @@
     color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
   color: var(--brass);
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 420ms var(--ease-spring) both;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -2837,16 +2526,6 @@
   height: 18px;
 }
 
-@keyframes radar-sweep {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
-
 .operations-canvas-world {
   position: absolute;
   inset: 0;
@@ -2861,16 +2540,10 @@
   min-width: 320px;
   min-height: 200px;
   overflow: hidden;
-  /* accent는 focus(brass)가 쓰던 외곽 채널(테두리+1px 링)을 그대로 점유한다 — 지정 시 brass를 대체하고,
-     포커스 여부와 무관하게 상시 노출된다(미설정 시 surface-rim/투명으로 폴백). status conic(::before)은 별개 채널. */
-  border: 1px solid var(--op-accent, var(--surface-rim));
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--surface-glass-strong) 78%, var(--ink-deep));
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px var(--op-accent, transparent);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  background: var(--ink-mid);
+  box-shadow: var(--shadow-soft);
 }
 
 /* Formation 슬롯은 계산값이 규약이다 — 320×200 CSS 최소값이 슬롯을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
@@ -2899,27 +2572,15 @@
   cursor: default;
 }
 
-/* 포커스 = 같은 외곽 채널에 brass — accent 지정 시 accent가 우선(brass 폴백), 미지정 시 brass로 포커스 표시. */
+/* 포커스는 단일 location accent로만 표시한다. */
 .canvas-operation.is-active {
-  border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px var(--op-accent, color-mix(in oklch, var(--brass) 18%, transparent));
+  border-color: var(--brass);
+  box-shadow: var(--shadow-soft);
 }
 
-/* 작업 진행 중인 에이전트 패널 = "출항(underway)" 상태.
-   인디케이터(비콘) 색을 따르는 외곽 진행광 + 정적 글로우로 진행을 표시한다.
-   색 변형: is-running--turn=warn(에이전트 턴 진행 또는 캐리어 스트리밍 = "작업중"), is-running--awaiting=aurora(운영자 입력 대기).
-   idle/dormant는 진행광이 없다(idle은 별도 외곽 애니메이션 없음).
-   외곽 진행광은 최소화 칩과 같은 perimeter-orbit 방식으로, 림은 inset 의사요소로 그린다.
-   brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 진행광이 각자 의미로 공존.
-   AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림+글로우로 단락). */
+/* Running state remains a static semantic indicator. */
 .canvas-operation.is-running {
-  /* underway 진행광(conic ::before)+글로우는 status 채널, accent 외곽 링(있으면)은 그대로 유지 — 진행 중에도 accent 노출. */
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px var(--op-accent, transparent),
-    0 0 22px -6px var(--uw-glow);
+  box-shadow: var(--shadow-soft);
 }
 
 /* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 또는 캐리어 스트리밍) */
@@ -2932,61 +2593,12 @@
 .canvas-operation.is-running--awaiting {
   --uw-tint: var(--aurora);
   --uw-glow: var(--aurora-glow);
-  border-color: var(--op-accent, color-mix(in oklch, var(--aurora) 46%, var(--surface-rim)));
+  border-color: var(--aurora);
 }
 
-/* 선택(is-active) + 진행 동시: accent 지정 시 accent 보더(우선), 미지정 시 brass 선택 보더. 진행광/글로우는 status 채널로 공존. */
+/* Selection retains the location accent while a status is active. */
 .canvas-operation.is-running.is-active {
-  border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
-}
-
-/* 외곽 진행광 링 — 최소화된 칩과 같은 conic 하이라이트 호가 패널 테두리를 순환한다. */
-.canvas-operation.is-running::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  padding: 2px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--uw-angle),
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 18deg,
-    var(--uw-tint) 52deg,
-    color-mix(in oklch, var(--uw-tint) 55%, transparent) 92deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 150deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 360deg
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  animation: perimeter-orbit 2.4s linear infinite;
-}
-
-.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
-.operations-canvas.is-perimeter-anim-off .status-dot--live,
-.operations-canvas.is-perimeter-anim-off .tenant-beacon.is-awaiting,
-.operations-canvas.is-perimeter-anim-off .job-dock-dot,
-.operations-canvas.is-perimeter-anim-off .tool-chip--live .tool-chip-glyph {
-  animation: none;
-}
-
-.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before {
-  background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-}
-
-/* prefers-reduced-motion: 순환 정지, 정적 림 + 정적 글로우만 유지(색은 인디케이터 따라감) */
-@media (prefers-reduced-motion: reduce) {
-  .canvas-operation.is-running::before {
-    animation: none;
-    background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-  }
+  border-color: var(--brass);
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -3002,8 +2614,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
@@ -3022,20 +2632,16 @@
   overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
-  /* 좌측 가장자리·하단 StatusBar에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
+  /* 좌측 가장자리·하단 Global Navigation에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
   border-left: none;
   border-bottom: none;
   border-radius: 0 var(--radius-xl) 0 0;
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   transition: width var(--duration-base) var(--ease-spring);
 }
 
 .operations-side-bar[data-resizing="true"] {
   transition: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3047,16 +2653,15 @@
 .operations-side-bar-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-1);
   flex: none;
-  padding: var(--space-2) var(--space-2) var(--space-1);
+  padding: var(--space-2);
   border-bottom: 1px solid var(--surface-rim);
 }
 
-.operations-side-bar[data-tier="list"] .operations-side-bar-header,
-.operations-side-bar[data-tier="detail"] .operations-side-bar-header {
-  justify-content: flex-start;
+.side-bar-header-spacer {
+  flex: 1;
 }
 
 .side-bar-theater-add-btn {
@@ -3101,10 +2706,6 @@
   opacity: 0.55;
 }
 
-.operations-side-bar[data-tier="rail"] .side-bar-theater-add-btn span {
-  display: none;
-}
-
 .side-bar-theater-error {
   margin: var(--space-2);
   color: var(--coral);
@@ -3113,8 +2714,10 @@
   line-height: 1.45;
 }
 
-/* 설정 버튼 — Map/Radar/PanelPulse 컨트롤 팝오버 트리거 */
+/* 설정 버튼 — Map 및 표시 제어 팝오버 트리거. search/collapse도 같은 아이콘 버튼 문법 */
 .side-bar-settings-btn,
+.side-bar-search-btn,
+.side-bar-collapse-btn,
 .side-bar-formation-btn {
   display: grid;
   place-items: center;
@@ -3142,6 +2745,8 @@
 }
 
 .side-bar-settings-btn svg,
+.side-bar-search-btn svg,
+.side-bar-collapse-btn svg,
 .side-bar-formation-btn svg {
   width: 16px;
   height: 16px;
@@ -3149,6 +2754,10 @@
 
 .side-bar-settings-btn:hover,
 .side-bar-settings-btn:focus-visible,
+.side-bar-search-btn:hover,
+.side-bar-search-btn:focus-visible,
+.side-bar-collapse-btn:hover,
+.side-bar-collapse-btn:focus-visible,
 .side-bar-formation-btn:hover:not(:disabled),
 .side-bar-formation-btn:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
@@ -3203,9 +2812,9 @@
 }
 
 .side-bar-theater-section--active {
-  border-top: 1px solid color-mix(in oklch, var(--brass) 18%, transparent);
-  border-bottom: 1px solid color-mix(in oklch, var(--brass) 12%, transparent);
-  background: color-mix(in oklch, var(--brass) 4%, transparent);
+  border-top: 1px solid var(--surface-rim);
+  border-bottom: 1px solid var(--surface-rim);
+  background: transparent;
 }
 
 .side-bar-theater-section--peek {
@@ -3220,20 +2829,20 @@
 .side-bar-theater-header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
   min-width: 0;
-  margin: 3px var(--space-1);
-  padding: 5px var(--space-2);
+  margin: 2px var(--space-1);
+  padding: 7px 9px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   background: transparent;
   color: var(--ink-fog);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 760;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 750;
+  letter-spacing: normal;
+  text-transform: none;
   transition:
     background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -3243,28 +2852,30 @@
 
 .side-bar-theater-header:hover,
 .side-bar-theater-header:focus-visible {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  border-color: color-mix(in oklch, var(--brass) 25%, transparent);
+  background: var(--ink-deep);
+  border-color: var(--surface-rim);
   color: var(--ink-spectral);
   outline: none;
 }
 
 .side-bar-theater-header.is-active {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 38%, transparent);
-  background: color-mix(in oklch, var(--brass) 11%, transparent);
+  color: var(--ink-spectral);
+  border-color: transparent;
+  background: var(--ink-deep);
 }
 
 .side-bar-theater-anchor {
   display: grid;
   place-items: center;
   flex: none;
-  color: var(--brass);
-}
-
-.side-bar-theater-anchor svg {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .side-bar-theater-name {
@@ -3278,6 +2889,8 @@
   flex: none;
   margin-left: auto;
   color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3318,10 +2931,6 @@
   border-color: color-mix(in oklch, var(--ink-fog) 24%, transparent);
   color: var(--ink-pearl);
   outline: none;
-}
-
-.operations-side-bar[data-tier="rail"] .side-bar-theater-row-controls {
-  display: none;
 }
 
 .side-bar-theater-groups,
@@ -3377,11 +2986,6 @@
   right: auto;
 }
 
-.operations-side-bar[data-tier="rail"] .side-bar-theater-section {
-  border: none;
-  background: transparent;
-}
-
 /* ── SideBar Chip ──────────────────────────────────────────────────────────────── */
 
 .side-bar-chip {
@@ -3417,12 +3021,6 @@
 
 .side-bar-chip--active .side-bar-chip-name {
   color: color-mix(in oklch, var(--brass) 88%, var(--ink-spectral));
-}
-
-/* accent: --chip-accent border + 1px ring (focus brass 채널 대체, 영속) */
-.side-bar-chip[style*="--chip-accent"] {
-  border-color: var(--chip-accent);
-  box-shadow: 0 0 0 1px var(--chip-accent);
 }
 
 /* minimized: 반투명 + 이름 흐림 */
@@ -3530,26 +3128,6 @@
     0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-/* rail tier: 라벨/카운트/닫기를 flex 흐름에서 완전히 제거한다. max-width:0만으로는 close 버튼의
-   테두리(좌우 1px=2px)가 형제로 남아 justify-content:center가 아이콘을 1px 왼쪽으로 밀어
-   ＋New(아이콘 only)와 미세하게 어긋났다. display:none으로 빼면 beacon만 남아 정중앙에 온다. */
-.operations-side-bar[data-tier="rail"] .side-bar-chip-name,
-.operations-side-bar[data-tier="rail"] .side-bar-chip-rename-input,
-.operations-side-bar[data-tier="rail"] .side-bar-chip-count,
-.operations-side-bar[data-tier="rail"] .side-bar-chip-close {
-  display: none;
-}
-
-.operations-side-bar[data-tier="rail"] .side-bar-chip {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.operations-side-bar[data-tier="rail"] .side-bar-chip-beacon-button {
-  margin: 0;
-}
-
 .side-bar-chip-count {
   flex: none;
   font-family: var(--font-mono);
@@ -3558,6 +3136,35 @@
   color: var(--ink-fog);
   min-width: 16px;
   text-align: right;
+}
+
+.side-bar-chip-status {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--ink-fog);
+}
+
+.side-bar-chip-status.is-live {
+  background: var(--aurora);
+  box-shadow: 0 0 7px var(--aurora-glow);
+  animation: side-bar-chip-status-pulse 1.6s ease-in-out infinite;
+}
+
+.side-bar-chip-status.is-attention {
+  background: var(--coral);
+  box-shadow: 0 0 6px var(--coral-glow);
+}
+
+.side-bar-chip-status.is-idle {
+  opacity: 0.5;
+}
+
+@keyframes side-bar-chip-status-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 .side-bar-chip-close {
@@ -3572,10 +3179,19 @@
   background: transparent;
   cursor: pointer;
   color: var(--ink-fog);
+  opacity: 0;
+  pointer-events: none;
   transition:
     background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-chip:hover .side-bar-chip-close,
+.side-bar-chip:focus-within .side-bar-chip-close,
+.side-bar-chip-close.is-armed {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .side-bar-chip-close:hover,
@@ -3617,6 +3233,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .side-bar-chip-close.is-armed {
+    animation: none;
+  }
+
+  .side-bar-chip-status.is-live {
     animation: none;
   }
 }
@@ -3661,12 +3281,6 @@
 
 .side-bar-group-section--drop-after::after {
   bottom: -2px;
-}
-
-/* rail tier에서는 56px 폭 제약 때문에 좌측 offset 최소화 */
-.operations-side-bar[data-tier="rail"] .side-bar-group-section {
-  margin-left: 0;
-  padding-left: 2px;
 }
 
 .side-bar-group-chips {
@@ -3778,7 +3392,7 @@
   text-align: right;
 }
 
-/* rail tier 그룹 헤더: 색상 dot만 표시 */
+/* two-state 그룹 헤더: 색상 dot만 표시 */
 .side-bar-group-header--rail {
   justify-content: center;
   padding: 4px 0;
@@ -3806,10 +3420,6 @@
   opacity: 0.5;
 }
 
-.operations-side-bar[data-tier="rail"] .side-bar-ungrouped-label {
-  display: none;
-}
-
 /* ── Cross-section drop target (aurora tint on target group chip list) ─────────── */
 
 .side-bar-section--drop-target {
@@ -3817,18 +3427,6 @@
   border-radius: var(--radius-md);
   outline: 1px dashed color-mix(in oklch, var(--aurora) 40%, transparent);
   outline-offset: -1px;
-}
-
-/* ── 3-tier indent for chips inside groups ──────────────────────────────────────── */
-
-.operations-side-bar[data-tier="list"] .side-bar-group-section .side-bar-chip,
-.operations-side-bar[data-tier="detail"] .side-bar-group-section .side-bar-chip {
-  padding-left: 18px;
-}
-
-.operations-side-bar[data-tier="rail"] .side-bar-group-section .side-bar-chip {
-  padding-left: 0;
-  padding-right: 0;
 }
 
 /* ── Resize Handle (우측 가장자리 4px, col-resize cursor) ───────────────────────── */
@@ -3866,8 +3464,6 @@
   overflow: hidden;
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   cursor: grab;
   touch-action: none;
   transition:
@@ -3876,8 +3472,7 @@
     padding var(--duration-base) var(--ease-spring),
     border-color var(--duration-base) var(--ease-spring),
     background var(--duration-base) var(--ease-spring),
-    box-shadow var(--duration-base) var(--ease-spring),
-    backdrop-filter var(--duration-base) var(--ease-spring);
+    box-shadow var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-titlebar:active {
@@ -3896,8 +3491,6 @@
   overflow: visible;
   background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
   box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
 .canvas-operation-drag-edge {
@@ -3967,8 +3560,6 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .group-context-menu-section-label {
@@ -4106,8 +3697,6 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .accent-popover-swatch {
@@ -4256,14 +3845,13 @@
 .canvas-operation-job-count {
   flex: none;
   padding: 4px 7px;
-  border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
   border-radius: var(--radius-sm);
+  color: var(--brass-bright);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  color: var(--brass-bright);
 }
 
 .canvas-operation-icon-button {
@@ -4350,8 +3938,8 @@
   max-width: none;
   height: auto;
   padding: 4px 7px;
-  border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
-  color: var(--aurora);
+  border: 1px solid var(--surface-rim);
+  color: var(--ink-fog);
   opacity: 1;
   pointer-events: auto;
 }
@@ -4416,8 +4004,6 @@
   border-radius: var(--radius-md);
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .canvas-operation-dormant {
@@ -4561,8 +4147,6 @@
   background: color-mix(in oklch, var(--surface-glass) 82%, var(--ink-deep));
   color: var(--ink-spectral);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .operations-canvas-empty p {
@@ -4631,7 +4215,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 22px;
   font-variation-settings: "opsz" 30;
   font-weight: 560;
@@ -4700,7 +4284,7 @@
 .stage-idle h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 30px;
   font-variation-settings: "opsz" 44;
   font-weight: 540;
@@ -4722,7 +4306,7 @@
 .stage-idle-mark {
   margin: 0 0 var(--space-1);
   color: var(--brass-bright);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 36px;
   text-shadow: 0 0 18px var(--brass-glow);
 }
@@ -5200,30 +4784,6 @@
   flex-direction: column;
   border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
   background: color-mix(in oklch, var(--aurora) 4%, var(--surface-glass));
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-}
-
-/* CLI 시그니처: border-top rim + 저강도 bg tint (단일 잡에만 부착, aurora/brass 채널 불가침) */
-.job-dock[data-signature="claude"] {
-  border-top-color: color-mix(in oklch, var(--carrier-claude) 40%, var(--surface-rim));
-  background: color-mix(in oklch, var(--carrier-claude) 6%, var(--surface-glass));
-}
-.job-dock[data-signature="codex"] {
-  border-top-color: color-mix(in oklch, var(--carrier-codex) 40%, var(--surface-rim));
-  background: color-mix(in oklch, var(--carrier-codex) 6%, var(--surface-glass));
-}
-.job-dock[data-signature="opencode-go"] {
-  border-top-color: color-mix(in oklch, var(--carrier-opencode-go) 40%, var(--surface-rim));
-  background: color-mix(in oklch, var(--carrier-opencode-go) 6%, var(--surface-glass));
-}
-.job-dock[data-signature="cursor"] {
-  border-top-color: color-mix(in oklch, var(--carrier-cursor) 40%, var(--surface-rim));
-  background: color-mix(in oklch, var(--carrier-cursor) 6%, var(--surface-glass));
-}
-.job-dock[data-signature="taskforce"] {
-  border-top-color: color-mix(in oklch, var(--carrier-taskforce) 40%, var(--surface-rim));
-  background: color-mix(in oklch, var(--carrier-taskforce) 6%, var(--surface-glass));
 }
 
 /* 스트립: 기본 상태 단일 행 계기판 — 펄스닷 · 캐리어명 · 최신 라인 · meta · 그립 · Details */
@@ -5261,28 +4821,47 @@
   }
 }
 
-/* 캐리어명: 스트립 고정폭(flex: none), 캡틴색 적용 대상 — 긴 이름은 잘라 우측 컨트롤을 보호 */
+/* 캐리어명: 스트립 고정폭, 캡틴 식별은 작은 dot/tag 채널에만 둔다. */
 .job-dock-carrier {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   flex: none;
   max-width: 12em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink-spectral);
 }
 
-/* 캡틴 고유색 - 캐리어명 텍스트 채널만(오직 이 하나의 곳에만 적용) */
-.job-dock-carrier[data-captain="nimitz"] { color: var(--captain-nimitz); }
-.job-dock-carrier[data-captain="kirov"] { color: var(--captain-kirov); }
-.job-dock-carrier[data-captain="genesis"] { color: var(--captain-genesis); }
-.job-dock-carrier[data-captain="ohio"] { color: var(--captain-ohio); }
-.job-dock-carrier[data-captain="sentinel"] { color: var(--captain-sentinel); }
-.job-dock-carrier[data-captain="vanguard"] { color: var(--captain-vanguard); }
-.job-dock-carrier[data-captain="tempest"] { color: var(--captain-tempest); }
-.job-dock-carrier[data-captain="chronicle"] { color: var(--captain-chronicle); }
+.job-dock-captain-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--captain-nimitz);
+}
+
+.job-dock-captain-dot[data-captain="nimitz"] { background: var(--captain-nimitz); }
+.job-dock-captain-dot[data-captain="kirov"] { background: var(--captain-kirov); }
+.job-dock-captain-dot[data-captain="genesis"] { background: var(--captain-genesis); }
+.job-dock-captain-dot[data-captain="ohio"] { background: var(--captain-ohio); }
+.job-dock-captain-dot[data-captain="sentinel"] { background: var(--captain-sentinel); }
+.job-dock-captain-dot[data-captain="vanguard"] { background: var(--captain-vanguard); }
+.job-dock-captain-dot[data-captain="tempest"] { background: var(--captain-tempest); }
+.job-dock-captain-dot[data-captain="chronicle"] { background: var(--captain-chronicle); }
+
+.job-dock-captain-tag {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-spectral);
+}
 
 /* 스트립 최신 라인: 가변폭 ellipsis, 접힘 상태에서만 가시 */
 .job-dock-strip-line {
@@ -5382,26 +4961,19 @@
 
 /* 행 이름: 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략 — 긴 이름은 잘라 상태·라인을 보호 */
 .job-dock-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   flex: none;
   max-width: 12em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-spectral);
 }
-
-/* 캡틴 고유색 — 멀티잡 캐리어 식별용, 행 이름 텍스트 채널 */
-.job-dock-row-name[data-captain="nimitz"] { color: var(--captain-nimitz); }
-.job-dock-row-name[data-captain="kirov"] { color: var(--captain-kirov); }
-.job-dock-row-name[data-captain="genesis"] { color: var(--captain-genesis); }
-.job-dock-row-name[data-captain="ohio"] { color: var(--captain-ohio); }
-.job-dock-row-name[data-captain="sentinel"] { color: var(--captain-sentinel); }
-.job-dock-row-name[data-captain="vanguard"] { color: var(--captain-vanguard); }
-.job-dock-row-name[data-captain="tempest"] { color: var(--captain-tempest); }
-.job-dock-row-name[data-captain="chronicle"] { color: var(--captain-chronicle); }
 
 /* 행 상태: 9.5px mono uppercase, 라이브 시 aurora */
 .job-dock-row-status {
@@ -5694,9 +5266,7 @@
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
-  backdrop-filter: blur(20px) saturate(150%);
   box-shadow: var(--shadow-floating);
-  animation: codex-rise var(--duration-fast) var(--ease-spring);
 }
 
 .theater-menu-list {
@@ -5825,7 +5395,7 @@
   max-width: 720px;
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 44px;
   font-weight: 520;
   line-height: 1;
@@ -5878,7 +5448,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .terminal-status {
@@ -6020,7 +5589,6 @@
   inset: 0;
   border: 0;
   background: color-mix(in oklch, var(--ink-abyss) 38%, transparent);
-  backdrop-filter: blur(2px);
   cursor: default;
 }
 
@@ -6037,8 +5605,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .job-overlay-close {
@@ -6055,7 +5621,6 @@
   background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
   color: var(--brass-bright);
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
   font-family: var(--font-mono);
   font-size: 18px;
   line-height: 1;
@@ -6139,7 +5704,6 @@
   inset: 0;
   border: 0;
   background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
-  backdrop-filter: blur(8px) saturate(126%);
   cursor: default;
 }
 
@@ -6160,8 +5724,6 @@
     radial-gradient(70% 80% at 100% 20%, color-mix(in oklch, var(--aurora) 8%, transparent), transparent 62%),
     var(--surface-glass-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
-  backdrop-filter: blur(20px) saturate(142%);
-  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .commissioning-header {
@@ -6183,7 +5745,7 @@
 .commissioning-header h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 52px;
   font-variation-settings: "opsz" 60;
   font-weight: 560;
@@ -6270,7 +5832,7 @@
 .commissioning-step-body h3 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 22px;
   font-variation-settings: "opsz" 36;
   font-weight: 560;
@@ -6398,31 +5960,14 @@
     animation: none;
   }
 
-  .operations-radar-sweep {
-    animation: none;
-  }
 
-  .statusbar-connection.is-live .statusbar-connection-dot {
-    animation: none;
-  }
-
-  .statusbar,
-  .statusbar-brand,
-  .statusbar-theater,
-  .statusbar-github-link,
-  .statusbar-github-stars,
-  .statusbar-github-stars svg path,
-  .statusbar-update,
-  .statusbar-version {
-    transition: none;
-  }
 }
 
 /* 토스트 — 우하단 고정 알림 스택. 재사용 컴포넌트(toast.tsx)가 렌더하며, tone으로 색을 바꾼다 */
 .app-toast-host {
   position: fixed;
   right: var(--space-5);
-  bottom: calc(var(--space-5) + var(--console-statusbar-height, 28px));
+  bottom: var(--space-5);
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -6439,10 +5984,8 @@
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
   background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
   box-shadow: var(--shadow-floating);
   pointer-events: auto;
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
 }
 
 .app-toast--error {
@@ -6534,8 +6077,6 @@
   place-items: start center;
   padding: 14vh var(--space-5) var(--space-5);
   background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   animation: codex-pop 280ms var(--ease-spring) both;
 }
 
@@ -6546,8 +6087,6 @@
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--surface-pillar) 92%, transparent);
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
 }
 
 .operation-search-card:focus-visible {
@@ -6711,7 +6250,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 16px;
   font-weight: 520;
   letter-spacing: 0;
@@ -6777,7 +6316,6 @@
   border: 0;
   /* 카드를 집중형 규격으로 좁힌 만큼, 배경 노출은 더 짙은 scrim으로 막는다(카드 크기로 막던 종전 방식 폐기). */
   background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
-  backdrop-filter: blur(6px) saturate(118%);
   cursor: default;
 }
 
@@ -6798,8 +6336,6 @@
     radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
     var(--surface-glass-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
-  backdrop-filter: blur(20px) saturate(140%);
-  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .directory-browser-header {
@@ -6843,7 +6379,7 @@
 .directory-browser-header h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 23px;
   font-weight: 560;
   letter-spacing: 0;
@@ -7437,7 +6973,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 18px;
   font-weight: 560;
   line-height: 1.15;
@@ -7521,10 +7057,7 @@
   border-radius: var(--radius-xl);
   background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   pointer-events: auto;
-  animation: codex-rise 520ms var(--ease-spring) both;
 }
 
 /* 좌측 모서리 리사이즈 핸들 — 우현 도킹이라 핸들은 좌측에 둔다. */
@@ -7566,8 +7099,6 @@
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   color: var(--ink-fog);
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-spring),
@@ -7686,8 +7217,6 @@ body[data-codex-side="true"] .command-card {
   background:
     radial-gradient(circle at 50% 12%, color-mix(in oklch, var(--brass) 12%, transparent), transparent 42%),
     color-mix(in oklch, var(--ink-abyss) 70%, transparent);
-  backdrop-filter: blur(4px) saturate(120%);
-  -webkit-backdrop-filter: blur(4px) saturate(120%);
   cursor: default;
 }
 
@@ -7705,8 +7234,6 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xl);
   background: var(--surface-glass-strong);
   box-shadow: var(--shadow-floating), 0 0 44px -30px var(--brass);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
 
@@ -7725,7 +7252,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-header h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: clamp(32px, 4vw, 48px);
   font-weight: 680;
   line-height: 1;
@@ -7877,13 +7404,13 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-refresh {
   padding: 0 14px;
-  color: var(--aurora);
+  color: var(--brass);
 }
 
 .whatsnew-refresh:hover,
 .whatsnew-refresh:focus-visible {
-  border-color: color-mix(in oklch, var(--aurora) 42%, transparent);
-  background: color-mix(in oklch, var(--aurora) 10%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
 .whatsnew-refresh:disabled {
@@ -7968,24 +7495,15 @@ body[data-codex-side="true"] .command-card {
   min-height: 22px;
   margin: 0 6px 2px 0;
   padding: 0 7px;
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+  color: var(--ink-spectral);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 820;
   letter-spacing: 0;
   vertical-align: middle;
-}
-
-.whatsnew-package-chip--brass {
-  border: 1px solid color-mix(in oklch, var(--brass) 32%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--brass-bright);
-}
-
-.whatsnew-package-chip--aurora {
-  border: 1px solid color-mix(in oklch, var(--aurora) 30%, transparent);
-  background: color-mix(in oklch, var(--aurora) 9%, transparent);
-  color: var(--aurora);
 }
 
 .whatsnew-section ul {
@@ -8067,8 +7585,6 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .fc-settings-card {
@@ -8081,7 +7597,7 @@ body[data-codex-side="true"] .command-card {
 .fc-settings-card__title {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: clamp(20px, 2vw, 28px);
   font-weight: 650;
   letter-spacing: 0;
@@ -8317,7 +7833,6 @@ body[data-codex-side="true"] .command-card {
   inset: 0;
   z-index: var(--z-codex-reading-scrim);
   background: oklch(10% 0.03 250 / 55%);
-  backdrop-filter: blur(3px);
 }
 
 .codex-reading-sheet {
@@ -8339,12 +7854,9 @@ body[data-codex-side="true"] .command-card {
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
-  /* codex-rise-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
-     일반 codex-rise는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
-  animation: codex-rise-centered 400ms var(--ease-spring) both;
+  /* entrance motion-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
+     일반 entrance motion는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -8464,6 +7976,26 @@ body[data-codex-reading="true"] .operations-side-bar {
   pointer-events: none;
 }
 
+
+
+
+
+
+
+
+
+
+
+.operations-side-bar.is-closed {
+  display: none;
+  width: 0;
+}
+
+.operations-center-stage {
+  min-width: 0;
+  min-height: 0;
+}
+
 /* ─── Codex Rail v2 — 2-pane split shell (W1) ───────────────────────────────── */
 
 /* 마운트 호스트는 패널 바디(slot grid 1fr)의 높이를 채워야 내부 navigator/reader가
@@ -8548,4 +8080,206 @@ body[data-codex-reading="true"] .operations-side-bar {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ── v5: 사이드바 브랜드 푸터 — GNB 퇴역 후 콘솔 크롬의 상주 진입점 ── */
+.side-bar-brand-foot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 7px 10px;
+  border-top: 1px solid var(--surface-rim);
+  white-space: nowrap;
+}
+
+.brand-foot-home {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px 4px 5px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-pearl);
+}
+
+.brand-foot-home:hover,
+.brand-foot-home:focus-visible {
+  background: var(--surface-glass);
+}
+
+.brand-foot-glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4.5px;
+}
+
+.brand-foot-wordmark {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 640;
+  letter-spacing: 0.01em;
+}
+
+.brand-foot-version {
+  position: relative;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.brand-foot-version:hover:not(:disabled),
+.brand-foot-version:focus-visible {
+  background: var(--surface-glass);
+  color: var(--ink-spectral);
+}
+
+.brand-foot-version:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.brand-foot-version-dot {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--aurora);
+}
+
+.brand-foot-update {
+  padding: 3px 8px;
+  border: 1px solid color-mix(in oklch, var(--warn) 42%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+  color: var(--warn);
+  font-size: 10.5px;
+  font-weight: 760;
+}
+
+.brand-foot-update--live { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--aurora); }
+.brand-foot-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--ink-fog); }
+.brand-foot-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral); }
+.brand-foot-update:disabled { cursor: default; opacity: 0.75; }
+
+.brand-foot-github {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.brand-foot-github-link,
+.brand-foot-more {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+}
+
+.brand-foot-github-link svg,
+.brand-foot-more svg { width: 13px; height: 13px; }
+
+.brand-foot-github-stars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.brand-foot-github-stars svg { width: 12px; height: 12px; }
+
+.brand-foot-github-link:hover,
+.brand-foot-github-link:focus-visible,
+.brand-foot-github-stars:hover,
+.brand-foot-github-stars:focus-visible,
+.brand-foot-more:hover,
+.brand-foot-more:focus-visible {
+  background: var(--surface-glass);
+  color: var(--ink-spectral);
+}
+
+.brand-foot-dropup {
+  position: relative;
+  margin-left: auto;
+}
+
+.brand-foot-dropup-menu {
+  position: absolute;
+  right: 0;
+  bottom: 32px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating);
+}
+
+.brand-foot-dropup-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-spectral);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.brand-foot-dropup-menu button:hover,
+.brand-foot-dropup-menu button:focus-visible {
+  background: var(--surface-pillar);
+  color: var(--ink-pearl);
+}
+
+.brand-foot-dropup-menu svg { width: 13px; height: 13px; }
+
+/* ── v5: 접힘 복원 에지 부착 확장 탭 ── */
+/* 가장자리 부착 확장 탭 — 뷰포트 좌/우 에지에 붙는다(맵 위 부유 금지).
+   수직 위치는 상단 크롬 라인 바로 아래(중앙 아님 — 재가 지시). */
+.float-handle {
+  position: fixed;
+  top: 64px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 44px;
+  border: 1px solid var(--surface-rim-strong);
+  background: var(--surface-glass-strong);
+  color: var(--ink-spectral);
+}
+
+.float-handle svg { width: 14px; height: 14px; }
+.float-handle:hover, .float-handle:focus-visible { color: var(--ink-pearl); border-color: var(--brass); }
+.float-left { left: 0; border-left: 0; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+.float-right { right: 0; border-right: 0; border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
+
+
+/* v5: 비-Operations 라우트의 복귀 링크 — GNB 부재 보완 */
+.page-back-link {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: var(--ink-fog);
+  font-size: 12px;
+  border-radius: var(--radius-xs);
+}
+
+.page-back-link:hover,
+.page-back-link:focus-visible {
+  color: var(--brass);
 }

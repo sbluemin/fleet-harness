@@ -50,6 +50,8 @@ globalThis.__fleetConsoleRuntime__ = {
   "@fleet-console/sdk/react/browser": sdkReactBrowser,
 };
 
+setActiveTheme("instrument");
+
 try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);

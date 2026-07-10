@@ -109,6 +109,35 @@ describe("requestRailPanelExtraWidth", () => {
   });
 });
 
+describe("rail chrome state", () => {
+  it("collapses and reopens chrome without changing panel or extra-width state", async () => {
+    const { getRailStoreSnapshot, requestRailPanelExtraWidth, setActiveRailPanel, setRailChromeExpanded, setRailPathContextDeckOpen } = await freshStore();
+    setActiveRailPanel("panel-a");
+    requestRailPanelExtraWidth("panel-a", 240);
+    setRailPathContextDeckOpen(true);
+    setRailChromeExpanded(false);
+
+    expect(getRailStoreSnapshot()).toMatchObject({
+      activeRailPanelId: "panel-a",
+      panelExtraWidth: 240,
+      railChromeExpanded: false,
+      isPathContextDeckOpen: false,
+    });
+
+    setRailChromeExpanded(true);
+    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: "panel-a", panelExtraWidth: 240, railChromeExpanded: true });
+  });
+
+  it("keeps chrome state independent from active-icon re-click semantics", async () => {
+    const { getRailStoreSnapshot, setActiveRailPanel, setRailChromeExpanded, toggleRailPanel } = await freshStore();
+    setActiveRailPanel("panel-a");
+    setRailChromeExpanded(true);
+    toggleRailPanel("panel-a");
+
+    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: null, railChromeExpanded: true });
+  });
+});
+
 describe("path context state", () => {
   it("isolates contexts per Theater and never writes a path selection preference", async () => {
     const { getRailStoreSnapshot, hydrateRailPathContext, selectRailPathContextTheater } = await freshStore();
