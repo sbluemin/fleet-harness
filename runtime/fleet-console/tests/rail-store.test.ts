@@ -108,3 +108,26 @@ describe("requestRailPanelExtraWidth", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+describe("path context state", () => {
+  it("isolates contexts per Theater and never writes a path selection preference", async () => {
+    const { getRailStoreSnapshot, hydrateRailPathContext, selectRailPathContextTheater } = await freshStore();
+    await hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "packages/a", label: "a" }));
+    selectRailPathContextTheater("b");
+    expect(getRailStoreSnapshot().pathContext).toBeNull();
+    await hydrateRailPathContext("b", async () => ({ kind: "worktree", relPath: "wt", label: "wt" }));
+    selectRailPathContextTheater("a");
+    expect(getRailStoreSnapshot().pathContext?.relPath).toBe("packages/a");
+  });
+
+  it("suppresses stale hydration responses", async () => {
+    const { getRailStoreSnapshot, hydrateRailPathContext } = await freshStore();
+    let resolveFirst!: (value: { kind: "directory"; relPath: string; label: string }) => void;
+    const first = hydrateRailPathContext("a", async () => new Promise((resolve) => { resolveFirst = resolve; }));
+    const second = hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "new", label: "new" }));
+    await second;
+    resolveFirst({ kind: "directory", relPath: "old", label: "old" });
+    await first;
+    expect(getRailStoreSnapshot().pathContext?.relPath).toBe("new");
+  });
+});

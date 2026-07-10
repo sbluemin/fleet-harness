@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
@@ -6,7 +6,9 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
-import { closeRailPanel, requestRailPanelExtraWidth, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth } from "./rail-store.js";
+import { fetchRailPathContext, putRailPathContext } from "./path-context-api.js";
+import { PathContextDeck } from "./path-context-deck.js";
+import { closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -18,6 +20,7 @@ interface RightRailProps {
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 const PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
+const ROOT_PATH_CONTEXT = { kind: "root", relPath: null, label: "Theater-wide" } as const;
 
 function readStoredPanelWidth(): number {
   try {
@@ -37,6 +40,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
+  const { pathContext, pathContextLoading, pathContextError, isPathContextDeckOpen } = useRailPathContextStore();
 
   const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
   const extraWidthRef = useRef(extraWidth);
@@ -45,6 +49,11 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    selectRailPathContextTheater(theaterId);
+    if (theaterId) void hydrateRailPathContext(theaterId, (signal) => fetchRailPathContext(theaterId, signal));
+  }, [theaterId]);
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -73,11 +82,17 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
   const ctx: RailPanelContext = useMemo(() => ({
     theaterId,
+    pathContext: pathContext ?? ROOT_PATH_CONTEXT,
     api,
     requestExtraWidth: (px: number | null) => {
       if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
     },
-  }), [theaterId, api, activeId]);
+  }), [theaterId, pathContext, api, activeId]);
+
+  const selectPathContext = useCallback((relPath: string | null) => {
+    if (!theaterId) return;
+    void mutateRailPathContext(theaterId, (signal) => putRailPathContext(theaterId, relPath, signal));
+  }, [theaterId]);
 
   return (
     <div
@@ -97,7 +112,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} />
+          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} theaterId={theaterId} isPathContextDeckOpen={isPathContextDeckOpen} pathContextLoading={pathContextLoading} pathContextError={pathContextError} onSelectPathContext={selectPathContext} />
         )}
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
@@ -127,16 +142,44 @@ interface RailPanelContentProps {
   readonly activePanel: RailPanelDescriptor;
   readonly activeId: string | null;
   readonly ctx: RailPanelContext;
+  readonly theaterId: string | null;
+  readonly isPathContextDeckOpen: boolean;
+  readonly pathContextLoading: boolean;
+  readonly pathContextError: string | null;
+  readonly onSelectPathContext: (relPath: string | null) => void;
 }
 
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
 // 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
 // (activePanel·ctx·activeId) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx }: RailPanelContentProps) {
+const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx, theaterId, isPathContextDeckOpen, pathContextLoading, pathContextError, onSelectPathContext }: RailPanelContentProps) {
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const pathAware = activePanel.pathAware === true;
+
+  useEffect(() => {
+    if (!isPathContextDeckOpen) chipRef.current?.focus();
+  }, [isPathContextDeckOpen]);
+
+  const closeDeck = useCallback(() => setRailPathContextDeckOpen(false), []);
+  const selectContext = useCallback((relPath: string | null) => {
+    onSelectPathContext(relPath);
+  }, [onSelectPathContext]);
+
   return (
     <>
       <div className="right-rail-panel-head">
         <span className="right-rail-panel-title">{activePanel.title}</span>
+        <button
+          ref={chipRef}
+          className={`rail-context-chip${isPathContextDeckOpen ? " is-open" : ""}${ctx.pathContext.relPath !== null ? " is-non-root" : ""}`}
+          type="button"
+          disabled={!pathAware || theaterId === null || pathContextLoading}
+          aria-expanded={pathAware ? isPathContextDeckOpen : undefined}
+          title={pathContextError ?? ctx.pathContext.label}
+          onClick={() => setRailPathContextDeckOpen(!isPathContextDeckOpen)}
+        >
+          {pathAware ? (pathContextLoading ? "Loading…" : ctx.pathContext.label) : "Theater-wide"}
+        </button>
         <button
           className="right-rail-close-btn"
           type="button"
@@ -149,6 +192,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
       <div className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
         {activePanel.render(ctx)}
       </div>
+      {pathAware && isPathContextDeckOpen && theaterId ? <PathContextDeck theaterId={theaterId} context={ctx.pathContext} onSelect={selectContext} onClose={closeDeck} /> : null}
     </>
   );
 });
