@@ -50,7 +50,7 @@ export async function handleDiffCommit(
   const { gitCwd } = cwdResult;
 
   try {
-    const result = await runGit(["show", ref, "--unified=3", "--format="], { cwd: gitCwd });
+    const result = await runGit(["show", ref, "--relative", "--unified=3", "--format=", "--", "."], { cwd: gitCwd });
     ctx.host.http.writeJson(res, 200, { content: result.stdout, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {

@@ -51,7 +51,7 @@ function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): Dif
 // untracked 파일은 추가 줄 수를 계산하지 않는다.
 // 파일별 git spawn(프로세스 폭주 위험)과 심링크를 통한 외부 파일 크기 노출을 동시에 방지.
 async function fetchUntrackedFiles(cwd: string): Promise<DiffFileEntry[]> {
-  const result = await runGit(["ls-files", "--others", "--exclude-standard"], { cwd });
+  const result = await runGit(["ls-files", "--others", "--exclude-standard", "--", "."], { cwd });
   return result.stdout.split("\n").filter((p) => p.trim()).map((p): DiffFileEntry => ({
     path: p,
     status: "U",
@@ -128,8 +128,8 @@ export async function handleDiffChanged(
     // git diff HEAD 통합 목록 시도 (staged+unstaged 합산)
     try {
       const [nameStatusResult, numstatResult] = await Promise.all([
-        runGit(["diff", "HEAD", "--name-status", "--diff-filter=MADR"], { cwd: gitCwd }),
-        runGit(["diff", "HEAD", "--numstat", "--diff-filter=MADR"], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--name-status", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--numstat", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nameStatusResult.stdout, numstatResult.stdout);
       truncated = nameStatusResult.truncated || numstatResult.truncated;
@@ -137,8 +137,8 @@ export async function handleDiffChanged(
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged 목록으로 graceful fallback
       const [nsResult, nsNumstat] = await Promise.all([
-        runGit(["diff", "--cached", "--name-status", "--diff-filter=MADR"], { cwd: gitCwd }),
-        runGit(["diff", "--cached", "--numstat", "--diff-filter=MADR"], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--name-status", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--numstat", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nsResult.stdout, nsNumstat.stdout);
       truncated = nsResult.truncated || nsNumstat.truncated;
@@ -232,7 +232,7 @@ export async function handleDiffFile(
 
       // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용
       const result = await runGit(
-        ["diff", "--no-index", "--unified=3", "--", "/dev/null", relativePath],
+        ["diff", "--no-index", "--relative", "--unified=3", "--", "/dev/null", relativePath],
         { cwd: gitCwd, allowExitCodes: [1] },
       );
       ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
@@ -255,11 +255,11 @@ export async function handleDiffFile(
     }
     let result;
     try {
-      result = await runGit(["diff", "HEAD", "--unified=3", "--", relativePath], { cwd: gitCwd });
+      result = await runGit(["diff", "HEAD", "--relative", "--unified=3", "--", relativePath], { cwd: gitCwd });
     } catch (err) {
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
-      result = await runGit(["diff", "--cached", "--unified=3", "--", relativePath], { cwd: gitCwd });
+      result = await runGit(["diff", "--cached", "--relative", "--unified=3", "--", relativePath], { cwd: gitCwd });
     }
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {
