@@ -24,7 +24,11 @@ export function renderAssetPluginRoot(
 ): void {
   renderEmbeddedSkillAssets(pluginRoot);
   const doctrineHookExec = options.cliId === "cursor" && options.doctrine !== undefined
-    ? renderCursorDoctrineHookAssets(pluginRoot, options.doctrine)
+    ? renderCursorDoctrineHookAssets(
+      pluginRoot,
+      options.doctrine,
+      options.installedPluginRoot ?? pluginRoot,
+    )
     : undefined;
   if (options.cliId === "claude") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);

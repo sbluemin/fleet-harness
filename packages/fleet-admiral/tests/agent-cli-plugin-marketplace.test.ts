@@ -204,6 +204,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(hooksJson.version).toBe(1);
     expect(hooksJson.hooks?.sessionStart).toHaveLength(2);
     expect(hooksJson.hooks?.sessionStart?.[0]?.command).toContain("inject-doctrine.mjs");
+    expect(hooksJson.hooks?.sessionStart?.[0]?.command).not.toContain(".fleet-stage-");
     expect(hooksJson.hooks?.sessionStart?.[1]?.command).toBe("'node' 'cli.mjs' 'hook' 'capture-session' 'cursor'");
     expect(JSON.stringify(hooksJson)).not.toContain("subagents-context");
     expect(JSON.stringify(hooksJson)).not.toContain("additional-context-file");

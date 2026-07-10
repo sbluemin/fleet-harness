@@ -47,14 +47,15 @@ export function formatCursorDoctrine(doctrine: string): string {
 export function renderCursorDoctrineHookAssets(
   pluginRoot: string,
   doctrine: string,
+  hookCommandRoot: string = pluginRoot,
 ): FleetHookExec {
   writePrivateFile(
     path.join(pluginRoot, DOCTRINE_FILE_NAME),
     formatCursorDoctrine(doctrine),
     pluginRoot,
   );
-  const scriptPath = path.join(pluginRoot, "hooks", DOCTRINE_HOOK_SCRIPT_NAME);
-  writePrivateFile(scriptPath, INJECT_DOCTRINE_HOOK_SCRIPT, pluginRoot);
+  const scriptPath = path.join(hookCommandRoot, "hooks", DOCTRINE_HOOK_SCRIPT_NAME);
+  writePrivateFile(path.join(pluginRoot, "hooks", DOCTRINE_HOOK_SCRIPT_NAME), INJECT_DOCTRINE_HOOK_SCRIPT, pluginRoot);
   return {
     command: process.execPath,
     args: [scriptPath],

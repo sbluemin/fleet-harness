@@ -144,7 +144,7 @@ function renderPluginRoot(
           ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
         }
         ensurePrivateDir(path.join(stagedPluginRoot, "skills"), stagedPluginRoot);
-        renderAssetPluginRoot(stagedPluginRoot, bundle, options);
+        renderAssetPluginRoot(stagedPluginRoot, bundle, { ...options, installedPluginRoot: pluginRoot });
         break;
     }
     writePrivateJson(path.join(stagedPluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle, stagedPluginRoot), stagedPluginRoot);

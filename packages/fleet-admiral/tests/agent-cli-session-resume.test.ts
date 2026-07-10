@@ -131,6 +131,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(doctrine).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
     expect(hooksJson.hooks?.sessionStart).toHaveLength(2);
     expect(hooksJson.hooks?.sessionStart?.[0]?.command).toContain("inject-doctrine.mjs");
+    expect(hooksJson.hooks?.sessionStart?.[0]?.command).not.toContain(".fleet-stage-");
     expect(hooksJson.hooks?.sessionStart?.[1]?.command).toBe("'node' 'console.js' 'hook' 'capture-session' 'cursor'");
     expect(hooksJson.hooks?.sessionStart?.[1]?.command).not.toContain("additional-context-file");
     expect(mcpJson.mcpServers?.fleet?.headers?.Authorization).toBe("Bearer token-123");
