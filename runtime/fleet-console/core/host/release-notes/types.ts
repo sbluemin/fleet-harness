@@ -14,12 +14,18 @@ export interface ConsoleReleaseNotes {
   readonly sections: readonly ConsoleReleaseNoteSection[];
 }
 
+export interface LocalizedConsoleReleaseNotes extends ConsoleReleaseNotes {
+  readonly localizationFallback: boolean;
+}
+
 export interface ConsoleReleaseNotesResponse {
-  readonly notes: readonly ConsoleReleaseNotes[];
+  readonly notes: readonly LocalizedConsoleReleaseNotes[];
   readonly sourceRef: "main";
   readonly fetchedAt: number;
   readonly stale: boolean;
 }
+
+export type ReleaseNotesLocale = "en" | "ko";
 
 export type ConsoleReleaseNotesUnavailableReason = "cold_unavailable" | "negative_cache";
 

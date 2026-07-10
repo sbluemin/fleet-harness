@@ -12,6 +12,15 @@ const CHANGELOG = `# Changelog
 - [fleet-console] Runtime notes.
 `;
 
+const KOREAN_CHANGELOG = `# 변경 이력
+
+## [1.0.0] - 2026-06-20
+
+### Changed
+
+- [fleet-console] 런타임 노트.
+`;
+
 describe("release note service", () => {
   it("fetches the main changelog and returns the settled envelope", async () => {
     let now = 10;
@@ -115,6 +124,46 @@ describe("release note service", () => {
     expect(await service.refresh()).toEqual({ ...fresh, stale: true });
     now += 1_000;
     expect(await service.refresh()).toEqual({ ...fresh, stale: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("merges a matching Korean occurrence without changing the English envelope", async () => {
+    const fetchImpl = vi.fn(async (url: string) => new Response(url.endsWith("CHANGELOG.ko.md") ? KOREAN_CHANGELOG : CHANGELOG));
+    const service = createConsoleReleaseNotesService({ fetchImpl: fetchImpl as typeof fetch, now: () => 10 });
+
+    const result = await service.refresh({ locale: "ko" });
+
+    expect(result).toMatchObject({ sourceRef: "main", stale: false });
+    expect(result.notes[0]).toMatchObject({ localizationFallback: false, sections: [{ items: [{ text: "런타임 노트." }] }] });
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual(expect.arrayContaining([
+      "https://raw.githubusercontent.com/sbluemin/fleet-harness/main/CHANGELOG.md",
+      "https://raw.githubusercontent.com/sbluemin/fleet-harness/main/CHANGELOG.ko.md",
+    ]));
+  });
+
+  it("falls back per release for missing, mismatched, and duplicate Korean occurrences", async () => {
+    const english = `${CHANGELOG}\n## [1.0.0] - 2026-06-19\n\n### Changed\n\n- [fleet-console] Earlier note.\n`;
+    const korean = `${KOREAN_CHANGELOG}\n## [1.0.0] - 2026-06-19\n\n### Added\n\n- [fleet-console] 구조가 다른 노트.\n`;
+    const fetchImpl = vi.fn(async (url: string) => new Response(url.endsWith("CHANGELOG.ko.md") ? korean : english));
+    const service = createConsoleReleaseNotesService({ fetchImpl: fetchImpl as typeof fetch, now: () => 10 });
+
+    const result = await service.refresh({ locale: "ko" });
+
+    expect(result.notes.map((note) => note.localizationFallback)).toEqual([false, true]);
+    expect(result.notes[1]?.sections[0]?.items[0]?.text).toBe("Earlier note.");
+  });
+
+  it("silently degrades Korean failure without poisoning English cache or stale state", async () => {
+    const fetchImpl = vi.fn(async (url: string) => url.endsWith("CHANGELOG.ko.md")
+      ? new Response("", { status: 503 })
+      : new Response(CHANGELOG));
+    const service = createConsoleReleaseNotesService({ fetchImpl: fetchImpl as typeof fetch, now: () => 10 });
+
+    const korean = await service.refresh({ locale: "ko" });
+    const english = await service.refresh();
+
+    expect(korean).toMatchObject({ stale: false, notes: [{ localizationFallback: true }] });
+    expect(english).toMatchObject({ stale: false, notes: [{ localizationFallback: false }] });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

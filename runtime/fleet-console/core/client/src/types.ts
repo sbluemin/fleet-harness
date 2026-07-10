@@ -2,6 +2,10 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 export type ThemeId = "maritime" | "carbon";
 
+export type ReleaseNotesLocale = "en" | "ko";
+
+export type ConsoleLanguagePreference = "auto" | ReleaseNotesLocale;
+
 export interface ReleaseNoteSection {
   readonly heading: "Added" | "Changed" | "Fixed" | "Removed" | "Breaking Changes";
   readonly items: readonly ReleaseNoteItem[];
@@ -16,6 +20,7 @@ export interface ReleaseNotes {
   readonly version: string;
   readonly date: string | null;
   readonly sections: readonly ReleaseNoteSection[];
+  readonly localizationFallback: boolean;
 }
 
 export interface ReleaseNotesResponse {
@@ -159,6 +164,7 @@ export interface GlobalSettingsState {
   readonly consoleStaticPort: number | null;
   readonly theme: ThemeId;
   readonly uiFont: UiFontId;
+  readonly language: ConsoleLanguagePreference;
 }
 
 export interface GlobalSettingsMutationResult {
