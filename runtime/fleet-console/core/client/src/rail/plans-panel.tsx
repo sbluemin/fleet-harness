@@ -340,18 +340,19 @@ function neutralizePlanDom(root: ParentNode): void {
       anchor.setAttribute("aria-disabled", "true");
     }
   }
-  // plans 플러그인에는 이미지 서빙 라우트가 없다 — 로컬 복원 없이 전부 차단이 결정론적으로 안전하다.
-  for (const element of root.querySelectorAll("img, source")) {
-    if (element.tagName === "IMG") {
-      const alt = element.getAttribute("alt")?.trim();
-      const placeholder = element.ownerDocument.createElement("span");
-      placeholder.className = "plans-md-blocked-image";
-      placeholder.textContent = alt ? `Image blocked: ${alt}` : "Image blocked";
-      element.replaceWith(placeholder);
-    } else {
-      element.removeAttribute("src");
-      element.removeAttribute("srcset");
-    }
+  // plans에는 미디어 서빙 라우트가 없다 — img뿐 아니라 video(poster)/audio 등 리소스-로딩 요소는
+  // 상호작용 전에 메타데이터를 페치하므로, 로컬 복원 없이 전부 placeholder로 일관 차단한다.
+  for (const element of root.querySelectorAll("img, video, audio, embed, object, iframe")) {
+    const label = element.getAttribute("alt")?.trim() || element.getAttribute("title")?.trim();
+    const noun = element.tagName === "IMG" ? "Image" : "Media";
+    const placeholder = element.ownerDocument.createElement("span");
+    placeholder.className = "plans-md-blocked-image";
+    placeholder.textContent = label ? `${noun} blocked: ${label}` : `${noun} blocked`;
+    element.replaceWith(placeholder);
+  }
+  for (const element of root.querySelectorAll("source, track")) {
+    element.removeAttribute("src");
+    element.removeAttribute("srcset");
   }
 }
 
