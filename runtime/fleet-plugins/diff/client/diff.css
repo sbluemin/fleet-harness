@@ -998,7 +998,9 @@
   gap: 0 8px;
   width: 100%;
   min-width: 0;
-  padding: 4px 10px;
+  /* 높이는 graph-gutter의 ROW_HEIGHT(28px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
+  height: 28px;
+  padding: 0 10px;
   border: none;
   background: none;
   color: inherit;

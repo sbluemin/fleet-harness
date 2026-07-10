@@ -342,7 +342,7 @@ function HistoryPanel({ ctx }: HistoryPanelProps) {
               onSelect={handleSelectCommit}
             />
           ))}
-          {state.kind === "ok" && state.truncated && <div className="history-truncated">History capped at 200 commits.</div>}
+          {state.kind === "ok" && (state.truncated || state.commits.length >= 200) && <div className="history-truncated">History capped at 200 commits.</div>}
         </div>
         {menuOpen && (
           <CommandDeck
