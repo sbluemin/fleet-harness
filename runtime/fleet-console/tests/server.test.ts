@@ -1679,14 +1679,15 @@ describe("console static and terminal ticket boundary", () => {
       label: path.basename(dir),
       registeredAt: "2026-06-16T00:00:00.000Z",
       lastOpenedAt: "2026-06-16T00:00:01.000Z",
+      pathContext: null,
     }]);
 
     expect(theaters.get(id)?.path).toBe(dir);
     expect(theaters.remove(id)).toBe(true);
     expect(theaters.get(id)).toBeNull();
     expect(() => theaters.restore([
-      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1" },
-      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2" },
+      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1", pathContext: null },
+      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2", pathContext: null },
     ])).toThrow("theater_id_collision");
   });
 

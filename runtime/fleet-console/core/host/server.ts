@@ -37,6 +37,8 @@ import { encodeSseData } from "./sse.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
 import { createFolderGrantStore } from "./theater-folder-grants.js";
+import { createTheaterPathContextRouter } from "./theater-path-context-routes.js";
+import { resolveTheaterPathContext } from "./theater-path-context.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
@@ -143,6 +145,34 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "DELETE",
     path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/theaters/:theaterId/path-context",
+    summary: "Get the selected Theater path context.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/api/v1/theaters/:theaterId/path-context",
+    summary: "Save the selected Theater path context.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/theaters/:theaterId/path-context/worktrees",
+    summary: "List contained Git worktrees for a Theater.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/theaters/:theaterId/path-context/directories",
+    summary: "List contained directories for a Theater path context.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -325,7 +355,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     paths: {
       capturesDir: durablePaths.capturesDir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
-      resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.path ?? null,
+      resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
     },
@@ -422,6 +452,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
     writeJson,
   });
+  const theaterPathContextRouter = createTheaterPathContextRouter({
+    getTheater: (theaterId) => theaters.get(theaterId),
+    isAuthorized: isTerminalAuthorized,
+    persist: persistDurableState,
+    readJsonBody,
+    setPathContext: (theaterId, relPath) => theaters.setPathContext(theaterId, relPath),
+    writeJson,
+  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -450,6 +488,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
+  routeRegistry.register("/api/v1/theaters", theaterPathContextRouter);
   routeRegistry.register("/api/v1/settings", async (ctx) => {
     const { req, res, pathname } = ctx;
     if (pathname === "/api/v1/settings/api-catalog") {
@@ -881,6 +920,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       theaters.restore(state.theaters);
       operations.replace(state.operations);
       operations.replaceGroups(state.groups ?? []);
+      const healed = await healRestoredPathContexts();
+      if (healed) persistDurableState();
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
       state = emptyDurableConsoleState();
@@ -893,6 +934,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // hasWiki=false가 되어 Console 재실행마다 Codex(Wiki)가 마운트되지 않는다. POST 추가 경로와
     // 대칭으로 복원 Theater의 워크스페이스를 best-effort 재등록한다.
     await restoreCodexWorkspaces();
+  }
+
+  async function healRestoredPathContexts(): Promise<boolean> {
+    let healed = false;
+    for (const theater of theaters.list()) {
+      if (theater.pathContext === null) continue;
+      try {
+        const resolved = await resolveTheaterPathContext(theater.realpath, theater.pathContext);
+        if (resolved.relPath !== theater.pathContext) {
+          theaters.setPathContext(theater.id, resolved.relPath);
+          healed = true;
+        }
+      } catch {
+        theaters.setPathContext(theater.id, null);
+        healed = true;
+      }
+    }
+    return healed;
   }
 
   async function restoreCodexWorkspaces(): Promise<void> {
