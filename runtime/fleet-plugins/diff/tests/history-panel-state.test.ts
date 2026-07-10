@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { findDetachedCheckout, resetTheaterScopedState } from "../client/history-panel.js";
+import { pathContextKey } from "../client/context-key.js";
+import { findDetachedCheckout } from "../client/history-panel.js";
 import type { LogCommitEntry, WorktreeCheckout } from "../server/types.js";
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -30,18 +31,12 @@ describe("History checkout markers", () => {
   });
 });
 
-describe("History theater reset", () => {
-  it("context 전환 전 fetch를 무효화하고 선택 커밋을 초기화한다", () => {
-    const fetchSeqRef = { current: 7 };
-    const calls: string[] = [];
+describe("History context identity", () => {
+  it("uses Theater and relative path together as the remount identity", () => {
+    const root = pathContextKey("theater-a", null);
 
-    resetTheaterScopedState(fetchSeqRef, {
-      setSelectedCommit: (value) => calls.push(`selected:${String(value)}`),
-    });
-
-    expect(fetchSeqRef.current).toBe(8);
-    expect(calls).toEqual([
-      "selected:null",
-    ]);
+    expect(pathContextKey("theater-a", null)).toBe(root);
+    expect(pathContextKey("theater-a", "src")).not.toBe(root);
+    expect(pathContextKey("theater-b", null)).not.toBe(root);
   });
 });

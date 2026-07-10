@@ -31,6 +31,10 @@ const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
 
+export function isCurrentContextRequest(requestContextKey: string, currentContextKey: string): boolean {
+  return requestContextKey === currentContextKey;
+}
+
 function hasFilterMatch(
   entries: readonly FolderEntry[],
   childResults: Map<string, FolderListResult>,
@@ -108,6 +112,8 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
   currentPathRef.current = currentPath;
   const filesRef = useRef<PluginFilesClient>(files);
   filesRef.current = files;
+  const contextKeyRef = useRef(contextKey);
+  contextKeyRef.current = contextKey;
 
   useEffect(() => {
     if (!theaterId) return;
@@ -122,13 +128,16 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
 
   useEffect(() => {
     if (!theaterId) return;
+    const requestContextKey = contextKey;
     files.listFolder(currentPath || undefined).then((r) => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
     }).catch((e: unknown) => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setError(e instanceof Error ? e.message : "Unable to load folder");
     });
-  }, [theaterId, currentPath, files]);
+  }, [contextKey, theaterId, currentPath, files]);
 
   useEffect(() => {
     const el = treeRef.current;
@@ -149,7 +158,9 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
 
     // 루트 재조회 성공 시 stale error를 함께 걷어 에러 화면에서 회복한다
     const reloadRoot = () => {
+      const requestContextKey = contextKey;
       filesRef.current.listFolder(currentPathRef.current || undefined).then((r) => {
+        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setResult(r);
         setError(null);
       }).catch(() => {});
@@ -158,7 +169,9 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
     const doFullRefresh = () => {
       reloadRoot();
       for (const relPath of expandedDirsRef.current) {
+        const requestContextKey = contextKey;
         filesRef.current.listFolder(relPath).then((r) => {
+          if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
           setChildResults((prev) => new Map(prev).set(relPath, r));
         }).catch(() => {});
       }
@@ -181,7 +194,9 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
       }
       // 펼쳐진 폴더에 해당하면 해당 폴더만 재조회
       if (contextDir !== "" && expandedDirsRef.current.has(contextDir)) {
+        const requestContextKey = contextKey;
         filesRef.current.listFolder(contextDir).then((r) => {
+          if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
           setChildResults((prev) => new Map(prev).set(contextDir, r));
         }).catch(() => {});
       }
@@ -213,15 +228,18 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
     });
     // 폴더를 펼 때마다 항상 서버에서 재조회 (영구 캐시 제거)
     if (isExpanding) {
+      const requestContextKey = contextKey;
       setLoadingDirs((prev) => new Set(prev).add(relPath));
       files.listFolder(relPath).then((r) => {
+        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setChildResults((prev) => new Map(prev).set(relPath, r));
         setLoadingDirs((prev) => { const s = new Set(prev); s.delete(relPath); return s; });
       }).catch(() => {
+        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setLoadingDirs((prev) => { const s = new Set(prev); s.delete(relPath); return s; });
       });
     }
-  }, [files, expandedDirs]);
+  }, [contextKey, files, expandedDirs]);
 
   const handleEntryClick = useCallback((entry: FolderEntry) => {
     if (entry.kind === "dir") handleDirClick(entry);
@@ -246,20 +264,24 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
 
   const handleRefresh = useCallback(() => {
     if (!theaterId) return;
+    const requestContextKey = contextKey;
     // 루트 재조회 — 성공 시 stale error를 걷어 에러 화면에서도 복구 가능하게 한다
     files.listFolder(currentPath || undefined).then((r) => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
     }).catch((e: unknown) => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setError(e instanceof Error ? e.message : "Unable to load folder");
     });
     // 펼쳐진 모든 폴더 재조회
     for (const relPath of expandedDirs) {
       files.listFolder(relPath).then((r) => {
+        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setChildResults((prev) => new Map(prev).set(relPath, r));
       }).catch(() => {});
     }
-  }, [files, currentPath, expandedDirs, theaterId]);
+  }, [contextKey, files, currentPath, expandedDirs, theaterId]);
 
   const low = filterText.toLowerCase();
 
@@ -342,11 +364,11 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
         aria-label="File tree"
         onScroll={shouldVirtualize ? handleScroll : undefined}
       >
-        {false && result.parentRelativePath !== null && !filterText && (
+        {false && result?.parentRelativePath !== null && !filterText && (
           <button
             className="fexp-tree-up"
             type="button"
-            onClick={() => setCurrentPath(result.parentRelativePath ?? "")}
+            onClick={() => setCurrentPath(result?.parentRelativePath ?? "")}
             aria-label="Parent folder"
           >
             ↑ ..

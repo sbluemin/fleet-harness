@@ -63,6 +63,12 @@ export const plansPanel: RailPanelDescriptor = {
 };
 
 function PlansPanel(ctx: RailPanelContext) {
+  const contextKey = JSON.stringify([ctx.theaterId, ctx.pathContext.relPath]);
+
+  return <PlansPanelBody key={contextKey} {...ctx} />;
+}
+
+function PlansPanelBody(ctx: RailPanelContext) {
   const { pathContext, requestExtraWidth, theaterId } = ctx;
   const relPath = pathContext.relPath;
   const [listState, setListState] = useState<PlansListState>({ kind: "no-theater" });
@@ -109,6 +115,7 @@ function PlansPanel(ctx: RailPanelContext) {
 
   useLayoutEffect(() => {
     requestExtraWidth?.(selectedName ? PLANS_EXTRA_WIDTH : null);
+    return () => requestExtraWidth?.(null);
   }, [requestExtraWidth, selectedName]);
 
   const handleSelect = useCallback((name: string) => {

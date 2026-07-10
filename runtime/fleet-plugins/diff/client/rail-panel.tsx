@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode } from "../server/types.js";
 import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
+import { pathContextKey } from "./context-key.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./diff-view-store.js";
 import { HunkView } from "./hunk-view.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
@@ -43,17 +44,21 @@ function getHunkMode(selected: SelectedFile): DiffFileMode {
 }
 
 function DiffPanel({ ctx }: DiffPanelProps) {
+  const contextKey = pathContextKey(ctx.theaterId, ctx.pathContext.relPath);
+
+  return <DiffPanelBody key={contextKey} ctx={ctx} />;
+}
+
+function DiffPanelBody({ ctx }: DiffPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
-  const selectedFile = useSelectedFile(ctx.theaterId ?? null);
+  const subPath = ctx.pathContext.relPath ?? "";
+  const selectedFile = useSelectedFile(ctx.theaterId ?? null, subPath);
   const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
   const listPaneWidthRef = useRef(listPaneWidth);
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const subPath = ctx.pathContext.relPath ?? "";
 
-  useEffect(() => {
-    clearSelectedFile();
-  }, [ctx.theaterId, subPath]);
+  useLayoutEffect(() => () => clearSelectedFile(), []);
 
   const handleSelectFile = useCallback((entry: DiffFileEntry) => {
     if (ctx.theaterId) setSelectedFile(entry, subPath, ctx.theaterId);
@@ -90,7 +95,8 @@ function DiffPanel({ ctx }: DiffPanelProps) {
 
   useLayoutEffect(() => {
     ctx.requestExtraWidth?.(selectedFile ? EXTENDED_EXTRA_WIDTH : null);
-  }, [ctx, selectedFile]);
+    return () => ctx.requestExtraWidth?.(null);
+  }, [ctx.requestExtraWidth, selectedFile]);
 
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
   return (

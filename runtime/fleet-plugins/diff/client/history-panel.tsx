@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
+import { pathContextKey } from "./context-key.js";
 import { GraphGutter } from "./graph-gutter.js";
 import { layoutGraph } from "./graph-layout.js";
 import type { CommitSelection } from "./hunk-view.js";
@@ -34,14 +35,6 @@ export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly 
   return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null;
 }
 
-export function resetTheaterScopedState(
-  fetchSeqRef: { current: number },
-  setters: { readonly setSelectedCommit: (commit: CommitSelection | null) => void },
-): void {
-  fetchSeqRef.current += 1;
-  setters.setSelectedCommit(null);
-}
-
 function CheckoutIcon({ current }: { readonly current: boolean }) {
   return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none" aria-label="Current checkout"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none" aria-label="Checked out in another worktree"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>;
 }
@@ -53,15 +46,17 @@ function CommitRow({ entry, checkouts, selected, graphNode, laneCount, layoutCol
 }
 
 function HistoryPanel({ ctx }: HistoryPanelProps) {
+  const contextKey = pathContextKey(ctx.theaterId, ctx.pathContext.relPath);
+
+  return <HistoryPanelBody key={contextKey} ctx={ctx} />;
+}
+
+function HistoryPanelBody({ ctx }: HistoryPanelProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selectedCommit, setSelectedCommit] = useState<CommitSelection | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const fetchSeqRef = useRef(0);
   const subPath = ctx.pathContext.relPath ?? "";
-
-  useEffect(() => {
-    resetTheaterScopedState(fetchSeqRef, { setSelectedCommit });
-  }, [ctx.theaterId, subPath]);
 
   useEffect(() => {
     if (!ctx.theaterId) {
@@ -86,7 +81,8 @@ function HistoryPanel({ ctx }: HistoryPanelProps) {
 
   useLayoutEffect(() => {
     ctx.requestExtraWidth?.(selectedCommit ? EXTENDED_EXTRA_WIDTH : null);
-  }, [ctx, selectedCommit]);
+    return () => ctx.requestExtraWidth?.(null);
+  }, [ctx.requestExtraWidth, selectedCommit]);
 
   const handleSelectCommit = useCallback((entry: LogCommitEntry) => {
     if (ctx.theaterId) setSelectedCommit({ commit: entry, subPath, theaterId: ctx.theaterId });
