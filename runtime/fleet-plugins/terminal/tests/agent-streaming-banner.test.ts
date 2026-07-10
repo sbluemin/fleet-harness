@@ -1,12 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 
 type PruneOptions = Parameters<typeof pruneOrphanStreamingOperations>[1];
+
+function makeStreamJob(jobId: string, status = "active"): JobView {
+  return {
+    jobId,
+    tenantId: "tenant-1",
+    status,
+    updatedAt: 1_000,
+    trackOrder: [],
+    tracks: {},
+    lastEventId: 1,
+    recentEvents: [],
+  };
+}
 
 // ── orphan prune 검증 ──────────────────────────────────────────────────────────
 
@@ -97,6 +110,140 @@ describe("isTerminalJobStatus (도크 활성 job 필터)", () => {
     const primaryJob = activeJobs[0] ?? null;
     expect(primaryJob).toEqual({ status: "active" });
     expect(activeJobs).toHaveLength(2);
+  });
+});
+
+describe("isTrackLive (도크와 Details 라이브 신호)", () => {
+  it("conn 상태를 라이브로 분류하고 queued는 제외한다", () => {
+    expect(isTrackLive("conn")).toBe(true);
+    expect(isTrackLive("queued")).toBe(false);
+  });
+});
+
+describe("isTrackError (에러 신호 매칭)", () => {
+  it('트랙 SSoT "err"와 잡 레벨 "error"를 모두 에러로 분류한다', () => {
+    expect(isTrackError("err")).toBe(true);
+    expect(isTrackError("error")).toBe(true);
+    expect(isTrackError("done")).toBe(false);
+    expect(isTrackError("aborted")).toBe(false);
+  });
+});
+
+describe("resolveDockRowStatusLabel (잔존 도크 행 라벨)", () => {
+  it("혼합 결과 taskforce 잔존 시 성공 트랙은 done, 실패 트랙만 error로 표기한다", () => {
+    expect(resolveDockRowStatusLabel("done", "error")).toBe("done");
+    expect(resolveDockRowStatusLabel("err", "error")).toBe("error");
+    expect(resolveDockRowStatusLabel("aborted", "error")).toBe("aborted");
+  });
+
+  it("종결 잡 안의 미종결 트랙만 잡 상태로 폴백하고, 진행 중에는 트랙 상태를 그대로 쓴다", () => {
+    expect(resolveDockRowStatusLabel("stream", "error")).toBe("error");
+    expect(resolveDockRowStatusLabel("stream", "active")).toBe("stream");
+  });
+});
+
+describe("getDockTailText (접힘 스트립 테일)", () => {
+  function makeTailJob(
+    jobId: string,
+    jobStatus: string,
+    tracks: readonly { id: string; status: string; lastEventId: number; latestLine?: string; thought?: string }[]
+  ): JobView {
+    return {
+      jobId,
+      tenantId: "tenant-1",
+      status: jobStatus,
+      updatedAt: 1_000,
+      trackOrder: tracks.map((t) => t.id),
+      tracks: Object.fromEntries(tracks.map((t) => [t.id, {
+        trackId: t.id,
+        displayName: t.id,
+        status: t.status,
+        lastEventId: t.lastEventId,
+        latestLine: t.latestLine,
+        text: t.latestLine ?? "",
+        thought: t.thought ?? "",
+        sentTextLength: 0,
+        sentThoughtLength: 0,
+        tools: [],
+      }])),
+      lastEventId: Math.max(0, ...tracks.map((t) => t.lastEventId)),
+      recentEvents: [],
+    };
+  }
+
+  it("잔존 종결 잡의 stale output이 라이브 thinking 트랙을 가리지 않는다", () => {
+    const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 10, latestLine: "finished output" }]);
+    const live = makeTailJob("live-1", "active", [{ id: "b", status: "stream", lastEventId: 20, thought: "reasoning" }]);
+    expect(getDockTailText([retained, live])).toEqual({ text: "", thinking: true });
+  });
+
+  it("라이브 트랙이 있으면 잔존 트랙의 이벤트가 더 최신이어도 라이브 output을 테일로 쓴다", () => {
+    const live = makeTailJob("live-1", "active", [{ id: "b", status: "stream", lastEventId: 20, latestLine: "live output", thought: "r" }]);
+    const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 30, latestLine: "finished output" }]);
+    expect(getDockTailText([live, retained])).toEqual({ text: "live output", thinking: false });
+  });
+
+  it("라이브 트랙이 없으면 잔존 종결 output으로 폴백한다", () => {
+    const retained = makeTailJob("done-1", "done", [{ id: "a", status: "done", lastEventId: 10, latestLine: "finished output" }]);
+    expect(getDockTailText([retained])).toEqual({ text: "finished output", thinking: false });
+  });
+
+  it("라이브 풀 안에서도 최신 활동이 thinking-only 트랙이면 오래된 output 대신 thinking을 표시한다", () => {
+    const live = makeTailJob("live-1", "active", [
+      { id: "a", status: "stream", lastEventId: 10, latestLine: "older output" },
+      { id: "b", status: "stream", lastEventId: 20, thought: "fresh reasoning" },
+    ]);
+    expect(getDockTailText([live])).toEqual({ text: "", thinking: true });
+    // 반대로 output 트랙이 최신이면 그 라인이 테일이다.
+    const flipped = makeTailJob("live-2", "active", [
+      { id: "a", status: "stream", lastEventId: 30, latestLine: "newest output" },
+      { id: "b", status: "stream", lastEventId: 20, thought: "old reasoning" },
+    ]);
+    expect(getDockTailText([flipped])).toEqual({ text: "newest output", thinking: false });
+  });
+
+  it("종결 잡의 stale 라이브 트랙은 라이브 풀에 들어가지 않는다", () => {
+    // job:finalized가 트랙 상태를 바꾸지 않아 stream으로 남은 트랙 — 라이브로 취급 금지.
+    const staleRetained = makeTailJob("err-1", "error", [{ id: "a", status: "stream", lastEventId: 30, latestLine: "partial output" }]);
+    const live = makeTailJob("live-1", "active", [{ id: "b", status: "stream", lastEventId: 20, thought: "reasoning" }]);
+    expect(getDockTailText([staleRetained, live])).toEqual({ text: "", thinking: true });
+    expect(getDockTailText([staleRetained])).toEqual({ text: "partial output", thinking: false });
+  });
+});
+
+describe("isDockTrackLive (잡 종결 게이트 라이브 판정)", () => {
+  it("비종결 잡의 라이브 트랙만 라이브로 판정한다", () => {
+    expect(isDockTrackLive("active", "stream")).toBe(true);
+    expect(isDockTrackLive("done", "stream")).toBe(false);
+    expect(isDockTrackLive("error", "active")).toBe(false);
+    expect(isDockTrackLive("active", "done")).toBe(false);
+  });
+});
+
+describe("Carrier Stream job retention helpers", () => {
+  it("모달 job 집합은 기존 순서를 보존하며 새 활성 job을 합친다", () => {
+    expect(mergeJobIds(["completed-1"], ["active-1", "completed-1", "active-2"])).toEqual([
+      "completed-1",
+      "active-1",
+      "active-2",
+    ]);
+  });
+
+  it("도크 잔존은 만료되거나 스냅숏에서 사라진 job을 제거한다", () => {
+    const jobs = [makeStreamJob("done-1", "done")];
+    const retained = retainCompletedJobs([], ["done-1", "gone-1"], 5_000);
+
+    expect(pruneRetainedJobs(retained, jobs, 4_999)).toEqual([{ jobId: "done-1", expiresAt: 5_000 }]);
+    expect(pruneRetainedJobs(retained, jobs, 5_000)).toEqual([]);
+  });
+
+  it("도크는 활성 job을 우선하고 잔존 완료 job을 뒤에 합친다", () => {
+    const active = makeStreamJob("active-1");
+    const completed = makeStreamJob("done-1", "done");
+    const retained = retainCompletedJobs([], ["done-1"], 5_000);
+
+    expect(selectJobsByIds([active, completed], ["done-1"])).toEqual([completed]);
+    expect(mergeDockJobs([active], [active, completed], retained)).toEqual([active, completed]);
   });
 });
 
@@ -343,11 +490,4 @@ describe("applyEvent (트랙 lastEventId 스탬프)", () => {
     expect(job.tracks.b?.lastEventId).toBe(7);
   });
 
-  it("latestLine은 text/thought 델타 중 가장 최근 것으로 갱신된다", () => {
-    let job = createEmptyJob("t1", "j1", 1000);
-    job = applyEvent(job, { id: 2, tenantId: "t1", type: "track:text", at: 1001, event: { trackId: "a", text: "output line" } });
-    expect(job.tracks.a?.latestLine).toBe("output line");
-    job = applyEvent(job, { id: 4, tenantId: "t1", type: "track:thought", at: 1002, event: { trackId: "a", text: "thinking now" } });
-    expect(job.tracks.a?.latestLine).toBe("thinking now");
-  });
 });

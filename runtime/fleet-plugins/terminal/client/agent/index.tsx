@@ -10,7 +10,8 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import type { RetainedJob } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
@@ -66,6 +67,7 @@ const DOCK_EXPANDED_KEY = "fleet-plugin.terminal.stream-dock-expanded";
 // Signal Strip 개편 이전 접힘 키 — 신규 코드는 읽지 않으며 초기화 시 1회 제거만 한다.
 const LEGACY_DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
 const PIN_SLACK_PX = 56;
+const DOCK_RETENTION_MS = 4_000;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -144,6 +146,8 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     setPinned(next);
   }, []);
 
+  // resetKey 의존 필수: 모달처럼 컨테이너가 훅 마운트 이후에 나타나는 소비자는
+  // 마운트 시점에 containerRef가 null이라, resetKey(오픈 상태 포함) 변화에 재부착해야 한다.
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -153,7 +157,7 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     };
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [updatePinned]);
+  }, [resetKey, updatePinned]);
 
   React.useLayoutEffect(() => {
     updatePinned(true);
@@ -205,34 +209,72 @@ function useDockExpanded(): [boolean, (next: boolean) => void] {
   return [expanded, setExpanded];
 }
 
-function useElapsed(startedAt: number | undefined): string {
+function useElapsed(startedAt: number | undefined, finishedAt: number | undefined): string {
   const [now, setNow] = React.useState(Date.now);
 
   React.useEffect(() => {
-    if (startedAt === undefined) return;
+    if (startedAt === undefined || finishedAt !== undefined) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, [startedAt, finishedAt]);
 
   if (startedAt === undefined) return "";
-  return formatElapsedDuration(now - startedAt);
+  return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const [modalOpen, setModalOpen] = React.useState(false);
+  const [modalJobIds, setModalJobIds] = React.useState<readonly string[]>([]);
+  const [retainedJobs, setRetainedJobs] = React.useState<readonly RetainedJob[]>([]);
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
+  const dockJobs = mergeDockJobs(activeJobs, jobs, retainedJobs);
+  const modalJobs = selectJobsByIds(jobs, modalJobIds);
+  const modalResetKey = String(modalOpen);
+  const modalContentKey = modalJobs.map((job) => `${job.jobId}:${job.lastEventId}`).join(",");
+  const modalScroll = usePinnedScrollLocal(modalResetKey, modalContentKey);
+
+  React.useLayoutEffect(() => {
+    const previousActiveJobIds = previousActiveJobIdsRef.current;
+    const completedJobIds = jobs
+      .filter((job) => previousActiveJobIds.has(job.jobId) && isTerminalJobStatus(job.status))
+      .map((job) => job.jobId);
+    previousActiveJobIdsRef.current = new Set(activeJobs.map((job) => job.jobId));
+    if (completedJobIds.length === 0) return;
+    setRetainedJobs((current) => retainCompletedJobs(current, completedJobIds, Date.now() + DOCK_RETENTION_MS));
+  }, [activeJobs, jobs]);
+
+  React.useEffect(() => {
+    if (retainedJobs.length === 0) return;
+    const nextExpiry = Math.min(...retainedJobs.map((job) => job.expiresAt));
+    const timeout = window.setTimeout(() => {
+      setRetainedJobs((current) => pruneRetainedJobs(current, jobs, Date.now()));
+    }, Math.max(0, nextExpiry - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [jobs, retainedJobs]);
+
+  React.useEffect(() => {
+    if (!modalOpen) return;
+    setModalJobIds((current) => mergeJobIds(current, activeJobs.map((job) => job.jobId)));
+  }, [activeJobs, modalOpen]);
 
   const closeModal = React.useCallback(() => {
     setModalOpen(false);
+    setModalJobIds([]);
     detailBtnRef.current?.focus();
   }, []);
+
+  const openModal = React.useCallback(() => {
+    setModalJobIds(dockJobs.map((job) => job.jobId));
+    setModalOpen(true);
+  }, [dockJobs]);
 
   // [M2] paint 전 동기 포커스 이동으로 순간 배경 포커스 잔류 방지
   React.useLayoutEffect(() => {
@@ -294,21 +336,26 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
-      {activeJobs.length > 0 ? (
-        <StreamDock activeJobs={activeJobs} onOpenDetail={() => setModalOpen(true)} detailBtnRef={detailBtnRef} />
+      {dockJobs.length > 0 ? (
+        <StreamDock activeJobs={dockJobs} onOpenDetail={openModal} detailBtnRef={detailBtnRef} />
       ) : null}
       {modalOpen ? (
         <div ref={overlayRef} className="job-overlay" role="dialog" aria-modal="true" aria-label="Carrier stream details">
           <button type="button" className="job-overlay-scrim" aria-label="Close" tabIndex={-1} onClick={closeModal} />
           <div className="job-overlay-card">
             <button ref={closeButtonRef} type="button" className="job-overlay-close" aria-label="Close" onClick={closeModal}>×</button>
-            <div className="job-overlay-body">
-              {activeJobs.length === 0 ? (
+            <div ref={modalScroll.containerRef} className="job-overlay-body" tabIndex={-1}>
+              {modalJobs.length === 0 ? (
                 <p className="job-overlay-empty">No active streams.</p>
               ) : (
-                activeJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)
+                modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)
               )}
             </div>
+            {!modalScroll.pinned ? (
+              <button type="button" className="follow-button" onClick={modalScroll.jumpToLatest}>
+                ↓ Follow
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -327,7 +374,7 @@ function StreamDock({
 }) {
   const [expanded, setExpanded] = useDockExpanded();
   const primaryJob = activeJobs[0];
-  const elapsed = useElapsed(primaryJob?.startedAt);
+  const elapsed = useElapsed(primaryJob?.startedAt, primaryJob?.finishedAt);
   const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
   const tokenLabel = formatTokenEstimate(totalTokens);
 
@@ -339,27 +386,32 @@ function StreamDock({
     ? `${activeJobs.length} carriers`
     : (primaryJob?.ownerCarrierId ?? "Carrier");
 
-  const tailText = getDockTailText(activeJobs);
+  const tail = getDockTailText(activeJobs);
   const contentKey = activeJobs.map((j) => `${j.jobId}:${j.lastEventId}`).join(",");
   const resetKey = `${expanded}:${activeJobs.map((j) => j.jobId).join(",")}`;
   const { containerRef, pinned, jumpToLatest } = usePinnedScrollLocal(resetKey, contentKey);
 
-  // 스트립 라인 라이브 캐럿: 활성 트랙 중 하나라도 라이브면 표시
+  // 스트립 라인 라이브 캐럿: 비종결 잡의 라이브 트랙이 하나라도 있으면 표시(잔존 종결 잡 제외)
   const stripIsLive = activeJobs.some((job) =>
     job.trackOrder.some((id) => {
       const t = job.tracks[id];
-      return t ? isTrackLive(t.status) : false;
+      return t ? isDockTrackLive(job.status, t.status) : false;
     })
   );
+  const hasActiveJob = activeJobs.some((job) => !isTerminalJobStatus(job.status));
+  const hasError = activeJobs.some((job) =>
+    job.status === "error" || job.trackOrder.some((trackId) => isTrackError(job.tracks[trackId]?.status ?? ""))
+  );
+  const dotClassName = hasActiveJob ? "job-dock-dot" : hasError ? "job-dock-dot job-dock-dot--error" : "job-dock-dot job-dock-dot--idle";
 
   return (
     <div className="job-dock" data-signature={sig}>
       <div className="job-dock-strip">
-        <span className="job-dock-dot" aria-hidden="true" />
+        <span className={dotClassName} aria-hidden="true" />
         <span className="job-dock-carrier" data-captain={captain} title={jobLabel}>{carrierLabel}</span>
         <span className="job-dock-strip-line" style={expanded ? { display: "none" } : undefined} aria-hidden="true">
-          {tailText}
-          {!expanded && stripIsLive && tailText ? <span className="job-dock-caret" aria-hidden="true" /> : null}
+          {tail.thinking ? <span className="thinking-chip">thinking…</span> : tail.text}
+          {!expanded && stripIsLive && tail.text ? <span className="job-dock-caret" aria-hidden="true" /> : null}
         </span>
         <span className="job-dock-meta">
           {elapsed ? <span>{elapsed}</span> : null}
@@ -418,12 +470,12 @@ function StreamDock({
 }
 
 function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
-  const isLive = isTrackLive(track.status);
+  const isLive = isDockTrackLive(job.status, track.status);
   const tailOutput = getLastLine(track.text);
-  const tailThought = getLastLine(track.thought);
-  const displayLine = tailOutput || tailThought;
-  const isThought = !tailOutput && Boolean(tailThought);
+  const displayLine = tailOutput;
+  const showThinking = !displayLine && isLive && Boolean(track.thought);
   const activeTool = isLive ? getActiveToolName(track) : undefined;
+  const statusLabel = resolveDockRowStatusLabel(track.status, job.status);
 
   // 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략
   const showName = multiJob || !singleTrack;
@@ -434,15 +486,16 @@ function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
       {showName ? (
         <span className="job-dock-row-name" data-captain={nameCaptain}>{track.displayName}</span>
       ) : null}
-      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}`}>
-        {track.status}{activeTool ? ` · ${activeTool}` : ""}
+      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${isTrackError(statusLabel) ? " job-dock-row-status--error" : ""}`}>
+        {statusLabel}{activeTool ? ` · ${activeTool}` : ""}
       </span>
       {displayLine ? (
-        <span className={`job-dock-row-line${isThought ? " is-thought" : ""}`}>
+        <span className="job-dock-row-line">
           {displayLine}
           {isLive ? <span className="job-dock-caret" aria-hidden="true" /> : null}
         </span>
       ) : null}
+      {showThinking ? <span className="thinking-chip">thinking…</span> : null}
     </div>
   );
 }
@@ -560,27 +613,32 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
       <div className="job-overlay-tracks">
         {job.trackOrder.map((trackId) => {
           const track = job.tracks[trackId];
-          return track ? <TrackCard key={track.trackId} track={track} /> : null;
+          return track ? <TrackCard key={track.trackId} track={track} jobStatus={job.status} /> : null;
         })}
       </div>
     </>
   );
 }
 
-function TrackCard({ track }: { readonly track: TrackView }) {
-  const modifier = trackCardModifier(track.status);
+function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly jobStatus: string }) {
+  const modifier = trackCardModifier(track.status, jobStatus);
   const isLive = modifier === "track-card--live";
+  // 칩 텍스트도 modifier와 같은 해석에서 파생 — 종결 잡의 미종결 트랙이 coral 카드에
+  // raw "stream" 라벨을 다는 표기 분열을 막는다(라이브 트랙은 자기 상태 그대로).
+  const statusLabel = resolveDockRowStatusLabel(track.status, jobStatus);
   return (
     <article className={modifier ? `track-card ${modifier}` : "track-card"}>
       <header className="track-card-head">
         <span className="track-card-title">{track.displayName}</span>
-        <span className="track-card-status">{track.status}</span>
+        <span className="track-card-status">{statusLabel}</span>
       </header>
       {track.thought ? (
-        <div className="track-card-thought" role="group" aria-label="Thinking">
-          <span className="track-card-section-label" aria-hidden="true">thinking</span>
-          <pre>{track.thought}</pre>
-        </div>
+        <details className="track-card-thinking">
+          <summary>thinking · {track.thought.length} chars</summary>
+          <div className="track-card-thought" role="group" aria-label="Thinking">
+            <pre>{track.thought}</pre>
+          </div>
+        </details>
       ) : null}
       {track.text ? (
         <div className="track-card-text" role="group" aria-label="Output">
@@ -633,29 +691,11 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function isTrackLive(status: string): boolean {
-  return status === "stream" || status === "live" || status === "running" || status === "active";
-}
-
 function getActiveToolName(track: TrackView): string | undefined {
   const tool = track.tools.find(
     (t) => t.status !== "completed" && t.status !== "failed" && t.status !== "error"
   );
   return tool ? (tool.name ?? tool.id) : undefined;
-}
-
-function getDockTailText(activeJobs: readonly JobView[]): string {
-  // 모든 활성 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해, 가장 최근 활동 트랙의
-  // latestLine(리듀서가 text/thought 델타 중 가장 최근 것으로 갱신)을 접힘 테일로 고른다.
-  // 잡·트랙 삽입 순서나 text/thought 우선순위가 아니라 실제 이벤트 순서를 따른다.
-  const tracks = activeJobs
-    .flatMap((job) => job.trackOrder.map((trackId) => job.tracks[trackId]))
-    .filter((track): track is TrackView => Boolean(track))
-    .sort((a, b) => b.lastEventId - a.lastEventId);
-  for (const track of tracks) {
-    if (track.latestLine) return track.latestLine;
-  }
-  return "";
 }
 
 function getLastLine(text: string): string {
@@ -818,13 +858,17 @@ function terminalFontResolveText(font: TerminalFontSettings): string {
     : `"${font.customName}" not found — falls back to ${resolution.fallbackName}`;
 }
 
-function trackCardModifier(status: string): string {
-  // 라이브 판정은 isTrackLive 단일 소유 — 도크 행/스트립 캐럿과 판정이 갈라지지 않게 위임한다.
-  if (isTrackLive(status)) {
+function trackCardModifier(trackStatus: string, jobStatus: string): string {
+  // 라이브 판정은 isDockTrackLive 단일 소유 — 도크 행/스트립 캐럿과 판정이 갈라지지 않고,
+  // 종결 잡의 미종결(stale) 트랙이 라이브로 표시되지 않게 위임한다.
+  if (isDockTrackLive(jobStatus, trackStatus)) {
     return "track-card--live";
   }
-  if (status === "error") return "track-card--bad";
-  if (status === "done" || status === "aborted") return "track-card--idle";
+  // 스타일 키는 도크 행 라벨과 같은 해석에서 파생한다 — track:finalized를 못 받은 트랙도
+  // 종결 잡의 결과(error/done)로 표시가 폴백돼 라벨과 도색이 갈라지지 않는다.
+  const resolved = resolveDockRowStatusLabel(trackStatus, jobStatus);
+  if (isTrackError(resolved)) return "track-card--bad";
+  if (resolved === "done" || resolved === "aborted") return "track-card--idle";
   return "";
 }
 
