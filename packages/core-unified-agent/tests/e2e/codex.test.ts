@@ -1,6 +1,6 @@
 /**
- * E2E: Codex native app-server 테스트
- * Codex CLI를 native app-server 프로토콜로 연결하여 프롬프트, 모델, effort, 세션 재개를 검증합니다.
+ * E2E: Codex 공식 ACP bridge 테스트
+ * Codex CLI를 공식 codex-acp bridge로 연결하여 프롬프트, 모델, effort, 세션 재개를 검증합니다.
  */
 
 import { EventEmitter } from 'events';
@@ -78,8 +78,28 @@ class MockCodexAppServerConnection extends CodexAppServerConnection {
 
 const CLI = 'codex';
 const installed = isCliInstalled(CLI);
+const CODEX_MODEL_MATRIX = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'] as const;
+const CODEX_EFFORT_MATRIX = [
+  ['gpt-5.6-sol', 'low'],
+  ['gpt-5.6-sol', 'medium'],
+  ['gpt-5.6-sol', 'high'],
+  ['gpt-5.6-sol', 'xhigh'],
+  ['gpt-5.6-sol', 'max'],
+  ['gpt-5.6-sol', 'ultra'],
+  ['gpt-5.6-terra', 'low'],
+  ['gpt-5.6-terra', 'medium'],
+  ['gpt-5.6-terra', 'high'],
+  ['gpt-5.6-terra', 'xhigh'],
+  ['gpt-5.6-terra', 'max'],
+  ['gpt-5.6-terra', 'ultra'],
+  ['gpt-5.6-luna', 'low'],
+  ['gpt-5.6-luna', 'medium'],
+  ['gpt-5.6-luna', 'high'],
+  ['gpt-5.6-luna', 'xhigh'],
+  ['gpt-5.6-luna', 'max'],
+] as const;
 
-describe.skipIf(!installed)('E2E: Codex native app-server', () => {
+describe.skipIf(!installed)('E2E: Codex official ACP bridge', () => {
   let client: IUnifiedAgentClient | null = null;
 
   afterEach(async () => {
@@ -94,12 +114,12 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
   // ═══════════════════════════════════════════════
 
   describe('기본 연결 & 프롬프트', () => {
-    it('SDK: native app-server 연결 → 프롬프트 → 응답 검증', async () => {
+    it('SDK: 공식 ACP bridge 연결 → 프롬프트 → 응답 검증', async () => {
       const { client: c, sessionId } = await connectClient('codex');
       client = c;
 
       expect(sessionId).toBeTruthy();
-      expect(client.getConnectionInfo().protocol).toBe('codex-app-server');
+      expect(client.getConnectionInfo().protocol).toBe('acp');
 
       const { response } = await sendAndCollect(client, SIMPLE_PROMPT);
       expect(response).toContain('2');
@@ -135,7 +155,7 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
   describe('Disconnect 후 프로세스 종료', () => {
     it('SDK: 연결 → 프롬프트 → disconnect → 프로세스 종료 및 상태 초기화 검증', async () => {
       // 최소 모델/effort로 연결
-      const { client: c, sessionId } = await connectClient('codex', { model: 'gpt-5.3-codex-spark' });
+      const { client: c, sessionId } = await connectClient('codex', { model: 'gpt-5.6-sol' });
       client = c;
       expect(sessionId).toBeTruthy();
 
@@ -143,7 +163,7 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
       const { response } = await sendAndCollect(client, SIMPLE_PROMPT);
       expect(response).toContain('2');
 
-      // disconnect → Codex native 프로세스 종료
+      // disconnect → Codex ACP bridge 프로세스 종료
       await client.disconnect();
 
       // 연결 상태 초기화 확인
@@ -295,7 +315,7 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
 
       const response = chunks.join('');
       expect(response).toContain('42');
-      expect(toolCalls).toContain('test-math/add_numbers');
+      expect(toolCalls).toContain('mcp.test-math.add_numbers');
       expect(response).not.toMatch(/도구.*(없|못 찾|찾을 수)|tool.*not.*found|lazy[- ]?load/i);
     }, 180_000);
   });
@@ -305,7 +325,7 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
   // ═══════════════════════════════════════════════
 
   describe('모델별 프롬프트', () => {
-    it.each(['gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.4'])(
+    it.each(CODEX_MODEL_MATRIX)(
       'CLI: 모델 %s → 프롬프트 → 응답 검증',
       async (model) => {
         const { stdout, exitCode } = await runCli(
@@ -326,11 +346,11 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
   // ═══════════════════════════════════════════════
 
   describe('Reasoning effort', () => {
-    it.each(['low', 'medium', 'high', 'xhigh'])(
-      'CLI: effort %s → 프롬프트 → 응답 검증',
-      async (effort) => {
+    it.each(CODEX_EFFORT_MATRIX)(
+      'CLI: 모델 %s effort %s → 프롬프트 → 응답 검증',
+      async (model, effort) => {
         const { stdout, exitCode } = await runCli(
-          ['--json', '-c', 'codex', '-e', effort, SIMPLE_PROMPT],
+          ['--json', '-c', 'codex', '-m', model, '-e', effort, SIMPLE_PROMPT],
         );
 
         expect(exitCode).toBe(0);
@@ -402,7 +422,7 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
       const resetResult = await client.resetSession();
       const secondThreadId = client.getConnectionInfo().sessionId;
 
-      expect(resetResult.protocol).toBe('codex-app-server');
+      expect(resetResult.protocol).toBe('acp');
       expect(secondThreadId).toBeTruthy();
       expect(secondThreadId).not.toBe(firstThreadId);
     }, 180_000);

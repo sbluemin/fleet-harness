@@ -14,6 +14,7 @@ export const EffortLevelSchema: z.ZodType<string> = z.enum([
   'high',
   'xhigh',
   'max',
+  'ultra',
 ]);
 
 /** effort 지원 스키마 (discriminated union) */

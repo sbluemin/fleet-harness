@@ -30,7 +30,7 @@ const ce = picocolors.createColors(picocolors.isColorSupported && isErrTTY);
 // ─── 인자 파싱 ────────────────────────────────────────────
 
 const VALID_CLIS = Object.keys(CLI_BACKENDS) as CliType[];
-const VALID_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+const VALID_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const;
 
 let parsed: ReturnType<typeof parseArgs>;
 try {

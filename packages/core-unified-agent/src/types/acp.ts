@@ -17,6 +17,43 @@ export type AcpAvailableCommandsUpdate = Extract<
 export type AcpAvailableCommand =
   AcpAvailableCommandsUpdate['availableCommands'][number];
 
+/**
+ * @deprecated SDK 1.2에서는 model 전용 RPC 타입이 제거되었습니다.
+ * 모델 변경은 `AcpSessionSetConfigParams`에 `configId: "model"`을 사용하세요.
+ */
+export type AcpModelId = string;
+
+/**
+ * @deprecated SDK 1.2에서는 model 전용 상태 타입이 제거되었습니다.
+ * 모델 정보는 provider registry 또는 config option surface를 사용하세요.
+ */
+export type AcpModelInfo = {
+  _meta?: Record<string, unknown> | null;
+  description?: string | null;
+  modelId: AcpModelId;
+  name: string;
+};
+
+/**
+ * @deprecated SDK 1.2에서는 model 전용 상태 타입이 제거되었습니다.
+ * 현재 모델 조회는 각 bridge의 config option surface로 이관하세요.
+ */
+export type AcpSessionModelState = {
+  _meta?: Record<string, unknown> | null;
+  availableModels: AcpModelInfo[];
+  currentModelId: AcpModelId;
+};
+
+/**
+ * @deprecated SDK 1.2에서는 `session/set_model`이 제거되었습니다.
+ * 모델 변경은 `AcpSessionSetConfigParams`에 `configId: "model"`을 사용하세요.
+ */
+export type AcpSessionSetModelParams = {
+  _meta?: Record<string, unknown> | null;
+  modelId: AcpModelId;
+  sessionId: string;
+};
+
 // 공식 SDK 타입 re-export
 export type {
   InitializeRequest as AcpInitializeParams,
@@ -29,7 +66,6 @@ export type {
   PromptRequest as AcpSessionPromptParams,
   PromptResponse as AcpPromptResponse,
   SetSessionModeRequest as AcpSessionSetModeParams,
-  SetSessionModelRequest as AcpSessionSetModelParams,
   SetSessionConfigOptionRequest as AcpSessionSetConfigParams,
   SessionNotification as AcpSessionUpdateParams,
   SessionUpdate as AcpSessionUpdate,
@@ -47,9 +83,6 @@ export type {
   SessionConfigOption as AcpConfigOption,
   SessionMode as AcpSessionMode,
   StopReason as AcpStopReason,
-  SessionModelState as AcpSessionModelState,
-  ModelInfo as AcpModelInfo,
-  ModelId as AcpModelId,
 } from '@agentclientprotocol/sdk';
 
 // 도구 호출 관련 타입 re-export

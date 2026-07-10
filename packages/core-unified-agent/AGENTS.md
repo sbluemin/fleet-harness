@@ -146,7 +146,7 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 | CLI | Protocol | spawn Method | set_config_option | set_mode |
 |-----|----------|--------------|-------------------|----------|
 | Claude | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` | ✅ | ✅ |
-| Codex | `codex-acp` / `app-server` | (Toggle) `npx --yes --package=@zed-industries/codex-acp@0.14.0 codex-acp` / `codex app-server` | ✅ (ACP) / Pending (Legacy) | ✅ (ACP) / Pending (Legacy) |
+| Codex | ACP (`codex-acp`) / `app-server` | (Toggle) `npx --yes --package=@agentclientprotocol/codex-acp@1.1.2 codex-acp` / `codex app-server` | ✅ (ACP) / Pending (Legacy) | ✅ (ACP) / Pending (Legacy) |
 | opencode-go | ACP | `opencode acp` | ✅ | ✅ |
 
 ## Architecture Decisions
@@ -176,7 +176,9 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 
 9. **Claude Effort via `_meta` Bridge Channel**: Claude reasoning effort is delivered through `_meta.claudeCode.options.effort` spread in `session/new` and `session/load` payloads (not via `session/set_config_option` RPC). This channel bypasses alias resolution issues on the bridge and ensures effort applies consistently across new sessions and session resumption.
 
-10. **Validation-mode Dual-Path for Codex**: Codex currently supports two transport paths (ACP npx bridge and legacy AppServer) controlled by a `CODEX_USE_ACP` toggle. This is a temporary validation wave for protocol transition; a permanent switch will occur in a future wave, deprecating the legacy AppServer path and associated types.
+10. **Codex Official ACP Bridge**: Codex uses `@agentclientprotocol/codex-acp@1.1.2` on the ACP path. Model changes use standard `session/set_config_option` with `configId: "model"`, while public Fleet `effort` maps to Codex's advertised `reasoning_effort` config option.
+
+11. **Validation-mode Dual-Path for Codex**: Codex currently supports two transport paths (official ACP npx bridge and legacy AppServer) controlled by a `CODEX_USE_ACP` toggle. This is a temporary validation wave for protocol transition; a permanent switch will occur in a future wave, deprecating the legacy AppServer path and associated types.
 
 ## Adding a New CLI Provider
 

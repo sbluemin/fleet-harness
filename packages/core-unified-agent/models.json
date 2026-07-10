@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-07-04T00:00:00Z",
+  "updatedAt": "2026-07-10T00:00:00Z",
   "providers": {
     "claude": {
       "name": "Claude Code",
@@ -17,10 +17,13 @@
     },
     "codex": {
       "name": "Codex",
-      "defaultModel": "gpt-5.4",
+      "defaultModel": "gpt-5.6-sol",
       "models": [
-        { "modelId": "gpt-5.4", "name": "GPT-5.4", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
+        { "modelId": "gpt-5.6-sol", "name": "GPT-5.6-Sol", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" } },
+        { "modelId": "gpt-5.6-terra", "name": "GPT-5.6-Terra", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "default": "medium" } },
+        { "modelId": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
         { "modelId": "gpt-5.5", "name": "GPT-5.5", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
+        { "modelId": "gpt-5.4", "name": "GPT-5.4", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
         { "modelId": "gpt-5.4-mini", "name": "GPT-5.4 Mini", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
       ]
     },

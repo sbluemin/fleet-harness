@@ -16,7 +16,7 @@ Unified Agent provides two ways to control supported CLI agents — Claude, Code
 | CLI | Protocol | Spawn Command |
 |-----|----------|---------------|
 | **Claude** | ACP | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` |
-| **Codex** | `codex-acp` / `app-server` | (Toggle) `npx --yes --package=@zed-industries/codex-acp@0.14.0 codex-acp` / `codex app-server` |
+| **Codex** | ACP (`codex-acp`) / `app-server` | (Toggle) `npx --yes --package=@agentclientprotocol/codex-acp@1.1.2 codex-acp` / `codex app-server` |
 | **OpenCode Go** | ACP | `opencode acp` |
 | **Cursor Agent** | ACP | `cursor-agent acp` |
 
@@ -92,8 +92,8 @@ ait -c claude "Review this code"
 # Select a model
 ait -c claude -m opus "Find bugs"
 
-# Set reasoning effort (Codex)
-ait -c codex -e high "Refactor this module"
+# Set reasoning effort (Codex GPT-5.6 Sol/Terra also support `ultra`)
+ait -c codex -m gpt-5.6-sol -e ultra "Refactor this module"
 
 # Claude Sonnet supports `low | medium | high | max`
 ait -c claude -m sonnet -e max "Review this code"
@@ -150,10 +150,11 @@ On error:
 
 ### Reasoning Effort Support
 
-- **Codex**: supported via native `codex-app-server` turn config
+- **Codex**: supported via the official `codex-acp` bridge's `reasoning_effort` config option. GPT-5.6-Sol and GPT-5.6-Terra support `low | medium | high | xhigh | max | ultra`; GPT-5.6-Luna supports `low | medium | high | xhigh | max`.
 - **Claude (ACP via `claude-agent-acp`)**: supported on the `claude` provider with `low | medium | high | max`
 
 Fleet sends Claude ACP effort through the bridge's advertised `effort` config option. Only the primary `claude` provider exposes effort in `models.json`.
+Fleet sends Codex ACP model changes through `model` and public `effort` changes through the bridge's `reasoning_effort` config option.
 
 ---
 

@@ -14,11 +14,37 @@ describe('ModelRegistry', () => {
     expect(modelIds).not.toContain('sonnet[1m]');
   });
 
-  it('Codex 정적 모델 목록에 GPT-5.5를 포함한다', () => {
+  it('Codex 정적 모델 목록에 GPT-5.6 모델들과 기존 모델들을 포함한다', () => {
     const provider = getProviderModels('codex');
     const modelIds = provider.models.map((model) => model.modelId);
 
+    expect(provider.defaultModel).toBe('gpt-5.6-sol');
+    expect(modelIds.slice(0, 3)).toEqual(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
     expect(modelIds).toContain('gpt-5.5');
+    expect(modelIds).not.toContain('gpt-5.6-lunar');
+  });
+
+  it('Codex GPT-5.6 모델별 effort contract를 정확히 노출한다', () => {
+    const provider = getProviderModels('codex');
+    const efforts = Object.fromEntries(
+      provider.models.map((model) => [model.modelId, model.effort]),
+    );
+
+    expect(efforts['gpt-5.6-sol']).toEqual({
+      supported: true,
+      levels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+      default: 'low',
+    });
+    expect(efforts['gpt-5.6-terra']).toEqual({
+      supported: true,
+      levels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+      default: 'medium',
+    });
+    expect(efforts['gpt-5.6-luna']).toEqual({
+      supported: true,
+      levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+      default: 'medium',
+    });
   });
 
   it('OpenCode Go 정적 모델 목록에 GLM-5.2와 Kimi K2.7 Code를 포함한다', () => {
@@ -72,6 +98,30 @@ describe('ModelRegistry', () => {
         },
       },
     })).toThrow('{effort}');
+  });
+
+  it('public effort schema는 ultra를 허용한다', () => {
+    expect(() => ModelsRegistrySchema.parse({
+      version: 1,
+      updatedAt: '2026-07-10T00:00:00Z',
+      providers: {
+        codex: {
+          name: 'Codex',
+          defaultModel: 'gpt-5.6-sol',
+          models: [
+            {
+              modelId: 'gpt-5.6-sol',
+              name: 'GPT-5.6-Sol',
+              effort: {
+                supported: true,
+                levels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+                default: 'ultra',
+              },
+            },
+          ],
+        },
+      },
+    })).not.toThrow();
   });
 
   it('정적 모델 effort levels는 raw none/minimal을 포함하지 않는다', () => {

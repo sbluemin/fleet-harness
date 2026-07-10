@@ -130,6 +130,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     if (options.cli && options.cli !== 'codex') {
       throw new Error('UnifiedCodexAgentClient는 codex CLI만 지원합니다.');
     }
+    this.validateModelEffort(options.model, options.effort);
 
     if (CODEX_USE_ACP) {
       return this.connectAcp(options);
@@ -493,9 +494,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       const session = await this.connection.reconnectSession(targetCwd);
       this.sessionId = session.sessionId;
       this.sessionCwd = targetCwd;
-      if (CODEX_ACP_PROMPT_FALLBACK) {
-        this.firstPromptPending = this.currentSystemPrompt;
-      }
+      this.firstPromptPending = this.currentSystemPrompt;
 
       return {
         cli: 'codex',
@@ -556,6 +555,27 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.currentSystemPrompt = null;
     this.firstPromptPending = null;
     this.pendingOverrides = null;
+  }
+
+  private validateModelEffort(modelId: string | undefined, effort: string | undefined): void {
+    if (!effort) {
+      return;
+    }
+
+    const provider = getProviderModels('codex');
+    const resolvedModelId = modelId ?? provider.defaultModel;
+    const model = provider.models.find((entry) => entry.modelId === resolvedModelId);
+    if (!model) {
+      return;
+    }
+    if (!model.effort.supported) {
+      throw new Error(`codex/${resolvedModelId} 모델은 reasoning effort를 지원하지 않습니다.`);
+    }
+    if (!model.effort.levels.includes(effort)) {
+      throw new Error(
+        `codex/${resolvedModelId} 모델은 effort "${effort}"을(를) 지원하지 않습니다. 사용 가능: ${model.effort.levels.join(', ')}`,
+      );
+    }
   }
 
   private setupEventForwarding(): void {
@@ -769,9 +789,9 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private resolveAcpMode(modeId: string): string {
     switch (modeId) {
       case 'autoEdit':
-        return 'auto';
+        return 'agent';
       case 'yolo':
-        return 'full-access';
+        return 'agent-full-access';
       default:
         return 'read-only';
     }
