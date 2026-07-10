@@ -15,7 +15,7 @@ Reconnaissance, Plan, Execution, Verification.
 
 ## Reporting Cadence
 
-As you move through this protocol, report progress to the Admiral of the Navy in order — each step on its own line with its report token.
+As you move through this protocol, report progress to the user in order — each step on its own line with its report token.
 
 1. Brief how the Workflow will proceed — name (a) the Workflow steps that will run, (b) the target surfaces, and (c) the verification command. → report `brief: <…>`
 2. State that execution is beginning and run the Workflow. → report `status: executing`
@@ -27,7 +27,7 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 - [ ] **Common** — objective stated (Mission Anchor), mode-fit holds (Mode Gate), Standing Orders binding. → report `common: ready`
 - [ ] **Target surfaces** — provisionally name the minimal modules or files reconnaissance will touch; confirm or revise in the brief after reconnaissance. → report `surfaces: <…>`
 - [ ] **Verification** — provisionally pre-load the test, build, or check command that will prove the work done; confirm or revise in the brief after reconnaissance. → report `verify: <cmd>`
-- [ ] **Carrier** — declare whether a carrier sortie is needed. → report `carrier: <none|…>`
+- [ ] **Carrier** — declare whether a carrier dispatch is needed. → report `carrier: <none|…>`
 
 ## Workflow
 

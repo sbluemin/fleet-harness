@@ -5,12 +5,69 @@ import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { createSystemPromptBuilder } from "../src/index.js";
 import { getAllStandingOrders } from "../src/protocols/standing-orders/index.js";
 
+const ROLEPLAY_MARKERS = [
+  "Admiral of the Navy",
+  "대원수",
+  "제독",
+  "Captain",
+  "함장",
+  "absolute loyalty",
+  "flagship bridge",
+  "foreign waters",
+  "Sortie",
+  "Bridge",
+  "Helm",
+  "hull breach",
+  "enemy fire",
+] as const;
+
 describe("Admiral prompts", () => {
   function createRuntimeWithDefaults() {
     const carrierRuntime = createCarrierRuntime();
     carrierRuntime.registerCarrierDefaults();
     return carrierRuntime;
   }
+
+  it("keeps persona and naval role-playing out of metaphor-disabled prompts", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build(false);
+
+    expect(prompt).not.toContain('<fleet section="persona">');
+    expect(prompt).not.toContain('<fleet section="tone">');
+    expect(prompt).not.toContain("## Active Role Mapping");
+    expect(prompt).toContain('<fleet section="role">');
+    expect(prompt).toContain("Nimitz · Strategic Command & Judgment");
+    expect(prompt).toContain("Genesis · Chief Engineer");
+    for (const marker of ROLEPLAY_MARKERS) {
+      expect(prompt).not.toContain(marker);
+    }
+  });
+
+  it("enables persona and tone together when metaphor is enabled", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build(true);
+    const personaIndex = prompt.indexOf('<fleet section="persona">');
+    const roleIndex = prompt.indexOf('<fleet section="role">');
+    const toneIndex = prompt.indexOf('<fleet section="tone">');
+    const rosterIndex = prompt.indexOf('<fleet section="roster">');
+
+    expect(personaIndex).toBeGreaterThanOrEqual(0);
+    expect(roleIndex).toBeGreaterThan(personaIndex);
+    expect(toneIndex).toBeGreaterThan(roleIndex);
+    expect(rosterIndex).toBeGreaterThan(toneIndex);
+    expect(prompt).toContain("## Active Role Mapping");
+    expect(prompt).toContain("Admiral of the Navy (대원수)");
+    expect(prompt).toContain("Admiral (제독)");
+    expect(prompt).toContain("Captain (함장)");
+    expect(prompt).toContain("| `user` | **Admiral of the Navy (대원수)** |");
+    expect(prompt).toContain("| `host agent`, `you` | **Admiral (제독)** |");
+    expect(prompt).toContain("| `Carrier` | **Captain (함장)** |");
+    expect(prompt).toContain("not a literal identifier rewrite");
+    expect(prompt).toContain("`carrier_id` values");
+    expect(prompt).toContain("fleet metaphor");
+  });
 
   it("keeps subagents out of the static system prompt while preserving roster", () => {
     const prompt = createSystemPromptBuilder({
@@ -122,7 +179,7 @@ describe("Admiral prompts", () => {
     });
 
     // Command Integrity Standing Order measured 34594 (budget 35500); prompt token diet
-    // (routing-tier roster + dedup/compression) measured 28154 tone-off / 29140 tone-on,
+    // (routing-tier roster + dedup/compression) measured 28154 metaphor-off / 29140 metaphor-on,
     // re-capped with tight headroom. Both build variants are locked.
     expect(builder.build(false).length).toBeLessThanOrEqual(29000);
     expect(builder.build(true).length).toBeLessThanOrEqual(30000);

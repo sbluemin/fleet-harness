@@ -31,5 +31,5 @@ Speculation-trigger handling is routed by the Result Integrity trigger mapping t
 4. **Repeat** until all speculative elements are either **confirmed with evidence** or explicitly flagged as **unresolvable unknowns**.
 
 ### Depth limit
-Deep Dive verification depth is capped at **2 iterations**. If after 2 rounds of audit + follow-up verification a claim remains unconfirmed, mark it as ${"``"}[Unverified — depth limit reached]${"``"} and report it to the Admiral of the Navy (대원수). Do not continue iterating — the cost of further verification outweighs the risk of surfaced uncertainty.`,
+Deep Dive verification depth is capped at **2 iterations**. If after 2 rounds of audit + follow-up verification a claim remains unconfirmed, mark it as ${"``"}[Unverified — depth limit reached]${"``"} and report it to the user. Do not continue iterating — the cost of further verification outweighs the risk of surfaced uncertainty.`,
 };

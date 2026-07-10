@@ -45,7 +45,7 @@ ${"`"}assumption-audit${"`"} is not a protocol mode and is outside the Mode Gate
 Never choose ${"`"}protocol-baseline${"`"} or ${"`"}protocol-midline${"`"} when irreversible operations, structural/API changes, multi-module edits, or doctrine/prompt-policy edits are in scope. Choose ${"`"}protocol-redline${"`"} unless coordination across multiple Carriers or parallel ownership boundaries makes ${"`"}protocol-frontline${"`"} the better fit.
 
 ## Mode Mapping (examples)
-Representative Admiral of the Navy requests mapped to a mode. Match an incoming request to its nearest analog by shape, not exact wording:
+Representative user requests mapped to a mode. Match an incoming request to its nearest analog by shape, not exact wording:
 
 | Request shape | Mode | Why |
 |---|---|---|

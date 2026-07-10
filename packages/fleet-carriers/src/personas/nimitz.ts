@@ -24,8 +24,8 @@ export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
-  title: "Captain · Strategic Command & Judgment",
-  summary: "Read-only strategic command — decides the technical path through doctrinal judgment, architecture decisions, deep analysis, and trade-off adjudication. As the Captain (함장) of this Carrier, Nimitz commands strategic technical judgment from the flagship bridge without entering the implementation path.",
+  title: "Strategic Command & Judgment",
+  summary: "Read-only strategic command — decides the technical path through doctrinal judgment, architecture decisions, deep analysis, and trade-off adjudication without entering the implementation path.",
   category: "strategy",
   whenToUse: [
     "architecture and design decisions",
@@ -49,7 +49,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 2: Composition ──
   permissions: [
     "CRITICAL: Strictly read-only. NEVER delegate code modification or file editing to this carrier.",
-    "CRITICAL: NEVER sortie Nimitz without prior reconnaissance — if recon is needed, sortie vanguard/tempest FIRST. Hard prerequisite, not a suggestion.",
+    "CRITICAL: NEVER dispatch Nimitz without prior reconnaissance — if recon is needed, dispatch vanguard/tempest FIRST. Hard prerequisite, not a suggestion.",
     "Full access to read the codebase and execute read-only commands for analysis.",
     "MUST NOT decompose work into task waves, delivery schedules, or implementation checklists — handoff belongs to Kirov.",
   ],

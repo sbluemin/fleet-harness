@@ -13,7 +13,7 @@ Decomposition, Dispatch, Integration, Verification.
 
 ## Reporting Cadence
 
-As you move through this protocol, report progress to the Admiral of the Navy in order — each step on its own line with its report token.
+As you move through this protocol, report progress to the user in order — each step on its own line with its report token.
 
 1. Brief how the Workflow will proceed — name (a) the Workflow steps that will run, (b) each carrier's file or responsibility ownership, and (c) the dispatch wave sequencing. → report `brief: <…>`
 2. State that execution is beginning and run the Workflow. → report `status: executing`
@@ -24,7 +24,7 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 
 - [ ] **Common** — objective stated (Mission Anchor), mode-fit holds (Mode Gate), Standing Orders binding. → report `common: ready`
 - [ ] **Impact radius** — flag public-surface or API impact, irreversibility, and any security-sensitive surface. → report `impact: <…>`
-- [ ] **Rollback** — identify a rollback-safe checkpoint and any Admiral of the Navy approval point before execution begins. → report `rollback: <…>`
+- [ ] **Rollback** — identify a rollback-safe checkpoint and any user approval point before execution begins. → report `rollback: <…>`
 - [ ] **Carrier availability** — confirm the intended carriers are actually exposed and available this session. → report `carriers: <…>`
 - [ ] **Ownership** — pre-sketch each carrier's file or responsibility boundary. → report `ownership: <…>`
 - [ ] **Shared resources** — flag shared mutable resources (same files, lock files, or a singleton test environment). → report `shared: <…|none>`

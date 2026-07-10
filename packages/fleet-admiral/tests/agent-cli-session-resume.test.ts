@@ -43,6 +43,29 @@ afterEach(() => {
 });
 
 describe("agent CLI session resume and capture hooks", () => {
+  it("defaults metaphor off and forwards explicit opt-in to the prompt builder", async () => {
+    const observed: boolean[] = [];
+
+    for (const enableMetaphor of [undefined, true] as const) {
+      const root = createTempRoot(`fleet-admiral-metaphor-${enableMetaphor ?? false}-`);
+      const profile = baseProfile("claude", {
+        args: [],
+        cwd: root,
+        env: { HOME: root },
+      });
+      const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+        buildSystemPrompt: (value) => {
+          observed.push(value);
+          return "Fleet doctrine";
+        },
+        ...(enableMetaphor === undefined ? {} : { enableMetaphor }),
+      }));
+      injected.cleanup?.();
+    }
+
+    expect(observed).toEqual([false, true]);
+  });
+
   it("places Claude --resume before Fleet injection flags", async () => {
     const root = createTempRoot("fleet-admiral-claude-resume-");
     const profile = baseProfile("claude", {
@@ -349,17 +372,20 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
+    readonly buildSystemPrompt?: (enableMetaphor: boolean) => string;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
+    readonly enableMetaphor?: boolean;
     readonly resumeSessionId?: string;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    buildSystemPrompt: () => "Fleet doctrine",
+    buildSystemPrompt: overrides.buildSystemPrompt ?? (() => "Fleet doctrine"),
     codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
+    ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };

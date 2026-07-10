@@ -21,7 +21,7 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly buildSystemPrompt: (injectTone: boolean) => string;
+  readonly buildSystemPrompt: (enableMetaphor: boolean) => string;
   readonly dataDir?: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
@@ -88,12 +88,12 @@ export async function injectAgentCliProfile(
     return profile;
   }
 
-  const injectTone = options.enableMetaphor ?? false;
+  const enableMetaphor = options.enableMetaphor ?? false;
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({ cwd: profile.cwd, label: tokenLabel });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
-  const doctrine = options.buildSystemPrompt(injectTone);
+  const doctrine = options.buildSystemPrompt(enableMetaphor);
   const tempCleanups: Array<() => void> = [];
   try {
     const systemPromptFile = profile.id === "claude"

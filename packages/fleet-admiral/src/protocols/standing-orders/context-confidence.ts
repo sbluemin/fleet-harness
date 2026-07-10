@@ -47,7 +47,7 @@ If confidence is below the required threshold, do NOT proceed to the gated check
 2. Triage each gap by the scout-shaped / decision-shaped / escalation-shaped taxonomy defined in ${"`"}assumption-audit${"`"}.
 3. Re-evaluate confidence after gap resolution, then re-apply the gate.
 
-Gate failure is the gate functioning as designed, not a workflow defect. Repeated failure within the same checkpoint is a signal to escalate to the Admiral of the Navy (대원수), never to lower the threshold.
+Gate failure is the gate functioning as designed, not a workflow defect. Repeated failure within the same checkpoint is a signal to escalate to the user, never to lower the threshold.
 
 ### Re-evaluation Triggers
 

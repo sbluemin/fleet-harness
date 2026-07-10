@@ -24,8 +24,8 @@ export const TEMPEST_DEFAULTS: CarrierPersonaDefaults = {
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
-  title: "Captain · External Intelligence Strike",
-  summary: "GitHub intelligence — external repo investigation via API and clone-based deep analysis. As the Captain (함장) of this Carrier, Tempest sprints across foreign waters to collect remote intelligence from upstream repositories and external codebases.",
+  title: "External Intelligence",
+  summary: "GitHub intelligence — external repo investigation via API and clone-based deep analysis of upstream repositories and unfamiliar codebases.",
   category: "operations",
   whenToUse: [
     "external GitHub repo investigation (library internals, upstream dependencies)",

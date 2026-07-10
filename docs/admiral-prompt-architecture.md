@@ -41,19 +41,33 @@ guide, and not a Chronicle-managed asset.
 
 ## 2. System Prompt Shape
 
-`buildSystemPrompt()` in `packages/fleet-admiral/src/prompts.ts` assembles
-the Admiral prompt. The static prompt includes:
+`createSystemPromptBuilder(...).build(enableMetaphor)` in
+`packages/fleet-admiral/src/prompts.ts` assembles the Admiral prompt. The static
+prompt includes:
 
 - `<fleet section="preamble">` — always injected first
-- `<fleet section="persona">` — always injected, before role
+- `<fleet section="persona">` — injected before role only when metaphor is enabled
 - `<fleet section="role">` — always injected
-- `<fleet section="tone">` — only when tone injection is enabled
+- `<fleet section="tone">` — injected after role only when metaphor is enabled
 - `<fleet section="roster">` when carriers are registered, rendered at the
   routing tier only (selection metadata — summary, `Use for`, `NOT for`); each
   carrier's request-block contract and the shared `<prior_jobs>` hint live in
   the on-demand `carrier-contracts` skill, and the roster preamble points to it
 - `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work
 - `<fleet section="standing-orders" type="<id>">` as six separate always-on Standing Order blocks, with Command Integrity injected first as the order-reception contract upstream of Mission Anchor
+
+`enableMetaphor` controls role-playing as one coherent option: enabling it adds
+both the naval Persona and Tone overlays; disabling it adds neither. The
+always-on role, protocol gate, Standing Orders, protocol skills, and carrier
+routing metadata use neutral actor terms so the disabled path does not retain
+naval ranks or forms of address. `Fleet`, `Carrier`, and registered carrier names
+remain functional product identifiers in both modes.
+
+When enabled, the Persona carries an explicit semantic role map: `user` →
+Admiral of the Navy, `host agent`/`you` → Admiral, and `Carrier` → Captain. The
+map controls interpretation and conversational wording only; it never rewrites
+functional identifiers such as tool names, `carrier_id` values, skill IDs, XML
+tags, commands, code symbols, or file paths.
 
 The preamble describes only the rendered `<fleet section="...">` blocks and
 optional `type` narrowing. It does not describe per-tool block narrowing. Output
