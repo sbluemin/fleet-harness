@@ -1,6 +1,7 @@
 export interface GlobalOptionsData {
   readonly version: 1;
   readonly enableMetaphor?: boolean;
+  readonly codexLaunchMode?: 'acp' | 'app-server';
 }
 
 export interface GlobalOptionsValidationResult {

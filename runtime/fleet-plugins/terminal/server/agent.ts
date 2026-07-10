@@ -68,6 +68,7 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const runtime = createFleetAgentRuntimeLifecycle({
+    globalOptionsService: deps.globalOptionsService,
     onMcpServerStartError: (error) => {
       console.error("[fleet-console] Failed to start MCP server", error);
     },

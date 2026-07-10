@@ -62,6 +62,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const infraServices = createInfraServices();
 	const agentRuntime = createFleetAgentRuntimeLifecycle({
 		...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
+		globalOptionsService: infraServices.globalOptionsService,
 		onMcpServerStartError: (error) => {
 			console.error("[fleet-cli] Failed to start MCP server", error);
 		},
