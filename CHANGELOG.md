@@ -5,6 +5,11 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.22.1] - 2026-07-10
+
+### Added
+- [core-unified-agent] Switch Codex ACP to the official bridge, add GPT-5.6 Codex model support with updated reasoning effort levels, and preserve deprecated ACP model type aliases for migration compatibility.
+
 ## [1.22.0] - 2026-07-08
 
 ### Changed
