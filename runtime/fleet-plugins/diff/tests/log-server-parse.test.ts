@@ -88,6 +88,28 @@ describe("parseWorktreePorcelain", () => {
     ]);
   });
 
+  it("prunable(디렉터리 삭제) 워크트리와 zero-SHA unborn 체크아웃은 제외한다", async () => {
+    const output = [
+      "worktree /repo",
+      "HEAD aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "branch refs/heads/main",
+      "",
+      "worktree /repo-stale",
+      "HEAD bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "detached",
+      "prunable gitdir file points to non-existent location",
+      "",
+      "worktree /repo-orphan",
+      "HEAD 0000000000000000000000000000000000000000",
+      "branch refs/heads/empty",
+      "",
+    ].join("\n");
+
+    expect(await parseWorktreePorcelain(output, "/repo")).toEqual([
+      { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", branch: "main", isCurrent: true },
+    ]);
+  });
+
   it("심링크 current 경로를 realpath로 정규화해 판정한다", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-log-realpath-"));
     try {

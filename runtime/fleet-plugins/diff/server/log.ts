@@ -73,10 +73,12 @@ export async function parseWorktreePorcelain(stdout: string, currentWorktreePath
   let worktreePath: string | null = null;
   let sha = "";
   let branch: string | null = null;
+  let prunable = false;
 
   const pushCurrent = () => {
-    // unborn(orphan) 체크아웃은 zero-SHA placeholder라 커밋 체크아웃이 아니다
-    if (!worktreePath || !sha || /^0+$/.test(sha)) return;
+    // unborn(orphan) 체크아웃은 zero-SHA placeholder라 커밋 체크아웃이 아니고,
+    // prunable 레코드는 디렉터리가 사라진 stale 워크트리라 활성 체크아웃이 아니다
+    if (!worktreePath || !sha || prunable || /^0+$/.test(sha)) return;
     worktrees.push({
       sha,
       branch,
@@ -90,11 +92,14 @@ export async function parseWorktreePorcelain(stdout: string, currentWorktreePath
       worktreePath = line.slice(9);
       sha = "";
       branch = null;
+      prunable = false;
     } else if (line.startsWith("HEAD ")) {
       sha = line.slice(5);
     } else if (line.startsWith("branch ")) {
       const ref = line.slice(7);
       branch = ref.startsWith("refs/heads/") ? ref.slice(11) : ref;
+    } else if (line === "prunable" || line.startsWith("prunable ")) {
+      prunable = true;
     }
   }
   pushCurrent();
