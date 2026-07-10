@@ -354,6 +354,15 @@ function neutralizePlanDom(root: ParentNode): void {
     element.removeAttribute("src");
     element.removeAttribute("srcset");
   }
+  // 원시 SVG의 리소스 요소는 href/xlink:href로 mount 즉시 원격 페치를 유발한다 — 제거.
+  // mermaid 산출 SVG(strict, htmlLabels: false)는 이 요소들을 쓰지 않으므로 다이어그램은 보존된다.
+  for (const element of root.querySelectorAll("image, feImage")) {
+    element.remove();
+  }
+  for (const element of root.querySelectorAll("use")) {
+    const href = element.getAttribute("href") ?? element.getAttribute("xlink:href") ?? "";
+    if (href !== "" && !href.startsWith("#")) element.remove();
+  }
 }
 
 function PlansIcon() {
