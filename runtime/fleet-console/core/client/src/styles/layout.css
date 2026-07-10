@@ -37,23 +37,6 @@
   grid-column: 3;
 }
 
-.console-shell.is-focus-mode .operations-side-bar,
-.console-shell.is-focus-mode .right-rail {
-  display: none;
-}
-
-.console-shell.is-focus-mode .console-body.is-canvas {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.console-shell.is-focus-mode .console-body.is-canvas > .operations-center-stage {
-  grid-column: 1;
-}
-
-.console-shell.is-focus-mode .operations-canvas {
-  grid-column: 1;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .console-shell,
   .operations-side-bar,

@@ -47,7 +47,6 @@ export interface GridSlotGeometry {
 type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
-const MAXIMIZED_STORAGE_KEY = "fleet-console.canvas.maximized";
 const SAVE_DELAY_MS = 400;
 const DEFAULT_OPERATION_WIDTH = 640;
 const DEFAULT_OPERATION_HEIGHT = 400;
@@ -68,7 +67,6 @@ const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
 const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [] };
 
 const listeners = new Set<Listener>();
-const mapFullscreenListeners = new Set<Listener>();
 const maximizedOperationListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
@@ -76,7 +74,6 @@ const formationViewsByTheater = new Map<string, true>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
-let mapFullscreen = readStoredMapFullscreen();
 let maximizedOperationId: string | null = null;
 let formationView = false;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
@@ -114,10 +111,6 @@ export function getLoadedTheaterId(): string | null {
 
 export function useCanvasState(): CanvasState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function useMapFullscreen(): boolean {
-  return useSyncExternalStore(subscribeMapFullscreen, getMapFullscreenSnapshot, getMapFullscreenSnapshot);
 }
 
 export function useMaximizedOperationId(): string | null {
@@ -374,17 +367,6 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
   });
 }
 
-export function toggleMapFullscreen(): void {
-  setMapFullscreen(!mapFullscreen);
-}
-
-export function setMapFullscreen(value: boolean): void {
-  if (mapFullscreen === value) return;
-  mapFullscreen = value;
-  writeStoredMapFullscreen(mapFullscreen);
-  emitMapFullscreen();
-}
-
 export function setMaximizedOperationId(operationId: string): void {
   clearFormationView();
   if (activeTheaterId) maximizedOperationIdsByTheater.set(activeTheaterId, operationId);
@@ -434,17 +416,6 @@ function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function subscribeMapFullscreen(listener: Listener): () => void {
-  mapFullscreenListeners.add(listener);
-  return () => {
-    mapFullscreenListeners.delete(listener);
-  };
-}
-
-function getMapFullscreenSnapshot(): boolean {
-  return mapFullscreen;
-}
-
 function subscribeMaximizedOperation(listener: Listener): () => void {
   maximizedOperationListeners.add(listener);
   return () => {
@@ -466,10 +437,6 @@ function getMinimizedSnapshot(): readonly string[] {
 
 function getCollapsedGroupsSnapshot(): readonly string[] {
   return state.collapsedGroups;
-}
-
-function emitMapFullscreen(): void {
-  for (const listener of mapFullscreenListeners) listener();
 }
 
 function emitMaximizedOperation(): void {
@@ -565,25 +532,6 @@ function writeStoredState(theaterId: string | null, value: CanvasState): void {
     window.localStorage.setItem(storageKey(theaterId), JSON.stringify(value));
   } catch {
     // 저장 실패는 캔버스 복구성만 낮추므로 런타임 흐름을 막지 않는다.
-  }
-}
-
-function readStoredMapFullscreen(): boolean {
-  // 기본값 false: 저장된 선호가 없으면 GNB를 정상 노출해 첫 방문자가 내비게이션을 잃지 않는다.
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(MAXIMIZED_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function writeStoredMapFullscreen(value: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(MAXIMIZED_STORAGE_KEY, String(value));
-  } catch {
-    // 최대화 선호 저장 실패는 런타임 동작을 막지 않는다.
   }
 }
 

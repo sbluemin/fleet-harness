@@ -522,7 +522,7 @@ export function OperationsSideBar({
         </button>
         <button type="button" className="side-bar-settings-btn" onClick={openSettingsMenu} aria-expanded={settingsMenu !== null} aria-label="Canvas controls" title="Canvas controls"><SettingsIcon /></button>
         <button type="button" className="side-bar-collapse-btn" onClick={() => setSideBarCollapsed(!collapsed)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-          <ChevronIcon collapsed={!collapsed} />
+          <PanelToggleIcon side="left" />
         </button>
       </header>
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
@@ -1196,6 +1196,16 @@ function TrashIcon() {
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M5.2 5.8v6.1M8 5.8v6.1M10.8 5.8v6.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
       <path d="M3.7 4.1h8.6M6.4 4.1l.4-1h2.4l.4 1M4.6 4.1l.5 9.1h5.8l.5-9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/* 패널 접기 아이콘 — 사이드 영역을 선으로 구분한 패널 모양(#44 시안). */
+function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="1.75" y="3" width="12.5" height="10" rx="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d={side === "left" ? "M6.4 3v10" : "M9.6 3v10"} stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }

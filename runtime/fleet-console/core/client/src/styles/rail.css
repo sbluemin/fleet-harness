@@ -374,7 +374,8 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 10px 0;
+  /* 접기 토글이 상단에 밀착하도록 위 패딩은 두지 않는다(아래만 유지). */
+  padding: 0 0 10px;
   list-style: none;
   margin: 0;
 }

@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import { toggleMapFullscreen, useMapFullscreen } from "./canvas/canvas-store.js";
 import { FloatingChromeHandles } from "./components/floating-chrome-handles.js";
-import { FocusModeReveal } from "./components/focus-mode-reveal.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
@@ -36,10 +34,8 @@ export function App() {
   const globalSettings = useGlobalSettingsStore();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
-  const mapFullscreen = useMapFullscreen();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
-  const mapFullscreenActive = mapFullscreen && pathname.startsWith("/operations");
   const operationsViewVisible = pathname.startsWith("/operations");
   const [chromeRestoreFocusTarget, setChromeRestoreFocusTarget] = useState<ChromeRestoreFocusTarget>(null);
 
@@ -99,7 +95,7 @@ export function App() {
 
   return (
     <div
-      className={`console-shell ${mapFullscreenActive ? "is-focus-mode" : ""}`}
+      className="console-shell"
       onClickCapture={(event) => {
         if (!(event.target instanceof Element)) return;
         if (!sideBar.collapsed && event.target.closest(".side-bar-collapse-btn")) {
@@ -120,7 +116,7 @@ export function App() {
         </Routes>
       </main>
       <FloatingChromeHandles
-        active={operationsViewVisible && !mapFullscreenActive}
+        active={operationsViewVisible}
         sidebarClosed={sideBar.collapsed}
         railClosed={!railChromeExpanded}
         pendingTarget={chromeRestoreFocusTarget}
@@ -134,7 +130,6 @@ export function App() {
         }}
         onFocusComplete={() => setChromeRestoreFocusTarget(null)}
       />
-      {mapFullscreenActive ? <FocusModeReveal onExit={toggleMapFullscreen} /> : null}
       <OperationSearch state={state} />
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />

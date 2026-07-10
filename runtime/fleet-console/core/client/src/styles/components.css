@@ -8253,43 +8253,27 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .brand-foot-dropup-menu svg { width: 13px; height: 13px; }
 
-/* ── v5: 접힘 복원 플로팅 코너 핸들 + focus mode 리빌 ── */
+/* ── v5: 접힘 복원 에지 부착 확장 탭 ── */
+/* 가장자리 부착 확장 탭 — 뷰포트 좌/우 에지에 붙는다(맵 위 부유 금지).
+   수직 위치는 상단 크롬 라인 바로 아래(중앙 아님 — 재가 지시). */
 .float-handle {
   position: fixed;
-  top: 10px;
+  top: 64px;
   z-index: 30;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 44px;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
   background: var(--surface-glass-strong);
   color: var(--ink-spectral);
 }
 
 .float-handle svg { width: 14px; height: 14px; }
 .float-handle:hover, .float-handle:focus-visible { color: var(--ink-pearl); border-color: var(--brass); }
-.float-left { top: 8px; left: 10px; }
-.float-right { top: 8px; right: 10px; }
+.float-left { left: 0; border-left: 0; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+.float-right { right: 0; border-right: 0; border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
 
-.focus-mode-reveal {
-  position: fixed;
-  bottom: 12px;
-  left: 12px;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: var(--surface-glass-strong);
-  color: var(--ink-spectral);
-}
-
-.focus-mode-reveal svg { width: 14px; height: 14px; }
-.focus-mode-reveal:hover, .focus-mode-reveal:focus-visible { color: var(--ink-pearl); border-color: var(--brass); }
 
 /* v5: 비-Operations 라우트의 복귀 링크 — GNB 부재 보완 */
 .page-back-link {

@@ -56,30 +56,30 @@ describe("Instrument core design contract", () => {
     expect(css).toContain(":focus-visible");
   });
 
-  it("keeps Formation, mapFullscreen, and maximize store contracts", () => {
+  it("keeps Formation and maximize store contracts without the retired focus mode", () => {
     const store = source("canvas/canvas-store.ts");
     expect(store).toContain("toggleFormationView");
-    expect(store).toContain("toggleMapFullscreen");
+    expect(store).not.toContain("MapFullscreen");
     expect(store).toContain("setMaximizedOperationId");
   });
 
-  it("pins the progressive shell, focus mode, and closed-chrome contracts", () => {
+  it("pins the progressive shell and closed-chrome contracts", () => {
     const app = source("app.tsx");
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
     expect(app).toContain("FloatingChromeHandles");
     expect(source("components/floating-chrome-handles.tsx")).toContain("float-handle float-left");
-    expect(app).toContain("FocusModeReveal");
-    expect(app).toContain("is-focus-mode");
+    expect(app).not.toContain("FocusMode");
+    expect(app).not.toContain("is-focus-mode");
     expect(app).toContain('closest(".side-bar-collapse-btn")');
     expect(app).toContain('closest(".right-rail-chrome-toggle")');
     expect(app).not.toContain("GlobalNavigation");
     expect(layout).not.toContain("--console-gnb-height");
-    expect(layout).toContain(".console-shell.is-focus-mode .operations-side-bar");
+    expect(layout).not.toContain("is-focus-mode");
     expect(components).toContain(".operations-side-bar.is-closed");
     expect(components).toContain(".float-handle {");
-    expect(components).toContain(".focus-mode-reveal {");
+    expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
   });
 
@@ -144,7 +144,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".canvas-minimap-operation.is-plugin");
     expect(components).toContain(".canvas-operation-cli {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
-    expect(railProducer).toContain('d="M3 5.5h8.2');
+    expect(railProducer).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
     expect(rail).toContain("width: 16px");
   });

@@ -253,10 +253,12 @@ function RailIcon({ panel, isActive }: RailIconProps) {
   );
 }
 
+/* 패널 접기 아이콘 — 우측 영역을 선으로 구분한 패널 모양(#44 시안, 우측 미러). */
 function RailChromeToggleIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 5.5h8.2M8.4 2.9l2.8 2.6-2.8 2.6M13 10.5H4.8M7.6 7.9l-2.8 2.6 2.8 2.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="1.75" y="3" width="12.5" height="10" rx="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M9.6 3v10" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }
