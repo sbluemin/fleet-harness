@@ -10,14 +10,16 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly enableMetaphor?: unknown;
+  readonly codexLaunchMode?: unknown;
 }
 
-interface TerminalSettingsUpdate {
-  readonly enableMetaphor: boolean;
-}
+type TerminalSettingsUpdate =
+  | { readonly enableMetaphor: boolean }
+  | { readonly codexLaunchMode: "acp" | "app-server" };
 
 export interface TerminalSettingsState {
   readonly enableMetaphor: boolean;
+  readonly codexLaunchMode: "acp" | "app-server";
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -43,7 +45,7 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
       }
       const updated = deps.globalOptionsService.update((current) => ({
         ...current,
-        enableMetaphor: body.enableMetaphor,
+        ...body,
       }));
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(updated));
       return true;
@@ -56,15 +58,18 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
 export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettingsState {
   return {
     enableMetaphor: data.enableMetaphor ?? false,
+    codexLaunchMode: data.codexLaunchMode ?? "acp",
   };
 }
 
 function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  // 계약: enableMetaphor 단일 키만 허용한다(추가 키는 거부).
-  if (Object.keys(value).length !== 1) return false;
+  // 계약: 알려진 설정 키 중 정확히 하나만 허용한다(추가 키와 복수 키는 거부).
+  const keys = Object.keys(value);
+  if (keys.length !== 1) return false;
   const body = value as TerminalSettingsBody;
-  return typeof body.enableMetaphor === "boolean";
+  if (keys[0] === "enableMetaphor") return typeof body.enableMetaphor === "boolean";
+  return keys[0] === "codexLaunchMode" && (body.codexLaunchMode === "acp" || body.codexLaunchMode === "app-server");
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {

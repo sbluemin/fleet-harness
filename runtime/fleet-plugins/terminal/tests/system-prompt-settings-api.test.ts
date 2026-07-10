@@ -8,16 +8,16 @@ describe("system prompt settings api", () => {
   });
 
   it("loads Terminal prompt settings from the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: false }));
+    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: false, codexLaunchMode: "acp" }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(fetchSystemPromptSettings()).resolves.toEqual({ enableMetaphor: false });
+    await expect(fetchSystemPromptSettings()).resolves.toEqual({ enableMetaphor: false, codexLaunchMode: "acp" });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
   });
 
   it("saves the prompt boolean to the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: true }));
+    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: true, codexLaunchMode: "acp" }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toEqual({ enableMetaphor: true });
+    await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toEqual({ enableMetaphor: true, codexLaunchMode: "acp" });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -26,8 +26,20 @@ describe("system prompt settings api", () => {
     });
   });
 
-  it("rejects responses missing the enableMetaphor boolean field", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ consolePortMode: "dynamic" })));
+  it("saves the Codex launch mode to the plugin route", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: false, codexLaunchMode: "app-server" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveSystemPromptSettings({ codexLaunchMode: "app-server" })).resolves.toEqual({ enableMetaphor: false, codexLaunchMode: "app-server" });
+    expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codexLaunchMode: "app-server" }),
+      signal: undefined,
+    });
+  });
+
+  it("rejects responses missing a required settings field", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ enableMetaphor: false })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 });
