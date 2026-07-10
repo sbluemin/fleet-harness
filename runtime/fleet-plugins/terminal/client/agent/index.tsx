@@ -486,7 +486,7 @@ function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
       {showName ? (
         <span className="job-dock-row-name" data-captain={nameCaptain}>{track.displayName}</span>
       ) : null}
-      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${isTrackError(track.status) ? " job-dock-row-status--error" : ""}`}>
+      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${isTrackError(statusLabel) ? " job-dock-row-status--error" : ""}`}>
         {statusLabel}{activeTool ? ` · ${activeTool}` : ""}
       </span>
       {displayLine ? (
@@ -861,8 +861,11 @@ function trackCardModifier(trackStatus: string, jobStatus: string): string {
   if (isDockTrackLive(jobStatus, trackStatus)) {
     return "track-card--live";
   }
-  if (isTrackError(trackStatus)) return "track-card--bad";
-  if (trackStatus === "done" || trackStatus === "aborted") return "track-card--idle";
+  // 스타일 키는 도크 행 라벨과 같은 해석에서 파생한다 — track:finalized를 못 받은 트랙도
+  // 종결 잡의 결과(error/done)로 표시가 폴백돼 라벨과 도색이 갈라지지 않는다.
+  const resolved = resolveDockRowStatusLabel(trackStatus, jobStatus);
+  if (isTrackError(resolved)) return "track-card--bad";
+  if (resolved === "done" || resolved === "aborted") return "track-card--idle";
   return "";
 }
 
