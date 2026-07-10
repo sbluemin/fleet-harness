@@ -1,14 +1,19 @@
-import { fetchOperations } from "./api.js";
-import { applyOperationUpdate, hydrateOperations } from "./store.js";
+import { fetchObserverStatus, fetchOperations } from "./api.js";
+import { applyObserverStatus, applyOperationUpdate, getState, hydrateOperations } from "./store.js";
 import type { OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
 let reconnectDelayMs = 1_000;
 let reconnectHandle: ReturnType<typeof setTimeout> | null = null;
+let statusRefreshInFlight: Promise<void> | null = null;
+let statusRefreshPending = false;
 
 export function connectOperationsSse(): void {
-  if (reconnectHandle !== null) clearTimeout(reconnectHandle);
+  if (reconnectHandle !== null) {
+    clearTimeout(reconnectHandle);
+    reconnectHandle = null;
+  }
   const source = new EventSource("/api/v1/operations/events");
 
   source.addEventListener("operation:changed", (e) => {
@@ -21,8 +26,13 @@ export function connectOperationsSse(): void {
     }
   });
 
+  source.addEventListener("update:available", () => {
+    refreshObserverStatus();
+  });
+
   source.onopen = () => {
     reconnectDelayMs = 1_000;
+    refreshObserverStatus();
   };
 
   source.onerror = () => {
@@ -36,6 +46,22 @@ export function connectOperationsSse(): void {
         .finally(connectOperationsSse);
     }, reconnectDelayMs);
   };
+}
+
+export function refreshObserverStatus(): void {
+  if (statusRefreshInFlight) {
+    statusRefreshPending = true;
+    return;
+  }
+  statusRefreshInFlight = fetchObserverStatus(getState().activeTheaterId)
+    .then(applyObserverStatus)
+    .catch(() => undefined)
+    .finally(() => {
+      statusRefreshInFlight = null;
+      if (!statusRefreshPending) return;
+      statusRefreshPending = false;
+      refreshObserverStatus();
+    });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

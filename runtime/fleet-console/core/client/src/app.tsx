@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useMapFullscreen } from "./canvas/canvas-store.js";
-import { fetchGroups, fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
+import { fetchGroups, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { StatusBar } from "./components/statusbar.js";
@@ -14,9 +14,10 @@ import { usePluginRegistry } from "./plugin-registry.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { refreshObserverStatus } from "./operations-sse.js";
+import { applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 
-// 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
+// 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 
@@ -64,14 +65,9 @@ export function App() {
         if (abort.signal.aborted) return;
         failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
       });
-    const refreshUpdateStatus = () => {
-      void fetchObserverStatus(state.activeTheaterId, abort.signal)
-        .then(applyObserverStatus)
-        .catch(() => {});
-    };
-    refreshUpdateStatus();
+    refreshObserverStatus();
     // cold-start 보정: 서버 백그라운드 refresh 완료를 기다렸다가 한 번 더 읽어 배지를 채운다.
-    const recheckTimer = window.setTimeout(refreshUpdateStatus, UPDATE_STATUS_RECHECK_DELAY_MS);
+    const recheckTimer = window.setTimeout(refreshObserverStatus, UPDATE_STATUS_RECHECK_DELAY_MS);
     return () => {
       window.clearTimeout(recheckTimer);
       abort.abort();
