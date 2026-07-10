@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, togglePerimeterAnimation, useBackgroundAnimation, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, arrangeOperations, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, hasArrangeSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleFormationView, togglePerimeterAnimation, undoArrange, useBackgroundAnimation, useFormationView, useMaximizedOperationId, useMinimized, usePerimeterAnimation, visibleWorldRect, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -29,11 +29,14 @@ interface OperationsProps {
 export function Operations({ state }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const maximizedOperationId = useMaximizedOperationId();
+  const formationView = useFormationView();
   const minimized = useMinimized();
   const radarEnabled = useBackgroundAnimation();
   const perimeterEnabled = usePerimeterAnimation();
   const registry = usePluginRegistry();
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [arrangeRevision, setArrangeRevision] = useState(0);
 
   const operationOrder = useMemo(
     () => sortedTheaterOperations(state).map((operation) => operation.id),
@@ -42,6 +45,34 @@ export function Operations({ state }: OperationsProps) {
   );
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const handleArrange = useCallback(() => {
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) return;
+    const snapshot = stateRef.current;
+    const canvas = getCanvasSnapshot();
+    const minimizedIds = new Set(canvas.minimized);
+    const operationIds = flattenGroupedOrder(
+      snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId),
+      snapshot.groups.filter((group) => group.theaterId === snapshot.activeTheaterId),
+      canvas.operationOrder,
+      canvas.collapsedGroups,
+    ).filter((operation) => !minimizedIds.has(operation.id)).map((operation) => operation.id);
+    const changedOperationIds = arrangeOperations(operationIds, visibleWorldRect(canvas.viewport, canvasSize));
+    if (changedOperationIds.length === 0) return;
+    setArrangeRevision((revision) => revision + 1);
+    void commitOperationGeometries(changedOperationIds);
+  }, [canvasSize]);
+
+  const handleUndoArrange = useCallback(() => {
+    const restoredOperationIds = undoArrange();
+    if (restoredOperationIds.length === 0) return;
+    setArrangeRevision((revision) => revision + 1);
+    void commitOperationGeometries(restoredOperationIds);
+  }, []);
+
+  const handleToggleFormation = useCallback(() => {
+    toggleFormationView();
+  }, []);
 
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
@@ -52,14 +83,29 @@ export function Operations({ state }: OperationsProps) {
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   }, [state.activeTheaterId]);
 
-  // Alt+←/→ 로 현재 Theater 내 Operation 포커스를 순환 이동한다.
+  // Alt+←/→는 SideBar 가시 순서로 포커스를 순환하고, Alt+G/F는 같은 capture/editable 가드 정책을 공유한다.
   useEffect(() => {
     const maximizedRef = { current: maximizedOperationId };
+    const formationRef = { current: formationView };
     const handler = (event: KeyboardEvent) => {
-      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (!event.altKey || event.metaKey || event.ctrlKey) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
+      // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
+      if (event.code === "KeyG") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.shiftKey) handleUndoArrange();
+        else handleArrange();
+        return;
+      }
+      if (event.code === "KeyF" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        handleToggleFormation();
+        return;
+      }
+      if (event.shiftKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
       // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
       const snapshot = stateRef.current;
       const canvas = getCanvasSnapshot();
@@ -75,6 +121,10 @@ export function Operations({ state }: OperationsProps) {
       const currentId = maximizedRef.current ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, event.key === "ArrowRight" ? 1 : -1);
       if (!nextId) return;
+      if (formationRef.current) {
+        setActiveOperation(nextId);
+        return;
+      }
       if (maximizedRef.current) {
         setActiveOperation(nextId);
         setMaximizedOperationId(nextId);
@@ -84,7 +134,7 @@ export function Operations({ state }: OperationsProps) {
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [maximizedOperationId]);
+  }, [formationView, handleArrange, handleToggleFormation, handleUndoArrange, maximizedOperationId]);
 
   useEffect(() => {
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
@@ -332,6 +382,12 @@ export function Operations({ state }: OperationsProps) {
         onResetView={handleResetView}
         onToggleRadar={handleToggleRadar}
         onTogglePerimeter={handleTogglePerimeter}
+        onArrange={handleArrange}
+        onUndoArrange={handleUndoArrange}
+        onToggleFormation={handleToggleFormation}
+        canUndoArrange={hasArrangeSnapshot()}
+        arrangeRevision={arrangeRevision}
+        onCanvasSizeChange={setCanvasSize}
         onClose={handleClose}
         onFocus={handleFocus}
         onSetAccent={handleSetAccent}
@@ -372,6 +428,19 @@ function canvasPointToGeometry(point: CanvasPoint): Omit<OperationGeometry, "zIn
     width: DEFAULT_SHELL_WIDTH,
     height: DEFAULT_SHELL_HEIGHT,
   };
+}
+
+async function commitOperationGeometries(operationIds: readonly string[]): Promise<void> {
+  const operations = getCanvasSnapshot().operations;
+  await Promise.all(operationIds.flatMap((operationId) => {
+    const geometry = operations[operationId];
+    if (!geometry) return [];
+    return [fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ geometry }),
+    })];
+  }));
 }
 
 async function launchViaPlugin(

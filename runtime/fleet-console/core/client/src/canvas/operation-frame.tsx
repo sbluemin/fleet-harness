@@ -16,6 +16,7 @@ interface OperationFrameProps {
   readonly status?: OperationActivity;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
+  readonly interactionDisabled?: boolean;
   readonly accentKey?: string | null;
   readonly children: ReactNode;
   readonly onActivate: () => void;
@@ -46,7 +47,7 @@ const RESIZE_DIRECTIONS: readonly ResizeDirection[] = ["n", "ne", "e", "se", "s"
 const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 
-export function OperationFrame({ operation, active, geometry, zoom, subtitle, status, minimized = false, maximized = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, subtitle, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
@@ -64,7 +65,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   ].filter(Boolean).join(" ");
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized) return;
+    if (maximized || interactionDisabled) return;
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -74,7 +75,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   };
 
   const updateDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized) return;
+    if (maximized || interactionDisabled) return;
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.preventDefault();
@@ -89,7 +90,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized) {
+    if (maximized || interactionDisabled) {
       dragRef.current = null;
       return;
     }
@@ -103,7 +104,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   };
 
   const beginResize = (direction: ResizeDirection, event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized) return;
+    if (maximized || interactionDisabled) return;
     event.preventDefault();
     event.stopPropagation();
     onActivate();
@@ -112,7 +113,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   };
 
   const updateResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized) return;
+    if (maximized || interactionDisabled) return;
     const resize = resizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
     event.preventDefault();
@@ -123,7 +124,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   };
 
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized) {
+    if (maximized || interactionDisabled) {
       resizeRef.current = null;
       return;
     }
@@ -242,7 +243,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
       </div>
       {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
           외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다. */}
-      {!maximized && RESIZE_DIRECTIONS.map((direction) => (
+      {!maximized && !interactionDisabled && RESIZE_DIRECTIONS.map((direction) => (
         <div
           key={direction}
           className={`canvas-operation-resize canvas-operation-resize--${direction}`}

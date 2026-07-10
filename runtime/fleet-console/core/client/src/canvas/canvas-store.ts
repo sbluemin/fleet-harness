@@ -30,6 +30,20 @@ export interface CanvasViewportSize {
   readonly height: number;
 }
 
+export interface CanvasWorldRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface GridSlotGeometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
@@ -40,6 +54,10 @@ const SAVE_DELAY_MS = 400;
 const DEFAULT_OPERATION_WIDTH = 640;
 const DEFAULT_OPERATION_HEIGHT = 400;
 const DEFAULT_OPERATION_OFFSET = 40;
+export const MIN_OPERATION_WIDTH = 320;
+export const MIN_OPERATION_HEIGHT = 200;
+export const OPERATION_GRID_GAP = 16;
+export const OPERATION_GRID_PADDING = 24;
 const OPERATION_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
 const FOCUS_MAX_ZOOM = 1;
@@ -56,7 +74,10 @@ const backgroundAnimationListeners = new Set<Listener>();
 const perimeterAnimationListeners = new Set<Listener>();
 const mapFullscreenListeners = new Set<Listener>();
 const maximizedOperationListeners = new Set<Listener>();
+const formationViewListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
+const formationViewsByTheater = new Map<string, true>();
+const arrangeSnapshotsByTheater = new Map<string, Record<string, OperationGeometry>>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
@@ -64,6 +85,7 @@ let backgroundAnimationEnabled = readStoredBackgroundAnimation();
 let perimeterAnimationEnabled = readStoredPerimeterAnimation();
 let mapFullscreen = readStoredMapFullscreen();
 let maximizedOperationId: string | null = null;
+let formationView = false;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
@@ -84,6 +106,14 @@ export function getSnapshot(): CanvasState {
 
 export function getMaximizedOperationId(): string | null {
   return maximizedOperationId;
+}
+
+export function getFormationView(): boolean {
+  return formationView;
+}
+
+export function hasArrangeSnapshot(): boolean {
+  return activeTheaterId !== null && arrangeSnapshotsByTheater.has(activeTheaterId);
 }
 
 // canvas 스토어가 현재 로드한 Theater id. maximizedOperationId·maximizedOperationIdsByTheater 등
@@ -111,6 +141,10 @@ export function useMapFullscreen(): boolean {
 
 export function useMaximizedOperationId(): string | null {
   return useSyncExternalStore(subscribeMaximizedOperation, getMaximizedOperationSnapshot, getMaximizedOperationSnapshot);
+}
+
+export function useFormationView(): boolean {
+  return useSyncExternalStore(subscribeFormationView, getFormationView, getFormationView);
 }
 
 // 최소화 목록은 CanvasState의 일부라 메인 listeners/emit을 그대로 공유한다(별도 채널 불필요).
@@ -170,6 +204,77 @@ export function setOperationGeometry(sessionId: string, geometry: OperationGeome
       [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex },
     },
   });
+}
+
+// 화면에서 보이는 캔버스 영역을 world 좌표로 역산한다. canvas.tsx의 translate(x, y) scale(zoom) 순서와
+// screenToCanvas 규약을 그대로 반대로 적용하므로 pan/zoom 상태에서도 Arrange 대상 rect가 일치한다.
+export function visibleWorldRect(viewport: CanvasViewport, canvasSize: CanvasViewportSize): CanvasWorldRect {
+  return {
+    x: -viewport.x / viewport.zoom,
+    y: -viewport.y / viewport.zoom,
+    width: canvasSize.width / viewport.zoom,
+    height: canvasSize.height / viewport.zoom,
+  };
+}
+
+// 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 최소 크기 클램프 뒤에는
+// 슬롯이 원래 rect를 넘을 수 있으며, 이는 작은 뷰포트에서도 패널의 조작 가능 크기를 지키기 위한 의도다.
+export function calculateGridSlots(
+  rect: CanvasWorldRect,
+  count: number,
+  minimumWidth = MIN_OPERATION_WIDTH,
+  minimumHeight = MIN_OPERATION_HEIGHT,
+  gap = OPERATION_GRID_GAP,
+  padding = OPERATION_GRID_PADDING,
+): readonly GridSlotGeometry[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const columns = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / columns);
+  const width = Math.max(minimumWidth, (rect.width - padding * 2 - gap * (columns - 1)) / columns);
+  const height = Math.max(minimumHeight, (rect.height - padding * 2 - gap * (rows - 1)) / rows);
+  return Array.from({ length: count }, (_, index) => ({
+    x: rect.x + padding + (index % columns) * (width + gap),
+    y: rect.y + padding + Math.floor(index / columns) * (height + gap),
+    width,
+    height,
+  }));
+}
+
+// Arrange는 활성 Theater의 1회성 undo 슬롯을 갱신하고, 기존 zIndex를 그대로 둔 일괄 geometry 쓰기를 한다.
+// setOperationGeometry를 반복 호출하면 claimTopZIndex로 stack 순서가 뒤섞이므로 이 경로를 반드시 사용한다.
+export function arrangeOperations(operationIds: readonly string[], rect: CanvasWorldRect): readonly string[] {
+  const operationIdsToArrange = uniqueExistingOperationIds(operationIds);
+  if (operationIdsToArrange.length === 0) return [];
+  clearMaximizedOperationId();
+  if (activeTheaterId) {
+    arrangeSnapshotsByTheater.set(activeTheaterId, Object.fromEntries(operationIdsToArrange.map((id) => [id, state.operations[id]!])));
+  }
+  const slots = calculateGridSlots(rect, operationIdsToArrange.length);
+  const operations = { ...state.operations };
+  for (const [index, operationId] of operationIdsToArrange.entries()) {
+    const current = operations[operationId]!;
+    const slot = slots[index]!;
+    operations[operationId] = { ...current, ...slot };
+  }
+  setState({ operations });
+  return operationIdsToArrange;
+}
+
+// 한 Theater당 Arrange 직전 geometry만 한 번 보관한다. 닫힌 Operation은 건너뛰고 남아 있는 것만 정확히 복원한다.
+export function undoArrange(): readonly string[] {
+  if (!activeTheaterId) return [];
+  const snapshot = arrangeSnapshotsByTheater.get(activeTheaterId);
+  if (!snapshot) return [];
+  arrangeSnapshotsByTheater.delete(activeTheaterId);
+  const operations = { ...state.operations };
+  const restoredIds: string[] = [];
+  for (const [operationId, geometry] of Object.entries(snapshot)) {
+    if (!operations[operationId]) continue;
+    operations[operationId] = geometry;
+    restoredIds.push(operationId);
+  }
+  if (restoredIds.length > 0) setState({ operations });
+  return restoredIds;
 }
 
 // Operation을 최소화한다 — 캔버스 렌더에서 빠지고 하단 태스크바에 표시된다. geometry는 operations에 보존한다.
@@ -277,16 +382,21 @@ export function loadForTheater(theaterId: string | null): void {
   flushScheduledSave();
   cancelZoomTween();
   saveMaximizedOperationForActiveTheater();
+  arrangeSnapshotsByTheater.clear();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
   const nextMaximizedOperationId = theaterId ? maximizedOperationIdsByTheater.get(theaterId) ?? null : null;
   const maximizedChanged = maximizedOperationId !== nextMaximizedOperationId;
   maximizedOperationId = nextMaximizedOperationId;
+  const nextFormationView = theaterId ? formationViewsByTheater.has(theaterId) : false;
+  const formationChanged = formationView !== nextFormationView;
+  formationView = nextFormationView;
   targetViewport = state.viewport;
   // 복원된 Operation의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.operations));
   emit();
   if (maximizedChanged) emitMaximizedOperation();
+  if (formationChanged) emitFormationView();
 }
 
 export function focusOperation(sessionId: string, viewportSize: CanvasViewportSize): void {
@@ -357,6 +467,7 @@ export function setMapFullscreen(value: boolean): void {
 }
 
 export function setMaximizedOperationId(operationId: string): void {
+  clearFormationView();
   if (activeTheaterId) maximizedOperationIdsByTheater.set(activeTheaterId, operationId);
   const minimized = minimizedForMaximizedOperation(operationId);
   const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
@@ -371,6 +482,37 @@ export function clearMaximizedOperationId(): void {
   if (maximizedOperationId === null) return;
   maximizedOperationId = null;
   emitMaximizedOperation();
+}
+
+export function toggleFormationView(): void {
+  if (!activeTheaterId) return;
+  if (formationView) {
+    clearFormationView();
+    return;
+  }
+  formationViewsByTheater.set(activeTheaterId, true);
+  formationView = true;
+  clearMaximizedOperationId();
+  emitFormationView();
+}
+
+export function clearFormationView(): void {
+  if (activeTheaterId) formationViewsByTheater.delete(activeTheaterId);
+  if (!formationView) return;
+  formationView = false;
+  emitFormationView();
+}
+
+export function subscribeFormationView(listener: Listener): () => void {
+  formationViewListeners.add(listener);
+  return () => {
+    formationViewListeners.delete(listener);
+  };
+}
+
+export function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function subscribeBackgroundAnimation(listener: Listener): () => void {
@@ -429,6 +571,10 @@ function getMaximizedOperationSnapshot(): string | null {
   return maximizedOperationId;
 }
 
+function emitFormationView(): void {
+  for (const listener of formationViewListeners) listener();
+}
+
 function getMinimizedSnapshot(): readonly string[] {
   return state.minimized;
 }
@@ -456,6 +602,15 @@ function saveMaximizedOperationForActiveTheater(): void {
 
 function minimizedForMaximizedOperation(operationId: string): readonly string[] {
   return Object.keys(state.operations).filter((sessionId) => sessionId !== operationId);
+}
+
+function uniqueExistingOperationIds(operationIds: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  return operationIds.filter((operationId) => {
+    if (seen.has(operationId) || !state.operations[operationId]) return false;
+    seen.add(operationId);
+    return true;
+  });
 }
 
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
@@ -487,11 +642,6 @@ function cancelZoomTween(): void {
   if (zoomRaf === null || typeof window === "undefined") return;
   window.cancelAnimationFrame(zoomRaf);
   zoomRaf = null;
-}
-
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function scheduleSave(): void {

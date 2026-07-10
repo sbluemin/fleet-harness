@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearMaximizedOperationId, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { arrangeOperations, calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, hasArrangeSnapshot, loadForTheater, minimizeOperation, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, undoArrange, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -17,13 +17,16 @@ beforeEach(() => {
   window.localStorage.clear();
   loadForTheater("theater-a");
   clearMaximizedOperationId();
+  clearFormationView();
 });
 
 afterEach(() => {
   loadForTheater("theater-a");
   clearMaximizedOperationId();
+  clearFormationView();
   loadForTheater("theater-b");
   clearMaximizedOperationId();
+  clearFormationView();
   loadForTheater(null);
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -113,6 +116,50 @@ describe("canvas store", () => {
     loadForTheater("theater-restore");
 
     expect(getSnapshot().operationAccent).toEqual({ "op-a": "rose" });
+  });
+
+  it("calculates balanced grid slots with minimum-size clamping and configured gaps", () => {
+    const slots = calculateGridSlots({ x: 10, y: 20, width: 100, height: 100 }, 3, 320, 200, 16, 24);
+
+    expect(slots).toHaveLength(3);
+    expect(slots[0]).toEqual({ x: 34, y: 44, width: 320, height: 200 });
+    expect(slots[1]?.x).toBe(370);
+    expect(slots[2]?.y).toBe(260);
+  });
+
+  it("arranges in one batch without changing relative z-order and undoes exact geometry", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 12, y: 14, width: 420, height: 260 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 80, y: 90, width: 500, height: 300 });
+    const before = getSnapshot().operations;
+
+    arrangeOperations(["op-b", "op-a"], { x: 0, y: 0, width: 1200, height: 800 });
+
+    expect(getSnapshot().operations["op-a"]?.zIndex).toBe(before["op-a"]?.zIndex);
+    expect(getSnapshot().operations["op-b"]?.zIndex).toBe(before["op-b"]?.zIndex);
+    expect(hasArrangeSnapshot()).toBe(true);
+
+    undoArrange();
+
+    expect(getSnapshot().operations).toEqual(before);
+    expect(hasArrangeSnapshot()).toBe(false);
+  });
+
+  it("keeps Formation view independent per Theater without modifying saved geometry", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 48, y: 72 });
+    const beforeFormation = getSnapshot().operations;
+
+    toggleFormationView();
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().operations).toEqual(beforeFormation);
+
+    loadForTheater("theater-b");
+    expect(getFormationView()).toBe(false);
+    toggleFormationView();
+    expect(getFormationView()).toBe(true);
+
+    loadForTheater("theater-a");
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().operations).toEqual(beforeFormation);
   });
 });
 
