@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
@@ -226,6 +227,19 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
     neutralizePlanDom(doc.body);
     return doc.body.innerHTML;
   }, [plan.content]);
+  const markdownRootRef = useRef<HTMLDivElement | null>(null);
+
+  // mermaid 블록은 하이드레이터가 비동기로 SVG를 삽입한다 — mount-전 중화만으로는 비동기 삽입분이
+  // 누락되므로, 삽입/속성 변화를 관찰해 즉시 재중화한다. 준거: file-explorer MarkdownViewer.
+  useEffect(() => {
+    const root = markdownRootRef.current;
+    if (!root) return;
+    installDiagramHydrator(root);
+    neutralizePlanDom(root);
+    const observer = new MutationObserver(() => neutralizePlanDom(root));
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
+    return () => observer.disconnect();
+  }, [html]);
 
   return (
     <div className="plans-reader-pane">
@@ -266,6 +280,7 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
           })}
         </div>
         <div
+          ref={markdownRootRef}
           className="plans-markdown markdown-body"
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: html }}
