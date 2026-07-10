@@ -23,6 +23,7 @@ import { createSanitizedOpDto } from "./operations/sanitize.js";
 import { createOperationStore } from "./operations/store.js";
 import type { OperationNode } from "./operations/types.js";
 import { createConsoleDataPaths } from "./paths.js";
+import { createPlansRouter } from "./plans/routes.js";
 import { createPluginClientAssets } from "./plugin-host/client-assets.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/types.js";
@@ -177,6 +178,20 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "POST",
     path: "/api/v1/theaters/folder-grants",
     summary: "Theater 폴더 접근 grant를 발급합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/plans/list",
+    summary: "Theater의 실행 계획 목록을 조회합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/plans/read",
+    summary: "실행 계획 문서를 조회합니다.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -401,6 +416,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
+  const plansRouter = createPlansRouter({
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
+    writeJson,
+  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -477,6 +498,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/theaters/folder-grants") {
       runAsyncHandler(handleTheaterFolderGrants(req, res), res);
+      return;
+    }
+    if (pathname === "/api/v1/plans/list" || pathname === "/api/v1/plans/read") {
+      runAsyncBooleanHandler(plansRouter({ req, res, pathname }), res, () => false);
       return;
     }
     const theaterItemMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)$/);
