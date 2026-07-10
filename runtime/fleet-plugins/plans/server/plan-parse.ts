@@ -17,10 +17,22 @@ interface TaskCounts {
   readonly tasksTotal: number;
 }
 
+interface PlanLine {
+  readonly text: string;
+  readonly isFenced: boolean;
+}
+
+interface WaveStart {
+  readonly index: number;
+  readonly heading: string;
+  readonly lineIndex: number;
+}
+
 const TITLE_PATTERN = /^#\s+(.+)$/;
 const WAVE_PATTERN = /^##\s+wave\s+(\d+)\b/i;
 const SECTION_HEADING_PATTERN = /^#{1,2}\s/;
 const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
+const FENCE_PATTERN = /^\s*(```|~~~)/;
 // Kirov 기본 템플릿의 h1은 문서 제목이 아니라 섹션 헤딩이다 — title로 채택하지 않고 파일명 폴백에 맡긴다.
 const TEMPLATE_SECTION_TITLES = new Set([
   "objective",
@@ -33,7 +45,7 @@ const TEMPLATE_SECTION_TITLES = new Set([
 ]);
 
 export function parsePlan(content: string): ParsedPlan {
-  const lines = content.split(/\r?\n/);
+  const lines = scanPlanLines(content.split(/\r?\n/));
   const title = findTitle(lines);
   const waveStarts = findWaveStarts(lines);
   const waves = waveStarts.map(({ index, heading, lineIndex }, waveIndex) => {
@@ -47,9 +59,27 @@ export function parsePlan(content: string): ParsedPlan {
   return { title, waves, ...countTasks(lines) };
 }
 
-function findTitle(lines: readonly string[]): string | null {
+function scanPlanLines(lines: readonly string[]): readonly PlanLine[] {
+  let activeFence: "```" | "~~~" | null = null;
+
+  return lines.map((text) => {
+    const marker = FENCE_PATTERN.exec(text)?.[1] as "```" | "~~~" | undefined;
+    if (activeFence !== null) {
+      if (marker === activeFence) activeFence = null;
+      return { text, isFenced: true };
+    }
+    if (marker !== undefined) {
+      activeFence = marker;
+      return { text, isFenced: true };
+    }
+    return { text, isFenced: false };
+  });
+}
+
+function findTitle(lines: readonly PlanLine[]): string | null {
   for (const line of lines) {
-    const match = TITLE_PATTERN.exec(line);
+    if (line.isFenced) continue;
+    const match = TITLE_PATTERN.exec(line.text);
     if (!match?.[1]) continue;
     const heading = match[1].trim();
     if (TEMPLATE_SECTION_TITLES.has(heading.toLowerCase())) return null;
@@ -58,15 +88,16 @@ function findTitle(lines: readonly string[]): string | null {
   return null;
 }
 
-function findWaveStarts(lines: readonly string[]): Array<{ index: number; heading: string; lineIndex: number }> {
-  const waves: Array<{ index: number; heading: string; lineIndex: number }> = [];
+function findWaveStarts(lines: readonly PlanLine[]): WaveStart[] {
+  const waves: WaveStart[] = [];
 
   for (const [lineIndex, line] of lines.entries()) {
-    const match = WAVE_PATTERN.exec(line);
+    if (line.isFenced) continue;
+    const match = WAVE_PATTERN.exec(line.text);
     if (!match?.[1]) continue;
     waves.push({
       index: Number(match[1]),
-      heading: line.replace(/^##\s+/, ""),
+      heading: line.text.replace(/^##\s+/, ""),
       lineIndex,
     });
   }
@@ -74,19 +105,21 @@ function findWaveStarts(lines: readonly string[]): Array<{ index: number; headin
   return waves;
 }
 
-function findSectionEnd(lines: readonly string[], startLineIndex: number, maxLineIndex: number): number {
+function findSectionEnd(lines: readonly PlanLine[], startLineIndex: number, maxLineIndex: number): number {
   for (let lineIndex = startLineIndex; lineIndex < maxLineIndex; lineIndex++) {
-    if (SECTION_HEADING_PATTERN.test(lines[lineIndex] ?? "")) return lineIndex;
+    const line = lines[lineIndex];
+    if (!line?.isFenced && SECTION_HEADING_PATTERN.test(line?.text ?? "")) return lineIndex;
   }
   return maxLineIndex;
 }
 
-function countTasks(lines: readonly string[]): TaskCounts {
+function countTasks(lines: readonly PlanLine[]): TaskCounts {
   let tasksDone = 0;
   let tasksTotal = 0;
 
   for (const line of lines) {
-    const match = CHECKBOX_PATTERN.exec(line);
+    if (line.isFenced) continue;
+    const match = CHECKBOX_PATTERN.exec(line.text);
     if (!match) continue;
     tasksTotal++;
     if (match[1] === "x" || match[1] === "X") tasksDone++;

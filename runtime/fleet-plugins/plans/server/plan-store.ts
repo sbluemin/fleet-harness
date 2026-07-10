@@ -21,6 +21,8 @@ export interface PlanReadResult {
   readonly updatedAt: string;
   readonly content: string;
   readonly waves: readonly PlanWave[];
+  readonly tasksDone: number;
+  readonly tasksTotal: number;
 }
 
 interface PlansRoot {
@@ -35,6 +37,8 @@ interface PlanFile {
 
 const PLANS_DIRECTORY_SEGMENTS = [".fleet", "plans"] as const;
 const MARKDOWN_EXTENSION = ".md";
+const PLAN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
+const LIST_READ_CONCURRENCY = 16;
 export const PLAN_READ_SIZE_CAP = 2 * 1024 * 1024;
 
 export class PlanStoreError extends Error {
@@ -58,13 +62,23 @@ export async function listPlansForTheater(theaterPath: string): Promise<readonly
     throw toPlanStoreError(error);
   }
 
+  const names = entries
+    .filter((entry) => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(MARKDOWN_EXTENSION) && isValidPlanName(entry.name))
+    .map((entry) => entry.name);
+  const plans: PlanListItem[] = [];
+
   // 항목 단위 실패(격납 탈출 심링크, 삭제 경합 등)는 목록 전체를 오염시키지 않고 해당 항목만 건너뛴다.
-  const plans = (await Promise.all(entries
-    .filter((entry) => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(MARKDOWN_EXTENSION))
-    .map((entry) => toPlanListItem(plansRoot, entry.name).catch(() => null))))
-    .filter((plan): plan is PlanListItem => plan !== null);
+  for (let startIndex = 0; startIndex < names.length; startIndex += LIST_READ_CONCURRENCY) {
+    const chunk = names.slice(startIndex, startIndex + LIST_READ_CONCURRENCY);
+    const results = await Promise.all(chunk.map((name) => toPlanListItem(plansRoot, name).catch(() => null)));
+    plans.push(...results.filter((plan): plan is PlanListItem => plan !== null));
+  }
 
   return plans.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export function isValidPlanName(name: string): boolean {
+  return PLAN_NAME_PATTERN.test(name) && !name.includes("..");
 }
 
 export async function readPlanForTheater(theaterPath: string, name: string): Promise<PlanReadResult> {
@@ -88,6 +102,8 @@ export async function readPlanForTheater(theaterPath: string, name: string): Pro
     updatedAt: file.stat.mtime.toISOString(),
     content,
     waves: parsed.waves,
+    tasksDone: parsed.tasksDone,
+    tasksTotal: parsed.tasksTotal,
   };
 }
 

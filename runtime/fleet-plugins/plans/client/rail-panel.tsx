@@ -30,6 +30,8 @@ interface PlanReadResult {
   readonly updatedAt: string;
   readonly content: string;
   readonly waves: readonly PlanWave[];
+  readonly tasksDone: number;
+  readonly tasksTotal: number;
 }
 
 interface PlansListResult {
@@ -257,8 +259,6 @@ function PlanReader({ state, onClose, onRetry }: PlanReaderProps) {
 
 function PlanDocument({ plan, onClose }: PlanDocumentProps) {
   const html = useMemo(() => renderMarkdown(plan.content).html, [plan.content]);
-  const tasksDone = plan.waves.reduce((sum, wave) => sum + wave.tasksDone, 0);
-  const tasksTotal = plan.waves.reduce((sum, wave) => sum + wave.tasksTotal, 0);
 
   return (
     <div className="plans-reader-pane">
@@ -266,7 +266,7 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
         <div className="plans-reader-heading">
           <h2 className="plans-reader-title">{plan.title}</h2>
           <span className="plans-reader-meta">
-            {plan.waves.length} waves · {tasksDone}/{tasksTotal} tasks · updated {formatRelativeTime(plan.updatedAt)}
+            {plan.waves.length} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · updated {formatRelativeTime(plan.updatedAt)}
           </span>
         </div>
         <CloseButton onClose={onClose} />

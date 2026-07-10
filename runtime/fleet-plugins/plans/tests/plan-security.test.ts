@@ -80,6 +80,40 @@ describe("Plans handlers — security", () => {
     expect(huge).toMatchObject({ waveCount: 0, tasksTotal: 0, sizeBytes: 2 * 1024 * 1024 + 1 });
   });
 
+  it("excludes plan names that cannot be read through the API", async () => {
+    const plansPath = path.join(theaterPath, ".fleet", "plans");
+    await fs.promises.writeFile(path.join(plansPath, ".hidden.md"), "# Hidden");
+    await fs.promises.writeFile(path.join(plansPath, "road map.md"), "# Road map");
+
+    const { ctx, responses } = createContext({ theaterId: "theater" }, () => theaterPath);
+    await handlePlansList({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    const response = responses[0] as { status: number; body: { plans: Array<{ name: string }> } };
+    expect(response.status).toBe(200);
+    expect(response.body.plans.map((plan) => plan.name)).not.toContain(".hidden.md");
+    expect(response.body.plans.map((plan) => plan.name)).not.toContain("road map.md");
+  });
+
+  it("returns document-wide task totals when reading a plan", async () => {
+    const plansPath = path.join(theaterPath, ".fleet", "plans");
+    await fs.promises.writeFile(path.join(plansPath, "totals.md"), `
+# Totals
+- [x] preparation
+## Wave 1: Build
+- [ ] implementation
+# Review
+- [x] sign-off
+`);
+
+    const { ctx, responses } = createContext({ theaterId: "theater", name: "totals.md" }, () => theaterPath);
+    await handlePlansRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toHaveLength(1);
+    const response = responses[0] as { status: number; body: { tasksDone: number; tasksTotal: number } };
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ tasksDone: 2, tasksTotal: 3 });
+  });
+
   it("returns an empty list when .fleet/plans does not exist", async () => {
     const emptyTheaterPath = path.join(tmpDir, "empty-theater");
     await fs.promises.mkdir(emptyTheaterPath);

@@ -2,9 +2,7 @@ import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { PlanStoreError, listPlansForTheater, readPlanForTheater } from "./plan-store.js";
-
-const PLAN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
+import { PlanStoreError, isValidPlanName, listPlansForTheater, readPlanForTheater } from "./plan-store.js";
 
 export async function handlePlansList(
   req: http.IncomingMessage,
@@ -62,10 +60,6 @@ export async function handlePlansRead(
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isValidPlanName(name: string): boolean {
-  return PLAN_NAME_PATTERN.test(name) && !name.includes("..");
 }
 
 function writePlanStoreError(res: http.ServerResponse, ctx: FleetPluginServerContext, error: unknown): void {

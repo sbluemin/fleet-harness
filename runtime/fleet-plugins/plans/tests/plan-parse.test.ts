@@ -64,4 +64,23 @@ describe("parsePlan", () => {
       tasksTotal: 3,
     });
   });
+
+  it("excludes fenced examples without letting a different fence marker close the block", () => {
+    expect(parsePlan(`
+# Real plan
+\`\`\`markdown
+## Wave 99: Example only
+- [ ] example task
+~~~
+- [x] still fenced
+\`\`\`
+## Wave 1: Actual work
+- [x] shipped
+`)).toEqual({
+      title: "Real plan",
+      waves: [{ index: 1, heading: "Wave 1: Actual work", tasksDone: 1, tasksTotal: 1 }],
+      tasksDone: 1,
+      tasksTotal: 1,
+    });
+  });
 });
