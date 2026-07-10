@@ -4051,23 +4051,49 @@
   z-index: 6;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
+  gap: 0;
+  width: fit-content;
+  min-width: 22px;
   max-width: calc(100% - (var(--space-2) * 2));
-  min-height: 36px;
-  padding: 4px 5px 4px 8px;
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 86%, transparent);
+  min-height: 22px;
+  padding: 0;
+  border: 0 solid transparent;
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
-  box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   cursor: grab;
   touch-action: none;
+  transition:
+    gap var(--duration-base) var(--ease-spring),
+    min-height var(--duration-base) var(--ease-spring),
+    padding var(--duration-base) var(--ease-spring),
+    border-color var(--duration-base) var(--ease-spring),
+    background var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring),
+    backdrop-filter var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-titlebar:active {
   cursor: grabbing;
+}
+
+/* rest에서는 accent beacon만 코너에 남긴다. Tab으로 숨은 컨트롤에 진입하면
+   필 스코프의 focus-within만으로 다시 열려 xterm 본문 포커스와 분리된다. */
+.canvas-operation:hover .canvas-operation-titlebar,
+.canvas-operation-titlebar:focus-within {
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: 4px 33px 4px 8px;
+  border-color: color-mix(in oklch, var(--surface-rim) 86%, transparent);
+  border-width: 1px;
+  overflow: visible;
+  background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
+  box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
 .canvas-operation-drag-edge {
@@ -4088,12 +4114,15 @@
 /* 좌측 상태 인디케이터(beacon)를 감싼 클릭 어포던스 — 누르면 accent 설정 모달을 연다.
    accent-immune: 도트 fill은 상태색 단독 소유이고, 버튼 테두리/배경은 중립 ink만 쓴다(사용자 accent 누출 금지). */
 .canvas-operation-beacon-button {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: grid;
   place-items: center;
   flex: none;
   width: 22px;
   height: 22px;
-  margin-left: -4px;
+  margin-left: 0;
   padding: 0;
   cursor: pointer;
   border: 1px solid transparent;
@@ -4326,18 +4355,31 @@
 }
 
 .canvas-operation-title {
+  flex: 0 0 0;
+  width: 0;
   min-width: 0;
-  max-width: 15ch;
+  max-width: 0;
+  height: 0;
   overflow: hidden;
-  color: var(--ink-pearl);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  color: transparent;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
   /* 이름 영역은 더블클릭 rename 대상 — 텍스트 커서로 드래그(grab)되는 띠바 영역과 시각적으로 구분한다. */
   cursor: text;
-  padding: 2px 4px;
-  margin: 0 -2px;
   border-radius: var(--radius-xs);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    width var(--duration-base) var(--ease-spring),
+    max-width var(--duration-base) var(--ease-spring),
+    height var(--duration-base) var(--ease-spring),
+    padding var(--duration-base) var(--ease-spring),
+    margin var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-title:hover {
@@ -4346,17 +4388,29 @@
 
 /* 패널 이름 인라인 변경 입력 — Operations 사이드바 rename 입력과 같은 brass 포커스 언어를 띠바 폭에 맞춘다. */
 .canvas-operation-rename-input {
-  flex: 0 1 15ch;
+  flex: 0 0 0;
+  width: 0;
   min-width: 0;
-  padding: 4px 7px;
-  border: 1px solid color-mix(in oklch, var(--brass) 44%, var(--surface-rim));
+  max-width: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
-  color: var(--ink-pearl);
+  background: transparent;
+  color: transparent;
   font: inherit;
   font-weight: 700;
   outline: none;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transition:
+    width var(--duration-base) var(--ease-spring),
+    max-width var(--duration-base) var(--ease-spring),
+    height var(--duration-base) var(--ease-spring),
+    padding var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-rename-input:focus {
@@ -4366,17 +4420,29 @@
     0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-.canvas-operation-cli,
-.canvas-operation-job-count {
-  flex: none;
-  padding: 4px 7px;
-  border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
+.canvas-operation-cli {
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-sm);
-  color: var(--aurora);
+  color: transparent;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    width var(--duration-base) var(--ease-spring),
+    max-width var(--duration-base) var(--ease-spring),
+    height var(--duration-base) var(--ease-spring),
+    padding var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-cli {
@@ -4384,6 +4450,14 @@
 }
 
 .canvas-operation-job-count {
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
   border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
   color: var(--brass-bright);
 }
@@ -4391,14 +4465,22 @@
 .canvas-operation-icon-button {
   display: grid;
   place-items: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--surface-rim);
+  flex: 0 0 0;
+  width: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0 solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
+  color: transparent;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
   transition:
+    width var(--duration-base) var(--ease-spring),
+    height var(--duration-base) var(--ease-spring),
+    padding var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring);
@@ -4413,12 +4495,6 @@
   outline-offset: 2px;
 }
 
-.canvas-operation:hover .canvas-operation-icon-button,
-.canvas-operation:focus-within .canvas-operation-icon-button {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
-}
-
 .canvas-operation-icon-button.is-active {
   color: var(--brass-bright);
   border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
@@ -4430,6 +4506,73 @@
   display: block;
   width: 15px;
   height: 15px;
+}
+
+.canvas-operation:hover .canvas-operation-title,
+.canvas-operation-titlebar:focus-within .canvas-operation-title {
+  flex: 0 1 15ch;
+  width: auto;
+  min-width: 0;
+  max-width: 15ch;
+  height: auto;
+  padding: 2px 4px;
+  margin: 0 -2px;
+  color: var(--ink-pearl);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-operation:hover .canvas-operation-rename-input,
+.canvas-operation-titlebar:focus-within .canvas-operation-rename-input {
+  flex: 0 1 15ch;
+  width: auto;
+  min-width: 0;
+  max-width: 15ch;
+  height: auto;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--brass) 44%, var(--surface-rim));
+  background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
+  color: var(--ink-pearl);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 12%, transparent);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-operation:hover .canvas-operation-cli,
+.canvas-operation-titlebar:focus-within .canvas-operation-cli {
+  flex: none;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
+  color: var(--aurora);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-operation:hover .canvas-operation-icon-button,
+.canvas-operation-titlebar:focus-within .canvas-operation-icon-button {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  color: var(--ink-fog);
+  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-operation-titlebar,
+  .canvas-operation-title,
+  .canvas-operation-rename-input,
+  .canvas-operation-cli,
+  .canvas-operation-icon-button {
+    transition-duration: 0.01ms;
+  }
 }
 
 .canvas-operation-terminal {
