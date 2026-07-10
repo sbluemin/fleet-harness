@@ -163,6 +163,36 @@ describe("handleDiffLog", () => {
     });
   });
 
+  it("브랜치 삭제로 고아가 된 detached 워크트리 HEAD 커밋도 history에 포함한다", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+    await fs.writeFile(path.join(repoDir, "a.txt"), "a");
+    await runGit(["add", "a.txt"], { cwd: repoDir });
+    await runGit(["commit", "-m", "base"], { cwd: repoDir });
+    await runGit(["checkout", "-b", "temp"], { cwd: repoDir });
+    await fs.writeFile(path.join(repoDir, "b.txt"), "b");
+    await runGit(["add", "b.txt"], { cwd: repoDir });
+    await runGit(["commit", "-m", "orphaned tip"], { cwd: repoDir });
+    const tipSha = (await runGit(["rev-parse", "HEAD"], { cwd: repoDir })).stdout.trim();
+    await runGit(["checkout", "-"], { cwd: repoDir });
+    await runGit(["worktree", "add", "--detach", path.join(tmpDir, "wt-detached"), tipSha], { cwd: repoDir });
+    await runGit(["branch", "-D", "temp"], { cwd: repoDir });
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+
+    expect(writes[0]?.status).toBe(200);
+    const payload = writes[0]?.payload as {
+      readonly commits: readonly { readonly fullHash: string; readonly onHead: boolean }[];
+      readonly checkouts: readonly { readonly sha: string; readonly branch: string | null; readonly isCurrent: boolean }[];
+    };
+    const tip = payload.commits.find((commit) => commit.fullHash === tipSha);
+    expect(tip).toBeDefined();
+    expect(tip?.onHead).toBe(false);
+    expect(payload.checkouts).toContainEqual(expect.objectContaining({ sha: tipSha, branch: null, isCurrent: false }));
+  });
+
   it("non-bare no-HEAD 저장소는 기존 graceful empty 결과를 유지한다", async () => {
     const repoDir = path.join(tmpDir, "new-repo");
     await fs.mkdir(repoDir);

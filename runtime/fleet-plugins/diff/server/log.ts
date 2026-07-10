@@ -15,6 +15,11 @@ interface ParsedWorktree {
   readonly worktreePath: string;
 }
 
+// ─── constants ───────────────────────────────────────────────────────────────
+
+// porcelain HEAD 라인에서 파싱된 값만 rev 인자로 허용하는 방어 검증
+const WORKTREE_SHA_RE = /^[0-9a-f]{40}$/;
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -167,18 +172,22 @@ export async function handleDiffLog(
   const { gitCwd } = cwdResult;
 
   try {
-    const [result, worktrees, currentWorktreePath, headRevList] = await Promise.all([
-      runGit(
-        // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD로 한정한다
-        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "HEAD"],
-        { cwd: gitCwd },
-      ),
+    const [worktrees, currentWorktreePath, headRevList] = await Promise.all([
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
       readCurrentWorktreePath(gitCwd),
       readHeadRevList(gitCwd),
     ]);
-    const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
     const checkouts = await parseWorktreePorcelain(worktrees.stdout, currentWorktreePath);
+    // detached 워크트리 HEAD는 어떤 브랜치/태그/원격에서도 도달 불가능할 수 있으므로 rev 집합에 명시적으로 추가한다
+    const worktreeRevs = [...new Set(checkouts.map((checkout) => checkout.sha))]
+      // orphan 워크트리의 unborn HEAD는 zero-SHA로 보고되며 rev 인자로 넘기면 로그 전체가 실패한다
+      .filter((sha) => WORKTREE_SHA_RE.test(sha) && !/^0+$/.test(sha));
+    const result = await runGit(
+      // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
+      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "HEAD", ...worktreeRevs],
+      { cwd: gitCwd },
+    );
+    const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
     ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
