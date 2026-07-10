@@ -2,11 +2,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
-import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { setActiveTheme } from "../store.js";
-import type { GlobalSettingsState, ThemeId } from "../types.js";
+import { setActiveTheme, setActiveUiFont } from "../store.js";
+import type { GlobalSettingsState, ThemeId, UiFontId } from "../types.js";
 
 interface ThemeOption {
   readonly id: ThemeId;
@@ -17,6 +17,14 @@ interface ThemeOption {
 interface PortModeOption {
   readonly id: GlobalSettingsState["consolePortMode"];
   readonly label: string;
+}
+
+interface UiFontOption {
+  readonly id: UiFontId;
+  readonly label: string;
+  readonly name: string;
+  readonly note: string;
+  readonly family: string;
 }
 
 type CoreSettingsSectionId = "general" | "backend-api";
@@ -54,11 +62,17 @@ const PORT_MODES: readonly PortModeOption[] = [
   { id: "static", label: "Static" },
 ];
 
+const UI_FONT_OPTIONS: readonly UiFontOption[] = [
+  { id: "manrope", label: "Fleet UI", name: "Manrope", note: "Balanced · Fleet default", family: '"Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
+  { id: "jetbrains-mono", label: "Instrument Mono", name: "JetBrains Mono", note: "Uniform · technical scan", family: '"JetBrains Mono Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
+  { id: "source-code-pro", label: "Source Mono", name: "Source Code Pro", note: "Open forms · compact", family: '"Source Code Pro Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
+];
+
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 
 const CORE_SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
-  { id: "general", label: "General", eyebrow: "Theme · Port" },
+  { id: "general", label: "General", eyebrow: "Theme · Type · Port" },
   { id: "backend-api", label: "Backend API", eyebrow: "Loopback routes" },
 ];
 
@@ -151,7 +165,8 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
     case "general":
       return (
         <>
-          <ThemeCard />
+          <ThemeCard saving={saving} />
+          <TypographyCard state={state} saving={saving} />
           <GeneralSettingsCard state={state} saving={saving} />
         </>
       );
@@ -190,8 +205,16 @@ function formatPluginLabel(pluginId: string): string {
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
 }
 
-function ThemeCard() {
+function ThemeCard({ saving }: { readonly saving: boolean }) {
   const { activeTheme } = useConsoleState();
+  const selectTheme = (theme: ThemeId) => {
+    if (getGlobalSettingsStoreState().savingField !== null) return;
+    const previousTheme = activeTheme;
+    setActiveTheme(theme);
+    void setGlobalSettingsField("theme", theme).then((saved) => {
+      if (!saved) setActiveTheme(previousTheme);
+    });
+  };
   return (
     <section className="global-settings-card" aria-label="Theme">
       <div className="global-settings-row">
@@ -209,7 +232,8 @@ function ThemeCard() {
                 type="button"
                 aria-pressed={isActive}
                 className={`theme-card ${isActive ? "is-active" : ""}`}
-                onClick={() => { setActiveTheme(theme.id); void setGlobalSettingsField("theme", theme.id); }}
+                disabled={saving}
+                onClick={() => selectTheme(theme.id)}
               >
                 <span className="theme-card-swatch" aria-hidden="true">
                   {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
@@ -222,6 +246,66 @@ function ThemeCard() {
         </div>
       </div>
       <p className="global-settings-foot">Theme applies immediately and is stored server-side.</p>
+    </section>
+  );
+}
+
+function TypographyCard({
+  state,
+  saving,
+}: {
+  readonly state: GlobalSettingsState | null;
+  readonly saving: boolean;
+}) {
+  const activeUiFont = state?.uiFont ?? "manrope";
+  const selectUiFont = (uiFont: UiFontId) => {
+    if (getGlobalSettingsStoreState().savingField !== null) return;
+    const previousUiFont = activeUiFont;
+    setActiveUiFont(uiFont);
+    void setGlobalSettingsField("uiFont", uiFont).then((saved) => {
+      if (!saved) setActiveUiFont(previousUiFont);
+    });
+  };
+
+  return (
+    <section className="global-settings-card" aria-label="Typography">
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">Typography</p>
+          <p className="global-settings-help">Typeface for interface text and reading surfaces. Display, code, and terminal fonts stay unchanged.</p>
+        </div>
+        <button
+          type="button"
+          className="typography-reset"
+          disabled={!state || saving || activeUiFont === "manrope"}
+          onClick={() => selectUiFont("manrope")}
+        >
+          Reset to Fleet default
+        </button>
+      </div>
+      <div className="font-cards" role="group" aria-label="Global UI font">
+        {UI_FONT_OPTIONS.map((font) => {
+          const isActive = activeUiFont === font.id;
+          return (
+            <button
+              key={font.id}
+              type="button"
+              aria-pressed={isActive}
+              className={`font-card ${isActive ? "is-active" : ""}`}
+              disabled={!state || saving}
+              onClick={() => selectUiFont(font.id)}
+            >
+              <span className="fc-name">
+                <span>{font.label}</span>
+                <span className="fc-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+              </span>
+              <span className="fc-sample" style={{ fontFamily: font.family }}>{font.name}</span>
+              <span className="fc-meta">{font.note}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="global-settings-foot">Typography applies immediately and is stored server-side for every browser and restart.</p>
     </section>
   );
 }

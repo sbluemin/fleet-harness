@@ -51,10 +51,10 @@ describe("sanitizeConsoleSettingsData", () => {
   it("accepts valid general fields", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon" },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon", uiFont: "source-code-pro" },
     })).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon" },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon", uiFont: "source-code-pro" },
       plugins: {},
     });
   });
@@ -82,6 +82,22 @@ describe("sanitizeConsoleSettingsData", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
       general: { theme: "neon" },
+    })).toEqual({ version: 1, general: {}, plugins: {} });
+  });
+
+  it("accepts each curated UI font", () => {
+    for (const uiFont of ["manrope", "jetbrains-mono", "source-code-pro"] as const) {
+      expect(sanitizeConsoleSettingsData({
+        version: 1,
+        general: { uiFont },
+      })).toEqual({ version: 1, general: { uiFont }, plugins: {} });
+    }
+  });
+
+  it("drops an invalid UI font so the global settings DTO falls back to Manrope", () => {
+    expect(sanitizeConsoleSettingsData({
+      version: 1,
+      general: { uiFont: "comic-sans" },
     })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
@@ -129,17 +145,17 @@ describe("sanitizeConsoleSettingsData", () => {
 
     store.update(() => ({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon", uiFont: "jetbrains-mono" },
     }));
 
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon", uiFont: "jetbrains-mono" },
       plugins: {},
     });
 
     const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8")) as unknown;
-    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon" } });
+    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon", uiFont: "jetbrains-mono" } });
   });
 
   it("preserves valid plugins record on round-trip", () => {

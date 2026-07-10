@@ -49,13 +49,16 @@ export async function loadGlobalSettings(signal?: AbortSignal): Promise<void> {
 }
 
 export async function setGlobalSettingsField<Field extends GlobalSettingsField>(field: Field, value: GlobalSettingsState[Field]): Promise<boolean> {
-  setSnapshot({ savingField: field, error: null });
+  if (snapshot.savingField !== null) return false;
+  const previousState = snapshot.state;
+  const optimisticState = previousState ? { ...previousState, [field]: value } as GlobalSettingsState : null;
+  setSnapshot({ state: optimisticState, savingField: field, error: null });
   try {
     const result = await updateGlobalSettings({ [field]: value });
     setSnapshot({ state: result.state, savingField: null, error: null });
     return true;
   } catch (error) {
-    setSnapshot({ savingField: null, error: toErrorMessage(error) });
+    setSnapshot({ state: previousState, savingField: null, error: toErrorMessage(error) });
     return false;
   }
 }

@@ -1,5 +1,7 @@
 import { ApiError } from "./api.js";
-import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./types.js";
+import type { GlobalSettingsMutationResult, GlobalSettingsState, UiFontId } from "./types.js";
+
+const DEFAULT_UI_FONT: UiFontId = "manrope";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
@@ -48,9 +50,14 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
     theme: payload.theme,
+    uiFont: isUiFontId(payload.uiFont) ? payload.uiFont : DEFAULT_UI_FONT,
   };
 }
 
 function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
+}
+
+function isUiFontId(value: unknown): value is UiFontId {
+  return value === "manrope" || value === "jetbrains-mono" || value === "source-code-pro";
 }

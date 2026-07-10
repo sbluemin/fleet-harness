@@ -158,11 +158,14 @@ export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly theme: ThemeId;
+  readonly uiFont: UiFontId;
 }
 
 export interface GlobalSettingsMutationResult {
   readonly state: GlobalSettingsState;
 }
+
+export type UiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 
 export interface ApiCatalogEntry {
   readonly method: string;

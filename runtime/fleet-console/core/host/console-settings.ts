@@ -9,11 +9,13 @@ import {
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 
 export type ConsoleThemeId = "maritime" | "carbon";
+export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 
 export interface ConsoleGeneralSettings {
   readonly consolePortMode?: "dynamic" | "static";
   readonly consoleStaticPort?: number;
   readonly theme?: ConsoleThemeId;
+  readonly uiFont?: ConsoleUiFontId;
 }
 
 export interface ConsoleSettingsData {
@@ -78,10 +80,12 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const theme = value.theme === "maritime" || value.theme === "carbon"
     ? value.theme
     : undefined;
+  const uiFont = isConsoleUiFontId(value.uiFont) ? value.uiFont : undefined;
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(theme !== undefined ? { theme } : {}),
+    ...(uiFont !== undefined ? { uiFont } : {}),
   };
 }
 
@@ -102,4 +106,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
+}
+
+function isConsoleUiFontId(value: unknown): value is ConsoleUiFontId {
+  return value === "manrope" || value === "jetbrains-mono" || value === "source-code-pro";
 }
