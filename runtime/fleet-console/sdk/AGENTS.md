@@ -24,6 +24,7 @@
   - `PluginErrorBoundary` in `@fleet-console/sdk/react/browser`.
   - `SDK_API_VERSION` exported from `@fleet-console/sdk/version`, consumed through `FleetPluginManifest.apiVersion` for compatibility gating.
 - `PluginInstallContext` and `OperationRenderContext` both expose `settings: ClientSettingsCapability` alongside the existing capabilities. `SettingsSectionDescriptor` stays minimal: `{ id, title, render }`.
+- `RailPanelContext.pathContext` is required and contains `{ kind, relPath, label }`; `RailPanelDescriptor.pathAware` is an optional host-chrome opt-in. Plugins consume the resolved context but do not persist or select paths: selection is a host/server capability, not a plugin preference. Undeclared panels remain Theater-wide in host chrome.
 
 ## File Rules
 

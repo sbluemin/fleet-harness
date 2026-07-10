@@ -139,6 +139,8 @@ Your project's knowledge base, mounted right inside the console: browse Fleet Wi
 
 Terminal sessions are server-owned and survive browser disconnects, so closing the tab leaves your agents running. Every surface is loopback-only, and MCP/session tokens never reach the browser.
 
+Activity Rail panels can share a server-persisted path context for a Theater, letting supported Files, Plans, Diff, and History views focus on the same selected root without exposing local filesystem paths to the browser.
+
 ---
 
 ## ⌨️ Fleet CLI
