@@ -21,8 +21,9 @@ export function isSupportedMarkdownImagePath(relativePath: string): boolean {
   return [...MARKDOWN_IMAGE_EXTENSIONS].some((extension) => lower.endsWith(extension));
 }
 
-export function buildFileExplorerImageSrc(theaterId: string, relativePath: string): string {
-  return `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`;
+export function buildFileExplorerImageSrc(theaterId: string, relativePath: string, contextRelPath: string | null = null): string {
+  const prefix = contextRelPath ? `${contextRelPath.replaceAll("\\", "/")}/` : "";
+  return `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(`${prefix}${relativePath}`)}`;
 }
 
 export function isAllowedExternalMarkdownImageSrc(rawSrc: string): boolean {

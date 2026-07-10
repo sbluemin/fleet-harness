@@ -182,6 +182,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   relativePath={viewState.relativePath}
                   theaterId={theaterId}
                   truncated={viewState.truncated}
+                  contextRelPath={contextRelPath}
                 />
               )}
               {viewState.kind === "code" && viewState.lang !== "markdown" && (
@@ -207,6 +208,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           files={files}
           theaterId={theaterId}
           contextKey={contextScope}
+          contextRelPath={contextRelPath}
           selectedPath={selectedPath}
           onSelect={handleSelect}
         />

@@ -36,6 +36,10 @@ describe("file explorer markdown links", () => {
     );
   });
 
+  it("selected context is prefixed exactly once for local images", () => {
+    expect(buildFileExplorerImageSrc("abc", "images/logo.png", "worktrees/next")).toContain("path=worktrees%2Fnext%2Fimages%2Flogo.png");
+  });
+
   it("서버 이미지 allowlist와 맞는 markdown image 확장자만 지원한다", () => {
     expect(isSupportedMarkdownImagePath(".github/logo.png")).toBe(true);
     expect(isSupportedMarkdownImagePath(".github/fleet-harness.gif")).toBe(true);

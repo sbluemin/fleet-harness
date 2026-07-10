@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 
 import { FileIcon, FolderIcon } from "./file-icon.js";
+import { translateContextEvent } from "./path-context.js";
 
 export interface PluginFilesClient {
   readonly listFolder: (relativePath?: string) => Promise<FolderListResult>;
@@ -10,6 +11,7 @@ export interface PluginFilesClient {
 
 interface FileTreeProps {
   readonly contextKey: string;
+  readonly contextRelPath: string | null;
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
@@ -86,7 +88,7 @@ function buildFlatRows(
   return rows;
 }
 
-export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect }: FileTreeProps) {
+export function FileTree({ contextKey, contextRelPath, files, theaterId, selectedPath, onSelect }: FileTreeProps) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -115,6 +117,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
     setExpandedDirs(new Set());
     setChildResults(new Map());
     setFilterText("");
+    setScrollTop(0);
   }, [contextKey, theaterId]);
 
   useEffect(() => {
@@ -170,14 +173,16 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
         return;
       }
       if (typeof relDir !== "string") return;
+      const contextDir = translateContextEvent(contextRelPath, relDir);
+      if (contextDir === null) return;
       // 루트 레벨 변경 또는 현재 탐색 경로 변경
-      if (relDir === "" || relDir === currentPathRef.current) {
+      if (contextDir === "" || contextDir === currentPathRef.current) {
         reloadRoot();
       }
       // 펼쳐진 폴더에 해당하면 해당 폴더만 재조회
-      if (relDir !== "" && expandedDirsRef.current.has(relDir)) {
-        filesRef.current.listFolder(relDir).then((r) => {
-          setChildResults((prev) => new Map(prev).set(relDir, r));
+      if (contextDir !== "" && expandedDirsRef.current.has(contextDir)) {
+        filesRef.current.listFolder(contextDir).then((r) => {
+          setChildResults((prev) => new Map(prev).set(contextDir, r));
         }).catch(() => {});
       }
     });
@@ -194,7 +199,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
     return () => {
       es.close();
     };
-  }, [theaterId, files]);
+  }, [contextRelPath, theaterId, files]);
 
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
@@ -337,7 +342,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
         aria-label="File tree"
         onScroll={shouldVirtualize ? handleScroll : undefined}
       >
-        {result.parentRelativePath !== null && !filterText && (
+        {false && result.parentRelativePath !== null && !filterText && (
           <button
             className="fexp-tree-up"
             type="button"
