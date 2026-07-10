@@ -104,7 +104,12 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
       return NO_UPDATE_STATUS;
     }
     const latestVersion = await fetchLatest(FLEET_CONSOLE_PACKAGE_NAME);
-    if (!latestVersion || !isGreater(latestVersion, release.version)) {
+    if (latestVersion === undefined) {
+      // 실 fetchLatestVersion은 타임아웃·비정상 응답에서 throw 대신 undefined를 반환하므로,
+      // 여기서 throw로 승격해야 조회 실패가 짧은 오류 TTL(catch 경로)로 캐시된다.
+      throw new Error("registry lookup failed");
+    }
+    if (!isGreater(latestVersion, release.version)) {
       return NO_UPDATE_STATUS;
     }
     return { updateAvailable: true, latestVersion };

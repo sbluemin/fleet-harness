@@ -92,6 +92,31 @@ describe("console update check", () => {
     expect(lookupCount).toBe(2);
   });
 
+  it("treats an undefined registry lookup as a failure with the short error TTL", async () => {
+    let clock = 1_000;
+    let lookupCount = 0;
+    const service = createConsoleUpdateCheckService({
+      readRelease: () => ({ channel: "stable", version: "1.0.0", packageRoot: "/console" }),
+      // 실 fetchLatestVersion은 타임아웃·비정상 응답에서 throw 없이 undefined를 resolve한다.
+      fetchLatest: async () => {
+        lookupCount += 1;
+        return undefined;
+      },
+      now: () => clock,
+      ttlMs: 60_000,
+      errorTtlMs: 5_000,
+    });
+
+    await expect(service.refresh()).resolves.toEqual({ updateAvailable: false });
+    clock += 4_999;
+    await service.refresh();
+    expect(lookupCount).toBe(1);
+
+    clock += 1;
+    await service.refresh();
+    expect(lookupCount).toBe(2);
+  });
+
   it("periodically forces a recheck and releases its unref timer on stop", async () => {
     let scheduled: (() => void) | null = null;
     let lookupCount = 0;
