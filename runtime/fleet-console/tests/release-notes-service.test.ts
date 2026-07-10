@@ -153,6 +153,30 @@ describe("release note service", () => {
     expect(result.notes[1]?.sections[0]?.items[0]?.text).toBe("Earlier note.");
   });
 
+  it("keeps the newest-started Korean fetch in cache when an older fetch completes later", async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchImpl = vi.fn(() => new Promise<Response>((resolve) => {
+      resolvers.push(resolve);
+    }));
+    const service = createConsoleReleaseNotesService({ fetchImpl: fetchImpl as typeof fetch, now: () => 10 });
+
+    const regular = service.refresh({ locale: "ko" });
+    const forced = service.refresh({ force: true, locale: "ko" });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    resolvers[2]!(new Response(CHANGELOG));
+    resolvers[3]!(new Response(KOREAN_CHANGELOG.replace("런타임 노트.", "강제 노트.")));
+    await forced;
+    resolvers[0]!(new Response(CHANGELOG));
+    resolvers[1]!(new Response(KOREAN_CHANGELOG.replace("런타임 노트.", "일반 노트.")));
+    await regular;
+
+    const cached = await service.refresh({ locale: "ko" });
+
+    expect(cached.notes[0]?.sections[0]?.items[0]?.text).toBe("강제 노트.");
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
   it("silently degrades Korean failure without poisoning English cache or stale state", async () => {
     const fetchImpl = vi.fn(async (url: string) => url.endsWith("CHANGELOG.ko.md")
       ? new Response("", { status: 503 })

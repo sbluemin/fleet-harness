@@ -43,6 +43,7 @@ export function createConsoleReleaseNotesService(deps: ConsoleReleaseNotesServic
   let koreanLastFailureAt = 0;
   let koreanInFlight: Promise<KoreanReleaseNotesDocument | null> | null = null;
   let koreanForceInFlight: Promise<KoreanReleaseNotesDocument | null> | null = null;
+  let koreanRequestGeneration = 0;
 
   async function refresh(options: ConsoleReleaseNotesRefreshOptions = {}): Promise<ConsoleReleaseNotesResponse> {
     if (options.locale === "ko") return await refreshKoreanOverlay(options);
@@ -109,7 +110,7 @@ export function createConsoleReleaseNotesService(deps: ConsoleReleaseNotesServic
     const currentTime = now();
     if (options.force) {
       if (koreanForceInFlight) return await koreanForceInFlight;
-      const pending = runKoreanFetch().finally(() => {
+      const pending = runKoreanFetch(++koreanRequestGeneration).finally(() => {
         if (koreanForceInFlight === pending) koreanForceInFlight = null;
       });
       koreanForceInFlight = pending;
@@ -118,23 +119,25 @@ export function createConsoleReleaseNotesService(deps: ConsoleReleaseNotesServic
     if (koreanLastSuccess && currentTime - koreanLastSuccess.fetchedAt < SUCCESS_TTL_MS) return koreanLastSuccess;
     if (koreanLastFailureAt > 0 && currentTime - koreanLastFailureAt < NEGATIVE_TTL_MS) return null;
     if (koreanInFlight) return await koreanInFlight;
-    const pending = runKoreanFetch().finally(() => {
+    const pending = runKoreanFetch(++koreanRequestGeneration).finally(() => {
       if (koreanInFlight === pending) koreanInFlight = null;
     });
     koreanInFlight = pending;
     return await pending;
   }
 
-  function runKoreanFetch(): Promise<KoreanReleaseNotesDocument | null> {
+  function runKoreanFetch(requestGeneration: number): Promise<KoreanReleaseNotesDocument | null> {
     return fetchAndParse(RAW_KOREAN_CHANGELOG_URL)
       .then((notes) => {
         const result = { notes, fetchedAt: now() };
-        koreanLastSuccess = result;
-        koreanLastFailureAt = 0;
+        if (requestGeneration === koreanRequestGeneration) {
+          koreanLastSuccess = result;
+          koreanLastFailureAt = 0;
+        }
         return result;
       })
       .catch(() => {
-        koreanLastFailureAt = now();
+        if (requestGeneration === koreanRequestGeneration) koreanLastFailureAt = now();
         return null;
       });
   }

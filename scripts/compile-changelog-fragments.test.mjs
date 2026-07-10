@@ -5,6 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 
+import { writeChangelogs } from './compile-changelog-fragments.mjs';
+
 const COMPILER = path.resolve('scripts/compile-changelog-fragments.mjs');
 const EMPTY_CHANGELOG = '# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\nRelease v0.1.0\n';
 
@@ -68,6 +70,44 @@ test('does not write either target or delete fragments when either Unreleased se
   const result = run(fixture, '--version', '1.2.3', '--date', '2026-07-10');
   assert.notEqual(result.status, 0);
   assert.equal(fs.readFileSync(path.join(fixture, 'CHANGELOG.md'), 'utf8'), EMPTY_CHANGELOG);
+  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'entry.md')), true);
+});
+
+test('restores both changelogs and preserves fragments when the second write partially fails', () => {
+  const fixture = createFixture();
+  writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
+  const englishPath = path.join(fixture, 'CHANGELOG.md');
+  const koreanPath = path.join(fixture, 'CHANGELOG.ko.md');
+  const originalEnglish = fs.readFileSync(englishPath, 'utf8');
+  const originalKorean = fs.readFileSync(koreanPath, 'utf8');
+  const originalWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = (targetPath, content, ...options) => {
+    if (targetPath === koreanPath && typeof content === 'string' && content.includes('## [1.2.3]')) {
+      originalWriteFileSync(targetPath, 'PARTIAL', ...options);
+      throw new Error('ENOSPC');
+    }
+    return originalWriteFileSync(targetPath, content, ...options);
+  };
+
+  try {
+    assert.throws(() => writeChangelogs({
+      allowEmpty: false,
+      changelogKoPath: koreanPath,
+      changelogPath: englishPath,
+      date: '2026-07-10',
+      version: '1.2.3',
+    }, [{
+      enSummary: 'Add one.',
+      koSummary: '하나를 추가합니다.',
+      section: 'Added',
+      tagPrefix: '[fleet-console] ',
+    }]), /ENOSPC/);
+  } finally {
+    fs.writeFileSync = originalWriteFileSync;
+  }
+
+  assert.equal(fs.readFileSync(englishPath, 'utf8'), originalEnglish);
+  assert.equal(fs.readFileSync(koreanPath, 'utf8'), originalKorean);
   assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'entry.md')), true);
 });
 

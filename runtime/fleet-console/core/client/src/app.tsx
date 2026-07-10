@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useMapFullscreen } from "./canvas/canvas-store.js";
-import { fetchGroups, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
+import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { StatusBar } from "./components/statusbar.js";
@@ -16,7 +16,8 @@ import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -72,15 +73,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const abort = new AbortController();
-    beginReleaseNotesFetch();
-    void fetchReleaseNotes({ locale: releaseNotesLocale, signal: abort.signal })
-      .then(applyReleaseNotes)
-      .catch((error) => {
-        if (abort.signal.aborted) return;
-        failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
-      });
-    return () => abort.abort();
+    void requestReleaseNotes({ locale: releaseNotesLocale });
+    return abortReleaseNotesFetch;
   }, [releaseNotesLocale]);
 
   useEffect(() => {

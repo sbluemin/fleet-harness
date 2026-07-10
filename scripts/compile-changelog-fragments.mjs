@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
 const TAGS = ['core-process', 'core-agent', 'core-unified-agent', 'core-infra', 'fleet-admiral', 'fleet-carriers', 'fleet-wiki', 'fleet-console', 'fleet-cli'];
@@ -9,8 +10,9 @@ const RETIRED_TAGS = ['core', 'wiki', 'wiki-web', 'agent-core', 'unified-agent',
 const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_CHANGELOG_KO = 'CHANGELOG.ko.md';
 const DEFAULT_FRAGMENTS_DIR = '.changelog.d';
+const IS_DIRECT_EXECUTION = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-main();
+if (IS_DIRECT_EXECUTION) main();
 
 function main() {
   try {
@@ -160,7 +162,7 @@ function renderReleaseSection(version, date, entries, allowEmpty, locale) {
   return lines.join('\n');
 }
 
-function writeChangelogs(options, entries) {
+export function writeChangelogs(options, entries) {
   if (path.resolve(options.changelogPath) === path.resolve(options.changelogKoPath)) {
     throw new Error('--changelog and --changelog-ko must name different files.');
   }
@@ -168,14 +170,18 @@ function writeChangelogs(options, entries) {
     prepareChangelogWrite(options.changelogPath, options.version, options.date, entries, options.allowEmpty, 'en'),
     prepareChangelogWrite(options.changelogKoPath, options.version, options.date, entries, options.allowEmpty, 'ko'),
   ];
-  const written = [];
   try {
     for (const target of targets) {
       fs.writeFileSync(target.path, target.updated);
-      written.push(target);
     }
   } catch (error) {
-    for (const target of written.reverse()) fs.writeFileSync(target.path, target.original);
+    for (const target of targets) {
+      try {
+        fs.writeFileSync(target.path, target.original);
+      } catch {
+        // Rollback is best-effort; the original write failure remains authoritative.
+      }
+    }
     throw error;
   }
 }

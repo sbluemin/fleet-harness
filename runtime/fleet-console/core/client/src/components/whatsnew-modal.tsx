@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 
-import { fetchReleaseNotes } from "../api.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
-import { applyReleaseNotes, beginReleaseNotesFetch, closeWhatsNew, failReleaseNotesFetch, selectReleaseNote } from "../store.js";
+import { requestReleaseNotes } from "../release-notes-fetch.js";
+import { closeWhatsNew, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
 import { resolveReleaseNotesLocale } from "../whatsnew-i18n.js";
 
@@ -75,10 +75,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const selected = state.releaseNotes[selectedIndex] ?? state.releaseNotes[0]!;
   const selectedValue = releaseNoteKey(selected.version, selectedIndex >= 0 ? selectedIndex : 0);
   const handleRefresh = () => {
-    beginReleaseNotesFetch();
-    void fetchReleaseNotes({ force: true, locale })
-      .then(applyReleaseNotes)
-      .catch((error) => failReleaseNotesFetch(error instanceof Error ? error.message : String(error)));
+    void requestReleaseNotes({ force: true, locale });
   };
   const selectLanguage = async (nextLocale: "en" | "ko") => {
     await setGlobalSettingsField("language", nextLocale);
