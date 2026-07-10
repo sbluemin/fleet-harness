@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   CURATED_TERMINAL_FONTS,
+  createCuratedTerminalFontSettings,
   createCustomTerminalFontSettings,
   parseStoredTerminalFontSettings,
+  parseTerminalFontSettingsValue,
   resolveTerminalFont,
+  serializeTerminalFontSettings,
 } from "../client/shared/terminal-font.js";
 
 describe("terminal font settings", () => {
@@ -70,7 +73,7 @@ describe("terminal font settings", () => {
     }
   });
 
-  it("uses canvas width comparison to distinguish resolved custom fonts from fallback", () => {
+  it("maps self-hosted, resolved, and fallback selections through the shared resolver", () => {
     mockCanvasWidths({
       monospace: 100,
       serif: 120,
@@ -81,8 +84,18 @@ describe("terminal font settings", () => {
       '"Missing Mono", sans-serif': 130,
     });
 
+    expect(resolveTerminalFont(createCuratedTerminalFontSettings("cascadia", 14))).toMatchObject({ status: "self-hosted", fallbackName: "Cascadia Code" });
     expect(resolveTerminalFont(createCustomTerminalFontSettings("MesloLGS NF", 14))).toMatchObject({ status: "resolved" });
     expect(resolveTerminalFont(createCustomTerminalFontSettings("Missing Mono", 14))).toMatchObject({ status: "fallback", fallbackName: "Cascadia Code" });
+  });
+
+  it("round-trips legacy custom storage without introducing a system source", () => {
+    const settings = createCustomTerminalFontSettings("Installed Mono", 16);
+    const serialized = serializeTerminalFontSettings(settings);
+
+    expect(JSON.parse(serialized)).toEqual({ source: "custom", id: null, customName: "Installed Mono", size: 16 });
+    expect(parseTerminalFontSettingsValue(JSON.parse(serialized))).toEqual(settings);
+    expect(parseTerminalFontSettingsValue({ source: "system", familyName: "Installed Mono", size: 16 })).toBeNull();
   });
 });
 

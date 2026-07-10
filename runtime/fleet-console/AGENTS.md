@@ -57,6 +57,8 @@
 ## Settings Plugin Boundary
 
 - Core Settings owns the `Console` group and core console settings such as console port controls and global UI typography (`general.uiFont` in console `settings.json`).
+- The host alone classifies the direct loopback `GET /api/v1/settings/fonts/system` catalog. Built-in consumers use the React-free `@fleet-console/font-picker/system-fonts` validator and same-origin fetch; external-plugin shims and SDK settings descriptors remain unchanged.
+- `general.uiFont` is an atomic `{ source, id|familyName, size }` setting. The Typography client applies only the stable `data-ui-font` source marker and safely quoted inline `--font-body`/`--font-body-size`; display, mono, and Terminal font tokens remain independent.
 - Plugin Settings sections are discovered from `plugins[].settingsSections` and rendered under the `Plugins` group. The host derives plugin ownership from the plugin registration id and normalizes plugin active ids as `${pluginId}:${sectionId}`.
 - SDK settings descriptors remain minimal: `{ id, title, render }`. Do not add grouping, ordering, plugin ownership, or sensitivity metadata to `SettingsSectionDescriptor`.
 
@@ -152,6 +154,10 @@ Operation chrome (maximize, minimize, focus, and the Operations Left SideBar) is
 - **Security invariants** (must never be weakened): DOMPurify double-sanitize + `sanitizeConfig` ALLOWED_URI_REGEXP/ADD_ATTR verbatim; Mermaid `securityLevel: "strict"`, `htmlLabels: false`, no `bindFunctions`; SVG sanitize `USE_PROFILES.svg`; `installDiagramHydrator` inert/focus-trap for the lightbox.
 - **tsup bundling**: `noExternal: [/^@fleet-console\/(sdk|markdown)(\/|$)/]` ensures the package is bundled inline on `npm publish`; the published manifest's `dependencies` stays `node-pty` + `ws` only.
 - **External plugin shim**: external plugins under `~/.fleet/plugins/` cannot yet import `@fleet-console/markdown` (esbuild shim not yet added); that is a separate follow-up.
+
+`runtime/fleet-console/font-picker/` (`@fleet-console/font-picker`) is a private source-only React-peer package for the controlled two-pane font browser and React-free system-font validation/resolution helpers. Console core and the Terminal plugin consume its explicit `browser`, `resolve`, `system-fonts`, and `styles.css` subpaths; it owns no persistence or host classification policy. tsup inlines it with SDK/markdown, while `font-list` remains external in the published Console manifest so its native/platform assets install normally. External-plugin shims do not expose this package.
+
+Typography passes only host-classified `uiSuitable` records to the shared browser, preserves an unavailable saved system family as a dim row, and keeps the complete font object in each generic settings PUT so family and size cannot split across writes.
 
 ## Layout
 

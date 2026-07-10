@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
-import { connectTerminalSettings, getTerminalPrefsSnapshot, migrateLegacyTerminalPrefs, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-prefs-store.js";
+import { connectTerminalSettings, getTerminalPrefsSnapshot, migrateLegacyTerminalPrefs, setInstalledTerminalFont, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-prefs-store.js";
 
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
 const FONT_KEY = "fleet-plugin.terminal.font";
@@ -169,6 +169,21 @@ describe("connectTerminalSettings / server hydration", () => {
     expect(getTerminalPrefsSnapshot().font.size).toBe(20);
   });
 
+  it("race guard: a pending hydration cannot overwrite an installed-font selection", async () => {
+    let resolveRead!: (v: Record<string, unknown> | null) => void;
+    const cap: ClientSettingsCapability & { putCalls: { id: string; value: Record<string, unknown> }[] } = {
+      putCalls: [],
+      read: async () => new Promise<Record<string, unknown> | null>((resolve) => { resolveRead = resolve; }),
+      write: async (id, value) => { cap.putCalls.push({ id, value }); },
+    };
+    connectTerminalSettings(cap);
+    setInstalledTerminalFont("  MesloLGS NF\u0000  ");
+    resolveRead({ font: { source: "curated", id: "jetbrains", customName: "", size: 12 } });
+    await vi.waitFor(() => getTerminalPrefsSnapshot().font.customName === "MesloLGS NF");
+    expect(getTerminalPrefsSnapshot().font).toMatchObject({ source: "custom", id: null, customName: "MesloLGS NF" });
+    expect((cap.putCalls[0]?.value as { font?: unknown }).font).toEqual({ source: "custom", id: null, customName: "MesloLGS NF", size: getTerminalPrefsSnapshot().font.size });
+  });
+
   it("race guard: hydration does not seed PUT if write epoch changed", async () => {
     store[FONT_KEY] = JSON.stringify({ source: "curated", id: "fira-code", customName: "", size: 14 });
     let resolveRead!: (v: Record<string, unknown> | null) => void;
@@ -209,6 +224,27 @@ describe("connectTerminalSettings / server hydration", () => {
       const font = (c.value as { font?: { id?: string } }).font;
       return font?.id === "jetbrains";
     })).toBe(true);
+  });
+
+  it("writes an installed family and size through the legacy custom server payload", async () => {
+    const cap = makeCapability({ serverValue: null });
+    connectTerminalSettings(cap);
+    setTerminalFontSize(17);
+    setInstalledTerminalFont("  MesloLGS NF\u0000  ");
+    await vi.waitFor(() => cap.putCalls.some((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF"));
+    const installedWrite = cap.putCalls.find((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF");
+    expect(installedWrite).toEqual({ id: "terminal", value: { font: { source: "custom", id: null, customName: "MesloLGS NF", size: 17 } } });
+    expect(store[FONT_KEY]).toBeUndefined();
+  });
+
+  it("keeps the local fallback state when an installed-font server write fails", async () => {
+    const cap = makeCapability({ serverValue: null });
+    cap.write = async () => { throw new Error("network error"); };
+    connectTerminalSettings(cap);
+    setInstalledTerminalFont("Missing Mono");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(getTerminalPrefsSnapshot().font).toMatchObject({ source: "custom", customName: "Missing Mono" });
+    expect(store[FONT_KEY]).toBeUndefined();
   });
 
   it("does not throw when read fails; state stays unchanged", async () => {

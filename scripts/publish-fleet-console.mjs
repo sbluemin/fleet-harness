@@ -19,8 +19,8 @@ const targetVersion = version ?? originalPkg.version;
 
 // 번들에 인라인되지 않는 의존성만 published manifest에 남긴다.
 // @dotobokuri/* workspace 패키지는 tsup noExternal로 번들 흡수되고,
-// node-pty(native)와 ws는 src에서 동적 require로 호출되어 번들 대상이 아니므로 external로 유지한다.
-const EXTERNAL_DEP_NAMES = ["node-pty", "ws"];
+// node-pty(native)와 ws는 src에서 동적 require로 호출되고, font-list는 플랫폼 helper를 유지해야 하므로 external로 남긴다.
+const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list"];
 const EXTERNAL_DEPS = {};
 for (const name of EXTERNAL_DEP_NAMES) {
   const range = originalPkg.dependencies?.[name];

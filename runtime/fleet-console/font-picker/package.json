@@ -1,0 +1,44 @@
+{
+  "name": "@fleet-console/font-picker",
+  "version": "1.23.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./browser": {
+      "types": "./browser.tsx",
+      "import": "./browser.tsx",
+      "default": "./browser.tsx"
+    },
+    "./resolve": {
+      "types": "./resolve.ts",
+      "import": "./resolve.ts",
+      "default": "./resolve.ts"
+    },
+    "./system-fonts": {
+      "types": "./system-fonts.ts",
+      "import": "./system-fonts.ts",
+      "default": "./system-fonts.ts"
+    },
+    "./styles.css": {
+      "default": "./styles.css"
+    }
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^27.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  },
+  "scripts": {
+    "test": "vitest run --environment jsdom",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

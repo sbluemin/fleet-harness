@@ -6,6 +6,12 @@ export type ReleaseNotesLocale = "en" | "ko";
 
 export type ConsoleLanguagePreference = "auto" | ReleaseNotesLocale;
 
+export type UiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
+
+export type UiFontSettings =
+  | { readonly source: "builtin"; readonly id: UiFontId; readonly size: number }
+  | { readonly source: "system"; readonly familyName: string; readonly size: number };
+
 export interface ReleaseNoteSection {
   readonly heading: "Added" | "Changed" | "Fixed" | "Removed" | "Breaking Changes";
   readonly items: readonly ReleaseNoteItem[];
@@ -163,15 +169,13 @@ export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly theme: ThemeId;
-  readonly uiFont: UiFontId;
+  readonly uiFont: UiFontSettings;
   readonly language: ConsoleLanguagePreference;
 }
 
 export interface GlobalSettingsMutationResult {
   readonly state: GlobalSettingsState;
 }
-
-export type UiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 
 export interface ApiCatalogEntry {
   readonly method: string;

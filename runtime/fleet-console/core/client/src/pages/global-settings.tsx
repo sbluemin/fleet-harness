@@ -1,12 +1,16 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import "@fleet-console/font-picker/styles.css";
+import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "../store.js";
-import type { GlobalSettingsState, ThemeId, UiFontId } from "../types.js";
+import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
+import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -22,14 +26,6 @@ interface ThemeOption {
 interface PortModeOption {
   readonly id: GlobalSettingsState["consolePortMode"];
   readonly label: string;
-}
-
-interface UiFontOption {
-  readonly id: UiFontId;
-  readonly label: string;
-  readonly name: string;
-  readonly note: string;
-  readonly family: string;
 }
 
 type CoreSettingsSectionId = "general" | "backend-api";
@@ -65,12 +61,6 @@ const THEMES: readonly ThemeOption[] = [
 const PORT_MODES: readonly PortModeOption[] = [
   { id: "dynamic", label: "Dynamic" },
   { id: "static", label: "Static" },
-];
-
-const UI_FONT_OPTIONS: readonly UiFontOption[] = [
-  { id: "manrope", label: "Fleet UI", name: "Manrope", note: "Balanced · Fleet default", family: '"Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
-  { id: "jetbrains-mono", label: "Instrument Mono", name: "JetBrains Mono", note: "Uniform · technical scan", family: '"JetBrains Mono Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
-  { id: "source-code-pro", label: "Source Mono", name: "Source Code Pro", note: "Open forms · compact", family: '"Source Code Pro Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' },
 ];
 
 const LANGUAGES: readonly LanguageOption[] = [
@@ -268,14 +258,41 @@ function TypographyCard({
   readonly state: GlobalSettingsState | null;
   readonly saving: boolean;
 }) {
-  const activeUiFont = state?.uiFont ?? "manrope";
-  const selectUiFont = (uiFont: UiFontId) => {
+  const activeUiFont = state?.uiFont ?? DEFAULT_UI_FONT;
+  const [installedFonts, setInstalledFonts] = useState<readonly FontPickerInstalledFont[]>([]);
+  const [fontsLoading, setFontsLoading] = useState(true);
+  const [fontsError, setFontsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchSystemFonts({ signal: controller.signal }).then((response) => {
+      setInstalledFonts(response.fonts.filter((font) => font.uiSuitable).map(({ family, monospace }) => ({ family, monospace })));
+      setFontsError(null);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        setInstalledFonts([]);
+        setFontsError(error instanceof Error ? error.message : "Installed fonts could not be loaded.");
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setFontsLoading(false);
+    });
+    return () => controller.abort();
+  }, []);
+
+  const saveUiFont = (uiFont: UiFontSettings) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
     const previousUiFont = activeUiFont;
     setActiveUiFont(uiFont);
     void setGlobalSettingsField("uiFont", uiFont).then((saved) => {
       if (!saved) setActiveUiFont(previousUiFont);
     });
+  };
+
+  const selectUiFont = (selection: FontPickerSelection) => {
+    const uiFont: UiFontSettings = selection.source === "builtin"
+      ? { source: "builtin", id: selection.id as UiFontId, size: activeUiFont.size }
+      : { source: "system", familyName: selection.familyName, size: activeUiFont.size };
+    saveUiFont(uiFont);
   };
 
   return (
@@ -288,34 +305,27 @@ function TypographyCard({
         <button
           type="button"
           className="typography-reset"
-          disabled={!state || saving || activeUiFont === "manrope"}
-          onClick={() => selectUiFont("manrope")}
+          disabled={!state || saving || activeUiFont.source === "builtin" && activeUiFont.id === "manrope" && activeUiFont.size === UI_FONT_SIZE_RANGE.defaultValue}
+          onClick={() => saveUiFont(DEFAULT_UI_FONT)}
         >
           Reset to Fleet default
         </button>
       </div>
-      <div className="font-cards" role="group" aria-label="Global UI font">
-        {UI_FONT_OPTIONS.map((font) => {
-          const isActive = activeUiFont === font.id;
-          return (
-            <button
-              key={font.id}
-              type="button"
-              aria-pressed={isActive}
-              className={`font-card ${isActive ? "is-active" : ""}`}
-              disabled={!state || saving}
-              onClick={() => selectUiFont(font.id)}
-            >
-              <span className="fc-name">
-                <span>{font.label}</span>
-                <span className="fc-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
-              </span>
-              <span className="fc-sample" style={{ fontFamily: font.family }}>{font.name}</span>
-              <span className="fc-meta">{font.note}</span>
-            </button>
-          );
-        })}
-      </div>
+      <FontPicker
+        builtIns={UI_FONT_BUILT_INS.map(({ id, label, family, aliases, description }) => ({ id, label, family, aliases, description }))}
+        installedFonts={installedFonts}
+        selected={activeUiFont.source === "builtin" ? { source: "builtin", id: activeUiFont.id } : { source: "system", familyName: activeUiFont.familyName }}
+        selectedSystemFont={activeUiFont.source === "system" ? activeUiFont.familyName : null}
+        fallbackStack={uiFontFamily(DEFAULT_UI_FONT)}
+        previewText="Fleet typography keeps operations readable."
+        size={activeUiFont.size}
+        sizeRange={UI_FONT_SIZE_RANGE}
+        loading={fontsLoading}
+        error={fontsError}
+        disabled={!state || saving}
+        onSelectionChange={selectUiFont}
+        onSizeCommit={(size) => saveUiFont({ ...activeUiFont, size })}
+      />
       <p className="global-settings-foot">Typography applies immediately and is stored server-side for every browser and restart.</p>
     </section>
   );

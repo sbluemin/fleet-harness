@@ -1,0 +1,100 @@
+.fc-font-browser {
+  color: var(--ink-spectral);
+}
+
+/* auto-fit wraps the two panes to a single column when the picker's own width
+   cannot seat two 16rem tracks (e.g. the narrow Terminal Font settings column),
+   without container-type containment — which collapses the picker inside some
+   flex/grid parents. */
+.fc-font-browser__panes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4, 16px);
+}
+
+.fc-font-browser__chooser,
+.fc-font-browser__preview {
+  min-width: 0;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md, 14px);
+  background: color-mix(in oklab, var(--surface-glass) 86%, transparent);
+}
+
+.fc-font-browser__search-label,
+.fc-font-browser__group-label,
+.fc-font-browser__preview-label,
+.fc-font-browser__row-meta,
+.fc-font-browser__row-status {
+  color: var(--ink-fog);
+  font-size: 0.78em;
+}
+
+.fc-font-browser__search {
+  width: 100%;
+  margin-block: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs, 8px);
+  background: color-mix(in oklab, var(--ink-abyss) 72%, transparent);
+  color: var(--ink-pearl);
+}
+
+.fc-font-browser__search:focus-visible,
+.fc-font-browser__listbox:focus-visible,
+.fc-font-browser__row:focus-visible,
+.fc-font-browser__stepper:focus-visible,
+.fc-font-browser__range:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.fc-font-browser__listbox { max-height: 18rem; overflow: auto; }
+.fc-font-browser__group { padding-block: var(--space-2, 8px); }
+.fc-font-browser__group-label { margin: 0 0 var(--space-1, 4px); }
+.fc-font-browser__separator { height: 1px; background: var(--surface-rim); }
+
+.fc-font-browser__row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1, 4px) var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+  border: 0;
+  border-radius: var(--radius-xs, 8px);
+  background: transparent;
+  color: var(--ink-pearl);
+  text-align: left;
+}
+
+.fc-font-browser__row:hover,
+.fc-font-browser__row.is-active { background: color-mix(in oklab, var(--surface-rim) 38%, transparent); }
+/* The chosen font stays marked with a soft brass fill (brass = current selection)
+   even when keyboard focus moves elsewhere, so a click highlights it immediately. */
+.fc-font-browser__row[aria-selected="true"] {
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
+}
+.fc-font-browser__row.is-unavailable,
+.fc-font-browser[data-disabled="true"] { opacity: 0.56; }
+.fc-font-browser__row:disabled,
+.fc-font-browser__stepper:disabled,
+.fc-font-browser__range:disabled,
+.fc-font-browser__search:disabled { cursor: not-allowed; opacity: 0.56; }
+.fc-font-browser__row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-font-browser__row-status { grid-column: 2; }
+
+.fc-font-browser__preview { display: grid; align-content: start; gap: var(--space-3, 12px); }
+.fc-font-browser__preview-head,
+.fc-font-browser__size-control { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 8px); }
+.fc-font-browser__availability { padding: 0.1em 0.55em; border: 1px solid var(--surface-rim-strong); border-radius: 999px; color: var(--ink-spectral); }
+.fc-font-browser__availability--unavailable { color: var(--warn); }
+.fc-font-browser__preview-copy { min-height: 5em; margin: 0; color: var(--ink-pearl); overflow-wrap: anywhere; }
+.fc-font-browser__stepper { min-width: 2.2em; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--ink-pearl); }
+.fc-font-browser__size-value { color: var(--ink-spectral); }
+.fc-font-browser__range { width: 100%; accent-color: var(--brass); }
+.fc-font-browser__state { margin: var(--space-2, 8px) 0; color: var(--ink-fog); }
+.fc-font-browser__state--error { color: var(--coral); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-font-browser *, .fc-font-browser *::before, .fc-font-browser *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

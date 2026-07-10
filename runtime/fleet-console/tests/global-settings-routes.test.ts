@@ -23,15 +23,21 @@ describe("global settings routes", () => {
     const harness = createRouterHarness({ general: {} });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "maritime", uiFont: "manrope" } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "maritime", uiFont: { source: "builtin", id: "manrope", size: 14 } } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("version");
     expect(harness.writes[0]?.body).not.toHaveProperty("general");
   });
 
   it("GET /global-settings/state reflects stored values", async () => {
-    const harness = createRouterHarness({ general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: "source-code-pro" } });
+    const harness = createRouterHarness({ general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
     await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: "source-code-pro" } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
+  });
+
+  it("GET /global-settings/state retains an unavailable persisted system family", async () => {
+    const harness = createRouterHarness({ general: { uiFont: { source: "system", familyName: "Removed Mono", size: 18 } } });
+    await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[0]).toEqual({ status: 200, body: expect.objectContaining({ uiFont: { source: "system", familyName: "Removed Mono", size: 18 } }) });
   });
 
   it("GET /global-settings/state rejects non-GET methods with 405", async () => {
@@ -41,11 +47,11 @@ describe("global settings routes", () => {
   });
 
   it("PUT /global-settings updates and returns the new state", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon", uiFont: "jetbrains-mono" } });
+    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } });
     const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", theme: "carbon", uiFont: "jetbrains-mono" } } });
-    expect(harness.currentGeneral()).toMatchObject({ consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon", uiFont: "jetbrains-mono" });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", theme: "carbon", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } } });
+    expect(harness.currentGeneral()).toMatchObject({ consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } });
   });
 
   it("PUT /global-settings preserves every plugin setting when storing a UI font", async () => {
@@ -53,19 +59,43 @@ describe("global settings routes", () => {
       terminal: { font: { family: "Cascadia Code", size: 14 } },
       "other-plugin": { collapseGroups: true },
     };
-    const harness = createRouterHarness({ authorized: true, body: { uiFont: "source-code-pro" }, plugins });
+    const harness = createRouterHarness({ authorized: true, body: { uiFont: { source: "builtin", id: "source-code-pro", size: 14 } }, plugins });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.currentData()).toEqual({
       version: 1,
-      general: { uiFont: "source-code-pro" },
+      general: { uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
       plugins,
     });
+  });
+
+  it("PUT /global-settings atomically replaces UI font while preserving sibling general settings", async () => {
+    const plugins = { terminal: { font: { customName: "Meslo", size: 14 } } };
+    const harness = createRouterHarness({
+      authorized: true,
+      body: { uiFont: { source: "system", familyName: "Noto Sans Mono", size: 16 } },
+      general: { theme: "carbon", language: "ko", uiFont: { source: "builtin", id: "manrope", size: 14 } },
+      plugins,
+    });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentData()).toEqual({
+      version: 1,
+      general: { theme: "carbon", language: "ko", uiFont: { source: "system", familyName: "Noto Sans Mono", size: 16 } },
+      plugins,
+    });
+  });
+
+  it("PUT /global-settings accepts each built-in and the 12px and 18px bounds", async () => {
+    for (const [id, size] of [["manrope", 12], ["jetbrains-mono", 14], ["source-code-pro", 18]] as const) {
+      const harness = createRouterHarness({ authorized: true, body: { uiFont: { source: "builtin", id, size } } });
+      await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+      expect(harness.currentGeneral()?.uiFont).toEqual({ source: "builtin", id, size });
+    }
   });
 
   it("PUT /global-settings stores a theme", async () => {
     const harness = createRouterHarness({ authorized: true, body: { theme: "carbon" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "carbon", uiFont: "manrope" } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "carbon", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
     expect(harness.currentGeneral()).toMatchObject({ theme: "carbon" });
   });
 
@@ -73,11 +103,11 @@ describe("global settings routes", () => {
     const harness = createRouterHarness({
       authorized: true,
       body: { enableMetaphor: true },
-      general: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "maritime", uiFont: "source-code-pro" },
+      general: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
     });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "maritime", uiFont: "source-code-pro" } });
-    expect(harness.currentGeneral()).toEqual({ consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "maritime", uiFont: "source-code-pro" });
+    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
+    expect(harness.currentGeneral()).toEqual({ consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } });
   });
 
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
@@ -104,7 +134,7 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores a static console port", async () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", theme: "maritime", uiFont: "manrope" } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", theme: "maritime", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
   });
 
   it("PUT /global-settings rejects an out-of-range static port with 400", async () => {
@@ -135,10 +165,24 @@ describe("global settings routes", () => {
     expect(harness.updateCalls).toBe(0);
   });
 
+  it("PUT /global-settings rejects malformed atomic UI font objects with stable 400", async () => {
+    for (const uiFont of [
+      { source: "builtin", id: "bad", size: 14 },
+      { source: "system", familyName: "\u0000Bad", size: 14 },
+      { source: "system", familyName: "Noto Sans", size: 19 },
+      { source: "system", familyName: "Noto Sans", size: 12.5 },
+    ]) {
+      const harness = createRouterHarness({ authorized: true, body: { uiFont } });
+      await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+      expect(harness.writes[0]).toEqual({ status: 400, body: { error: "invalid_ui_font" } });
+      expect(harness.updateCalls).toBe(0);
+    }
+  });
+
   it("PUT /global-settings stores language and preserves sibling general and plugin settings", async () => {
     const harness = createRouterHarness({ authorized: true, body: { language: "ko" }, general: { consolePortMode: "static", consoleStaticPort: 8080, theme: "carbon" }, plugins: { terminal: { fontSize: 14 } } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "ko", theme: "carbon", uiFont: "manrope" } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "ko", theme: "carbon", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
     expect(harness.currentData()).toEqual({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 8080, language: "ko", theme: "carbon" }, plugins: { terminal: { fontSize: 14 } } });
   });
 

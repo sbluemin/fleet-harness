@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { DurableJsonStore } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "./api-catalog.js";
-import type { ConsoleSettingsData } from "./console-settings.js";
+import { DEFAULT_UI_FONT_SETTINGS, isUiFontSettings, type ConsoleSettingsData } from "./console-settings.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./global-settings-types.js";
 
 interface GlobalSettingsRouteDeps {
@@ -104,7 +104,7 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
-  if (!isUiFontIdOrUndefined(body.uiFont)) {
+  if (!isUiFontSettingsOrUndefined(body.uiFont)) {
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
   }
@@ -117,7 +117,7 @@ async function mutateGlobalSettings(
       ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
       ...(body.theme === "maritime" || body.theme === "carbon" ? { theme: body.theme } : {}),
-      ...(isUiFontId(body.uiFont) ? { uiFont: body.uiFont } : {}),
+      ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
     plugins: current.plugins,
   }));
@@ -132,7 +132,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
     theme: general.theme ?? "maritime",
-    uiFont: general.uiFont ?? "manrope",
+    uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
   };
 }
 
@@ -145,10 +145,6 @@ function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
 }
 
-function isUiFontIdOrUndefined(value: unknown): boolean {
-  return value === undefined || isUiFontId(value);
-}
-
-function isUiFontId(value: unknown): value is "manrope" | "jetbrains-mono" | "source-code-pro" {
-  return value === "manrope" || value === "jetbrains-mono" || value === "source-code-pro";
+function isUiFontSettingsOrUndefined(value: unknown): boolean {
+  return value === undefined || isUiFontSettings(value);
 }
