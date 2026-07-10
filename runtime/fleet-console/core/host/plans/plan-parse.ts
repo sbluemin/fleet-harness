@@ -50,6 +50,8 @@ const LANE_BOUNDARY_PATTERN = /^#{1,3}\s/;
 const SECTION_HEADING_PATTERN = /^#{1,2}\s/;
 const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
+// 닫는 펜스는 info string 없이 마커 뒤가 공백뿐이어야 한다(CommonMark) — ```ts 같은 라인은 닫기가 아니라 내용이다.
+const CLOSING_FENCE_PATTERN = /^\s*(`{3,}|~{3,})\s*$/;
 // Kirov 기본 템플릿의 h1은 문서 제목이 아니라 섹션 헤딩이다 — title로 채택하지 않고 파일명 폴백에 맡긴다.
 const TEMPLATE_SECTION_TITLES = new Set([
   "objective",
@@ -84,13 +86,14 @@ function scanPlanLines(lines: readonly string[]): readonly PlanLine[] {
   let activeFence: { readonly char: string; readonly length: number } | null = null;
 
   return lines.map((text) => {
-    const marker = FENCE_PATTERN.exec(text)?.[1];
     if (activeFence !== null) {
-      if (marker !== undefined && marker.startsWith(activeFence.char) && marker.length >= activeFence.length) {
+      const closer = CLOSING_FENCE_PATTERN.exec(text)?.[1];
+      if (closer !== undefined && closer.startsWith(activeFence.char) && closer.length >= activeFence.length) {
         activeFence = null;
       }
       return { text, isFenced: true };
     }
+    const marker = FENCE_PATTERN.exec(text)?.[1];
     if (marker !== undefined) {
       activeFence = { char: marker[0] ?? "`", length: marker.length };
       return { text, isFenced: true };

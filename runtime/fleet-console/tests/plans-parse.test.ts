@@ -148,6 +148,23 @@ describe("parsePlan", () => {
     expect(parsePlan("```\n- Execution mode: Parallel\n```\n## Wave 1 — Only").executionMode).toBeNull();
   });
 
+  it("does not close a fence on a same-length marker carrying an info string", () => {
+    expect(parsePlan(`
+# Real plan
+\`\`\`
+\`\`\`ts
+## Wave 99: Still fenced
+- [ ] fenced task
+\`\`\`
+## Wave 1: Actual work
+- [x] shipped
+`)).toMatchObject({
+      waves: [{ index: 1, heading: "Wave 1: Actual work", lanes: [], tasksDone: 1, tasksTotal: 1 }],
+      tasksDone: 1,
+      tasksTotal: 1,
+    });
+  });
+
   it("keeps a longer opening fence open across inner shorter fences", () => {
     expect(parsePlan(`
 # Real plan
