@@ -38,18 +38,6 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
     const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);
 
-    let additions = 0;
-    let deletions = 0;
-    for (const line of lines.slice(1)) {
-      if (!line.trim()) continue;
-      const parts = line.split("\t");
-      if (parts.length < 2) continue;
-      const a = parseInt(parts[0] ?? "0", 10);
-      const d = parseInt(parts[1] ?? "0", 10);
-      if (!isNaN(a)) additions += a;
-      if (!isNaN(d)) deletions += d;
-    }
-
     commits.push({
       shortHash,
       fullHash,
@@ -59,8 +47,6 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
       authorAt: Number.isFinite(authorAt) ? authorAt : 0,
       refs,
       parents,
-      additions,
-      deletions,
     });
   }
 
@@ -134,7 +120,7 @@ export async function handleDiffLog(
   try {
     const [result, worktrees, currentWorktree] = await Promise.all([
       runGit(
-        ["log", "--all", "--date-order", "-n", "200", "--numstat", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P"],
+        ["log", "--all", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P"],
         { cwd: gitCwd },
       ),
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),

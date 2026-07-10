@@ -42,8 +42,6 @@ export interface LogCommitEntry {
   readonly authorAt: number;
   readonly refs: readonly string[];
   readonly parents: readonly string[];
-  readonly additions: number;
-  readonly deletions: number;
 }
 
 export interface WorktreeCheckout {

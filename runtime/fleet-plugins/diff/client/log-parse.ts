@@ -31,7 +31,7 @@ export function refBadges(entry: LogCommitEntry): RefBadge[] {
     if (ref === "HEAD") {
       badges.push({ label: "HEAD", kind: "head" });
     } else if (ref.startsWith("HEAD -> refs/heads/")) {
-      badges.push({ label: ref.slice(18), kind: "branch" });
+      badges.push({ label: ref.slice("HEAD -> refs/heads/".length), kind: "branch" });
     } else if (ref.startsWith("HEAD -> ")) {
       badges.push({ label: ref.slice(8), kind: "branch" });
     } else if (ref.startsWith("tag: ")) {
