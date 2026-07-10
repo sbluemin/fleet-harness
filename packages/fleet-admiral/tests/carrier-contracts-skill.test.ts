@@ -37,10 +37,18 @@ describe("carrier-contracts skill asset", () => {
       tier: "contracts",
     });
 
-    expect(skillContent()).toContain(expected);
+    const content = skillContent();
+    const rosterStart = content.indexOf("## Contracts by carrier");
+
+    expect(rosterStart).toBeGreaterThanOrEqual(0);
+    expect(content.slice(rosterStart).trimEnd()).toBe(expected);
   });
 
   it("carries the shared prior_jobs hint moved out of the static roster", () => {
     expect(skillContent()).toContain(`All carriers accept an optional \`<prior_jobs>\` block: ${PRIOR_JOBS_REQUEST_HINT}`);
+  });
+
+  it("exposes Ohio's exact execution_scope contract", () => {
+    expect(skillContent()).toContain("<execution_scope?> optional: Optional: for legacy plans without Execution Topology or plans marked Execution mode: Sequential, omitted or `all` executes the full plan sequentially. For Execution mode: Parallel, provide one exact Wave/Lane ID declared by the Dispatch Manifest; omitted or `all` is rejected. Never combine a full-plan invocation with scoped-lane Ohio invocation(s).");
   });
 });
