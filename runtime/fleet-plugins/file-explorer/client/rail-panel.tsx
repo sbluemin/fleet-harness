@@ -205,6 +205,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       )}
       <div className="fexp-tree-pane">
         <FileTree
+          key={contextScope}
           files={files}
           theaterId={theaterId}
           contextKey={contextScope}
