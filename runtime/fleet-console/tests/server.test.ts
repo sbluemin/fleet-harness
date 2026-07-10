@@ -947,14 +947,66 @@ describe("console static and terminal ticket boundary", () => {
     // 등록 직후에는 codex 워크스페이스 라우트가 conflicts API를 200으로 서빙한다.
     const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/conflicts`, { redirect: "manual" });
     const deleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
-    // forget 후에는 워크스페이스가 해제되어 같은 라우트가 codex 홈으로 302 리다이렉트된다.
+    // forget 후에는 워크스페이스가 해제되어 직접 API 접근도 404가 된다.
     const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/conflicts`, { redirect: "manual" });
     const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}api/v1/theaters`);
 
     expect(beforeForget.status).toBe(200);
     expect(deleted.status).toBe(200);
-    expect(afterForget.status).toBe(302);
+    expect(afterForget.status).toBe(404);
     expect(remaining.theaters.find((entry) => entry.id === theater.id)).toBeUndefined();
+  });
+
+  it("unregisters an on-demand nested Codex workspace when its Theater is forgotten", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-forget-nested-"));
+    const nestedDir = path.join(dir, "nested");
+    tempDirs.push(dir);
+    createWikiRoot(nestedDir);
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, dir);
+    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/codex-workspace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ relPath: "nested" }),
+    });
+    const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
+    expect(workspace).toMatchObject({ hasWiki: true });
+    expect(workspace.id).not.toBeNull();
+
+    const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(workspace.id!)}/api/conflicts`, { redirect: "manual" });
+    const deleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(workspace.id!)}/api/conflicts`, { redirect: "manual" });
+
+    expect(beforeForget.status).toBe(200);
+    expect(deleted.status).toBe(200);
+    expect(afterForget.status).toBe(404);
+  });
+
+  it("keeps a nested Codex workspace while another Theater owns the same directory", async () => {
+    const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-shared-parent-"));
+    const nestedDir = path.join(parentDir, "nested");
+    tempDirs.push(parentDir);
+    createWikiRoot(nestedDir);
+    const fixture = await startFixture();
+    const parentTheater = await createTheater(fixture, parentDir);
+    const nestedTheater = await createTheater(fixture, nestedDir);
+    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(parentTheater.id)}/codex-workspace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ relPath: "nested" }),
+    });
+    const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
+    expect(workspace).toMatchObject({ hasWiki: true, id: nestedTheater.id });
+
+    const parentDeleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(parentTheater.id)}`, { method: "DELETE" });
+    const retained = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(workspace.id!)}/api/conflicts`, { redirect: "manual" });
+    const nestedDeleted = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(nestedTheater.id)}`, { method: "DELETE" });
+    const removed = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(workspace.id!)}/api/conflicts`, { redirect: "manual" });
+
+    expect(parentDeleted.status).toBe(200);
+    expect(retained.status).toBe(200);
+    expect(nestedDeleted.status).toBe(200);
+    expect(removed.status).toBe(404);
   });
 
   it("promotes the next most-recent Codex workspace as MRU when the active Theater is forgotten", async () => {
@@ -1679,14 +1731,15 @@ describe("console static and terminal ticket boundary", () => {
       label: path.basename(dir),
       registeredAt: "2026-06-16T00:00:00.000Z",
       lastOpenedAt: "2026-06-16T00:00:01.000Z",
+      pathContext: null,
     }]);
 
     expect(theaters.get(id)?.path).toBe(dir);
     expect(theaters.remove(id)).toBe(true);
     expect(theaters.get(id)).toBeNull();
     expect(() => theaters.restore([
-      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1" },
-      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2" },
+      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1", pathContext: null },
+      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2", pathContext: null },
     ])).toThrow("theater_id_collision");
   });
 

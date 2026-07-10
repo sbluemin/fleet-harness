@@ -195,7 +195,7 @@ export async function handleDiffLog(
     const headRevs = headRevList ? ["HEAD"] : [];
     const result = await runGit(
       // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs],
+      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--relative", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", "."],
       { cwd: gitCwd },
     );
     const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);

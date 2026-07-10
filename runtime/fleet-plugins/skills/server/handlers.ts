@@ -7,6 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
 import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
+import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
 import type { AgentId, Scope } from "./types.js";
 import { isPlainObject, validateAgent, validateScope, validateSkill, validateSource } from "./validation.js";
@@ -26,11 +27,19 @@ interface RawSkillEntry {
   agents: string[];
 }
 
+interface JobOutputRedactionPaths {
+  readonly cwd: string;
+  readonly homeDir: string;
+  readonly pluginDataDir: string;
+}
+
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const ALL_AGENTS: AgentId[] = ["claude-code", "codex", "cursor", "opencode"];
 const PREVIEW_TIMEOUT_MS = 30_000;
 const CLI_TIMEOUT_MS = 120_000;
+const USERINFO_URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
+const TOKEN_URL_PARAM_RE = /([?&](?:access_?token|token|api_?key|apikey|auth(?:orization)?|password|secret|credential)=)[^&#\s]*/gi;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -82,6 +91,32 @@ function buildDisplayPath(scope: Scope, name: string): string {
   return scope === "global" ? `~/.agents/skills/${name}` : `.agents/skills/${name}`;
 }
 
+function parseOptionalRelPath(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  return typeof value === "string" ? value : undefined;
+}
+
+async function resolveProjectScopeCwd(
+  ctx: FleetPluginServerContext,
+  theaterId: string | undefined,
+  relPath: string | null | undefined,
+): Promise<string | null> {
+  if (!theaterId) return null;
+  if (relPath === undefined) throw new ProjectPathError("invalid_rel_path");
+  const theaterRoot = ctx.host.paths.resolveTheaterPath(theaterId);
+  return theaterRoot ? resolveProjectCwd(theaterRoot, relPath) : null;
+}
+
+function writeProjectPathError(
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  error: unknown,
+): void {
+  if (!(error instanceof ProjectPathError)) throw error;
+  const status = error.code === "path_outside_theater" ? 403 : error.code === "not_found" ? 404 : 400;
+  ctx.host.http.writeJson(res, status, { error: error.code });
+}
+
 export function extractSkillMarkdown(raw: string): string {
   const text = stripAnsi(raw);
   const openTag = "<SKILL.md>";
@@ -94,13 +129,40 @@ export function extractSkillMarkdown(raw: string): string {
   return text.trim();
 }
 
-function spawnJobAsync(jobId: string, args: string[], cwd: string, executor: CliExecutor): void {
+export function redactJobOutput(chunk: string, paths: JobOutputRedactionPaths): string {
+  let redacted = chunk
+    .replace(USERINFO_URL_RE, "[redacted credential URL]")
+    .replace(TOKEN_URL_PARAM_RE, "$1[redacted]");
+  const sensitivePaths = [...new Set([paths.cwd, paths.homeDir, paths.pluginDataDir])]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  for (const sensitivePath of sensitivePaths) {
+    redacted = redacted.replaceAll(sensitivePath, "[redacted path]");
+  }
+  return redacted;
+}
+
+function getJobOutputRedactionPaths(ctx: FleetPluginServerContext, cwd: string): JobOutputRedactionPaths {
+  return {
+    cwd,
+    homeDir: os.homedir(),
+    pluginDataDir: ctx.host.paths.pluginDataDir("skills"),
+  };
+}
+
+function spawnJobAsync(
+  jobId: string,
+  args: string[],
+  cwd: string,
+  redactionPaths: JobOutputRedactionPaths,
+  executor: CliExecutor,
+): void {
   setImmediate(() => {
     void executor(args, {
       cwd,
       timeout: CLI_TIMEOUT_MS,
-      onChunk: (chunk) => appendChunk(jobId, chunk),
-      onBootstrap: (line) => appendChunk(jobId, line + "\n"),
+      onChunk: (chunk) => appendChunk(jobId, redactJobOutput(chunk, redactionPaths)),
+      onBootstrap: (line) => appendChunk(jobId, redactJobOutput(line + "\n", redactionPaths)),
     })
       .then((result) => finishJob(jobId, result.exitCode))
       .catch(() => finishJob(jobId, 1));
@@ -120,14 +182,30 @@ export async function handleList(
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const theaterId = url.searchParams.get("theaterId") ?? undefined;
-  const theaterPath = theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null;
+  const relPath = url.searchParams.has("relPath")
+    ? url.searchParams.get("relPath") || null
+    : null;
+  let projectCwd: string | null = null;
+
+  if (theaterId) {
+    try {
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+    } catch (error) {
+      writeProjectPathError(res, ctx, error);
+      return;
+    }
+    if (!projectCwd) {
+      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+      return;
+    }
+  }
 
   try {
-    if (theaterPath) {
+    if (projectCwd) {
       const [projectRaw, globalRaw, projectSources, globalSources] = await Promise.all([
-        runListCommand(["list", "--json"], theaterPath, executor),
+        runListCommand(["list", "--json"], projectCwd, executor),
         runListCommand(["list", "-g", "--json"], os.homedir(), executor),
-        readSkillSources(theaterPath),
+        readSkillSources(projectCwd),
         readSkillSources(os.homedir()),
       ]);
 
@@ -204,8 +282,9 @@ export async function handleInstall(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { source, skill, scope, agents, theaterId: rawTheaterId } = body;
+  const { source, skill, scope, agents, theaterId: rawTheaterId, relPath: rawRelPath } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
+  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateSource(source)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -215,10 +294,16 @@ export async function handleInstall(
     if (!validateAgent(agent)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   }
 
-  const theaterPath = scope === "project" ? (theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null) : null;
-  if (scope === "project" && !theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
-
-  const cwd = scope === "global" ? defaultCwd() : theaterPath;
+  let projectCwd: string | null = null;
+  if (scope === "project") {
+    try {
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+    } catch (error) {
+      writeProjectPathError(res, ctx, error);
+      return;
+    }
+  }
+  const cwd = scope === "global" ? defaultCwd() : projectCwd;
   if (!cwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   const jobId = createJob(scope, theaterId ?? "__global__");
@@ -229,7 +314,7 @@ export async function handleInstall(
   const scopeFlag = scope === "global" ? ["-g"] : [];
   const args = ["add", source, "-y", "--skill", skill, ...scopeFlag, ...agentArgs];
 
-  spawnJobAsync(jobId, args, cwd, executor);
+  spawnJobAsync(jobId, args, cwd, getJobOutputRedactionPaths(ctx, cwd), executor);
 
   ctx.host.http.writeJson(res, 202, { jobId });
 }
@@ -246,15 +331,22 @@ export async function handleUpdate(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, theaterId: rawTheaterId } = body;
+  const { scope, theaterId: rawTheaterId, relPath: rawRelPath } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
+  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const theaterPath = scope === "project" ? (theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null) : null;
-  if (scope === "project" && !theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
-
-  const cwd = scope === "global" ? defaultCwd() : theaterPath;
+  let projectCwd: string | null = null;
+  if (scope === "project") {
+    try {
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+    } catch (error) {
+      writeProjectPathError(res, ctx, error);
+      return;
+    }
+  }
+  const cwd = scope === "global" ? defaultCwd() : projectCwd;
   if (!cwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   const jobId = createJob(scope, theaterId ?? "__global__");
@@ -263,7 +355,7 @@ export async function handleUpdate(
   const scopeFlag = scope === "global" ? "-g" : "-p";
   const args = ["update", "-y", scopeFlag];
 
-  spawnJobAsync(jobId, args, cwd, executor);
+  spawnJobAsync(jobId, args, cwd, getJobOutputRedactionPaths(ctx, cwd), executor);
 
   ctx.host.http.writeJson(res, 202, { jobId });
 }
@@ -301,16 +393,23 @@ export async function handleRemove(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, skill, theaterId: rawTheaterId } = body;
+  const { scope, skill, theaterId: rawTheaterId, relPath: rawRelPath } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
+  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const theaterPath = scope === "project" ? (theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null) : null;
-  if (scope === "project" && !theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
-
-  const cwd = scope === "global" ? defaultCwd() : theaterPath;
+  let projectCwd: string | null = null;
+  if (scope === "project") {
+    try {
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+    } catch (error) {
+      writeProjectPathError(res, ctx, error);
+      return;
+    }
+  }
+  const cwd = scope === "global" ? defaultCwd() : projectCwd;
   if (!cwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   try {
@@ -340,13 +439,27 @@ export async function handlePreview(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { source, skill } = body;
+  const { source, skill, theaterId: rawTheaterId, relPath: rawRelPath } = body;
+  const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
+  const relPath = parseOptionalRelPath(rawRelPath);
   if (!validateSource(source)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
+  let cwd = defaultCwd();
+  if (theaterId) {
+    try {
+      const projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      if (!projectCwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+      cwd = projectCwd;
+    } catch (error) {
+      writeProjectPathError(res, ctx, error);
+      return;
+    }
+  }
+
   try {
     // F3: use stdout는 <SKILL.md>...</SKILL.md> 래퍼 포함 → 태그 사이 본문만 추출
-    const result = await executor([`use`, `${source}@${skill}`], { cwd: defaultCwd(), timeout: PREVIEW_TIMEOUT_MS });
+    const result = await executor([`use`, `${source}@${skill}`], { cwd, timeout: PREVIEW_TIMEOUT_MS });
     ctx.host.http.writeJson(res, 200, { markdown: extractSkillMarkdown(result.stdout) });
   } catch {
     ctx.host.http.writeJson(res, 502, { error: "preview_failed" });
@@ -365,16 +478,23 @@ export async function handleInstalledFile(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, skill, theaterId: rawTheaterId } = body;
+  const { scope, skill, theaterId: rawTheaterId, relPath: rawRelPath } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
+  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const theaterPath = scope === "project" ? (theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null) : null;
-  if (scope === "project" && !theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
-
-  const cwd = scope === "global" ? defaultCwd() : theaterPath;
+  let projectCwd: string | null = null;
+  if (scope === "project") {
+    try {
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+    } catch (error) {
+      writeProjectPathError(res, ctx, error);
+      return;
+    }
+  }
+  const cwd = scope === "global" ? defaultCwd() : projectCwd;
   if (!cwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   try {

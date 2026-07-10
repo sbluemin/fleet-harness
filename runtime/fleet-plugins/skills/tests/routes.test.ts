@@ -1,4 +1,7 @@
+import fs from "node:fs/promises";
 import type http from "node:http";
+import os from "node:os";
+import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it } from "vitest";
@@ -14,6 +17,7 @@ import {
   handleRemove,
   handleSearch,
   handleUpdate,
+  redactJobOutput,
 } from "../server/handlers.js";
 
 // ─── mock helpers ─────────────────────────────────────────────────────────────
@@ -138,6 +142,44 @@ describe("handleRemove CLI 인자", () => {
   });
 });
 
+describe("project scope cwd", () => {
+  it("resolves list's project command cwd from relPath", async () => {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-routes-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    const selectedDirectory = path.join(theaterRoot, "nested");
+    const calls: string[] = [];
+    await fs.mkdir(selectedDirectory, { recursive: true });
+
+    try {
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number })._status = status;
+              (res as unknown as { _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({}),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+      const executor: CliExecutor = async (_args, options) => {
+        calls.push(options.cwd);
+        return { stdout: "[]", stderr: "", exitCode: 0 };
+      };
+      const res = makeRes();
+
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1&relPath=nested"), res, ctx, executor);
+
+      expect(res._status).toBe(200);
+      expect(calls).toContain(await fs.realpath(selectedDirectory));
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
+  });
+});
+
 // ─── extractSkillMarkdown ─────────────────────────────────────────────────────
 
 describe("extractSkillMarkdown", () => {
@@ -164,5 +206,25 @@ describe("extractSkillMarkdown", () => {
   it("빈 태그 본문은 빈 문자열을 반환한다", () => {
     const raw = "<SKILL.md></SKILL.md>";
     expect(extractSkillMarkdown(raw)).toBe("");
+  });
+});
+
+describe("job output redaction", () => {
+  it("masks home, resolved cwd, plugin cache paths, and credential URLs before job output is stored", () => {
+    const output = redactJobOutput(
+      "cwd=/Users/operator/worktree/pkg cache=/Users/operator/.fleet/plugins/skills/cli/node_modules credential=https://alice:secret@example.com/pkg token=https://example.com/pkg?access_token=abc123",
+      {
+        cwd: "/Users/operator/worktree/pkg",
+        homeDir: "/Users/operator",
+        pluginDataDir: "/Users/operator/.fleet/plugins/skills",
+      },
+    );
+
+    expect(output).not.toContain("/Users/operator");
+    expect(output).not.toContain("alice:secret");
+    expect(output).not.toContain("abc123");
+    expect(output).toContain("[redacted path]");
+    expect(output).toContain("[redacted credential URL]");
+    expect(output).toContain("access_token=[redacted]");
   });
 });

@@ -58,17 +58,25 @@ export const plansPanel: RailPanelDescriptor = {
   id: "plans",
   title: "Plans",
   icon: PlansIcon,
+  pathAware: true,
   render: (ctx) => <PlansPanel {...ctx} />,
 };
 
 function PlansPanel(ctx: RailPanelContext) {
-  const { requestExtraWidth, theaterId } = ctx;
+  const contextKey = JSON.stringify([ctx.theaterId, ctx.pathContext.relPath]);
+
+  return <PlansPanelBody key={contextKey} {...ctx} />;
+}
+
+function PlansPanelBody(ctx: RailPanelContext) {
+  const { pathContext, requestExtraWidth, theaterId } = ctx;
+  const relPath = pathContext.relPath;
   const [listState, setListState] = useState<PlansListState>({ kind: "no-theater" });
   const [readerState, setReaderState] = useState<PlanReaderState>({ kind: "loading" });
-  const [selectedPlan, setSelectedPlan] = useState<{ readonly theaterId: string; readonly name: string } | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<{ readonly theaterId: string; readonly relPath: string | null; readonly name: string } | null>(null);
   const [listRetry, setListRetry] = useState(0);
   const [readerRetry, setReaderRetry] = useState(0);
-  const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
+  const selectedName = selectedPlan?.theaterId === theaterId && selectedPlan.relPath === relPath ? selectedPlan.name : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -81,14 +89,14 @@ function PlansPanel(ctx: RailPanelContext) {
     }
 
     setListState({ kind: "loading" });
-    void fetchPlansList(theaterId).then((result) => {
+    void fetchPlansList(theaterId, relPath).then((result) => {
       if (!cancelled) setListState({ kind: "ready", plans: result.plans });
     }).catch(() => {
       if (!cancelled) setListState({ kind: "error" });
     });
 
     return () => { cancelled = true; };
-  }, [theaterId, listRetry]);
+  }, [relPath, theaterId, listRetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,22 +104,23 @@ function PlansPanel(ctx: RailPanelContext) {
     if (!theaterId || !selectedName) return () => { cancelled = true; };
 
     setReaderState({ kind: "loading" });
-    void fetchPlanRead(theaterId, selectedName).then((result) => {
+    void fetchPlanRead(theaterId, relPath, selectedName).then((result) => {
       if (!cancelled) setReaderState({ kind: "ready", plan: result });
     }).catch(() => {
       if (!cancelled) setReaderState({ kind: "error" });
     });
 
     return () => { cancelled = true; };
-  }, [readerRetry, selectedName, theaterId]);
+  }, [readerRetry, relPath, selectedName, theaterId]);
 
   useLayoutEffect(() => {
     requestExtraWidth?.(selectedName ? PLANS_EXTRA_WIDTH : null);
+    return () => requestExtraWidth?.(null);
   }, [requestExtraWidth, selectedName]);
 
   const handleSelect = useCallback((name: string) => {
-    if (theaterId) setSelectedPlan({ theaterId, name });
-  }, [theaterId]);
+    if (theaterId) setSelectedPlan({ theaterId, relPath, name });
+  }, [relPath, theaterId]);
   const handleClose = useCallback(() => setSelectedPlan(null), []);
   const retryList = useCallback(() => setListRetry((attempt) => attempt + 1), []);
   const retryReader = useCallback(() => setReaderRetry((attempt) => attempt + 1), []);

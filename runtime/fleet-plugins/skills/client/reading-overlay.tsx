@@ -10,6 +10,7 @@ interface ReadingOverlayProps {
   readonly skill: SkillListItem | null;
   readonly isInstalled: boolean;
   readonly theaterId: string | null;
+  readonly relPath: string | null;
   readonly onClose: () => void;
   readonly onInstall: () => void;
 }
@@ -49,6 +50,7 @@ export function ReadingOverlay({
   skill,
   isInstalled,
   theaterId,
+  relPath,
   onClose,
   onInstall,
 }: ReadingOverlayProps) {
@@ -78,7 +80,10 @@ export function ReadingOverlay({
         let res: Response;
         if (isInstalled) {
           const body: Record<string, unknown> = { scope: skill.scope, skill: skill.name };
-          if (theaterId) body["theaterId"] = theaterId;
+          if (skill.scope === "project" && theaterId) {
+            body["theaterId"] = theaterId;
+            body["relPath"] = relPath;
+          }
           res = await fetch("/plugins/skills/installed-file", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -88,7 +93,7 @@ export function ReadingOverlay({
           res = await fetch("/plugins/skills/preview", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source: skill.source, skill: skill.name }),
+            body: JSON.stringify({ source: skill.source, skill: skill.name, theaterId, relPath }),
           });
         }
         if (cancelled) return;
@@ -105,7 +110,7 @@ export function ReadingOverlay({
 
     void load();
     return () => { cancelled = true; };
-  }, [skill, isInstalled, theaterId]);
+  }, [skill, isInstalled, theaterId, relPath]);
 
   useEffect(() => {
     if (!skill) return;

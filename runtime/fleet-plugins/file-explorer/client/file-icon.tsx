@@ -394,7 +394,7 @@ function resolveIconSpec(name: string): IconSpec {
   if (lower.startsWith("readme")) return { shape: "doc", tone: TONE.md };
 
   // 복합 확장자(.d.ts) 우선, 이후 마지막 확장자
-  if (lower.endsWith(".d.ts")) return EXT_SPECS["d.ts"];
+  if (lower.endsWith(".d.ts")) return EXT_SPECS["d.ts"]!;
   const dot = lower.lastIndexOf(".");
   if (dot > 0 && dot < lower.length - 1) {
     const ext = lower.slice(dot + 1);

@@ -159,22 +159,22 @@ export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal
   return payload.folderGrantId;
 }
 
-export async function fetchPlansList(theaterId: string, signal?: AbortSignal): Promise<PlansListResult> {
+export async function fetchPlansList(theaterId: string, relPath: string | null, signal?: AbortSignal): Promise<PlansListResult> {
   const response = await fetch("/api/v1/plans/list", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId }),
+    body: JSON.stringify({ theaterId, relPath }),
     signal,
   });
   await assertOk(response);
   return await response.json() as PlansListResult;
 }
 
-export async function fetchPlanRead(theaterId: string, name: string, signal?: AbortSignal): Promise<PlanReadResult> {
+export async function fetchPlanRead(theaterId: string, relPath: string | null, name: string, signal?: AbortSignal): Promise<PlanReadResult> {
   const response = await fetch("/api/v1/plans/read", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, name }),
+    body: JSON.stringify({ theaterId, relPath, name }),
     signal,
   });
   await assertOk(response);

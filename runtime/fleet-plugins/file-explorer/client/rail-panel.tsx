@@ -5,6 +5,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { FileReadResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
 import { FileTree, type PluginFilesClient } from "./tree.js";
+import { adaptFolderList, contextKey, prefixContextPath } from "./path-context.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
@@ -23,62 +24,68 @@ export const fileExplorerPanel: RailPanelDescriptor = {
   id: "file-explorer",
   title: "Files",
   icon: FileExplorerIcon,
+  pathAware: true,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
 };
 
-function makeFilesClient(theaterId: string | null): PluginFilesClient {
+function makeFilesClient(theaterId: string | null, contextRelPath: string | null): PluginFilesClient {
   return {
     listFolder: async (relativePath?) => {
       if (!theaterId) throw new Error("no_theater");
       const res = await fetch("/plugins/file-explorer/files/list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId, relativePath: relativePath ?? "" }),
+      body: JSON.stringify({ theaterId, relativePath: prefixContextPath(contextRelPath, relativePath ?? "") }),
       });
       if (!res.ok) {
         const payload = await res.json() as { error?: string };
         throw new Error(payload.error ?? "list_failed");
       }
-      return res.json() as Promise<FolderListResult>;
+      const result = await res.json() as FolderListResult;
+      const adapted = adaptFolderList(contextRelPath, result);
+      if (!adapted) throw new Error("context_boundary");
+      return adapted;
     },
   };
 }
 
 function FileExplorerPanel(ctx: RailPanelContext) {
   const { theaterId } = ctx;
-  const { selectedPath, viewState, treePaneWidth } = useFileExplorerViewState(theaterId);
+  const contextRelPath = ctx.pathContext.relPath;
+  const contextScope = contextKey(theaterId, contextRelPath);
+  const { selectedPath, viewState, treePaneWidth } = useFileExplorerViewState(contextScope);
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
-  const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+  const files = useMemo(() => makeFilesClient(theaterId, contextRelPath), [theaterId, contextRelPath]);
 
   const openFilePath = useCallback(async (relativePath: string, displayName?: string) => {
     if (!theaterId) {
       setViewState(theaterId, { kind: "error", message: "no_theater" });
       return;
     }
-    setSelectedPath(theaterId, relativePath);
+    setSelectedPath(contextScope, relativePath);
     const name = displayName ?? relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
     if (IMAGE_EXTS.has(ext)) {
       const src = theaterId
-        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`
+        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(prefixContextPath(contextRelPath, relativePath) ?? "")}`
         : "";
-      setViewState(theaterId, { kind: "image", relativePath, name, src });
+      setViewState(contextScope, { kind: "image", relativePath, name, src });
       return;
     }
 
-    setViewState(theaterId, { kind: "loading" });
+    setViewState(contextScope, { kind: "loading" });
     try {
       // files/read는 422(binary_file)를 error 바디로 반환하므로 raw fetch로 직접 처리한다.
       const res = await fetch("/plugins/file-explorer/files/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId, relativePath }),
+        body: JSON.stringify({ theaterId, relativePath: prefixContextPath(contextRelPath, relativePath) }),
       });
       if (!res.ok) {
         const payload = await res.json() as { error?: string };
@@ -86,28 +93,30 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       }
       const result = await res.json() as FileReadResult;
       if (result.binary) {
-        setViewState(theaterId, { kind: "binary", name });
+        setViewState(contextScope, { kind: "binary", name });
         return;
       }
-      setViewState(theaterId, { kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
+      const resultPath = adaptFolderList(contextRelPath, { relativePath: result.relativePath, parentRelativePath: null, entries: [] })?.relativePath;
+      if (resultPath === undefined) throw new Error("context_boundary");
+      setViewState(contextScope, { kind: "code", relativePath: resultPath, content: result.content, lang: result.lang, truncated: result.truncated });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unable to load file";
       if (msg === "binary_file") {
-        setViewState(theaterId, { kind: "binary", name });
+        setViewState(contextScope, { kind: "binary", name });
       } else {
-        setViewState(theaterId, { kind: "error", message: msg });
+        setViewState(contextScope, { kind: "error", message: msg });
       }
     }
-  }, [theaterId]);
+  }, [contextRelPath, contextScope, theaterId]);
   const handleSelect = useCallback(async (entry: FolderEntry) => {
     if (entry.kind !== "file") return;
     await openFilePath(entry.relativePath, entry.name);
   }, [openFilePath]);
 
   const handleCloseViewer = useCallback(() => {
-    setViewState(theaterId, { kind: "none" });
-    setSelectedPath(theaterId, null);
-  }, [theaterId]);
+    setViewState(contextScope, { kind: "none" });
+    setSelectedPath(contextScope, null);
+  }, [contextScope]);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -173,6 +182,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   relativePath={viewState.relativePath}
                   theaterId={theaterId}
                   truncated={viewState.truncated}
+                  contextRelPath={contextRelPath}
                 />
               )}
               {viewState.kind === "code" && viewState.lang !== "markdown" && (
@@ -195,8 +205,11 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       )}
       <div className="fexp-tree-pane">
         <FileTree
+          key={contextScope}
           files={files}
           theaterId={theaterId}
+          contextKey={contextScope}
+          contextRelPath={contextRelPath}
           selectedPath={selectedPath}
           onSelect={handleSelect}
         />

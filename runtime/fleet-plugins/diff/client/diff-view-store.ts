@@ -38,9 +38,9 @@ function getSnapshot(): DiffViewState {
   return state;
 }
 
-export function useSelectedFile(theaterId: string | null): SelectedFile | null {
+export function useSelectedFile(theaterId: string | null, subPath: string): SelectedFile | null {
   const s = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  if (!s.file || s.file.theaterId !== theaterId) return null;
+  if (!s.file || s.file.theaterId !== theaterId || s.file.subPath !== subPath) return null;
   return s.file;
 }
 

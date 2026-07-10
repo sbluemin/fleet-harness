@@ -8,6 +8,7 @@ import type { AllowedAccessSets } from "./types.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "../security-headers.js";
+import { resolveTheaterPathContext } from "../theater-path-context.js";
 
 interface CodexGatewayDeps {
   readonly cwd: string;
@@ -23,11 +24,26 @@ interface ParsedHostHeader {
 
 type WorkspaceSelection =
   | { kind: "workspace"; workspace: WorkspaceRegistration | null; rewrittenUrl?: string }
+  | { kind: "missing-workspace" }
   | { kind: "redirect"; location: string }
   | { kind: "no-workspace" }
   | { kind: "not-codex" };
 
 type NetworkInterfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
+
+export interface CodexGateway {
+  getWorkspace(id: string): WorkspaceRegistration | null;
+  handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
+  listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
+  registerWorkspace(cwd: string, lastOpenedAt?: string, ownerTheaterId?: string): Promise<WorkspaceRegistration>;
+  resolveWorkspaceForPath(theaterId: string, theaterRoot: string, relPath: string | null): Promise<CodexWorkspaceResolution>;
+  unregisterTheaterWorkspaces(theaterId: string): void;
+}
+
+export interface CodexWorkspaceResolution {
+  readonly hasWiki: boolean;
+  readonly id: string | null;
+}
 
 const CODEX_BASE = "/console/codex";
 const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST"]);
@@ -35,16 +51,9 @@ const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
 const LOOPBACK_ACCESS_HOSTS = ["127.0.0.1", "::1"];
 const LOOPBACK_HOST = "127.0.0.1";
 
-export interface CodexGateway {
-  getWorkspace(id: string): WorkspaceRegistration | null;
-  handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
-  listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
-  registerWorkspace(cwd: string, lastOpenedAt?: string): Promise<WorkspaceRegistration>;
-  unregisterWorkspace(id: string): boolean;
-}
-
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   const workspaces = new WorkspaceRegistry();
+  const workspaceOwners = new Map<string, Set<string>>();
   let accessSets: AllowedAccessSets | null = null;
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
@@ -73,6 +82,10 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     }
     if (selected.kind === "redirect") {
       redirect(response, `${CODEX_BASE}${selected.location}`);
+      return true;
+    }
+    if (selected.kind === "missing-workspace") {
+      sendJson(response, 404, { error: "workspace_not_found" });
       return true;
     }
     if (selected.kind === "no-workspace") {
@@ -107,20 +120,64 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     return workspace;
   }
 
+  async function registerWorkspace(
+    cwd: string,
+    lastOpenedAt?: string,
+    ownerTheaterId?: string,
+  ): Promise<WorkspaceRegistration> {
+    const workspace = await workspaces.register(cwd, lastOpenedAt);
+    if (ownerTheaterId) {
+      const owners = workspaceOwners.get(workspace.id) ?? new Set<string>();
+      owners.add(ownerTheaterId);
+      workspaceOwners.set(workspace.id, owners);
+    }
+    return workspace;
+  }
+
+  async function resolveWorkspaceForPath(
+    theaterId: string,
+    theaterRoot: string,
+    relPath: string | null,
+  ): Promise<CodexWorkspaceResolution> {
+    const pathContext = await resolveTheaterPathContext(theaterRoot, relPath);
+    try {
+      const workspace = await registerWorkspace(pathContext.realPath, undefined, theaterId);
+      return { hasWiki: true, id: workspace.id };
+    } catch (error) {
+      if (error instanceof Error && error.message === "knowledge_root_missing") {
+        return { hasWiki: false, id: null };
+      }
+      throw error;
+    }
+  }
+
+  function unregisterWorkspace(id: string): boolean {
+    // 캐시된 initial workspace가 해제 대상이면 캐시를 비워, 이후 비프리픽스 라우트가
+    // 레지스트리에서 사라진 등록을 계속 서빙하지 않게 한다(다음 접근 시 재평가).
+    if (initialWorkspaceId === id) {
+      initialWorkspace = null;
+      initialWorkspaceId = null;
+    }
+    return workspaces.remove(id);
+  }
+
+  function unregisterTheaterWorkspaces(theaterId: string): void {
+    for (const [workspaceId, owners] of workspaceOwners) {
+      owners.delete(theaterId);
+      if (owners.size === 0) {
+        workspaceOwners.delete(workspaceId);
+        unregisterWorkspace(workspaceId);
+      }
+    }
+  }
+
   return {
     getWorkspace: (id) => workspaces.get(id),
     handle,
     listWorkspaceRegistrations: () => workspaces.listRegistrations(),
-    registerWorkspace: (cwd, lastOpenedAt) => workspaces.register(cwd, lastOpenedAt),
-    unregisterWorkspace: (id) => {
-      // 캐시된 initial workspace가 해제 대상이면 캐시를 비워, 이후 비프리픽스 라우트가
-      // 레지스트리에서 사라진 등록을 계속 서빙하지 않게 한다(다음 접근 시 재평가).
-      if (initialWorkspaceId === id) {
-        initialWorkspace = null;
-        initialWorkspaceId = null;
-      }
-      return workspaces.remove(id);
-    },
+    registerWorkspace,
+    resolveWorkspaceForPath,
+    unregisterTheaterWorkspaces,
   };
 }
 
@@ -158,8 +215,10 @@ function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd:
   const prefixed = url.pathname.match(/^\/w\/([^/]+)(\/.*)?$/);
   if (prefixed) {
     const workspace = workspaces.get(decodeURIComponent(prefixed[1] ?? ""));
-    if (!workspace) return { kind: "redirect", location: "/" };
     const suffix = prefixed[2] ?? "/";
+    if (!workspace) {
+      return suffix.startsWith("/api/") ? { kind: "missing-workspace" } : { kind: "redirect", location: "/" };
+    }
     url.pathname = suffix;
     return { kind: "workspace", workspace, rewrittenUrl: `${url.pathname}${url.search}` };
   }

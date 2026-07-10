@@ -28,7 +28,7 @@ export interface PlanReadResult {
 }
 
 interface PlansRoot {
-  readonly realTheaterPath: string;
+  readonly realContextPath: string;
   readonly realPlansPath: string;
 }
 
@@ -142,25 +142,25 @@ async function toPlanListItem(plansRoot: PlansRoot, name: string): Promise<PlanL
   };
 }
 
-async function resolvePlansRoot(theaterPath: string, allowMissing: boolean): Promise<PlansRoot | null> {
-  const nominalTheaterPath = path.resolve(theaterPath);
-  const plansPath = path.resolve(nominalTheaterPath, ...PLANS_DIRECTORY_SEGMENTS);
-  if (!isWithinRoot(plansPath, nominalTheaterPath)) throw new PlanStoreError("path_outside_theater");
+async function resolvePlansRoot(contextPath: string, allowMissing: boolean): Promise<PlansRoot | null> {
+  const nominalContextPath = path.resolve(contextPath);
+  const plansPath = path.resolve(nominalContextPath, ...PLANS_DIRECTORY_SEGMENTS);
+  if (!isWithinRoot(plansPath, nominalContextPath)) throw new PlanStoreError("path_outside_theater");
 
-  let realTheaterPath: string;
+  let realContextPath: string;
   let realPlansPath: string;
   try {
-    [realTheaterPath, realPlansPath] = await Promise.all([
-      fs.promises.realpath(nominalTheaterPath),
+    [realContextPath, realPlansPath] = await Promise.all([
+      fs.promises.realpath(nominalContextPath),
       fs.promises.realpath(plansPath),
     ]);
   } catch (error) {
     if (allowMissing && isNotFoundError(error)) return null;
     throw toPlanStoreError(error);
   }
-  if (!isWithinRoot(realPlansPath, realTheaterPath)) throw new PlanStoreError("path_outside_theater");
+  if (!isWithinRoot(realPlansPath, realContextPath)) throw new PlanStoreError("path_outside_theater");
 
-  return { realTheaterPath, realPlansPath };
+  return { realContextPath, realPlansPath };
 }
 
 async function resolvePlanFile(plansRoot: PlansRoot, name: string): Promise<PlanFile> {
@@ -173,7 +173,7 @@ async function resolvePlanFile(plansRoot: PlansRoot, name: string): Promise<Plan
   } catch (error) {
     throw toPlanStoreError(error);
   }
-  if (!isWithinRoot(realPath, plansRoot.realPlansPath) || !isWithinRoot(realPath, plansRoot.realTheaterPath)) {
+  if (!isWithinRoot(realPath, plansRoot.realPlansPath) || !isWithinRoot(realPath, plansRoot.realContextPath)) {
     throw new PlanStoreError("path_outside_theater");
   }
 

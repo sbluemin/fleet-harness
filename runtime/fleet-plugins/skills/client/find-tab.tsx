@@ -15,6 +15,7 @@ import { useJobLog, type UseJobLogReturn } from "./use-job-log.js";
 
 interface FindTabProps {
   readonly theaterId: string | null;
+  readonly relPath: string | null;
   readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
   readonly onInstallSuccess: (skillName: string, scope: Scope) => void;
 }
@@ -22,6 +23,7 @@ interface FindTabProps {
 interface FindResultCardProps {
   readonly result: SkillSearchItem;
   readonly theaterId: string | null;
+  readonly relPath: string | null;
   readonly isFormOpen: boolean;
   readonly onInstallClick: () => void;
   readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
@@ -60,6 +62,7 @@ async function doSearch(q: string): Promise<void> {
 function FindResultCard({
   result,
   theaterId,
+  relPath,
   isFormOpen,
   onInstallClick,
   onReadMore,
@@ -104,6 +107,7 @@ function FindResultCard({
           source={result.source}
           skill={result.name}
           theaterId={theaterId}
+          relPath={relPath}
           onCancel={onInstallClick}
           onStarted={(installedScope) => onInstallStarted(result.name, installedScope)}
           jobLog={jobLog}
@@ -115,7 +119,7 @@ function FindResultCard({
 
 // ─── FindTab ─────────────────────────────────────────────────────────────────
 
-export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProps) {
+export function FindTab({ theaterId, relPath, onReadMore, onInstallSuccess }: FindTabProps) {
   const { searchQuery, searchResults, searchLoading, installFormOpenId } = useSkillsStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const installJobLog = useJobLog();
@@ -172,6 +176,7 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
               key={result.id}
               result={result}
               theaterId={theaterId}
+              relPath={relPath}
               isFormOpen={installFormOpenId === result.id}
               onInstallClick={() =>
                 setInstallFormOpenId(installFormOpenId === result.id ? null : result.id)

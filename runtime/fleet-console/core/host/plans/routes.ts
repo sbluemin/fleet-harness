@@ -1,6 +1,7 @@
 import type http from "node:http";
 
 import { PlanStoreError, isValidPlanName, listPlansForTheater, readPlanForTheater } from "./plan-store.js";
+import { TheaterPathContextError, isSafeRelativePath, resolveTheaterPathContext } from "../theater-path-context.js";
 
 export interface PlansRouteDeps {
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
@@ -17,6 +18,7 @@ interface PlansRouteContext {
 
 interface PlansListBody {
   readonly theaterId?: unknown;
+  readonly relPath?: unknown;
 }
 
 interface PlansReadBody extends PlansListBody {
@@ -48,7 +50,7 @@ async function handlePlansList(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   const body = await deps.readJsonBody<PlansListBody>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string") {
+  if (!isPlainObject(body) || typeof body.theaterId !== "string" || !isValidRelPath(body.relPath)) {
     deps.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
@@ -58,7 +60,8 @@ async function handlePlansList(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   try {
-    deps.writeJson(res, 200, { plans: await listPlansForTheater(theaterPath) });
+    const context = await resolveTheaterPathContext(theaterPath, body.relPath);
+    deps.writeJson(res, 200, { plans: await listPlansForTheater(context.realPath) });
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }
@@ -74,7 +77,7 @@ async function handlePlansRead(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   const body = await deps.readJsonBody<PlansReadBody>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string") {
+  if (!isPlainObject(body) || typeof body.theaterId !== "string" || !isValidRelPath(body.relPath)) {
     deps.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
@@ -88,7 +91,8 @@ async function handlePlansRead(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   try {
-    deps.writeJson(res, 200, await readPlanForTheater(theaterPath, body.name));
+    const context = await resolveTheaterPathContext(theaterPath, body.relPath);
+    deps.writeJson(res, 200, await readPlanForTheater(context.realPath, body.name));
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }
@@ -98,7 +102,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isValidRelPath(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && isSafeRelativePath(value));
+}
+
 function writePlanStoreError(res: http.ServerResponse, deps: PlansRouteDeps, error: unknown): void {
+  if (error instanceof TheaterPathContextError) {
+    const httpStatus = error.code === "forbidden" ? 403 : error.code === "not_found" ? 404 : 400;
+    deps.writeJson(res, httpStatus, { error: error.code });
+    return;
+  }
   if (!(error instanceof PlanStoreError)) throw error;
   const httpStatus = error.code === "path_outside_theater" ? 403 : error.code === "too_large" ? 413 : 404;
   deps.writeJson(res, httpStatus, { error: error.code });

@@ -12,6 +12,7 @@ import { createInfraServices } from "@dotobokuri/core-infra";
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
+import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore } from "./console-settings.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
@@ -37,6 +38,8 @@ import { encodeSseData } from "./sse.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
 import { createFolderGrantStore } from "./theater-folder-grants.js";
+import { createTheaterPathContextRouter } from "./theater-path-context-routes.js";
+import { resolveTheaterPathContext } from "./theater-path-context.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
@@ -143,6 +146,41 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "DELETE",
     path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/theaters/:theaterId/path-context",
+    summary: "Get the selected Theater path context.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/api/v1/theaters/:theaterId/path-context",
+    summary: "Save the selected Theater path context.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/theaters/:theaterId/path-context/worktrees",
+    summary: "List contained Git worktrees for a Theater.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/theaters/:theaterId/path-context/directories",
+    summary: "List contained directories for a Theater path context.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/theaters/:theaterId/codex-workspace",
+    summary: "Resolve the Codex workspace for a Theater path context.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -325,7 +363,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     paths: {
       capturesDir: durablePaths.capturesDir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
-      resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.path ?? null,
+      resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
     },
@@ -422,6 +460,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
     writeJson,
   });
+  const theaterPathContextRouter = createTheaterPathContextRouter({
+    getTheater: (theaterId) => theaters.get(theaterId),
+    isAuthorized: isTerminalAuthorized,
+    persist: persistDurableState,
+    readJsonBody,
+    setPathContext: (theaterId, relPath) => theaters.setPathContext(theaterId, relPath),
+    writeJson,
+  });
+  const codexWorkspaceContextRouter = createCodexWorkspaceContextRouter({
+    getTheater: (theaterId) => theaters.get(theaterId),
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    resolveWorkspace: (theaterId, theaterRoot, relPath) => codex.resolveWorkspaceForPath(theaterId, theaterRoot, relPath),
+    writeJson,
+  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -450,6 +503,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
+  routeRegistry.register("/api/v1/theaters", async (context) => {
+    if (await theaterPathContextRouter(context)) return true;
+    return codexWorkspaceContextRouter(context);
+  });
   routeRegistry.register("/api/v1/settings", async (ctx) => {
     const { req, res, pathname } = ctx;
     if (pathname === "/api/v1/settings/api-catalog") {
@@ -651,7 +708,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const theater = await theaters.register(cwd);
     let hasWiki = false;
     try {
-      await codex.registerWorkspace(cwd);
+      await codex.registerWorkspace(theater.realpath, undefined, theater.id);
       hasWiki = true;
     } catch (error) {
       if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
@@ -674,9 +731,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
     // 이미 달성된 것이므로 404가 아닌 성공으로 처리하고, 남아 있을 수 있는 소속 Operation도 함께 정리한다.
     theaters.remove(theaterId);
-    // Theater를 잊을 때 Codex 워크스페이스 등록도 함께 해제한다. 등록을 남겨두면
-    // /console/codex/w/:id/ 직접 URL이 재시작 전까지 잊은 Theater의 위키를 계속 서빙한다(등록/복원 경로와 대칭).
-    codex.unregisterWorkspace(theaterId);
+    // Theater를 잊을 때 그 Theater가 소유한 root·nested Codex 워크스페이스를 모두 해제한다.
+    // 다른 Theater가 같은 workspace id를 소유하면 등록을 유지한다.
+    codex.unregisterTheaterWorkspaces(theaterId);
     for (const operation of operations.listByTheater(theaterId)) {
       pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, {
         operationId: operation.id,
@@ -881,6 +938,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       theaters.restore(state.theaters);
       operations.replace(state.operations);
       operations.replaceGroups(state.groups ?? []);
+      const healed = await healRestoredPathContexts();
+      if (healed) persistDurableState();
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
       state = emptyDurableConsoleState();
@@ -895,6 +954,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     await restoreCodexWorkspaces();
   }
 
+  async function healRestoredPathContexts(): Promise<boolean> {
+    let healed = false;
+    for (const theater of theaters.list()) {
+      if (theater.pathContext === null) continue;
+      try {
+        const resolved = await resolveTheaterPathContext(theater.realpath, theater.pathContext);
+        if (resolved.relPath !== theater.pathContext) {
+          theaters.setPathContext(theater.id, resolved.relPath);
+          healed = true;
+        }
+      } catch {
+        theaters.setPathContext(theater.id, null);
+        healed = true;
+      }
+    }
+    return healed;
+  }
+
   async function restoreCodexWorkspaces(): Promise<void> {
     // durable lastOpenedAt 오름차순으로 순차 등록하면서 durable 타임스탬프를 그대로 보존한다.
     // register()가 매번 MRU를 갱신하므로 가장 최근에 열린 Theater가 마지막에 등록되어 codex
@@ -905,7 +982,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
     for (const theater of ordered) {
       try {
-        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt);
+        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
       } catch (error) {
         // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
         if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
