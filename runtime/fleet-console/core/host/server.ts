@@ -234,6 +234,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const operationSseSubscribers = new Set<http.ServerResponse>();
+  let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
+    broadcastUpdateAvailable();
+  }) ?? null;
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     operations: {
       list: () => operations.list(),
@@ -827,6 +830,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function disposeConsoleResources(currentLock: ConsoleLockHandle | null): Promise<void> {
+    updateCheck.stop?.();
+    unsubscribeUpdateCheckChanges?.();
+    unsubscribeUpdateCheckChanges = null;
     if (consoleResourcesDisposed) {
       currentLock?.release();
       return;
@@ -897,6 +903,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  function broadcastUpdateAvailable(): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData("update:available", {});
+    for (const res of operationSseSubscribers) {
+      res.write(data);
+    }
+  }
+
   function persistDurableState(): void {
     try {
       durableStateStore.save({
@@ -951,6 +965,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         throw error;
       }
       if (!activeEndpoint) throw new Error("Console endpoint unavailable");
+      if (unsubscribeUpdateCheckChanges === null) {
+        unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
+          broadcastUpdateAvailable();
+        }) ?? null;
+      }
+      updateCheck.start?.();
       void updateCheck.refresh();
       return activeEndpoint;
     },
@@ -1244,4 +1264,3 @@ function resolvePluginStorageFile(dataDir: string, pluginId: string, key: string
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
-
