@@ -16,6 +16,7 @@ import type {
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
+  UiFontId,
 } from "./types.js";
 
 type Listener = () => void;
@@ -103,6 +104,10 @@ export function setActiveTheme(theme: ThemeId): void {
   setState({ activeTheme: theme });
 }
 
+export function setActiveUiFont(uiFont: UiFontId): void {
+  applyUiFontToDocument(uiFont);
+}
+
 export function applyObserverStatus(status: ObserverStatus): void {
   // 채널은 status로만 도착한다. local 채널이면 ambient 애니메이션 기본값을 끔으로 reconcile한다(사용자 선호는 존중).
   applyChannelAnimationDefaults(status.channel);
@@ -158,6 +163,15 @@ export function applyThemeToDocument(theme: ThemeId): void {
     return;
   }
   document.documentElement.setAttribute("data-theme", theme);
+}
+
+export function applyUiFontToDocument(uiFont: UiFontId): void {
+  if (typeof document === "undefined") return;
+  if (uiFont === "manrope") {
+    document.documentElement.removeAttribute("data-ui-font");
+    return;
+  }
+  document.documentElement.setAttribute("data-ui-font", uiFont);
 }
 
 export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {

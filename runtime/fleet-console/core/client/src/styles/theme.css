@@ -88,6 +88,15 @@
   --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.93  0 0 0 0 0.86  0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/></svg>");
 }
 
+/* Global UI font preference — display, code, Mermaid, and xterm roles retain their dedicated tokens. */
+:root[data-ui-font="jetbrains-mono"] {
+  --font-body: "JetBrains Mono Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root[data-ui-font="source-code-pro"] {
+  --font-body: "Source Code Pro Variable", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
 :root[data-theme="carbon"] {
   --ink-abyss: oklch(14% 0.006 255);
   --ink-deep: oklch(18% 0.007 255);

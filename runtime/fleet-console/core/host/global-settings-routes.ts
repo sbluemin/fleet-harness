@@ -23,6 +23,7 @@ interface GlobalSettingsBody {
   readonly consolePortMode?: unknown;
   readonly consoleStaticPort?: unknown;
   readonly theme?: unknown;
+  readonly uiFont?: unknown;
 }
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
@@ -98,13 +99,19 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
+  if (!isUiFontIdOrUndefined(body.uiFont)) {
+    deps.writeJson(res, 400, { error: "invalid_ui_font" });
+    return;
+  }
   const updated = deps.consoleSettingsStore.update((current) => ({
+    ...current,
     version: 1,
     general: {
       ...current.general,
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.theme === "maritime" || body.theme === "carbon" ? { theme: body.theme } : {}),
+      ...(isUiFontId(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
   }));
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
@@ -117,6 +124,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
     theme: general.theme ?? "maritime",
+    uiFont: general.uiFont ?? "manrope",
   };
 }
 
@@ -127,4 +135,12 @@ function isJsonRequest(req: http.IncomingMessage): boolean {
 
 function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
+}
+
+function isUiFontIdOrUndefined(value: unknown): boolean {
+  return value === undefined || isUiFontId(value);
+}
+
+function isUiFontId(value: unknown): value is "manrope" | "jetbrains-mono" | "source-code-pro" {
+  return value === "manrope" || value === "jetbrains-mono" || value === "source-code-pro";
 }

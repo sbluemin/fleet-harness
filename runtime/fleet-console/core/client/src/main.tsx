@@ -23,7 +23,7 @@ import { App } from "./app.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
-import { setActiveTheme } from "./store.js";
+import { setActiveTheme, setActiveUiFont } from "./store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -52,8 +52,9 @@ globalThis.__fleetConsoleRuntime__ = {
 try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
+  setActiveUiFont(settings.uiFont);
 } catch {
-  // 서버 미응답 시 DEFAULT_THEME 유지
+  // 서버 미응답 시 기본 Theme 및 Manrope UI font를 유지한다.
 }
 
 const registry = await loadPluginRegistry();
