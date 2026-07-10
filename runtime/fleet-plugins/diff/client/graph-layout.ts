@@ -20,7 +20,7 @@ export interface GraphLayout {
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const LANE_HARD_CAP = 3;
+const LANE_HARD_CAP = 8;
 
 // ─── functions ───────────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
     nodes.push({
       lane: myLane,
-      isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")) || idx === 0,
+      isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")),
       connectAbove: idx > 0,
       connectBelow: idx < commits.length - 1,
       passThroughLanes,

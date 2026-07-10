@@ -27,7 +27,7 @@ interface DiffPanelProps {
   readonly ctx: RailPanelContext;
 }
 
-interface RepoPickerProps {
+export interface RepoPickerProps {
   readonly theaterId: string;
   readonly repos: readonly RepoEntry[];
   readonly loading: boolean;
@@ -131,7 +131,7 @@ function basename(p: string): string {
 
 // ─── CommandDeck (저장소 피커 — 패널 전면 불투명 시트) ──────────────────────────
 
-function CommandDeck({ repos, loading, truncated, activeSubPath, depth, onSelect, onDepthChange, onRescan, onClose }: RepoPickerProps) {
+export function CommandDeck({ repos, loading, truncated, activeSubPath, depth, onSelect, onDepthChange, onRescan, onClose }: RepoPickerProps) {
   const { groups, topLevelCount } = groupRepos(repos);
 
   const handleDepthSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {

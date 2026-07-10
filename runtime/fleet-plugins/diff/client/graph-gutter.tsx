@@ -14,11 +14,25 @@ const LANE_WIDTH = 12;
 const ROW_HEIGHT = 20;
 const NODE_R = 3;
 const HEAD_RING_R = 5;
+const LANE_COLORS = [
+  "var(--brass)",
+  "var(--aurora)",
+  "var(--warn)",
+  "var(--positive)",
+  "color-mix(in oklch, var(--brass) 70%, var(--aurora))",
+  "color-mix(in oklch, var(--aurora) 70%, var(--positive))",
+  "color-mix(in oklch, var(--warn) 72%, var(--brass))",
+  "color-mix(in oklch, var(--ink-spectral) 76%, var(--aurora))",
+] as const;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function laneCx(lane: number): number {
   return lane * LANE_WIDTH + 6;
+}
+
+function laneColor(lane: number): string {
+  return LANE_COLORS[lane % LANE_COLORS.length] ?? "var(--ink-fog)";
 }
 
 // ─── GraphGutter ─────────────────────────────────────────────────────────────
@@ -46,7 +60,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
           y1={0}
           x2={laneCx(lane)}
           y2={ROW_HEIGHT}
-          stroke="var(--ink-rim)"
+          stroke={laneColor(lane)}
           strokeWidth={1.5}
         />
       ))}
@@ -58,7 +72,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
           y1={0}
           x2={cx}
           y2={cy - NODE_R}
-          stroke="var(--ink-rim)"
+          stroke={laneColor(node.lane)}
           strokeWidth={1.5}
         />
       )}
@@ -70,7 +84,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
           y1={cy + NODE_R}
           x2={cx}
           y2={ROW_HEIGHT}
-          stroke="var(--ink-rim)"
+          stroke={laneColor(node.lane)}
           strokeWidth={1.5}
         />
       )}
@@ -83,7 +97,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
           y1={0}
           x2={cx}
           y2={cy}
-          stroke="var(--ink-rim)"
+          stroke={laneColor(lane)}
           strokeWidth={1.5}
           strokeLinecap="round"
         />
@@ -97,7 +111,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
           y1={cy}
           x2={laneCx(lane)}
           y2={ROW_HEIGHT}
-          stroke="var(--ink-rim)"
+          stroke={laneColor(lane)}
           strokeWidth={1.5}
           strokeLinecap="round"
         />
@@ -110,7 +124,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
           cy={cy}
           r={HEAD_RING_R}
           fill="none"
-          stroke="var(--brass)"
+          stroke={laneColor(node.lane)}
           strokeWidth={1.5}
         />
       )}
@@ -120,7 +134,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
         cx={cx}
         cy={cy}
         r={NODE_R}
-        fill={node.isHead ? "var(--brass)" : "var(--ink-fog)"}
+        fill={laneColor(node.lane)}
       />
 
       {/* collapse 인디케이터 */}
