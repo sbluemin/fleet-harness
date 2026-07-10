@@ -39,14 +39,23 @@ export interface LogCommitEntry {
   readonly subject: string;
   readonly authorName: string;
   readonly relTime: string;
+  readonly authorAt: number;
   readonly refs: readonly string[];
   readonly parents: readonly string[];
   readonly additions: number;
   readonly deletions: number;
 }
 
+export interface WorktreeCheckout {
+  readonly sha: string;
+  readonly branch: string | null;
+  readonly worktreePath: string;
+  readonly isCurrent: boolean;
+}
+
 export interface LogResult {
   readonly commits: readonly LogCommitEntry[];
+  readonly checkouts: readonly WorktreeCheckout[];
   readonly truncated?: boolean;
 }
 

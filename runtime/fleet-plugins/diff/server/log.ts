@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
-import type { LogCommitEntry } from "./types.js";
+import type { LogCommitEntry, WorktreeCheckout } from "./types.js";
 import { resolveGitCwd } from "./diff.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseLogOutput(stdout: string): LogCommitEntry[] {
+export function parseLogOutput(stdout: string): LogCommitEntry[] {
   if (!stdout.trim()) return [];
   const commits: LogCommitEntry[] = [];
 
@@ -29,8 +29,9 @@ function parseLogOutput(stdout: string): LogCommitEntry[] {
     const subject = fields[2] ?? "";
     const authorName = fields[3] ?? "";
     const relTime = fields[4] ?? "";
-    const refsRaw = fields[5] ?? "";
-    const parentsRaw = fields[6] ?? "";
+    const authorAt = Number.parseInt(fields[5] ?? "0", 10);
+    const refsRaw = fields[6] ?? "";
+    const parentsRaw = fields[7] ?? "";
 
     if (!fullHash) continue;
 
@@ -49,10 +50,55 @@ function parseLogOutput(stdout: string): LogCommitEntry[] {
       if (!isNaN(d)) deletions += d;
     }
 
-    commits.push({ shortHash, fullHash, subject, authorName, relTime, refs, parents, additions, deletions });
+    commits.push({
+      shortHash,
+      fullHash,
+      subject,
+      authorName,
+      relTime,
+      authorAt: Number.isFinite(authorAt) ? authorAt : 0,
+      refs,
+      parents,
+      additions,
+      deletions,
+    });
   }
 
   return commits;
+}
+
+export function parseWorktreePorcelain(stdout: string, currentWorktreePath: string): WorktreeCheckout[] {
+  const checkouts: WorktreeCheckout[] = [];
+  let worktreePath: string | null = null;
+  let sha = "";
+  let branch: string | null = null;
+
+  const pushCurrent = () => {
+    if (!worktreePath || !sha) return;
+    checkouts.push({
+      sha,
+      branch,
+      worktreePath,
+      isCurrent: worktreePath === currentWorktreePath,
+    });
+  };
+
+  for (const line of stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      pushCurrent();
+      worktreePath = line.slice(9);
+      sha = "";
+      branch = null;
+    } else if (line.startsWith("HEAD ")) {
+      sha = line.slice(5);
+    } else if (line.startsWith("branch ")) {
+      const ref = line.slice(7);
+      branch = ref.startsWith("refs/heads/") ? ref.slice(11) : ref;
+    }
+  }
+  pushCurrent();
+
+  return checkouts;
 }
 
 function isNoHeadError(error: unknown): boolean {
@@ -86,16 +132,21 @@ export async function handleDiffLog(
   const { gitCwd } = cwdResult;
 
   try {
-    const result = await runGit(
-      ["log", "-n", "50", "--numstat", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%D%x00%P"],
-      { cwd: gitCwd },
-    );
+    const [result, worktrees, currentWorktree] = await Promise.all([
+      runGit(
+        ["log", "--all", "--date-order", "-n", "200", "--numstat", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P"],
+        { cwd: gitCwd },
+      ),
+      runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
+      runGit(["rev-parse", "--show-toplevel"], { cwd: gitCwd }),
+    ]);
     const commits = parseLogOutput(result.stdout);
-    ctx.host.http.writeJson(res, 200, { commits, ...(result.truncated ? { truncated: true } : {}) });
+    const checkouts = parseWorktreePorcelain(worktrees.stdout, currentWorktree.stdout.trim());
+    ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
       if (error.code === "no_git_repo") {
-        ctx.host.http.writeJson(res, 200, { commits: [] });
+        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
         return;
       }
       if (error.code === "git_unavailable") {
@@ -104,7 +155,7 @@ export async function handleDiffLog(
       }
       // no-HEAD 신규 저장소(HEAD 미존재)는 빈 배열 graceful; 그 외 비정상 종료는 500 — 500 분기보다 먼저 검사한다
       if (isNoHeadError(error)) {
-        ctx.host.http.writeJson(res, 200, { commits: [] });
+        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
         return;
       }
       ctx.host.http.writeJson(res, 500, { error: "git_failed" });
