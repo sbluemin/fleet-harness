@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRelativeTime, getProgressPercent, getWaveProgressState } from "../client/helpers.js";
+import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled } from "../client/helpers.js";
 
 const NOW = Date.UTC(2026, 6, 10, 0, 0, 0);
 
@@ -38,5 +38,28 @@ describe("getWaveProgressState", () => {
     expect(getWaveProgressState(3, 3)).toBe("complete");
     expect(getWaveProgressState(1, 3)).toBe("in-progress");
     expect(getWaveProgressState(0, 3)).toBe("not-started");
+  });
+});
+
+describe("getLaneDispatchState", () => {
+  const wave = (tasksDone: number, tasksTotal: number) => ({ tasksDone, tasksTotal });
+
+  it("treats a wave without declared tasks as vacuously settled", () => {
+    expect(isWaveSettled(wave(0, 0))).toBe(true);
+    expect(isWaveSettled(wave(1, 2))).toBe(false);
+  });
+
+  it("marks a finished lane complete regardless of predecessors", () => {
+    expect(getLaneDispatchState([wave(0, 3), wave(0, 2)], 1, wave(2, 2))).toBe("complete");
+  });
+
+  it("marks a lane ready only when every earlier wave is settled", () => {
+    expect(getLaneDispatchState([wave(3, 3), wave(0, 2)], 1, wave(0, 2))).toBe("ready");
+    expect(getLaneDispatchState([wave(1, 3), wave(0, 2)], 1, wave(0, 2))).toBe("blocked");
+  });
+
+  it("keeps first-wave lanes ready and taskless lanes unmarked", () => {
+    expect(getLaneDispatchState([wave(0, 2)], 0, wave(0, 2))).toBe("ready");
+    expect(getLaneDispatchState([wave(0, 2)], 0, wave(0, 0))).toBe("none");
   });
 });

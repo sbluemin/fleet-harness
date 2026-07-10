@@ -1,8 +1,16 @@
 export type PlanExecutionMode = "sequential" | "parallel" | null;
 
+export interface PlanLane {
+  readonly id: string | null;
+  readonly heading: string;
+  readonly tasksDone: number;
+  readonly tasksTotal: number;
+}
+
 export interface PlanWave {
   readonly index: number;
   readonly heading: string;
+  readonly lanes: readonly PlanLane[];
   readonly tasksDone: number;
   readonly tasksTotal: number;
 }
@@ -35,6 +43,10 @@ const TITLE_PATTERN = /^#\s+(.+)$/;
 // Execution Topology 섹션의 필드 불릿 — Kirov lane 템플릿(# Execution Topology / - Execution mode: Sequential | Parallel)
 const EXECUTION_MODE_PATTERN = /^-\s*Execution mode:\s*(sequential|parallel)\b/i;
 const WAVE_PATTERN = /^##\s+wave\s+(\d+)\b/i;
+// Kirov lane 템플릿의 wave 하위 서브섹션(### Lane WN-X — <name>). id 캡처는 관용적(W1-A 형태 우선, 실패 시 null).
+const LANE_PATTERN = /^###\s+lane\s+(.+)$/i;
+const LANE_ID_PATTERN = /^(W\d+-[A-Za-z0-9]+)\b/i;
+const LANE_BOUNDARY_PATTERN = /^#{1,3}\s/;
 const SECTION_HEADING_PATTERN = /^#{1,2}\s/;
 const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
 const FENCE_PATTERN = /^\s*(```|~~~)/;
@@ -57,9 +69,10 @@ export function parsePlan(content: string): ParsedPlan {
   const waves = waveStarts.map(({ index, heading, lineIndex }, waveIndex) => {
     const nextWaveLineIndex = waveStarts[waveIndex + 1]?.lineIndex ?? lines.length;
     const endLineIndex = findSectionEnd(lines, lineIndex + 1, nextWaveLineIndex);
-    const counts = countTasks(lines.slice(lineIndex + 1, endLineIndex));
+    const waveLines = lines.slice(lineIndex + 1, endLineIndex);
+    const counts = countTasks(waveLines);
 
-    return { index, heading, ...counts };
+    return { index, heading, lanes: findLanes(waveLines), ...counts };
   });
 
   return { title, executionMode, waves, ...countTasks(lines) };
@@ -118,6 +131,28 @@ function findWaveStarts(lines: readonly PlanLine[]): WaveStart[] {
   }
 
   return waves;
+}
+
+function findLanes(waveLines: readonly PlanLine[]): PlanLane[] {
+  const laneStarts: Array<{ heading: string; id: string | null; lineIndex: number }> = [];
+
+  for (const [lineIndex, line] of waveLines.entries()) {
+    if (line.isFenced) continue;
+    const match = LANE_PATTERN.exec(line.text);
+    if (!match?.[1]) continue;
+    const heading = match[1].trim();
+    laneStarts.push({ heading, id: LANE_ID_PATTERN.exec(heading)?.[1]?.toUpperCase() ?? null, lineIndex });
+  }
+
+  return laneStarts.map(({ heading, id, lineIndex }, laneIndex) => {
+    const nextLaneLineIndex = laneStarts[laneIndex + 1]?.lineIndex ?? waveLines.length;
+    let endLineIndex = nextLaneLineIndex;
+    for (let cursor = lineIndex + 1; cursor < nextLaneLineIndex; cursor++) {
+      const line = waveLines[cursor];
+      if (!line?.isFenced && LANE_BOUNDARY_PATTERN.test(line?.text ?? "")) { endLineIndex = cursor; break; }
+    }
+    return { id, heading, ...countTasks(waveLines.slice(lineIndex + 1, endLineIndex)) };
+  });
 }
 
 function findSectionEnd(lines: readonly PlanLine[], startLineIndex: number, maxLineIndex: number): number {

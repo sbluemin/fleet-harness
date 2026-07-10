@@ -5,7 +5,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import "@fleet-console/markdown/styles.css";
 import "./plans.css";
-import { formatRelativeTime, getProgressPercent, getWaveProgressState } from "./helpers.js";
+import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState } from "./helpers.js";
 
 interface PlanListItem {
   readonly name: string;
@@ -18,9 +18,17 @@ interface PlanListItem {
   readonly sizeBytes: number;
 }
 
+interface PlanLane {
+  readonly id: string | null;
+  readonly heading: string;
+  readonly tasksDone: number;
+  readonly tasksTotal: number;
+}
+
 interface PlanWave {
   readonly index: number;
   readonly heading: string;
+  readonly lanes: readonly PlanLane[];
   readonly tasksDone: number;
   readonly tasksTotal: number;
 }
@@ -261,7 +269,13 @@ function PlanReader({ state, onClose, onRetry }: PlanReaderProps) {
 }
 
 function PlanDocument({ plan, onClose }: PlanDocumentProps) {
-  const html = useMemo(() => renderMarkdown(plan.content).html, [plan.content]);
+  // plan 본문은 신뢰 불가 입력이다 — 렌더 HTML을 mount하기 전에 원격 이미지(추적 픽셀·IP 노출)와
+  // 비-http 로컬 href(SPA hijack)를 무력화한다. 준거: file-explorer MarkdownViewer의 mount-전 처리.
+  const html = useMemo(() => {
+    const doc = new DOMParser().parseFromString(renderMarkdown(plan.content).html, "text/html");
+    neutralizePlanDom(doc.body);
+    return doc.body.innerHTML;
+  }, [plan.content]);
 
   return (
     <div className="plans-reader-pane">
@@ -277,12 +291,26 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
       </div>
       <div className="plans-reader-body">
         <div className="plans-wave-strip" aria-label="Wave progress">
-          {plan.waves.map((wave) => {
+          {plan.waves.map((wave, waveIndex) => {
             const progressState = getWaveProgressState(wave.tasksDone, wave.tasksTotal);
             return (
               <span key={wave.index} className={`plans-wave is-${progressState}`}>
                 <span className="plans-wave-heading">{wave.heading}</span>
                 {wave.tasksTotal > 0 && <span className="plans-wave-count">{wave.tasksDone}/{wave.tasksTotal}</span>}
+                {wave.lanes.length > 0 && (
+                  <span className="plans-lane-list">
+                    {wave.lanes.map((lane, laneIndex) => {
+                      const laneState = getLaneDispatchState(plan.waves, waveIndex, lane);
+                      return (
+                        <span key={lane.id ?? `${wave.index}-${laneIndex}`} className={`plans-lane is-${laneState}`}>
+                          <span className="plans-lane-id">{lane.id ?? lane.heading}</span>
+                          {lane.tasksTotal > 0 && <span className="plans-lane-count">{lane.tasksDone}/{lane.tasksTotal}</span>}
+                          {laneState === "ready" && <span className="plans-lane-ready">READY</span>}
+                        </span>
+                      );
+                    })}
+                  </span>
+                )}
               </span>
             );
           })}
@@ -321,6 +349,30 @@ function ErrorState({ message, onRetry }: ErrorStateProps) {
       <button className="plans-retry" type="button" onClick={onRetry}>Retry</button>
     </div>
   );
+}
+
+function neutralizePlanDom(root: ParentNode): void {
+  for (const anchor of root.querySelectorAll("a[href]")) {
+    const href = anchor.getAttribute("href") ?? "";
+    if (!/^(https?:|mailto:|#)/i.test(href)) {
+      anchor.removeAttribute("href");
+      anchor.setAttribute("role", "link");
+      anchor.setAttribute("aria-disabled", "true");
+    }
+  }
+  // plans 플러그인에는 이미지 서빙 라우트가 없다 — 로컬 복원 없이 전부 차단이 결정론적으로 안전하다.
+  for (const element of root.querySelectorAll("img, source")) {
+    if (element.tagName === "IMG") {
+      const alt = element.getAttribute("alt")?.trim();
+      const placeholder = element.ownerDocument.createElement("span");
+      placeholder.className = "plans-md-blocked-image";
+      placeholder.textContent = alt ? `Image blocked: ${alt}` : "Image blocked";
+      element.replaceWith(placeholder);
+    } else {
+      element.removeAttribute("src");
+      element.removeAttribute("srcset");
+    }
+  }
 }
 
 function PlansIcon() {

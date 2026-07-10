@@ -193,7 +193,7 @@
   display: grid;
   flex: 0 0 auto;
   gap: 2px;
-  max-width: 150px;
+  max-width: 180px;
   padding: 5px 7px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
@@ -221,6 +221,58 @@
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.4;
+}
+
+.plans-lane-list {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--surface-rim);
+}
+
+.plans-lane {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.plans-lane-id {
+  overflow: hidden;
+  max-width: 96px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plans-lane.is-complete {
+  color: var(--positive);
+}
+
+.plans-lane.is-blocked {
+  color: var(--ink-rim);
+}
+
+.plans-lane.is-ready {
+  color: var(--ink-spectral);
+}
+
+.plans-lane-ready {
+  color: var(--brass);
+  letter-spacing: 0.12em;
+}
+
+.plans-md-blocked-image {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px dashed var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 .plans-mode-badge {

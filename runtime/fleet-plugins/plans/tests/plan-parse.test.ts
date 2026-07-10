@@ -26,8 +26,8 @@ describe("parsePlan", () => {
       title: "Fleet rollout",
       executionMode: null,
       waves: [
-        { index: 1, heading: "Wave 1: Foundation", tasksDone: 2, tasksTotal: 3 },
-        { index: 2, heading: "Wave 2: UI", tasksDone: 0, tasksTotal: 1 },
+        { index: 1, heading: "Wave 1: Foundation", lanes: [], tasksDone: 2, tasksTotal: 3 },
+        { index: 2, heading: "Wave 2: UI", lanes: [], tasksDone: 0, tasksTotal: 1 },
       ],
       tasksDone: 4,
       tasksTotal: 6,
@@ -38,7 +38,7 @@ describe("parsePlan", () => {
     expect(parsePlan("# Narrative plan\n\n## Wave 4: Review\nNo tasks yet.")).toEqual({
       title: "Narrative plan",
       executionMode: null,
-      waves: [{ index: 4, heading: "Wave 4: Review", tasksDone: 0, tasksTotal: 0 }],
+      waves: [{ index: 4, heading: "Wave 4: Review", lanes: [], tasksDone: 0, tasksTotal: 0 }],
       tasksDone: 0,
       tasksTotal: 0,
     });
@@ -63,7 +63,7 @@ describe("parsePlan", () => {
     expect(parsePlan("## wAvE 12 Build\n- [X] done\n- [x] also done\n- [ ] later")).toEqual({
       title: null,
       executionMode: null,
-      waves: [{ index: 12, heading: "wAvE 12 Build", tasksDone: 2, tasksTotal: 3 }],
+      waves: [{ index: 12, heading: "wAvE 12 Build", lanes: [], tasksDone: 2, tasksTotal: 3 }],
       tasksDone: 2,
       tasksTotal: 3,
     });
@@ -83,13 +83,13 @@ describe("parsePlan", () => {
 `)).toEqual({
       title: "Real plan",
       executionMode: null,
-      waves: [{ index: 1, heading: "Wave 1: Actual work", tasksDone: 1, tasksTotal: 1 }],
+      waves: [{ index: 1, heading: "Wave 1: Actual work", lanes: [], tasksDone: 1, tasksTotal: 1 }],
       tasksDone: 1,
       tasksTotal: 1,
     });
   });
 
-  it("reads the Execution Topology mode and keeps lane checkboxes inside their wave", () => {
+  it("reads the Execution Topology mode and breaks lanes out while keeping wave totals", () => {
     const result = parsePlan(`
 # Execution Topology
 - Execution mode: Parallel
@@ -115,10 +115,32 @@ describe("parsePlan", () => {
 
     expect(result.executionMode).toBe("parallel");
     expect(result.waves).toEqual([
-      { index: 1, heading: "Wave 1 — Build", tasksDone: 2, tasksTotal: 3 },
-      { index: 2, heading: "Wave 2 — Verify", tasksDone: 0, tasksTotal: 1 },
+      {
+        index: 1,
+        heading: "Wave 1 — Build",
+        lanes: [
+          { id: "W1-A", heading: "W1-A — Server", tasksDone: 1, tasksTotal: 2 },
+          { id: "W1-B", heading: "W1-B — Client", tasksDone: 1, tasksTotal: 1 },
+        ],
+        tasksDone: 2,
+        tasksTotal: 3,
+      },
+      {
+        index: 2,
+        heading: "Wave 2 — Verify",
+        lanes: [{ id: "W2-A", heading: "W2-A — QA", tasksDone: 0, tasksTotal: 1 }],
+        tasksDone: 0,
+        tasksTotal: 1,
+      },
     ]);
     expect(result).toMatchObject({ tasksDone: 2, tasksTotal: 4 });
+  });
+
+  it("keeps a lane heading without a WN-X id and marks its id null", () => {
+    const result = parsePlan("## Wave 1 — Build\n### Lane Special cleanup\n- [ ] tidy");
+    expect(result.waves[0]?.lanes).toEqual([
+      { id: null, heading: "Special cleanup", tasksDone: 0, tasksTotal: 1 },
+    ]);
   });
 
   it("parses a Sequential execution mode and ignores fenced mode lines", () => {
