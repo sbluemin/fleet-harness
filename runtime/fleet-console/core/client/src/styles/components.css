@@ -3019,21 +3019,6 @@
   will-change: transform;
 }
 
-/* Arrange/undo 순간에만 geometry를 보간한다. 평상시 transition은 드래그 응답을 지연시키므로 금지한다. */
-.operations-canvas-world.is-arranging .canvas-operation {
-  transition:
-    left 320ms var(--ease-spring),
-    top 320ms var(--ease-spring),
-    width 320ms var(--ease-spring),
-    height 320ms var(--ease-spring);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .operations-canvas-world.is-arranging .canvas-operation {
-    transition: none;
-  }
-}
-
 .canvas-operation {
   position: absolute;
   display: grid;

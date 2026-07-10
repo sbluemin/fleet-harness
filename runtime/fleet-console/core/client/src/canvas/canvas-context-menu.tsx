@@ -19,15 +19,12 @@ interface CanvasContextMenuProps {
   readonly radarEnabled?: boolean;
   readonly perimeterEnabled?: boolean;
   readonly formationView?: boolean;
-  readonly canUndoArrange?: boolean;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
   readonly onToggleRadar?: () => void;
   readonly onTogglePerimeter?: () => void;
-  readonly onArrange?: () => void;
-  readonly onUndoArrange?: () => void;
   readonly onToggleFormation?: () => void;
   readonly onClose: () => void;
 }
@@ -57,7 +54,7 @@ const CANVAS_CONTROL_TABS: readonly CanvasControlTabDefinition[] = [
 // 대소문자 무시(i)로 두 표기를 모두 Apple 플랫폼으로 인식해야 ⌘가 올바르게 표시된다.
 const MAC_PLATFORM_PATTERN = /mac|iphone|ipad|ipod/i;
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", mode = "full", catalog, canLaunch, radarEnabled, perimeterEnabled, formationView = false, canUndoArrange = false, renderKindIcon, onLaunchKind, onResetView, onToggleRadar, onTogglePerimeter, onArrange, onUndoArrange, onToggleFormation, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", mode = "full", catalog, canLaunch, radarEnabled, perimeterEnabled, formationView = false, renderKindIcon, onLaunchKind, onResetView, onToggleRadar, onTogglePerimeter, onToggleFormation, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null, help: null });
@@ -195,18 +192,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 <span className="theater-menu-check" aria-hidden="true"><ResetGlyph /></span>
                 <span className="theater-menu-label">Reset view</span>
               </button>
-              {onArrange ? (
-                <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" onClick={onArrange}>
-                  <span className="theater-menu-check" aria-hidden="true"><ArrangeGlyph /></span>
-                  <span className="theater-menu-label">Arrange panels</span>
-                </button>
-              ) : null}
-              {onUndoArrange ? (
-                <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" disabled={!canUndoArrange} onClick={onUndoArrange}>
-                  <span className="theater-menu-check" aria-hidden="true"><UndoArrangeGlyph /></span>
-                  <span className="theater-menu-label">Undo arrange</span>
-                </button>
-              ) : null}
               {onToggleFormation ? (
                 <button type="button" role="menuitemcheckbox" aria-checked={formationView} className="theater-menu-item canvas-context-menu-item" onClick={onToggleFormation}>
                   <span className="theater-menu-check" aria-hidden="true">{formationView ? "✓" : <FormationGlyph />}</span>
@@ -334,22 +319,6 @@ function ResetGlyph() {
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.4 7.2A4 4 0 1 1 4 9.2" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M2.4 4.6v2.8h2.8" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ArrangeGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 3h3v3H3zM10 3h3v3h-3zM3 10h3v3H3zM10 10h3v3h-3z" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function UndoArrangeGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M6.4 4.1 3.5 7l2.9 2.9M4 7h4.2a3.3 3.3 0 1 1 0 6.6H7" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

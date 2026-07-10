@@ -8,7 +8,7 @@ import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../s
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, prefersReducedMotion, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
@@ -29,12 +29,7 @@ interface OperationsCanvasProps {
   readonly onResetView: () => void;
   readonly onToggleRadar: () => void;
   readonly onTogglePerimeter: () => void;
-  readonly onArrange: () => void;
-  readonly onUndoArrange: () => void;
   readonly onToggleFormation: () => void;
-  readonly canUndoArrange: boolean;
-  readonly arrangeRevision: number;
-  readonly onCanvasSizeChange: (size: { readonly width: number; readonly height: number }) => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
@@ -74,12 +69,7 @@ export function OperationsCanvas({
   onResetView,
   onToggleRadar,
   onTogglePerimeter,
-  onArrange,
-  onUndoArrange,
   onToggleFormation,
-  canUndoArrange,
-  arrangeRevision,
-  onCanvasSizeChange,
   onClose,
   onFocus,
   onSetAccent,
@@ -93,7 +83,6 @@ export function OperationsCanvas({
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [isArranging, setIsArranging] = useState(false);
   const disabled = !state.activeTheaterId || state.addingTheater;
 
   useEffect(() => {
@@ -105,17 +94,6 @@ export function OperationsCanvas({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    onCanvasSizeChange(canvasSize);
-  }, [canvasSize, onCanvasSizeChange]);
-
-  useEffect(() => {
-    if (arrangeRevision === 0 || prefersReducedMotion()) return;
-    setIsArranging(true);
-    const timer = window.setTimeout(() => setIsArranging(false), 320);
-    return () => window.clearTimeout(timer);
-  }, [arrangeRevision]);
 
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
@@ -175,7 +153,7 @@ export function OperationsCanvas({
     theaterOperations,
     state.groups.filter((group) => group.theaterId === state.activeTheaterId),
     canvas.operationOrder,
-    canvas.collapsedGroups,
+    [],
   ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
   const formationSlots = formationView ? calculateGridSlots({ x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }, formationOperationIds.length) : [];
   const formationSlotByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, formationSlots[index]!]));
@@ -203,7 +181,7 @@ export function OperationsCanvas({
             ? "none"
             : `translate(${Math.round(canvas.viewport.x)}px, ${Math.round(canvas.viewport.y)}px) scale(${canvas.viewport.zoom})`,
         }}
-        className={`operations-canvas-world ${isArranging ? "is-arranging" : ""}`}
+        className="operations-canvas-world"
       >
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
@@ -282,15 +260,6 @@ export function OperationsCanvas({
           onToggleRadar={onToggleRadar}
           onTogglePerimeter={onTogglePerimeter}
           formationView={formationView}
-          canUndoArrange={canUndoArrange}
-          onArrange={() => {
-            onArrange();
-            setContextMenu(null);
-          }}
-          onUndoArrange={() => {
-            onUndoArrange();
-            setContextMenu(null);
-          }}
           onToggleFormation={() => {
             onToggleFormation();
             setContextMenu(null);

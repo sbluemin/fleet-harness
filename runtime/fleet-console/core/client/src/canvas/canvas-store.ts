@@ -77,7 +77,6 @@ const maximizedOperationListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
 const formationViewsByTheater = new Map<string, true>();
-const arrangeSnapshotsByTheater = new Map<string, Record<string, OperationGeometry>>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
@@ -110,10 +109,6 @@ export function getMaximizedOperationId(): string | null {
 
 export function getFormationView(): boolean {
   return formationView;
-}
-
-export function hasArrangeSnapshot(): boolean {
-  return activeTheaterId !== null && arrangeSnapshotsByTheater.has(activeTheaterId);
 }
 
 // canvas 스토어가 현재 로드한 Theater id. maximizedOperationId·maximizedOperationIdsByTheater 등
@@ -206,20 +201,9 @@ export function setOperationGeometry(sessionId: string, geometry: OperationGeome
   });
 }
 
-// 화면에서 보이는 캔버스 영역을 world 좌표로 역산한다. canvas.tsx의 translate(x, y) scale(zoom) 순서와
-// screenToCanvas 규약을 그대로 반대로 적용하므로 pan/zoom 상태에서도 Arrange 대상 rect가 일치한다.
-export function visibleWorldRect(viewport: CanvasViewport, canvasSize: CanvasViewportSize): CanvasWorldRect {
-  return {
-    x: -viewport.x / viewport.zoom,
-    y: -viewport.y / viewport.zoom,
-    width: canvasSize.width / viewport.zoom,
-    height: canvasSize.height / viewport.zoom,
-  };
-}
-
 // 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
-// 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기 클램프 뒤에는
-// 슬롯이 원래 rect를 넘을 수 있으며, 이는 작은 뷰포트에서도 패널의 조작 가능 크기를 지키기 위한 의도다.
+// 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
+// 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.
 export function calculateGridSlots(
   rect: CanvasWorldRect,
   count: number,
@@ -231,14 +215,21 @@ export function calculateGridSlots(
   if (!Number.isFinite(count) || count <= 0) return [];
   const columns = Math.ceil(Math.sqrt(count));
   const rows = Math.ceil(count / columns);
-  const innerWidth = rect.width - padding * 2;
-  const height = Math.max(minimumHeight, (rect.height - padding * 2 - gap * (rows - 1)) / rows);
+  const innerWidth = Math.max(0, rect.width - padding * 2);
+  const innerHeight = Math.max(0, rect.height - padding * 2);
+  const availableHeight = Math.max(0, innerHeight - gap * (rows - 1));
+  const naturalHeight = availableHeight / rows;
+  const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
+  const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), availableHeight);
   return Array.from({ length: count }, (_, index) => {
     const row = Math.floor(index / columns);
     const column = index % columns;
     // 마지막 행은 남은 패널 수 기준으로 폭을 재분배한다 — 3패널 2×2 그리드의 빈 셀 같은 공백을 없앤다.
     const columnsInRow = row === rows - 1 ? count - (rows - 1) * columns : columns;
-    const width = Math.max(minimumWidth, (innerWidth - gap * (columnsInRow - 1)) / columnsInRow);
+    const availableWidth = Math.max(0, innerWidth - gap * (columnsInRow - 1));
+    const naturalWidth = availableWidth / columnsInRow;
+    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
+    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), availableWidth);
     return {
       x: rect.x + padding + column * (width + gap),
       y: rect.y + padding + row * (height + gap),
@@ -246,43 +237,6 @@ export function calculateGridSlots(
       height,
     };
   });
-}
-
-// Arrange는 활성 Theater의 1회성 undo 슬롯을 갱신하고, 기존 zIndex를 그대로 둔 일괄 geometry 쓰기를 한다.
-// setOperationGeometry를 반복 호출하면 claimTopZIndex로 stack 순서가 뒤섞이므로 이 경로를 반드시 사용한다.
-export function arrangeOperations(operationIds: readonly string[], rect: CanvasWorldRect): readonly string[] {
-  const operationIdsToArrange = uniqueExistingOperationIds(operationIds);
-  if (operationIdsToArrange.length === 0) return [];
-  clearMaximizedOperationId();
-  if (activeTheaterId) {
-    arrangeSnapshotsByTheater.set(activeTheaterId, Object.fromEntries(operationIdsToArrange.map((id) => [id, state.operations[id]!])));
-  }
-  const slots = calculateGridSlots(rect, operationIdsToArrange.length);
-  const operations = { ...state.operations };
-  for (const [index, operationId] of operationIdsToArrange.entries()) {
-    const current = operations[operationId]!;
-    const slot = slots[index]!;
-    operations[operationId] = { ...current, ...slot };
-  }
-  setState({ operations });
-  return operationIdsToArrange;
-}
-
-// 한 Theater당 Arrange 직전 geometry만 한 번 보관한다. 닫힌 Operation은 건너뛰고 남아 있는 것만 정확히 복원한다.
-export function undoArrange(): readonly string[] {
-  if (!activeTheaterId) return [];
-  const snapshot = arrangeSnapshotsByTheater.get(activeTheaterId);
-  if (!snapshot) return [];
-  arrangeSnapshotsByTheater.delete(activeTheaterId);
-  const operations = { ...state.operations };
-  const restoredIds: string[] = [];
-  for (const [operationId, geometry] of Object.entries(snapshot)) {
-    if (!operations[operationId]) continue;
-    operations[operationId] = geometry;
-    restoredIds.push(operationId);
-  }
-  if (restoredIds.length > 0) setState({ operations });
-  return restoredIds;
 }
 
 // Operation을 최소화한다 — 캔버스 렌더에서 빠지고 하단 태스크바에 표시된다. geometry는 operations에 보존한다.
@@ -390,7 +344,6 @@ export function loadForTheater(theaterId: string | null): void {
   flushScheduledSave();
   cancelZoomTween();
   saveMaximizedOperationForActiveTheater();
-  arrangeSnapshotsByTheater.clear();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
   const nextMaximizedOperationId = theaterId ? maximizedOperationIdsByTheater.get(theaterId) ?? null : null;
@@ -518,11 +471,6 @@ export function subscribeFormationView(listener: Listener): () => void {
   };
 }
 
-export function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 function subscribeBackgroundAnimation(listener: Listener): () => void {
   backgroundAnimationListeners.add(listener);
   return () => {
@@ -612,15 +560,6 @@ function minimizedForMaximizedOperation(operationId: string): readonly string[] 
   return Object.keys(state.operations).filter((sessionId) => sessionId !== operationId);
 }
 
-function uniqueExistingOperationIds(operationIds: readonly string[]): readonly string[] {
-  const seen = new Set<string>();
-  return operationIds.filter((operationId) => {
-    if (seen.has(operationId) || !state.operations[operationId]) return false;
-    seen.add(operationId);
-    return true;
-  });
-}
-
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -650,6 +589,11 @@ function cancelZoomTween(): void {
   if (zoomRaf === null || typeof window === "undefined") return;
   window.cancelAnimationFrame(zoomRaf);
   zoomRaf = null;
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function scheduleSave(): void {

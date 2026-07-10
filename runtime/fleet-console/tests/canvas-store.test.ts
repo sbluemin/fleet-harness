@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { arrangeOperations, calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, hasArrangeSnapshot, loadForTheater, minimizeOperation, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, undoArrange, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -118,13 +118,13 @@ describe("canvas store", () => {
     expect(getSnapshot().operationAccent).toEqual({ "op-a": "rose" });
   });
 
-  it("calculates balanced grid slots with minimum-size clamping and configured gaps", () => {
+  it("calculates balanced grid slots with configured gap and padding", () => {
     const slots = calculateGridSlots({ x: 10, y: 20, width: 100, height: 100 }, 3, 320, 200, 16, 24);
 
     expect(slots).toHaveLength(3);
-    expect(slots[0]).toEqual({ x: 34, y: 44, width: 320, height: 200 });
-    expect(slots[1]?.x).toBe(370);
-    expect(slots[2]?.y).toBe(260);
+    expect(slots[0]).toEqual({ x: 34, y: 44, width: 18, height: 18 });
+    expect(slots[1]?.x).toBe(68);
+    expect(slots[2]).toEqual({ x: 34, y: 78, width: 52, height: 18 });
   });
 
   it("stretches the last row across the full width so no empty cell remains", () => {
@@ -135,21 +135,10 @@ describe("canvas store", () => {
     expect(slots[2]).toEqual({ x: 0, y: 405, width: 1000, height: 395 });
   });
 
-  it("arranges in one batch without changing relative z-order and undoes exact geometry", () => {
-    setOperationGeometry("op-a", { ...GEOMETRY, x: 12, y: 14, width: 420, height: 260 });
-    setOperationGeometry("op-b", { ...GEOMETRY, x: 80, y: 90, width: 500, height: 300 });
-    const before = getSnapshot().operations;
+  it("caps the effective minimum size to a narrow canvas", () => {
+    const [slot] = calculateGridSlots({ x: 0, y: 0, width: 300, height: 250 }, 1);
 
-    arrangeOperations(["op-b", "op-a"], { x: 0, y: 0, width: 1200, height: 800 });
-
-    expect(getSnapshot().operations["op-a"]?.zIndex).toBe(before["op-a"]?.zIndex);
-    expect(getSnapshot().operations["op-b"]?.zIndex).toBe(before["op-b"]?.zIndex);
-    expect(hasArrangeSnapshot()).toBe(true);
-
-    undoArrange();
-
-    expect(getSnapshot().operations).toEqual(before);
-    expect(hasArrangeSnapshot()).toBe(false);
+    expect(slot).toEqual({ x: 0, y: 0, width: 300, height: 250 });
   });
 
   it("keeps Formation view independent per Theater without modifying saved geometry", () => {
