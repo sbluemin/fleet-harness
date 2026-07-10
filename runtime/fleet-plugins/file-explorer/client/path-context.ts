@@ -24,8 +24,10 @@ export function stripContextPath(contextRelPath: string | null, theaterRelativeP
 export function adaptFolderList(contextRelPath: string | null, result: FolderListResult): FolderListResult | null {
   const relativePath = stripContextPath(contextRelPath, result.relativePath);
   if (relativePath === null) return null;
-  const parentRelativePath = result.parentRelativePath === null ? null : stripContextPath(contextRelPath, result.parentRelativePath);
-  if (result.parentRelativePath !== null && parentRelativePath === null) return null;
+  // 컨텍스트 루트가 Theater 루트가 아닐 때 서버는 컨텍스트 바깥의 부모 경로를 돌려주므로,
+  // 루트 응답의 부모는 항상 null로 고정한다(루트 위로의 탐색 차단).
+  const parentRelativePath = relativePath === "" ? null : result.parentRelativePath === null ? null : stripContextPath(contextRelPath, result.parentRelativePath);
+  if (relativePath !== "" && result.parentRelativePath !== null && parentRelativePath === null) return null;
   const entries: FolderEntry[] = [];
   for (const entry of result.entries) {
     const entryPath = stripContextPath(contextRelPath, entry.relativePath);
