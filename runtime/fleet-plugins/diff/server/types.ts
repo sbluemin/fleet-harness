@@ -47,7 +47,6 @@ export interface LogCommitEntry {
 export interface WorktreeCheckout {
   readonly sha: string;
   readonly branch: string | null;
-  readonly worktreePath: string;
   readonly isCurrent: boolean;
 }
 

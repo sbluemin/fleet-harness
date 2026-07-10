@@ -1,6 +1,33 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
-import { parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+
+import { runGit } from "../server/git-executor.js";
+import { handleDiffLog, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+async function initGitRepo(dir: string): Promise<void> {
+  await runGit(["init"], { cwd: dir });
+  await runGit(["config", "user.email", "test@test.com"], { cwd: dir });
+  await runGit(["config", "user.name", "Test"], { cwd: dir });
+}
+
+function makeLogContext(theaterPath: string, writes: { status: number; payload: unknown }[]): FleetPluginServerContext {
+  return {
+    host: {
+      http: {
+        readJsonBody: async () => ({ theaterId: "theater" }),
+        writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
+      },
+      security: { isTerminalAuthorized: () => true },
+      paths: { resolveTheaterPath: () => theaterPath },
+    },
+  } as unknown as FleetPluginServerContext;
+}
 
 describe("parseLogOutput", () => {
   it("%at author time을 정수로 파싱하고 full decorations를 보존한다", () => {
@@ -19,7 +46,7 @@ describe("parseLogOutput", () => {
 });
 
 describe("parseWorktreePorcelain", () => {
-  it("current checkout과 linked worktree branch를 porcelain 출력만으로 병합한다", () => {
+  it("current checkout과 linked worktree branch를 경로 없이 DTO로 반환한다", async () => {
     const output = [
       "worktree /repo",
       "HEAD aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -35,10 +62,96 @@ describe("parseWorktreePorcelain", () => {
       "",
     ].join("\n");
 
-    expect(parseWorktreePorcelain(output, "/repo")).toEqual([
-      { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", branch: "main", worktreePath: "/repo", isCurrent: true },
-      { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", branch: "topic", worktreePath: "/repo-topic", isCurrent: false },
-      { sha: "cccccccccccccccccccccccccccccccccccccccc", branch: null, worktreePath: "/repo-detached", isCurrent: false },
+    expect(await parseWorktreePorcelain(output, "/repo")).toEqual([
+      { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", branch: "main", isCurrent: true },
+      { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", branch: "topic", isCurrent: false },
+      { sha: "cccccccccccccccccccccccccccccccccccccccc", branch: null, isCurrent: false },
     ]);
+  });
+
+  it("심링크 current 경로를 realpath로 정규화해 판정한다", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-log-realpath-"));
+    try {
+      const worktreePath = path.join(tmpDir, "worktree");
+      const aliasPath = path.join(tmpDir, "worktree-alias");
+      await fs.mkdir(worktreePath);
+      await fs.symlink(worktreePath, aliasPath);
+
+      const output = [
+        `worktree ${worktreePath}`,
+        "HEAD aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "branch refs/heads/main",
+      ].join("\n");
+
+      await expect(parseWorktreePorcelain(output, aliasPath)).resolves.toEqual([
+        { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", branch: "main", isCurrent: true },
+      ]);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("handleDiffLog", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-log-server-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("bare 저장소에서 current 경로 없이 history와 경로 없는 checkout payload를 반환한다", async () => {
+    const sourceDir = path.join(tmpDir, "source");
+    const bareDir = path.join(tmpDir, "history.git");
+    await fs.mkdir(sourceDir);
+    await initGitRepo(sourceDir);
+    await fs.writeFile(path.join(sourceDir, "entry.txt"), "history");
+    await runGit(["add", "entry.txt"], { cwd: sourceDir });
+    await runGit(["commit", "-m", "history"], { cwd: sourceDir });
+    await runGit(["clone", "--bare", sourceDir, bareDir], { cwd: tmpDir });
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(bareDir, writes));
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.status).toBe(200);
+    const payload = writes[0]?.payload as { readonly commits: readonly { readonly subject: string }[]; readonly checkouts: readonly { readonly isCurrent: boolean }[] };
+    expect(payload.commits).toEqual([expect.objectContaining({ subject: "history" })]);
+    expect(payload.checkouts.every((checkout) => !checkout.isCurrent)).toBe(true);
+    expect(JSON.stringify(writes[0]?.payload)).not.toContain(bareDir);
+    expect(JSON.stringify(writes[0]?.payload)).not.toContain("worktreePath");
+  });
+
+  it("non-bare 응답은 checkout 경로를 payload에 포함하지 않는다", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+    await fs.writeFile(path.join(repoDir, "entry.txt"), "history");
+    await runGit(["add", "entry.txt"], { cwd: repoDir });
+    await runGit(["commit", "-m", "history"], { cwd: repoDir });
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+
+    expect(writes[0]?.status).toBe(200);
+    expect(JSON.stringify(writes[0]?.payload)).not.toContain(repoDir);
+    expect(JSON.stringify(writes[0]?.payload)).not.toContain("worktreePath");
+    expect(writes[0]?.payload).toMatchObject({
+      checkouts: [expect.objectContaining({ branch: expect.any(String), isCurrent: true })],
+    });
+  });
+
+  it("non-bare no-HEAD 저장소는 기존 graceful empty 결과를 유지한다", async () => {
+    const repoDir = path.join(tmpDir, "new-repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+
+    expect(writes).toEqual([{ status: 200, payload: { commits: [], checkouts: [] } }]);
   });
 });

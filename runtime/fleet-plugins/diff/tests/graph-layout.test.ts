@@ -35,10 +35,10 @@ describe("layoutGraph — Phase 1 단일 레인 skeleton", () => {
     expect(layout.collapsed).toBe(false);
   });
 
-  it("③ 여러 커밋에서 모든 lane=0, 양 끝 연결선 규칙을 따른다", () => {
+  it("③ 선형 조상 관계는 모든 lane=0에서 양 끝 연결선 규칙을 따른다", () => {
     const commits = [
-      makeCommit({ fullHash: "aaa" }),
-      makeCommit({ fullHash: "bbb" }),
+      makeCommit({ fullHash: "aaa", parents: ["bbb"] }),
+      makeCommit({ fullHash: "bbb", parents: ["ccc"] }),
       makeCommit({ fullHash: "ccc" }),
     ];
     const layout = layoutGraph(commits);
@@ -180,5 +180,28 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     expect(layout.nodes[0]?.isHead).toBe(true);
     expect(layout.nodes[1]?.isHead).toBe(false);
     expect(layout.activeLaneCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("⑥ 독립 root→parent 9쌍은 8레인 cap 안에서 collapsed 된다", () => {
+    const commits = Array.from({ length: 9 }, (_, index) => makeCommit({
+      fullHash: `root-${index}`,
+      parents: [`parent-${index}`],
+    }));
+    const layout = layoutGraph(commits);
+
+    expect(layout.activeLaneCount).toBeLessThanOrEqual(8);
+    expect(layout.collapsed).toBe(true);
+  });
+
+  it("⑦ 무관한 연속 root는 ancestry 없는 수직 연결선을 만들지 않는다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "root-a", parents: [] }),
+      makeCommit({ fullHash: "root-b", parents: [] }),
+    ]);
+
+    expect(layout.nodes.map(({ connectAbove, connectBelow }) => ({ connectAbove, connectBelow }))).toEqual([
+      { connectAbove: false, connectBelow: false },
+      { connectAbove: false, connectBelow: false },
+    ]);
   });
 });

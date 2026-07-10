@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -5,6 +6,14 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { GitExecutorError, runGit } from "./git-executor.js";
 import type { LogCommitEntry, WorktreeCheckout } from "./types.js";
 import { resolveGitCwd } from "./diff.js";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+interface ParsedWorktree {
+  readonly sha: string;
+  readonly branch: string | null;
+  readonly worktreePath: string;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,19 +62,18 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
   return commits;
 }
 
-export function parseWorktreePorcelain(stdout: string, currentWorktreePath: string): WorktreeCheckout[] {
-  const checkouts: WorktreeCheckout[] = [];
+export async function parseWorktreePorcelain(stdout: string, currentWorktreePath: string): Promise<WorktreeCheckout[]> {
+  const worktrees: ParsedWorktree[] = [];
   let worktreePath: string | null = null;
   let sha = "";
   let branch: string | null = null;
 
   const pushCurrent = () => {
     if (!worktreePath || !sha) return;
-    checkouts.push({
+    worktrees.push({
       sha,
       branch,
       worktreePath,
-      isCurrent: worktreePath === currentWorktreePath,
     });
   };
 
@@ -84,13 +92,36 @@ export function parseWorktreePorcelain(stdout: string, currentWorktreePath: stri
   }
   pushCurrent();
 
-  return checkouts;
+  const normalizedCurrentWorktreePath = await normalizeWorktreePath(currentWorktreePath);
+  return Promise.all(worktrees.map(async ({ worktreePath, ...checkout }) => ({
+    ...checkout,
+    isCurrent: normalizedCurrentWorktreePath !== ""
+      && (await normalizeWorktreePath(worktreePath)) === normalizedCurrentWorktreePath,
+  })));
 }
 
 function isNoHeadError(error: unknown): boolean {
   if (!(error instanceof GitExecutorError)) return false;
   if (error.code !== "non_zero_exit") return false;
   return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
+}
+
+async function normalizeWorktreePath(worktreePath: string): Promise<string> {
+  if (!worktreePath) return "";
+  try {
+    return await fs.realpath(worktreePath);
+  } catch {
+    return worktreePath;
+  }
+}
+
+async function readCurrentWorktreePath(gitCwd: string): Promise<string> {
+  try {
+    return (await runGit(["rev-parse", "--show-toplevel"], { cwd: gitCwd })).stdout.trim();
+  } catch (error) {
+    if (error instanceof GitExecutorError) return "";
+    throw error;
+  }
 }
 
 // ─── handlers ────────────────────────────────────────────────────────────────
@@ -118,17 +149,17 @@ export async function handleDiffLog(
   const { gitCwd } = cwdResult;
 
   try {
-    const [result, worktrees, currentWorktree] = await Promise.all([
+    const [result, worktrees, currentWorktreePath] = await Promise.all([
       runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD로 한정한다
         ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "HEAD"],
         { cwd: gitCwd },
       ),
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
-      runGit(["rev-parse", "--show-toplevel"], { cwd: gitCwd }),
+      readCurrentWorktreePath(gitCwd),
     ]);
     const commits = parseLogOutput(result.stdout);
-    const checkouts = parseWorktreePorcelain(worktrees.stdout, currentWorktree.stdout.trim());
+    const checkouts = await parseWorktreePorcelain(worktrees.stdout, currentWorktreePath);
     ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {

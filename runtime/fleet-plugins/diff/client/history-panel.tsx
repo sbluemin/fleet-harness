@@ -49,6 +49,30 @@ const DEPTH_OPTS: readonly { readonly value: number; readonly label: string }[] 
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly WorktreeCheckout[]): WorktreeCheckout | null {
+  return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null;
+}
+
+export function resetTheaterScopedState(
+  fetchSeqRef: { current: number },
+  setters: {
+    readonly setActiveSubPath: (subPath: string) => void;
+    readonly setSelectedCommit: (commit: CommitSelection | null) => void;
+    readonly setRepos: (repos: RepoEntry[]) => void;
+    readonly setReposLoading: (loading: boolean) => void;
+    readonly setReposTruncated: (truncated: boolean) => void;
+    readonly setMenuOpen: (open: boolean) => void;
+  },
+): void {
+  fetchSeqRef.current += 1;
+  setters.setActiveSubPath("");
+  setters.setSelectedCommit(null);
+  setters.setRepos([]);
+  setters.setReposLoading(false);
+  setters.setReposTruncated(false);
+  setters.setMenuOpen(false);
+}
+
 function readDepth(): number {
   try {
     const value = localStorage.getItem(PREFS_DEPTH);
@@ -116,6 +140,7 @@ function CheckoutIcon({ current }: { readonly current: boolean }) {
 
 function CommitRow({ entry, checkouts, selected, graphNode, laneCount, layoutCollapsed, onSelect }: CommitRowProps) {
   const badges = refBadges(entry);
+  const detachedCheckout = findDetachedCheckout(entry, checkouts);
   const handleSelect = useCallback(() => onSelect(entry), [entry, onSelect]);
 
   return (
@@ -135,6 +160,12 @@ function CommitRow({ entry, checkouts, selected, graphNode, laneCount, layoutCol
             </span>
           );
         })}
+        {detachedCheckout && (
+          <span className="history-badge history-badge--worktree">
+            <CheckoutIcon current={detachedCheckout.isCurrent} />
+            detached
+          </span>
+        )}
       </span>
       <span className="history-commit-subject">{entry.subject}</span>
       <span className="history-commit-author">{entry.authorName}</span>
@@ -210,12 +241,16 @@ function HistoryPanel({ ctx }: HistoryPanelProps) {
   }, [activeSubPath, ctx.api, ctx.theaterId, refreshToken]);
 
   useEffect(() => {
+    resetTheaterScopedState(fetchSeqRef, {
+      setActiveSubPath,
+      setSelectedCommit,
+      setRepos,
+      setReposLoading,
+      setReposTruncated,
+      setMenuOpen,
+    });
     if (!ctx.theaterId) return;
     setActiveSubPath(readSubPath(ctx.theaterId));
-    setSelectedCommit(null);
-    setRepos([]);
-    setReposTruncated(false);
-    setMenuOpen(false);
     fetchRepos(depthRef.current);
   }, [ctx.theaterId, fetchRepos]);
 
