@@ -1,50 +1,26 @@
 /* File Explorer rail panel styles — rail-viewer.css 표면 준수 */
 
 /* ── 파일타입 아이콘 팔레트 ──
-   파일타입 정체성은 brass(보는 곳)/aurora(살아있는 것)와 별개 축이므로 독립 토큰을 둔다.
-   theme.css는 불변이라 토큰은 플러그인 표면(이 파일)에서 정의하고, 테마 셀렉터로 분기한다.
-   maritime = 채도 높은 네이비/브라스/틸 세계와 조화. */
+   Identity roles are owned by the console Instrument theme. */
 :root {
-  --fexp-ic-ts: oklch(72% 0.13 248);
-  --fexp-ic-js: oklch(83% 0.15 95);
-  --fexp-ic-json: oklch(80% 0.13 100);
-  --fexp-ic-css: oklch(78% 0.12 220);
-  --fexp-ic-html: oklch(72% 0.16 40);
-  --fexp-ic-md: oklch(80% 0.05 240);
-  --fexp-ic-py: oklch(76% 0.11 230);
-  --fexp-ic-go: oklch(82% 0.11 205);
-  --fexp-ic-rust: oklch(70% 0.13 50);
-  --fexp-ic-shell: oklch(80% 0.15 150);
-  --fexp-ic-config: oklch(76% 0.10 305);
-  --fexp-ic-image: oklch(74% 0.14 330);
-  --fexp-ic-data: oklch(80% 0.11 185);
-  --fexp-ic-archive: oklch(74% 0.08 70);
-  --fexp-ic-binary: oklch(66% 0.02 250);
-  --fexp-ic-ruby: oklch(68% 0.16 22);
-  --fexp-ic-folder: oklch(74% 0.055 255);
-  --fexp-ic-default: oklch(70% 0.02 248);
-}
-
-/* carbon = 무채색 중립 다크. 채도를 절반 수준으로 낮춰 industrial 톤과 이질감을 없앤다. */
-:root[data-theme="carbon"] {
-  --fexp-ic-ts: oklch(72% 0.07 248);
-  --fexp-ic-js: oklch(82% 0.08 95);
-  --fexp-ic-json: oklch(80% 0.075 100);
-  --fexp-ic-css: oklch(78% 0.07 220);
-  --fexp-ic-html: oklch(72% 0.09 40);
-  --fexp-ic-md: oklch(79% 0.03 245);
-  --fexp-ic-py: oklch(76% 0.065 230);
-  --fexp-ic-go: oklch(82% 0.065 205);
-  --fexp-ic-rust: oklch(71% 0.075 50);
-  --fexp-ic-shell: oklch(79% 0.085 150);
-  --fexp-ic-config: oklch(76% 0.06 305);
-  --fexp-ic-image: oklch(74% 0.08 330);
-  --fexp-ic-data: oklch(80% 0.065 185);
-  --fexp-ic-archive: oklch(74% 0.05 70);
-  --fexp-ic-binary: oklch(66% 0.012 250);
-  --fexp-ic-ruby: oklch(69% 0.09 22);
-  --fexp-ic-folder: oklch(72% 0.025 255);
-  --fexp-ic-default: oklch(67% 0.005 250);
+  --fexp-ic-ts: var(--identity-file-code);
+  --fexp-ic-js: var(--identity-file-code);
+  --fexp-ic-json: var(--identity-file-data);
+  --fexp-ic-css: var(--identity-file-code);
+  --fexp-ic-html: var(--identity-file-markup);
+  --fexp-ic-md: var(--identity-file-markup);
+  --fexp-ic-py: var(--identity-file-code);
+  --fexp-ic-go: var(--identity-file-code);
+  --fexp-ic-rust: var(--identity-file-markup);
+  --fexp-ic-shell: var(--identity-file-data);
+  --fexp-ic-config: var(--identity-file-config);
+  --fexp-ic-image: var(--identity-file-markup);
+  --fexp-ic-data: var(--identity-file-data);
+  --fexp-ic-archive: var(--identity-file-config);
+  --fexp-ic-binary: var(--ink-fog);
+  --fexp-ic-ruby: var(--identity-file-error);
+  --fexp-ic-folder: var(--identity-small-tag);
+  --fexp-ic-default: var(--ink-fog);
 }
 
 /* ── 루트 레이아웃 — 트리 단독 ↔ 뷰어+트리 2단계 전환 ── */

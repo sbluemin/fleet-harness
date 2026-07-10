@@ -21,14 +21,10 @@ interface OperationsCanvasProps {
   readonly state: ConsoleState;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
-  readonly radarEnabled: boolean;
-  readonly perimeterEnabled: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => void;
   readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
   readonly onResetView: () => void;
-  readonly onToggleRadar: () => void;
-  readonly onTogglePerimeter: () => void;
   readonly onToggleFormation: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -61,14 +57,10 @@ export function OperationsCanvas({
   state,
   catalog,
   canLaunch,
-  radarEnabled,
-  perimeterEnabled,
   renderKindIcon,
   onLaunchKind,
   onLaunchAtGeometry,
   onResetView,
-  onToggleRadar,
-  onTogglePerimeter,
   onToggleFormation,
   onClose,
   onFocus,
@@ -165,7 +157,7 @@ export function OperationsCanvas({
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${formationView ? "is-formation-view" : ""} ${perimeterEnabled ? "" : "is-perimeter-anim-off"}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${formationView ? "is-formation-view" : ""}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
@@ -174,7 +166,7 @@ export function OperationsCanvas({
       onContextMenu={handleContextMenu}
       ref={canvasRef}
     >
-      <CanvasGrid viewport={canvas.viewport} backgroundAnimationEnabled={radarEnabled} />
+      <CanvasGrid viewport={canvas.viewport} />
       <div
         style={{
           // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해
@@ -254,13 +246,9 @@ export function OperationsCanvas({
           placement="cursor"
           catalog={catalog}
           canLaunch={canLaunch && !formationView}
-          radarEnabled={radarEnabled}
-          perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onResetView={handleContextMenuResetView}
-          onToggleRadar={onToggleRadar}
-          onTogglePerimeter={onTogglePerimeter}
           formationView={formationView}
           onToggleFormation={() => {
             onToggleFormation();

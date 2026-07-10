@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleFormationView, togglePerimeterAnimation, useBackgroundAnimation, useFormationView, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -31,8 +31,6 @@ export function Operations({ state }: OperationsProps) {
   const maximizedOperationId = useMaximizedOperationId();
   const formationView = useFormationView();
   const minimized = useMinimized();
-  const radarEnabled = useBackgroundAnimation();
-  const perimeterEnabled = usePerimeterAnimation();
   const registry = usePluginRegistry();
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
 
@@ -160,14 +158,6 @@ export function Operations({ state }: OperationsProps) {
 
   const handleResetView = useCallback(() => {
     animateViewportTo({ x: 0, y: 0, zoom: 1 });
-  }, []);
-
-  const handleToggleRadar = useCallback(() => {
-    toggleBackgroundAnimation();
-  }, []);
-
-  const handleTogglePerimeter = useCallback(() => {
-    togglePerimeterAnimation();
   }, []);
 
   const handleFocus = useCallback((operationId: string) => {
@@ -327,13 +317,9 @@ export function Operations({ state }: OperationsProps) {
         canLaunch={canLaunch}
         addingTheater={state.addingTheater}
         theaterError={state.theaterError}
-        radarEnabled={radarEnabled}
-        perimeterEnabled={perimeterEnabled}
         renderKindIcon={renderKindIcon}
         onLaunchKind={handleSideBarLaunchKind}
         onResetView={handleResetView}
-        onToggleRadar={handleToggleRadar}
-        onTogglePerimeter={handleTogglePerimeter}
         onClose={handleClose}
         onFocus={handleFocus}
         onSetAccent={handleSetAccent}
@@ -353,14 +339,10 @@ export function Operations({ state }: OperationsProps) {
         state={state}
         catalog={catalog}
         canLaunch={canLaunch}
-        radarEnabled={radarEnabled}
-        perimeterEnabled={perimeterEnabled}
         renderKindIcon={renderKindIcon}
         onLaunchKind={handleCanvasLaunchKind}
         onLaunchAtGeometry={handleLaunchAtGeometry}
         onResetView={handleResetView}
-        onToggleRadar={handleToggleRadar}
-        onTogglePerimeter={handleTogglePerimeter}
         onToggleFormation={handleToggleFormation}
         onClose={handleClose}
         onFocus={handleFocus}

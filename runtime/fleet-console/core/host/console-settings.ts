@@ -8,7 +8,7 @@ import {
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 
-export type ConsoleThemeId = "maritime" | "carbon";
+export type ConsoleThemeId = "instrument" | "maritime" | "carbon";
 export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
@@ -105,7 +105,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const language = value.language === "auto" || value.language === "en" || value.language === "ko"
     ? value.language
     : undefined;
-  const theme = value.theme === "maritime" || value.theme === "carbon"
+  const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
     ? value.theme
     : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);

@@ -54,6 +54,7 @@ interface PluginSettingsNavGroup {
 
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
 const THEMES: readonly ThemeOption[] = [
+  { id: "instrument", label: "Instrument", swatch: ["oklch(80% 0.085 78)", "oklch(77% 0.085 200)", "oklch(20% 0.018 245)"] },
   { id: "maritime", label: "Maritime", swatch: ["oklch(78% 0.13 75)", "oklch(82% 0.13 195)", "oklch(32% 0.04 248)"] },
   { id: "carbon", label: "Carbon", swatch: ["oklch(76% 0.115 62)", "oklch(80% 0.105 205)", "oklch(25% 0.007 252)"] },
 ];
@@ -207,10 +208,9 @@ function formatPluginLabel(pluginId: string): string {
 }
 
 function ThemeCard({ saving }: { readonly saving: boolean }) {
-  const { activeTheme } = useConsoleState();
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
-    const previousTheme = activeTheme;
+    const previousTheme = getGlobalSettingsStoreState().state?.theme ?? "instrument";
     setActiveTheme(theme);
     void setGlobalSettingsField("theme", theme).then((saved) => {
       if (!saved) setActiveTheme(previousTheme);
@@ -226,7 +226,7 @@ function ThemeCard({ saving }: { readonly saving: boolean }) {
         {/* role="group" + aria-pressed — 단일선택 패턴. 선택 = brass(지금 보고 있는 곳). */}
         <div className="theme-picker" role="group" aria-label="Theme">
           {THEMES.map((theme) => {
-            const isActive = theme.id === activeTheme;
+            const isActive = theme.id === getGlobalSettingsStoreState().state?.theme;
             return (
               <button
                 key={theme.id}

@@ -1,7 +1,6 @@
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
 
-import { applyChannelAnimationDefaults } from "./canvas/canvas-store.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
@@ -27,7 +26,7 @@ const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 const NOTIFICATION_PREFERENCES_VERSION = 1;
-const DEFAULT_THEME: ThemeId = "maritime";
+const DEFAULT_THEME: ThemeId = "instrument";
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   globalMute: false,
   dnd: false,
@@ -42,7 +41,9 @@ let whatsNewSeenVersionMemo: string | null = null;
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
-  activeTheme: DEFAULT_THEME,
+  // The SDK ConsoleTheme union remains maritime|carbon. Instrument is adapted
+  // to maritime only at the plugin-context boundary.
+  activeTheme: toPluginTheme(DEFAULT_THEME),
   version: "",
   updateAvailable: false,
   latestVersion: null,
@@ -102,7 +103,7 @@ export function setOperationsViewActive(active: boolean): void {
 
 export function setActiveTheme(theme: ThemeId): void {
   applyThemeToDocument(theme);
-  setState({ activeTheme: theme });
+  setState({ activeTheme: toPluginTheme(theme) });
 }
 
 export function setActiveUiFont(uiFont: UiFontSettings): void {
@@ -110,8 +111,6 @@ export function setActiveUiFont(uiFont: UiFontSettings): void {
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
-  // 채널은 status로만 도착한다. local 채널이면 ambient 애니메이션 기본값을 끔으로 reconcile한다(사용자 선호는 존중).
-  applyChannelAnimationDefaults(status.channel);
   setState({
     version: status.version,
     updateAvailable: status.updateAvailable,
@@ -159,10 +158,6 @@ export function failReleaseNotesFetch(error: string): void {
 
 export function applyThemeToDocument(theme: ThemeId): void {
   if (typeof document === "undefined") return;
-  if (theme === "maritime") {
-    document.documentElement.removeAttribute("data-theme");
-    return;
-  }
   document.documentElement.setAttribute("data-theme", theme);
 }
 
@@ -640,4 +635,8 @@ function isNotificationPreferencesBlob(value: unknown): value is {
     && typeof prefs.dnd === "boolean"
     && Boolean(prefs.mutedTheaterIds)
     && typeof prefs.mutedTheaterIds === "object";
+}
+
+function toPluginTheme(theme: ThemeId): ConsoleTheme {
+  return theme === "instrument" ? "maritime" : theme;
 }

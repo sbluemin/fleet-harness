@@ -190,7 +190,7 @@ function ReleaseNoteItemView({ item }: { readonly item: ReleaseNoteItem }) {
   return (
     <>
       {item.packageTags.map((tag, index) => (
-        <span key={`${tag}:${index}`} className={`whatsnew-package-chip whatsnew-package-chip--${index % 2 === 0 ? "brass" : "aurora"}`}>
+        <span key={`${tag}:${index}`} className="whatsnew-package-chip">
           {tag}
         </span>
       ))}

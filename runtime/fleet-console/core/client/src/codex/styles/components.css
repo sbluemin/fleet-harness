@@ -43,7 +43,7 @@
 
 .command-entry:hover {
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-  background: oklch(22% 0.05 248 / 85%);
+  background: var(--ink-veil);
   color: var(--ink-pearl);
   transform: translateY(-1px);
 }
@@ -360,7 +360,7 @@ kbd {
 
 .document h1 {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 400;
   font-size: var(--font-size-display-2xl);
   letter-spacing: -0.025em;
@@ -538,7 +538,7 @@ kbd {
   padding: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: oklch(22% 0.05 248 / 70%);
+  background: var(--ink-veil);
   transition:
     transform var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -557,7 +557,7 @@ kbd {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: var(--font-size-body);
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -578,8 +578,6 @@ kbd {
   padding: var(--space-6);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
 }
@@ -721,7 +719,7 @@ kbd {
 .manifest-subtitle {
   margin: 0;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: var(--font-size-body);
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -804,7 +802,7 @@ kbd {
   border: 1px solid color-mix(in oklch, var(--coral) 45%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
-  color: oklch(82% 0.18 28);
+  color: var(--coral);
   padding: var(--space-4);
   margin: 0;
   font-size: var(--font-size-lg);
@@ -817,8 +815,6 @@ kbd {
   display: grid;
   place-items: start center;
   background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
-  backdrop-filter: blur(var(--blur-pop));
-  -webkit-backdrop-filter: blur(var(--blur-pop));
   padding: 14vh var(--space-5) var(--space-5);
   animation: codex-pop 280ms var(--ease-spring) both;
 }
@@ -830,8 +826,6 @@ kbd {
   border: 1px solid var(--surface-rim-strong);
   background: var(--surface-pillar);
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(var(--blur-overlay)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--blur-overlay)) saturate(150%);
 }
 
 .command-card:focus-visible {
@@ -955,7 +949,7 @@ kbd {
 
 .command-result strong {
   display: block;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -1045,8 +1039,6 @@ kbd {
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-control)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-control)) saturate(140%);
   color: var(--ink-fog);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
@@ -1117,8 +1109,6 @@ kbd {
   padding: clamp(28px, 4vw, 48px);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
   overflow-x: auto;
@@ -1147,8 +1137,6 @@ kbd {
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
   background: var(--surface-pillar);
-  backdrop-filter: blur(var(--blur-pop));
-  -webkit-backdrop-filter: blur(var(--blur-pop));
   box-shadow: var(--shadow-floating);
   color: var(--ink-pearl);
   padding: 11px 16px;
@@ -1332,7 +1320,7 @@ kbd {
 
 .queue-title {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: var(--font-size-display-xl);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -1488,7 +1476,7 @@ kbd {
   padding: var(--space-5) 0;
   color: var(--ink-fog);
   font-size: var(--font-size-lg);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   letter-spacing: -0.005em;
 }
 
@@ -1498,8 +1486,6 @@ kbd {
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-lg);
   background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
   border: 1px solid transparent;
   box-shadow: var(--shadow-soft);
   text-decoration: none;
@@ -1595,7 +1581,7 @@ kbd {
 }
 
 .status-dot--accepted {
-  background: oklch(72% 0.16 145);
+  background: var(--positive);
 }
 
 .status-dot--rejected {
@@ -1641,7 +1627,7 @@ kbd {
 
 .queue-summary {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: var(--font-size-display-lg);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -1666,8 +1652,6 @@ kbd {
   padding: var(--space-5);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
 }
@@ -1680,7 +1664,7 @@ kbd {
 .queue-rail-subtitle {
   margin: 0;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: var(--font-size-body);
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -2162,36 +2146,6 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-}
-
-/* carbon: 커맨드 hover 청색 surface 잔존 마감 */
-:root[data-theme="carbon"] .command-entry:hover {
-  background: oklch(22% 0.008 252 / 85%);
-}
-
-/* carbon: Markdown 짝수 행 청색 surface 잔존 마감 */
-:root[data-theme="carbon"] .markdown-body table tr:nth-child(even) td {
-  background: oklch(22% 0.008 252 / 50%);
-}
-
-/* carbon: 코드블록 점 청색 surface 잔존 마감 */
-:root[data-theme="carbon"] .code-block-dots span {
-  background: oklch(40% 0.006 252);
-}
-
-/* carbon: 다이어그램 라이트박스 청색 overlay 잔존 마감 */
-:root[data-theme="carbon"] .diagram-lightbox {
-  background: oklch(11% 0.007 252 / 72%);
-}
-
-/* carbon: 다이어그램 backdrop 청색 overlay 잔존 마감 */
-:root[data-theme="carbon"] .diagram-lightbox::backdrop {
-  background: oklch(9% 0.006 252 / 72%);
-}
-
-/* carbon: 관련 카드 청색 surface 잔존 마감 */
-:root[data-theme="carbon"] .related-card {
-  background: oklch(22% 0.008 252 / 70%);
 }
 
 /* ─── Codex Navigator ─────────────────────────────────────────────────────── */

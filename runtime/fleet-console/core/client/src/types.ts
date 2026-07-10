@@ -1,6 +1,6 @@
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
 
-export type ThemeId = "maritime" | "carbon";
+export type ThemeId = "instrument" | "maritime" | "carbon";
 
 export type ReleaseNotesLocale = "en" | "ko";
 
@@ -212,7 +212,7 @@ export type CodexReaderRequest =
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
-  readonly activeTheme: ThemeId;
+  readonly activeTheme: ConsoleTheme;
   readonly version: string;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;

@@ -3,8 +3,6 @@
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .stage {
@@ -23,8 +21,6 @@
   padding: 0 var(--space-3);
   border-top: 1px solid var(--surface-rim);
   background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   color: var(--ink-spectral);
 }
 
@@ -148,8 +144,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   color: var(--ink-fog);
   cursor: pointer;
   transition:
@@ -380,8 +374,7 @@
 .global-settings-hero h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -420,8 +413,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .global-settings-nav-item {
@@ -436,7 +427,6 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -464,8 +454,7 @@
 .global-settings-nav-label {
   overflow: hidden;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -541,8 +530,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .global-settings-row {
@@ -1005,6 +992,150 @@
   width: 100%;
 }
 
+.current-readout {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 50%, transparent);
+}
+
+.current-readout .cr-label {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.current-readout .cr-value {
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.current-readout .cr-value.is-ok {
+  color: var(--positive);
+}
+
+.current-readout .cr-value.is-fallback {
+  color: var(--warn);
+}
+
+.current-readout .cr-sep {
+  color: var(--ink-rim);
+}
+
+.font-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.font-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 128px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 70%, transparent);
+  color: var(--ink-fog);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring),
+    transform var(--duration-base) var(--ease-spring);
+}
+
+.font-card:hover:not(:disabled) {
+  border-color: var(--surface-rim-strong);
+  transform: translateY(-2px);
+}
+
+.font-card.is-active {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 1px var(--brass-glow), 0 14px 30px -18px var(--brass-glow);
+}
+
+.font-card:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.font-card:disabled {
+  transform: none;
+}
+
+.font-card .fc-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink-pearl);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.font-card .fc-check {
+  color: var(--brass);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.font-card.is-active .fc-check {
+  opacity: 1;
+}
+
+.font-card .fc-sample {
+  color: var(--ink-spectral);
+  font-size: 19px;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+}
+
+.font-card .fc-sample.is-custom {
+  color: var(--ink-fog);
+  font-family: var(--font-body);
+  font-style: italic;
+}
+
+.font-card .fc-meta {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.font-card .fc-bundled {
+  color: var(--positive);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.font-card .fc-addon {
+  color: var(--warn);
+}
+
+.custom-reveal {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.custom-reveal.is-open {
+  display: flex;
+}
+
 .font-field-wrap {
   display: flex;
   flex-direction: column;
@@ -1407,8 +1538,7 @@
 .carrier-settings-hero h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -1437,8 +1567,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .carrier-settings-row {
@@ -1453,7 +1581,6 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -1502,8 +1629,7 @@
 .carrier-settings-row-name {
   overflow: hidden;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -1564,9 +1690,6 @@
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .carrier-settings-detail::before {
@@ -1617,8 +1740,7 @@
 .carrier-settings-captain-name {
   margin: 0 0 8px;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(40px, 5.6vw, 64px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -1628,7 +1750,7 @@
 .carrier-settings-captain-role {
   margin-bottom: 0;
   color: var(--ink-spectral);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 16px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -1679,7 +1801,7 @@
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
   color: var(--ink-spectral);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-style: italic;
   font-size: 22px;
   font-weight: 300;
@@ -1791,8 +1913,7 @@
 .carrier-settings-name-input {
   min-height: 54px;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-style: italic;
+  font-family: var(--font-body);
   font-size: clamp(32px, 4.5vw, 52px);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -2273,8 +2394,7 @@
 
 .operations-canvas-background,
 .operations-canvas-sea,
-.operations-canvas-grid,
-.operations-radar {
+.operations-canvas-grid {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -2293,69 +2413,6 @@
     linear-gradient(color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px),
     radial-gradient(circle, color-mix(in oklch, var(--aurora) 11%, transparent) 1px, transparent 1.4px);
   opacity: 0.42;
-}
-
-.operations-radar {
-  z-index: 1;
-  opacity: 0.62;
-  overflow: hidden;
-}
-
-.operations-radar-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 1px dashed color-mix(in oklch, var(--brass) 16%, transparent);
-  transform: translate(-50%, -50%);
-}
-
-.operations-radar-ring--outer {
-  width: 86vmax;
-}
-
-.operations-radar-ring--middle {
-  width: 58vmax;
-  border-color: color-mix(in oklch, var(--aurora) 12%, transparent);
-}
-
-.operations-radar-ring--inner {
-  width: 34vmax;
-  border-color: color-mix(in oklch, var(--ink-rim) 42%, transparent);
-}
-
-.operations-radar-sweep {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 122vmax;
-  aspect-ratio: 1;
-  background: conic-gradient(
-    from 0deg at 50% 50%,
-    transparent 0deg,
-    transparent 326deg,
-    color-mix(in oklch, var(--aurora) 7%, transparent) 348deg,
-    color-mix(in oklch, var(--brass) 15%, transparent) 357deg,
-    transparent 360deg
-  );
-  transform: translate(-50%, -50%) rotate(0deg);
-  transform-origin: 50% 50%;
-  animation: radar-sweep 18s linear infinite;
-  will-change: transform;
-}
-
-.operations-radar.is-animation-paused .operations-radar-sweep {
-  animation-play-state: paused;
-}
-
-.operations-radar.is-disabled {
-  opacity: 0;
-  visibility: hidden;
-}
-
-.operations-radar.is-disabled .operations-radar-sweep {
-  will-change: auto;
 }
 
 
@@ -2397,7 +2454,7 @@
 }
 
 .canvas-context-menu-head-text strong {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 500;
   font-size: 15px;
   letter-spacing: -0.01em;
@@ -2682,10 +2739,7 @@
   box-shadow:
     var(--shadow-floating),
     inset 0 1px 0 color-mix(in oklch, var(--brass) 24%, transparent);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
   overflow: hidden;
-  animation: codex-rise 520ms var(--ease-spring) both;
 }
 
 /* 계기 캡션 — JetBrains Mono 대문자 트래킹. */
@@ -2807,9 +2861,6 @@
     color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
   color: var(--brass);
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 420ms var(--ease-spring) both;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -2837,16 +2888,6 @@
   height: 18px;
 }
 
-@keyframes radar-sweep {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
-
 .operations-canvas-world {
   position: absolute;
   inset: 0;
@@ -2861,16 +2902,10 @@
   min-width: 320px;
   min-height: 200px;
   overflow: hidden;
-  /* accent는 focus(brass)가 쓰던 외곽 채널(테두리+1px 링)을 그대로 점유한다 — 지정 시 brass를 대체하고,
-     포커스 여부와 무관하게 상시 노출된다(미설정 시 surface-rim/투명으로 폴백). status conic(::before)은 별개 채널. */
-  border: 1px solid var(--op-accent, var(--surface-rim));
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--surface-glass-strong) 78%, var(--ink-deep));
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px var(--op-accent, transparent);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  background: var(--ink-mid);
+  box-shadow: var(--shadow-soft);
 }
 
 /* Formation 슬롯은 계산값이 규약이다 — 320×200 CSS 최소값이 슬롯을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
@@ -2899,27 +2934,15 @@
   cursor: default;
 }
 
-/* 포커스 = 같은 외곽 채널에 brass — accent 지정 시 accent가 우선(brass 폴백), 미지정 시 brass로 포커스 표시. */
+/* 포커스는 단일 location accent로만 표시한다. */
 .canvas-operation.is-active {
-  border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px var(--op-accent, color-mix(in oklch, var(--brass) 18%, transparent));
+  border-color: var(--brass);
+  box-shadow: var(--shadow-soft);
 }
 
-/* 작업 진행 중인 에이전트 패널 = "출항(underway)" 상태.
-   인디케이터(비콘) 색을 따르는 외곽 진행광 + 정적 글로우로 진행을 표시한다.
-   색 변형: is-running--turn=warn(에이전트 턴 진행 또는 캐리어 스트리밍 = "작업중"), is-running--awaiting=aurora(운영자 입력 대기).
-   idle/dormant는 진행광이 없다(idle은 별도 외곽 애니메이션 없음).
-   외곽 진행광은 최소화 칩과 같은 perimeter-orbit 방식으로, 림은 inset 의사요소로 그린다.
-   brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 진행광이 각자 의미로 공존.
-   AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림+글로우로 단락). */
+/* Running state remains a static semantic indicator. */
 .canvas-operation.is-running {
-  /* underway 진행광(conic ::before)+글로우는 status 채널, accent 외곽 링(있으면)은 그대로 유지 — 진행 중에도 accent 노출. */
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px var(--op-accent, transparent),
-    0 0 22px -6px var(--uw-glow);
+  box-shadow: var(--shadow-soft);
 }
 
 /* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 또는 캐리어 스트리밍) */
@@ -2932,61 +2955,12 @@
 .canvas-operation.is-running--awaiting {
   --uw-tint: var(--aurora);
   --uw-glow: var(--aurora-glow);
-  border-color: var(--op-accent, color-mix(in oklch, var(--aurora) 46%, var(--surface-rim)));
+  border-color: var(--aurora);
 }
 
-/* 선택(is-active) + 진행 동시: accent 지정 시 accent 보더(우선), 미지정 시 brass 선택 보더. 진행광/글로우는 status 채널로 공존. */
+/* Selection retains the location accent while a status is active. */
 .canvas-operation.is-running.is-active {
-  border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
-}
-
-/* 외곽 진행광 링 — 최소화된 칩과 같은 conic 하이라이트 호가 패널 테두리를 순환한다. */
-.canvas-operation.is-running::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  padding: 2px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--uw-angle),
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 18deg,
-    var(--uw-tint) 52deg,
-    color-mix(in oklch, var(--uw-tint) 55%, transparent) 92deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 150deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 360deg
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  animation: perimeter-orbit 2.4s linear infinite;
-}
-
-.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before,
-.operations-canvas.is-perimeter-anim-off .status-dot--live,
-.operations-canvas.is-perimeter-anim-off .tenant-beacon.is-awaiting,
-.operations-canvas.is-perimeter-anim-off .job-dock-dot,
-.operations-canvas.is-perimeter-anim-off .tool-chip--live .tool-chip-glyph {
-  animation: none;
-}
-
-.operations-canvas.is-perimeter-anim-off .canvas-operation.is-running::before {
-  background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-}
-
-/* prefers-reduced-motion: 순환 정지, 정적 림 + 정적 글로우만 유지(색은 인디케이터 따라감) */
-@media (prefers-reduced-motion: reduce) {
-  .canvas-operation.is-running::before {
-    animation: none;
-    background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-  }
+  border-color: var(--brass);
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -3002,8 +2976,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
@@ -3027,15 +2999,11 @@
   border-bottom: none;
   border-radius: 0 var(--radius-xl) 0 0;
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   transition: width var(--duration-base) var(--ease-spring);
 }
 
 .operations-side-bar[data-resizing="true"] {
   transition: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3417,12 +3385,6 @@
 
 .side-bar-chip--active .side-bar-chip-name {
   color: color-mix(in oklch, var(--brass) 88%, var(--ink-spectral));
-}
-
-/* accent: --chip-accent border + 1px ring (focus brass 채널 대체, 영속) */
-.side-bar-chip[style*="--chip-accent"] {
-  border-color: var(--chip-accent);
-  box-shadow: 0 0 0 1px var(--chip-accent);
 }
 
 /* minimized: 반투명 + 이름 흐림 */
@@ -3967,8 +3929,6 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .group-context-menu-section-label {
@@ -4106,8 +4066,6 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .accent-popover-swatch {
@@ -4416,8 +4374,6 @@
   border-radius: var(--radius-md);
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .canvas-operation-dormant {
@@ -4561,8 +4517,6 @@
   background: color-mix(in oklch, var(--surface-glass) 82%, var(--ink-deep));
   color: var(--ink-spectral);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .operations-canvas-empty p {
@@ -4631,7 +4585,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 22px;
   font-variation-settings: "opsz" 30;
   font-weight: 560;
@@ -4700,7 +4654,7 @@
 .stage-idle h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 30px;
   font-variation-settings: "opsz" 44;
   font-weight: 540;
@@ -4722,7 +4676,7 @@
 .stage-idle-mark {
   margin: 0 0 var(--space-1);
   color: var(--brass-bright);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 36px;
   text-shadow: 0 0 18px var(--brass-glow);
 }
@@ -5200,8 +5154,6 @@
   flex-direction: column;
   border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
   background: color-mix(in oklch, var(--aurora) 4%, var(--surface-glass));
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 /* CLI 시그니처: border-top rim + 저강도 bg tint (단일 잡에만 부착, aurora/brass 채널 불가침) */
@@ -5268,7 +5220,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink-spectral);
@@ -5387,7 +5339,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-spectral);
@@ -5694,9 +5646,7 @@
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
-  backdrop-filter: blur(20px) saturate(150%);
   box-shadow: var(--shadow-floating);
-  animation: codex-rise var(--duration-fast) var(--ease-spring);
 }
 
 .theater-menu-list {
@@ -5825,7 +5775,7 @@
   max-width: 720px;
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 44px;
   font-weight: 520;
   line-height: 1;
@@ -5878,7 +5828,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .terminal-status {
@@ -6020,7 +5969,6 @@
   inset: 0;
   border: 0;
   background: color-mix(in oklch, var(--ink-abyss) 38%, transparent);
-  backdrop-filter: blur(2px);
   cursor: default;
 }
 
@@ -6037,8 +5985,6 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .job-overlay-close {
@@ -6055,7 +6001,6 @@
   background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
   color: var(--brass-bright);
   box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
   font-family: var(--font-mono);
   font-size: 18px;
   line-height: 1;
@@ -6139,7 +6084,6 @@
   inset: 0;
   border: 0;
   background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
-  backdrop-filter: blur(8px) saturate(126%);
   cursor: default;
 }
 
@@ -6160,8 +6104,6 @@
     radial-gradient(70% 80% at 100% 20%, color-mix(in oklch, var(--aurora) 8%, transparent), transparent 62%),
     var(--surface-glass-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
-  backdrop-filter: blur(20px) saturate(142%);
-  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .commissioning-header {
@@ -6183,7 +6125,7 @@
 .commissioning-header h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 52px;
   font-variation-settings: "opsz" 60;
   font-weight: 560;
@@ -6270,7 +6212,7 @@
 .commissioning-step-body h3 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 22px;
   font-variation-settings: "opsz" 36;
   font-weight: 560;
@@ -6398,10 +6340,6 @@
     animation: none;
   }
 
-  .operations-radar-sweep {
-    animation: none;
-  }
-
   .statusbar-connection.is-live .statusbar-connection-dot {
     animation: none;
   }
@@ -6439,10 +6377,8 @@
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
   background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
   box-shadow: var(--shadow-floating);
   pointer-events: auto;
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
 }
 
 .app-toast--error {
@@ -6534,8 +6470,6 @@
   place-items: start center;
   padding: 14vh var(--space-5) var(--space-5);
   background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   animation: codex-pop 280ms var(--ease-spring) both;
 }
 
@@ -6546,8 +6480,6 @@
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--surface-pillar) 92%, transparent);
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
 }
 
 .operation-search-card:focus-visible {
@@ -6711,7 +6643,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 16px;
   font-weight: 520;
   letter-spacing: 0;
@@ -6777,7 +6709,6 @@
   border: 0;
   /* 카드를 집중형 규격으로 좁힌 만큼, 배경 노출은 더 짙은 scrim으로 막는다(카드 크기로 막던 종전 방식 폐기). */
   background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
-  backdrop-filter: blur(6px) saturate(118%);
   cursor: default;
 }
 
@@ -6798,8 +6729,6 @@
     radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
     var(--surface-glass-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
-  backdrop-filter: blur(20px) saturate(140%);
-  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .directory-browser-header {
@@ -6843,7 +6772,7 @@
 .directory-browser-header h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 23px;
   font-weight: 560;
   letter-spacing: 0;
@@ -7437,7 +7366,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 18px;
   font-weight: 560;
   line-height: 1.15;
@@ -7521,10 +7450,7 @@
   border-radius: var(--radius-xl);
   background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   pointer-events: auto;
-  animation: codex-rise 520ms var(--ease-spring) both;
 }
 
 /* 좌측 모서리 리사이즈 핸들 — 우현 도킹이라 핸들은 좌측에 둔다. */
@@ -7566,8 +7492,6 @@
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   color: var(--ink-fog);
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-spring),
@@ -7686,8 +7610,6 @@ body[data-codex-side="true"] .command-card {
   background:
     radial-gradient(circle at 50% 12%, color-mix(in oklch, var(--brass) 12%, transparent), transparent 42%),
     color-mix(in oklch, var(--ink-abyss) 70%, transparent);
-  backdrop-filter: blur(4px) saturate(120%);
-  -webkit-backdrop-filter: blur(4px) saturate(120%);
   cursor: default;
 }
 
@@ -7705,8 +7627,6 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xl);
   background: var(--surface-glass-strong);
   box-shadow: var(--shadow-floating), 0 0 44px -30px var(--brass);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
 
@@ -7725,7 +7645,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-header h2 {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: clamp(32px, 4vw, 48px);
   font-weight: 680;
   line-height: 1;
@@ -7877,13 +7797,13 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-refresh {
   padding: 0 14px;
-  color: var(--aurora);
+  color: var(--brass);
 }
 
 .whatsnew-refresh:hover,
 .whatsnew-refresh:focus-visible {
-  border-color: color-mix(in oklch, var(--aurora) 42%, transparent);
-  background: color-mix(in oklch, var(--aurora) 10%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
 .whatsnew-refresh:disabled {
@@ -7968,24 +7888,15 @@ body[data-codex-side="true"] .command-card {
   min-height: 22px;
   margin: 0 6px 2px 0;
   padding: 0 7px;
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+  color: var(--ink-spectral);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 820;
   letter-spacing: 0;
   vertical-align: middle;
-}
-
-.whatsnew-package-chip--brass {
-  border: 1px solid color-mix(in oklch, var(--brass) 32%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--brass-bright);
-}
-
-.whatsnew-package-chip--aurora {
-  border: 1px solid color-mix(in oklch, var(--aurora) 30%, transparent);
-  background: color-mix(in oklch, var(--aurora) 9%, transparent);
-  color: var(--aurora);
 }
 
 .whatsnew-section ul {
@@ -8067,8 +7978,6 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .fc-settings-card {
@@ -8081,7 +7990,7 @@ body[data-codex-side="true"] .command-card {
 .fc-settings-card__title {
   margin: 0;
   color: var(--ink-pearl);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: clamp(20px, 2vw, 28px);
   font-weight: 650;
   letter-spacing: 0;
@@ -8317,7 +8226,6 @@ body[data-codex-side="true"] .command-card {
   inset: 0;
   z-index: var(--z-codex-reading-scrim);
   background: oklch(10% 0.03 250 / 55%);
-  backdrop-filter: blur(3px);
 }
 
 .codex-reading-sheet {
@@ -8339,12 +8247,9 @@ body[data-codex-side="true"] .command-card {
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
-  /* codex-rise-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
-     일반 codex-rise는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
-  animation: codex-rise-centered 400ms var(--ease-spring) both;
+  /* entrance motion-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
+     일반 entrance motion는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
 }
 
 @media (prefers-reduced-motion: reduce) {

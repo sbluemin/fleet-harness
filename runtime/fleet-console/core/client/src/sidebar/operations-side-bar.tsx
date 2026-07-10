@@ -28,13 +28,9 @@ interface OperationsSideBarProps {
   readonly canLaunch: boolean;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
-  readonly radarEnabled: boolean;
-  readonly perimeterEnabled: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
-  readonly onToggleRadar: () => void;
-  readonly onTogglePerimeter: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
@@ -154,13 +150,9 @@ export function OperationsSideBar({
   canLaunch,
   addingTheater,
   theaterError,
-  radarEnabled,
-  perimeterEnabled,
   renderKindIcon,
   onLaunchKind,
   onResetView,
-  onToggleRadar,
-  onTogglePerimeter,
   onClose,
   onFocus,
   onSetAccent,
@@ -530,7 +522,7 @@ export function OperationsSideBar({
             aria-label="Add Theater"
             title={addingTheater ? "Adding Theater" : "Add Theater"}
           >
-            <AnchorIcon />
+            <PlusIcon />
           </button>
         </header>
         <div className="operations-side-bar-resize-handle" onPointerDown={handleResizeDragStart} onDoubleClick={handleResizeDoubleClick} aria-hidden="true" />
@@ -575,7 +567,7 @@ export function OperationsSideBar({
             aria-label="Add Theater"
             title={addingTheater ? "Adding Theater" : "Add Theater"}
           >
-            <AnchorIcon />
+            <PlusIcon />
             <span>Theater</span>
           </button>
         ) : (
@@ -587,7 +579,7 @@ export function OperationsSideBar({
             aria-label="Add Theater"
             title={addingTheater ? "Adding Theater" : "Add Theater"}
           >
-            <AnchorIcon />
+            <PlusIcon />
           </button>
         )}
         {tier !== "rail" ? (
@@ -824,13 +816,9 @@ export function OperationsSideBar({
           mode="controls"
           catalog={catalog}
           canLaunch={canLaunch}
-          radarEnabled={radarEnabled}
-          perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
           onLaunchKind={onLaunchKind}
           onResetView={() => { setSettingsMenu(null); onResetView(); }}
-          onToggleRadar={onToggleRadar}
-          onTogglePerimeter={onTogglePerimeter}
           onClose={() => setSettingsMenu(null)}
         />,
         document.body,
@@ -980,7 +968,7 @@ function TheaterSectionHeader({
       aria-expanded={!collapsed}
       title={theater.label}
     >
-      <span className="side-bar-theater-anchor" aria-hidden="true"><AnchorIcon /></span>
+      <span className="side-bar-theater-anchor" aria-hidden="true"><FolderIcon /></span>
       <span className="side-bar-theater-name">{theater.label}</span>
       <span className="side-bar-theater-count">{operationCount}</span>
       {tier !== "rail" ? (
@@ -1278,11 +1266,10 @@ function FormationIcon() {
   );
 }
 
-function AnchorIcon() {
+function FolderIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="3.2" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M8 4.7v8.1M4.3 8.2H11.7M3.4 9.1A4.7 4.7 0 0 0 12.6 9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M2.5 4.4h4l1.2 1.4h5.8v5.8a1.4 1.4 0 0 1-1.4 1.4H3.9a1.4 1.4 0 0 1-1.4-1.4z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   );
 }

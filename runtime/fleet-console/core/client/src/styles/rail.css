@@ -24,8 +24,6 @@
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
   overflow: hidden;
 }
 

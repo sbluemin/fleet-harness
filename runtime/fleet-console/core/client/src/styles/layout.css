@@ -79,16 +79,13 @@
 }
 
 .operations-canvas {
-  animation: codex-rise 720ms var(--ease-spring) both;
   animation-delay: 200ms;
 }
 
 .stage {
-  animation: codex-rise 720ms var(--ease-spring) both;
 }
 
 .statusbar {
-  animation: codex-rise 720ms var(--ease-spring) both;
   animation-delay: 40ms;
   transition:
     opacity var(--duration-base) ease,

@@ -86,7 +86,6 @@
   --duration-base: 220ms;
   --duration-slow: 360ms;
 
-  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.93  0 0 0 0 0.86  0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/></svg>");
 }
 
 :root[data-theme="carbon"] {
@@ -131,6 +130,60 @@
   --shadow-anchor: 0 0 0 1px oklch(76% 0.115 62 / 16%), 0 12px 32px -16px oklch(76% 0.115 62 / 30%);
 }
 
+:root[data-theme="instrument"] {
+  color-scheme: dark;
+
+  --hairline: oklch(29% 0.018 245);
+  --hairline-strong: oklch(37% 0.02 245);
+  --text-primary: oklch(94% 0.008 90);
+  --text-secondary: oklch(70% 0.012 245);
+  --text-tertiary: oklch(52% 0.012 245);
+
+  --ink-abyss: oklch(13% 0.014 245);
+  --ink-deep: oklch(16.5% 0.016 245);
+  --ink-mid: oklch(20% 0.018 245);
+  --ink-veil: oklch(23.5% 0.02 245);
+  --ink-rim: oklch(29% 0.018 245);
+  --ink-fog: oklch(52% 0.012 245);
+  --ink-spectral: oklch(70% 0.012 245);
+  --ink-pearl: oklch(94% 0.008 90);
+
+  --brass: oklch(80% 0.085 78);
+  --brass-bright: var(--brass);
+  --brass-deep: var(--brass);
+  --brass-glow: oklch(80% 0.085 78 / 13%);
+
+  --aurora: oklch(77% 0.085 200);
+  --aurora-deep: var(--aurora);
+  --aurora-glow: oklch(77% 0.085 200 / 13%);
+
+  --coral: oklch(68% 0.13 25);
+  --coral-glow: oklch(68% 0.13 25 / 13%);
+  --warn: oklch(75% 0.08 90);
+  --warn-glow: oklch(75% 0.08 90 / 13%);
+  --positive: oklch(76% 0.11 160);
+  --positive-glow: oklch(76% 0.11 160 / 13%);
+
+  --surface-glass: var(--ink-deep);
+  --surface-glass-strong: var(--ink-mid);
+  --surface-pillar: var(--ink-veil);
+  --surface-rim: var(--hairline);
+  --surface-rim-strong: var(--hairline-strong);
+
+  --identity-file-code: var(--aurora);
+  --identity-file-markup: var(--brass);
+  --identity-file-data: var(--positive);
+  --identity-file-config: var(--warn);
+  --identity-file-error: var(--coral);
+  --identity-small-tag: var(--aurora);
+
+  --radius-xs: 6px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 10px;
+  --radius-xl: 10px;
+}
+
 *,
 *::before,
 *::after {
@@ -162,51 +215,14 @@ html {
 }
 
 body {
-  position: relative;
-  isolation: isolate;
   overflow: hidden;
-  background: transparent;
+  background: var(--ink-abyss);
   color: var(--ink-spectral);
   font-family: var(--font-body);
   font-size: var(--font-body-size);
   font-weight: 400;
   line-height: 1.55;
   letter-spacing: -0.005em;
-}
-
-body::before,
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
-}
-
-body::before {
-  background:
-    radial-gradient(900px 720px at 8% 4%, oklch(48% 0.12 200 / 24%), transparent 60%),
-    radial-gradient(820px 700px at 92% 96%, oklch(52% 0.13 60 / 18%), transparent 62%),
-    radial-gradient(640px 520px at 68% 14%, oklch(82% 0.13 195 / 10%), transparent 68%),
-    radial-gradient(520px 480px at 28% 98%, oklch(78% 0.13 75 / 11%), transparent 70%),
-    var(--ink-abyss);
-}
-
-:root[data-theme="carbon"] body::before {
-  background:
-    radial-gradient(900px 720px at 8% 4%, oklch(40% 0.04 230 / 18%), transparent 60%),
-    radial-gradient(820px 700px at 92% 96%, oklch(46% 0.08 55 / 14%), transparent 62%),
-    radial-gradient(640px 520px at 68% 14%, oklch(70% 0.05 205 / 7%), transparent 68%),
-    radial-gradient(520px 480px at 28% 98%, oklch(70% 0.10 60 / 8%), transparent 70%),
-    var(--ink-abyss);
-}
-
-body::after {
-  z-index: -1;
-  background-image: var(--grain);
-  background-size: 220px 220px;
-  mix-blend-mode: overlay;
-  opacity: 0.45;
 }
 
 #app {

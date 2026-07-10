@@ -23,7 +23,7 @@ describe("global settings routes", () => {
     const harness = createRouterHarness({ general: {} });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "maritime", uiFont: { source: "builtin", id: "manrope", size: 14 } } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 } } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("version");
     expect(harness.writes[0]?.body).not.toHaveProperty("general");
   });
@@ -93,7 +93,7 @@ describe("global settings routes", () => {
   });
 
   it("PUT /global-settings stores a theme", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { theme: "carbon" } });
+    const harness = createRouterHarness({ authorized: true, body: { theme: "instrument" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "carbon", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
     expect(harness.currentGeneral()).toMatchObject({ theme: "carbon" });
@@ -134,7 +134,7 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores a static console port", async () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", theme: "maritime", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
   });
 
   it("PUT /global-settings rejects an out-of-range static port with 400", async () => {

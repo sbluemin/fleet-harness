@@ -55,7 +55,7 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
     });
   };
 
-  // 접힘: 우하단에 맵 아이콘 버튼 하나만 노출하고, 누르면 Radar를 다시 펼친다.
+  // 접힘: 우하단에 Map 아이콘 버튼 하나만 노출한다.
   if (collapsed) {
     return (
       <button
@@ -63,8 +63,8 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
         className="canvas-minimap-fab"
         data-canvas-blocker
         onClick={toggle}
-        aria-label="Radar 펼치기"
-        title="Show radar"
+        aria-label="Open Map"
+        title="Open Map"
       >
         <MapGlyph />
       </button>
@@ -132,13 +132,13 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
 
   return (
     <div className="canvas-minimap" data-canvas-blocker style={{ width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }}>
-      <span className="canvas-minimap-label" aria-hidden="true">Radar</span>
+      <span className="canvas-minimap-label" aria-hidden="true">Map</span>
       <button
         type="button"
         className="canvas-minimap-toggle"
         onClick={toggle}
-        aria-label="Radar 접기"
-        title="Collapse radar"
+        aria-label="Collapse Map"
+        title="Collapse Map"
       >
         <CollapseIcon />
       </button>
@@ -183,7 +183,7 @@ function writeCollapsed(value: boolean): void {
   try {
     window.localStorage.setItem(RADAR_COLLAPSED_STORAGE_KEY, String(value));
   } catch {
-    // Radar 접힘 선호 저장 실패는 런타임 동작을 막지 않는다.
+    // Map 접힘 선호 저장 실패는 런타임 동작을 막지 않는다.
   }
 }
 
@@ -197,7 +197,7 @@ function CollapseIcon() {
 }
 
 function MapGlyph() {
-  // 접힌 Radar를 나타내는 미니맵 모양 글리프 — 외곽 프레임 + 뷰포트 렌즈 + 블립.
+  // 접힌 Map을 나타내는 미니맵 모양 글리프.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.2" />

@@ -402,7 +402,10 @@ function StreamDock({
     <div className="job-dock" data-signature={sig}>
       <div className="job-dock-strip">
         <span className={dotClassName} aria-hidden="true" />
-        <span className="job-dock-carrier" data-captain={captain} title={jobLabel}>{carrierLabel}</span>
+        <span className="job-dock-carrier" title={jobLabel}>
+          {captain ? <span className="job-dock-captain-dot" data-captain={captain} aria-hidden="true" /> : null}
+          <span className="job-dock-captain-tag">{carrierLabel}</span>
+        </span>
         <span className="job-dock-strip-line" style={expanded ? { display: "none" } : undefined} aria-hidden="true">
           {tail.thinking ? <span className="thinking-chip">thinking…</span> : tail.text}
           {!expanded && stripIsLive && tail.text ? <span className="job-dock-caret" aria-hidden="true" /> : null}
@@ -478,7 +481,10 @@ function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
   return (
     <div className="job-dock-row">
       {showName ? (
-        <span className="job-dock-row-name" data-captain={nameCaptain}>{track.displayName}</span>
+        <span className="job-dock-row-name">
+          {nameCaptain ? <span className="job-dock-captain-dot" data-captain={nameCaptain} aria-hidden="true" /> : null}
+          <span className="job-dock-captain-tag">{track.displayName}</span>
+        </span>
       ) : null}
       <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${isTrackError(statusLabel) ? " job-dock-row-status--error" : ""}`}>
         {statusLabel}{activeTool ? ` · ${activeTool}` : ""}

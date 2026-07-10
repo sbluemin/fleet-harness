@@ -12,6 +12,7 @@ import {
 import type { ConsoleDataPaths } from "../core/host/paths.js";
 
 const tempDirs: string[] = [];
+const INSTRUMENT_THEME_PATH = new URL("../core/client/src/styles/theme.css", import.meta.url);
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -142,6 +143,20 @@ describe("sanitizeConsoleSettingsData", () => {
       version: 1,
       general: { theme: "carbon" },
     })).toEqual({ version: 1, general: { theme: "carbon" }, plugins: {} });
+  });
+
+  it("accepts instrument theme while preserving legacy maritime and carbon values", () => {
+    expect(sanitizeConsoleSettingsData({
+      version: 1,
+      general: { theme: "instrument" },
+    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
+  });
+
+  it("snapshots the approved Instrument warn token below accent chroma", () => {
+    const source = fs.readFileSync(INSTRUMENT_THEME_PATH, "utf8");
+    const instrumentTokens = source.slice(source.indexOf(':root[data-theme="instrument"]'));
+    const warnToken = instrumentTokens.match(/--warn: oklch\(([^)]+)\);/)?.[1];
+    expect(warnToken).toMatchInlineSnapshot('"75% 0.08 90"');
   });
 
   it("accepts supported languages and drops invalid values", () => {
