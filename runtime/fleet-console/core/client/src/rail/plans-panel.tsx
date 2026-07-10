@@ -4,49 +4,9 @@ import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "@fleet-console/markdown/styles.css";
+import { fetchPlanRead, fetchPlansList, type PlanListItem, type PlanReadResult } from "../api.js";
 import "./plans.css";
-import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState } from "./helpers.js";
-
-interface PlanListItem {
-  readonly name: string;
-  readonly title: string;
-  readonly executionMode: "sequential" | "parallel" | null;
-  readonly waveCount: number;
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-  readonly updatedAt: string;
-  readonly sizeBytes: number;
-}
-
-interface PlanLane {
-  readonly id: string | null;
-  readonly heading: string;
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-}
-
-interface PlanWave {
-  readonly index: number;
-  readonly heading: string;
-  readonly lanes: readonly PlanLane[];
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-}
-
-interface PlanReadResult {
-  readonly name: string;
-  readonly title: string;
-  readonly executionMode: "sequential" | "parallel" | null;
-  readonly updatedAt: string;
-  readonly content: string;
-  readonly waves: readonly PlanWave[];
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-}
-
-interface PlansListResult {
-  readonly plans: readonly PlanListItem[];
-}
+import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState } from "./plans-helpers.js";
 
 interface PlansListProps {
   readonly selectedName: string | null;
@@ -101,7 +61,7 @@ export const plansPanel: RailPanelDescriptor = {
 };
 
 function PlansPanel(ctx: RailPanelContext) {
-  const { api, requestExtraWidth, theaterId } = ctx;
+  const { requestExtraWidth, theaterId } = ctx;
   const [listState, setListState] = useState<PlansListState>({ kind: "no-theater" });
   const [readerState, setReaderState] = useState<PlanReaderState>({ kind: "loading" });
   const [selectedPlan, setSelectedPlan] = useState<{ readonly theaterId: string; readonly name: string } | null>(null);
@@ -120,19 +80,14 @@ function PlansPanel(ctx: RailPanelContext) {
     }
 
     setListState({ kind: "loading" });
-    void api.fetch("plans", "list", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId }),
-    }).then(async (response) => {
-      const result = await response.json() as PlansListResult;
+    void fetchPlansList(theaterId).then((result) => {
       if (!cancelled) setListState({ kind: "ready", plans: result.plans });
     }).catch(() => {
       if (!cancelled) setListState({ kind: "error" });
     });
 
     return () => { cancelled = true; };
-  }, [api, theaterId, listRetry]);
+  }, [theaterId, listRetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,19 +95,14 @@ function PlansPanel(ctx: RailPanelContext) {
     if (!theaterId || !selectedName) return () => { cancelled = true; };
 
     setReaderState({ kind: "loading" });
-    void api.fetch("plans", "read", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, name: selectedName }),
-    }).then(async (response) => {
-      const result = await response.json() as PlanReadResult;
+    void fetchPlanRead(theaterId, selectedName).then((result) => {
       if (!cancelled) setReaderState({ kind: "ready", plan: result });
     }).catch(() => {
       if (!cancelled) setReaderState({ kind: "error" });
     });
 
     return () => { cancelled = true; };
-  }, [api, readerRetry, selectedName, theaterId]);
+  }, [readerRetry, selectedName, theaterId]);
 
   useLayoutEffect(() => {
     requestExtraWidth?.(selectedName ? PLANS_EXTRA_WIDTH : null);

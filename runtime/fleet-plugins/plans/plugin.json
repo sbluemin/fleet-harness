@@ -1,7 +1,0 @@
-{
-  "id": "plans",
-  "name": "Plans",
-  "apiVersion": 1,
-  "routes": "routes.ts",
-  "client": "client/index.tsx"
-}

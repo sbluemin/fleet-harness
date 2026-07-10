@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled } from "../client/helpers.js";
+import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled } from "../core/client/src/rail/plans-helpers.js";
 
 const NOW = Date.UTC(2026, 6, 10, 0, 0, 0);
 

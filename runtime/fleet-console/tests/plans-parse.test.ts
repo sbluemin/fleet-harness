@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePlan } from "../server/plan-parse.js";
+import { parsePlan } from "../core/host/plans/plan-parse.js";
 
 describe("parsePlan", () => {
   it("parses waves and mixed checkbox states while retaining tasks outside waves", () => {
@@ -146,5 +146,23 @@ describe("parsePlan", () => {
   it("parses a Sequential execution mode and ignores fenced mode lines", () => {
     expect(parsePlan("- Execution mode: Sequential\n## Wave 1 — Only").executionMode).toBe("sequential");
     expect(parsePlan("```\n- Execution mode: Parallel\n```\n## Wave 1 — Only").executionMode).toBeNull();
+  });
+
+  it("keeps a longer opening fence open across inner shorter fences", () => {
+    expect(parsePlan(`
+# Real plan
+\`\`\`\`markdown
+\`\`\`
+## Wave 99: Still an example
+- [ ] fenced task
+\`\`\`
+\`\`\`\`
+## Wave 1: Actual work
+- [x] shipped
+`)).toMatchObject({
+      waves: [{ index: 1, heading: "Wave 1: Actual work", lanes: [], tasksDone: 1, tasksTotal: 1 }],
+      tasksDone: 1,
+      tasksTotal: 1,
+    });
   });
 });

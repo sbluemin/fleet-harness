@@ -49,7 +49,7 @@ const LANE_ID_PATTERN = /^(W\d+-[A-Za-z0-9]+)\b/i;
 const LANE_BOUNDARY_PATTERN = /^#{1,3}\s/;
 const SECTION_HEADING_PATTERN = /^#{1,2}\s/;
 const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
-const FENCE_PATTERN = /^\s*(```|~~~)/;
+const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 // Kirov 기본 템플릿의 h1은 문서 제목이 아니라 섹션 헤딩이다 — title로 채택하지 않고 파일명 폴백에 맡긴다.
 const TEMPLATE_SECTION_TITLES = new Set([
   "objective",
@@ -79,16 +79,20 @@ export function parsePlan(content: string): ParsedPlan {
 }
 
 function scanPlanLines(lines: readonly string[]): readonly PlanLine[] {
-  let activeFence: "```" | "~~~" | null = null;
+  // CommonMark: 닫는 펜스는 여는 펜스와 같은 문자이고 길이가 그 이상이어야 한다 — 3문자 고정 추적은
+  // ````(4-백틱) 예시 블록 안의 ```를 조기 종료로 오인해 내부 wave/task가 실집계된다.
+  let activeFence: { readonly char: string; readonly length: number } | null = null;
 
   return lines.map((text) => {
-    const marker = FENCE_PATTERN.exec(text)?.[1] as "```" | "~~~" | undefined;
+    const marker = FENCE_PATTERN.exec(text)?.[1];
     if (activeFence !== null) {
-      if (marker === activeFence) activeFence = null;
+      if (marker !== undefined && marker.startsWith(activeFence.char) && marker.length >= activeFence.length) {
+        activeFence = null;
+      }
       return { text, isFenced: true };
     }
     if (marker !== undefined) {
-      activeFence = marker;
+      activeFence = { char: marker[0] ?? "`", length: marker.length };
       return { text, isFenced: true };
     }
     return { text, isFenced: false };

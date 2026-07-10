@@ -4,15 +4,17 @@ import path from "node:path";
 
 import type http from "node:http";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { handlePlansList, handlePlansRead } from "../server/handlers.js";
+import { createPlansRouter } from "../core/host/plans/routes.js";
 
 interface JsonResponse {
   readonly status: number;
   readonly body: unknown;
+}
+
+interface PlansTestContext {
+  readonly router: ReturnType<typeof createPlansRouter>;
 }
 
 let tmpDir: string;
@@ -128,20 +130,26 @@ describe("Plans handlers — security", () => {
 function createContext(
   body: unknown,
   resolveTheaterPath: (theaterId: string) => string | undefined,
-): { ctx: FleetPluginServerContext; responses: JsonResponse[] } {
+): { ctx: PlansTestContext; responses: JsonResponse[] } {
   const responses: JsonResponse[] = [];
-  const ctx = {
-    host: {
-      http: {
-        readJsonBody: vi.fn().mockResolvedValue(body),
-        writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => {
-          responses.push({ status, body: responseBody });
-        },
+  const ctx: PlansTestContext = {
+    router: createPlansRouter({
+      isAuthorized: () => true,
+      readJsonBody: vi.fn().mockResolvedValue(body),
+      resolveTheaterPath: (theaterId) => resolveTheaterPath(theaterId) ?? null,
+      writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => {
+        responses.push({ status, body: responseBody });
       },
-      paths: { resolveTheaterPath },
-      security: { isTerminalAuthorized: () => true },
-    },
-  } as unknown as FleetPluginServerContext;
+    }),
+  };
 
   return { ctx, responses };
+}
+
+async function handlePlansList(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {
+  await ctx.router({ req, res, pathname: "/api/v1/plans/list" });
+}
+
+async function handlePlansRead(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {
+  await ctx.router({ req, res, pathname: "/api/v1/plans/read" });
 }
