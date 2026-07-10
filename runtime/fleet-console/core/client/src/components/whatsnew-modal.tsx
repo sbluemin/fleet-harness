@@ -106,7 +106,6 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
           <div className="whatsnew-meta-row">
             {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>Released {selected.date}</time> : <span className="whatsnew-date">Unreleased</span>}
             {state.releaseNotesStale ? <span className="whatsnew-stale">Stale</span> : null}
-            {locale === "ko" && selected.localizationFallback ? <span className="whatsnew-fallback">English fallback</span> : null}
           </div>
         </header>
         <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label="Close What's new">
