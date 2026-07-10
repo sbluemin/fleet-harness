@@ -8,6 +8,7 @@ import { OperationSearch } from "./components/operation-search.js";
 import { StatusBar } from "./components/statusbar.js";
 import { Toast } from "./components/toast.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
+import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
@@ -16,6 +17,7 @@ import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -25,6 +27,8 @@ export function App() {
   const state = useConsoleState();
   const location = useLocation();
   const registry = usePluginRegistry();
+  const globalSettings = useGlobalSettingsStore();
+  const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
   const mapFullscreen = useMapFullscreen();
   const mapFullscreenActive = mapFullscreen && pathname.startsWith("/operations");
@@ -58,13 +62,6 @@ export function App() {
       });
     void fetchOperations(null, abort.signal).then(hydrateOperations).catch(() => {});
     void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});
-    beginReleaseNotesFetch();
-    void fetchReleaseNotes({ signal: abort.signal })
-      .then(applyReleaseNotes)
-      .catch((error) => {
-        if (abort.signal.aborted) return;
-        failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
-      });
     refreshObserverStatus();
     // cold-start 보정: 서버 백그라운드 refresh 완료를 기다렸다가 한 번 더 읽어 배지를 채운다.
     const recheckTimer = window.setTimeout(refreshObserverStatus, UPDATE_STATUS_RECHECK_DELAY_MS);
@@ -73,6 +70,18 @@ export function App() {
       abort.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    beginReleaseNotesFetch();
+    void fetchReleaseNotes({ locale: releaseNotesLocale, signal: abort.signal })
+      .then(applyReleaseNotes)
+      .catch((error) => {
+        if (abort.signal.aborted) return;
+        failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
+      });
+    return () => abort.abort();
+  }, [releaseNotesLocale]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

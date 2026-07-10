@@ -22,6 +22,7 @@ interface GlobalSettingsRouteContext {
 interface GlobalSettingsBody {
   readonly consolePortMode?: unknown;
   readonly consoleStaticPort?: unknown;
+  readonly language?: unknown;
   readonly theme?: unknown;
   readonly uiFont?: unknown;
 }
@@ -95,6 +96,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_console_static_port" });
     return;
   }
+  if (body.language !== undefined && body.language !== "auto" && body.language !== "en" && body.language !== "ko") {
+    deps.writeJson(res, 400, { error: "invalid_language" });
+    return;
+  }
   if (body.theme !== undefined && body.theme !== "maritime" && body.theme !== "carbon") {
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
@@ -110,9 +115,11 @@ async function mutateGlobalSettings(
       ...current.general,
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
+      ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
       ...(body.theme === "maritime" || body.theme === "carbon" ? { theme: body.theme } : {}),
       ...(isUiFontId(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
+    plugins: current.plugins,
   }));
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
@@ -123,6 +130,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
   return {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
+    language: general.language ?? "auto",
     theme: general.theme ?? "maritime",
     uiFont: general.uiFont ?? "manrope",
   };

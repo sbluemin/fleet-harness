@@ -7855,6 +7855,46 @@ body[data-codex-side="true"] .command-card {
   letter-spacing: 0;
 }
 
+.whatsnew-language-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 20%, transparent);
+}
+
+.whatsnew-language-picker button {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 5px 7px;
+  background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label-sm);
+  cursor: pointer;
+}
+
+.whatsnew-language-picker button.is-active {
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-bright);
+}
+
+.whatsnew-language-picker button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.whatsnew-fallback {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label-sm);
+}
+
 .whatsnew-version-selector select {
   min-width: min(260px, 100%);
   padding: 0 10px;

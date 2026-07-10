@@ -51,10 +51,10 @@ describe("sanitizeConsoleSettingsData", () => {
   it("accepts valid general fields", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon", uiFont: "source-code-pro" },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: "source-code-pro" },
     })).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 9000, theme: "carbon", uiFont: "source-code-pro" },
+      general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "carbon", uiFont: "source-code-pro" },
       plugins: {},
     });
   });
@@ -115,6 +115,11 @@ describe("sanitizeConsoleSettingsData", () => {
     })).toEqual({ version: 1, general: { theme: "carbon" }, plugins: {} });
   });
 
+  it("accepts supported languages and drops invalid values", () => {
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { language: "ko" } })).toEqual({ version: 1, general: { language: "ko" }, plugins: {} });
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { language: "ja" } })).toEqual({ version: 1, general: {}, plugins: {} });
+  });
+
   it("accepts minimum valid port boundary", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,
@@ -145,17 +150,17 @@ describe("sanitizeConsoleSettingsData", () => {
 
     store.update(() => ({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "carbon", uiFont: "jetbrains-mono" },
     }));
 
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon", uiFont: "jetbrains-mono" },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "carbon", uiFont: "jetbrains-mono" },
       plugins: {},
     });
 
     const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8")) as unknown;
-    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, theme: "carbon", uiFont: "jetbrains-mono" } });
+    expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "carbon", uiFont: "jetbrains-mono" } });
   });
 
   it("preserves valid plugins record on round-trip", () => {

@@ -2,8 +2,10 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 
 import { fetchReleaseNotes } from "../api.js";
+import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { applyReleaseNotes, beginReleaseNotesFetch, closeWhatsNew, failReleaseNotesFetch, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
+import { getWhatsNewSectionLabel, resolveReleaseNotesLocale, WHATSNEW_COPY } from "../whatsnew-i18n.js";
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;
@@ -28,6 +30,9 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
+  const globalSettings = useGlobalSettingsStore();
+  const locale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
+  const copy = WHATSNEW_COPY[locale];
 
   // What's new는 자동으로 열리므로, 다른 우선 오버레이가 떠 있거나 아직 theater bootstrap이 끝나지 않은
   // 동안에는 양보한다. 그렇지 않으면 뒤에 숨은 What's new의 window capture 리스너가 stopImmediatePropagation으로
@@ -71,9 +76,12 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const selectedValue = releaseNoteKey(selected.version, selectedIndex >= 0 ? selectedIndex : 0);
   const handleRefresh = () => {
     beginReleaseNotesFetch();
-    void fetchReleaseNotes({ force: true })
+    void fetchReleaseNotes({ force: true, locale })
       .then(applyReleaseNotes)
       .catch((error) => failReleaseNotesFetch(error instanceof Error ? error.message : String(error)));
+  };
+  const selectLanguage = async (nextLocale: "en" | "ko") => {
+    await setGlobalSettingsField("language", nextLocale);
   };
   // 셀렉터는 한 페이지에 최근 RELEASE_NOTE_PAGE_SIZE개만 노출한다. 현재 페이지는 선택된 버전에서 파생하므로
   // 별도 상태가 필요 없고, 선택이 항상 현재 페이지에 포함된다. 페이지 이동은 그 페이지의 가장 최신 버전을 선택한다.
@@ -91,56 +99,71 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
 
   return (
     <div className="whatsnew-overlay" role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-      <button type="button" className="whatsnew-scrim" onClick={closeWhatsNew} aria-label="Close What's new" />
+      <button type="button" className="whatsnew-scrim" onClick={closeWhatsNew} aria-label={copy.closeAria} />
       <section className="whatsnew-card" ref={cardRef}>
         <header className="whatsnew-header">
           <div className="whatsnew-heading-row">
-            <h2 id="whatsnew-title">What's new</h2>
+            <h2 id="whatsnew-title">{copy.title}</h2>
             <span className="whatsnew-version-badge">v{selected.version}</span>
           </div>
           <div className="whatsnew-meta-row">
-            {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>Released {selected.date}</time> : <span className="whatsnew-date">Unreleased</span>}
-            {state.releaseNotesStale ? <span className="whatsnew-stale">Stale</span> : null}
+            {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>{copy.released} {selected.date}</time> : <span className="whatsnew-date">{copy.unreleased}</span>}
+            {state.releaseNotesStale ? <span className="whatsnew-stale">{copy.stale}</span> : null}
+            {locale === "ko" && selected.localizationFallback ? <span className="whatsnew-fallback">{copy.englishFallback}</span> : null}
           </div>
         </header>
-        <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label="Close What's new">
+        <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label={copy.closeAria}>
           x
         </button>
         <div className="whatsnew-body">
           <div className="whatsnew-version-selector">
-            <select aria-label="Release version" value={selectedValue} onChange={(event) => selectReleaseNote(event.currentTarget.value)}>
+            <select aria-label={copy.releaseSelector} value={selectedValue} onChange={(event) => selectReleaseNote(event.currentTarget.value)}>
               {pageNotes.map((note, localIndex) => {
                 const index = pageStart + localIndex;
                 return (
                   <option key={releaseNoteKey(note.version, index)} value={releaseNoteKey(note.version, index)}>
-                    {note.version === "Unreleased" ? "Unreleased" : `v${note.version}`}{note.date ? ` · ${note.date}` : ""}
+                    {note.version === "Unreleased" ? copy.unreleased : `v${note.version}`}{note.date ? ` · ${note.date}` : ""}
                   </option>
                 );
               })}
             </select>
             {pageCount > 1 ? (
               <div className="whatsnew-pagination">
-                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label="Newer versions">
+                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label={copy.newerVersions}>
                   ‹
                 </button>
                 <span className="whatsnew-page-status">{currentPage + 1} / {pageCount}</span>
-                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(1)} disabled={currentPage >= pageCount - 1} aria-label="Older versions">
+                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(1)} disabled={currentPage >= pageCount - 1} aria-label={copy.olderVersions}>
                   ›
                 </button>
               </div>
             ) : null}
+            <div className="whatsnew-language-picker" role="group" aria-label={copy.language}>
+              {(["en", "ko"] as const).map((nextLocale) => (
+                <button
+                  key={nextLocale}
+                  type="button"
+                  className={locale === nextLocale ? "is-active" : ""}
+                  aria-pressed={locale === nextLocale}
+                  disabled={globalSettings.savingField === "language"}
+                  onClick={() => void selectLanguage(nextLocale)}
+                >
+                  {nextLocale === "en" ? "EN" : "한국어"}
+                </button>
+              ))}
+            </div>
             <button type="button" className="whatsnew-refresh" onClick={handleRefresh} disabled={state.releaseNotesLoading}>
-              {state.releaseNotesLoading ? "Refreshing" : "Refresh"}
+              {state.releaseNotesLoading ? copy.refreshing : copy.refresh}
             </button>
           </div>
-          {state.releaseNotesError ? <p className="whatsnew-error">Release notes could not be refreshed.</p> : null}
+          {state.releaseNotesError ? <p className="whatsnew-error">{copy.refreshError}</p> : null}
           {selected.sections.map((section, index) => (
-            <ReleaseNoteSectionView key={section.heading} section={section} index={index} />
+            <ReleaseNoteSectionView key={section.heading} section={section} index={index} locale={locale} />
           ))}
         </div>
         <footer className="whatsnew-footer">
           <button type="button" className="whatsnew-done" onClick={closeWhatsNew}>
-            Close
+            {copy.close}
           </button>
         </footer>
       </section>
@@ -148,13 +171,13 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   );
 }
 
-function ReleaseNoteSectionView({ section, index }: { readonly section: ReleaseNoteSection; readonly index: number }) {
+function ReleaseNoteSectionView({ section, index, locale }: { readonly section: ReleaseNoteSection; readonly index: number; readonly locale: "en" | "ko" }) {
   const tone = section.heading.toLowerCase().replaceAll(" ", "-");
   const style: WhatsNewSectionStyle = { "--whatsnew-delay": `${index * 55}ms` };
   return (
     <section className={`whatsnew-section whatsnew-section--${tone}`} style={style}>
       <h3>
-        <span className="whatsnew-section-chip">{section.heading}</span>
+        <span className="whatsnew-section-chip">{getWhatsNewSectionLabel(locale, section.heading)}</span>
       </h3>
       <ul>
         {section.items.map((item, itemIndex) => (
