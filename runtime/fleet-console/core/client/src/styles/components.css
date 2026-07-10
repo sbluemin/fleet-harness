@@ -4772,6 +4772,38 @@
   border-left: 2px solid color-mix(in oklch, var(--ink-rim) 40%, transparent);
 }
 
+.track-card-thinking {
+  margin-top: var(--space-3);
+}
+
+.track-card-thinking > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px dashed var(--surface-rim);
+  color: var(--ink-rim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.track-card-thinking > summary::-webkit-details-marker {
+  display: none;
+}
+
+.track-card-thinking > summary::before {
+  content: "▸";
+}
+
+.track-card-thinking[open] > summary::before {
+  content: "▾";
+}
+
 .track-card-thought pre {
   margin: var(--space-1) 0 0;
   color: var(--ink-fog);
@@ -5174,6 +5206,16 @@
   animation: aurora-pulse 1.4s ease-in-out infinite;
 }
 
+.job-dock-dot--idle {
+  background: var(--ink-rim);
+  animation: none;
+}
+
+.job-dock-dot--error {
+  background: var(--coral);
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .job-dock-dot {
     animation: none;
@@ -5338,6 +5380,10 @@
   color: var(--aurora);
 }
 
+.job-dock-row-status--error {
+  color: var(--coral);
+}
+
 /* 행 최신 라인: 가변폭 ellipsis + aurora 캐럿 */
 .job-dock-row-line {
   flex: 1;
@@ -5350,9 +5396,13 @@
   color: var(--ink-spectral);
 }
 
-/* thought 라인: 텍스트 없을 때 디밍 */
-.job-dock-row-line.is-thought {
-  opacity: 0.65;
+.thinking-chip {
+  flex: none;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  white-space: nowrap;
 }
 
 /* 요청 라벨: 단일 잡 펼침 첫 행, 디밍 mono 10.5px */
@@ -5998,6 +6048,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+.job-overlay-card > .follow-button {
+  right: var(--space-6);
+  bottom: var(--space-6);
+  z-index: 2;
 }
 
 .job-overlay-head {

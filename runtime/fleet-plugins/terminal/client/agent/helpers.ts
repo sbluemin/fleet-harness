@@ -1,5 +1,10 @@
 import type { JobView } from "./types.js";
 
+export interface RetainedJob {
+  readonly jobId: string;
+  readonly expiresAt: number;
+}
+
 const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"]);
 const BACKEND_CLIS = new Set(["claude", "codex", "opencode-go", "cursor"]);
 
@@ -38,4 +43,46 @@ export function resolveJobSignature(job: JobView): "claude" | "codex" | "opencod
 export function resolveCarrierCaptain(carrierId: string | undefined): string | undefined {
   if (!carrierId) return undefined;
   return CAPTAIN_IDS.has(carrierId) ? carrierId : undefined;
+}
+
+export function mergeJobIds(jobIds: readonly string[], additionalJobIds: readonly string[]): readonly string[] {
+  const known = new Set(jobIds);
+  const additions = additionalJobIds.filter((jobId) => {
+    if (known.has(jobId)) return false;
+    known.add(jobId);
+    return true;
+  });
+  return additions.length === 0 ? jobIds : [...jobIds, ...additions];
+}
+
+export function retainCompletedJobs(retainedJobs: readonly RetainedJob[], completedJobIds: readonly string[], expiresAt: number): readonly RetainedJob[] {
+  const existing = new Map(retainedJobs.map((job) => [job.jobId, job]));
+  let changed = false;
+  for (const jobId of completedJobIds) {
+    const current = existing.get(jobId);
+    if (current?.expiresAt === expiresAt) continue;
+    existing.set(jobId, { jobId, expiresAt });
+    changed = true;
+  }
+  return changed ? [...existing.values()] : retainedJobs;
+}
+
+export function pruneRetainedJobs(retainedJobs: readonly RetainedJob[], availableJobs: readonly JobView[], now: number): readonly RetainedJob[] {
+  const availableIds = new Set(availableJobs.map((job) => job.jobId));
+  const next = retainedJobs.filter((job) => job.expiresAt > now && availableIds.has(job.jobId));
+  return next.length === retainedJobs.length ? retainedJobs : next;
+}
+
+export function selectJobsByIds(jobs: readonly JobView[], jobIds: readonly string[]): readonly JobView[] {
+  const byId = new Map(jobs.map((job) => [job.jobId, job]));
+  return jobIds.flatMap((jobId) => {
+    const job = byId.get(jobId);
+    return job ? [job] : [];
+  });
+}
+
+export function mergeDockJobs(activeJobs: readonly JobView[], allJobs: readonly JobView[], retainedJobs: readonly RetainedJob[]): readonly JobView[] {
+  const activeIds = new Set(activeJobs.map((job) => job.jobId));
+  const retained = selectJobsByIds(allJobs, retainedJobs.map((job) => job.jobId)).filter((job) => !activeIds.has(job.jobId));
+  return retained.length === 0 ? activeJobs : [...activeJobs, ...retained];
 }

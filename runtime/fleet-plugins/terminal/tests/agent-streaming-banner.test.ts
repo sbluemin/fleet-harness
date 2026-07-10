@@ -1,12 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { isTrackLive } from "../client/agent/index.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 
 type PruneOptions = Parameters<typeof pruneOrphanStreamingOperations>[1];
+
+function makeStreamJob(jobId: string, status = "active"): JobView {
+  return {
+    jobId,
+    tenantId: "tenant-1",
+    status,
+    updatedAt: 1_000,
+    trackOrder: [],
+    tracks: {},
+    lastEventId: 1,
+    recentEvents: [],
+  };
+}
 
 // ── orphan prune 검증 ──────────────────────────────────────────────────────────
 
@@ -97,6 +111,40 @@ describe("isTerminalJobStatus (도크 활성 job 필터)", () => {
     const primaryJob = activeJobs[0] ?? null;
     expect(primaryJob).toEqual({ status: "active" });
     expect(activeJobs).toHaveLength(2);
+  });
+});
+
+describe("isTrackLive (도크와 Details 라이브 신호)", () => {
+  it("conn 상태를 라이브로 분류하고 queued는 제외한다", () => {
+    expect(isTrackLive("conn")).toBe(true);
+    expect(isTrackLive("queued")).toBe(false);
+  });
+});
+
+describe("Carrier Stream job retention helpers", () => {
+  it("모달 job 집합은 기존 순서를 보존하며 새 활성 job을 합친다", () => {
+    expect(mergeJobIds(["completed-1"], ["active-1", "completed-1", "active-2"])).toEqual([
+      "completed-1",
+      "active-1",
+      "active-2",
+    ]);
+  });
+
+  it("도크 잔존은 만료되거나 스냅숏에서 사라진 job을 제거한다", () => {
+    const jobs = [makeStreamJob("done-1", "done")];
+    const retained = retainCompletedJobs([], ["done-1", "gone-1"], 5_000);
+
+    expect(pruneRetainedJobs(retained, jobs, 4_999)).toEqual([{ jobId: "done-1", expiresAt: 5_000 }]);
+    expect(pruneRetainedJobs(retained, jobs, 5_000)).toEqual([]);
+  });
+
+  it("도크는 활성 job을 우선하고 잔존 완료 job을 뒤에 합친다", () => {
+    const active = makeStreamJob("active-1");
+    const completed = makeStreamJob("done-1", "done");
+    const retained = retainCompletedJobs([], ["done-1"], 5_000);
+
+    expect(selectJobsByIds([active, completed], ["done-1"])).toEqual([completed]);
+    expect(mergeDockJobs([active], [active, completed], retained)).toEqual([active, completed]);
   });
 });
 

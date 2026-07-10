@@ -70,7 +70,6 @@ export function applyEvent(job: JobView, observed: ObservedEvent): JobView {
           ...track,
           thought,
           sentThoughtLength: track.sentThoughtLength + (readNumber(payload.textLength) ?? readString(payload.text)?.length ?? 0),
-          latestLine: lastNonEmptyLine(thought) || track.latestLine,
         };
       });
     case "track:tool":

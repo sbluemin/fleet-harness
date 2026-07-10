@@ -9,15 +9,26 @@ function makeEvent(id: number, type: string, event: Record<string, unknown>, job
 }
 
 describe("agent reducer streaming invariants", () => {
-  it("applies text and thought frames as deltas", () => {
+  it("applies text and thought frames as deltas while latestLine remains output-only", () => {
     let job = createEmptyJob("tenant-1", "job-1", 1_000);
     job = applyEvent(job, makeEvent(1, "track:text", { trackId: "t1", text: "hello" }));
     job = applyEvent(job, makeEvent(2, "track:text", { trackId: "t1", text: " world" }));
+    const latestOutputLine = job.tracks.t1?.latestLine;
     job = applyEvent(job, makeEvent(3, "track:thought", { trackId: "t1", text: "think" }));
     job = applyEvent(job, makeEvent(4, "track:thought", { trackId: "t1", text: " twice" }));
 
     expect(job.tracks.t1?.text).toBe("hello world");
     expect(job.tracks.t1?.thought).toBe("think twice");
+    expect(job.tracks.t1?.latestLine).toBe(latestOutputLine);
+  });
+
+  it("does not create latestLine from thought-only deltas but updates it for text", () => {
+    let job = createEmptyJob("tenant-1", "job-1", 1_000);
+    job = applyEvent(job, makeEvent(1, "track:thought", { trackId: "t1", text: "private reasoning" }));
+    expect(job.tracks.t1?.latestLine).toBeUndefined();
+
+    job = applyEvent(job, makeEvent(2, "track:text", { trackId: "t1", text: "public output" }));
+    expect(job.tracks.t1?.latestLine).toBe("public output");
   });
 
   it("ignores non-advancing observed ids across resync overlap", () => {
