@@ -39,14 +39,22 @@ export interface LogCommitEntry {
   readonly subject: string;
   readonly authorName: string;
   readonly relTime: string;
+  readonly authorAt: number;
   readonly refs: readonly string[];
   readonly parents: readonly string[];
-  readonly additions: number;
-  readonly deletions: number;
+  /** 현재 체크아웃 HEAD에서 도달 가능한 커밋인지 — false면 UI가 dim 처리한다 */
+  readonly onHead: boolean;
+}
+
+export interface WorktreeCheckout {
+  readonly sha: string;
+  readonly branch: string | null;
+  readonly isCurrent: boolean;
 }
 
 export interface LogResult {
   readonly commits: readonly LogCommitEntry[];
+  readonly checkouts: readonly WorktreeCheckout[];
   readonly truncated?: boolean;
 }
 

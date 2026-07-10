@@ -20,7 +20,7 @@ export interface GraphLayout {
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const LANE_HARD_CAP = 3;
+const LANE_HARD_CAP = 8;
 
 // ─── functions ───────────────────────────────────────────────────────────────
 
@@ -47,6 +47,7 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
     }
 
     let myLane: number;
+    let usesCollapsedBucket = false;
     const mergeFromLanes: number[] = [];
 
     if (matched.length === 0) {
@@ -54,9 +55,16 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
       const freeSlot = laneHeads.indexOf(null);
       if (freeSlot >= 0) {
         myLane = freeSlot;
-      } else {
+      } else if (laneHeads.length < LANE_HARD_CAP) {
         myLane = laneHeads.length;
         laneHeads.push(null);
+      } else {
+        // 캡을 넘는 독립 topology는 마지막 레인을 축약 버킷으로 재사용한다.
+        // 기존 대기 부모와 현재 부모 모두 추적하지 않아 허위 ancestry 연결을 만들지 않는다.
+        collapsed = true;
+        myLane = LANE_HARD_CAP - 1;
+        laneHeads[myLane] = null;
+        usesCollapsedBucket = true;
       }
     } else {
       // 가장 작은 인덱스 레인을 이 커밋의 레인으로
@@ -76,7 +84,7 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
       laneHeads[myLane] = null;
     } else {
       // 첫 번째 부모: 현재 레인 계승
-      laneHeads[myLane] = parents[0] ?? null;
+      laneHeads[myLane] = usesCollapsedBucket ? null : (parents[0] ?? null);
       // 나머지 부모: 기존 레인에 이미 기다리는 것이 있으면 재사용, 없으면 새 레인
       for (const parent of parents.slice(1)) {
         const existing = laneHeads.indexOf(parent);
@@ -87,33 +95,14 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
           if (freeSlot >= 0) {
             laneHeads[freeSlot] = parent;
             branchToLanes.push(freeSlot);
-          } else {
+          } else if (laneHeads.length < LANE_HARD_CAP) {
             const newLane = laneHeads.length;
             laneHeads.push(parent);
             branchToLanes.push(newLane);
+          } else {
+            collapsed = true;
           }
         }
-      }
-    }
-
-    // 하드캡 3 적용: 활성 레인 수 초과 시 초과분 제거
-    const activeLanes = laneHeads
-      .map((h, i) => ({ h, i }))
-      .filter(({ h }) => h !== null)
-      .map(({ i }) => i);
-
-    if (activeLanes.length > LANE_HARD_CAP) {
-      collapsed = true;
-      // 가장 최근에 새로 개설된 레인(인덱스가 큰 것)부터 축약
-      const toCollapse = activeLanes
-        .filter((i) => i !== myLane)
-        .sort((a, b) => b - a)
-        .slice(0, activeLanes.length - LANE_HARD_CAP);
-      for (const lane of toCollapse) {
-        laneHeads[lane] = null;
-        // branchToLanes에서도 제거
-        const btIdx = branchToLanes.indexOf(lane);
-        if (btIdx >= 0) branchToLanes.splice(btIdx, 1);
       }
     }
 
@@ -128,9 +117,9 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
     nodes.push({
       lane: myLane,
-      isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")) || idx === 0,
-      connectAbove: idx > 0,
-      connectBelow: idx < commits.length - 1,
+      isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")),
+      connectAbove: matched.length > 0,
+      connectBelow: parents.length > 0 && laneHeads[myLane] === parents[0],
       passThroughLanes,
       mergeFromLanes,
       branchToLanes,

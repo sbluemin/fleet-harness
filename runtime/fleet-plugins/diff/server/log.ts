@@ -1,10 +1,24 @@
+import fs from "node:fs/promises";
 import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
-import type { LogCommitEntry } from "./types.js";
+import type { LogCommitEntry, WorktreeCheckout } from "./types.js";
 import { resolveGitCwd } from "./diff.js";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+interface ParsedWorktree {
+  readonly sha: string;
+  readonly branch: string | null;
+  readonly worktreePath: string;
+}
+
+// ─── constants ───────────────────────────────────────────────────────────────
+
+// porcelain HEAD 라인에서 파싱된 값만 rev 인자로 허용하는 방어 검증
+const WORKTREE_SHA_RE = /^[0-9a-f]{40}$/;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -12,7 +26,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseLogOutput(stdout: string): LogCommitEntry[] {
+export function parseLogOutput(stdout: string): LogCommitEntry[] {
   if (!stdout.trim()) return [];
   const commits: LogCommitEntry[] = [];
 
@@ -29,36 +43,117 @@ function parseLogOutput(stdout: string): LogCommitEntry[] {
     const subject = fields[2] ?? "";
     const authorName = fields[3] ?? "";
     const relTime = fields[4] ?? "";
-    const refsRaw = fields[5] ?? "";
-    const parentsRaw = fields[6] ?? "";
+    const authorAt = Number.parseInt(fields[5] ?? "0", 10);
+    const refsRaw = fields[6] ?? "";
+    const parentsRaw = fields[7] ?? "";
 
     if (!fullHash) continue;
 
     const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);
 
-    let additions = 0;
-    let deletions = 0;
-    for (const line of lines.slice(1)) {
-      if (!line.trim()) continue;
-      const parts = line.split("\t");
-      if (parts.length < 2) continue;
-      const a = parseInt(parts[0] ?? "0", 10);
-      const d = parseInt(parts[1] ?? "0", 10);
-      if (!isNaN(a)) additions += a;
-      if (!isNaN(d)) deletions += d;
-    }
-
-    commits.push({ shortHash, fullHash, subject, authorName, relTime, refs, parents, additions, deletions });
+    commits.push({
+      shortHash,
+      fullHash,
+      subject,
+      authorName,
+      relTime,
+      authorAt: Number.isFinite(authorAt) ? authorAt : 0,
+      refs,
+      parents,
+      onHead: true,
+    });
   }
 
   return commits;
 }
 
+export async function parseWorktreePorcelain(stdout: string, currentWorktreePath: string): Promise<WorktreeCheckout[]> {
+  const worktrees: ParsedWorktree[] = [];
+  let worktreePath: string | null = null;
+  let sha = "";
+  let branch: string | null = null;
+  let prunable = false;
+
+  const pushCurrent = () => {
+    // unborn(orphan) 체크아웃은 zero-SHA placeholder라 커밋 체크아웃이 아니고,
+    // prunable 레코드는 디렉터리가 사라진 stale 워크트리라 활성 체크아웃이 아니다
+    if (!worktreePath || !sha || prunable || /^0+$/.test(sha)) return;
+    worktrees.push({
+      sha,
+      branch,
+      worktreePath,
+    });
+  };
+
+  for (const line of stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      pushCurrent();
+      worktreePath = line.slice(9);
+      sha = "";
+      branch = null;
+      prunable = false;
+    } else if (line.startsWith("HEAD ")) {
+      sha = line.slice(5);
+    } else if (line.startsWith("branch ")) {
+      const ref = line.slice(7);
+      branch = ref.startsWith("refs/heads/") ? ref.slice(11) : ref;
+    } else if (line === "prunable" || line.startsWith("prunable ")) {
+      prunable = true;
+    }
+  }
+  pushCurrent();
+
+  const normalizedCurrentWorktreePath = await normalizeWorktreePath(currentWorktreePath);
+  return Promise.all(worktrees.map(async ({ worktreePath, ...checkout }) => ({
+    ...checkout,
+    isCurrent: normalizedCurrentWorktreePath !== ""
+      && (await normalizeWorktreePath(worktreePath)) === normalizedCurrentWorktreePath,
+  })));
+}
+
+export function annotateHeadReachability(commits: LogCommitEntry[], revListStdout: string): LogCommitEntry[] {
+  const reachable = new Set(revListStdout.split("\n").map((line) => line.trim()).filter(Boolean));
+  // rev-list 실패/빈 결과(HEAD 부재 등)에서는 전체 dim을 피하기 위해 모두 도달 가능으로 둔다
+  if (reachable.size === 0) return commits;
+  return commits.map((commit) => ({ ...commit, onHead: reachable.has(commit.fullHash) }));
+}
+
 function isNoHeadError(error: unknown): boolean {
   if (!(error instanceof GitExecutorError)) return false;
   if (error.code !== "non_zero_exit") return false;
-  return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
+  return error.stderr.includes("unknown revision")
+    || error.stderr.includes("bad revision")
+    // 명시 rev 없이 --branches만으로 도는 빈 저장소는 이 메시지로 실패한다
+    || error.stderr.includes("does not have any commits");
+}
+
+async function normalizeWorktreePath(worktreePath: string): Promise<string> {
+  if (!worktreePath) return "";
+  try {
+    return await fs.realpath(worktreePath);
+  } catch {
+    return worktreePath;
+  }
+}
+
+async function readHeadRevList(gitCwd: string): Promise<string> {
+  try {
+    // 표시 윈도가 200이므로 1000이면 도달성 판정에 충분한 여유다
+    return (await runGit(["rev-list", "-n", "1000", "HEAD"], { cwd: gitCwd })).stdout;
+  } catch (error) {
+    if (error instanceof GitExecutorError) return "";
+    throw error;
+  }
+}
+
+async function readCurrentWorktreePath(gitCwd: string): Promise<string> {
+  try {
+    return (await runGit(["rev-parse", "--show-toplevel"], { cwd: gitCwd })).stdout.trim();
+  } catch (error) {
+    if (error instanceof GitExecutorError) return "";
+    throw error;
+  }
 }
 
 // ─── handlers ────────────────────────────────────────────────────────────────
@@ -86,16 +181,29 @@ export async function handleDiffLog(
   const { gitCwd } = cwdResult;
 
   try {
+    const [worktrees, currentWorktreePath, headRevList] = await Promise.all([
+      runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
+      readCurrentWorktreePath(gitCwd),
+      readHeadRevList(gitCwd),
+    ]);
+    const checkouts = await parseWorktreePorcelain(worktrees.stdout, currentWorktreePath);
+    // detached 워크트리 HEAD는 어떤 브랜치/태그/원격에서도 도달 불가능할 수 있으므로 rev 집합에 명시적으로 추가한다
+    const worktreeRevs = [...new Set(checkouts.map((checkout) => checkout.sha))]
+      // orphan 워크트리의 unborn HEAD는 zero-SHA로 보고되며 rev 인자로 넘기면 로그 전체가 실패한다
+      .filter((sha) => WORKTREE_SHA_RE.test(sha) && !/^0+$/.test(sha));
+    // unborn(orphan) 체크아웃에서는 명시 HEAD 인자가 로그 전체를 실패시키므로 rev-list 성공 여부로 게이트한다
+    const headRevs = headRevList ? ["HEAD"] : [];
     const result = await runGit(
-      ["log", "-n", "50", "--numstat", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%D%x00%P"],
+      // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
+      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs],
       { cwd: gitCwd },
     );
-    const commits = parseLogOutput(result.stdout);
-    ctx.host.http.writeJson(res, 200, { commits, ...(result.truncated ? { truncated: true } : {}) });
+    const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
+    ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
       if (error.code === "no_git_repo") {
-        ctx.host.http.writeJson(res, 200, { commits: [] });
+        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
         return;
       }
       if (error.code === "git_unavailable") {
@@ -104,7 +212,7 @@ export async function handleDiffLog(
       }
       // no-HEAD 신규 저장소(HEAD 미존재)는 빈 배열 graceful; 그 외 비정상 종료는 500 — 500 분기보다 먼저 검사한다
       if (isNoHeadError(error)) {
-        ctx.host.http.writeJson(res, 200, { commits: [] });
+        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
         return;
       }
       ctx.host.http.writeJson(res, 500, { error: "git_failed" });

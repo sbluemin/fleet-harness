@@ -10,10 +10,10 @@ function makeCommit(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
     subject: "test commit",
     authorName: "Author",
     relTime: "1 hour ago",
+    authorAt: 1_700_000_000,
     refs: [],
     parents: [],
-    additions: 0,
-    deletions: 0,
+    onHead: true,
     ...overrides,
   };
 }
@@ -36,10 +36,10 @@ describe("layoutGraph — Phase 1 단일 레인 skeleton", () => {
     expect(layout.collapsed).toBe(false);
   });
 
-  it("③ 여러 커밋에서 모든 lane=0, 양 끝 연결선 규칙을 따른다", () => {
+  it("③ 선형 조상 관계는 모든 lane=0에서 양 끝 연결선 규칙을 따른다", () => {
     const commits = [
-      makeCommit({ fullHash: "aaa" }),
-      makeCommit({ fullHash: "bbb" }),
+      makeCommit({ fullHash: "aaa", parents: ["bbb"] }),
+      makeCommit({ fullHash: "bbb", parents: ["ccc"] }),
       makeCommit({ fullHash: "ccc" }),
     ];
     const layout = layoutGraph(commits);
@@ -56,9 +56,9 @@ describe("layoutGraph — Phase 1 단일 레인 skeleton", () => {
     expect(layout.nodes[2]?.connectBelow).toBe(false);
   });
 
-  it("④ 첫 커밋(index 0)은 항상 isHead=true", () => {
+  it("④ HEAD decoration이 없는 첫 커밋은 isHead=false", () => {
     const layout = layoutGraph([makeCommit({ refs: [] })]);
-    expect(layout.nodes[0]?.isHead).toBe(true);
+    expect(layout.nodes[0]?.isHead).toBe(false);
   });
 
   it("⑤ refs에 'HEAD'가 포함된 커밋은 isHead=true", () => {
@@ -68,8 +68,8 @@ describe("layoutGraph — Phase 1 단일 레인 skeleton", () => {
       makeCommit({ refs: [] }),
     ];
     const layout = layoutGraph(commits);
-    // index 0는 항상 isHead=true
-    expect(layout.nodes[0]?.isHead).toBe(true);
+    // index 0에는 HEAD decoration이 없으므로 false
+    expect(layout.nodes[0]?.isHead).toBe(false);
     // index 1는 refs에 HEAD 포함
     expect(layout.nodes[1]?.isHead).toBe(true);
     // index 2는 refs에 HEAD 없음, index 0 아님 → isHead=false
@@ -137,21 +137,26 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     expect(layout.collapsed).toBe(false);
   });
 
-  it("③ octopus 4 parents → 활성 레인이 3 초과 즉시 collapsed=true", () => {
-    // C의 parents: [A, B, D, E] — 4개 부모 → 4개 레인 개설 → 캡 3 초과
+  it("③ octopus 9 parents → 활성 레인이 8 초과 즉시 collapsed=true", () => {
+    // C의 parents: 9개 — 레인 9개 개설 → 캡 8 초과
     const commits = [
-      makeCommit({ fullHash: "C", parents: ["A", "B", "D", "E"] }),
+      makeCommit({ fullHash: "C", parents: ["A", "B", "D", "E", "F", "G", "H", "I", "J"] }),
       makeCommit({ fullHash: "A", parents: [] }),
       makeCommit({ fullHash: "B", parents: [] }),
       makeCommit({ fullHash: "D", parents: [] }),
       makeCommit({ fullHash: "E", parents: [] }),
+      makeCommit({ fullHash: "F", parents: [] }),
+      makeCommit({ fullHash: "G", parents: [] }),
+      makeCommit({ fullHash: "H", parents: [] }),
+      makeCommit({ fullHash: "I", parents: [] }),
+      makeCommit({ fullHash: "J", parents: [] }),
     ];
     const layout = layoutGraph(commits);
     expect(layout.collapsed).toBe(true);
-    // 활성 레인은 3 이하
+    // 활성 레인은 8 이하
     const activeLanes = new Set<number>();
     for (const node of layout.nodes) activeLanes.add(node.lane);
-    expect(activeLanes.size).toBeLessThanOrEqual(3);
+    expect(activeLanes.size).toBeLessThanOrEqual(8);
   });
 
   it("④ dangling parent(로그 범위 밖) → 남은 laneHead가 매치 없이 종료해도 크래시 없음", () => {
@@ -162,5 +167,42 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     expect(() => layoutGraph(commits)).not.toThrow();
     const layout = layoutGraph(commits);
     expect(layout.nodes).toHaveLength(2);
+  });
+
+  it("⑤ --all 다중 루트 topology는 HEAD decoration에만 head ring을 남긴다", () => {
+    const commits = [
+      makeCommit({ fullHash: "A", parents: ["A0"], refs: ["HEAD -> refs/heads/main"] }),
+      makeCommit({ fullHash: "B", parents: ["B0"], refs: ["refs/remotes/origin/topic"] }),
+      makeCommit({ fullHash: "A0", parents: [] }),
+      makeCommit({ fullHash: "B0", parents: [] }),
+    ];
+    const layout = layoutGraph(commits);
+    expect(layout.nodes).toHaveLength(4);
+    expect(layout.nodes[0]?.isHead).toBe(true);
+    expect(layout.nodes[1]?.isHead).toBe(false);
+    expect(layout.activeLaneCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("⑥ 독립 root→parent 9쌍은 8레인 cap 안에서 collapsed 된다", () => {
+    const commits = Array.from({ length: 9 }, (_, index) => makeCommit({
+      fullHash: `root-${index}`,
+      parents: [`parent-${index}`],
+    }));
+    const layout = layoutGraph(commits);
+
+    expect(layout.activeLaneCount).toBeLessThanOrEqual(8);
+    expect(layout.collapsed).toBe(true);
+  });
+
+  it("⑦ 무관한 연속 root는 ancestry 없는 수직 연결선을 만들지 않는다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "root-a", parents: [] }),
+      makeCommit({ fullHash: "root-b", parents: [] }),
+    ]);
+
+    expect(layout.nodes.map(({ connectAbove, connectBelow }) => ({ connectAbove, connectBelow }))).toEqual([
+      { connectAbove: false, connectBelow: false },
+      { connectAbove: false, connectBelow: false },
+    ]);
   });
 });

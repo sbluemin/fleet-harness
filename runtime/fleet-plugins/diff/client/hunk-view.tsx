@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { CommitDiffResult, DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
-import type { SelectedCommit } from "./diff-view-store.js";
+import type { CommitDiffResult, DiffFileEntry, DiffFileMode, DiffHunkResult, LogCommitEntry } from "../server/types.js";
 import { parseHunk } from "./hunk-parse.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -13,7 +12,13 @@ interface HunkViewProps {
   readonly file: DiffFileEntry;
   readonly mode: DiffFileMode;
   readonly subPath: string;
-  readonly commit?: SelectedCommit | null;
+  readonly commit?: CommitSelection | null;
+}
+
+export interface CommitSelection {
+  readonly commit: LogCommitEntry;
+  readonly subPath: string;
+  readonly theaterId: string;
 }
 
 type LoadState =

@@ -932,144 +932,258 @@
   padding: 3px 10px;
 }
 
-/* ── Graph 토글 (View 토글과 동일 패턴) ── */
-.diff-graph-toggle {
-  display: inline-flex;
-  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  padding: 2px;
-  gap: 2px;
-}
-
-/* ── History 섹션 ── */
-.diff-section-history .diff-section-head {
-  /* Changes 섹션과 동일한 골격, 별도 override 없음 */
-}
-
-/* ── 커밋 행 ── */
-.diff-commit-row {
+/* ── History rail panel ── */
+.history-root {
+  position: relative;
   display: grid;
-  grid-template-columns: 16px 7ch minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.history-root.has-detail {
+  grid-template-columns: minmax(250px, 1fr) minmax(360px, 1.4fr);
+}
+
+.history-list-pane,
+.history-detail-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.history-list-pane {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.history-root.has-detail .history-list-pane {
+  grid-column: 2;
+}
+
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
+}
+
+.history-count {
+  flex: none;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+
+.history-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.history-commit-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(120px, 1fr) minmax(78px, auto) 7ch 10ch;
   align-items: center;
   gap: 0 8px;
   width: 100%;
-  overflow: hidden;
-  padding: 5px 12px;
-  background: none;
+  min-width: 0;
+  /* 높이는 graph-gutter의 ROW_HEIGHT(28px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
+  height: 28px;
+  padding: 0 10px;
   border: none;
+  background: none;
+  color: inherit;
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
-  min-width: 0;
 }
 
-.diff-commit-row:hover {
+.history-commit-row:hover {
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-.diff-commit-row.is-cur {
-  background: color-mix(in oklch, var(--surface-highlight, var(--brass)) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--surface-highlight, var(--brass));
+.history-commit-row.is-selected {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--brass);
 }
 
-.diff-graph-gutter {
+/* 현재 체크아웃 브랜치에서 도달 불가능한 커밋은 본문만 감광 — 그래프/배지는 유지 */
+.history-commit-row.is-off-head .history-commit-subject,
+.history-commit-row.is-off-head .history-commit-author,
+.history-commit-row.is-off-head .history-commit-sha,
+.history-commit-row.is-off-head .history-commit-time {
+  opacity: 0.45;
+}
+
+.history-graph-gutter {
+  display: inline-flex;
+  align-self: stretch;
+  align-items: center;
+}
+
+.history-commit-badges {
+  display: inline-flex;
+  min-width: 0;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.history-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 16px;
+  gap: 3px;
   flex: none;
-  align-self: stretch;
-}
-
-.diff-commit-sha {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: color-mix(in oklch, var(--ink-spectral) 55%, transparent);
-  flex: none;
-  white-space: nowrap;
-}
-
-.diff-commit-subject {
-  font-family: var(--font-body);
-  font-size: 12.5px;
-  color: var(--ink-spectral);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.diff-commit-badges {
-  display: inline-flex;
-  gap: 4px;
-  flex: none;
-  flex-wrap: nowrap;
-}
-
-.diff-badge {
+  padding: 0 5px;
+  border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 9.5px;
-  letter-spacing: 0.06em;
-  border-radius: 999px;
-  padding: 0 5px;
-  white-space: nowrap;
+  letter-spacing: 0.04em;
+  line-height: 1.55;
 }
 
-.badge--head {
+.history-badge-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.history-badge--head,
+.history-badge--tag {
   color: var(--brass);
-  border: 1px solid color-mix(in oklch, var(--brass) 60%, transparent);
+  border: 1px solid color-mix(in oklch, var(--brass) 48%, transparent);
 }
 
-.badge--tag {
-  color: var(--brass);
-  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
-}
-
-.badge--branch {
+.history-badge--branch {
   color: var(--aurora);
-  background: color-mix(in oklch, var(--aurora) 12%, transparent);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent);
+  background: color-mix(in oklch, var(--aurora) 10%, transparent);
 }
 
-.badge--worktree {
+.history-badge--remote {
+  color: var(--ink-spectral);
+  border: 1px dashed color-mix(in oklch, var(--ink-fog) 60%, transparent);
+}
+
+.history-badge--worktree {
   color: var(--aurora);
   border: 1px dashed color-mix(in oklch, var(--aurora) 50%, transparent);
 }
 
-.diff-commit-meta {
+.history-commit-subject,
+.history-detail-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-spectral);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+}
+
+.history-commit-author,
+.history-commit-sha,
+.history-commit-time,
+.history-detail-sha {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-fog);
   font-family: var(--font-mono);
   font-size: 10.5px;
+}
+
+.history-commit-sha,
+.history-detail-sha {
+  color: color-mix(in oklch, var(--ink-spectral) 58%, transparent);
+}
+
+.history-empty,
+.history-error,
+.history-truncated {
+  padding: 14px 12px;
   color: var(--ink-fog);
-  white-space: nowrap;
-  flex: none;
-}
-
-@container (max-width: 300px) {
-  .diff-commit-row .diff-commit-meta {
-    display: none;
-  }
-}
-
-@container (max-width: 248px) {
-  .diff-commit-row .diff-commit-badges {
-    display: none;
-  }
-}
-
-/* ── 커밋 모드 hunk 헤더 ── */
-.diff-hunk-commit-icon {
-  flex: none;
-  font-size: 13px;
-  color: var(--ink-rim);
-}
-
-.diff-hunk-sha {
-  flex: none;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: color-mix(in oklch, var(--ink-spectral) 60%, transparent);
-  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  border-radius: var(--radius-xs);
-  padding: 1px 5px;
+}
+
+.history-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--coral);
+}
+
+.history-truncated {
+  color: var(--warn);
+  border-top: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+}
+
+.history-detail-pane {
+  grid-row: 1;
+  grid-column: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+}
+
+.history-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.history-detail-subject {
+  flex: 1;
+}
+
+.history-detail-close {
+  display: inline-grid;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-fog);
+  cursor: pointer;
+}
+
+.history-detail-close:hover {
+  color: var(--ink-spectral);
+}
+
+.history-detail-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@container (max-width: 500px) {
+  .history-commit-author,
+  .history-commit-time {
+    display: none;
+  }
+}
+
+@container (max-width: 340px) {
+  .history-commit-badges {
+    display: none;
+  }
 }
