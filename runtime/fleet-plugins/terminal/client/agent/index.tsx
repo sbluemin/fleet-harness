@@ -151,6 +151,8 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     setPinned(next);
   }, []);
 
+  // resetKey 의존 필수: 모달처럼 컨테이너가 훅 마운트 이후에 나타나는 소비자는
+  // 마운트 시점에 containerRef가 null이라, resetKey(오픈 상태 포함) 변화에 재부착해야 한다.
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -160,7 +162,7 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     };
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [updatePinned]);
+  }, [resetKey, updatePinned]);
 
   React.useLayoutEffect(() => {
     updatePinned(true);
