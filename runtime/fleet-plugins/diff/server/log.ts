@@ -75,7 +75,8 @@ export async function parseWorktreePorcelain(stdout: string, currentWorktreePath
   let branch: string | null = null;
 
   const pushCurrent = () => {
-    if (!worktreePath || !sha) return;
+    // unborn(orphan) 체크아웃은 zero-SHA placeholder라 커밋 체크아웃이 아니다
+    if (!worktreePath || !sha || /^0+$/.test(sha)) return;
     worktrees.push({
       sha,
       branch,
@@ -116,7 +117,10 @@ export function annotateHeadReachability(commits: LogCommitEntry[], revListStdou
 function isNoHeadError(error: unknown): boolean {
   if (!(error instanceof GitExecutorError)) return false;
   if (error.code !== "non_zero_exit") return false;
-  return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
+  return error.stderr.includes("unknown revision")
+    || error.stderr.includes("bad revision")
+    // 명시 rev 없이 --branches만으로 도는 빈 저장소는 이 메시지로 실패한다
+    || error.stderr.includes("does not have any commits");
 }
 
 async function normalizeWorktreePath(worktreePath: string): Promise<string> {
@@ -182,9 +186,11 @@ export async function handleDiffLog(
     const worktreeRevs = [...new Set(checkouts.map((checkout) => checkout.sha))]
       // orphan 워크트리의 unborn HEAD는 zero-SHA로 보고되며 rev 인자로 넘기면 로그 전체가 실패한다
       .filter((sha) => WORKTREE_SHA_RE.test(sha) && !/^0+$/.test(sha));
+    // unborn(orphan) 체크아웃에서는 명시 HEAD 인자가 로그 전체를 실패시키므로 rev-list 성공 여부로 게이트한다
+    const headRevs = headRevList ? ["HEAD"] : [];
     const result = await runGit(
       // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "HEAD", ...worktreeRevs],
+      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs],
       { cwd: gitCwd },
     );
     const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);

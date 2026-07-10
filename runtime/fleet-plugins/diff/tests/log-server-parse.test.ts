@@ -193,6 +193,23 @@ describe("handleDiffLog", () => {
     expect(payload.checkouts).toContainEqual(expect.objectContaining({ sha: tipSha, branch: null, isCurrent: false }));
   });
 
+  it("orphan 브랜치 체크아웃에서도 기존 브랜치 history를 유지한다", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+    await fs.writeFile(path.join(repoDir, "a.txt"), "a");
+    await runGit(["add", "a.txt"], { cwd: repoDir });
+    await runGit(["commit", "-m", "base"], { cwd: repoDir });
+    await runGit(["checkout", "--orphan", "empty"], { cwd: repoDir });
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+
+    expect(writes[0]?.status).toBe(200);
+    const payload = writes[0]?.payload as { readonly commits: readonly { readonly subject: string }[] };
+    expect(payload.commits).toEqual([expect.objectContaining({ subject: "base" })]);
+  });
+
   it("non-bare no-HEAD 저장소는 기존 graceful empty 결과를 유지한다", async () => {
     const repoDir = path.join(tmpDir, "new-repo");
     await fs.mkdir(repoDir);
