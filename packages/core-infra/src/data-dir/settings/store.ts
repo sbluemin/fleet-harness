@@ -60,10 +60,14 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
+    ...(value.codexLaunchMode === "acp" || value.codexLaunchMode === "app-server"
+      ? { codexLaunchMode: value.codexLaunchMode }
+      : {}),
   };
-  const allowedKeys = new Set(["version", "enableMetaphor"]);
+  const allowedKeys = new Set(["version", "enableMetaphor", "codexLaunchMode"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean");
+    ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean") ||
+    ("codexLaunchMode" in value && value.codexLaunchMode !== "acp" && value.codexLaunchMode !== "app-server");
 
   return { data, changed };
 }

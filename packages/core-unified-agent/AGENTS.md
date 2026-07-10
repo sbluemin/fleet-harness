@@ -146,7 +146,7 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 | CLI | Protocol | spawn Method | set_config_option | set_mode |
 |-----|----------|--------------|-------------------|----------|
 | Claude | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` | ✅ | ✅ |
-| Codex | ACP (`codex-acp`) / `app-server` | (Toggle) `npx --yes --package=@agentclientprotocol/codex-acp@1.1.2 codex-acp` / `codex app-server` | ✅ (ACP) / Pending (Legacy) | ✅ (ACP) / Pending (Legacy) |
+| Codex | ACP (`codex-acp`) / `app-server` | Runtime `CODEX_USE_ACP` env toggle (default ACP): `npx --yes --package=@agentclientprotocol/codex-acp@1.1.2 codex-acp` / `codex app-server` | ✅ (ACP) / Pending (Legacy) | ✅ (ACP) / Pending (Legacy) |
 | opencode-go | ACP | `opencode acp` | ✅ | ✅ |
 
 ## Architecture Decisions
@@ -179,7 +179,7 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 
 10. **Codex Official ACP Bridge**: Codex uses `@agentclientprotocol/codex-acp@1.1.2` on the ACP path. Model changes use standard `session/set_config_option` with `configId: "model"`, while public Fleet `effort` maps to Codex's advertised `reasoning_effort` config option. Config and instruction delivery uses the `CODEX_CONFIG` env JSON channel because the bridge does not forward CLI argv to the spawned `codex` app-server.
 
-11. **Validation-mode Dual-Path for Codex**: Codex currently supports two transport paths (official ACP npx bridge and legacy AppServer) controlled by a `CODEX_USE_ACP` toggle. This is a temporary validation wave for protocol transition; a permanent switch will occur in a future wave, deprecating the legacy AppServer path and associated types.
+11. **Validation-mode Dual-Path for Codex**: Codex currently supports two transport paths (official ACP npx bridge and legacy AppServer) controlled by the runtime `CODEX_USE_ACP` environment toggle (default ACP). This is a temporary validation wave for protocol transition; a permanent switch will occur in a future wave, deprecating the legacy AppServer path and associated types.
 
 ## Adding a New CLI Provider
 

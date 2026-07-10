@@ -12,7 +12,9 @@ import {
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
 	type RegisterExecutorToolOptions,
+	type AuthEnvResolver,
 } from "@dotobokuri/core-agent";
+import type { GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import {
 	createCarrierRuntime,
@@ -33,6 +35,7 @@ export interface FleetAgentRuntimeToolRegistration {
 
 export interface FleetAgentRuntimeLifecycleDeps {
 	readonly dataDir?: string;
+	readonly globalOptionsService?: GlobalOptionsService;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
 	readonly wikiToolSpecs?: readonly AgentToolSpec[];
@@ -115,6 +118,22 @@ export function createFleetAgentRuntimeLifecycle(
 	};
 }
 
+export function createAuthEnvResolver(
+	globalOptionsService: GlobalOptionsService | undefined,
+): AuthEnvResolver {
+	return async (cli): Promise<Record<string, string>> => {
+		if (cli !== "codex" || !globalOptionsService) return {};
+		try {
+			const mode = globalOptionsService.load().codexLaunchMode;
+			// 저장된 모드가 없으면 주입하지 않는다 — process.env 폴백과 기본 ACP 우선순위를 보존한다.
+			if (!mode) return {};
+			return { CODEX_USE_ACP: mode === "app-server" ? "false" : "true" };
+		} catch {
+			return {};
+		}
+	};
+}
+
 function createFleetAgentRuntimeMcpServices(): FleetAgentRuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
 	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
@@ -156,7 +175,7 @@ function registerFleetAgentRuntimeTools(
 	deps: FleetAgentRuntimeLifecycleDeps,
 ): void {
 	registerAgentToolDefaults(mcpRegistry, carrierRuntime, {
-		authEnvResolver: async () => ({}),
+		authEnvResolver: createAuthEnvResolver(deps.globalOptionsService),
 		reservedExternalMcpServerIds: buildReservedExternalMcpServerIds(deps.reservedExternalMcpServerIds),
 		workspaceChangeScanner: deps.workspaceChangeScanner,
 	});

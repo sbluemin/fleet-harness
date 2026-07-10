@@ -1,6 +1,13 @@
+export type CodexLaunchMode = "acp" | "app-server";
+
 export interface SystemPromptSettingsState {
   readonly enableMetaphor: boolean;
+  readonly codexLaunchMode: CodexLaunchMode;
 }
+
+export type SystemPromptSettingsUpdate =
+  | { readonly enableMetaphor: boolean }
+  | { readonly codexLaunchMode: CodexLaunchMode };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -18,7 +25,7 @@ export async function fetchSystemPromptSettings(signal?: AbortSignal): Promise<S
   return assertSystemPromptSettingsState(await response.json(), response.status);
 }
 
-export async function saveSystemPromptSettings(settings: SystemPromptSettingsState, signal?: AbortSignal): Promise<SystemPromptSettingsState> {
+export async function saveSystemPromptSettings(settings: SystemPromptSettingsUpdate, signal?: AbortSignal): Promise<SystemPromptSettingsState> {
   const response = await fetch("/plugins/terminal/settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -46,10 +53,12 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || typeof payload.enableMetaphor !== "boolean"
+    || (payload.codexLaunchMode !== "acp" && payload.codexLaunchMode !== "app-server")
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
     enableMetaphor: payload.enableMetaphor,
+    codexLaunchMode: payload.codexLaunchMode,
   };
 }

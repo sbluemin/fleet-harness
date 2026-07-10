@@ -19,23 +19,33 @@ interface HarnessOptions {
 }
 
 describe("terminal settings routes", () => {
-  it("GET /plugins/terminal/settings returns only prompt booleans", async () => {
+  it("GET /plugins/terminal/settings returns the default ACP Codex launch mode", async () => {
     const harness = createRouteHarness({
       data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "acp" } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
   it("PUT /plugins/terminal/settings updates enableMetaphor in global options", async () => {
     const harness = createRouteHarness({
       body: { enableMetaphor: true },
+      data: { version: 1, enableMetaphor: false, codexLaunchMode: "app-server" },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: true, codexLaunchMode: "app-server" } }]);
+    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: true, codexLaunchMode: "app-server" });
+  });
+
+  it("PUT /plugins/terminal/settings updates the Codex launch mode in global options", async () => {
+    const harness = createRouteHarness({
+      body: { codexLaunchMode: "app-server" },
       data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: true } }]);
-    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: true });
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "app-server" } }]);
+    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: false, codexLaunchMode: "app-server" });
   });
 
   it("PUT /plugins/terminal/settings rejects non-boolean payloads", async () => {
@@ -47,6 +57,27 @@ describe("terminal settings routes", () => {
 
   it("PUT /plugins/terminal/settings rejects payloads with unknown extra keys", async () => {
     const harness = createRouteHarness({ body: { enableMetaphor: true, consolePortMode: "static" } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /plugins/terminal/settings rejects payloads with unknown keys", async () => {
+    const harness = createRouteHarness({ body: { terminalRenderer: "webgl" } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /plugins/terminal/settings rejects invalid Codex launch modes", async () => {
+    const harness = createRouteHarness({ body: { codexLaunchMode: "tcp" } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /plugins/terminal/settings rejects payloads with multiple known keys", async () => {
+    const harness = createRouteHarness({ body: { enableMetaphor: true, codexLaunchMode: "app-server" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);

@@ -504,6 +504,7 @@ function AgentCliSection() {
   const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const { renderer: terminalRenderer, font: terminalFont } = useTerminalPrefs();
+  const settings = useSystemPromptSettingsStore();
 
   React.useEffect(() => {
     const abort = new AbortController();
@@ -527,8 +528,18 @@ function AgentCliSection() {
         <p className="global-settings-help">Whether each Agent CLI is installed and discoverable on this machine's PATH, with its detected version. Carriers can only run on an Agent CLI shown as available here.</p>
         {error ? <p className="settings-error">{error}</p> : null}
         <div className="agent-cli-list">
-          {clis.map((cli) => <AgentCliRow key={cli.id} cli={cli} />)}
+          {clis.map((cli) => (
+            <AgentCliRow
+              key={cli.id}
+              cli={cli}
+              codexLaunchMode={settings.state?.codexLaunchMode}
+              disabled={settings.savingField !== null}
+              onCodexLaunchModeChange={(mode) => void setSystemPromptSettingsField("codexLaunchMode", mode)}
+            />
+          ))}
         </div>
+        {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+        <p className="global-settings-help">Codex launch mode controls the unified-agent carrier protocol for new Codex sessions; it does not affect the interactive Codex TUI in terminal panels.</p>
         <p className="global-settings-foot">Install or update a CLI, then reopen this page to re-check availability.</p>
       </section>
       <TerminalFontSettingsCard terminalFont={terminalFont} />
@@ -591,11 +602,43 @@ function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onT
   );
 }
 
-function AgentCliRow({ cli }: { readonly cli: AgentCliStatus }) {
+function AgentCliRow({
+  cli,
+  codexLaunchMode,
+  disabled,
+  onCodexLaunchModeChange,
+}: {
+  readonly cli: AgentCliStatus;
+  readonly codexLaunchMode: "acp" | "app-server" | undefined;
+  readonly disabled: boolean;
+  readonly onCodexLaunchModeChange: (mode: "acp" | "app-server") => void;
+}) {
   return (
     <div className="agent-cli-row">
       <span className="agent-cli-name">{cli.displayName}</span>
       <span className="agent-cli-meta">
+        {cli.id === "codex" && codexLaunchMode ? (
+          <span className="segmented" role="group" aria-label="Codex launch mode">
+            <button
+              type="button"
+              aria-pressed={codexLaunchMode === "acp"}
+              className={`segmented-option ${codexLaunchMode === "acp" ? "is-active" : ""}`}
+              disabled={disabled}
+              onClick={() => onCodexLaunchModeChange("acp")}
+            >
+              ACP
+            </button>
+            <button
+              type="button"
+              aria-pressed={codexLaunchMode === "app-server"}
+              className={`segmented-option ${codexLaunchMode === "app-server" ? "is-active" : ""}`}
+              disabled={disabled}
+              onClick={() => onCodexLaunchModeChange("app-server")}
+            >
+              App Server
+            </button>
+          </span>
+        ) : null}
         {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
         <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? "Available" : "Missing"}</span>
       </span>

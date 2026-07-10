@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'events';
 
 const mockCodexConnect = vi.fn();
@@ -17,6 +17,8 @@ const mockAcpSendPrompt = vi.fn();
 const mockAcpSetMode = vi.fn();
 const mockAcpSetModel = vi.fn();
 const mockAcpSetConfigOption = vi.fn();
+const originalCodexUseAcp = process.env.CODEX_USE_ACP;
+const originalCodexConfig = process.env.CODEX_CONFIG;
 
 function createMockCodexConnection(): EventEmitter & Record<string, unknown> {
   const emitter = new EventEmitter();
@@ -98,8 +100,18 @@ function acpCtorOptions(): { env?: Record<string, string | undefined>; args: str
   return call[0] as unknown as { env?: Record<string, string | undefined>; args: string[] };
 }
 
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
 describe('UnifiedCodexAgentClient config staging', () => {
   beforeEach(() => {
+    delete process.env.CODEX_USE_ACP;
+    delete process.env.CODEX_CONFIG;
     vi.clearAllMocks();
     mockCodexConnect.mockResolvedValue({ thread: { id: 'codex-thread-1' } });
     mockCodexDisconnect.mockResolvedValue(undefined);
@@ -113,6 +125,73 @@ describe('UnifiedCodexAgentClient config staging', () => {
     mockAcpSetMode.mockResolvedValue(undefined);
     mockAcpSetModel.mockResolvedValue(undefined);
     mockAcpSetConfigOption.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    restoreEnvironmentVariable('CODEX_USE_ACP', originalCodexUseAcp);
+    restoreEnvironmentVariable('CODEX_CONFIG', originalCodexConfig);
+  });
+
+  it('CODEX_USE_ACP 미설정 시 ACP로 연결한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'codex' });
+
+    expect(AcpConnection).toHaveBeenCalledTimes(1);
+    expect(CodexAppServerConnection).not.toHaveBeenCalled();
+  });
+
+  it("options.env CODEX_USE_ACP='false'는 App Server로 연결한다", async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      env: { CODEX_USE_ACP: 'false' },
+    });
+
+    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
+    expect(AcpConnection).not.toHaveBeenCalled();
+  });
+
+  it("options.env CODEX_USE_ACP='0'는 App Server로 연결한다", async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      env: { CODEX_USE_ACP: '0' },
+    });
+
+    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
+    expect(AcpConnection).not.toHaveBeenCalled();
+  });
+
+  it("options.env CODEX_USE_ACP='true'는 ACP로 연결한다", async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      env: { CODEX_USE_ACP: 'true' },
+    });
+
+    expect(AcpConnection).toHaveBeenCalledTimes(1);
+    expect(CodexAppServerConnection).not.toHaveBeenCalled();
+  });
+
+  it('options.env가 process.env CODEX_USE_ACP보다 우선한다', async () => {
+    process.env.CODEX_USE_ACP = 'false';
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      env: { CODEX_USE_ACP: 'true' },
+    });
+
+    expect(AcpConnection).toHaveBeenCalledTimes(1);
+    expect(CodexAppServerConnection).not.toHaveBeenCalled();
   });
 
   it('ACP mode 매핑은 공식 codex-acp bridge mode ID를 사용한다', () => {
