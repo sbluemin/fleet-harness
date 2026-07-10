@@ -112,18 +112,21 @@ export function selectJobsByIds(jobs: readonly JobView[], jobIds: readonly strin
 
 export function getDockTailText(dockJobs: readonly JobView[]): DockTail {
   // 모든 트랙을 트랙별 lastEventId(전역 단조 증가) 최신순으로 정렬해 접힘 테일을 고른다.
-  // 라이브 트랙(잡 비종결 게이트 포함)이 하나라도 있으면 라이브 풀만 대표로 삼는다 —
-  // 잔존 종결 잡의 stale output이 새 라이브 트랙의 thinking 상태를 가리는 것을 막는다.
+  // 라이브 트랙(잡 비종결 게이트 포함)이 하나라도 있으면 라이브 풀만 대표로 삼고,
+  // 풀은 최신순으로 순회하며 트랙별로 output 라인 → thinking 상태 순으로 판정한다 —
+  // 가장 최근 활동이 thinking-only 트랙이면 더 오래된 트랙의 output이 아니라
+  // thinking 상태를 표시해 실제 이벤트 순서를 따른다(추론 원문은 노출하지 않음).
   const entries = dockJobs
     .flatMap((job) => job.trackOrder.map((trackId) => ({ job, track: job.tracks[trackId] })))
     .filter((entry): entry is { readonly job: JobView; readonly track: TrackView } => Boolean(entry.track))
     .sort((a, b) => b.track.lastEventId - a.track.lastEventId);
   const liveEntries = entries.filter(({ job, track }) => isDockTrackLive(job.status, track.status));
   const pool = liveEntries.length > 0 ? liveEntries : entries;
-  for (const { track } of pool) {
+  for (const { job, track } of pool) {
     if (track.latestLine) return { text: track.latestLine, thinking: false };
+    if (isDockTrackLive(job.status, track.status) && track.thought) return { text: "", thinking: true };
   }
-  return { text: "", thinking: liveEntries.some(({ track }) => Boolean(track.thought)) };
+  return { text: "", thinking: false };
 }
 
 export function mergeDockJobs(activeJobs: readonly JobView[], allJobs: readonly JobView[], retainedJobs: readonly RetainedJob[]): readonly JobView[] {

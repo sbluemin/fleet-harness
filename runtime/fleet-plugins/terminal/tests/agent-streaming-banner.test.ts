@@ -188,6 +188,20 @@ describe("getDockTailText (접힘 스트립 테일)", () => {
     expect(getDockTailText([retained])).toEqual({ text: "finished output", thinking: false });
   });
 
+  it("라이브 풀 안에서도 최신 활동이 thinking-only 트랙이면 오래된 output 대신 thinking을 표시한다", () => {
+    const live = makeTailJob("live-1", "active", [
+      { id: "a", status: "stream", lastEventId: 10, latestLine: "older output" },
+      { id: "b", status: "stream", lastEventId: 20, thought: "fresh reasoning" },
+    ]);
+    expect(getDockTailText([live])).toEqual({ text: "", thinking: true });
+    // 반대로 output 트랙이 최신이면 그 라인이 테일이다.
+    const flipped = makeTailJob("live-2", "active", [
+      { id: "a", status: "stream", lastEventId: 30, latestLine: "newest output" },
+      { id: "b", status: "stream", lastEventId: 20, thought: "old reasoning" },
+    ]);
+    expect(getDockTailText([flipped])).toEqual({ text: "newest output", thinking: false });
+  });
+
   it("종결 잡의 stale 라이브 트랙은 라이브 풀에 들어가지 않는다", () => {
     // job:finalized가 트랙 상태를 바꾸지 않아 stream으로 남은 트랙 — 라이브로 취급 금지.
     const staleRetained = makeTailJob("err-1", "error", [{ id: "a", status: "stream", lastEventId: 30, latestLine: "partial output" }]);
