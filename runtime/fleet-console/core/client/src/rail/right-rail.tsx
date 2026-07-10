@@ -9,7 +9,7 @@ import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { fetchRailPathContext, putRailPathContext } from "./path-context-api.js";
 import { getState, subscribe } from "../store.js";
 import { PathContextDeck } from "./path-context-deck.js";
-import { closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
+import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -162,7 +162,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
   const wasDeckOpenRef = useRef(false);
   const pathAware = activePanel.pathAware === true;
   const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? "Theater");
-  const canRenderPathAwareBody = !pathAware || hasHydratedPathContext;
+  const canRenderPathAwareBody = canRenderPathAwarePanelBody(pathAware, theaterId, hasHydratedPathContext);
 
   useEffect(() => {
     if (wasDeckOpenRef.current && !isPathContextDeckOpen) {
@@ -204,7 +204,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
             onClick={() => setRailPathContextDeckOpen(!isPathContextDeckOpen)}
           >
             <span className="rail-context-title-text">{activePanel.title}</span>
-            <span className="rail-context-label" title={hasHydratedPathContext ? ctx.pathContext.label : "Loading…"}>{hasHydratedPathContext ? ctx.pathContext.label : "Loading…"}</span>
+            <span className="rail-context-label" title={theaterId === null ? "Theater-wide" : hasHydratedPathContext ? ctx.pathContext.label : "Loading…"}>{theaterId === null ? "Theater-wide" : hasHydratedPathContext ? ctx.pathContext.label : "Loading…"}</span>
             <span className="rail-context-title-caret" aria-hidden="true">⌄</span>
           </button>
         ) : (

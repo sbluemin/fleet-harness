@@ -207,3 +207,22 @@ describe("path context state", () => {
     });
   });
 });
+
+describe("canRenderPathAwarePanelBody", () => {
+  it("renders non-aware panels regardless of hydration", async () => {
+    const { canRenderPathAwarePanelBody } = await freshStore();
+    expect(canRenderPathAwarePanelBody(false, null, false)).toBe(true);
+    expect(canRenderPathAwarePanelBody(false, "t1", false)).toBe(true);
+  });
+
+  it("renders path-aware panels without a Theater so no-Theater empty states stay reachable", async () => {
+    const { canRenderPathAwarePanelBody } = await freshStore();
+    expect(canRenderPathAwarePanelBody(true, null, false)).toBe(true);
+  });
+
+  it("gates path-aware panels on hydration only while a Theater is selected", async () => {
+    const { canRenderPathAwarePanelBody } = await freshStore();
+    expect(canRenderPathAwarePanelBody(true, "t1", false)).toBe(false);
+    expect(canRenderPathAwarePanelBody(true, "t1", true)).toBe(true);
+  });
+});

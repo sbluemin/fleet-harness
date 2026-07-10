@@ -45,6 +45,12 @@ let store: RailStore = {
   isPathContextDeckOpen: false,
 };
 
+// Theater가 없으면 경로 컨텍스트 자체가 존재하지 않으므로 hydrate 게이트를 적용하지 않는다 —
+// 패널은 자체 no-Theater 상태를 렌더해야 한다(게이트 목적은 '다른 Theater의 stale 컨텍스트 차단'뿐).
+export function canRenderPathAwarePanelBody(pathAware: boolean, theaterId: string | null, hasHydratedPathContext: boolean): boolean {
+  return !pathAware || theaterId === null || hasHydratedPathContext;
+}
+
 export function subscribeRailStore(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
