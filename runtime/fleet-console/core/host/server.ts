@@ -12,6 +12,7 @@ import { createInfraServices } from "@dotobokuri/core-infra";
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
+import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore } from "./console-settings.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
@@ -173,6 +174,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "POST",
     path: "/api/v1/theaters/:theaterId/path-context/directories",
     summary: "List contained directories for a Theater path context.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/theaters/:theaterId/codex-workspace",
+    summary: "Resolve the Codex workspace for a Theater path context.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -460,6 +468,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     setPathContext: (theaterId, relPath) => theaters.setPathContext(theaterId, relPath),
     writeJson,
   });
+  const codexWorkspaceContextRouter = createCodexWorkspaceContextRouter({
+    getTheater: (theaterId) => theaters.get(theaterId),
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    resolveWorkspace: (theaterRoot, relPath) => codex.resolveWorkspaceForPath(theaterRoot, relPath),
+    writeJson,
+  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -488,7 +503,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
-  routeRegistry.register("/api/v1/theaters", theaterPathContextRouter);
+  routeRegistry.register("/api/v1/theaters", async (context) => {
+    if (await theaterPathContextRouter(context)) return true;
+    return codexWorkspaceContextRouter(context);
+  });
   routeRegistry.register("/api/v1/settings", async (ctx) => {
     const { req, res, pathname } = ctx;
     if (pathname === "/api/v1/settings/api-catalog") {

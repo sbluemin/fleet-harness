@@ -8,6 +8,7 @@ import type { AllowedAccessSets } from "./types.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "../security-headers.js";
+import { resolveTheaterPathContext } from "../theater-path-context.js";
 
 interface CodexGatewayDeps {
   readonly cwd: string;
@@ -29,19 +30,25 @@ type WorkspaceSelection =
 
 type NetworkInterfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
 
-const CODEX_BASE = "/console/codex";
-const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST"]);
-const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
-const LOOPBACK_ACCESS_HOSTS = ["127.0.0.1", "::1"];
-const LOOPBACK_HOST = "127.0.0.1";
-
 export interface CodexGateway {
   getWorkspace(id: string): WorkspaceRegistration | null;
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
   listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
   registerWorkspace(cwd: string, lastOpenedAt?: string): Promise<WorkspaceRegistration>;
+  resolveWorkspaceForPath(theaterRoot: string, relPath: string | null): Promise<CodexWorkspaceResolution>;
   unregisterWorkspace(id: string): boolean;
 }
+
+export interface CodexWorkspaceResolution {
+  readonly hasWiki: boolean;
+  readonly id: string | null;
+}
+
+const CODEX_BASE = "/console/codex";
+const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST"]);
+const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
+const LOOPBACK_ACCESS_HOSTS = ["127.0.0.1", "::1"];
+const LOOPBACK_HOST = "127.0.0.1";
 
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   const workspaces = new WorkspaceRegistry();
@@ -107,11 +114,25 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     return workspace;
   }
 
+  async function resolveWorkspaceForPath(theaterRoot: string, relPath: string | null): Promise<CodexWorkspaceResolution> {
+    const pathContext = await resolveTheaterPathContext(theaterRoot, relPath);
+    try {
+      const workspace = await workspaces.register(pathContext.realPath);
+      return { hasWiki: true, id: workspace.id };
+    } catch (error) {
+      if (error instanceof Error && error.message === "knowledge_root_missing") {
+        return { hasWiki: false, id: null };
+      }
+      throw error;
+    }
+  }
+
   return {
     getWorkspace: (id) => workspaces.get(id),
     handle,
     listWorkspaceRegistrations: () => workspaces.listRegistrations(),
     registerWorkspace: (cwd, lastOpenedAt) => workspaces.register(cwd, lastOpenedAt),
+    resolveWorkspaceForPath,
     unregisterWorkspace: (id) => {
       // 캐시된 initial workspace가 해제 대상이면 캐시를 비워, 이후 비프리픽스 라우트가
       // 레지스트리에서 사라진 등록을 계속 서빙하지 않게 한다(다음 접근 시 재평가).

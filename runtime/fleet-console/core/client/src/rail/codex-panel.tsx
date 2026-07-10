@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { RailPanelDescriptor, RailPathContext } from "@fleet-console/sdk/rail";
 
 import { useConsoleState } from "../hooks/use-store.js";
 import {
@@ -14,30 +14,42 @@ import {
 import { closeCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 import { loadInitialData } from "../codex/state.js";
 
-// ─── Rail panel descriptor ────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface CodexWorkspaceState {
+  readonly contextKey: string;
+  readonly hasWiki: boolean;
+  readonly id: string | null;
+}
+
+// ─── Rail panel descriptor ───────────────────────────────────────────────────
 
 export const codexPanel: RailPanelDescriptor = {
   id: "codex",
   title: "Codex",
   icon: () => <CodexIcon />,
-  render: () => <CodexRailPanel />,
+  pathAware: true,
+  render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} pathContext={ctx.pathContext} />,
 };
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-function CodexRailPanel() {
+function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string | null; readonly pathContext: RailPathContext }) {
   const state = useConsoleState();
   const navRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
+  const latestContextKeyRef = useRef("");
+  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(null);
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
   const expanded = state.codexReaderExpanded;
   const activeTheater = state.theaters.find((t) => t.id === state.activeTheaterId) ?? null;
-  const activeTheaterId = activeTheater?.id ?? null;
-  const shouldMountCodex = Boolean(activeTheater?.hasWiki);
   const hasTheaters = state.theaters.length > 0;
+  const contextKey = `${theaterId ?? ""}\u0000${pathContext.relPath ?? ""}`;
+  const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
+  const shouldMountCodex = workspaceId !== null;
 
   const readerKey = reader
     ? `${reader.kind}:${
@@ -49,23 +61,37 @@ function CodexRailPanel() {
       }`
     : null;
 
-  // shouldMountCodex false 전환 시 teardown; unmount 시에도 teardown
+  // 컨텍스트 변경 시 이전 reader가 새 workspace에서 잠시 보이지 않도록 먼저 닫는다.
   useEffect(() => {
-    if (!shouldMountCodex) {
-      teardownCodex();
+    latestContextKeyRef.current = contextKey;
+    closeCodexReader();
+    if (!theaterId) {
+      setWorkspace({ contextKey, hasWiki: false, id: null });
       return;
     }
-    return () => {
-      teardownCodex();
-    };
-  }, [shouldMountCodex]);
+    void resolveCodexWorkspace(theaterId, pathContext.relPath).then((result) => {
+      if (latestContextKeyRef.current !== contextKey) return;
+      setWorkspace({ contextKey, ...result });
+    }).catch(() => {
+      if (latestContextKeyRef.current !== contextKey) return;
+      setWorkspace({ contextKey, hasWiki: false, id: null });
+    });
+  }, [contextKey, pathContext.relPath, theaterId]);
+
+  // 위키 없음이 확정된 경우에만 singleton을 정리한다. 다음 context를 해석하는 동안에는
+  // destroy+remount하지 않고, 기존 host를 새 navigator 컨테이너로 relocate한다.
+  useEffect(() => {
+    if (workspace?.contextKey === contextKey && !workspace.hasWiki) teardownCodex();
+  }, [contextKey, workspace]);
+
+  useEffect(() => () => teardownCodex(), []);
 
   // navigator 마운트 + onRequest 등록 — hasReader 전환 시 navRef 컨테이너가 바뀌므로 재배치
   useEffect(() => {
-    if (!shouldMountCodex || !activeTheaterId) return;
+    if (!shouldMountCodex || !workspaceId) return;
     const node = navRef.current;
     if (!node) return;
-    mountNavigatorInto(node, activeTheaterId);
+    mountNavigatorInto(node, workspaceId);
     setOnRequestOpenReader((r) => {
       if (r.kind === "entry") openCodexReader({ kind: "entry", entryId: r.id });
       else if (r.kind === "drydock") openCodexReader({ kind: "drydock", patchId: r.patchId });
@@ -74,18 +100,18 @@ function CodexRailPanel() {
     return () => {
       setOnRequestOpenReader(null);
     };
-  }, [shouldMountCodex, activeTheaterId, hasReader]);
+  }, [shouldMountCodex, workspaceId, hasReader]);
 
-  // Theater 전환 시 navigator theater 업데이트
+  // context 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾼다.
   useEffect(() => {
-    if (shouldMountCodex && activeTheaterId) {
-      setNavigatorTheater(activeTheaterId);
+    if (shouldMountCodex && workspaceId) {
+      setNavigatorTheater(workspaceId);
     }
-  }, [activeTheaterId, shouldMountCodex]);
+  }, [shouldMountCodex, workspaceId]);
 
   // split reader mount — expanded=true면 오버레이가 처리 중이므로 건너뜀
   useEffect(() => {
-    if (!shouldMountCodex || !activeTheaterId || !hasReader || expanded) return;
+    if (!shouldMountCodex || !workspaceId || !hasReader || expanded) return;
     if (!readRef.current || !tocRef.current || !reader) return;
     const kind = reader.kind;
     const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
@@ -93,7 +119,7 @@ function CodexRailPanel() {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
-      theaterId: activeTheaterId,
+      theaterId: workspaceId,
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
       onClose: () => closeCodexReader(),
       onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
@@ -102,7 +128,7 @@ function CodexRailPanel() {
         openCodexReader({ kind: "drydock", patchId: undefined });
       },
     });
-  }, [shouldMountCodex, activeTheaterId, hasReader, expanded, readerKey]);
+  }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey]);
 
   // hasReader=false 시 reader 호스트 노드 정리
   useEffect(() => {
@@ -110,7 +136,7 @@ function CodexRailPanel() {
   }, [hasReader]);
 
   if (!shouldMountCodex) {
-    return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
+    return <CodexEmpty activeTheater={activeTheater} contextLabel={pathContext.label} hasTheaters={hasTheaters} />;
   }
 
   if (!hasReader) {
@@ -149,9 +175,11 @@ function CodexRailPanel() {
 
 function CodexEmpty({
   activeTheater,
+  contextLabel,
   hasTheaters,
 }: {
   readonly activeTheater: { readonly label: string } | null;
+  readonly contextLabel: string;
   readonly hasTheaters: boolean;
 }) {
   if (!hasTheaters) {
@@ -166,10 +194,31 @@ function CodexEmpty({
   return (
     <section className="codex-empty-state">
       <p className="codex-empty-eyebrow">Codex unavailable</p>
-      <h1>{activeTheater?.label ?? "This Theater"}</h1>
-      <p>This Theater does not have Fleet Wiki data mounted.</p>
+      <h1>{contextLabel || activeTheater?.label || "This context"}</h1>
+      <p>This selected context does not have Fleet Wiki data mounted.</p>
     </section>
   );
+}
+
+async function resolveCodexWorkspace(theaterId: string, relPath: string | null): Promise<Omit<CodexWorkspaceState, "contextKey">> {
+  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/codex-workspace`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ relPath }),
+  });
+  if (!response.ok) throw new Error("codex_workspace_unavailable");
+  return assertCodexWorkspace(await response.json());
+}
+
+function assertCodexWorkspace(value: unknown): Omit<CodexWorkspaceState, "contextKey"> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_codex_workspace");
+  const payload = value as Record<string, unknown>;
+  if (Object.keys(payload).length !== 2 || typeof payload.hasWiki !== "boolean") throw new Error("invalid_codex_workspace");
+  if (payload.hasWiki && typeof payload.id === "string" && /^[0-9a-f]{12}$/.test(payload.id)) {
+    return { hasWiki: true, id: payload.id };
+  }
+  if (!payload.hasWiki && payload.id === null) return { hasWiki: false, id: null };
+  throw new Error("invalid_codex_workspace");
 }
 
 function CodexIcon() {
