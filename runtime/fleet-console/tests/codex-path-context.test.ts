@@ -48,7 +48,7 @@ describe("Codex workspace path-context resolution", () => {
     const selectedDir = path.join(theaterRoot, "without-wiki");
     await Promise.all([createKnowledgeRoot(theaterRoot), mkdir(selectedDir)]);
 
-    const result = await createGateway().resolveWorkspaceForPath(theaterRoot, "without-wiki");
+    const result = await createGateway().resolveWorkspaceForPath("theater", theaterRoot, "without-wiki");
 
     expect(result).toEqual({ hasWiki: false, id: null });
   });
@@ -59,8 +59,8 @@ describe("Codex workspace path-context resolution", () => {
     const gateway = createGateway();
 
     const [first, second] = await Promise.all([
-      gateway.resolveWorkspaceForPath(theaterRoot, "workspace"),
-      gateway.resolveWorkspaceForPath(theaterRoot, "workspace"),
+      gateway.resolveWorkspaceForPath("theater", theaterRoot, "workspace"),
+      gateway.resolveWorkspaceForPath("theater", theaterRoot, "workspace"),
     ]);
 
     expect(first).toEqual({ hasWiki: true, id: workspaceHash(await realpath(selectedDir)) });
@@ -74,10 +74,38 @@ describe("Codex workspace path-context resolution", () => {
     await symlink(outsideDir, path.join(theaterRoot, "escape"));
     const gateway = createGateway();
 
-    await expect(gateway.resolveWorkspaceForPath(theaterRoot, "/tmp")).rejects.toMatchObject({ code: "invalid_path" });
-    await expect(gateway.resolveWorkspaceForPath(theaterRoot, "../outside")).rejects.toMatchObject({ code: "invalid_path" });
-    await expect(gateway.resolveWorkspaceForPath(theaterRoot, "escape")).rejects.toMatchObject({ code: "forbidden" });
+    await expect(gateway.resolveWorkspaceForPath("theater", theaterRoot, "/tmp")).rejects.toMatchObject({ code: "invalid_path" });
+    await expect(gateway.resolveWorkspaceForPath("theater", theaterRoot, "../outside")).rejects.toMatchObject({ code: "invalid_path" });
+    await expect(gateway.resolveWorkspaceForPath("theater", theaterRoot, "escape")).rejects.toMatchObject({ code: "forbidden" });
     expect(gateway.listWorkspaceRegistrations()).toHaveLength(0);
+  });
+
+  it("unregisters nested workspaces when their owner Theater is forgotten", async () => {
+    const selectedDir = path.join(theaterRoot, "workspace");
+    await createKnowledgeRoot(selectedDir);
+    const gateway = createGateway();
+    const resolved = await gateway.resolveWorkspaceForPath("theater-a", theaterRoot, "workspace");
+
+    gateway.unregisterTheaterWorkspaces("theater-a");
+
+    expect(resolved.id).not.toBeNull();
+    expect(gateway.getWorkspace(resolved.id!)).toBeNull();
+  });
+
+  it("keeps a nested workspace while another Theater still owns it", async () => {
+    const selectedDir = path.join(theaterRoot, "workspace");
+    await createKnowledgeRoot(selectedDir);
+    const gateway = createGateway();
+    const first = await gateway.resolveWorkspaceForPath("theater-a", theaterRoot, "workspace");
+    const second = await gateway.resolveWorkspaceForPath("theater-b", theaterRoot, "workspace");
+
+    gateway.unregisterTheaterWorkspaces("theater-a");
+
+    expect(first).toEqual(second);
+    expect(first.id).not.toBeNull();
+    expect(gateway.getWorkspace(first.id!)).not.toBeNull();
+    gateway.unregisterTheaterWorkspaces("theater-b");
+    expect(gateway.getWorkspace(first.id!)).toBeNull();
   });
 });
 
@@ -99,7 +127,7 @@ describe("Codex workspace path-context route", () => {
       pathname: "/api/v1/theaters/theater/codex-workspace",
     });
 
-    expect(resolveWorkspace).toHaveBeenCalledWith("/tmp/theater", "workspace");
+    expect(resolveWorkspace).toHaveBeenCalledWith("theater", "/tmp/theater", "workspace");
     expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 200, { hasWiki: true, id: WORKSPACE_ID });
   });
 

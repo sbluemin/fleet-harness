@@ -10,7 +10,7 @@ export interface CodexWorkspaceContextRouteDeps {
   readonly getTheater: (theaterId: string) => TheaterRegistration | null;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
-  readonly resolveWorkspace: (theaterRoot: string, relPath: string | null) => Promise<CodexWorkspaceResolution>;
+  readonly resolveWorkspace: (theaterId: string, theaterRoot: string, relPath: string | null) => Promise<CodexWorkspaceResolution>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
 }
 
@@ -51,7 +51,7 @@ export function createCodexWorkspaceContextRouter(
       return true;
     }
     try {
-      deps.writeJson(res, 200, await deps.resolveWorkspace(theater.realpath, body.relPath));
+      deps.writeJson(res, 200, await deps.resolveWorkspace(theater.id, theater.realpath, body.relPath));
     } catch (error) {
       writePathError(res, deps, error);
     }

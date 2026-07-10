@@ -472,7 +472,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     getTheater: (theaterId) => theaters.get(theaterId),
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
-    resolveWorkspace: (theaterRoot, relPath) => codex.resolveWorkspaceForPath(theaterRoot, relPath),
+    resolveWorkspace: (theaterId, theaterRoot, relPath) => codex.resolveWorkspaceForPath(theaterId, theaterRoot, relPath),
     writeJson,
   });
   const operationsRouter = createOperationsRouter({
@@ -708,7 +708,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const theater = await theaters.register(cwd);
     let hasWiki = false;
     try {
-      await codex.registerWorkspace(cwd);
+      await codex.registerWorkspace(theater.realpath, undefined, theater.id);
       hasWiki = true;
     } catch (error) {
       if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
@@ -731,9 +731,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
     // 이미 달성된 것이므로 404가 아닌 성공으로 처리하고, 남아 있을 수 있는 소속 Operation도 함께 정리한다.
     theaters.remove(theaterId);
-    // Theater를 잊을 때 Codex 워크스페이스 등록도 함께 해제한다. 등록을 남겨두면
-    // /console/codex/w/:id/ 직접 URL이 재시작 전까지 잊은 Theater의 위키를 계속 서빙한다(등록/복원 경로와 대칭).
-    codex.unregisterWorkspace(theaterId);
+    // Theater를 잊을 때 그 Theater가 소유한 root·nested Codex 워크스페이스를 모두 해제한다.
+    // 다른 Theater가 같은 workspace id를 소유하면 등록을 유지한다.
+    codex.unregisterTheaterWorkspaces(theaterId);
     for (const operation of operations.listByTheater(theaterId)) {
       pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, {
         operationId: operation.id,
@@ -982,7 +982,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
     for (const theater of ordered) {
       try {
-        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt);
+        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
       } catch (error) {
         // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
         if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
