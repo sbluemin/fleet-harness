@@ -33,7 +33,7 @@ import { AcpConnection } from '../connection/AcpConnection.js';
 import { CodexAppServerConnection } from '../connection/CodexAppServerConnection.js';
 import { CliDetector } from '../detector/CliDetector.js';
 import {
-  buildCodexDeveloperInstructionConfig,
+  buildCodexConfigEnv,
   buildConfigOverrideArgs,
   createSpawnConfig,
   getBackendConfig,
@@ -77,10 +77,6 @@ interface CodexThreadDefaultsForResume {
 const CODEX_TURN_LEVEL_CONFIG_KEYS = new Set(['effort', 'model']);
 const CODEX_THREAD_POLICY_CONFIG_KEYS = new Set(['approvalPolicy', 'sandbox']);
 const CODEX_USE_ACP = true;
-// Windows의 32K argv 한도(`CreateProcessW`)에 걸려 ENAMETOOLONG이 발생하므로
-// Codex ACP 경로에서는 Windows에서만 첫 메시지 prepend 폴백을 사용한다.
-// 다른 플랫폼은 충분한 argv 여유가 있어 기존 `-c developer_instructions=...` argv 주입을 유지.
-const CODEX_ACP_PROMPT_FALLBACK = process.platform === 'win32';
 
 type CodexConnection = CodexAppServerConnection | AcpConnection;
 
@@ -93,7 +89,6 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private sessionId: string | null = null;
   private sessionCwd: string | null = null;
   private currentSystemPrompt: string | null = null;
-  private firstPromptPending: string | null = null;
   private pendingOverrides: CodexPendingOverrides | null = null;
   private detector = new CliDetector();
 
@@ -210,22 +205,19 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private async connectAcp(options: UnifiedClientOptions): Promise<ConnectResult> {
     const cleanEnv = cleanEnvironment(process.env, options.env);
     const spawnConfig = createSpawnConfig('codex', options);
-    const developerInstructions = CODEX_ACP_PROMPT_FALLBACK ? undefined : (options.systemPrompt ?? undefined);
-    const args = [
-      ...spawnConfig.args,
-      ...this.buildStartupConfigArgs(
-        options.configOverrides,
-        undefined,
-        undefined,
-        developerInstructions,
-      ),
-    ];
+    // codex-acp 브릿지는 argv를 무시하므로 systemPrompt/configOverrides는 CODEX_CONFIG env로 주입한다.
+    // 브릿지가 thread/start·thread/resume config에 spread하며, 모든 플랫폼 단일 경로로 동작한다.
+    const codexConfigEnv = buildCodexConfigEnv(
+      options.systemPrompt,
+      options.configOverrides,
+      cleanEnv.CODEX_CONFIG as string | undefined,
+    );
     const connection = new AcpConnection({
       command: spawnConfig.command,
-      args,
+      args: spawnConfig.args,
       cliType: 'codex',
       cwd: options.cwd,
-      env: { ...cleanEnv },
+      env: { ...cleanEnv, ...(codexConfigEnv ? { CODEX_CONFIG: codexConfigEnv } : {}) },
       requestTimeout: options.timeout ?? 600_000,
       initTimeout: options.timeout ?? 60_000,
       promptIdleTimeout: options.promptIdleTimeout ?? 600_000,
@@ -336,19 +328,9 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       if (!this.sessionId) {
         throw new Error('연결되어 있지 않습니다');
       }
-      const systemPrompt = this.firstPromptPending;
-      if (!systemPrompt) {
-        return this.connection.sendPrompt(this.sessionId, content);
-      }
-      const userBlocks: AcpContentBlock[] = typeof content === 'string'
-        ? [{ type: 'text', text: content }]
-        : content;
-      const response = await this.connection.sendPrompt(this.sessionId, [
-        { type: 'text', text: systemPrompt },
-        ...userBlocks,
-      ]);
-      this.firstPromptPending = null;
-      return response;
+      // systemPrompt는 connect 시점 CODEX_CONFIG env로 이미 주입되어 프로세스 전체에 상주하므로
+      // 프롬프트에 prepend하지 않는다.
+      return this.connection.sendPrompt(this.sessionId, content);
     }
 
     this.applyPendingOverrides();
@@ -452,8 +434,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
         mcpServers: this.resolveAcpMcpServers(mcpServers),
       });
       this.sessionId = sessionId;
-      this.currentSystemPrompt = null;
-      this.firstPromptPending = null;
+      // connect 시점 CODEX_CONFIG env 지침이 load 이후에도 상주하므로 snapshot을 보존한다.
       return;
     }
 
@@ -494,7 +475,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       const session = await this.connection.reconnectSession(targetCwd);
       this.sessionId = session.sessionId;
       this.sessionCwd = targetCwd;
-      this.firstPromptPending = this.currentSystemPrompt;
+      // CODEX_CONFIG env는 프로세스 수준이라 reconnectSession의 새 thread/start가 지침을 자동 재적용한다.
 
       return {
         cli: 'codex',
@@ -529,9 +510,6 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.sessionId = session.sessionId;
     this.sessionCwd = options.cwd;
     this.currentSystemPrompt = options.systemPrompt ?? null;
-    this.firstPromptPending = CODEX_ACP_PROMPT_FALLBACK && !options.sessionId
-      ? (options.systemPrompt ?? null)
-      : null;
     this.pendingOverrides = {
       turnConfig: {},
       threadConfig: {},
@@ -553,7 +531,6 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.sessionId = null;
     this.sessionCwd = null;
     this.currentSystemPrompt = null;
-    this.firstPromptPending = null;
     this.pendingOverrides = null;
   }
 
@@ -801,10 +778,8 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     overrides?: string[],
     servers?: McpServerConfig[],
     modeMapping?: CodexModeMapping,
-    developerInstructions?: string | null,
   ): string[] {
     const configArgs = [
-      ...buildCodexDeveloperInstructionConfig(developerInstructions),
       ...(modeMapping ? [
         `approval_policy="${modeMapping.approvalPolicy}"`,
         `sandbox_mode="${modeMapping.sandbox}"`,

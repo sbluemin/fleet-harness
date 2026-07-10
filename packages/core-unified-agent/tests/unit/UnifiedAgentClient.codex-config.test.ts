@@ -12,6 +12,12 @@ const mockSetPendingModel = vi.fn();
 const mockSetPendingEffort = vi.fn();
 const mockRemoveAllListeners = vi.fn();
 
+const mockAcpConnect = vi.fn();
+const mockAcpSendPrompt = vi.fn();
+const mockAcpSetMode = vi.fn();
+const mockAcpSetModel = vi.fn();
+const mockAcpSetConfigOption = vi.fn();
+
 function createMockCodexConnection(): EventEmitter & Record<string, unknown> {
   const emitter = new EventEmitter();
   Object.assign(emitter, {
@@ -31,12 +37,36 @@ function createMockCodexConnection(): EventEmitter & Record<string, unknown> {
   return emitter as EventEmitter & Record<string, unknown>;
 }
 
+// ACP 경로용 mock 연결. instanceof AcpConnection이 true가 되도록 prototype을 상속시키고,
+// EventEmitter 기반 이벤트 메서드와 connect/sendPrompt 등 사용 메서드를 주입한다.
+function createMockAcpConnection(): Record<string, unknown> {
+  const emitter = new EventEmitter();
+  return Object.assign(Object.create(AcpConnection.prototype), {
+    on: emitter.on.bind(emitter),
+    off: emitter.off.bind(emitter),
+    once: emitter.once.bind(emitter),
+    emit: emitter.emit.bind(emitter),
+    removeAllListeners: vi.fn(),
+    connect: mockAcpConnect,
+    sendPrompt: mockAcpSendPrompt,
+    setMode: mockAcpSetMode,
+    setModel: mockAcpSetModel,
+    setConfigOption: mockAcpSetConfigOption,
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    endSession: vi.fn().mockResolvedValue(undefined),
+    cancelSession: vi.fn().mockResolvedValue(undefined),
+    canResetSession: true,
+    connectionState: 'ready',
+    sessionId: 'acp-session-1',
+  });
+}
+
 vi.mock('../../src/connection/CodexAppServerConnection.js', () => ({
   CodexAppServerConnection: vi.fn(() => createMockCodexConnection()),
 }));
 
 vi.mock('../../src/connection/AcpConnection.js', () => ({
-  AcpConnection: vi.fn(),
+  AcpConnection: vi.fn(() => createMockAcpConnection()),
 }));
 
 vi.mock('../../src/detector/CliDetector.js', () => ({
@@ -62,6 +92,12 @@ async function connectAppServer(
   await client['connectAppServer'](options);
 }
 
+// ACP 연결 생성자에 전달된 첫 호출 인자(env/args)를 추출한다.
+function acpCtorOptions(): { env?: Record<string, string | undefined>; args: string[] } {
+  const call = vi.mocked(AcpConnection).mock.calls[0];
+  return call[0] as unknown as { env?: Record<string, string | undefined>; args: string[] };
+}
+
 describe('UnifiedCodexAgentClient config staging', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,6 +108,11 @@ describe('UnifiedCodexAgentClient config staging', () => {
     mockCodexLoadSession.mockResolvedValue({ thread: { id: 'codex-thread-9' } });
     mockCodexSendMessage.mockResolvedValue(undefined);
     mockCodexCancelPrompt.mockResolvedValue(undefined);
+    mockAcpConnect.mockResolvedValue({ sessionId: 'acp-session-1' });
+    mockAcpSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
+    mockAcpSetMode.mockResolvedValue(undefined);
+    mockAcpSetModel.mockResolvedValue(undefined);
+    mockAcpSetConfigOption.mockResolvedValue(undefined);
   });
 
   it('ACP mode 매핑은 공식 codex-acp bridge mode ID를 사용한다', () => {
@@ -99,7 +140,9 @@ describe('UnifiedCodexAgentClient config staging', () => {
     expect(AcpConnection).not.toHaveBeenCalled();
   });
 
-  it('ACP resetSession 후 첫 프롬프트에 systemPrompt를 한 번만 재주입한다', async () => {
+  it('ACP resetSession 후 첫 프롬프트는 사용자 content만 전달한다(prepend 없음)', async () => {
+    // systemPrompt 주입은 connect 시점 CODEX_CONFIG env가 담당하므로, reconnect 후에도
+    // 프롬프트에 지침을 prepend하지 않고 사용자 입력만 그대로 전달해야 한다.
     const client = new UnifiedCodexAgentClient();
     const mockAcpConnection = Object.assign(Object.create(AcpConnection.prototype), {
       canResetSession: true,
@@ -113,7 +156,6 @@ describe('UnifiedCodexAgentClient config staging', () => {
       sessionId: 'acp-session-1',
       sessionCwd: '/workspace',
       currentSystemPrompt: '리셋 후 지침',
-      firstPromptPending: null,
     });
 
     await client.resetSession();
@@ -122,11 +164,56 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
     expect(mockAcpConnection.endSession).toHaveBeenCalledWith('acp-session-1');
     expect(mockAcpConnection.reconnectSession).toHaveBeenCalledWith('/workspace');
-    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-2', [
-      { type: 'text', text: '리셋 후 지침' },
-      { type: 'text', text: '첫 요청' },
-    ]);
+    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-2', '첫 요청');
     expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-2', '두 번째 요청');
+    // 리셋 이후에도 snapshot은 보존된다(env 상주).
+    expect(client.getCurrentSystemPrompt()).toBe('리셋 후 지침');
+  });
+
+  it('ACP 연결은 systemPrompt를 CODEX_CONFIG env로 주입하고 argv에는 넣지 않는다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      systemPrompt: '개발자 지침',
+    });
+
+    const options = acpCtorOptions();
+    const config = JSON.parse(options.env?.CODEX_CONFIG ?? '{}') as Record<string, unknown>;
+    expect(config.developer_instructions).toBe('개발자 지침');
+    // argv에는 -c / developer_instructions 흔적이 없어야 한다(argv 주입 폐기).
+    expect(options.args).not.toContain('-c');
+    expect(options.args.some((arg) => arg.includes('developer_instructions'))).toBe(false);
+  });
+
+  it('호출자 제공 CODEX_CONFIG(valid JSON)는 병합되고 developer_instructions는 systemPrompt가 우선한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      systemPrompt: '우선 지침',
+      env: {
+        CODEX_CONFIG: JSON.stringify({ model: 'gpt-5.4', developer_instructions: '무시될 지침' }),
+      },
+    });
+
+    const options = acpCtorOptions();
+    const config = JSON.parse(options.env?.CODEX_CONFIG ?? '{}') as Record<string, unknown>;
+    expect(config).toEqual({ model: 'gpt-5.4', developer_instructions: '우선 지침' });
+  });
+
+  it('systemPrompt·configOverrides·호출자 CODEX_CONFIG가 모두 없으면 env에 CODEX_CONFIG를 넣지 않는다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+    });
+
+    const options = acpCtorOptions();
+    expect(options.env?.CODEX_CONFIG).toBeUndefined();
   });
 
   it('codex 연결 시 systemPrompt를 developerInstructions로 전달한다', async () => {
