@@ -10,7 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
@@ -405,7 +405,7 @@ function StreamDock({
   );
   const hasActiveJob = activeJobs.some((job) => !isTerminalJobStatus(job.status));
   const hasError = activeJobs.some((job) =>
-    job.status === "error" || job.trackOrder.some((trackId) => job.tracks[trackId]?.status === "error")
+    job.status === "error" || job.trackOrder.some((trackId) => isTrackError(job.tracks[trackId]?.status ?? ""))
   );
   const dotClassName = hasActiveJob ? "job-dock-dot" : hasError ? "job-dock-dot job-dock-dot--error" : "job-dock-dot job-dock-dot--idle";
 
@@ -491,7 +491,7 @@ function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
       {showName ? (
         <span className="job-dock-row-name" data-captain={nameCaptain}>{track.displayName}</span>
       ) : null}
-      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${track.status === "error" ? " job-dock-row-status--error" : ""}`}>
+      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${isTrackError(track.status) ? " job-dock-row-status--error" : ""}`}>
         {statusLabel}{activeTool ? ` · ${activeTool}` : ""}
       </span>
       {displayLine ? (
@@ -879,7 +879,7 @@ function trackCardModifier(status: string): string {
   if (isTrackLive(status)) {
     return "track-card--live";
   }
-  if (status === "error") return "track-card--bad";
+  if (isTrackError(status)) return "track-card--bad";
   if (status === "done" || status === "aborted") return "track-card--idle";
   return "";
 }

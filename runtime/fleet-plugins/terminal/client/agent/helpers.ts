@@ -49,6 +49,11 @@ export function isTrackLive(status: string): boolean {
   return status === "conn" || status === "stream" || status === "live" || status === "running" || status === "active";
 }
 
+export function isTrackError(status: string): boolean {
+  // 트랙 SSoT는 "err"(core-agent TrackStatus·toTrackFinalStatus); 잡 레벨 종결 상태의 "error"도 수용한다.
+  return status === "err" || status === "error";
+}
+
 export function mergeJobIds(jobIds: readonly string[], additionalJobIds: readonly string[]): readonly string[] {
   const known = new Set(jobIds);
   const additions = additionalJobIds.filter((jobId) => {

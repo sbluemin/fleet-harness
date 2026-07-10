@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -117,6 +117,15 @@ describe("isTrackLive (도크와 Details 라이브 신호)", () => {
   it("conn 상태를 라이브로 분류하고 queued는 제외한다", () => {
     expect(isTrackLive("conn")).toBe(true);
     expect(isTrackLive("queued")).toBe(false);
+  });
+});
+
+describe("isTrackError (에러 신호 매칭)", () => {
+  it('트랙 SSoT "err"와 잡 레벨 "error"를 모두 에러로 분류한다', () => {
+    expect(isTrackError("err")).toBe(true);
+    expect(isTrackError("error")).toBe(true);
+    expect(isTrackError("done")).toBe(false);
+    expect(isTrackError("aborted")).toBe(false);
   });
 });
 
