@@ -127,6 +127,14 @@ describe("canvas store", () => {
     expect(slots[2]?.y).toBe(260);
   });
 
+  it("stretches the last row across the full width so no empty cell remains", () => {
+    const slots = calculateGridSlots({ x: 0, y: 0, width: 1000, height: 800 }, 3, 100, 100, 10, 0);
+
+    expect(slots[0]).toEqual({ x: 0, y: 0, width: 495, height: 395 });
+    expect(slots[1]).toEqual({ x: 505, y: 0, width: 495, height: 395 });
+    expect(slots[2]).toEqual({ x: 0, y: 405, width: 1000, height: 395 });
+  });
+
   it("arranges in one batch without changing relative z-order and undoes exact geometry", () => {
     setOperationGeometry("op-a", { ...GEOMETRY, x: 12, y: 14, width: 420, height: 260 });
     setOperationGeometry("op-b", { ...GEOMETRY, x: 80, y: 90, width: 500, height: 300 });

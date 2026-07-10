@@ -56,8 +56,8 @@ const DEFAULT_OPERATION_HEIGHT = 400;
 const DEFAULT_OPERATION_OFFSET = 40;
 export const MIN_OPERATION_WIDTH = 320;
 export const MIN_OPERATION_HEIGHT = 200;
-export const OPERATION_GRID_GAP = 16;
-export const OPERATION_GRID_PADDING = 24;
+export const OPERATION_GRID_GAP = 8;
+export const OPERATION_GRID_PADDING = 0;
 const OPERATION_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
 const FOCUS_MAX_ZOOM = 1;
@@ -217,7 +217,8 @@ export function visibleWorldRect(viewport: CanvasViewport, canvasSize: CanvasVie
   };
 }
 
-// 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 최소 크기 클램프 뒤에는
+// 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
+// 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기 클램프 뒤에는
 // 슬롯이 원래 rect를 넘을 수 있으며, 이는 작은 뷰포트에서도 패널의 조작 가능 크기를 지키기 위한 의도다.
 export function calculateGridSlots(
   rect: CanvasWorldRect,
@@ -230,14 +231,21 @@ export function calculateGridSlots(
   if (!Number.isFinite(count) || count <= 0) return [];
   const columns = Math.ceil(Math.sqrt(count));
   const rows = Math.ceil(count / columns);
-  const width = Math.max(minimumWidth, (rect.width - padding * 2 - gap * (columns - 1)) / columns);
+  const innerWidth = rect.width - padding * 2;
   const height = Math.max(minimumHeight, (rect.height - padding * 2 - gap * (rows - 1)) / rows);
-  return Array.from({ length: count }, (_, index) => ({
-    x: rect.x + padding + (index % columns) * (width + gap),
-    y: rect.y + padding + Math.floor(index / columns) * (height + gap),
-    width,
-    height,
-  }));
+  return Array.from({ length: count }, (_, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    // 마지막 행은 남은 패널 수 기준으로 폭을 재분배한다 — 3패널 2×2 그리드의 빈 셀 같은 공백을 없앤다.
+    const columnsInRow = row === rows - 1 ? count - (rows - 1) * columns : columns;
+    const width = Math.max(minimumWidth, (innerWidth - gap * (columnsInRow - 1)) / columnsInRow);
+    return {
+      x: rect.x + padding + column * (width + gap),
+      y: rect.y + padding + row * (height + gap),
+      width,
+      height,
+    };
+  });
 }
 
 // Arrange는 활성 Theater의 1회성 undo 슬롯을 갱신하고, 기존 zIndex를 그대로 둔 일괄 geometry 쓰기를 한다.
