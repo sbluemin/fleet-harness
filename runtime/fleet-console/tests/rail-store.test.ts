@@ -124,6 +124,7 @@ describe("path context state", () => {
     const { getRailStoreSnapshot, hydrateRailPathContext } = await freshStore();
     let resolveFirst!: (value: { kind: "directory"; relPath: string; label: string }) => void;
     const first = hydrateRailPathContext("a", async () => new Promise((resolve) => { resolveFirst = resolve; }));
+    await Promise.resolve();
     const second = hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "new", label: "new" }));
     await second;
     resolveFirst({ kind: "directory", relPath: "old", label: "old" });
@@ -160,5 +161,49 @@ describe("path context state", () => {
     await Promise.all([first, second]);
     expect(calls).toEqual(["first", "second"]);
     expect(getRailStoreSnapshot()).toMatchObject({ pathContextMutationInProgress: false, pathContext: { relPath: "second" } });
+  });
+
+  it("waits for A's pending PUT before applying a delayed A → B → A hydrate", async () => {
+    const { getRailStoreSnapshot, hydrateRailPathContext, mutateRailPathContext, selectRailPathContextTheater } = await freshStore();
+    const oldContext = { kind: "directory" as const, relPath: "old", label: "old" };
+    const newContext = { kind: "directory" as const, relPath: "new", label: "new" };
+    let serverContext = oldContext;
+    let resolvePut!: (value: typeof newContext) => void;
+    let resolveReturnedGet!: () => void;
+    let returnedGetStarted = false;
+
+    await hydrateRailPathContext("a", async () => oldContext);
+    const mutation = mutateRailPathContext("a", async () => new Promise((resolve) => {
+      resolvePut = (context) => {
+        serverContext = context;
+        resolve(context);
+      };
+    }));
+    await Promise.resolve();
+
+    selectRailPathContextTheater("b");
+    await hydrateRailPathContext("b", async () => ({ kind: "root", relPath: null, label: "B" }));
+    selectRailPathContextTheater("a");
+    const returnedHydrate = hydrateRailPathContext("a", async () => {
+      returnedGetStarted = true;
+      const snapshot = serverContext;
+      await new Promise<void>((resolve) => { resolveReturnedGet = resolve; });
+      return snapshot;
+    });
+    await Promise.resolve();
+    expect(returnedGetStarted).toBe(false);
+
+    resolvePut(newContext);
+    await mutation;
+    await Promise.resolve();
+    expect(returnedGetStarted).toBe(true);
+    resolveReturnedGet();
+    await returnedHydrate;
+
+    expect(getRailStoreSnapshot()).toMatchObject({
+      pathContextTheaterId: "a",
+      pathContext: newContext,
+      pathContextHydrated: true,
+    });
   });
 });

@@ -30,6 +30,7 @@ const listeners = new Set<Listener>();
 const pathContexts = new Map<string, RailPathContextState>();
 const pathContextMutationChains = new Map<string, Promise<void>>();
 const pendingPathContextMutations = new Map<string, number>();
+const pathContextMutationRevisions = new Map<string, number>();
 let activePathRequest: AbortController | null = null;
 let activePathGeneration = 0;
 let store: RailStore = {
@@ -103,16 +104,22 @@ export async function hydrateRailPathContext(theaterId: string, load: PathContex
   const controller = new AbortController();
   activePathRequest = controller;
   const generation = ++activePathGeneration;
+  const mutationRevision = pathContextMutationRevisions.get(theaterId) ?? 0;
   pathContexts.set(theaterId, { context: null, isHydrated: false, isLoading: true, error: null });
   if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: null, pathContextHydrated: false, pathContextLoading: true, pathContextError: null });
   try {
-    const context = await load(controller.signal);
+    // A → B → A 복귀처럼 hydrate가 기존 PUT보다 늦게 시작되면, 서버가 PUT 이전 상태를
+    // 읽은 GET을 만드는 일을 막기 위해 해당 Theater의 직렬 mutation chain 뒤에 붙인다.
+    await (pathContextMutationChains.get(theaterId) ?? Promise.resolve());
     if (controller.signal.aborted || generation !== activePathGeneration) return;
+    const context = await load(controller.signal);
+    // hydrate가 GET을 시작한 뒤 새 PUT이 예약되면, 응답은 현재 generation이어도 stale이다.
+    if (controller.signal.aborted || generation !== activePathGeneration || mutationRevision !== (pathContextMutationRevisions.get(theaterId) ?? 0)) return;
     const state = { context, isHydrated: true, isLoading: false, error: null };
     pathContexts.set(theaterId, state);
     if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: context, pathContextHydrated: true, pathContextLoading: false, pathContextError: null });
   } catch (error) {
-    if (controller.signal.aborted || generation !== activePathGeneration) return;
+    if (controller.signal.aborted || generation !== activePathGeneration || mutationRevision !== (pathContextMutationRevisions.get(theaterId) ?? 0)) return;
     const message = error instanceof Error ? error.message : "Unable to load path context";
     pathContexts.set(theaterId, { context: null, isHydrated: false, isLoading: false, error: message });
     if (store.pathContextTheaterId === theaterId) setStore({ ...store, pathContext: null, pathContextHydrated: false, pathContextLoading: false, pathContextError: message });
@@ -121,6 +128,7 @@ export async function hydrateRailPathContext(theaterId: string, load: PathContex
 
 export async function mutateRailPathContext(theaterId: string, save: PathContextSaver): Promise<RailPathContext | null> {
   if (store.pathContextTheaterId !== theaterId) return null;
+  pathContextMutationRevisions.set(theaterId, (pathContextMutationRevisions.get(theaterId) ?? 0) + 1);
   incrementPendingPathContextMutations(theaterId);
   const previous = pathContextMutationChains.get(theaterId) ?? Promise.resolve();
   const mutation = previous.then(() => persistRailPathContextMutation(theaterId, save));
