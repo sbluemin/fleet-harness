@@ -1,3 +1,4 @@
+import { isTerminalJobStatus } from "./reduce.js";
 import type { JobView } from "./types.js";
 
 export interface RetainedJob {
@@ -52,6 +53,14 @@ export function isTrackLive(status: string): boolean {
 export function isTrackError(status: string): boolean {
   // 트랙 SSoT는 "err"(core-agent TrackStatus·toTrackFinalStatus); 잡 레벨 종결 상태의 "error"도 수용한다.
   return status === "err" || status === "error";
+}
+
+export function resolveDockRowStatusLabel(trackStatus: string, jobStatus: string): string {
+  // 행 라벨은 트랙별 결과 우선 — 혼합 결과 taskforce가 잔존할 때 성공 트랙이 잡 레벨 "error"로
+  // 오표기되지 않게 한다. 종결 잡 안에 미종결로 남은 트랙만 잡 상태로 폴백한다.
+  if (isTrackError(trackStatus)) return "error";
+  if (trackStatus === "done" || trackStatus === "aborted") return trackStatus;
+  return isTerminalJobStatus(jobStatus) ? jobStatus : trackStatus;
 }
 
 export function mergeJobIds(jobIds: readonly string[], additionalJobIds: readonly string[]): readonly string[] {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -126,6 +126,19 @@ describe("isTrackError (에러 신호 매칭)", () => {
     expect(isTrackError("error")).toBe(true);
     expect(isTrackError("done")).toBe(false);
     expect(isTrackError("aborted")).toBe(false);
+  });
+});
+
+describe("resolveDockRowStatusLabel (잔존 도크 행 라벨)", () => {
+  it("혼합 결과 taskforce 잔존 시 성공 트랙은 done, 실패 트랙만 error로 표기한다", () => {
+    expect(resolveDockRowStatusLabel("done", "error")).toBe("done");
+    expect(resolveDockRowStatusLabel("err", "error")).toBe("error");
+    expect(resolveDockRowStatusLabel("aborted", "error")).toBe("aborted");
+  });
+
+  it("종결 잡 안의 미종결 트랙만 잡 상태로 폴백하고, 진행 중에는 트랙 상태를 그대로 쓴다", () => {
+    expect(resolveDockRowStatusLabel("stream", "error")).toBe("error");
+    expect(resolveDockRowStatusLabel("stream", "active")).toBe("stream");
   });
 });
 

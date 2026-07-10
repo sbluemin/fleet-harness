@@ -10,7 +10,7 @@ import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
@@ -480,7 +480,7 @@ function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
   const displayLine = tailOutput;
   const showThinking = !displayLine && isLive && Boolean(track.thought);
   const activeTool = isLive ? getActiveToolName(track) : undefined;
-  const statusLabel = isTerminalJobStatus(job.status) ? job.status : track.status;
+  const statusLabel = resolveDockRowStatusLabel(track.status, job.status);
 
   // 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략
   const showName = multiJob || !singleTrack;
