@@ -18,6 +18,8 @@ import { createConsoleSettingsStore } from "./console-settings.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createPluginSettingsRouter } from "./plugin-settings-routes.js";
+import { createSystemFontsRouter } from "./system-fonts-routes.js";
+import { createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createOperationsRouter } from "./operations/routes.js";
 import { createSanitizedOpDto } from "./operations/sanitize.js";
@@ -58,6 +60,7 @@ export interface ConsoleServerDeps {
   readonly releaseNotes?: ConsoleReleaseNotesService;
   readonly updateCheck?: ConsoleUpdateCheckService;
   readonly updateApply?: ConsoleUpdateApplyService;
+  readonly systemFonts?: SystemFontsService;
 }
 
 export interface ConsoleServer {
@@ -454,6 +457,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
+  const systemFontsRouter = createSystemFontsRouter({
+    systemFonts: deps.systemFonts ?? createSystemFontsService(),
+    writeJson,
+  });
   const plansRouter = createPlansRouter({
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
@@ -515,6 +522,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (await carrierSettingsRouter(ctx)) return true;
     if (await pluginSettingsRouter(ctx)) return true;
+    if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
   });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);

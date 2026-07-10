@@ -1,12 +1,15 @@
+import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
+import "@fleet-console/font-picker/styles.css";
+import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { definePlugin, React, type PluginInstallContext } from "@fleet-console/sdk/plugin/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
-import { CURATED_TERMINAL_FONTS, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontById, resolveTerminalFont } from "../shared/terminal-font.js";
-import { useTerminalPrefs, setTerminalRenderer, setTerminalFont, setCustomTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
-import type { TerminalFontSettings, TerminalFontId, TerminalRenderer } from "../shared/types.js";
+import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-font.js";
+import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
+import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
@@ -25,17 +28,6 @@ interface SettingToggleRowProps {
   readonly value: boolean;
   readonly disabled: boolean;
   readonly onToggle: () => void;
-}
-
-interface TerminalFontCardProps {
-  readonly active: boolean;
-  readonly font: {
-    readonly id: TerminalFontId;
-    readonly name: string;
-    readonly family: string;
-    readonly meta: string;
-  };
-  readonly onSelect: () => void;
 }
 
 interface RendererOption {
@@ -68,6 +60,8 @@ const DOCK_EXPANDED_KEY = "fleet-plugin.terminal.stream-dock-expanded";
 const LEGACY_DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
 const PIN_SLACK_PX = 56;
 const DOCK_RETENTION_MS = 4_000;
+const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, defaultValue: 14 };
+const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -706,96 +700,67 @@ function getLastLine(text: string): string {
 }
 
 function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {
-  const resolution = resolveTerminalFont(terminalFont);
-  const currentFontLabel = terminalFontLabel(terminalFont);
+  const [installedFonts, setInstalledFonts] = React.useState<readonly FontPickerInstalledFont[]>([]);
+  const [isLoadingFonts, setIsLoadingFonts] = React.useState(true);
+  const [fontLoadError, setFontLoadError] = React.useState<string | null>(null);
+  const selected = terminalFont.source === "curated" || !terminalFont.customName
+    ? { source: "builtin" as const, id: terminalFont.source === "curated" ? terminalFont.id ?? DEFAULT_TERMINAL_FONT.id : DEFAULT_TERMINAL_FONT.id }
+    : { source: "system" as const, familyName: terminalFont.customName };
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setIsLoadingFonts(true);
+    setFontLoadError(null);
+    void fetchSystemFonts({ signal: controller.signal })
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        setInstalledFonts(response.fonts.filter((font) => font.monospace).map((font) => ({ family: font.family, monospace: font.monospace })));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isAbortError(error)) return;
+        setInstalledFonts([]);
+        setFontLoadError("Installed system fonts are unavailable. Built-in fonts remain available.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingFonts(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const handleSelectionChange = (next: FontPickerSelection) => {
+    if (next.source === "system") {
+      setInstalledTerminalFont(next.familyName);
+      return;
+    }
+    const font = CURATED_TERMINAL_FONTS.find((candidate) => candidate.id === next.id);
+    if (font) setTerminalFont(font.id);
+  };
+
   return (
     <section className="global-settings-card" aria-label="Terminal Font">
-      <div className="global-settings-row is-stack">
+      <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">Terminal Font <span className="new-badge">New</span></p>
-          <p className="global-settings-help" id="terminal-font-help">Typeface and size for every terminal panel — agent-cli and shell alike. Applies live to all open terminals; remembered on this browser.</p>
-        </div>
-
-        <div className="font-control" aria-describedby="terminal-font-help">
-          <div className="current-readout" aria-live="polite">
-            <span className="cr-label">Currently</span>
-            <span className="cr-value">{currentFontLabel}</span>
-            <span className="cr-sep">·</span>
-            <span className="cr-value">{terminalFont.size}px</span>
-            <span className="cr-sep">·</span>
-            <span className={`cr-value ${resolution.status === "fallback" ? "is-fallback" : "is-ok"}`}>{resolution.status}</span>
-          </div>
-
-          <div className="font-cards" role="group" aria-label="Terminal font family">
-            {CURATED_TERMINAL_FONTS.map((font) => (
-              <TerminalFontCard
-                key={font.id}
-                font={font}
-                active={terminalFont.source === "curated" && terminalFont.id === font.id}
-                onSelect={() => setTerminalFont(font.id)}
-              />
-            ))}
-            <button
-              type="button"
-              aria-pressed={terminalFont.source === "custom"}
-              className={`font-card ${terminalFont.source === "custom" ? "is-active" : ""}`}
-              onClick={() => {
-                if (terminalFont.source !== "custom") setCustomTerminalFont("");
-              }}
-            >
-              <span className="fc-name">Custom…<span className="fc-check" aria-hidden="true">✓</span></span>
-              <span className="fc-sample is-custom" aria-hidden="true">type a font</span>
-              <span className="fc-meta">your installed face</span>
-              <span className="fc-bundled fc-addon">local OS font</span>
-            </button>
-          </div>
-
-          <div className={`custom-reveal ${terminalFont.source === "custom" ? "is-open" : ""}`}>
-            <div className="font-field-wrap">
-              <label className="font-field">
-                <span className="field-icon" aria-hidden="true">Aa</span>
-                <input
-                  type="text"
-                  spellCheck={false}
-                  value={terminalFont.customName}
-                  placeholder="e.g. MesloLGS NF, Fira Code, IBM Plex Mono"
-                  aria-label="Custom terminal font family"
-                  onChange={(event) => setCustomTerminalFont(event.currentTarget.value)}
-                />
-              </label>
-              <div className={`resolve-chip ${resolution.status === "fallback" ? "is-fallback" : "is-ok"}`} aria-live="polite">
-                <span className="rc-dot" aria-hidden="true" />
-                <span>{terminalFontResolveText(terminalFont)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="size-row">
-            <div className="size-stepper" role="group" aria-label="Font size">
-              <button
-                type="button"
-                aria-label="Decrease terminal font size"
-                disabled={terminalFont.size <= TERMINAL_FONT_SIZE_RANGE.min}
-                onClick={() => setTerminalFontSize(terminalFont.size - 1)}
-              >
-                −
-              </button>
-              <span className="size-val">{terminalFont.size}<span> px</span></span>
-              <button
-                type="button"
-                aria-label="Increase terminal font size"
-                disabled={terminalFont.size >= TERMINAL_FONT_SIZE_RANGE.max}
-                onClick={() => setTerminalFontSize(terminalFont.size + 1)}
-              >
-                +
-              </button>
-            </div>
-            <span className="size-label">Cell size — rescales every panel; zoom stays relative</span>
-          </div>
+          <p className="global-settings-help" id="terminal-font-help">Typeface and size for every terminal panel — agent-cli and shell alike. Applies live to all open terminals and persists on the Console server across browsers and restarts.</p>
         </div>
       </div>
-
-      <p className="global-settings-foot">Appearance preferences apply immediately and are stored per browser, separate from session settings.</p>
+      <div aria-describedby="terminal-font-help">
+          <FontPicker
+            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: font.family, aliases: [font.familyName], description: font.meta }))}
+            installedFonts={installedFonts}
+            selected={selected}
+            selectedSystemFont={terminalFont.source === "custom" ? terminalFont.customName : null}
+            fallbackStack={DEFAULT_TERMINAL_FONT.family}
+            previewText={TERMINAL_FONT_PREVIEW}
+            size={terminalFont.size}
+            sizeRange={TERMINAL_FONT_PICKER_SIZE_RANGE}
+            loading={isLoadingFonts}
+            error={fontLoadError}
+            onSelectionChange={handleSelectionChange}
+            onSizeCommit={setTerminalFontSize}
+          />
+      </div>
+      <p className="global-settings-foot">Font preferences apply immediately and are stored on the Console server, separate from session settings and shared across browsers after restart.</p>
     </section>
   );
 }
@@ -829,33 +794,8 @@ function TerminalRendererCard({ terminalRenderer }: { readonly terminalRenderer:
   );
 }
 
-function TerminalFontCard({ active, font, onSelect }: TerminalFontCardProps) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      className={`font-card ${active ? "is-active" : ""}`}
-      onClick={onSelect}
-    >
-      <span className="fc-name">{font.name}<span className="fc-check" aria-hidden="true">✓</span></span>
-      <span className="fc-sample" style={{ fontFamily: font.family }} aria-hidden="true">Ag 0O ─┼ =&gt;</span>
-      <span className="fc-meta">{font.meta}</span>
-      <span className="fc-bundled">self-hosted</span>
-    </button>
-  );
-}
-
-function terminalFontLabel(font: TerminalFontSettings): string {
-  if (font.source === "custom") return font.customName || `${curatedTerminalFontById(null).name} (default)`;
-  return curatedTerminalFontById(font.id).name;
-}
-
-function terminalFontResolveText(font: TerminalFontSettings): string {
-  if (!font.customName) return `Empty — using default ${curatedTerminalFontById(null).name}`;
-  const resolution = resolveTerminalFont(font);
-  return resolution.status === "resolved"
-    ? `"${font.customName}" resolves on this machine`
-    : `"${font.customName}" not found — falls back to ${resolution.fallbackName}`;
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function trackCardModifier(trackStatus: string, jobStatus: string): string {

@@ -3,6 +3,7 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyChannelAnimationDefaults } from "./canvas/canvas-store.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
   ConsoleState,
@@ -16,7 +17,7 @@ import type {
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
-  UiFontId,
+  UiFontSettings,
 } from "./types.js";
 
 type Listener = () => void;
@@ -104,7 +105,7 @@ export function setActiveTheme(theme: ThemeId): void {
   setState({ activeTheme: theme });
 }
 
-export function setActiveUiFont(uiFont: UiFontId): void {
+export function setActiveUiFont(uiFont: UiFontSettings): void {
   applyUiFontToDocument(uiFont);
 }
 
@@ -165,13 +166,11 @@ export function applyThemeToDocument(theme: ThemeId): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
 
-export function applyUiFontToDocument(uiFont: UiFontId): void {
+export function applyUiFontToDocument(uiFont: UiFontSettings): void {
   if (typeof document === "undefined") return;
-  if (uiFont === "manrope") {
-    document.documentElement.removeAttribute("data-ui-font");
-    return;
-  }
-  document.documentElement.setAttribute("data-ui-font", uiFont);
+  document.documentElement.setAttribute("data-ui-font", uiFont.source);
+  document.documentElement.style.setProperty("--font-body", uiFontFamily(uiFont));
+  document.documentElement.style.setProperty("--font-body-size", `${uiFont.size}px`);
 }
 
 export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {

@@ -10,13 +10,16 @@ import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 
 export type ConsoleThemeId = "maritime" | "carbon";
 export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
+export type UiFontSettings =
+  | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
+  | { readonly source: "system"; readonly familyName: string; readonly size: number };
 
 export interface ConsoleGeneralSettings {
   readonly consolePortMode?: "dynamic" | "static";
   readonly consoleStaticPort?: number;
   readonly language?: "auto" | "en" | "ko";
   readonly theme?: ConsoleThemeId;
-  readonly uiFont?: ConsoleUiFontId;
+  readonly uiFont?: UiFontSettings;
 }
 
 export interface ConsoleSettingsData {
@@ -32,6 +35,8 @@ export interface CreateConsoleSettingsStoreDeps {
 }
 
 export const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+export const UI_FONT_SIZE_RANGE = { min: 12, max: 18, step: 1 } as const;
+export const DEFAULT_UI_FONT_SETTINGS: UiFontSettings = { source: "builtin", id: "manrope", size: 14 };
 
 const SETTINGS_VERSION = 1;
 const SETTINGS_LOCK_DIR_NAME = "settings.lock";
@@ -70,6 +75,25 @@ export function emptyConsoleSettingsData(): ConsoleSettingsData {
   return { version: 1, general: {}, plugins: {} };
 }
 
+export function sanitizeUiFontSettings(value: unknown): UiFontSettings | undefined {
+  if (isConsoleUiFontId(value)) return { source: "builtin", id: value, size: DEFAULT_UI_FONT_SETTINGS.size };
+  if (!isRecord(value) || !isValidUiFontSize(value.size)) return undefined;
+  if (value.source === "builtin" && isConsoleUiFontId(value.id)) {
+    return { source: "builtin", id: value.id, size: value.size };
+  }
+  if (value.source === "system" && typeof value.familyName === "string") {
+    const familyName = sanitizeSystemFontFamily(value.familyName);
+    return familyName ? { source: "system", familyName, size: value.size } : undefined;
+  }
+  return undefined;
+}
+
+export function isUiFontSettings(value: unknown): value is UiFontSettings {
+  if (!isRecord(value) || !isValidUiFontSize(value.size)) return false;
+  if (value.source === "builtin") return isConsoleUiFontId(value.id);
+  return value.source === "system" && typeof value.familyName === "string" && value.familyName.length > 0 && value.familyName === sanitizeSystemFontFamily(value.familyName);
+}
+
 function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | null {
   if (!isRecord(value)) return null;
   const consolePortMode = value.consolePortMode === "dynamic" || value.consolePortMode === "static"
@@ -84,7 +108,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const theme = value.theme === "maritime" || value.theme === "carbon"
     ? value.theme
     : undefined;
-  const uiFont = isConsoleUiFontId(value.uiFont) ? value.uiFont : undefined;
+  const uiFont = sanitizeUiFontSettings(value.uiFont);
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
@@ -115,4 +139,12 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 
 function isConsoleUiFontId(value: unknown): value is ConsoleUiFontId {
   return value === "manrope" || value === "jetbrains-mono" || value === "source-code-pro";
+}
+
+function isValidUiFontSize(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= UI_FONT_SIZE_RANGE.min && value <= UI_FONT_SIZE_RANGE.max;
+}
+
+function sanitizeSystemFontFamily(value: string): string {
+  return value.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 128);
 }

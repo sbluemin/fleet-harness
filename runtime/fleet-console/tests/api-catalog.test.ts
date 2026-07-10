@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -11,6 +12,7 @@ import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+import type { SystemFontsService } from "../core/host/system-fonts.js";
 
 interface ServerFixture {
   readonly dir: string;
@@ -37,7 +39,14 @@ interface ApiCatalogResponse {
   readonly routes: ApiCatalogEntry[];
 }
 
+interface HostDeniedResponse {
+  readonly status: number;
+  readonly body: unknown;
+}
+
 const ALLOWED_ROUTE_KEYS = ["method", "path", "summary", "category", "gate"].sort();
+const SYSTEM_FONTS_PATH = "/api/v1/settings/fonts/system";
+const INJECTED_SYSTEM_FONTS = [{ family: "Noto Sans", monospace: false, uiSuitable: true }];
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];
 
@@ -83,6 +92,27 @@ describe("api catalog", () => {
       expect(response.status, `${entry.method} ${entry.path}`).not.toBe(404);
     }
   });
+
+  it("lists the loopback system-font route without scanning the developer machine", async () => {
+    const fixture = await startFixture();
+    const response = await fetch(`${fixture.endpoint}api/v1/settings/fonts/system`);
+    const body = await response.json() as { readonly version: number; readonly fonts: unknown[] };
+
+    expect(buildApiCatalog()).toContainEqual(expect.objectContaining({ method: "GET", path: SYSTEM_FONTS_PATH, gate: "loopback" }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body).toEqual({ version: 1, fonts: INJECTED_SYSTEM_FONTS });
+    expect(JSON.stringify(body)).not.toContain(fixture.carrierStoreDir);
+    expect(JSON.stringify(body)).not.toContain("postScriptName");
+  });
+
+  it("denies the system-font route when the loopback Host check fails", async () => {
+    const fixture = await startFixture();
+    const response = await requestWithHost(fixture.endpoint, SYSTEM_FONTS_PATH, "localhost:1");
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: "host_mismatch" });
+  });
 });
 
 async function startFixture(): Promise<ServerFixture> {
@@ -97,11 +127,16 @@ async function startFixture(): Promise<ServerFixture> {
     agentRuntime: createFakeConsoleRuntime() as never,
     agentCliDetector: createStubAgentCliDetector(),
     dataDir: carrierStoreDir,
+    systemFonts: createInjectedSystemFontsService(),
   });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
   const lock = createConsoleLock().readLock(lockFile)!;
   return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
+}
+
+function createInjectedSystemFontsService(): SystemFontsService {
+  return { getFonts: async () => INJECTED_SYSTEM_FONTS };
 }
 
 function createStubAgentCliDetector(): AgentCliDetector {
@@ -154,4 +189,17 @@ function headersForGate(gate: ApiCatalogEntry["gate"]): Record<string, string> {
   if (gate === "origin-write" || gate === "origin-strict") return { Origin: "http://127.0.0.1:1" };
   if (gate === "lock-token") return {};
   return {};
+}
+
+function requestWithHost(endpoint: string, pathname: string, host: string): Promise<HostDeniedResponse> {
+  const target = new URL(`${endpoint}${pathname.replace(/^\//, "")}`);
+  return new Promise((resolve, reject) => {
+    const request = http.request(target, { headers: { host } }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown }));
+    });
+    request.on("error", reject);
+    request.end();
+  });
 }

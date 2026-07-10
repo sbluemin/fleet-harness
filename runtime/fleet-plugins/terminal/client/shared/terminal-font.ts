@@ -1,3 +1,5 @@
+import { fontResolves, sanitizeFontFamilyName, withFontFallback } from "@fleet-console/font-picker/resolve";
+
 import type { TerminalFontId, TerminalFontSettings } from "./types.js";
 
 export interface CuratedTerminalFont {
@@ -25,10 +27,6 @@ const TERMINAL_FONT_FALLBACK_STACK = `ui-monospace, "SF Mono", Menlo, "${SYMBOLS
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
 const MIN_TERMINAL_FONT_SIZE = 10;
 const MAX_TERMINAL_FONT_SIZE = 22;
-const MAX_CUSTOM_FONT_NAME_LENGTH = 128;
-const FONT_RESOLVE_THRESHOLD_PX = 0.5;
-const FONT_RESOLVE_PROBE = "mmmmmmmmmmwwwwiIl1 0O-_|┌ABCxyz";
-const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/g;
 
 export const TERMINAL_FONT_SIZE_RANGE = {
   min: MIN_TERMINAL_FONT_SIZE,
@@ -101,7 +99,7 @@ export function createCustomTerminalFontSettings(customName: string, size: numbe
     source: "custom",
     id: null,
     customName: sanitizedName,
-    family: sanitizedName ? `"${escapeFontFamilyName(sanitizedName)}", ${DEFAULT_TERMINAL_FONT.family}` : DEFAULT_TERMINAL_FONT.family,
+    family: withFontFallback(sanitizedName, DEFAULT_TERMINAL_FONT.family),
     size: clampTerminalFontSize(size),
   };
 }
@@ -157,31 +155,10 @@ export function resolveTerminalFont(settings: TerminalFontSettings): TerminalFon
   };
 }
 
-function fontResolves(name: string): boolean {
-  if (typeof document === "undefined") return false;
-  const context = document.createElement("canvas").getContext("2d");
-  if (!context) return false;
-  for (const generic of ["monospace", "serif", "sans-serif"]) {
-    const candidateWidth = measureFontWidth(context, `"${escapeFontFamilyName(name)}", ${generic}`);
-    const genericWidth = measureFontWidth(context, generic);
-    if (Math.abs(candidateWidth - genericWidth) > FONT_RESOLVE_THRESHOLD_PX) return true;
-  }
-  return false;
-}
-
-function measureFontWidth(context: CanvasRenderingContext2D, family: string): number {
-  context.font = `28px ${family}`;
-  return context.measureText(FONT_RESOLVE_PROBE).width;
-}
-
 function isTerminalFontId(value: string): value is TerminalFontId {
   return CURATED_TERMINAL_FONTS.some((font) => font.id === value);
 }
 
 function sanitizeCustomFontFamilyName(name: string): string {
-  return name.replace(CONTROL_CHARACTER_PATTERN, "").trim().slice(0, MAX_CUSTOM_FONT_NAME_LENGTH);
-}
-
-function escapeFontFamilyName(name: string): string {
-  return name.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  return sanitizeFontFamilyName(name);
 }

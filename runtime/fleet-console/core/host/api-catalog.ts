@@ -2,6 +2,7 @@ import { CARRIER_SETTINGS_API_CATALOG } from "./carrier-settings-routes.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "./global-settings-routes.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "./plugin-settings-routes.js";
 import { SERVER_API_CATALOG } from "./server.js";
+import { SYSTEM_FONTS_API_CATALOG } from "./system-fonts-routes.js";
 
 export interface ApiCatalogEntry {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "*";
@@ -20,5 +21,6 @@ export function buildApiCatalog(): ApiCatalogEntry[] {
     ...CARRIER_SETTINGS_API_CATALOG,
     ...GLOBAL_SETTINGS_API_CATALOG,
     ...PLUGIN_SETTINGS_API_CATALOG,
+    ...SYSTEM_FONTS_API_CATALOG,
   ].slice().sort(compareApiCatalogEntries);
 }

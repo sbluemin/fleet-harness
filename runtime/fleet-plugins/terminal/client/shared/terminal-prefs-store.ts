@@ -10,26 +10,18 @@ interface TerminalPrefsState {
   readonly font: TerminalFontSettings;
 }
 
+type Listener = () => void;
+
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
 const FONT_KEY = "fleet-plugin.terminal.font";
 const LEGACY_RENDERER_KEY = "fleet-console.terminalRenderer";
 const LEGACY_FONT_KEY = "fleet-console.terminalFont";
-
-type Listener = () => void;
 
 const listeners = new Set<Listener>();
 
 let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
 let fontWriteEpoch = 0;
-
-function initState(): TerminalPrefsState {
-  if (typeof window === "undefined") {
-    return { renderer: "webgl", font: createDefaultTerminalFontSettings() };
-  }
-  migrateLegacyTerminalPrefs();
-  return { renderer: readStoredRenderer(), font: readStoredFont() };
-}
 
 export function migrateLegacyTerminalPrefs(): void {
   if (typeof window === "undefined") return;
@@ -87,6 +79,14 @@ export function setTerminalFont(fontId: TerminalFontId): void {
 
 export function setCustomTerminalFont(customName: string): void {
   const font = createCustomTerminalFontSettings(customName, state.font.size);
+  fontWriteEpoch += 1;
+  patchState({ font });
+  void pushFontToServer(font);
+}
+
+export function setInstalledTerminalFont(familyName: string): void {
+  // 설치 폰트도 legacy custom wire shape로 직렬화해 저장 포맷 호환성을 유지한다.
+  const font = createCustomTerminalFontSettings(familyName, state.font.size);
   fontWriteEpoch += 1;
   patchState({ font });
   void pushFontToServer(font);
@@ -187,4 +187,12 @@ function subscribe(listener: Listener): () => void {
 
 function getSnapshot(): TerminalPrefsState {
   return state;
+}
+
+function initState(): TerminalPrefsState {
+  if (typeof window === "undefined") {
+    return { renderer: "webgl", font: createDefaultTerminalFontSettings() };
+  }
+  migrateLegacyTerminalPrefs();
+  return { renderer: readStoredRenderer(), font: readStoredFont() };
 }
