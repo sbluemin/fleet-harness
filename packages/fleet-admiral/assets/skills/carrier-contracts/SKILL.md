@@ -28,6 +28,7 @@ All carriers accept an optional `<prior_jobs>` block: Prior finalized carrier jo
   - <references?> optional: Prior Nimitz recommendations, Kirov plans, existing patterns to follow, or design decisions already made.
 - **ohio** (Ohio · Captain · Multi-Wave Strike Execution) — wrap request content in these blocks (? = optional):
   - <plan_file> required: Required repo-relative path to a Markdown plan file under .fleet/plans/*.md only. Ohio reads this file and follows it as the authoritative execution plan.
+  - <execution_scope?> optional: Optional: for legacy plans without Execution Topology or plans marked Execution mode: Sequential, omitted or `all` executes the full plan sequentially. For Execution mode: Parallel, provide one exact Wave/Lane ID declared by the Dispatch Manifest; omitted or `all` is rejected. Never combine a full-plan invocation with scoped-lane Ohio invocation(s).
   - <objective?> optional: Optional brief restatement of the overarching goal for context anchoring.
   - <scope?> optional: Optional explicit scope boundaries if narrower than the plan_file's full coverage.
   - <constraints?> optional: Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.

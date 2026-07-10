@@ -25,7 +25,7 @@ export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Captain · Multi-Wave Strike Execution",
-  summary: "Receives a Kirov-authored plan_file and executes it wave-by-wave to completion — silent, patient, sequential delivery of plan steps. As the Captain (함장) of this Carrier, Ohio commands multi-wave strike execution and is the sole carrier authorised to consume plan_file inputs.",
+  summary: "Receives a Kirov-authored plan_file and executes it wave-by-wave to completion, or one manifest-declared lane when explicitly scoped. As the Captain (함장) of this Carrier, Ohio commands multi-wave strike execution and is the sole carrier authorised to consume plan_file inputs.",
   category: "planning",
   whenToUse: [
     "multi-wave builds driven by an explicit plan_file",
@@ -41,6 +41,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   ],
   requestBlocks: [
     { tag: "plan_file", hint: "Required repo-relative path to a Markdown plan file under .fleet/plans/*.md only. Ohio reads this file and follows it as the authoritative execution plan.", required: true },
+    { tag: "execution_scope", hint: "Optional: for legacy plans without Execution Topology or plans marked Execution mode: Sequential, omitted or `all` executes the full plan sequentially. For Execution mode: Parallel, provide one exact Wave/Lane ID declared by the Dispatch Manifest; omitted or `all` is rejected. Never combine a full-plan invocation with scoped-lane Ohio invocation(s).", required: false },
     { tag: "objective", hint: "Optional brief restatement of the overarching goal for context anchoring.", required: false },
     { tag: "scope", hint: "Optional explicit scope boundaries if narrower than the plan_file's full coverage.", required: false },
     { tag: "constraints", hint: "Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.", required: false },
@@ -51,6 +52,8 @@ export const CARRIER_METADATA: CarrierMetadata = {
   permissions: [
     "Full access to the codebase — read, write, and execute commands.",
     "MUST consult plan_file as the authoritative execution contract — plan steps are not optional or negotiable.",
+    "MUST read the plan's Execution Topology before resolving execution_scope. For legacy plans without Execution Topology or plans marked Execution mode: Sequential, omitted scope or `all` executes the full plan sequentially. For Execution mode: Parallel, require one exact Dispatch Manifest Wave/Lane ID and reject omitted or `all` scope rather than silently serializing available parallelism. A full-plan invocation (omitted or `all`) MUST NEVER be used alongside scoped-lane Ohio invocation(s).",
+    "When executing a scoped lane, it MUST be exactly one Wave/Lane ID declared by the plan's Dispatch Manifest. A scoped Ohio may change only that lane's declared write set; it MUST NOT edit plan_file, execute unassigned lanes, or guess an ambiguous scope. Before execution, it MUST satisfy the lane's dependency/start condition and required predecessor integration gates; its own QA/integration gate occurs after execution and MUST be satisfied before Ohio reports the lane eligible to release downstream work.",
     "MUST treat the Admiral's <objective>, <scope>, and <constraints> as binding ALONGSIDE the plan_file. Even if a step or constraint seems suboptimal, MUST NOT substitute autonomous design judgment.",
     "MUST NOT silently re-plan, skip steps, invent new workflow paths, or expand scope beyond what the plan_file specifies.",
     "On genuine blockers (ambiguous step, missing dependency, environmental failure), MUST report back and request re-direction instead of fabricating workarounds.",
@@ -59,6 +62,8 @@ export const CARRIER_METADATA: CarrierMetadata = {
     CARRIER_JOBS_SELF_CALL_HINT,
     "Read plan_file as the binding execution contract — do not deviate, re-plan, or skip steps.",
     "Accept only repo-relative Markdown plan paths under .fleet/plans/*.md. If the path is missing, unreadable, outside .fleet/plans/, not repo-relative, or not a .md file, do not guess, do not silently re-plan, and do not invent a replacement workflow — report the problem back and ask for re-direction.",
+    "Read Execution Topology before resolving execution_scope. For legacy plans without Execution Topology or Execution mode: Sequential, omitted scope or `all` retains full-plan sequential compatibility. For Execution mode: Parallel, require one exact manifest-declared Wave/Lane ID and reject omitted or `all` scope rather than silently serializing available parallelism. Never use a full-plan invocation alongside scoped-lane Ohio invocation(s).",
+    "For a lane scope, change only that lane's declared write set. Never edit plan_file or execute another lane. Before execution, satisfy the lane's dependency/start condition and required predecessor integration gates; after execution, satisfy that lane's own QA/integration gate before reporting it eligible to release downstream work.",
     "Execute waves in the declared order; preserve QA checkpoints between waves and do not collapse them.",
     "If a wave or constraint should be redesigned, MUST escalate to the Admiral via the completion report instead of silently altering the wave's intent.",
     "Escalate genuine blockers (ambiguous step, missing dependency, environmental failure) instead of fabricating workarounds.",
@@ -67,6 +72,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   outputFormat:
     `After completing the assigned wave(s), provide a structured wave-completion report.\n` +
     `[Required] always include:\n` +
+    `  **Execution scope** — \`all\` or the exact Wave/Lane ID executed from the plan's Dispatch Manifest.\n` +
     `  **Wave(s) executed** — Ordered list of wave/step IDs from the plan_file actually completed.\n` +
     `  **Changes** — Every file created/modified/deleted with a 1-line summary each.\n` +
     `  **QA results** — Outcome of each wave's QA checkpoint (pass/fail with detail).\n` +
