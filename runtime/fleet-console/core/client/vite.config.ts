@@ -40,12 +40,14 @@ function fleetPluginsVirtualModule(): Plugin {
       const fileExplorerClientEntry = path.resolve(__dirname, "../../../fleet-plugins/file-explorer/client/index.tsx");
       const diffClientEntry = path.resolve(__dirname, "../../../fleet-plugins/diff/client/index.tsx");
       const skillsClientEntry = path.resolve(__dirname, "../../../fleet-plugins/skills/client/index.tsx");
+      const plansClientEntry = path.resolve(__dirname, "../../../fleet-plugins/plans/client/index.tsx");
       return [
         `import { plugins as terminalPlugins } from ${JSON.stringify(terminalClientEntry)};`,
         `import { plugins as fileExplorerPlugins } from ${JSON.stringify(fileExplorerClientEntry)};`,
         `import { plugins as diffPlugins } from ${JSON.stringify(diffClientEntry)};`,
         `import { plugins as skillsPlugins } from ${JSON.stringify(skillsClientEntry)};`,
-        `export const plugins = [...terminalPlugins, ...fileExplorerPlugins, ...diffPlugins, ...skillsPlugins];`,
+        `import { plugins as plansPlugins } from ${JSON.stringify(plansClientEntry)};`,
+        `export const plugins = [...terminalPlugins, ...fileExplorerPlugins, ...diffPlugins, ...skillsPlugins, ...plansPlugins];`,
       ].join("\n");
     },
   };
