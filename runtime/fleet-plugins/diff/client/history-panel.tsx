@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
@@ -35,6 +35,21 @@ export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly 
   return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null;
 }
 
+export function filterHistoryCommits(commits: readonly LogCommitEntry[], filterText: string): readonly LogCommitEntry[] {
+  const normalizedFilter = filterText.toLowerCase();
+
+  if (!normalizedFilter) return commits;
+
+  return commits.filter((entry) => (
+    entry.subject.toLowerCase().includes(normalizedFilter)
+    || entry.authorName.toLowerCase().includes(normalizedFilter)
+    || entry.shortHash.toLowerCase().includes(normalizedFilter)
+    || entry.fullHash.toLowerCase().includes(normalizedFilter)
+    || entry.refs.some((ref) => ref.toLowerCase().includes(normalizedFilter))
+    || refBadges(entry).some((badge) => badge.label.toLowerCase().includes(normalizedFilter))
+  ));
+}
+
 function CheckoutIcon({ current }: { readonly current: boolean }) {
   return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none" aria-label="Current checkout"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none" aria-label="Checked out in another worktree"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>;
 }
@@ -54,6 +69,7 @@ function HistoryPanel({ ctx }: HistoryPanelProps) {
 function HistoryPanelBody({ ctx }: HistoryPanelProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selectedCommit, setSelectedCommit] = useState<CommitSelection | null>(null);
+  const [filterText, setFilterText] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
   const fetchSeqRef = useRef(0);
   const subPath = ctx.pathContext.relPath ?? "";
@@ -87,8 +103,10 @@ function HistoryPanelBody({ ctx }: HistoryPanelProps) {
   const handleSelectCommit = useCallback((entry: LogCommitEntry) => {
     if (ctx.theaterId) setSelectedCommit({ commit: entry, subPath, theaterId: ctx.theaterId });
   }, [ctx.theaterId, subPath]);
-  const layout = state.kind === "ok" ? layoutGraph(state.commits) : null;
-  return <div className={`history-root${selectedCommit ? " has-detail" : ""}`}>{selectedCommit ? <div className="history-detail-pane"><div className="history-detail-head"><span className="history-detail-sha">{selectedCommit.commit.shortHash}</span><span className="history-detail-subject">{selectedCommit.commit.subject}</span><button type="button" className="history-detail-close" aria-label="Close commit diff" onClick={() => setSelectedCommit(null)}>✕</button></div><div className="history-detail-body"><HunkView ctx={ctx} file={{ path: "", status: "M", additions: 0, deletions: 0 }} mode="unified" subPath={selectedCommit.subPath} commit={selectedCommit} /></div></div> : null}<div className="history-list-pane"><div className="history-toolbar">{state.kind === "ok" ? <span className="history-count">{state.commits.length}</span> : null}</div><div className="history-list">{state.kind === "loading" ? <div className="history-empty">Loading…</div> : null}{state.kind === "error" ? <div className="history-error"><span>{state.message}</span><button type="button" className="diff-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div> : null}{state.kind === "ok" && state.commits.length === 0 ? <div className="history-empty">No history</div> : null}{state.kind === "ok" && layout ? state.commits.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={selectedCommit?.commit.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} laneCount={layout.activeLaneCount} layoutCollapsed={layout.collapsed} onSelect={handleSelectCommit} />) : null}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) ? <div className="history-truncated">History capped at 200 commits.</div> : null}</div></div></div>;
+  const visibleCommits = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
+  const layout = state.kind === "ok" ? layoutGraph(visibleCommits) : null;
+  const countLabel = state.kind === "ok" ? filterText ? `${visibleCommits.length}/${state.commits.length}` : String(state.commits.length) : null;
+  return <div className={`history-root${selectedCommit ? " has-detail" : ""}`}>{selectedCommit ? <div className="history-detail-pane"><div className="history-detail-head"><span className="history-detail-sha">{selectedCommit.commit.shortHash}</span><span className="history-detail-subject">{selectedCommit.commit.subject}</span><button type="button" className="history-detail-close" aria-label="Close commit diff" onClick={() => setSelectedCommit(null)}>✕</button></div><div className="history-detail-body"><HunkView ctx={ctx} file={{ path: "", status: "M", additions: 0, deletions: 0 }} mode="unified" subPath={selectedCommit.subPath} commit={selectedCommit} /></div></div> : null}<div className="history-list-pane"><div className="history-toolbar"><div className="history-filter"><input type="text" className="history-filter-input" placeholder="Filter…" aria-label="Filter commits" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="history-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div>{countLabel ? <span className="history-count">{countLabel}</span> : null}</div><div className="history-list">{state.kind === "loading" ? <div className="history-empty">Loading…</div> : null}{state.kind === "error" ? <div className="history-error"><span>{state.message}</span><button type="button" className="diff-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div> : null}{state.kind === "ok" && state.commits.length === 0 ? <div className="history-empty">No history</div> : null}{state.kind === "ok" && state.commits.length > 0 && visibleCommits.length === 0 ? <div className="history-empty">No matching items</div> : null}{state.kind === "ok" && layout ? visibleCommits.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={selectedCommit?.commit.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} laneCount={layout.activeLaneCount} layoutCollapsed={layout.collapsed} onSelect={handleSelectCommit} />) : null}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) ? <div className="history-truncated">History capped at 200 commits.</div> : null}</div></div></div>;
 }
 
 function HistoryIcon() {
