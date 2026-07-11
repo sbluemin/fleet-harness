@@ -16,8 +16,59 @@ test('validates adjacent bilingual pairs and renders deterministic dual previews
   const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^=== CHANGELOG\.md ===\n## \[1\.2\.3\] - 2026-07-10/m);
+  assert.match(result.stdout, /### fleet-console\n\n#### Added/);
   assert.match(result.stdout, /- \[fleet-console\] \[fleet-cli\] Add an ASCII summary\./);
   assert.match(result.stdout, /=== CHANGELOG\.ko\.md ===[\s\S]*- \[fleet-console\] \[fleet-cli\] 한글 요약을 추가합니다\./);
+});
+
+test('renders all five products in exact order with nested sections', () => {
+  const fixture = createFixture();
+  for (const [name, section, body] of [
+    ['fleet-core-fixed.md', 'Fixed', '- [fleet-admiral] Fix core.\n  ko: 코어를 수정합니다.'],
+    ['fleet-plugin-added.md', 'Added', '- [fleet-console] Add plugin.\n  ko: 플러그인을 추가합니다.'],
+    ['fleet-desktop-added.md', 'Added', '- [fleet-console] Add desktop.\n  ko: 데스크톱을 추가합니다.'],
+    ['fleet-console-changed.md', 'Changed', '- [fleet-console] Change console.\n  ko: Console을 변경합니다.'],
+    ['fleet-cli-removed.md', 'Removed', '- [fleet-cli] Remove CLI.\n  ko: CLI를 제거합니다.'],
+  ]) {
+    writeNamedFragment(fixture, name, section, body);
+  }
+
+  const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
+
+  assert.equal(result.status, 0, result.stderr);
+  const headings = ['fleet-cli', 'fleet-console', 'fleet-desktop', 'fleet-plugin', 'fleet-core'];
+  const positions = headings.map((heading) => result.stdout.indexOf(`### ${heading}`));
+  assert.ok(positions.every((position) => position >= 0));
+  assert.deepEqual([...positions].sort((left, right) => left - right), positions);
+  assert.match(result.stdout, /### fleet-cli\n\n#### Removed/);
+  assert.match(result.stdout, /### fleet-console\n\n#### Changed/);
+  assert.match(result.stdout, /### fleet-desktop\n\n#### Added/);
+  assert.match(result.stdout, /### fleet-plugin\n\n#### Added/);
+  assert.match(result.stdout, /### fleet-core\n\n#### Fixed/);
+});
+
+test('ignores local agent doctrine files in the fragments directory', () => {
+  const fixture = createFixture();
+  writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
+  fs.writeFileSync(path.join(fixture, '.changelog.d', 'AGENTS.md'), '# Changelog Fragments\n');
+  const claudePath = path.join(fixture, '.changelog.d', 'CLAUDE.md');
+  const supportsSymlinks = process.platform !== 'win32';
+  if (supportsSymlinks) fs.symlinkSync('AGENTS.md', claudePath);
+
+  const result = run(fixture, '--check');
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /OK: 1 changelog fragment entry validated\./);
+  if (supportsSymlinks) assert.equal(fs.readlinkSync(claudePath), 'AGENTS.md');
+});
+
+test('rejects unsupported product and product-section filenames', () => {
+  for (const name of ['console-added.md', 'fleet-console-new.md']) {
+    const fixture = createFixture();
+    writeNamedFragment(fixture, name, 'Added', '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
+    const result = run(fixture, '--check');
+    assert.notEqual(result.status, 0, name);
+  }
 });
 
 test('rejects missing, duplicate, over-indented, blank, and other body lines', () => {
@@ -52,6 +103,11 @@ test('retains English ASCII and Korean Hangul validation with every package tag 
 test('writes both custom targets before deleting fragments', () => {
   const fixture = createFixture();
   writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
+  const agentsPath = path.join(fixture, '.changelog.d', 'AGENTS.md');
+  const claudePath = path.join(fixture, '.changelog.d', 'CLAUDE.md');
+  fs.writeFileSync(agentsPath, '# Changelog Fragments\n');
+  const supportsSymlinks = process.platform !== 'win32';
+  if (supportsSymlinks) fs.symlinkSync('AGENTS.md', claudePath);
   const en = path.join(fixture, 'english.md');
   const ko = path.join(fixture, 'korean.md');
   fs.writeFileSync(en, EMPTY_CHANGELOG);
@@ -60,7 +116,26 @@ test('writes both custom targets before deleting fragments', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(fs.readFileSync(en, 'utf8'), /Add one\./);
   assert.match(fs.readFileSync(ko, 'utf8'), /하나를 추가합니다\./);
-  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'entry.md')), false);
+  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'fleet-console-added.md')), false);
+  assert.equal(fs.existsSync(agentsPath), true);
+  if (supportsSymlinks) assert.equal(fs.readlinkSync(claudePath), 'AGENTS.md');
+});
+
+test('preserves historical changelog suffixes byte-for-byte when writing a product release', () => {
+  const fixture = createFixture();
+  writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
+  const historicalSuffix = '## [0.1.0] - 2026-01-01\n\n### Added\n\n- [fleet-console] Historical note.\n';
+  const original = `# Changelog\n\n## [Unreleased]\n\n${historicalSuffix}`;
+  fs.writeFileSync(path.join(fixture, 'CHANGELOG.md'), original);
+  fs.writeFileSync(path.join(fixture, 'CHANGELOG.ko.md'), original);
+
+  const result = run(fixture, '--version', '1.2.3', '--date', '2026-07-10');
+
+  assert.equal(result.status, 0, result.stderr);
+  for (const name of ['CHANGELOG.md', 'CHANGELOG.ko.md']) {
+    const compiled = fs.readFileSync(path.join(fixture, name), 'utf8');
+    assert.equal(compiled.slice(compiled.indexOf(historicalSuffix)), historicalSuffix);
+  }
 });
 
 test('does not write either target or delete fragments when either Unreleased section is dirty', () => {
@@ -70,7 +145,7 @@ test('does not write either target or delete fragments when either Unreleased se
   const result = run(fixture, '--version', '1.2.3', '--date', '2026-07-10');
   assert.notEqual(result.status, 0);
   assert.equal(fs.readFileSync(path.join(fixture, 'CHANGELOG.md'), 'utf8'), EMPTY_CHANGELOG);
-  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'entry.md')), true);
+  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'fleet-console-added.md')), true);
 });
 
 test('restores both changelogs and preserves fragments when the second write partially fails', () => {
@@ -99,6 +174,7 @@ test('restores both changelogs and preserves fragments when the second write par
     }, [{
       enSummary: 'Add one.',
       koSummary: '하나를 추가합니다.',
+      product: 'fleet-console',
       section: 'Added',
       tagPrefix: '[fleet-console] ',
     }]), /ENOSPC/);
@@ -108,7 +184,7 @@ test('restores both changelogs and preserves fragments when the second write par
 
   assert.equal(fs.readFileSync(englishPath, 'utf8'), originalEnglish);
   assert.equal(fs.readFileSync(koreanPath, 'utf8'), originalKorean);
-  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'entry.md')), true);
+  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'fleet-console-added.md')), true);
 });
 
 test('rejects identical English and Korean write targets', () => {
@@ -116,7 +192,7 @@ test('rejects identical English and Korean write targets', () => {
   writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
   const result = run(fixture, '--version', '1.2.3', '--changelog', 'CHANGELOG.md', '--changelog-ko', 'CHANGELOG.md');
   assert.notEqual(result.status, 0);
-  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'entry.md')), true);
+  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'fleet-console-added.md')), true);
 });
 
 test('allow-empty supports check, dry-run, and dual write stubs', () => {
@@ -140,7 +216,11 @@ function createFixture(withFragmentDirectory = true) {
 }
 
 function writeFragment(directory, body) {
-  fs.writeFileSync(path.join(directory, '.changelog.d', 'entry.md'), `---\nsection: Added\n---\n\n${body}\n`);
+  writeNamedFragment(directory, 'fleet-console-added.md', 'Added', body);
+}
+
+function writeNamedFragment(directory, name, section, body) {
+  fs.writeFileSync(path.join(directory, '.changelog.d', name), `---\nsection: ${section}\n---\n\n${body}\n`);
 }
 
 function run(directory, ...args) {

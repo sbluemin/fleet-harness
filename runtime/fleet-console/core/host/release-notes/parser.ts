@@ -10,6 +10,8 @@ interface MutableReleaseNoteSection {
 const RELEASE_NOTE_HEADINGS: readonly ReleaseNoteHeading[] = ["Added", "Changed", "Fixed", "Removed", "Breaking Changes"];
 const VERSION_HEADER_PATTERN = /^## \[([^\]]+)\](?: - ([0-9]{4}-[0-9]{2}-[0-9]{2}))?$/;
 const SECTION_HEADER_PATTERN = /^### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
+const PRODUCT_HEADER_PATTERN = /^### fleet-(cli|console|desktop|plugin|core)$/;
+const PRODUCT_SECTION_HEADER_PATTERN = /^#### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
 const BULLET_PATTERN = /^- (.+)$/;
 const PACKAGE_TAG_PATTERN = /^\[([^\]]+)\]/;
 
@@ -32,17 +34,37 @@ export function parseConsoleReleaseNotes(changelog: string): readonly ConsoleRel
 }
 
 function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteSection[] {
-  const sections: MutableReleaseNoteSection[] = [];
+  const legacySections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
+  const productSections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
+  const legacyHeadings = new Set<ReleaseNoteHeading>();
   let current: MutableReleaseNoteSection | null = null;
+  let isProductContext = false;
   for (const line of lines) {
     const sectionMatch = SECTION_HEADER_PATTERN.exec(line);
     if (sectionMatch !== null) {
-      current = { heading: sectionMatch[1] as ReleaseNoteHeading, items: [] };
-      sections.push(current);
+      const heading = sectionMatch[1] as ReleaseNoteHeading;
+      isProductContext = false;
+      current = legacyHeadings.has(heading) ? null : getSection(legacySections, heading);
+      legacyHeadings.add(heading);
+      continue;
+    }
+    if (PRODUCT_HEADER_PATTERN.test(line)) {
+      isProductContext = true;
+      current = null;
+      continue;
+    }
+    if (line.startsWith("### ")) {
+      isProductContext = false;
+      current = null;
+      continue;
+    }
+    const productSectionMatch = PRODUCT_SECTION_HEADER_PATTERN.exec(line);
+    if (productSectionMatch !== null) {
+      current = isProductContext ? getSection(productSections, productSectionMatch[1] as ReleaseNoteHeading) : null;
       continue;
     }
     if (current === null) continue;
-    if (line.startsWith("### ")) {
+    if (line.startsWith("### ") || line.startsWith("#### ")) {
       current = null;
       continue;
     }
@@ -50,8 +72,28 @@ function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteS
     if (bulletMatch !== null) current.items.push(parseReleaseNoteItem(bulletMatch[1] ?? ""));
   }
   return RELEASE_NOTE_HEADINGS
-    .map((heading) => sections.find((section) => section.heading === heading))
+    .map((heading) => combineSections(heading, legacySections.get(heading), productSections.get(heading)))
     .filter((section): section is MutableReleaseNoteSection => Boolean(section && section.items.length > 0));
+}
+
+function combineSections(
+  heading: ReleaseNoteHeading,
+  legacySection: MutableReleaseNoteSection | undefined,
+  productSection: MutableReleaseNoteSection | undefined,
+): MutableReleaseNoteSection | undefined {
+  if (legacySection === undefined && productSection === undefined) return undefined;
+  return { heading, items: [...(legacySection?.items ?? []), ...(productSection?.items ?? [])] };
+}
+
+function getSection(
+  sections: Map<ReleaseNoteHeading, MutableReleaseNoteSection>,
+  heading: ReleaseNoteHeading,
+): MutableReleaseNoteSection {
+  const existing = sections.get(heading);
+  if (existing !== undefined) return existing;
+  const section = { heading, items: [] };
+  sections.set(heading, section);
+  return section;
 }
 
 function parseReleaseNoteItem(rawText: string): ConsoleReleaseNoteItem {

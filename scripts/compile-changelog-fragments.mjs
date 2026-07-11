@@ -5,11 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
+const PRODUCTS = ['fleet-cli', 'fleet-console', 'fleet-desktop', 'fleet-plugin', 'fleet-core'];
 const TAGS = ['core-process', 'core-agent', 'core-unified-agent', 'core-infra', 'fleet-admiral', 'fleet-carriers', 'fleet-wiki', 'fleet-console', 'fleet-cli'];
 const RETIRED_TAGS = ['core', 'wiki', 'wiki-web', 'agent-core', 'unified-agent', 'mcp-server', 'agent', 'carriers', 'fleet-infra'];
 const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_CHANGELOG_KO = 'CHANGELOG.ko.md';
 const DEFAULT_FRAGMENTS_DIR = '.changelog.d';
+const IGNORED_FRAGMENT_FILES = new Set(['AGENTS.md', 'CLAUDE.md']);
 const IS_DIRECT_EXECUTION = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (IS_DIRECT_EXECUTION) main();
@@ -83,17 +85,24 @@ function readOptionValue(args, index, optionName) {
 function readFragments(fragmentsDir) {
   if (!fs.existsSync(fragmentsDir)) return [];
   if (!fs.statSync(fragmentsDir).isDirectory()) throw new Error(`${fragmentsDir} is not a directory.`);
-  return fs.readdirSync(fragmentsDir).filter((name) => name.endsWith('.md')).sort().map((name) => {
+  return fs.readdirSync(fragmentsDir)
+    .filter((name) => name.endsWith('.md') && !IGNORED_FRAGMENT_FILES.has(name))
+    .sort()
+    .map((name) => {
     const fragmentPath = path.join(fragmentsDir, name);
     if (!fs.statSync(fragmentPath).isFile()) throw new Error(`${fragmentPath} must be a file directly under ${fragmentsDir}.`);
-    return { content: fs.readFileSync(fragmentPath, 'utf8'), name, path: fragmentPath };
+    const product = PRODUCTS.find((candidate) => name.startsWith(`${candidate}-`));
+    if (!product) throw new Error(`${name}: filename must start with a supported product followed by a section slug.`);
+    return { content: fs.readFileSync(fragmentPath, 'utf8'), name, path: fragmentPath, product };
   });
 }
 
 function validateFragments(fragments) {
   return fragments.flatMap((fragment) => {
     const parsed = parseFragment(fragment);
-    return parsed.entries.map((entry) => ({ ...entry, file: fragment.name, section: parsed.section }));
+    const expectedName = `${fragment.product}-${parsed.section.toLowerCase().replaceAll(' ', '-')}.md`;
+    if (fragment.name !== expectedName) throw new Error(`${fragment.name}: expected filename ${expectedName} for its product and section.`);
+    return parsed.entries.map((entry) => ({ ...entry, file: fragment.name, product: fragment.product, section: parsed.section }));
   });
 }
 
@@ -150,14 +159,19 @@ function renderReleaseSection(version, date, entries, allowEmpty, locale) {
   const header = `## [${version}] - ${date}`;
   if (entries.length === 0 && allowEmpty) return `${header}\n\nRelease v${version}`;
   const lines = [header, ''];
-  let wroteSection = false;
-  for (const section of SECTIONS) {
-    const sectionEntries = entries.filter((entry) => entry.section === section);
-    if (sectionEntries.length === 0) continue;
-    if (wroteSection) lines.push('');
-    lines.push(`### ${section}`);
-    lines.push(...sectionEntries.map((entry) => `- ${entry.tagPrefix}${locale === 'en' ? entry.enSummary : entry.koSummary}`));
-    wroteSection = true;
+  let wroteProduct = false;
+  for (const product of PRODUCTS) {
+    const productEntries = entries.filter((entry) => entry.product === product);
+    if (productEntries.length === 0) continue;
+    if (wroteProduct) lines.push('');
+    lines.push(`### ${product}`);
+    for (const section of SECTIONS) {
+      const sectionEntries = productEntries.filter((entry) => entry.section === section);
+      if (sectionEntries.length === 0) continue;
+      lines.push('', `#### ${section}`);
+      lines.push(...sectionEntries.map((entry) => `- ${entry.tagPrefix}${locale === 'en' ? entry.enSummary : entry.koSummary}`));
+    }
+    wroteProduct = true;
   }
   return lines.join('\n');
 }
