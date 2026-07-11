@@ -108,9 +108,10 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
     const engine = readConsoleNodeEngine(runtimePaths.latest);
     if (!satisfiesNodeEngine(manifest.version, engine)) throw new Error("managed_node_engine_unsupported");
-    if (await isManagedNodeRuntimeValid(runtimePaths.node, manifest, process.platform)) {
-      await reconcileNodeRuntime(runtimePaths.node);
-    } else {
+    // isValid 판정 전에 reconcile을 먼저 돌려, 교체 중 종료로 node가 사라지고 node.rollback만 남은 경우
+    // 다운로드(오프라인 시 실패)로 가기 전에 유효한 이전 런타임을 복원한다(console latest.rollback과 대칭).
+    await reconcileNodeRuntime(runtimePaths.node);
+    if (!(await isManagedNodeRuntimeValid(runtimePaths.node, manifest, process.platform))) {
       await progress("node", "checksum verified", 0);
       await bootstrapNodeRuntime({ destination: runtimePaths.node, manifest, platform: process.platform, architecture: process.arch });
     }

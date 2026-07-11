@@ -61,11 +61,23 @@ export async function isManagedNodeRuntimeValid(destination: string, manifest: N
   }
 }
 
-export async function reconcileNodeRuntime(destination: string, fileSystem: Pick<NodeBootstrapFileSystem, "rm"> = createNodeBootstrapDependencies().fileSystem): Promise<void> {
-  try {
-    await fileSystem.rm(`${destination}.rollback`);
-  } catch {
-    // 유효한 managed Node가 있으면 transaction-only rollback 정리는 다음 시작으로 미룬다.
+export async function reconcileNodeRuntime(destination: string, fileSystem: Pick<NodeBootstrapFileSystem, "rm" | "rename" | "stat"> = createNodeBootstrapDependencies().fileSystem): Promise<void> {
+  const backup = `${destination}.rollback`;
+  const hasNode = await pathExists(destination, fileSystem);
+  const hasBackup = await pathExists(backup, fileSystem);
+  // 중단된 트랜잭션 복구: node가 없고 rollback만 있으면(교체 중 종료) 다운로드 시도 전에 rollback을 복원한다.
+  // 그래야 오프라인에서도 유효한 이전 런타임으로 부팅할 수 있다(console latest.rollback과 대칭).
+  if (!hasNode && hasBackup) {
+    await fileSystem.rename(backup, destination);
+    return;
+  }
+  // 유효한 node가 있으면 고아 rollback을 best-effort로 정리한다(정리 실패는 다음 시작으로 미룬다).
+  if (hasBackup) {
+    try {
+      await fileSystem.rm(backup);
+    } catch {
+      // transaction-only rollback 정리는 다음 시작으로 미룬다.
+    }
   }
 }
 

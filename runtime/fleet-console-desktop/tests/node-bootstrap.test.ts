@@ -54,9 +54,20 @@ describe("Node runtime bootstrap", () => {
   });
 
   it("best-effort cleans a stale Node rollback once the managed runtime is valid", async () => {
-    const fileSystem = { rm: vi.fn(async () => { throw new Error("locked"); }) };
+    // node·rollback 모두 존재(stat 성공) → 유효 런타임이 있으니 고아 rollback을 rm, 실패는 삼킨다.
+    const fileSystem = { stat: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), rm: vi.fn(async () => { throw new Error("locked"); }) };
     await expect(reconcileNodeRuntime("/runtime/node", fileSystem)).resolves.toBeUndefined();
     expect(fileSystem.rm).toHaveBeenCalledWith("/runtime/node.rollback");
+    expect(fileSystem.rename).not.toHaveBeenCalled();
+  });
+
+  it("restores an interrupted Node rollback before any download when node is missing", async () => {
+    // 교체 중 종료: node 부재(stat 실패)+rollback 존재(stat 성공) → 다운로드 전에 rollback을 복원한다.
+    const stat = vi.fn(async (target: string) => { if (target === "/runtime/node") throw new Error("missing"); });
+    const fileSystem = { stat, rename: vi.fn(async () => undefined), rm: vi.fn(async () => undefined) };
+    await expect(reconcileNodeRuntime("/runtime/node", fileSystem)).resolves.toBeUndefined();
+    expect(fileSystem.rename).toHaveBeenCalledWith("/runtime/node.rollback", "/runtime/node");
+    expect(fileSystem.rm).not.toHaveBeenCalled();
   });
 
   it("escapes apostrophes in every PowerShell literal path", () => {
