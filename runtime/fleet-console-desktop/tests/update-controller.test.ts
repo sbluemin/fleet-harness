@@ -1,27 +1,49 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createUpdateController } from "../src/update-controller.js";
+import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "../src/update-controller.js";
 
-function updater() { return { autoDownload: true, on: vi.fn(), checkForUpdates: vi.fn(async () => undefined), quitAndInstall: vi.fn() }; }
+function controller(result = { latest: "1.2.4", shouldNotify: true }, dialog = { response: 1, checkboxChecked: false }) {
+  const registry = { check: vi.fn(async () => result), skip: vi.fn(async () => undefined), startPolling: vi.fn() };
+  const prepareToQuit = vi.fn(async () => undefined);
+  const relaunch = vi.fn();
+  const quit = vi.fn();
+  const updates = createUpdateController({ currentVersion: () => "1.2.3", registry, showDialog: vi.fn(async () => dialog), prepareToQuit, relaunch, quit });
+  return { updates, registry, prepareToQuit, relaunch, quit };
+}
 
-describe("native update controller", () => {
-  it("disables update activity for development builds", async () => {
-    const native = updater();
-    const controller = createUpdateController(native as never, false, vi.fn(), vi.fn());
-    await controller.check();
-    await controller.install();
-    expect(native.autoDownload).toBe(false);
-    expect(native.checkForUpdates).not.toHaveBeenCalled();
-    expect(native.quitAndInstall).not.toHaveBeenCalled();
+describe("registry update controller", () => {
+  it("shows the native prompt once, keeps a Later update available for menu and tray", async () => {
+    const { updates } = controller();
+    await updates.check();
+    expect(updates.availableVersion()).toBe("1.2.4");
   });
 
-  it("stops the verified sidecar before installing a packaged update", async () => {
-    const native = updater();
-    const stop = vi.fn(async () => undefined);
-    const controller = createUpdateController(native as never, true, stop, vi.fn());
-    await controller.check();
-    await controller.install();
-    expect(native.checkForUpdates).toHaveBeenCalledOnce();
-    expect(stop).toHaveBeenCalledBefore(native.quitAndInstall);
+  it("persists Skip this version and relaunches instead of updating in place", async () => {
+    const { updates, registry, prepareToQuit, relaunch, quit } = controller({ latest: "1.2.4", shouldNotify: true }, { response: 0, checkboxChecked: true });
+    await updates.check();
+    expect(registry.skip).toHaveBeenCalledWith("1.2.4");
+    expect(prepareToQuit).toHaveBeenCalledBefore(relaunch);
+    expect(relaunch).toHaveBeenCalledOnce();
+    expect(quit).toHaveBeenCalledOnce();
+  });
+
+  it("bypasses every update action in development", async () => {
+    const updates = createNoopUpdateController();
+    await updates.check();
+    await updates.install();
+    expect(updates.availableVersion()).toBeNull();
+    expect(updates.enabled()).toBe(false);
+  });
+
+  it("shows a Windows balloon before restoring a hidden window and opening its dialog", async () => {
+    const order: string[] = [];
+    let click: (() => void) | undefined;
+    const tray = { displayBalloon: vi.fn(() => order.push("balloon")), once: vi.fn((_event: "balloon-click", callback: () => void) => { click = callback; }) };
+    const window = { isVisible: () => false, show: vi.fn(() => order.push("show")) };
+    const result = showWindowsHiddenUpdateDialog(window, tray, "1.2.4", vi.fn(async () => { order.push("dialog"); return { response: 1, checkboxChecked: false }; }));
+    expect(order).toEqual(["balloon"]);
+    click?.();
+    await expect(result).resolves.toEqual({ response: 1, checkboxChecked: false });
+    expect(order).toEqual(["balloon", "show", "dialog"]);
   });
 });

@@ -1,23 +1,30 @@
 import type { App, BrowserWindow } from "electron";
 
-export interface DesktopLifecycle { start(): Promise<void>; show(): void; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
+export interface DesktopLifecycle { attachWindow(window: BrowserWindow): void; start(): Promise<void>; show(): void; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
 
 export function createDesktopLifecycle(app: App, createWindow: () => Promise<BrowserWindow>, stopSidecar: () => Promise<void>): DesktopLifecycle {
   let window: BrowserWindow | null = null;
   let windowCreation: Promise<BrowserWindow> | null = null;
   let quitPreparation: Promise<void> | null = null;
+  const closeGuardAttached = new WeakSet<BrowserWindow>();
+
+  const attachWindow = (created: BrowserWindow): void => {
+    window = created;
+    if (closeGuardAttached.has(created)) return;
+    closeGuardAttached.add(created);
+    created.on("close", (event) => {
+      if (!quitPreparation && process.platform !== "darwin") {
+        event.preventDefault();
+        created.hide();
+      }
+    });
+  };
 
   const ensureWindow = (): Promise<BrowserWindow> => {
     if (window && !window.isDestroyed()) return Promise.resolve(window);
     if (!windowCreation) {
       windowCreation = createWindow().then((created) => {
-        window = created;
-        created.on("close", (event) => {
-          if (!quitPreparation && process.platform !== "darwin") {
-            event.preventDefault();
-            created.hide();
-          }
-        });
+        attachWindow(created);
         return created;
       }).finally(() => { windowCreation = null; });
     }
@@ -59,7 +66,7 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Bro
     });
     await ensureWindow();
   };
-  return { start, show, prepareToQuit, quit };
+  return { attachWindow, start, show, prepareToQuit, quit };
 }
 
 function revealWindow(window: BrowserWindow): void {

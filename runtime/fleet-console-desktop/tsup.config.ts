@@ -4,7 +4,7 @@ export default defineConfig({
   clean: true,
   dts: false,
   entry: { main: "src/main.ts" },
-  external: ["electron", "electron-updater"],
+  external: ["electron"],
   format: ["esm"],
   noExternal: ["@dotobokuri/fleet-console/desktop-protocol"],
   outDir: "dist",

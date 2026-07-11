@@ -2,7 +2,7 @@
 
 `runtime/fleet-console` owns the Fleet Console — a standalone fullstack product: its loopback HTTP backend plus the React web surface for observing carrier jobs, live output streams from console-owned terminal sessions, and the Codex/Fleet Wiki web surface, driven by the `fleet-console` CLI lifecycle. It is the sole owner of Console HTTP/REST/SSE/WebSocket, PTY/provider/plugin runtime, durable state, and UI.
 
-`runtime/fleet-console-desktop` is a separate optional Electron main-process shell. It may supervise this package's separately packaged standard Node `dist/cli.mjs serve` sidecar through the public desktop protocol, then load the verified token-free `/console/` URL. Do not move or duplicate server, React/Vite, `node-pty`, provider, plugin, or durable-state behavior into Electron.
+`runtime/fleet-console-desktop` is a separate optional Electron main-process shell. It may supervise a desktop-managed registry-installed `console/latest` instance of this package through the public desktop protocol, then load the verified token-free `/console/` URL. Do not move or duplicate server, React/Vite, `node-pty`, provider, plugin, or durable-state behavior into Electron.
 
 ## Owns
 

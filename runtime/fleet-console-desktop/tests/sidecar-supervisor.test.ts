@@ -7,7 +7,7 @@ import { SidecarSupervisor } from "../src/sidecar-supervisor.js";
 const lockFile = "/tmp/fleet-desktop-test.lock";
 
 function supervisor(log = { info: vi.fn(), error: vi.fn() }) {
-  return new SidecarSupervisor({ nodePath: "/sidecar/node", cliPath: "/sidecar/fleet-console/dist/cli.mjs", env: {}, lockFile, ownerId: "owner-1", appVersion: "1.23.0", log });
+  return new SidecarSupervisor({ nodePath: "/sidecar/node", cliPath: "/sidecar/fleet-console/dist/cli.mjs", serviceRoot: "/sidecar/fleet-console", serviceVersion: "1.23.0", env: {}, lockFile, ownerId: "owner-1", log });
 }
 
 describe("sidecar supervisor", () => {
@@ -17,6 +17,22 @@ describe("sidecar supervisor", () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
     await expect(supervisor().startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+  });
+
+  it("compares the lock with the Console service version rather than the shell version", async () => {
+    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
+    const instance = new SidecarSupervisor({ nodePath: "/sidecar/node", cliPath: "/sidecar/fleet-console/dist/cli.mjs", serviceRoot: "/sidecar/fleet-console", serviceVersion: "2.0.0", env: {}, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
+    await expect(instance.startOrAdopt()).rejects.toThrow("cli_daemon_requires_confirmation");
+  });
+
+  it("does not resolve a runtime while adopting a healthy owned sidecar", async () => {
+    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
+    const resolveRuntime = vi.fn(async () => ({ nodePath: "/runtime/node", cliPath: "/runtime/console/dist/cli.mjs", serviceRoot: "/runtime/console", serviceVersion: "1.23.0" }));
+    const instance = new SidecarSupervisor({ resolveRuntime, env: {}, lockFile, ownerId: "owner-1", serviceVersion: "1.23.0", log: { info: vi.fn(), error: vi.fn() } });
+    await expect(instance.startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+    expect(resolveRuntime).not.toHaveBeenCalled();
   });
 
   it("rejects a healthy CLI-owned daemon rather than signaling it", async () => {

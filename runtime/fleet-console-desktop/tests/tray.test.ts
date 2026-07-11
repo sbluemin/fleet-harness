@@ -9,12 +9,12 @@ describe("tray menu", () => {
     const show = vi.fn();
     const quit = vi.fn();
     const diagnostics = vi.fn();
-    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined) };
+    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
 
     configureTray(tray as never, menu as never, { show, quit, diagnostics, updates });
 
     const template = menu.buildFromTemplate.mock.calls[0]![0] as unknown as Array<{ label?: string; click?: () => void }>;
-    expect(template.map((item) => item.label).filter(Boolean)).toEqual(["Show Fleet Console", "Check for Updates", "Update and Restart", "Diagnostics", "Quit"]);
+    expect(template.map((item) => item.label).filter(Boolean)).toEqual(["Show Fleet Console", "Check for Updates", "Update to 1.2.4…", "Diagnostics", "Quit"]);
     template[2]!.click?.();
     template[3]!.click?.();
     template[5]!.click?.();

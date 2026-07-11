@@ -5,6 +5,10 @@ export interface SecureWindowOptions {
   readonly platform?: NodeJS.Platform;
 }
 
+export interface WindowPolicy {
+  activateConsoleOrigin(origin: string): void;
+}
+
 export const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
@@ -28,12 +32,25 @@ export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, opti
   return new BrowserWindowCtor(windowOptions);
 }
 
-export function applyWindowPolicy(contents: WebContents, origin: string, openExternal: (url: string) => Promise<void>): void {
-  contents.on("will-navigate", (event, url) => { if (!isAllowedConsoleUrl(url, origin)) event.preventDefault(); });
-  contents.setWindowOpenHandler(({ url }) => { if (isHttpsUrl(url)) void openExternal(url); return { action: "deny" }; });
-  contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, origin)));
+export function applyWindowPolicy(contents: WebContents, openExternal: (url: string) => Promise<void>): WindowPolicy;
+export function applyWindowPolicy(contents: WebContents, origin: string, openExternal: (url: string) => Promise<void>): WindowPolicy;
+export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: string | ((url: string) => Promise<void>), legacyOpenExternal?: (url: string) => Promise<void>): WindowPolicy {
+  let consoleOrigin: string | undefined = typeof originOrOpenExternal === "string" ? originOrOpenExternal : undefined;
+  const openExternal = typeof originOrOpenExternal === "function" ? originOrOpenExternal : legacyOpenExternal;
+  if (!openExternal) throw new Error("window_policy_open_external_required");
+  contents.on("will-navigate", (event, url) => { if (!consoleOrigin || !isAllowedConsoleUrl(url, consoleOrigin)) event.preventDefault(); });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (consoleOrigin && isHttpsUrl(url)) void openExternal(url);
+    return { action: "deny" };
+  });
+  contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, consoleOrigin ?? "")));
+  return { activateConsoleOrigin(origin: string): void {
+    if (!isLoopbackOrigin(origin)) throw new Error("window_policy_console_origin_not_loopback");
+    consoleOrigin = origin;
+  } };
 }
 
 export function isAllowedConsoleUrl(url: string, origin: string): boolean { try { const parsed = new URL(url); return parsed.origin === origin && parsed.pathname.startsWith("/console/"); } catch { return false; } }
 function isHttpsUrl(url: string): boolean { try { return new URL(url).protocol === "https:"; } catch { return false; } }
 function hasExactOrigin(url: string, origin: string): boolean { try { return new URL(url).origin === origin; } catch { return false; } }
+function isLoopbackOrigin(origin: string): boolean { try { const parsed = new URL(origin); return parsed.protocol === "http:" && (parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]"); } catch { return false; } }

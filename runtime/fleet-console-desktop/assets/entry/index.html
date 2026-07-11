@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Fleet Console Desktop</title>
+  <link rel="stylesheet" href="entry.css">
+</head>
+<body>
+  <header class="chrome-band">
+    <div class="brand"><strong>Fleet</strong><span>Console Desktop</span></div>
+    <span class="dev-tag" id="dev-tag">LOCAL BUILD · DEV</span>
+  </header>
+  <main class="entry-body">
+    <section class="boot-stack" id="boot-stack" aria-live="polite"></section>
+    <p class="handoff" id="handoff"></p>
+  </main>
+  <footer class="entry-foot"><span id="foot-left"></span><span id="foot-right">console updates install automatically at launch</span></footer>
+</body>
+</html>
