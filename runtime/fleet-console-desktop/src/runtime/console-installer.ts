@@ -56,10 +56,11 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
     const npmGlobalConfiguration = path.join(staging, ".npmrc-global");
     await dependencies.fileSystem.writeFile(npmUserConfiguration, "");
     await dependencies.fileSystem.writeFile(npmGlobalConfiguration, "");
-    // npm 셔뱅(#!/usr/bin/env node)·Windows .cmd 직접 실행은 시스템 Node 부재/spawn 보안 정책에서 깨진다 —
-    // 번들 node 바이너리로 npm-cli.js를 직접 구동해야 postinstall(node-pty)도 번들 node의 PATH로 돈다.
+    // npm 셔뱅(#!/usr/bin/env node)·Windows .cmd 직접 실행은 시스템 Node 부재/spawn 보안 정책에서 깨지므로
+    // 번들 node 바이너리로 npm-cli.js를 직접 구동한다. 단, 이것만으로는 lifecycle 스크립트가 `node`를 찾지
+    // 못하므로(npm은 실행 node의 dir을 자식 PATH에 넣지 않음) createConsoleInstallerEnvironment가 PATH에 주입한다.
     try {
-      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`], { env: createConsoleInstallerEnvironment(dependencies.environment, npmUserConfiguration, npmGlobalConfiguration) });
+      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`], { env: createConsoleInstallerEnvironment(dependencies.environment, npmUserConfiguration, npmGlobalConfiguration, path.dirname(nodeBinaryPath(options.nodeRoot, options.platform)), options.platform) });
     } finally {
       await dependencies.fileSystem.rm(npmUserConfiguration);
       await dependencies.fileSystem.rm(npmGlobalConfiguration);
@@ -91,12 +92,22 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
   };
 }
 
-export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmUserConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty.npmrc"), npmGlobalConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty-global.npmrc")): NodeJS.ProcessEnv {
+export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmUserConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty.npmrc"), npmGlobalConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty-global.npmrc"), nodeBinDirectory?: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
+  let pathKey = platform === "win32" ? "Path" : "PATH";
+  let existingPath: string | undefined;
   for (const [key, value] of Object.entries(source)) {
     const normalizedKey = key.toLowerCase();
-    if (value !== undefined && normalizedKey !== "node_options" && !normalizedKey.startsWith("npm_config_")) environment[key] = value;
+    if (value === undefined || normalizedKey === "node_options" || normalizedKey.startsWith("npm_config_")) continue;
+    if (normalizedKey === "path") { pathKey = key; existingPath = value; continue; }
+    environment[key] = value;
   }
+  // 번들 node의 bin을 PATH 맨 앞에 둔다. node-pty 등의 npm lifecycle 스크립트는 `sh -c "node …"`로 PATH에서
+  // node를 찾는데, Finder/트레이로 실행된 패키징 앱의 PATH엔 시스템 node가 없어 code 127로 설치가 깨진다.
+  // npm은 실행 중인 node의 디렉토리를 자식 스크립트 PATH에 자동으로 넣어주지 않으므로 직접 주입한다.
+  const pathSeparator = platform === "win32" ? ";" : ":";
+  const resolvedPath = nodeBinDirectory ? (existingPath ? `${nodeBinDirectory}${pathSeparator}${existingPath}` : nodeBinDirectory) : existingPath;
+  if (resolvedPath !== undefined) environment[pathKey] = resolvedPath;
   return {
     ...environment,
     npm_config_registry: "https://registry.npmjs.org/",
