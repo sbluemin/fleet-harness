@@ -411,6 +411,9 @@ importers:
 
   runtime/fleet-desktop:
     devDependencies:
+      '@dotobokuri/core-process':
+        specifier: workspace:*
+        version: link:../../packages/core-process
       '@dotobokuri/fleet-console':
         specifier: workspace:*
         version: link:../fleet-console

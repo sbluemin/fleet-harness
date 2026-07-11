@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV } from "@dotobokuri/fleet-console/desktop-protocol";
 
-import { createDesktopEnvironment, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
+import { createDesktopEnvironment, desktopExecutableSearchPaths, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
 
 const TEMP_DIRS: string[] = [];
 
@@ -107,5 +107,24 @@ describe("desktop environment", () => {
 
   it("sanitizes case-insensitive Electron, Node, and Desktop control keys", () => {
     expect(sanitizeEnvironment({ Electron_No_Asar: "1", node_options: "--inspect", FLEET_CONSOLE_DIR: "/console", Fleet_Console_Owner_Id: "owner", PRESERVED: "yes" })).toEqual({ PRESERVED: "yes" });
+  });
+
+  it("adds macOS user and npm executable locations for a packaged GUI launch", () => {
+    expect(desktopExecutableSearchPaths("/Users/alice", { npm_config_prefix: "/Users/alice/.npm-global", PNPM_HOME: "/Users/alice/Library/pnpm" }, "darwin")).toEqual([
+      "/Users/alice/.npm-global/bin",
+      "/Users/alice/Library/pnpm",
+      "/Users/alice/.local/bin",
+      "/Users/alice/Library/pnpm",
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+    ]);
+  });
+
+  it("adds Windows npm shim and configured package-manager locations", () => {
+    expect(desktopExecutableSearchPaths("C:\\Users\\alice", { APPDATA: "C:\\Users\\alice\\AppData\\Roaming", npm_config_prefix: "D:\\npm-prefix", PNPM_HOME: "D:\\pnpm" }, "win32")).toEqual([
+      "D:\\npm-prefix",
+      "D:\\pnpm",
+      "C:\\Users\\alice\\AppData\\Roaming\\npm",
+    ]);
   });
 });

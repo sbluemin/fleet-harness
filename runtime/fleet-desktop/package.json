@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fleet Console Electron main-process host.",
   "private": true,
   "type": "module",
@@ -24,6 +24,7 @@
     "verify:package": "node scripts/verify-packaged-app.mjs"
   },
   "devDependencies": {
+    "@dotobokuri/core-process": "workspace:*",
     "@electron/asar": "3.4.1",
     "@dotobokuri/fleet-console": "workspace:*",
     "@electron/fuses": "2.1.3",

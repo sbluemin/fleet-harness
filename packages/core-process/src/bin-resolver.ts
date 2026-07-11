@@ -61,6 +61,32 @@ export function createChildEnv(env: NodeJS.ProcessEnv, overlay: Readonly<Record<
   return child;
 }
 
+export function prependPathEntries(env: NodeJS.ProcessEnv, entries: readonly string[], options: ResolveBinaryOptions = {}): NodeJS.ProcessEnv {
+  const platform = options.platform ?? process.platform;
+  const isWindows = platform === "win32";
+  const pathKey = isWindows ? Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "Path" : "PATH";
+  const existingPath = isWindows ? (env.Path ?? env.PATH) : env.PATH;
+  const separator = isWindows ? WINDOWS_PATH_SEPARATOR : path.delimiter;
+  const seen = new Set<string>();
+  const pathEntries: string[] = [];
+  for (const entry of [...entries, ...(existingPath?.split(separator) ?? [])]) {
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) continue;
+    const identity = isWindows ? trimmed.toLowerCase() : trimmed;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    pathEntries.push(trimmed);
+  }
+  const next = createChildEnv(env, {});
+  if (isWindows) {
+    for (const key of Object.keys(next)) {
+      if (key.toLowerCase() === "path") delete next[key];
+    }
+  }
+  if (pathEntries.length > 0) next[pathKey] = pathEntries.join(separator);
+  return next;
+}
+
 function wrapWindowsShim(resolved: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): ResolvedBinary {
   if (platform !== "win32" || !WINDOWS_SHIM_EXTENSIONS.has(path.extname(resolved).toLowerCase())) {
     return { bin: resolved, prefixArgs: [] };

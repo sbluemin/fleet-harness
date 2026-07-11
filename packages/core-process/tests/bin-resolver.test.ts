@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findBinaryPath, resolvePathBinary } from "../src/bin-resolver.js";
+import { findBinaryPath, prependPathEntries, resolvePathBinary } from "../src/bin-resolver.js";
 
 const TEMP_DIRS: string[] = [];
 
@@ -114,6 +114,22 @@ describe("process binary resolution", () => {
     expect(resolvePathBinary("npm", { PATH: binDir }, { platform: "linux" })).toEqual({
       bin: npmBin,
       prefixArgs: [],
+    });
+  });
+});
+
+describe("process PATH construction", () => {
+  it("prepends and deduplicates POSIX executable directories", () => {
+    expect(prependPathEntries({ PATH: "/usr/bin:/custom/bin", PRESERVED: "yes" }, ["/custom/bin", "/Users/alice/.local/bin"], { platform: "darwin" })).toEqual({
+      PATH: "/custom/bin:/Users/alice/.local/bin:/usr/bin",
+      PRESERVED: "yes",
+    });
+  });
+
+  it("preserves the Windows PATH key while deduplicating case-insensitively", () => {
+    expect(prependPathEntries({ Path: "C:\\Windows\\System32;C:\\Users\\Alice\\AppData\\Roaming\\npm", PRESERVED: "yes" }, ["c:\\users\\alice\\appdata\\roaming\\npm", "C:\\Tools"], { platform: "win32" })).toEqual({
+      Path: "c:\\users\\alice\\appdata\\roaming\\npm;C:\\Tools;C:\\Windows\\System32",
+      PRESERVED: "yes",
     });
   });
 });
