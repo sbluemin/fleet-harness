@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -17,8 +18,9 @@ export interface ConsoleInstallerFileSystem {
 }
 
 export interface ConsoleInstallerDependencies {
+  readonly environment?: NodeJS.ProcessEnv;
   readonly fileSystem: ConsoleInstallerFileSystem;
-  readonly run: (command: string, arguments_: readonly string[]) => Promise<void>;
+  readonly run: (command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>;
   readonly randomSuffix: () => string;
 }
 
@@ -50,9 +52,15 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
     await reconcileConsoleInstallations(options.paths, dependencies.fileSystem);
     await dependencies.fileSystem.rm(staging);
     await dependencies.fileSystem.mkdir(staging);
+    const npmConfiguration = path.join(staging, ".npmrc");
+    await dependencies.fileSystem.writeFile(npmConfiguration, "");
     // npm 셔뱅(#!/usr/bin/env node)·Windows .cmd 직접 실행은 시스템 Node 부재/spawn 보안 정책에서 깨진다 —
     // 번들 node 바이너리로 npm-cli.js를 직접 구동해야 postinstall(node-pty)도 번들 node의 PATH로 돈다.
-    await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`]);
+    try {
+      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`], { env: createConsoleInstallerEnvironment(dependencies.environment, npmConfiguration) });
+    } finally {
+      await dependencies.fileSystem.rm(npmConfiguration);
+    }
     await normalizePrefixInstallation(staging, options.packageName, dependencies.fileSystem);
     await verifyInstallation(staging, options.version, options.nodeRuntimeVersion, dependencies.fileSystem);
     await replaceLatest(options.paths.latest, staging, dependencies.fileSystem);
@@ -65,6 +73,7 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
 
 export function createConsoleInstallerDependencies(): ConsoleInstallerDependencies {
   return {
+    environment: process.env,
     fileSystem: {
       mkdir: async (target) => { await mkdir(target, { recursive: true }); },
       readFile: async (target) => readFile(target, "utf8"),
@@ -75,7 +84,21 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
       writeFile: async (target, content) => { await writeFile(target, content); },
     },
     randomSuffix: () => Math.random().toString(36).slice(2),
-    run: async (command, arguments_) => { await promisify(execFile)(command, [...arguments_]); },
+    run: async (command, arguments_, options) => { await promisify(execFile)(command, [...arguments_], options); },
+  };
+}
+
+export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty.npmrc")): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(source)) {
+    const normalizedKey = key.toLowerCase();
+    if (value !== undefined && normalizedKey !== "node_options" && !normalizedKey.startsWith("npm_config_")) environment[key] = value;
+  }
+  return {
+    ...environment,
+    npm_config_registry: "https://registry.npmjs.org/",
+    npm_config_userconfig: npmConfiguration,
+    npm_config_globalconfig: npmConfiguration,
   };
 }
 

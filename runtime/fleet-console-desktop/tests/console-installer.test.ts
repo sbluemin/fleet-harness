@@ -24,10 +24,16 @@ function fileSystem(existing = new Set<string>()) {
 describe("console installer", () => {
   it("uses bundled npm, normalizes the prefix package as latest root, and validates before promotion", async () => {
     const fs = fileSystem();
-    const run = vi.fn(async () => undefined);
+    const run = vi.fn<(command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>>(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
-    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
-    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"]);
+    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { environment: { NODE_OPTIONS: "--require attacker", npm_config_registry: "https://attacker.invalid", NPM_CONFIG_CACHE: "/attacker", PATH: "/safe/bin" }, fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
+    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"], { env: expect.objectContaining({ PATH: "/safe/bin", npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc", npm_config_globalconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc" }) });
+    const firstRun = run.mock.calls[0];
+    if (!firstRun) throw new Error("npm invocation was not captured");
+    const runEnvironment = firstRun[2].env;
+    expect(runEnvironment.NODE_OPTIONS).toBeUndefined();
+    expect(runEnvironment.npm_config_registry).toBe("https://registry.npmjs.org/");
+    expect(runEnvironment.NPM_CONFIG_CACHE).toBeUndefined();
     expect(fs.rename).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/@dotobokuri/fleet-console", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test.package");
     expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/dist/cli.mjs");
     expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty");
@@ -46,10 +52,10 @@ describe("console installer", () => {
 
   it("drives npm through node.exe and the npm-cli.js script on Windows", async () => {
     const fs = fileSystem();
-    const run = vi.fn(async () => undefined);
+    const run = vi.fn<(command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>>(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
     await installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "win32", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } });
-    expect(run).toHaveBeenCalledWith(expect.stringContaining("node.exe"), expect.arrayContaining([expect.stringContaining("npm-cli.js")]));
+    expect(run).toHaveBeenCalledWith(expect.stringContaining("node.exe"), expect.arrayContaining([expect.stringContaining("npm-cli.js")]), { env: expect.objectContaining({ npm_config_registry: "https://registry.npmjs.org/" }) });
   });
 
   it("restores the previous latest installation when promotion fails", async () => {

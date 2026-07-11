@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -20,5 +21,25 @@ describe("release package verification", () => {
     expect(verifier).toContain('"Electron Framework.framework", "Versions", "A", "Electron Framework"');
     expect(verifier).toContain("await flipFuses(application.fuseBinary,");
     expect(verifier).toContain("await assertFuses(application.fuseBinary);");
+  });
+
+  it("accepts the expected PE architecture and rejects a mismatched Electron binary", async () => {
+    // Windows 실기는 [Unverified]지만 PE 헤더 판독은 fixture로 고정한다.
+    const directory = await mkdtemp(path.join(os.tmpdir(), "fleet-electron-arch-"));
+    const binary = path.join(directory, "Fleet Console.exe");
+    const header = Buffer.alloc(0x40);
+    header.write("MZ", 0, "ascii");
+    header.writeUInt32LE(0x20, 0x3c);
+    header.write("PE\0\0", 0x20, "ascii");
+    header.writeUInt16LE(0x8664, 0x24);
+    await writeFile(binary, header);
+    try {
+      const verifier = await import(pathToFileURL(path.join(desktopRoot, "scripts", "verify-packaged-app.mjs")).href);
+      await expect(verifier.assertElectronArchitecture(binary, "win32", "x64")).resolves.toBeUndefined();
+      await expect(verifier.assertElectronArchitecture(binary, "win32", "arm64")).rejects.toThrow("Electron binary target mismatch");
+      expect(verifier.expectedArchitectureFromDirectory(path.join(directory, "win-x64-unpacked", "resources"))).toBe("x64");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 });

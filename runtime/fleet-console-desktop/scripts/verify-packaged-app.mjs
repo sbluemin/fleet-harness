@@ -2,7 +2,7 @@ import { extractFile, listPackage } from "@electron/asar";
 import { flipFuses, FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
 import { existsSync } from "node:fs";
 import { access, readdir, readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
@@ -42,6 +42,8 @@ async function verifyApplication(application, platform) {
   await access(application.asar);
   if (existsSync(join(application.resourcesDirectory, "sidecar"))) throw new Error("Embedded sidecar directory is forbidden");
   await assertShellOnlyAsar(application.asar);
+  const expectedArchitecture = expectedArchitectureFromDirectory(application.resourcesDirectory);
+  if (expectedArchitecture) await assertElectronArchitecture(application.fuseBinary, platform, expectedArchitecture);
   await assertFuses(application.fuseBinary);
   await assertMacSignature(application, platform);
   if (platform === "win32" && requiresReleaseSignature) await assertWindowsSignature(application.electronBinary);
@@ -130,10 +132,44 @@ async function assertWindowsSignature(filePath) {
   if (!/successfully verified/i.test(`${stdout}\n${stderr}`) || !/timestamp/i.test(`${stdout}\n${stderr}`)) throw new Error(`Authenticode timestamp verification failed: ${filePath}`);
 }
 
+export async function assertElectronArchitecture(electronBinary, platform, expectedArchitecture) {
+  const detected = detectElectronArchitecture(await readFile(electronBinary));
+  if (detected.platform !== platform || detected.architecture !== expectedArchitecture) throw new Error(`Electron binary target mismatch: expected ${platform}-${expectedArchitecture}, received ${detected.platform}-${detected.architecture}`);
+}
+
+export function expectedArchitectureFromDirectory(resourcesDirectory) {
+  let current = resolve(resourcesDirectory);
+  while (dirname(current) !== current) {
+    const match = /(?:^|-)(arm64|x64)(?:-unpacked)?$/i.exec(basename(current));
+    if (match) return match[1].toLowerCase();
+    current = dirname(current);
+  }
+  return null;
+}
+
 async function signAndVerifyLinuxRelease(releaseDirectory) {
   const scriptsDirectory = dirname(fileURLToPath(import.meta.url));
   await execFileAsync(process.execPath, [join(scriptsDirectory, "sign-linux-checksums.mjs"), releaseDirectory]);
   await execFileAsync(process.execPath, [join(scriptsDirectory, "verify-release-artifacts.mjs"), releaseDirectory]);
+}
+
+function detectElectronArchitecture(binary) {
+  if (binary.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))) return { platform: "linux", architecture: readArchitecture(binary.readUInt16LE(18)) };
+  if (binary.subarray(0, 2).equals(Buffer.from("MZ"))) {
+    const headerOffset = binary.readUInt32LE(0x3c);
+    if (binary.subarray(headerOffset, headerOffset + 4).toString("ascii") !== "PE\0\0") throw new Error("Invalid PE Electron binary");
+    return { platform: "win32", architecture: readArchitecture(binary.readUInt16LE(headerOffset + 4)) };
+  }
+  const magic = binary.readUInt32LE(0);
+  if (magic === 0xfeedfacf || magic === 0xfeedface) return { platform: "darwin", architecture: readArchitecture(binary.readUInt32LE(4)) };
+  if (binary.readUInt32BE(0) === 0xcafebabe || binary.readUInt32BE(0) === 0xcafebabf) throw new Error("Universal Electron binaries are not valid single-target packages");
+  throw new Error("Unrecognized Electron binary format");
+}
+
+function readArchitecture(machine) {
+  if (machine === 0x01000007 || machine === 0x8664 || machine === 62) return "x64";
+  if (machine === 0x0100000c || machine === 0xaa64 || machine === 183) return "arm64";
+  throw new Error(`Unsupported Electron binary machine code: ${machine}`);
 }
 
 async function assertNoUpdaterArtifacts(root) {
