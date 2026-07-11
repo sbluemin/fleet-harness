@@ -129,8 +129,19 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain('className="side-bar-search-btn"');
     expect(sidebar).toContain("onClick={toggleOperationSearch}");
     expect(sidebar).toContain('className="side-bar-formation-btn"');
+    expect(sidebar).toContain("onClick={toggleFormationView}");
+    expect(sidebar).toContain("disabled={activeTheaterId === null}");
+    expect(sidebar).toContain("aria-pressed={formationView}");
     expect(sidebar).not.toContain("side-bar-settings-btn");
-    expect(source("canvas/canvas-context-menu.tsx")).not.toContain('"controls"');
+    // 헤더 버튼 순서 계약: 접기 → Formation → 검색.
+    const headerBlock = sidebar.slice(sidebar.indexOf('className="operations-side-bar-header"'), sidebar.indexOf("</header>"));
+    const collapseAt = headerBlock.indexOf("side-bar-collapse-btn");
+    const formationAt = headerBlock.indexOf("side-bar-formation-btn");
+    const searchAt = headerBlock.indexOf("side-bar-search-btn");
+    expect(collapseAt).toBeGreaterThan(-1);
+    expect(formationAt).toBeGreaterThan(collapseAt);
+    expect(searchAt).toBeGreaterThan(formationAt);
+    expect(source("canvas/canvas-context-menu.tsx")).toContain('export type CanvasContextMenuMode = "full" | "launch";');
     expect(brandFoot).toContain('className="brand-foot-dropup-menu" role="menu"');
     expect(brandFoot).toContain('className="brand-foot-version"');
     expect(brandFoot).toContain("openWhatsNew");
