@@ -26,7 +26,7 @@
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);
   border-bottom: 1px solid var(--surface-rim);
-  background: var(--canvas-sea-core);
+  background: var(--surface-band);
 }
 
 .command-band.is-utility {
@@ -51,7 +51,7 @@
 
 .command-band-left.is-collapsed {
   border-color: transparent;
-  background: var(--canvas-sea-core);
+  background: var(--surface-band);
 }
 
 .command-band.is-utility .command-band-left {
