@@ -9,6 +9,7 @@ import { layoutGraph } from "./graph-layout.js";
 import type { CommitSelection } from "./hunk-view.js";
 import { HunkView } from "./hunk-view.js";
 import { formatCommitTime, refBadges } from "./log-parse.js";
+import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_WIDTH, buildHistoryGridTemplate, clampListPaneWidth, installPointerDragLifecycle } from "./rail-layout.js";
 
 type LoadState =
   | { readonly kind: "loading" }
@@ -30,6 +31,9 @@ interface CommitRowProps {
 }
 
 const EXTENDED_EXTRA_WIDTH = 400;
+const PREFS_LIST_PANE_WIDTH = "fleet-console.history.listPaneWidth";
+const LIST_PANE_DEFAULT_WIDTH = 360;
+const LIST_PANE_MIN_WIDTH = 220;
 
 export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly WorktreeCheckout[]): WorktreeCheckout | null {
   return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null;
@@ -71,7 +75,12 @@ function HistoryPanelBody({ ctx }: HistoryPanelProps) {
   const [selectedCommit, setSelectedCommit] = useState<CommitSelection | null>(null);
   const [filterText, setFilterText] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
   const fetchSeqRef = useRef(0);
+  const listPaneWidthRef = useRef(listPaneWidth);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const dragDisposeRef = useRef<(() => void) | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const subPath = ctx.pathContext.relPath ?? "";
 
   useEffect(() => {
@@ -100,13 +109,42 @@ function HistoryPanelBody({ ctx }: HistoryPanelProps) {
     return () => ctx.requestExtraWidth?.(null);
   }, [ctx.requestExtraWidth, selectedCommit]);
 
+  useEffect(() => () => {
+    dragDisposeRef.current?.();
+    dragDisposeRef.current = null;
+  }, []);
+
   const handleSelectCommit = useCallback((entry: LogCommitEntry) => {
     if (ctx.theaterId) setSelectedCommit({ commit: entry, subPath, theaterId: ctx.theaterId });
   }, [ctx.theaterId, subPath]);
+  const handleDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const container = rootRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+    const startX = event.clientX;
+    const startWidth = listPaneWidthRef.current;
+    dragDisposeRef.current?.();
+    setIsDragging(true);
+    const onMove = (event: Event) => {
+      const move = event as PointerEvent;
+      const next = clampListPaneWidth({ startWidth, dx: move.clientX - startX, containerWidth, listPaneMinWidth: LIST_PANE_MIN_WIDTH, hunkPaneMinWidth: HISTORY_DETAIL_PANE_MIN_WIDTH, dividerWidth: DIFF_DIVIDER_WIDTH });
+      if (next !== null) {
+        listPaneWidthRef.current = next;
+        setListPaneWidth(next);
+      }
+    };
+    const onFinish = () => {
+      dragDisposeRef.current = null;
+      setIsDragging(false);
+      try { localStorage.setItem(PREFS_LIST_PANE_WIDTH, String(listPaneWidthRef.current)); } catch { /* ignore */ }
+    };
+    dragDisposeRef.current = installPointerDragLifecycle({ documentTarget: document, windowTarget: window, onMove, onFinish });
+  }, []);
   const visibleCommits = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
   const layout = state.kind === "ok" ? layoutGraph(visibleCommits) : null;
   const countLabel = state.kind === "ok" ? filterText ? `${visibleCommits.length}/${state.commits.length}` : String(state.commits.length) : null;
-  return <div className={`history-root${selectedCommit ? " has-detail" : ""}`}>{selectedCommit ? <div className="history-detail-pane"><div className="history-detail-head"><span className="history-detail-sha">{selectedCommit.commit.shortHash}</span><span className="history-detail-subject">{selectedCommit.commit.subject}</span><button type="button" className="history-detail-close" aria-label="Close commit diff" onClick={() => setSelectedCommit(null)}>✕</button></div><div className="history-detail-body"><HunkView ctx={ctx} file={{ path: "", status: "M", additions: 0, deletions: 0 }} mode="unified" subPath={selectedCommit.subPath} commit={selectedCommit} /></div></div> : null}<div className="history-list-pane"><div className="history-toolbar"><div className="history-filter"><input type="text" className="history-filter-input" placeholder="Filter…" aria-label="Filter commits" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="history-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div>{countLabel ? <span className="history-count">{countLabel}</span> : null}</div><div className="history-list">{state.kind === "loading" ? <div className="history-empty">Loading…</div> : null}{state.kind === "error" ? <div className="history-error"><span>{state.message}</span><button type="button" className="diff-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div> : null}{state.kind === "ok" && state.commits.length === 0 ? <div className="history-empty">No history</div> : null}{state.kind === "ok" && state.commits.length > 0 && visibleCommits.length === 0 ? <div className="history-empty">No matching items</div> : null}{state.kind === "ok" && layout ? visibleCommits.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={selectedCommit?.commit.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} laneCount={layout.activeLaneCount} layoutCollapsed={layout.collapsed} onSelect={handleSelectCommit} />) : null}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) ? <div className="history-truncated">History capped at 200 commits.</div> : null}</div></div></div>;
+  return <div ref={rootRef} className={`history-root${selectedCommit ? " has-detail" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedCommit ? { gridTemplateColumns: buildHistoryGridTemplate(listPaneWidth) } : undefined}>{selectedCommit ? <div className="history-detail-pane"><div className="history-detail-head"><span className="history-detail-sha">{selectedCommit.commit.shortHash}</span><span className="history-detail-subject">{selectedCommit.commit.subject}</span><button type="button" className="history-detail-close" aria-label="Close commit diff" onClick={() => setSelectedCommit(null)}>✕</button></div><div className="history-detail-body"><HunkView ctx={ctx} file={{ path: "", status: "M", additions: 0, deletions: 0 }} mode="unified" subPath={selectedCommit.subPath} commit={selectedCommit} /></div></div> : null}{selectedCommit ? <div className="history-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}<div className="history-list-pane"><div className="history-toolbar"><div className="history-filter"><input type="text" className="history-filter-input" placeholder="Filter…" aria-label="Filter commits" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="history-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div>{countLabel ? <span className="history-count">{countLabel}</span> : null}</div><div className="history-list">{state.kind === "loading" ? <div className="history-empty">Loading…</div> : null}{state.kind === "error" ? <div className="history-error"><span>{state.message}</span><button type="button" className="diff-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div> : null}{state.kind === "ok" && state.commits.length === 0 ? <div className="history-empty">No history</div> : null}{state.kind === "ok" && state.commits.length > 0 && visibleCommits.length === 0 ? <div className="history-empty">No matching items</div> : null}{state.kind === "ok" && layout ? visibleCommits.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={selectedCommit?.commit.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} laneCount={layout.activeLaneCount} layoutCollapsed={layout.collapsed} onSelect={handleSelectCommit} />) : null}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) ? <div className="history-truncated">History capped at 200 commits.</div> : null}</div></div></div>;
 }
 
 function HistoryIcon() {
@@ -120,3 +158,12 @@ export const historyPanel: RailPanelDescriptor = {
   pathAware: true,
   render: (ctx: RailPanelContext) => <HistoryPanel ctx={ctx} />,
 };
+
+function readListPaneWidth(): number {
+  try {
+    const value = localStorage.getItem(PREFS_LIST_PANE_WIDTH);
+    const width = value === null ? NaN : Number.parseFloat(value);
+    if (Number.isFinite(width) && width > 0) return Math.max(LIST_PANE_MIN_WIDTH, width);
+  } catch { /* ignore */ }
+  return LIST_PANE_DEFAULT_WIDTH;
+}
