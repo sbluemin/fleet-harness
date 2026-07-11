@@ -13,4 +13,12 @@ describe("release package verification", () => {
     expect(verifier).toContain('"sign-linux-checksums.mjs"');
     expect(verifier).toContain('"verify-release-artifacts.mjs"');
   });
+
+  it("targets the macOS Electron Framework binary for fuse apply and assertion", async () => {
+    const verifier = await readFile(path.join(desktopRoot, "scripts", "verify-packaged-app.mjs"), "utf8");
+    // macOS fuse 와이어는 런처가 아니라 프레임워크 바이너리에 있다 — 하드닝 적용/검증이 프레임워크를 겨냥해야 한다.
+    expect(verifier).toContain('"Electron Framework.framework", "Versions", "A", "Electron Framework"');
+    expect(verifier).toContain("await flipFuses(application.fuseBinary,");
+    expect(verifier).toContain("await assertFuses(application.fuseBinary);");
+  });
 });

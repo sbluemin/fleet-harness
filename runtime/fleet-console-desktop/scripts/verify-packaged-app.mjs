@@ -42,14 +42,14 @@ async function verifyApplication(application, platform) {
   await access(application.asar);
   if (existsSync(join(application.resourcesDirectory, "sidecar"))) throw new Error("Embedded sidecar directory is forbidden");
   await assertShellOnlyAsar(application.asar);
-  await assertFuses(application.electronBinary);
+  await assertFuses(application.fuseBinary);
   await assertMacSignature(application, platform);
   if (platform === "win32" && requiresReleaseSignature) await assertWindowsSignature(application.electronBinary);
 }
 
 async function applyRequiredFuses(outputDirectory, platform) {
   for (const application of await findApplications(outputDirectory, platform)) {
-    await flipFuses(application.electronBinary, {
+    await flipFuses(application.fuseBinary, {
       version: FuseVersion.V1,
       // flipFuses의 config 값은 불리언 계약이다 — FuseState 상수(48/49)는 truthy라 전부 ENABLE로 기록되는 함정.
       // FuseState는 판독(assertFuses) 비교 전용으로만 쓴다.
@@ -85,7 +85,8 @@ async function findApplications(root, platform) {
     const asar = join(resourcesDirectory, "app.asar");
     if (!existsSync(asar)) continue;
     const appRoot = platform === "darwin" ? dirname(dirname(resourcesDirectory)) : dirname(resourcesDirectory);
-    applications.push({ appBundle: platform === "darwin" ? appRoot : null, asar, electronBinary: findInstalledElectronBinary(resourcesDirectory, platform), resourcesDirectory });
+    const electronBinary = findInstalledElectronBinary(resourcesDirectory, platform);
+    applications.push({ appBundle: platform === "darwin" ? appRoot : null, asar, electronBinary, fuseBinary: findFuseBinary(resourcesDirectory, electronBinary, platform), resourcesDirectory });
   }
   return applications;
 }
@@ -95,6 +96,15 @@ function findInstalledElectronBinary(resourcesDirectory, platform) {
   if (platform === "darwin") return join(contentsDirectory, "MacOS", "Fleet Console");
   if (platform === "win32") return join(dirname(resourcesDirectory), "Fleet Console.exe");
   return join(dirname(resourcesDirectory), "Fleet Console");
+}
+
+// macOS의 fuse 와이어는 런처가 아니라 Electron Framework 바이너리에 있다. @electron/fuses는 런처 경로를
+// 내부적으로 프레임워크로 redirect하지만, 보안 하드닝 대상을 라이브러리 내부 동작에 의존하지 않고 명시적으로
+// 프레임워크 바이너리를 겨냥한다(런처는 fuse sentinel이 없어 직접 대상이 될 수 없다). 서명 검사는 런처를 계속 쓴다.
+function findFuseBinary(resourcesDirectory, electronBinary, platform) {
+  if (platform !== "darwin") return electronBinary;
+  const contentsDirectory = dirname(resourcesDirectory);
+  return join(contentsDirectory, "Frameworks", "Electron Framework.framework", "Versions", "A", "Electron Framework");
 }
 
 async function assertFuses(electronBinary) {
