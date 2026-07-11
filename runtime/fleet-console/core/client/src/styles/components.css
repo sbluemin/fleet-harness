@@ -2794,8 +2794,7 @@
   line-height: 1.45;
 }
 
-/* 설정 버튼 — Map 및 표시 제어 팝오버 트리거. search/collapse도 같은 아이콘 버튼 문법 */
-.side-bar-settings-btn,
+/* SideBar header icon buttons share one chrome grammar. */
 .side-bar-search-btn,
 .side-bar-collapse-btn,
 .side-bar-formation-btn {
@@ -2816,15 +2815,6 @@
     color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-settings-btn {
-  margin-left: 0;
-}
-
-.side-bar-formation-btn {
-  margin-left: auto;
-}
-
-.side-bar-settings-btn svg,
 .side-bar-search-btn svg,
 .side-bar-collapse-btn svg,
 .side-bar-formation-btn svg {
@@ -2832,8 +2822,6 @@
   height: 16px;
 }
 
-.side-bar-settings-btn:hover,
-.side-bar-settings-btn:focus-visible,
 .side-bar-search-btn:hover,
 .side-bar-search-btn:focus-visible,
 .side-bar-collapse-btn:hover,
@@ -2844,12 +2832,6 @@
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   color: var(--ink-spectral);
   outline: none;
-}
-
-.side-bar-settings-btn[aria-expanded="true"] {
-  color: var(--brass);
-  border-color: color-mix(in oklch, var(--brass) 35%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
 .side-bar-formation-btn[aria-pressed="true"] {
