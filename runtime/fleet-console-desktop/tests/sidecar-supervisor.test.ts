@@ -43,11 +43,11 @@ describe("sidecar supervisor", () => {
     expect(kill).not.toHaveBeenCalled();
   });
 
-  it("hard-stops a live unhealthy lock that this desktop does not own", async () => {
+  it("reports a live unhealthy foreign lock without signaling it", async () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
     const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
-    await expect(supervisor().startOrAdopt()).rejects.toThrow("console_lock_process_unhealthy");
+    await expect(supervisor().startOrAdopt()).rejects.toThrow("console_lock_foreign_process_unhealthy");
     expect(kill).not.toHaveBeenCalledWith(4321, "SIGTERM");
   });
 
@@ -83,6 +83,17 @@ describe("sidecar supervisor", () => {
     });
     await expect(supervisor().startOrAdopt()).rejects.toThrow("sidecar_spawn_failed");
     expect(kill).toHaveBeenCalledWith(4321, "SIGTERM");
+  }, 10_000);
+
+  it("keeps the owned termination failure identifier out of the foreign-lock path", async () => {
+    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+    await expect(supervisor().startOrAdopt()).rejects.toThrow("console_lock_process_unhealthy");
+
+    expect(kill).toHaveBeenCalledWith(4321, "SIGTERM");
+    expect(kill).toHaveBeenCalledWith(4321, "SIGKILL");
   }, 10_000);
 
   it("terminates an owned unhealthy sidecar on quit instead of leaving it running", async () => {

@@ -31,9 +31,8 @@ export class SidecarSupervisor {
     if (current.kind === "unhealthy") {
       if (this.isProcessAlive(current.stored.lock.pid)) {
         // 자기 소유(desktop owner 일치) sidecar는 unhealthy여도 안전하게 회수한다 —
-        // 하드 스톱은 CLI/무소유의 살아있는 잠금에만 적용한다. 그렇지 않으면 응답을 멈춘
-        // 이전 sidecar가 잠금을 쥔 채 재실행이 console_lock_process_unhealthy에 갇힌다.
-        if (!this.isOwned(current.stored.lock)) throw new Error("console_lock_process_unhealthy");
+        // 타 소유의 살아 있는 잠금은 신호를 보내지 않고 별도 충돌로 종료한다.
+        if (!this.isOwned(current.stored.lock)) throw new Error("console_lock_foreign_process_unhealthy");
         await this.terminateOwnedProcess(current.stored.lock.pid);
         this.removeLockAfterOwnedTermination(current.stored);
       } else {

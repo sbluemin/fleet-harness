@@ -6,7 +6,7 @@
 
 - `runtime/fleet-console` remains the sole owner of HTTP/REST/SSE/WebSocket, `node-pty`, provider launch policy, trusted plugins, durable JSON state, lock files, and the React/Vite UI.
 - Desktop loads only the authenticated-and-verified loopback origin's token-free `/console/` route. Do not add a renderer fork, raw IPC surface, HTTP server, PTY/session manager, provider adapter, plugin registry, or durable-state implementation here.
-- The one allowed local renderer surface is `assets/entry/`: a scriptless, view-only status page. Main process code may push full snapshots one way through `webContents.executeJavaScript`; preload, `ipcMain`, `ipcRenderer`, `contextBridge`, and renderer input remain forbidden. Native dialogs are the only input surface.
+- The one allowed local renderer surface is `assets/entry/`: a scriptless, view-only status page. Main process code may push full snapshots one way through `webContents.executeJavaScript`; preload, `ipcMain`, `ipcRenderer`, `contextBridge`, and renderer input remain forbidden. Native dialogs are the only input surface. A live foreign Console conflict (`cli_daemon_requires_confirmation` or `console_lock_foreign_process_unhealthy`) shows one acknowledgement and quits Desktop; it never signals the foreign process. Owned sidecar termination failures retain `console_lock_process_unhealthy` and follow normal bootstrap failure handling.
 - Electron may consume only the public `@dotobokuri/fleet-console/desktop-protocol` leaf for owner/protocol/resource validation; never import Console internals.
 
 ## Runtime and lifecycle contract
