@@ -29,9 +29,9 @@ describe("global settings routes", () => {
   });
 
   it("GET /global-settings/state reflects stored values", async () => {
-    const harness = createRouterHarness({ general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
+    const harness = createRouterHarness({ general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
     await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
   });
 
   it("GET /global-settings/state rejects non-GET methods with 405", async () => {
@@ -86,11 +86,13 @@ describe("global settings routes", () => {
     }
   });
 
-  it("PUT /global-settings stores a theme", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { theme: "instrument" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
-    expect(harness.currentGeneral()).toMatchObject({ theme: "instrument" });
+  it("PUT /global-settings persists each supported theme", async () => {
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      const harness = createRouterHarness({ authorized: true, body: { theme } });
+      await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+      expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
+      expect(harness.currentGeneral()).toMatchObject({ theme });
+    }
   });
 
   it("PUT /global-settings ignores enableMetaphor body field", async () => {

@@ -9,7 +9,7 @@ import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
 
-export type ConsoleTheme = "maritime" | "carbon";
+export type ConsoleTheme = "instrument" | "maritime" | "carbon";
 
 export type OperationActivity = "idle" | "running" | "awaiting" | "dormant";
 

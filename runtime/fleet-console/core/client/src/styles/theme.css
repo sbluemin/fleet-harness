@@ -108,6 +108,98 @@
   color-scheme: dark;
 }
 
+/* Legacy 테마는 팔레트 토큰만 오버라이드한다 — 라운드 스케일·배경 연출 등 형상은 Instrument 그대로. */
+:root[data-theme="maritime"],
+:root[data-theme="carbon"] {
+  --text-primary: var(--ink-pearl);
+  --text-secondary: var(--ink-spectral);
+  --text-tertiary: var(--ink-fog);
+}
+
+:root[data-theme="maritime"] {
+  --ink-abyss: oklch(15% 0.04 250);
+  --ink-deep: oklch(20% 0.045 248);
+  --ink-mid: oklch(28% 0.04 248);
+  --ink-veil: oklch(36% 0.035 248);
+  --ink-rim: oklch(48% 0.03 248);
+  --ink-fog: oklch(70% 0.02 248);
+  --ink-spectral: oklch(82% 0.018 90);
+  --ink-pearl: oklch(96% 0.012 88);
+
+  --brass: oklch(78% 0.13 75);
+  --brass-bright: oklch(86% 0.16 78);
+  --brass-deep: oklch(56% 0.13 65);
+  --brass-glow: oklch(82% 0.16 75 / 28%);
+
+  --aurora: oklch(82% 0.13 195);
+  --aurora-deep: oklch(58% 0.13 200);
+  --aurora-glow: oklch(82% 0.13 195 / 22%);
+
+  --coral: oklch(72% 0.17 25);
+  --coral-glow: oklch(72% 0.17 25 / 22%);
+  --warn: oklch(80% 0.13 85);
+  --warn-glow: oklch(80% 0.13 85 / 22%);
+  --positive: oklch(80% 0.15 152);
+  --positive-glow: oklch(80% 0.15 152 / 24%);
+
+  --canvas-abyss: oklch(7% 0.015 246);
+  --canvas-sea-core: oklch(15% 0.03 235);
+  --canvas-sea-near: oklch(9% 0.02 242);
+  --canvas-sea-mid: oklch(7% 0.015 246);
+  --canvas-sea-far: oklch(6% 0.012 250);
+
+  --surface-glass: oklch(28% 0.04 248 / 60%);
+  --surface-glass-strong: oklch(32% 0.04 248 / 78%);
+  --surface-pillar: oklch(22% 0.05 248 / 86%);
+  --surface-rim: oklch(64% 0.04 248 / 24%);
+  --surface-rim-strong: oklch(72% 0.05 248 / 38%);
+
+  --hairline: oklch(36% 0.035 248);
+  --hairline-strong: oklch(48% 0.03 248);
+}
+
+:root[data-theme="carbon"] {
+  --ink-abyss: oklch(14% 0.006 255);
+  --ink-deep: oklch(18% 0.007 255);
+  --ink-mid: oklch(25% 0.007 252);
+  --ink-veil: oklch(33% 0.006 252);
+  --ink-rim: oklch(45% 0.005 252);
+  --ink-fog: oklch(67% 0.005 250);
+  --ink-spectral: oklch(81% 0.004 250);
+  --ink-pearl: oklch(95% 0.003 250);
+
+  --brass: oklch(76% 0.115 62);
+  --brass-bright: oklch(84% 0.14 64);
+  --brass-deep: oklch(54% 0.11 55);
+  --brass-glow: oklch(80% 0.14 60 / 26%);
+
+  --aurora: oklch(80% 0.105 205);
+  --aurora-deep: oklch(56% 0.11 208);
+  --aurora-glow: oklch(80% 0.11 205 / 20%);
+
+  --coral: oklch(70% 0.16 25);
+  --coral-glow: oklch(70% 0.16 25 / 22%);
+  --warn: oklch(79% 0.12 80);
+  --warn-glow: oklch(79% 0.12 80 / 22%);
+  --positive: oklch(78% 0.13 158);
+  --positive-glow: oklch(78% 0.13 158 / 24%);
+
+  --canvas-abyss: oklch(8% 0.006 255);
+  --canvas-sea-core: oklch(15% 0.012 250);
+  --canvas-sea-near: oklch(10% 0.007 255);
+  --canvas-sea-mid: oklch(8% 0.006 255);
+  --canvas-sea-far: oklch(6% 0.005 258);
+
+  --surface-glass: oklch(25% 0.006 252 / 62%);
+  --surface-glass-strong: oklch(29% 0.007 252 / 80%);
+  --surface-pillar: oklch(20% 0.008 252 / 88%);
+  --surface-rim: oklch(62% 0.006 252 / 22%);
+  --surface-rim-strong: oklch(70% 0.007 252 / 36%);
+
+  --hairline: oklch(33% 0.006 252);
+  --hairline-strong: oklch(45% 0.005 252);
+}
+
 *,
 *::before,
 *::after {

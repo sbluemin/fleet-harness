@@ -4,8 +4,6 @@ import os from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { CreateDurableJsonStoreDeps, DurableJsonStore } from "@dotobokuri/core-infra";
-
 import {
   createConsoleSettingsStore,
   sanitizeConsoleSettingsData,
@@ -34,28 +32,6 @@ function makeFakePaths(dir: string): ConsoleDataPaths {
     settingsFile: path.join(dir, "settings.json"),
     capturesDir: path.join(dir, "captures"),
   };
-}
-
-function createControlledMigrationStore(input: { readonly raw: unknown; readonly latest: unknown; readonly shouldFailWrite: () => boolean }) {
-  let raw = input.raw;
-  let updateCalls = 0;
-  const dir = makeTempDir();
-  const store = createConsoleSettingsStore({
-    paths: makeFakePaths(dir),
-    createStore: (deps: CreateDurableJsonStoreDeps<ConsoleSettingsData>): DurableJsonStore<ConsoleSettingsData> => ({
-      path: deps.filePath,
-      load: () => deps.sanitize(raw),
-      save: (data) => { raw = data; },
-      update: (mutate) => {
-        updateCalls += 1;
-        if (input.shouldFailWrite()) throw new Error("write failed");
-        const next = mutate(deps.sanitize(input.latest));
-        raw = next;
-        return next;
-      },
-    }),
-  });
-  return { store, getUpdateCalls: () => updateCalls, getRaw: () => raw };
 }
 
 describe("sanitizeConsoleSettingsData", () => {
@@ -156,32 +132,11 @@ describe("sanitizeConsoleSettingsData", () => {
     }
   });
 
-  it("accepts maritime theme", () => {
-    expect(sanitizeConsoleSettingsData({
-      version: 1,
-      general: { theme: "instrument" },
-    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
-  });
-
-  it("accepts carbon theme", () => {
-    expect(sanitizeConsoleSettingsData({
-      version: 1,
-      general: { theme: "instrument" },
-    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
-  });
-
-  it("accepts instrument theme while preserving legacy maritime and carbon values", () => {
-    expect(sanitizeConsoleSettingsData({
-      version: 1,
-      general: { theme: "instrument" },
-    })).toEqual({ version: 1, general: { theme: "instrument" }, plugins: {} });
-  });
-
-  it("normalizes maritime and carbon saved values to Instrument without dropping siblings", () => {
+  it("preserves each supported theme without dropping siblings", () => {
     for (const theme of ["maritime", "carbon", "instrument"] as const) {
       expect(sanitizeConsoleSettingsData({ version: 1, general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } })).toEqual({
         version: 1,
-        general: { theme: "instrument", language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
+        general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
         plugins: {},
       });
     }
@@ -242,7 +197,7 @@ describe("sanitizeConsoleSettingsData", () => {
     expect(raw).toMatchObject({ version: 1, general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } });
   });
 
-  it("atomically normalizes a legacy saved theme while preserving general siblings and plugin settings", () => {
+  it("preserves a saved legacy theme without rewriting it", () => {
     const dir = makeTempDir();
     const paths = makeFakePaths(dir);
     fs.writeFileSync(paths.settingsFile, JSON.stringify({
@@ -254,81 +209,18 @@ describe("sanitizeConsoleSettingsData", () => {
 
     expect(store.load()).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
     expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
-    expect(store.load()).toEqual({
+    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
-    });
-  });
-
-  it("normalizes inside the durable update lock from the latest interleaved settings", () => {
-    const controlled = createControlledMigrationStore({
-      raw: {
-        version: 1,
-        general: { language: "ko", theme: "maritime" },
-        plugins: { terminal: { font: { size: 14 } } },
-      },
-      latest: {
-        version: 1,
-        general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
-        plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
-      },
-      shouldFailWrite: () => false,
-    });
-
-    expect(controlled.store.load()).toEqual({
-      version: 1,
-      general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
-      plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
-    });
-    expect(controlled.getRaw()).toEqual({
-      version: 1,
-      general: { language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
-      plugins: { terminal: { font: { size: 16 } }, skills: { includePrerelease: true } },
-    });
-    expect(controlled.getUpdateCalls()).toBe(1);
-  });
-
-  it("returns the normalized read and retries migration after an atomic write failure", () => {
-    let failWrite = true;
-    const controlled = createControlledMigrationStore({
-      raw: {
-        version: 1,
-        general: { language: "ko", theme: "carbon" },
-        plugins: { terminal: { font: { size: 14 } } },
-      },
-      latest: {
-        version: 1,
-        general: { language: "ko", theme: "carbon" },
-        plugins: { terminal: { font: { size: 14 } } },
-      },
-      shouldFailWrite: () => failWrite,
-    });
-
-    expect(controlled.store.load()).toEqual({
-      version: 1,
-      general: { language: "ko", theme: "instrument" },
-      plugins: { terminal: { font: { size: 14 } } },
-    });
-    failWrite = false;
-    expect(controlled.store.load()).toEqual({
-      version: 1,
-      general: { language: "ko", theme: "instrument" },
-      plugins: { terminal: { font: { size: 14 } } },
-    });
-    expect(controlled.getUpdateCalls()).toBe(2);
-    expect(controlled.getRaw()).toEqual({
-      version: 1,
-      general: { language: "ko", theme: "instrument" },
-      plugins: { terminal: { font: { size: 14 } } },
     });
   });
 

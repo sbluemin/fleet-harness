@@ -85,7 +85,7 @@ describe("Instrument core design contract", () => {
 
   it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {
     const theme = source("styles/theme.css");
-    const base = theme.slice(0, theme.indexOf(":root[data-ui-font"));
+    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
     expect(theme).toContain(':root[data-theme="instrument"]');
     expect(base).toContain("--ink-abyss: oklch(13% 0.014 245);");
     expect(base).toContain("--brass: oklch(80% 0.085 78);");
@@ -95,7 +95,23 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--positive: oklch(76% 0.11 160);");
     expect(base).toContain("--canvas-sea-core: oklch(13% 0.018 245);");
     expect(base).toContain("color-mix(in oklch, var(--brass) 16%, transparent)");
-    expect(theme).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
+    expect(base).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
+    expect(theme).toContain(':root[data-theme="maritime"]');
+    expect(theme).toContain(':root[data-theme="carbon"]');
+    expect(theme).toContain("--brass: oklch(78% 0.13 75);");
+    expect(theme.match(/^:root \{/gm)).toHaveLength(1);
+    // Legacy 테마 블록은 팔레트 토큰만 — 모든 선언이 승인된 색 토큰 화이트리스트에 속해야 하며
+    // 형상(radius/space)·배경 연출(grain/pseudo)·타이포(font) 오버라이드는 진입 불가.
+    const variantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(variantBlocks).toHaveLength(3);
+    for (const block of variantBlocks) {
+      const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
+      expect(declarations.length).toBeGreaterThan(0);
+      for (const declaration of declarations) {
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text)[a-z-]*:$/);
+      }
+    }
+    expect(theme).not.toMatch(/body::(?:before|after)/);
   });
 
   it("keeps real GNB and captain producers aligned with the static CSS gates", () => {

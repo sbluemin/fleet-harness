@@ -9,13 +9,19 @@ import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { setActiveUiFont } from "../store.js";
+import { setActiveTheme, setActiveUiFont } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import type { GlobalSettingsState, UiFontId, UiFontSettings } from "../types.js";
+import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
   readonly label: string;
+}
+
+interface ThemeOption {
+  readonly id: ThemeId;
+  readonly label: string;
+  readonly swatch: readonly [string, string, string];
 }
 
 interface PortModeOption {
@@ -48,6 +54,12 @@ interface PluginSettingsNavGroup {
 }
 
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
+const THEMES: readonly ThemeOption[] = [
+  { id: "instrument", label: "Instrument", swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
+  { id: "maritime", label: "Maritime", swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
+  { id: "carbon", label: "Carbon", swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
+];
+
 const PORT_MODES: readonly PortModeOption[] = [
   { id: "dynamic", label: "Dynamic" },
   { id: "static", label: "Static" },
@@ -157,6 +169,7 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
     case "general":
       return (
         <>
+          <ThemeCard state={state} saving={saving} />
           <TypographyCard state={state} saving={saving} />
           <GeneralSettingsCard state={state} saving={saving} />
         </>
@@ -194,6 +207,56 @@ function groupPluginSettingsSections(sections: readonly PluginSettingsNavItem[])
 function formatPluginLabel(pluginId: string): string {
   if (pluginId === "terminal") return "Terminal";
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
+}
+
+function ThemeCard({
+  state,
+  saving,
+}: {
+  readonly state: GlobalSettingsState | null;
+  readonly saving: boolean;
+}) {
+  const activeTheme = state?.theme ?? "instrument";
+  const selectTheme = (theme: ThemeId) => {
+    if (getGlobalSettingsStoreState().savingField !== null) return;
+    const previousTheme = activeTheme;
+    setActiveTheme(theme);
+    void setGlobalSettingsField("theme", theme).then((saved) => {
+      if (!saved) setActiveTheme(previousTheme);
+    });
+  };
+  return (
+    <section className="global-settings-card" aria-label="Theme">
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">Theme</p>
+          <p className="global-settings-help">Console color scheme.</p>
+        </div>
+        <div className="theme-picker" role="group" aria-label="Theme">
+          {THEMES.map((theme) => {
+            const isActive = theme.id === activeTheme;
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                aria-pressed={isActive}
+                className={`theme-card ${isActive ? "is-active" : ""}`}
+                disabled={saving}
+                onClick={() => selectTheme(theme.id)}
+              >
+                <span className="theme-card-swatch" aria-hidden="true">
+                  {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
+                </span>
+                <span className="theme-card-label">{theme.label}</span>
+                <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <p className="global-settings-foot">Theme applies immediately and is stored server-side.</p>
+    </section>
+  );
 }
 
 function TypographyCard({
