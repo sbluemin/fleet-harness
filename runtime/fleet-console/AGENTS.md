@@ -232,7 +232,7 @@ These CSS variables are declared in `rail.css` and must not be inlined elsewhere
 
 ## Design Identity — Instrument
 
-- Instrument is the sole Console visual theme. Amber `--brass` is location, selection, focus, and active navigation; cyan `--aurora` is live and streaming state.
+- Instrument is the default Console visual theme. Settings General may select Maritime or Carbon legacy palette variants through `data-theme` token overrides; Console chrome and component structure remain Instrument. Amber `--brass` is location, selection, focus, and active navigation; cyan `--aurora` is live and streaming state.
 - Identity hues are restricted to dots and small tags. User accents remain functional only through name-tag/side-tick channels, never panel/card borders or large fills.
 - Surfaces are flat opaque bg1/bg2/bg3 with hairlines. Fraunces appears only in the SideBar brand-foot Fleet wordmark; all other UI uses sans/mono hierarchy.
 - Preserve self-hosted fonts, `prefers-reduced-motion`, visible `:focus-visible`, CSS three-layer ownership, Token Boundary, streaming pin/follow, coral errors, `conn=live`, `latestLine`, plugin token-only `var()` CSS, and SDK contracts.

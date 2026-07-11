@@ -29,6 +29,23 @@ describe("global settings client transport", () => {
     }));
   });
 
+  it("accepts and sends each supported theme", async () => {
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      const state = { ...SETTINGS, theme };
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state })));
+      globalThis.fetch = fetchMock as typeof fetch;
+
+      await expect(updateGlobalSettings({ theme })).resolves.toEqual({ state });
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({ body: JSON.stringify({ theme }) }));
+    }
+  });
+
+  it("rejects an unsupported theme response", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...SETTINGS, theme: "neon" }))) as typeof fetch;
+
+    await expect(fetchGlobalSettingsState()).rejects.toBeInstanceOf(ApiError);
+  });
+
   it("rejects missing or invalid language values", async () => {
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...SETTINGS, language: "ja" }))) as typeof fetch;
 

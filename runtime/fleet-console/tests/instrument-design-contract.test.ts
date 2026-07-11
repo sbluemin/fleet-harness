@@ -85,7 +85,7 @@ describe("Instrument core design contract", () => {
 
   it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {
     const theme = source("styles/theme.css");
-    const base = theme.slice(0, theme.indexOf(":root[data-ui-font"));
+    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
     expect(theme).toContain(':root[data-theme="instrument"]');
     expect(base).toContain("--ink-abyss: oklch(13% 0.014 245);");
     expect(base).toContain("--brass: oklch(80% 0.085 78);");
@@ -95,7 +95,12 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--positive: oklch(76% 0.11 160);");
     expect(base).toContain("--canvas-sea-core: oklch(13% 0.018 245);");
     expect(base).toContain("color-mix(in oklch, var(--brass) 16%, transparent)");
-    expect(theme).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
+    expect(base).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
+    expect(theme).toContain(':root[data-theme="maritime"]');
+    expect(theme).toContain(':root[data-theme="carbon"]');
+    expect(theme).toContain("--brass: oklch(78% 0.13 75);");
+    expect(theme).toContain(':root[data-theme="maritime"] body::before');
+    expect(theme).not.toContain("\nbody::before {");
   });
 
   it("keeps real GNB and captain producers aligned with the static CSS gates", () => {

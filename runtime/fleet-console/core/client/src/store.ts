@@ -41,8 +41,8 @@ let whatsNewSeenVersionMemo: string | null = null;
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
-  // The SDK ConsoleTheme union remains maritime|carbon. Instrument is adapted
-  // to maritime only at the plugin-context boundary.
+  // The SDK ConsoleTheme union remains maritime|carbon. Instrument adapts to
+  // maritime only at the plugin-context boundary; legacy themes pass through.
   activeTheme: toPluginTheme(DEFAULT_THEME),
   version: "",
   updateAvailable: false,
@@ -638,5 +638,6 @@ function isNotificationPreferencesBlob(value: unknown): value is {
 }
 
 function toPluginTheme(theme: ThemeId): ConsoleTheme {
-  return "maritime";
+  if (theme === "instrument") return "maritime";
+  return theme;
 }
