@@ -1,5 +1,5 @@
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
-import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { uiFontFamily } from "./ui-font.js";
@@ -41,9 +41,9 @@ let whatsNewSeenVersionMemo: string | null = null;
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
-  // The SDK ConsoleTheme union remains maritime|carbon. Instrument adapts to
-  // maritime only at the plugin-context boundary; legacy themes pass through.
-  activeTheme: toPluginTheme(DEFAULT_THEME),
+  // The SDK ConsoleTheme union matches ThemeId; the selected theme passes
+  // through to the plugin context unchanged.
+  activeTheme: DEFAULT_THEME,
   version: "",
   updateAvailable: false,
   latestVersion: null,
@@ -103,7 +103,7 @@ export function setOperationsViewActive(active: boolean): void {
 
 export function setActiveTheme(theme: ThemeId): void {
   applyThemeToDocument(theme);
-  setState({ activeTheme: toPluginTheme(theme) });
+  setState({ activeTheme: theme });
 }
 
 export function setActiveUiFont(uiFont: UiFontSettings): void {
@@ -635,9 +635,4 @@ function isNotificationPreferencesBlob(value: unknown): value is {
     && typeof prefs.dnd === "boolean"
     && Boolean(prefs.mutedTheaterIds)
     && typeof prefs.mutedTheaterIds === "object";
-}
-
-function toPluginTheme(theme: ThemeId): ConsoleTheme {
-  if (theme === "instrument") return "maritime";
-  return theme;
 }

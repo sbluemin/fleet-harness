@@ -99,8 +99,14 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain(':root[data-theme="maritime"]');
     expect(theme).toContain(':root[data-theme="carbon"]');
     expect(theme).toContain("--brass: oklch(78% 0.13 75);");
-    expect(theme).toContain(':root[data-theme="maritime"] body::before');
-    expect(theme).not.toContain("\nbody::before {");
+    expect(theme.match(/^:root \{/gm)).toHaveLength(1);
+    // Legacy 테마 블록은 팔레트 토큰만 — 형상(radius)·배경 연출(grain/pseudo)·타이포 토큰 오버라이드 금지.
+    const variantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(variantBlocks.length).toBeGreaterThanOrEqual(3);
+    for (const block of variantBlocks) {
+      expect(block).not.toMatch(/--radius-|--grain|--font-|--space-/);
+    }
+    expect(theme).not.toMatch(/body::(?:before|after)/);
   });
 
   it("keeps real GNB and captain producers aligned with the static CSS gates", () => {

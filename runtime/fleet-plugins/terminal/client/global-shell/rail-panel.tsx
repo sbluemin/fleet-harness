@@ -30,7 +30,7 @@ export const globalShellPanel: RailPanelDescriptor = {
         operationId={GLOBAL_SHELL_OPERATION_ID}
         ticketPath={GLOBAL_SHELL_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
-        theme="maritime"
+        theme="instrument"
         active
       />
     </div>

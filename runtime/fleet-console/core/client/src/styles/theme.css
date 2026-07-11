@@ -108,17 +108,12 @@
   color-scheme: dark;
 }
 
+/* Legacy 테마는 팔레트 토큰만 오버라이드한다 — 라운드 스케일·배경 연출 등 형상은 Instrument 그대로. */
 :root[data-theme="maritime"],
 :root[data-theme="carbon"] {
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
   --text-tertiary: var(--ink-fog);
-  --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
-  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.93  0 0 0 0 0.86  0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/></svg>");
 }
 
 :root[data-theme="maritime"] {
@@ -203,51 +198,6 @@
 
   --hairline: oklch(33% 0.006 252);
   --hairline-strong: oklch(45% 0.005 252);
-}
-
-:root[data-theme="maritime"] body,
-:root[data-theme="carbon"] body {
-  position: relative;
-  isolation: isolate;
-  background: transparent;
-}
-
-:root[data-theme="maritime"] body::before,
-:root[data-theme="carbon"] body::before,
-:root[data-theme="maritime"] body::after,
-:root[data-theme="carbon"] body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
-}
-
-:root[data-theme="maritime"] body::before {
-  background:
-    radial-gradient(900px 720px at 8% 4%, oklch(48% 0.12 200 / 24%), transparent 60%),
-    radial-gradient(820px 700px at 92% 96%, oklch(52% 0.13 60 / 18%), transparent 62%),
-    radial-gradient(640px 520px at 68% 14%, oklch(82% 0.13 195 / 10%), transparent 68%),
-    radial-gradient(520px 480px at 28% 98%, oklch(78% 0.13 75 / 11%), transparent 70%),
-    var(--ink-abyss);
-}
-
-:root[data-theme="carbon"] body::before {
-  background:
-    radial-gradient(900px 720px at 8% 4%, oklch(40% 0.04 230 / 18%), transparent 60%),
-    radial-gradient(820px 700px at 92% 96%, oklch(46% 0.08 55 / 14%), transparent 62%),
-    radial-gradient(640px 520px at 68% 14%, oklch(70% 0.05 205 / 7%), transparent 68%),
-    radial-gradient(520px 480px at 28% 98%, oklch(70% 0.10 60 / 8%), transparent 70%),
-    var(--ink-abyss);
-}
-
-:root[data-theme="maritime"] body::after,
-:root[data-theme="carbon"] body::after {
-  z-index: -1;
-  background-image: var(--grain);
-  background-size: 220px 220px;
-  mix-blend-mode: overlay;
-  opacity: 0.45;
 }
 
 *,
