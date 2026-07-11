@@ -29,6 +29,23 @@ describe("secure window policy", () => {
     expect(isAllowedConsoleUrl("http://127.0.0.1:4310/api/v1/status", "http://127.0.0.1:4310")).toBe(false);
   });
 
+  it("locks the entry renderer until the main process activates one exact Console origin", () => {
+    const listeners = new Map<string, (...args: never[]) => unknown>();
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionRequestHandler: vi.fn() } };
+    const policy = applyWindowPolicy(contents as never, async () => undefined);
+    const before = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: before }, "http://127.0.0.1:4310/console/");
+    expect(before).toHaveBeenCalledOnce();
+    policy.activateConsoleOrigin("http://127.0.0.1:4310");
+    const allowed = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: allowed }, "http://127.0.0.1:4310/console/");
+    expect(allowed).not.toHaveBeenCalled();
+    const rejected = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: rejected }, "http://localhost:4310/console/");
+    expect(rejected).toHaveBeenCalledOnce();
+    expect(() => policy.activateConsoleOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_loopback");
+  });
+
   it("blocks popups and navigation while brokering HTTPS links only", async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
     const openExternal = vi.fn(async () => undefined);
