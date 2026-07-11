@@ -547,6 +547,29 @@ describe("console static and terminal ticket boundary", () => {
     }
   });
 
+  it("cleans stale plugin bundles on startup and this run's bundles on server stop", async () => {
+    const pluginPackage = createPluginPackageRoot({
+      demoRoutes: "export function register() {}",
+      demoRoutesFile: "routes.ts",
+    });
+    const fixture = await startFixture({
+      release: pluginPackage.release,
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const staleBundleDir = path.join(carrierStoreDir, "console", "plugin-cache", "fleet-console-plugin-crashed");
+        fs.mkdirSync(staleBundleDir, { recursive: true });
+        fs.writeFileSync(path.join(staleBundleDir, "routes.mjs"), "stale");
+      },
+    });
+    const cacheDir = path.join(fixture.carrierStoreDir, "console", "plugin-cache");
+
+    expect(fs.existsSync(path.join(cacheDir, "fleet-console-plugin-crashed"))).toBe(false);
+    expect(fs.readdirSync(cacheDir).filter((entry) => entry.startsWith("fleet-console-plugin-"))).not.toEqual([]);
+
+    await fixture.server.stop();
+
+    expect(fs.readdirSync(cacheDir)).toEqual([]);
+  });
+
   it.skip("keeps MCP bearer tokens out of terminal tickets, observer snapshots, SSE frames, static HTML, and launch errors", async () => {
     const fakeToken = "mcp-token-seeded-secret";
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-token-boundary-"));
@@ -2072,7 +2095,7 @@ function createStubAgentCliDetector(overrides: Record<string, boolean> = {}): Ag
   };
 }
 
-function createPluginPackageRoot(options: { readonly demoRoutes: string }): { readonly release: ConsoleServerDeps["release"] } {
+function createPluginPackageRoot(options: { readonly demoRoutes: string; readonly demoRoutesFile?: "routes.mjs" | "routes.ts" }): { readonly release: ConsoleServerDeps["release"] } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-package-"));
   tempDirs.push(dir);
   const packageRoot = path.join(dir, "runtime", "fleet-console");
@@ -2081,15 +2104,15 @@ function createPluginPackageRoot(options: { readonly demoRoutes: string }): { re
     "export function register(ctx) {",
     "}",
   ].join("\n"));
-  writeTestPlugin(path.join(pluginsRoot, "demo"), "demo", options.demoRoutes);
+  writeTestPlugin(path.join(pluginsRoot, "demo"), "demo", options.demoRoutes, options.demoRoutesFile);
   fs.mkdirSync(packageRoot, { recursive: true });
   return { release: { channel: "local", version: "test", packageRoot } };
 }
 
-function writeTestPlugin(pluginRoot: string, id: string, routes: string): void {
+function writeTestPlugin(pluginRoot: string, id: string, routes: string, routesFile: "routes.mjs" | "routes.ts" = "routes.mjs"): void {
   fs.mkdirSync(pluginRoot, { recursive: true });
-  fs.writeFileSync(path.join(pluginRoot, "plugin.json"), JSON.stringify({ id, routes: "routes.mjs" }));
-  fs.writeFileSync(path.join(pluginRoot, "routes.mjs"), routes);
+  fs.writeFileSync(path.join(pluginRoot, "plugin.json"), JSON.stringify({ id, routes: routesFile }));
+  fs.writeFileSync(path.join(pluginRoot, routesFile), routes);
 }
 
 function createDeferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void } {

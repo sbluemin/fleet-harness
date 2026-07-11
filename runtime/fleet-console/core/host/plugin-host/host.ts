@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -16,12 +16,19 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly host: FleetPluginHostCapabilities;
   readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
   readonly bundleCacheDir?: string;
+  readonly isProcessAlive?: (pid: number) => boolean;
+  readonly removeBundleDir?: (dir: string) => Promise<void>;
 }
 
 export interface FleetPluginHost {
   readonly plugins: readonly DiscoveredFleetPlugin[];
   readonly sensitiveFieldsByPluginId: ReadonlyMap<string, readonly string[]>;
   boot(): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
+interface PluginBundleOwner {
+  readonly pid: number;
 }
 
 const PLUGIN_DEV_EXTERNALS = [
@@ -37,14 +44,22 @@ const PLUGIN_DEV_EXTERNALS = [
   "ws",
   "@fleet-plugins/*",
 ];
+const PLUGIN_BUNDLE_DIR_PREFIX = "fleet-console-plugin-";
+const PLUGIN_BUNDLE_OWNER_FILE = ".fleet-console-plugin-owner.json";
+const PLUGIN_BUNDLE_PID_PATTERN = /^fleet-console-plugin-(\d+)-/u;
+const MAX_PLUGIN_BUNDLE_OWNER_PID = 0x7fff_ffff;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHost {
   const plugins = filterDiscoveredPlugins(discoverFleetPlugins(deps));
   const sensitiveFieldsByPluginId = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.manifest.sensitiveFields ?? []]));
-  const importModule = deps.importModule ?? ((entry) => importPluginModule(entry, deps.bundleCacheDir));
+  const generatedBundleDirs = new Set<string>();
+  const isProcessAlive = deps.isProcessAlive ?? isPluginBundleOwnerAlive;
+  const removeBundleDir = deps.removeBundleDir ?? removePluginBundleDir;
+  const importModule = deps.importModule ?? ((entry) => importPluginModule(entry, deps.bundleCacheDir, generatedBundleDirs));
 
   async function boot(): Promise<void> {
+    await removeStalePluginBundleDirs(deps.bundleCacheDir, isProcessAlive, removeBundleDir);
     for (const plugin of plugins) {
       if (!plugin.routesEntry) continue;
       if (!plugin.external) {
@@ -59,7 +74,22 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     }
   }
 
-  return { plugins, sensitiveFieldsByPluginId, boot };
+  async function cleanup(): Promise<void> {
+    const dirs = [...generatedBundleDirs];
+    const cleanupResults = await Promise.allSettled(dirs.map((dir) => removeBundleDir(dir)));
+    for (const [index, result] of cleanupResults.entries()) {
+      const dir = dirs[index]!;
+      if (result.status === "fulfilled") {
+        generatedBundleDirs.delete(dir);
+        continue;
+      }
+      if (result.status === "rejected") {
+        console.warn(`[fleet-console] Plugin bundle cache cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      }
+    }
+  }
+
+  return { plugins, sensitiveFieldsByPluginId, boot, cleanup };
 
   async function bootPluginRoutes(plugin: DiscoveredFleetPlugin): Promise<void> {
     const mod = await importModule(plugin.routesEntry!);
@@ -96,7 +126,7 @@ function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): rea
   return accepted;
 }
 
-async function importPluginModule(entry: string, bundleCacheDir?: string): Promise<FleetPluginRouteModule> {
+async function importPluginModule(entry: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<FleetPluginRouteModule> {
   if (entry.endsWith(".ts")) {
     const { build } = await import("esbuild");
     const output = await build({
@@ -112,19 +142,77 @@ async function importPluginModule(entry: string, bundleCacheDir?: string): Promi
     });
     const bundled = output.outputFiles[0]?.text;
     if (!bundled) throw new Error("plugin_bundle_failed");
-    const bundledPath = await writeTemporaryPluginBundle(entry, bundled, bundleCacheDir);
+    const bundledPath = await writeTemporaryPluginBundle(entry, bundled, bundleCacheDir, generatedBundleDirs);
     return await import(pathToFileURL(bundledPath).href) as FleetPluginRouteModule;
   }
   return await import(pathToFileURL(entry).href) as FleetPluginRouteModule;
 }
 
-async function writeTemporaryPluginBundle(entry: string, source: string, bundleCacheDir?: string): Promise<string> {
+async function writeTemporaryPluginBundle(entry: string, source: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<string> {
   const cacheRoot = bundleCacheDir ?? path.join(resolvePluginBundleNodeModules(entry), ".cache");
   await mkdir(cacheRoot, { recursive: true });
-  const dir = await mkdtemp(path.join(cacheRoot, "fleet-console-plugin-"));
+  const dir = await mkdtemp(path.join(cacheRoot, `${PLUGIN_BUNDLE_DIR_PREFIX}${process.pid}-`));
+  if (bundleCacheDir) {
+    generatedBundleDirs.add(dir);
+    await writePluginBundleOwner(dir, process.pid);
+  }
   const file = path.join(dir, "routes.mjs");
   await writeFile(file, source, "utf8");
   return file;
+}
+
+async function removeStalePluginBundleDirs(bundleCacheDir: string | undefined, isProcessAlive: (pid: number) => boolean, removeBundleDir: (dir: string) => Promise<void>): Promise<void> {
+  if (!bundleCacheDir) return;
+  try {
+    await mkdir(bundleCacheDir, { recursive: true });
+    const entries = await readdir(bundleCacheDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.name.startsWith(PLUGIN_BUNDLE_DIR_PREFIX)) continue;
+      const entryPath = path.join(bundleCacheDir, entry.name);
+      const ownerPid = await readPluginBundleOwnerPid(entryPath, entry.name);
+      if (ownerPid !== null && isProcessAlive(ownerPid)) continue;
+      try {
+        await removeBundleDir(entryPath);
+      } catch (error) {
+        console.warn(`[fleet-console] Plugin bundle cache startup cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  } catch (error) {
+    console.warn(`[fleet-console] Plugin bundle cache startup cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function removePluginBundleDir(dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true });
+}
+
+async function writePluginBundleOwner(dir: string, pid: number): Promise<void> {
+  await writeFile(path.join(dir, PLUGIN_BUNDLE_OWNER_FILE), JSON.stringify({ pid }), "utf8");
+}
+
+async function readPluginBundleOwnerPid(dir: string, name: string): Promise<number | null> {
+  try {
+    const parsed = JSON.parse(await readFile(path.join(dir, PLUGIN_BUNDLE_OWNER_FILE), "utf8")) as PluginBundleOwner;
+    if (isPluginBundleOwnerPid(parsed.pid)) return parsed.pid;
+  } catch {
+    // Marker write can be interrupted; fall back to the PID embedded in the directory name.
+  }
+  const pid = Number(PLUGIN_BUNDLE_PID_PATTERN.exec(name)?.[1]);
+  return isPluginBundleOwnerPid(pid) ? pid : null;
+}
+
+function isPluginBundleOwnerAlive(pid: number): boolean {
+  if (!isPluginBundleOwnerPid(pid)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "EPERM");
+  }
+}
+
+function isPluginBundleOwnerPid(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_PLUGIN_BUNDLE_OWNER_PID;
 }
 
 function resolvePluginBundleNodeModules(entry: string): string {

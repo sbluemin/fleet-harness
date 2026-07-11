@@ -948,6 +948,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         console.warn(`[fleet-console] Plugin cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       }
     }
+    await pluginHost.cleanup();
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();

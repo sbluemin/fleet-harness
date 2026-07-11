@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -80,6 +81,101 @@ describe("plugin host", () => {
 
     expect(fs.readdirSync(cacheDir).some((entry) => entry.startsWith("fleet-console-plugin-"))).toBe(true);
     expect(fs.existsSync(path.join(dir, "home", ".fleet", "plugins", "node_modules", ".cache"))).toBe(false);
+  });
+
+  it("clears stale supplied cache contents at boot and removes this run's bundles during cleanup", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-cache-lifecycle-"));
+    tempDirs.push(dir);
+    const pluginRoot = path.join(dir, "home", ".fleet", "plugins", "note");
+    const cacheDir = path.join(dir, "console-data", "plugin-cache");
+    const durablePluginData = path.join(dir, "console-data", "plugins", "note", "state.json");
+    writePlugin(pluginRoot, "note", { apiVersion: 1 });
+    fs.writeFileSync(path.join(pluginRoot, "routes.ts"), "export function register() {}\n");
+    fs.mkdirSync(path.join(cacheDir, "fleet-console-plugin-crashed"), { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, "fleet-console-plugin-crashed", "routes.mjs"), "stale");
+    fs.mkdirSync(path.dirname(durablePluginData), { recursive: true });
+    fs.writeFileSync(durablePluginData, "durable");
+
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      bundleCacheDir: cacheDir,
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+    });
+    await host.boot();
+
+    const generatedDirs = fs.readdirSync(cacheDir).filter((entry) => entry.startsWith("fleet-console-plugin-"));
+    expect(fs.existsSync(path.join(cacheDir, "fleet-console-plugin-crashed"))).toBe(false);
+    expect(generatedDirs).toHaveLength(1);
+    expect(fs.readFileSync(durablePluginData, "utf8")).toBe("durable");
+
+    await host.cleanup();
+
+    expect(fs.readdirSync(cacheDir)).toEqual([]);
+  });
+
+  it("removes stale bundle owners while preserving an active concurrent owner", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-cache-owners-"));
+    tempDirs.push(dir);
+    const pluginRoot = path.join(dir, "runtime", "fleet-plugins", "demo");
+    const cacheDir = path.join(dir, "console-data", "plugin-cache");
+    const activeDir = path.join(cacheDir, "fleet-console-plugin-4242-active");
+    const staleDir = path.join(cacheDir, "fleet-console-plugin-9999-crashed");
+    const invalidOwnerDir = path.join(cacheDir, "fleet-console-plugin-2147483648-corrupted");
+    writePlugin(pluginRoot, "demo", { routes: "routes.mjs" }, false);
+    fs.mkdirSync(activeDir, { recursive: true });
+    fs.mkdirSync(staleDir, { recursive: true });
+    fs.mkdirSync(invalidOwnerDir, { recursive: true });
+    fs.writeFileSync(path.join(staleDir, ".fleet-console-plugin-owner.json"), JSON.stringify({ pid: 9999 }));
+    fs.writeFileSync(path.join(invalidOwnerDir, ".fleet-console-plugin-owner.json"), JSON.stringify({ pid: 2_147_483_648 }));
+
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: "/missing",
+      bundleCacheDir: cacheDir,
+      isProcessAlive: (pid) => pid === 4242,
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+    });
+    await host.boot();
+
+    expect(fs.existsSync(activeDir)).toBe(true);
+    expect(fs.existsSync(staleDir)).toBe(false);
+    expect(fs.existsSync(invalidOwnerDir)).toBe(false);
+  });
+
+  it("retains failed bundle removals for a later cleanup retry", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-cache-retry-"));
+    tempDirs.push(dir);
+    const pluginRoot = path.join(dir, "home", ".fleet", "plugins", "note");
+    const cacheDir = path.join(dir, "console-data", "plugin-cache");
+    writePlugin(pluginRoot, "note", { apiVersion: 1 });
+    fs.writeFileSync(path.join(pluginRoot, "routes.ts"), "export function register() {}\n");
+    let failRemoval = true;
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      bundleCacheDir: cacheDir,
+      removeBundleDir: async (target) => {
+        if (failRemoval) throw new Error("remove failed");
+        await fsPromises.rm(target, { recursive: true, force: true });
+      },
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+    });
+    await host.boot();
+    const [generatedDir] = fs.readdirSync(cacheDir).filter((entry) => entry.startsWith("fleet-console-plugin-"));
+
+    await host.cleanup();
+
+    expect(fs.existsSync(path.join(cacheDir, generatedDir!))).toBe(true);
+    failRemoval = false;
+    await host.cleanup();
+    expect(fs.readdirSync(cacheDir)).toEqual([]);
   });
 
   it("discovers built-in and home plugins while excluding shared", () => {
