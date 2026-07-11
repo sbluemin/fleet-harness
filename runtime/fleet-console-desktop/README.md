@@ -1,40 +1,57 @@
 # Fleet Console Desktop
 
-Fleet Console Desktop is the optional Electron native shell for Fleet Console. It does not contain another renderer or Console server. Electron supervises the separately packaged standard Node `22.23.1` Console Service, waits for token-authenticated loopback health, and loads exactly `http://127.0.0.1:<verified-port>/console/` in a sandboxed window.
+Fleet Console Desktop is the optional Electron shell for Fleet Console. A packaged shell does not embed Fleet Console or a Node sidecar. It first shows a passive local entry page, provisions the current Console runtime when needed, then hands the same sandboxed `BrowserWindow` to the verified loopback `/console/` URL.
 
-## Ownership and coexistence
+## Runtime and data boundaries
 
-`runtime/fleet-console` remains the sole owner of HTTP/REST/SSE/WebSocket, `node-pty`, provider launch policy, trusted plugins, durable JSON state, lock state, and the React UI. The Desktop shell owns native lifecycle, menu/tray/dialog surfaces, secure window policy, and sidecar supervision only.
+Desktop-managed code lives under:
 
-Desktop, published `fleet-console`, and `fleet console` use the same canonical stable lock and `~/.fleet/console` durable-data namespace. `FLEET_CONSOLE_DIR` is the explicit operator/test override. The owner/protocol/version checks prevent a second writer: a compatible desktop sidecar can be adopted after an unexpected Electron crash, while a healthy CLI-owned daemon is never terminated without explicit confirmation. `fleet console` can attach/open a compatible desktop endpoint; CLI `stop` and `restart` refuse a desktop owner and direct the operator to native **Quit**.
+```text
+~/.fleet/desktop/runtime/
+├─ node/
+└─ console/
+   └─ latest/
+```
 
-Closing the only window follows normal macOS app behavior and hides to tray on Windows/Linux. A second launch restores the existing window. Native **Quit**, OS shutdown, and update installation stop only the verified desktop-owned sidecar.
+Installation temporarily uses `console/.staging-*`; replacing `latest` can temporarily use `latest.rollback`. A failed installation preserves a usable previous `latest` or leaves no partial installation. This runtime directory is removable code, not user data.
+
+Console data remains in `~/.fleet/console`: durable state, captures, and lock files keep their existing ownership and semantics. `FLEET_CONSOLE_DIR` is the explicit operator/test override. Desktop never copies Console service, React UI, PTY, provider, plugin, or durable-state behavior into Electron.
+
+## Startup journeys
+
+The entry page is view-only: main process code pushes status snapshots one way, and it contains no preload, IPC bridge, renderer controls, or update choice. It renders the approved `daily`, `update`, `firstrun`, `offline`, `firstfail`, and `longrun` states; J-dev adds the `LOCAL BUILD · DEV` marker.
+
+- **J1 first launch:** download the checksum-verified managed Node runtime, install Fleet Console latest, start it, and hand off.
+- **J2 daily launch:** confirm the registry version, start the installed runtime, and hand off without user action.
+- **J3 update:** automatically install a newly found version through the staging/rename transaction before starting Console.
+- **J4 offline:** if the registry is unavailable, start a valid installed `latest` and retry the check next launch.
+- **J5 attach:** adopt a healthy matching desktop-owned Console immediately; bootstrap and update work are skipped.
+- **J6 long-running shell:** poll every 60 minutes and on manual Check. The native message box offers **Update and Restart** or **Later** with **Skip this version**; it is shown at most once per version. Menu/tray retain `Update to x.x.x...` as the fallback after Later. Updating always calls `app.relaunch()` and reuses J3; there is no in-place update path.
+- **J-dev:** `pnpm desktop` uses workspace Console `dist` and `FLEET_CONSOLE_NODE_PATH`/`npm_node_execpath`. It does not access `~/.fleet/desktop/runtime` or perform a registry check.
+
+The only native inputs are first-install failure **Retry**/**Quit** and the J6 update dialog. Closing the window follows normal macOS behavior and hides to tray on Windows/Linux; native Quit stops only a verified desktop-owned Console. A second launch restores the existing window.
 
 ## Development and packaging
 
-From the repository root, use the declared package commands:
+Run these from the repository root:
 
 ```bash
 pnpm --filter @dotobokuri/fleet-console-desktop typecheck
 pnpm --filter @dotobokuri/fleet-console-desktop build
 pnpm --filter @dotobokuri/fleet-console-desktop test
-pnpm --filter @dotobokuri/fleet-console-desktop stage:sidecar
-pnpm --filter @dotobokuri/fleet-console-desktop verify:sidecar
 pnpm --filter @dotobokuri/fleet-console-desktop package:dir
+pnpm --filter @dotobokuri/fleet-console-desktop package:unsigned
 pnpm --filter @dotobokuri/fleet-console-desktop verify:package
 ```
 
-`stage:sidecar` obtains the checksum-pinned Node `22.23.1` runtime and stages the Console Service outside asar. `package:dir` makes an unsigned directory package for local verification. `package` is the release path and fails closed when the required release signing identity is unavailable. Desktop logs are written under Electron user data as `desktop.log`; Console logs, cache, state, captures, and the canonical lock/data locations remain Console Service concerns.
+`build` copies the entry HTML/CSS, pinned Node manifest, and icon into `dist`. `package:dir` is the credential-free local package check. `package:unsigned` produces local unsigned artifacts. `verify:package` requires a shell-only ASAR with entry assets and a Node manifest, while rejecting embedded Console/Node payloads, the legacy embedded runtime directory, updater metadata, and standalone blockmaps.
 
-## Install, update, and limits
+`package:release` is the only protected release path. It requires the platform signing credentials and fails closed when they are absent; its post-package verification checks release signing/notarization or checksum/GPG evidence. Local success is not release-signing evidence. Windows native package and live verification are [Unverified] on non-Windows hosts.
 
-Release targets are separate macOS arm64 and x64 DMG/ZIP artifacts, Windows x64 NSIS, and Linux x64 AppImage. Install the artifact for the host architecture from the Fleet Console GitHub Release. Other architectures and package stores are not v1 targets.
+## Limits and troubleshooting
 
-The stable browser/CLI channel uses the existing npm-global updater. Desktop does not query npm or expose the browser update API: use the native **Check for Updates** and **Update and Restart** commands, which consume GitHub Release update metadata. Release publication remains draft until the required target build, verification, and signing gates pass. macOS Developer ID/notarization, Windows Authenticode, and Linux GPG/checksum evidence depend on protected release credentials; an unsigned local package is not a signed release claim.
-
-## Troubleshooting
-
-- **CLI daemon already running:** choose Retry or Quit, or explicitly confirm the CLI-to-Desktop switch. Do not delete a healthy lock.
-- **Stale lock after a crash:** relaunch Desktop first; it can adopt a matching healthy sidecar and removes only a proven-dead stale lock.
-- **Native module or esbuild error:** rerun `stage:sidecar` and `verify:sidecar`; the sidecar must use its staged standard Node, not system Node or writable app resources.
-- **Provider not found:** start the app from an environment where the provider CLI is on `PATH`; Desktop sanitizes inherited Electron/Node options but does not implement provider discovery.
+- **First install cannot finish:** the native dialog offers Retry or Quit only after staging cleanup; it never leaves a half-installed runtime.
+- **Registry unavailable:** an installed `latest` remains usable. If none exists, Retry after connectivity is restored.
+- **CLI-owned daemon exists:** do not delete a healthy lock or signal the process. Desktop only adopts a matching desktop owner.
+- **Protocol is newer than the shell:** Desktop keeps the status passive and opens the Fleet releases page; it does not download a new shell automatically.
+- **Provider unavailable:** start Desktop from an environment where the provider CLI is on `PATH`; Desktop does not provide provider discovery.
