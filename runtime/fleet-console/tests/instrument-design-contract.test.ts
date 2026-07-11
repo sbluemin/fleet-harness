@@ -128,6 +128,9 @@ describe("Instrument core design contract", () => {
 
     expect(sidebar).toContain('className="side-bar-search-btn"');
     expect(sidebar).toContain("onClick={toggleOperationSearch}");
+    expect(sidebar).toContain('className="side-bar-formation-btn"');
+    expect(sidebar).not.toContain("side-bar-settings-btn");
+    expect(source("canvas/canvas-context-menu.tsx")).not.toContain('"controls"');
     expect(brandFoot).toContain('className="brand-foot-dropup-menu" role="menu"');
     expect(brandFoot).toContain('className="brand-foot-version"');
     expect(brandFoot).toContain("openWhatsNew");

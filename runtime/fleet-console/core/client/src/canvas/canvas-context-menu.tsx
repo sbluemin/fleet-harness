@@ -3,7 +3,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 
 import { SHORTCUT_GROUPS } from "../shortcuts-catalog.js";
 
-export type CanvasContextMenuMode = "full" | "launch" | "controls";
+export type CanvasContextMenuMode = "full" | "launch";
 
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
@@ -11,7 +11,7 @@ interface CanvasContextMenuProps {
   readonly viewportBounds?: { readonly width: number; readonly height: number };
   // above = anchor.y를 캔버스 하단 거리로 보고 메뉴를 위로 띄운다(런처). cursor = anchor를 좌상단으로 본다(우클릭).
   readonly placement?: "above" | "cursor";
-  // full(기본): 탭바+3패널. launch: Operations만(＋New용). controls: Map+Help 스택(⚙용).
+  // full(기본): 탭바+3패널. launch: Operations만(＋New용).
   readonly mode?: CanvasContextMenuMode;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
@@ -53,13 +53,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null, help: null });
-  // controls 모드에선 Map 패널을 기본으로, 그 외엔 Operations를 기본으로 시작한다.
-  const [activeTab, setActiveTab] = useState<CanvasControlTab>(mode === "controls" ? "map" : "operations");
+  const [activeTab, setActiveTab] = useState<CanvasControlTab>("operations");
   const modLabel = resolveModLabel();
 
   const showTabs = mode === "full";
   const showOperations = mode === "full" || mode === "launch";
-  const showMapAndHelp = mode === "full" || mode === "controls";
+  const showMapAndHelp = mode === "full";
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -201,14 +200,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               className="canvas-context-menu-panel canvas-context-menu-help"
               hidden={showTabs ? activeTab !== "help" : undefined}
             >
-              {mode === "controls" ? (
-                <details className="canvas-context-menu-help-details">
-                  <summary className="canvas-context-menu-section canvas-context-menu-help-summary">Shortcuts</summary>
-                  <ShortcutsContent modLabel={modLabel} />
-                </details>
-              ) : (
-                <ShortcutsContent modLabel={modLabel} />
-              )}
+              <ShortcutsContent modLabel={modLabel} />
             </div>
           </>
         ) : null}

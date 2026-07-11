@@ -10,7 +10,7 @@ import { DirectoryBrowserModal } from "../components/directory-browser-modal.js"
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
+import { setOperationOrder, toggleFormationView, toggleGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationView } from "../canvas/canvas-store.js";
 import { sortOperationsByOrder, toggleOperationSearch } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -138,7 +138,6 @@ const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
 const PEEK_CHIP_LIMIT = 4;
-const SETTINGS_MENU_CANVAS_OFFSET_PX = 36;
 
 export function OperationsSideBar({
   theaters,
@@ -175,6 +174,7 @@ export function OperationsSideBar({
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
   const canvas = useCanvasState();
+  const formationView = useFormationView();
   const closeArmTimeoutRef = useRef<number | null>(null);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -187,7 +187,6 @@ export function OperationsSideBar({
   const onReorderGroupsRef = useRef(onReorderGroups);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
-  const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [sideBarResizing, setSideBarResizing] = useState(false);
   const collapsedGroups = useCollapsedGroups();
@@ -437,7 +436,6 @@ export function OperationsSideBar({
 
   const openTheaterBrowser = () => {
     setNewMenu(null);
-    setSettingsMenu(null);
     setActiveContextMenu(null);
     setBrowserOpen(true);
   };
@@ -458,24 +456,9 @@ export function OperationsSideBar({
   const openNewMenuAtCursor = (event: React.MouseEvent<HTMLElement>) => {
     if (event.defaultPrevented) return;
     event.preventDefault();
-    setSettingsMenu(null);
     setActiveContextMenu(null);
     setNewMenu({
       anchor: { x: event.clientX, y: event.clientY },
-      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
-    });
-  };
-
-  const openSettingsMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (settingsMenu) {
-      setSettingsMenu(null);
-      return;
-    }
-    setNewMenu(null);
-    const rect = event.currentTarget.getBoundingClientRect();
-    const sideBarRight = rootRef.current?.getBoundingClientRect().right ?? rect.right;
-    setSettingsMenu({
-      anchor: { x: Math.max(rect.right + 8, sideBarRight + SETTINGS_MENU_CANVAS_OFFSET_PX), y: rect.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
@@ -489,7 +472,6 @@ export function OperationsSideBar({
   const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
     event.stopPropagation();
     if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
-    setSettingsMenu(null);
     setActiveContextMenu(null);
     const rect = event.currentTarget.getBoundingClientRect();
     setNewMenu({
@@ -517,12 +499,22 @@ export function OperationsSideBar({
       <header className="operations-side-bar-header">
         <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Theater</span></button>
         <span className="side-bar-header-spacer" aria-hidden="true" />
-        <button type="button" className="side-bar-search-btn" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
-          <SearchIcon />
-        </button>
-        <button type="button" className="side-bar-settings-btn" onClick={openSettingsMenu} aria-expanded={settingsMenu !== null} aria-label="Canvas controls" title="Canvas controls"><SettingsIcon /></button>
         <button type="button" className="side-bar-collapse-btn" onClick={() => setSideBarCollapsed(!collapsed)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
           <PanelToggleIcon side="left" />
+        </button>
+        <button
+          type="button"
+          className="side-bar-formation-btn"
+          onClick={toggleFormationView}
+          disabled={activeTheaterId === null}
+          aria-pressed={formationView}
+          aria-label="Formation view"
+          title="Formation view (Alt+F)"
+        >
+          <FormationIcon />
+        </button>
+        <button type="button" className="side-bar-search-btn" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
+          <SearchIcon />
         </button>
       </header>
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
@@ -558,13 +550,11 @@ export function OperationsSideBar({
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
-                  setSettingsMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
                 }}
                 onOpenLaunch={openTheaterLaunchMenu}
                 onContextMenu={(anchor) => {
                   setNewMenu(null);
-                  setSettingsMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
                 }}
               />
@@ -585,13 +575,11 @@ export function OperationsSideBar({
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
-                  setSettingsMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
                 }}
                 onOpenLaunch={openTheaterLaunchMenu}
                 onContextMenu={(anchor) => {
                   setNewMenu(null);
-                  setSettingsMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
                 }}
               />
@@ -714,23 +702,6 @@ export function OperationsSideBar({
           onLaunchKind={(pluginId, kind) => { setNewMenu(null); onLaunchKind(pluginId, kind); }}
           onResetView={onResetView}
           onClose={() => setNewMenu(null)}
-        />,
-        document.body,
-      ) : null}
-
-      {settingsMenu ? createPortal(
-        <CanvasContextMenu
-          key={`settings:${settingsMenu.anchor.x}:${settingsMenu.anchor.y}`}
-          anchor={settingsMenu.anchor}
-          viewportBounds={settingsMenu.viewportBounds}
-          placement="cursor"
-          mode="controls"
-          catalog={catalog}
-          canLaunch={canLaunch}
-          renderKindIcon={renderKindIcon}
-          onLaunchKind={onLaunchKind}
-          onResetView={() => { setSettingsMenu(null); onResetView(); }}
-          onClose={() => setSettingsMenu(null)}
         />,
         document.body,
       ) : null}
@@ -1156,17 +1127,10 @@ function PlusIcon() {
   );
 }
 
-function SettingsIcon() {
+function FormationIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.25" />
-      <path
-        d="M8 1.4v1.4M8 13.2v1.4M1.4 8h1.4M13.2 8h1.4M3.3 3.3l1 1M11.7 11.7l1 1M11.7 3.3l-1 1M3.3 11.7l-1 1"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-      />
+      <path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   );
 }
