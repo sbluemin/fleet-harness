@@ -67,7 +67,7 @@ export function OperationsSideBarChip({
   const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
-    ...(accentValue ? { "--chip-accent": accentValue } : {}),
+    ...(accentValue ? { "--user-accent": accentValue } : {}),
     ...(dragging ? { "--drag-dy": `${Math.round(dragOffsetY)}px` } : {}),
   } as CSSProperties;
 

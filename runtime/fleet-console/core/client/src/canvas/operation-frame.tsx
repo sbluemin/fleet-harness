@@ -54,7 +54,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
   const displayTitle = operation.title;
-  // accent를 패널 외곽 box-shadow 링으로 칠한다(--op-accent). status(테두리·진행광)·focus(brass)와 채널이 달라 공존한다.
+  // 사용자 accent는 패널 전체 외곽선을 소유한다. status 비콘 채널은 별도로 유지한다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
     "canvas-operation",
@@ -215,7 +215,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     width: Math.round(geometry.width),
     height: Math.round(geometry.height),
     zIndex: geometry.zIndex,
-    ...(accentColor ? { "--op-accent": accentColor } : {}),
+    ...(accentColor ? { "--user-accent": accentColor } : {}),
   } as CSSProperties;
 
   return (

@@ -50,11 +50,35 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).not.toContain("onTogglePerimeter");
   });
 
-  it("uses opaque token surfaces without blur or identity-accent borders", () => {
+  it("uses opaque token surfaces without blur or deprecated accent variables", () => {
     const css = OWNED_SOURCES.filter((path) => path.endsWith(".css")).map(source).join("\n");
     expect(css).not.toMatch(/backdrop-filter|--op-accent|--chip-accent/);
     expect(css).toContain("background: var(--surface-glass)");
     expect(css).toContain(":focus-visible");
+  });
+
+  it("keeps user accents functional through panel perimeters and sidebar side ticks", () => {
+    const frame = source("canvas/operation-frame.tsx");
+    const chip = source("sidebar/operations-side-bar-chip.tsx");
+    const components = source("styles/components.css");
+    const panelAccentSelector = '.operations-canvas .canvas-operation[style*="--user-accent"]';
+    const panelAccentBlock = components.match(/\.operations-canvas \.canvas-operation\[style\*="--user-accent"\] \{[^}]*\}/)?.[0] ?? "";
+    const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
+    const accentSources = [frame, chip, components].join("\n");
+
+    expect(frame).toContain('{ "--user-accent": accentColor }');
+    expect(chip).toContain('{ "--user-accent": accentValue }');
+    expect(panelAccentBlock).toContain("border-color: var(--user-accent);");
+    expect(panelAccentBlock).not.toMatch(/background|box-shadow|animation/);
+    expect(components.indexOf(panelAccentSelector)).toBeGreaterThan(components.indexOf(".canvas-operation.is-running.is-active"));
+    expect(chipAccentBlock).toContain("width: 2px;");
+    expect(chipAccentBlock).toContain("top: 7px;");
+    expect(chipAccentBlock).toContain("bottom: 7px;");
+    expect(chipAccentBlock).toContain("background: var(--user-accent);");
+    expect(chipAccentBlock).toContain("pointer-events: none;");
+    expect(chipAccentBlock).not.toMatch(/animation/);
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(2);
+    expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
   it("keeps Formation and maximize store contracts without the retired focus mode", () => {

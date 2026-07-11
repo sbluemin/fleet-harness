@@ -2639,10 +2639,9 @@
 
 /* 최대화: 패널이 캔버스(col2)를 가장자리까지 채운다.
    패널 기본 radius(radius-lg=18px)가 부모 캔버스의 클립 반경보다 작으면, 둘 사이 고리만큼 패널이
-   비어 그 안으로 심해 배경(--canvas-abyss, 명도 ~7%)이 드러나 검은 노치가 되고 accent 외곽선이
-   코너에서 끊긴다. 부모 .operations-canvas는 radius-xl(24px) + 보더 1px이라 overflow:hidden 클립
+   비어 그 안으로 심해 배경(--canvas-abyss, 명도 ~7%)이 드러나 검은 노치가 된다. 부모 .operations-canvas는 radius-xl(24px) + 보더 1px이라 overflow:hidden 클립
    반경이 23px(=radius-xl − 보더). 패널 radius를 이 클립 반경에 정확히 맞추면 패널의 둥근 코너가
-   클립과 일치해 검은 갭 없이 accent가 둥근 모서리를 그대로 감싼다.
+   클립과 일치해 검은 갭 없이 단일 표면을 유지한다.
    드래그/리사이즈가 차단된 상태이므로 코너 필의 grab 어포던스 커서도 기본값으로 되돌린다. */
 .canvas-operation.is-maximized {
   border-radius: calc(var(--radius-xl) - 1px);
@@ -2679,6 +2678,12 @@
 /* Selection retains the location accent while a status is active. */
 .canvas-operation.is-running.is-active {
   border-color: var(--brass);
+}
+
+/* Map에서는 사용자 accent가 active/status 여부와 무관하게 패널 전체 외곽선을 소유한다.
+   fill과 status 비콘에는 누출하지 않는다. */
+.operations-canvas .canvas-operation[style*="--user-accent"] {
+  border-color: var(--user-accent);
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -3082,6 +3087,20 @@
   .side-bar-chip--dragging {
     transform: translateY(var(--drag-dy, 0));
   }
+}
+
+/* User-selected identity stays a small static side tick; brass focus and
+   aurora/warn status continue to own their existing channels. */
+.side-bar-chip[style*="--user-accent"]::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: var(--user-accent);
+  pointer-events: none;
 }
 
 /* Beacon button (accent picker trigger) — Operation 아이콘을 primary로, status beacon을 우하 코너 점으로 담는 복합 버튼 */
@@ -3509,7 +3528,7 @@
   cursor: grabbing;
 }
 
-/* rest에서는 accent beacon만 코너에 남긴다. Tab으로 숨은 컨트롤에 진입하면
+/* rest에서는 status beacon만 코너에 남긴다. Tab으로 숨은 컨트롤에 진입하면
    필 스코프의 focus-within만으로 다시 열려 xterm 본문 포커스와 분리된다. */
 .canvas-operation:hover .canvas-operation-titlebar,
 .canvas-operation-titlebar:focus-within {
