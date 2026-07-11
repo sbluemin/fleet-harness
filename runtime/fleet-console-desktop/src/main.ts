@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, Menu, shell, Tray } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
+import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
 import { createDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
@@ -34,6 +35,9 @@ if (!isPackaged) app.setPath("userData", resolveDesktopUserDataDirectory(app.get
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else void boot().catch((error: unknown) => {
+  if (isConsoleConflict(error)) {
+    return showConsoleConflictAndQuit({ showMessageBox: (options) => dialog.showMessageBox(options), quit: () => app.quit() });
+  }
   const message = error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
   process.stderr.write(`Fleet Console bootstrap failed: ${message}\n`);
   app.exit(1);

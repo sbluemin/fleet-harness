@@ -29,7 +29,7 @@ The entry page is view-only: main process code pushes status snapshots one way, 
 - **J6 long-running shell:** poll every 60 minutes and on manual Check. The native message box offers **Update and Restart** or **Later** with **Skip this version**; it is shown at most once per version. Menu/tray retain `Update to x.x.x...` as the fallback after Later. Updating always calls `app.relaunch()` and reuses J3; there is no in-place update path.
 - **J-dev:** `pnpm desktop` uses workspace Console `dist` and `FLEET_CONSOLE_NODE_PATH`/`npm_node_execpath`. It does not access `~/.fleet/desktop/runtime` or perform a registry check.
 
-The only native inputs are first-install failure **Retry**/**Quit** and the J6 update dialog. Closing the window follows normal macOS behavior and hides to tray on Windows/Linux; native Quit stops only a verified desktop-owned Console. A second launch restores the existing window.
+The only native inputs are first-install failure **Retry**/**Quit**, the J6 update dialog, and a single acknowledgement when a live foreign Console blocks safe Desktop startup. That warning tells the user to stop or quit Fleet Console before reopening Desktop; Desktop does not signal or kill the foreign process. Closing the window follows normal macOS behavior and hides to tray on Windows/Linux; native Quit stops only a verified desktop-owned Console. A second launch restores the existing window.
 
 ## Development and packaging
 
@@ -53,5 +53,6 @@ pnpm --filter @dotobokuri/fleet-console-desktop verify:package
 - **First install cannot finish:** the native dialog offers Retry or Quit only after staging cleanup; it never leaves a half-installed runtime.
 - **Registry unavailable:** an installed `latest` remains usable. If none exists, Retry after connectivity is restored.
 - **CLI-owned daemon exists:** do not delete a healthy lock or signal the process. Desktop only adopts a matching desktop owner.
+- **A live Console lock is unhealthy:** Desktop shows one warning, then exits. Stop or quit that Console before reopening Desktop; Desktop does not kill it.
 - **Protocol is newer than the shell:** Desktop keeps the status passive and opens the Fleet releases page; it does not download a new shell automatically.
 - **Provider unavailable:** start Desktop from an environment where the provider CLI is on `PATH`; Desktop does not provide provider discovery.
