@@ -1,5 +1,5 @@
 {
-  "name": "@dotobokuri/fleet-console-desktop",
+  "name": "@dotobokuri/fleet-desktop",
   "version": "0.1.0",
   "description": "Fleet Console Electron main-process host.",
   "private": true,

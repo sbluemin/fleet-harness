@@ -11,7 +11,7 @@ import { createDesktopEnvironment, resolveDesktopUserDataDirectory } from "./env
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
-import { createDesktopLogger } from "./logging.js";
+import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations } from "./runtime/console-installer.js";
@@ -38,12 +38,15 @@ else void boot().catch((error: unknown) => {
   if (isConsoleConflict(error)) {
     return showConsoleConflictAndQuit({ showMessageBox: (options) => dialog.showMessageBox(options), quit: () => app.quit() });
   }
-  const message = error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
-  process.stderr.write(`Fleet Console bootstrap failed: ${message}\n`);
+  // 실제 원인(cause 체인·자식 프로세스 stderr 포함)을 로그 파일에 남긴다 — Finder/트레이 실행 시 stderr는
+  // 어디에도 보이지 않으므로, 이 파일 로그가 개발 진단과 퍼블리싱된 앱의 사용자 이슈 수집의 SSoT다.
+  logBootFailure(error);
+  process.stderr.write(`Fleet Console bootstrap failed: ${describeError(error)}\n`);
   app.exit(1);
 });
 
 const trayHolder: { current: Tray | null } = { current: null };
+let bootLogger: DesktopLogger | null = null;
 
 async function boot(): Promise<void> {
   await app.whenReady();
@@ -51,12 +54,13 @@ async function boot(): Promise<void> {
   const runtimePaths = resolveRuntimePaths(os.homedir());
   const environment = createDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
+  bootLogger = logger;
   const registry = createRegistryChecker({ packageName: PACKAGE_NAME, statePath: path.join(runtimePaths.root, "registry-state.json") });
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
   const supervisor = new SidecarSupervisor({
     ...(isPackaged
-      ? { resolveRuntime: () => resolvePackagedRuntime(runtimePaths, registry, (state, detail, progress) => pushRuntimeProgress?.(state, detail, progress) ?? Promise.resolve()) }
+      ? { resolveRuntime: () => resolvePackagedRuntime(runtimePaths, registry, (state, detail, progress) => pushRuntimeProgress?.(state, detail, progress) ?? Promise.resolve(), logger) }
       : { nodePath: desktopResources.nodePath, cliPath: desktopResources.cliPath, serviceRoot: desktopResources.serviceRoot }),
     env: environment.serviceEnv,
     lockFile: path.join(environment.consoleDir, "console.lock"),
@@ -107,7 +111,7 @@ async function boot(): Promise<void> {
   if (isPackaged) setInterval(() => { void updates.check(false); }, 60 * 60 * 1_000);
 }
 
-async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress): Promise<SidecarRuntime> {
+async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress, logger: DesktopLogger): Promise<SidecarRuntime> {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
     const engine = readConsoleNodeEngine(runtimePaths.latest);
@@ -142,7 +146,10 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     if (!satisfiesNodeEngine(manifest.version, readConsoleNodeEngine(runtimePaths.latest))) throw new Error("managed_node_engine_unsupported");
     return { nodePath: path.join(runtimePaths.node, process.platform === "win32" ? "node.exe" : "bin/node"), cliPath: path.join(runtimePaths.latest, "dist", "cli.mjs"), serviceRoot: runtimePaths.latest, serviceVersion };
   } catch (error) {
-    if (!readInstalledVersion(runtimePaths.latest)) throw new Error("console_runtime_unavailable");
+    // 실제 원인(cause 체인·npm lifecycle의 stderr 등)을 로그 파일에 남긴 뒤, 조달 불가를 상위로 알린다.
+    // console_runtime_unavailable로 감쌀 때도 cause를 보존해 상위 핸들러/telemetry가 원인을 추적할 수 있게 한다.
+    logger.error(`console runtime procurement failed: ${describeError(error)}`);
+    if (!readInstalledVersion(runtimePaths.latest)) throw new Error("console_runtime_unavailable", { cause: error });
     throw error;
   }
 }
@@ -167,6 +174,15 @@ async function showUpdateDialog(window: BrowserWindow | null, version: string, m
   };
   // Windows 실기는 darwin에서 [Unverified]다. 숨은 트레이 창은 balloon 클릭 뒤에만 모달을 연다.
   return process.platform === "win32" ? showWindowsHiddenUpdateDialog(window, trayHolder.current, version, show) : show();
+}
+
+function logBootFailure(error: unknown): void {
+  try {
+    const logger = bootLogger ?? createDesktopLogger(path.join(app.getPath("userData"), "logs"));
+    logger.error(`bootstrap failed: ${describeError(error)}`);
+  } catch {
+    // 로깅 자체의 실패가 종료 처리를 막아서는 안 되므로 무시한다.
+  }
 }
 
 function readInstalledVersion(root: string): string | null {

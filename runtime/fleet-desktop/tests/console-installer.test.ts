@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { installConsole, reconcileConsoleInstallations, replaceLatest } from "../src/runtime/console-installer.js";
+import { createConsoleInstallerEnvironment, installConsole, reconcileConsoleInstallations, replaceLatest } from "../src/runtime/console-installer.js";
 import { resolveRuntimePaths } from "../src/runtime/runtime-paths.js";
 
 function missing(): NodeJS.ErrnoException { const error = new Error("missing") as NodeJS.ErrnoException; error.code = "ENOENT"; return error; }
@@ -27,7 +27,8 @@ describe("console installer", () => {
     const run = vi.fn<(command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>>(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
     await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { environment: { NODE_OPTIONS: "--require attacker", npm_config_registry: "https://attacker.invalid", NPM_CONFIG_CACHE: "/attacker", PATH: "/safe/bin" }, fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
-    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"], { env: expect.objectContaining({ PATH: "/safe/bin", npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc", npm_config_globalconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc-global" }) });
+    // 번들 node bin("/runtime/node/bin")이 PATH 앞에 붙어야 npm lifecycle 스크립트가 node를 찾는다.
+    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"], { env: expect.objectContaining({ PATH: "/runtime/node/bin:/safe/bin", npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc", npm_config_globalconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc-global" }) });
     const firstRun = run.mock.calls[0];
     if (!firstRun) throw new Error("npm invocation was not captured");
     const runEnvironment = firstRun[2].env;
@@ -106,5 +107,34 @@ describe("console installer", () => {
     fs.readdir.mockResolvedValueOnce(["latest.rollback", ".staging-locked"]);
     fs.rm.mockRejectedValue(new Error("locked"));
     await expect(reconcileConsoleInstallations(paths, fs)).resolves.toBeUndefined();
+  });
+});
+
+describe("console installer environment PATH", () => {
+  it("prepends the bundled node bin to PATH so npm lifecycle scripts resolve node (POSIX)", () => {
+    const env = createConsoleInstallerEnvironment({ PATH: "/safe/bin" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.PATH).toBe("/runtime/node/bin:/safe/bin");
+  });
+
+  it("sets PATH to the bundled node bin when the source has no PATH (POSIX)", () => {
+    const env = createConsoleInstallerEnvironment({}, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.PATH).toBe("/runtime/node/bin");
+  });
+
+  it("prepends onto the case-preserved Path key with the Windows separator", () => {
+    const env = createConsoleInstallerEnvironment({ Path: "C:\\safe" }, "S:\\.npmrc", "S:\\.npmrc-global", "C:\\runtime\\node", "win32");
+    expect(env.Path).toBe("C:\\runtime\\node;C:\\safe");
+    expect(env.PATH).toBeUndefined();
+  });
+
+  it("leaves PATH untouched when no node bin directory is provided", () => {
+    const env = createConsoleInstallerEnvironment({ PATH: "/safe/bin" }, "/s/.npmrc", "/s/.npmrc-global");
+    expect(env.PATH).toBe("/safe/bin");
+  });
+
+  it("does not treat a lowercase 'path' as PATH on POSIX (case-sensitive env)", () => {
+    const env = createConsoleInstallerEnvironment({ path: "/not-the-path" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.path).toBe("/not-the-path");
+    expect(env.PATH).toBe("/runtime/node/bin");
   });
 });

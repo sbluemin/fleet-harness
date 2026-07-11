@@ -62,8 +62,8 @@ describe("macOS Desktop dev wrapper", () => {
   });
 
   it("launches the wrapper through macOS open without shell arguments", () => {
-    expect(createMacDevLaunchArguments("/tmp/Fleet Console.app", "/workspace/runtime/fleet-console-desktop")).toEqual([
-      "-W", "-n", "/tmp/Fleet Console.app", "--args", "/workspace/runtime/fleet-console-desktop",
+    expect(createMacDevLaunchArguments("/tmp/Fleet Console.app", "/workspace/runtime/fleet-desktop")).toEqual([
+      "-W", "-n", "/tmp/Fleet Console.app", "--args", "/workspace/runtime/fleet-desktop",
     ]);
   });
 });

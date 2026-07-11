@@ -124,7 +124,7 @@ jobs:
         if: steps.version.outputs.should_release == 'true'
         id: desktop
         run: |
-          pkg_version=$(node -p "require('./runtime/fleet-console-desktop/package.json').version")
+          pkg_version=$(node -p "require('./runtime/fleet-desktop/package.json').version")
           last_tag=$(git tag --list 'desktop-v*' --sort=-version:refname | grep -E '^desktop-v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
 
           emit() {
@@ -145,14 +145,14 @@ jobs:
             exit 0
           fi
 
-          if git diff --quiet "$last_tag"..HEAD -- runtime/fleet-console-desktop; then
+          if git diff --quiet "$last_tag"..HEAD -- runtime/fleet-desktop; then
             emit false "$pkg_version" false
             exit 0
           fi
 
           # main 버전 산정과 같은 규칙을 desktop 경로 커밋에만 적용한다: feat이면 minor, 아니면 patch.
           bump="patch"
-          if git log --format=%B "$last_tag"..HEAD -- runtime/fleet-console-desktop | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
+          if git log --format=%B "$last_tag"..HEAD -- runtime/fleet-desktop | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
             bump="minor"
           fi
           next=$(node -e "
@@ -179,7 +179,7 @@ jobs:
           // desktop 셸은 독립 버저닝(desktop-v* 태그 트레인)을 쓰므로 릴리스 sync 대상에서 제외한다.
           const files = tracked
             .filter((f) => f === 'package.json' || f.endsWith('/package.json'))
-            .filter((f) => f !== 'runtime/fleet-console-desktop/package.json');
+            .filter((f) => f !== 'runtime/fleet-desktop/package.json');
           for (const file of files) {
             const raw = fs.readFileSync(file, 'utf8');
             // 루트 레벨의 첫 "version" 필드만 치환한다 (각 package.json에서 1회만 등장).
@@ -203,7 +203,7 @@ jobs:
           # desktop 변경이 감지된 릴리스에서만 셸 버전을 범프해 릴리스 커밋에 함께 담는다.
           node <<'NODE'
           const fs = require('fs');
-          const file = 'runtime/fleet-console-desktop/package.json';
+          const file = 'runtime/fleet-desktop/package.json';
           const raw = fs.readFileSync(file, 'utf8');
           const updated = raw.replace(/("version":\s*")[^"]+(")/, `$1${process.env.DESKTOP_VERSION}$2`);
           if (updated === raw) {
@@ -230,7 +230,7 @@ jobs:
           const offenders = [];
           let checked = 0;
           for (const file of files) {
-            if (file === 'runtime/fleet-console-desktop/package.json') {
+            if (file === 'runtime/fleet-desktop/package.json') {
               // desktop 셸은 독립 버저닝이라 sync 검증 대상이 아니다.
               console.log(`skipped ${file}: independent desktop shell versioning`);
               continue;

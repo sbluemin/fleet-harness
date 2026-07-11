@@ -60,7 +60,11 @@ async function applyRequiredFuses(outputDirectory, platform) {
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
-      [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
+      // 이 fuse를 끄면 렌더러가 asar 내부를 file://로 읽는 특권을 잃어, 셸이 자기 엔트리 HTML
+      // (dist/assets/entry/index.html, ASAR 내부)을 loadFile로 로드하지 못하고 ERR_FILE_NOT_FOUND로
+      // 창이 뜨기 전에 죽는다. 이 셸은 신뢰 불가한 file:// 콘텐츠를 로드하는 경로가 없고(엔트리는
+      // 스크립트 없는 CSP 잠금 로컬 페이지, 콘솔은 http loopback) 실질 보안 효과가 없으므로 켜둔다.
+      [FuseV1Options.GrantFileProtocolExtraPrivileges]: true,
       resetAdHocDarwinSignature: true,
     });
   }
@@ -111,7 +115,9 @@ function findFuseBinary(resourcesDirectory, electronBinary, platform) {
 
 async function assertFuses(electronBinary) {
   const wire = await getCurrentFuseWire(electronBinary);
-  const required = [[FuseV1Options.RunAsNode, FuseState.DISABLE], [FuseV1Options.EnableNodeOptionsEnvironmentVariable, FuseState.DISABLE], [FuseV1Options.EnableNodeCliInspectArguments, FuseState.DISABLE], [FuseV1Options.EnableEmbeddedAsarIntegrityValidation, FuseState.ENABLE], [FuseV1Options.OnlyLoadAppFromAsar, FuseState.ENABLE]];
+  // GrantFileProtocolExtraPrivileges=ENABLE도 검증한다 — 이 fuse가 꺼지면 렌더러가 asar 내부 엔트리를
+  // file://로 못 읽어 부팅이 ERR_FILE_NOT_FOUND로 깨지므로, 부팅 필수 계약으로서 회귀를 여기서 잡는다.
+  const required = [[FuseV1Options.RunAsNode, FuseState.DISABLE], [FuseV1Options.EnableNodeOptionsEnvironmentVariable, FuseState.DISABLE], [FuseV1Options.EnableNodeCliInspectArguments, FuseState.DISABLE], [FuseV1Options.EnableEmbeddedAsarIntegrityValidation, FuseState.ENABLE], [FuseV1Options.OnlyLoadAppFromAsar, FuseState.ENABLE], [FuseV1Options.GrantFileProtocolExtraPrivileges, FuseState.ENABLE]];
   for (const [fuse, expected] of required) if (wire[fuse] !== expected) throw new Error(`Electron fuse ${fuse} is not configured securely`);
 }
 

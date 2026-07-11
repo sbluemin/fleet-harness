@@ -12,12 +12,12 @@ describe("fleet desktop development command", () => {
     }));
     const result = runDesktopDev({
       cwd: "/workspace",
-      desktopPackageDirectory: "/workspace/runtime/fleet-console-desktop",
+      desktopPackageDirectory: "/workspace/runtime/fleet-desktop",
       platform: "darwin",
       spawn,
     });
 
-    expect(spawn).toHaveBeenCalledWith("pnpm", ["--dir", "/workspace/runtime/fleet-console-desktop", "dev"], {
+    expect(spawn).toHaveBeenCalledWith("pnpm", ["--dir", "/workspace/runtime/fleet-desktop", "dev"], {
       cwd: "/workspace",
       env: process.env,
       stdio: "inherit",
@@ -35,7 +35,7 @@ describe("fleet desktop development command", () => {
       }),
     }));
     const result = runDesktopDev({
-      desktopPackageDirectory: "C:\\workspace\\runtime\\fleet-console-desktop",
+      desktopPackageDirectory: "C:\\workspace\\runtime\\fleet-desktop",
       env: { npm_execpath: "C:\\tools\\pnpm.cjs" },
       execPath: "C:\\node\\node.exe",
       isPackageManagerExecutable: () => true,
@@ -43,7 +43,7 @@ describe("fleet desktop development command", () => {
       spawn,
     });
 
-    expect(spawn).toHaveBeenCalledWith("C:\\node\\node.exe", ["C:\\tools\\pnpm.cjs", "--dir", "C:\\workspace\\runtime\\fleet-console-desktop", "dev"], {
+    expect(spawn).toHaveBeenCalledWith("C:\\node\\node.exe", ["C:\\tools\\pnpm.cjs", "--dir", "C:\\workspace\\runtime\\fleet-desktop", "dev"], {
       cwd: process.cwd(),
       env: { npm_execpath: "C:\\tools\\pnpm.cjs" },
       stdio: "inherit",
@@ -68,7 +68,7 @@ describe("fleet desktop development command", () => {
       }),
     }));
     const result = runDesktopDev({
-      desktopPackageDirectory: "C:\\workspace\\runtime\\fleet-console-desktop",
+      desktopPackageDirectory: "C:\\workspace\\runtime\\fleet-desktop",
       env: { npm_execpath: "C:\\tools\\pnpm.exe" },
       execPath: "C:\\tools\\pnpm.exe",
       isPackageManagerExecutable: () => true,
@@ -76,7 +76,7 @@ describe("fleet desktop development command", () => {
       spawn,
     });
 
-    expect(spawn).toHaveBeenCalledWith("C:\\tools\\pnpm.exe", ["--dir", "C:\\workspace\\runtime\\fleet-console-desktop", "dev"], {
+    expect(spawn).toHaveBeenCalledWith("C:\\tools\\pnpm.exe", ["--dir", "C:\\workspace\\runtime\\fleet-desktop", "dev"], {
       cwd: process.cwd(),
       env: { npm_execpath: "C:\\tools\\pnpm.exe" },
       stdio: "inherit",

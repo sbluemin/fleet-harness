@@ -11,10 +11,10 @@
 |------|-------------|
 | `docs/` | **Developer Reference** — `fleet-development-reference.md` and `fleet-lightweight-followup.md`; **Operational Doctrine** — `admiral-workflow-reference.md`; **Admiral-only prompt/runtime architecture note** — `admiral-prompt-architecture.md`; plus the static landing page (`index.html`, `app.jsx`) |
 | `packages/` | First-party workspace packages: `core-process` (`@dotobokuri/core-process`), `core-agent` (`@dotobokuri/core-agent`), `core-unified-agent` (`@dotobokuri/core-unified-agent`), `fleet-admiral`, `fleet-carriers`, `core-infra`, and `fleet-wiki` |
-| `runtime/` | Runtime workspace packages: `fleet-cli` (CLI host and entry point — `runtime/fleet-cli/bin/fleet`, or `pnpm cli` from the repo root), `fleet-console` (the sole Console HTTP/REST/SSE/WebSocket/PTY/provider/plugin/state/UI owner), `fleet-console-desktop` (thin Electron native shell and standard-Node sidecar supervisor), and `fleet-plugins/*` (built-in console plugins such as `terminal`) |
+| `runtime/` | Runtime workspace packages: `fleet-cli` (CLI host and entry point — `runtime/fleet-cli/bin/fleet`, or `pnpm cli` from the repo root), `fleet-console` (the sole Console HTTP/REST/SSE/WebSocket/PTY/provider/plugin/state/UI owner), `fleet-desktop` (thin Electron native shell and standard-Node sidecar supervisor), and `fleet-plugins/*` (built-in console plugins such as `terminal`) |
 | `scripts/` | Repo maintenance scripts: core/agent boundary guards, publish helpers, and the node-pty postinstall fix |
 
-> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `runtime/fleet-console/AGENTS.md`, `runtime/fleet-console-desktop/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-admiral/AGENTS.md`, `packages/fleet-carriers/AGENTS.md`, `packages/core-infra/AGENTS.md`, and `packages/fleet-wiki/AGENTS.md`.
+> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `runtime/fleet-console/AGENTS.md`, `runtime/fleet-desktop/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-admiral/AGENTS.md`, `packages/fleet-carriers/AGENTS.md`, `packages/core-infra/AGENTS.md`, and `packages/fleet-wiki/AGENTS.md`.
 
 ## TypeScript File Structure
 

@@ -11,7 +11,7 @@ Fleet development follows a hard one-way dependency graph:
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
-- `runtime/fleet-console-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
+- `runtime/fleet-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
 - `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
 - `packages/core-unified-agent` — independent execution engine client package.
 
@@ -33,7 +33,7 @@ Put code here when it owns generic auth, data-dir resolution, data-dir/settings,
 
 Put code here when it owns the standalone loopback HTTP backend for CLI register ingest, observer REST/SSE, terminal WebSocket tickets, static console serving, Console durable state, plugin runtime, PTY runtime, or console server lifecycle.
 
-### 2.4.1 `runtime/fleet-console-desktop`
+### 2.4.1 `runtime/fleet-desktop`
 
 Put code here only when it concerns Electron main-process lifecycle, one native window/tray/menu, native update surfaces, or supervision of the packaged standard Node Console Service. The shell must load the verified loopback `/console/` URL and must not duplicate Console UI, HTTP/REST/SSE/WebSocket, `node-pty`, provider policy, plugin routes, or durable state.
 
