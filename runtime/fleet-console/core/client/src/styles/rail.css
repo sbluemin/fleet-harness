@@ -9,6 +9,7 @@
 .right-rail {
   display: flex;
   flex-direction: row;
+  width: calc(44px + var(--right-rail-panel-width, 0px));
   height: 100%;
   min-height: 0;
   z-index: var(--z-rail);
@@ -25,6 +26,7 @@
     color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
   overflow: hidden;
+  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
@@ -478,43 +480,18 @@
   display: contents;
 }
 
-.right-rail-chrome-toggle {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 48px;
-  height: 44px;
-  border: 0;
-  border-bottom: 1px solid var(--surface-rim);
-  background: transparent;
-  color: var(--ink-fog);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
-}
-
-.right-rail-chrome-toggle:hover,
-.right-rail-chrome-toggle:focus-visible {
-  color: var(--ink-spectral);
-  background: var(--surface-glass);
-  outline: none;
-}
-
-.right-rail-chrome-toggle svg {
-  width: 16px;
-  height: 16px;
-}
-
 .right-rail.is-closed {
-  display: none;
   width: 0;
+  border-color: transparent;
+  visibility: hidden;
+  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
 }
 
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
+  .right-rail,
   .right-rail-panel-slot {
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 
   .right-rail-ico,

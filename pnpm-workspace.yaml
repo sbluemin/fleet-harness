@@ -7,6 +7,7 @@ packages:
   - "packages/fleet-carriers"
   - "packages/fleet-wiki"
   - "runtime/fleet-console"
+  - "runtime/fleet-console-desktop"
   - "runtime/fleet-console/sdk"
   - "runtime/fleet-console/markdown"
   - "runtime/fleet-console/font-picker"
@@ -18,3 +19,4 @@ packages:
 allowBuilds:
   esbuild: true
   node-pty: true
+  electron: true

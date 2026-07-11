@@ -24,7 +24,7 @@ import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { hydrateGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
-import { setActiveTheme, setActiveUiFont } from "./store.js";
+import { applyDesktopShellMarker, setActiveTheme, setActiveUiFont } from "./store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -51,6 +51,7 @@ globalThis.__fleetConsoleRuntime__ = {
 };
 
 setActiveTheme("instrument");
+applyDesktopShellMarker();
 
 try {
   const settings = await fetchGlobalSettingsState();

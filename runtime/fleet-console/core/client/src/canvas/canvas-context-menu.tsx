@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
-import { SHORTCUT_GROUPS } from "../shortcuts-catalog.js";
-
 export type CanvasContextMenuMode = "full" | "launch";
 
 interface CanvasContextMenuProps {
@@ -30,7 +28,7 @@ interface NavigatorWithUserAgentData extends Navigator {
   };
 }
 
-type CanvasControlTab = "operations" | "map" | "help";
+type CanvasControlTab = "operations" | "map";
 
 interface CanvasControlTabDefinition {
   readonly id: CanvasControlTab;
@@ -43,7 +41,6 @@ const MENU_MARGIN = 12;
 const CANVAS_CONTROL_TABS: readonly CanvasControlTabDefinition[] = [
   { id: "operations", label: "Operations" },
   { id: "map", label: "Map" },
-  { id: "help", label: "Help" },
 ];
 // userAgentData.platform은 "macOS"(소문자)를, navigator.platform은 "MacIntel"을 반환하므로
 // 대소문자 무시(i)로 두 표기를 모두 Apple 플랫폼으로 인식해야 ⌘가 올바르게 표시된다.
@@ -52,13 +49,13 @@ const MAC_PLATFORM_PATTERN = /mac|iphone|ipad|ipod/i;
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", mode = "full", catalog, canLaunch, formationView = false, renderKindIcon, onLaunchKind, onResetView, onToggleFormation, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null, help: null });
+  const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null });
   const [activeTab, setActiveTab] = useState<CanvasControlTab>("operations");
   const modLabel = resolveModLabel();
 
   const showTabs = mode === "full";
   const showOperations = mode === "full" || mode === "launch";
-  const showMapAndHelp = mode === "full";
+  const showMap = mode === "full";
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -172,7 +169,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             )) : <p className="theater-menu-empty">No operations available.</p>}
           </div>
         ) : null}
-        {showMapAndHelp ? (
+        {showMap ? (
           <>
             <div
               id="canvas-control-panel-map"
@@ -192,15 +189,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   <span className="theater-menu-label">Formation view</span>
                 </button>
               ) : null}
-            </div>
-            <div
-              id="canvas-control-panel-help"
-              role="tabpanel"
-              aria-labelledby="canvas-control-tab-help"
-              className="canvas-context-menu-panel canvas-context-menu-help"
-              hidden={showTabs ? activeTab !== "help" : undefined}
-            >
-              <ShortcutsContent modLabel={modLabel} />
             </div>
           </>
         ) : null}
@@ -233,37 +221,6 @@ function clampedAnchorStyle(
   }
   const top = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.y, bounds.height - MENU_MAX_HEIGHT - MENU_MARGIN)) : anchor.y;
   return { left, top };
-}
-
-function ShortcutsContent({ modLabel }: { readonly modLabel: string }) {
-  return (
-    <>
-      {SHORTCUT_GROUPS.map((group) => (
-        <section key={group.title} className="canvas-shortcuts-group" aria-labelledby={`canvas-shortcuts-${group.title.toLowerCase()}`}>
-          <h3 id={`canvas-shortcuts-${group.title.toLowerCase()}`}>{group.title}</h3>
-          <dl className="canvas-shortcuts-list">
-            {group.entries.map((entry) => (
-              <div key={`${group.title}:${entry.description}`} className="canvas-shortcuts-entry">
-                <dt className="canvas-shortcuts-combos">
-                  {entry.combos.map((combo, comboIndex) => (
-                    <span key={`${entry.description}:${combo.join("+")}`} className="canvas-shortcuts-combo">
-                      {comboIndex > 0 ? <span className="canvas-shortcuts-or">or</span> : null}
-                      <span className="canvas-shortcuts-keyset">
-                        {combo.map((key) => (
-                          <kbd key={key}>{key === "Mod" ? modLabel : key}</kbd>
-                        ))}
-                      </span>
-                    </span>
-                  ))}
-                </dt>
-                <dd>{entry.description}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ))}
-    </>
-  );
 }
 
 function resolveModLabel(): string {

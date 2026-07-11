@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ConsoleLockPayload } from "./api-types.js";
+import type { ConsoleOwnerMetadata } from "./desktop-protocol.js";
 
 export interface ConsoleLockDeps {
   readonly fs?: typeof fs;
@@ -18,6 +19,7 @@ export interface ConsoleLockCreateInput {
   readonly port: number;
   readonly endpoint: string;
   readonly version: string;
+  readonly owner?: ConsoleOwnerMetadata;
 }
 
 export interface ConsoleLockHandle {
@@ -69,6 +71,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       startedAt: now(),
       token: randomToken(),
       version: input.version,
+      ...(input.owner ? { owner: input.owner } : {}),
     };
     const fd = fsImpl.openSync(input.lockFile, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, LOCK_FILE_MODE);
     try {

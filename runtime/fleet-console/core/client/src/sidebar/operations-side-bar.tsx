@@ -6,12 +6,13 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { setOperationOrder, toggleFormationView, toggleGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationView } from "../canvas/canvas-store.js";
-import { sortOperationsByOrder, toggleOperationSearch } from "../store.js";
+import { sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
@@ -173,6 +174,7 @@ export function OperationsSideBar({
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
+  const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const formationView = useFormationView();
   const closeArmTimeoutRef = useRef<number | null>(null);
@@ -192,6 +194,11 @@ export function OperationsSideBar({
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
   const { operationStatus } = useConsoleState();
+
+  useLayoutEffect(() => {
+    if (!previousCollapsedRef.current && collapsed) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-sidebar-toggle");
+    previousCollapsedRef.current = collapsed;
+  }, [collapsed]);
 
   const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
@@ -484,8 +491,6 @@ export function OperationsSideBar({
     setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
   };
 
-  const displayWidth = collapsed ? 0 : width;
-
   return (
     <aside
       className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}`}
@@ -493,30 +498,14 @@ export function OperationsSideBar({
       data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-resizing={sideBarResizing ? "true" : undefined}
       data-canvas-blocker
-      style={{ "--side-bar-width": `${displayWidth}px` } as CSSProperties}
+      style={{ "--side-bar-width": `${width}px` } as CSSProperties}
+      inert={collapsed}
       onContextMenu={openNewMenuAtCursor}
     >
-      <header className="operations-side-bar-header">
-        <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Theater</span></button>
-        <span className="side-bar-header-spacer" aria-hidden="true" />
-        <button type="button" className="side-bar-collapse-btn" onClick={() => setSideBarCollapsed(!collapsed)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-          <PanelToggleIcon side="left" />
-        </button>
-        <button
-          type="button"
-          className="side-bar-formation-btn"
-          onClick={toggleFormationView}
-          disabled={activeTheaterId === null}
-          aria-pressed={formationView}
-          aria-label="Formation view"
-          title="Formation view (Alt+F)"
-        >
-          <FormationIcon />
-        </button>
-        <button type="button" className="side-bar-search-btn" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
-          <SearchIcon />
-        </button>
-      </header>
+      <div className="side-bar-theater-add-row">
+        <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Add Theater</span></button>
+        <button type="button" className="side-bar-formation-toggle" onClick={toggleFormationView} disabled={activeTheaterId === null} aria-pressed={formationView} aria-label="Formation view" title="Formation view (Alt+F)"><FormationIcon /></button>
+      </div>
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
@@ -754,8 +743,8 @@ export function OperationsSideBar({
   );
 }
 
-function SearchIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+function FormationIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 interface GroupSection {
@@ -1127,14 +1116,6 @@ function PlusIcon() {
   );
 }
 
-function FormationIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
 export function theaterInitials(label: string): string {
   // 하이픈/언더스코어/점도 단어 경계로 취급 — "fleet-harness" → "FH" (재가 시안 문법)
   const words = label.trim().split(/[\s\-_.]+/).filter(Boolean);
@@ -1160,16 +1141,6 @@ function TrashIcon() {
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M5.2 5.8v6.1M8 5.8v6.1M10.8 5.8v6.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
       <path d="M3.7 4.1h8.6M6.4 4.1l.4-1h2.4l.4 1M4.6 4.1l.5 9.1h5.8l.5-9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/* 패널 접기 아이콘 — 사이드 영역을 선으로 구분한 패널 모양(#44 시안). */
-function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="1.75" y="3" width="12.5" height="10" rx="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d={side === "left" ? "M6.4 3v10" : "M9.6 3v10"} stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }

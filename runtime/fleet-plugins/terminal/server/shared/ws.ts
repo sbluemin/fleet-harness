@@ -1,9 +1,11 @@
 import http from "node:http";
 import { createRequire } from "node:module";
 import type { Duplex } from "node:stream";
+import { fileURLToPath } from "node:url";
 
 import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
+import { resolveConsolePackageRequire } from "./console-require.js";
 import type { TerminalSessionManager, TerminalTicketContext } from "./terminal-types.js";
 
 export interface TerminalUpgradeHandlerDeps {
@@ -19,7 +21,9 @@ export interface TerminalUpgradeHandler {
   close(): void;
 }
 
-const require = createRequire(import.meta.url);
+// esbuild가 이 모듈을 node_modules 밖으로 번들해도 ws가 해석되도록, @dotobokuri/fleet-console
+// 패키지 기준의 require로 앵커링한다(자세한 배경은 console-require.ts 참고).
+const require = resolveConsolePackageRequire(fileURLToPath(import.meta.url), createRequire(import.meta.url));
 
 export function createPluginTerminalUpgradeHandler(deps: TerminalUpgradeHandlerDeps): TerminalUpgradeHandler {
   let wsServer: WebSocketServerLike | null = null;

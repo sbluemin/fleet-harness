@@ -1,0 +1,51 @@
+appId: com.dotobokuri.fleet-console
+productName: Fleet Console
+artifactName: "Fleet Console-${version}-${os}-${arch}.${ext}"
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**
+  - package.json
+asar: true
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+  resetAdHocDarwinSignature: true
+afterPack: ./scripts/verify-packaged-app.mjs
+extraResources:
+  - from: .stage/sidecar
+    to: sidecar
+    filter:
+      - "**/*"
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - target: dmg
+    - target: zip
+win:
+  icon: build/icon.ico
+  signExts:
+    - .exe
+    - .dll
+    - .node
+  target:
+    - target: nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+linux:
+  icon: build/icon.png
+  category: Development
+  target:
+    - target: AppImage

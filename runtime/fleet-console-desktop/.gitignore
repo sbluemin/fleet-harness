@@ -1,0 +1,8 @@
+.stage/
+release/
+logs/
+.DS_Store
+node-*.tar.gz
+node-*.zip
+playwright-report/
+test-results/

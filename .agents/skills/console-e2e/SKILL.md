@@ -33,7 +33,7 @@ Every browser command in this skill must preserve `--session "$SESSION"`, and ev
 
 Replace each `<placeholder>` before running. Optional inputs default as noted.
 
-- `<port>` - console loopback port. Required. Find it from the URL the user gives, `fleet-console status`, or `lsof -nP -iTCP -sTCP:LISTEN | grep node`. A default source/`pnpm fleet-console` dev instance writes its lock to `<repo>/.fleet/console/console.lock`; published builds use the OS temp dir. For an isolated instance, read it from `<FLEET_CONSOLE_DIR>/console.lock`.
+- `<port>` - console loopback port. Required. Find it from the URL the user gives, `fleet-console status`, or `lsof -nP -iTCP -sTCP:LISTEN | grep node`. A default source/`pnpm console` dev instance writes its lock to `<repo>/.fleet/console/console.lock`; published builds use the OS temp dir. For an isolated instance, read it from `<FLEET_CONSOLE_DIR>/console.lock`.
 - `<route>` - `/console/operations` (terminal + sidebar) or `/console/` (Welcome). Default `/console/operations`.
 - `<scenario>` - the interaction to drive, such as "switch between two terminal-only sessions". Required for a bug repro.
 - `<symptom>` - observable failure to reproduce, such as "terminal area goes blank, needs refresh". Optional but recommended.
@@ -46,7 +46,7 @@ Replace each `<placeholder>` before running. Optional inputs default as noted.
    curl -s -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:<port>/console/operations"
    ```
 
-   Expect `200`. If not, start it from the repo root with `pnpm fleet-console` or `fleet-console start`.
+   Expect `200`. If not, start it from the repo root with `pnpm console` or `fleet-console start`.
 
    - **Testing your own build? Isolate it. Do not reuse or restart the user's daemon.** `fleet-console start` is a singleton per runtime dir. For source/`pnpm` runs, that dir defaults to `<repo>/.fleet/console`, so it may be shared with the user's own dev daemon unless `FLEET_CONSOLE_DIR` is set. To verify your build without disturbing the user's daemon, launch a throwaway isolated instance:
 

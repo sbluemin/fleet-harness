@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { getFleetDataDir } from "@dotobokuri/core-infra";
 
+import { resolveCanonicalStableConsolePaths } from "./desktop-protocol.js";
 import { readFleetConsoleRelease, type FleetConsoleChannel } from "./release.js";
 
 export interface ConsolePaths {
@@ -31,9 +32,7 @@ export interface CreateConsoleDataPathsDeps {
   readonly fleetDataDir?: string;
 }
 
-const LOCK_DIR_NAME = "fleet-console";
 const CONSOLE_RUNTIME_DIR_NAME = "console";
-const LOCK_FILE_NAME = "console.lock";
 const CONSOLE_DATA_DIR_NAME = "console";
 const CONSOLE_STATE_FILE_NAME = "state.json";
 const CONSOLE_SETTINGS_FILE_NAME = "settings.json";
@@ -43,7 +42,7 @@ export function createConsolePaths(deps: CreateConsolePathsDeps = {}): ConsolePa
   const env = deps.env ?? process.env;
   // 명시 override가 있으면 채널별 락 네임스페이스보다 사용자가 지정한 경로를 우선한다.
   const base = env.FLEET_CONSOLE_DIR ?? defaultConsoleBaseDir(deps);
-  return { dir: base, lockFile: path.join(base, LOCK_FILE_NAME) };
+  return { dir: base, lockFile: path.join(base, "console.lock") };
 }
 
 export function createConsoleDataPaths(deps: CreateConsoleDataPathsDeps = {}): ConsoleDataPaths {
@@ -66,7 +65,11 @@ function defaultConsoleBaseDir(deps: CreateConsolePathsDeps): string {
   }
 
   const uid = deps.uid ?? (typeof process.getuid === "function" ? process.getuid() : 0);
-  return path.join(os.tmpdir(), `${LOCK_DIR_NAME}-${uid}-${channel}`);
+  return resolveCanonicalStableConsolePaths({
+    tmpDir: os.tmpdir(),
+    uid,
+    fleetDataDir: getFleetDataDir(),
+  }).dir;
 }
 
 function defaultConsoleDataBaseDir(deps: CreateConsoleDataPathsDeps): string {
@@ -94,8 +97,12 @@ function defaultConsoleDataBaseDir(deps: CreateConsoleDataPathsDeps): string {
     return localConsoleDir(packageRoot);
   }
 
-  // 게시된 stable 빌드는 durable state를 ~/.fleet/console에 영속한다(tmpdir lock과 분리).
-  return path.join(getFleetDataDir(), CONSOLE_DATA_DIR_NAME);
+  // desktop은 stable과 동일한 단일 writer namespace를 사용한다.
+  return resolveCanonicalStableConsolePaths({
+    tmpDir: os.tmpdir(),
+    uid: typeof process.getuid === "function" ? process.getuid() : 0,
+    fleetDataDir: getFleetDataDir(),
+  }).dataDir;
 }
 
 function localConsoleDir(packageRoot: string): string {

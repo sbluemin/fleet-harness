@@ -185,6 +185,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function stop(): Promise<void> {
     const payload = readTrustedLock();
     if (!payload) return;
+    // 소유권 가드는 살아있는 desktop 프로세스에 시그널을 보내는 것만 막는다 —
+    // sidecar가 락을 남기고 죽었을 때까지 막으면 stale lock을 CLI가 영영 정리할 수 없다.
+    if (isLockProcessAlive(payload.pid)) assertCliCanControlDaemon(payload);
     try {
       process.kill(payload.pid, "SIGTERM");
     } catch (err) {
@@ -205,6 +208,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     const probeResult = await health.probe(current);
     const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
     if (probeResult.healthy && current) {
+      // CLI는 desktop 소유 데몬에 attach/open할 수 있지만, desktop lifecycle을 stale 판단으로 종료하지 않는다.
+      if (current.owner?.kind === "desktop") return current.endpoint;
       if (!isBuildStale) return current.endpoint;
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
@@ -262,11 +267,12 @@ export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<st
   const consoleUrl = `${status.lock.endpoint}console/`;
   const workspaceCount = typeof status.health?.workspaceCount === "number" ? status.health.workspaceCount : 0;
   const staleNote = status.buildStale ? " · build stale (restart recommended)" : "";
+  const ownerNote = status.lock.owner?.kind === "desktop" ? " · owned by desktop" : "";
   return [
     `Fleet Console server: running (pid ${status.lock.pid})`,
     `  endpoint   ${status.lock.endpoint}`,
     `  console    ${consoleUrl}`,
-    `  workspaces ${workspaceCount}${staleNote}`,
+    `  workspaces ${workspaceCount}${staleNote}${ownerNote}`,
   ].join("\n");
 }
 
@@ -274,6 +280,20 @@ export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   await lifecycle.stop();
   return "Fleet Console server stopped.";
+}
+
+export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
+  if (payload.owner?.kind === "desktop") throw new Error("Fleet Console is owned by the desktop app; quit it from the native menu.");
+}
+
+export function isLockProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM은 살아있지만 권한이 없는 프로세스 — 보호 대상으로 취급한다. ESRCH만 죽은 것으로 본다.
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
+  }
 }
 
 export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<OpenFleetConsoleResult> {

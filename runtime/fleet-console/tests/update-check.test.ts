@@ -18,6 +18,17 @@ describe("console update check", () => {
     expect(lookupCount).toBe(0);
   });
 
+  it("never contacts npm for desktop builds", async () => {
+    const fetchLatest = vi.fn(async () => "2.0.0");
+    const service = createConsoleUpdateCheckService({
+      readRelease: () => ({ channel: "desktop", version: "1.0.0", packageRoot: "/console" }),
+      fetchLatest,
+    });
+
+    await expect(service.refresh()).resolves.toEqual({ updateAvailable: false });
+    expect(fetchLatest).not.toHaveBeenCalled();
+  });
+
   it("caches stable update results within the TTL", async () => {
     let clock = 1_000;
     let lookupCount = 0;

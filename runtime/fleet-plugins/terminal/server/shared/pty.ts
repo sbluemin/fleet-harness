@@ -1,12 +1,12 @@
 import { createRequire } from "node:module";
 import os from "node:os";
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
 
+import { resolveConsolePackageRequire } from "./console-require.js";
+import { stripConsoleInternalEnv } from "./launch-env.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./terminal-types.js";
 
 export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
@@ -26,7 +26,6 @@ type NodeRequire = ReturnType<typeof createRequire>;
 
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
 const TERMINAL_TERM = "xterm-256color";
-const FLEET_CONSOLE_PACKAGE_NAME = "@dotobokuri/fleet-console";
 const require = createRequire(import.meta.url);
 
 export function createShellTerminalLaunchResolver(deps: {
@@ -76,33 +75,7 @@ function loadNodePty(): NodePtyModule {
 }
 
 function loadNodePtyRequire(currentFile: string): NodeRequire {
-  const consolePackageRequire = findConsolePackageRequire(currentFile);
-  return consolePackageRequire ?? require;
-}
-
-function findConsolePackageRequire(currentFile: string): NodeRequire | null {
-  let dir = path.dirname(currentFile);
-  while (true) {
-    const packageJson = path.join(dir, "package.json");
-    if (isFleetConsolePackage(packageJson)) return createRequire(packageJson);
-    const nestedConsolePackage = path.join(dir, "runtime", "fleet-console", "package.json");
-    if (isFleetConsolePackage(nestedConsolePackage)) return createRequire(nestedConsolePackage);
-    const siblingConsolePackage = path.join(dir, "..", "..", "fleet-console", "package.json");
-    if (isFleetConsolePackage(siblingConsolePackage)) return createRequire(siblingConsolePackage);
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-function isFleetConsolePackage(packageJson: string): boolean {
-  if (!existsSync(packageJson)) return false;
-  try {
-    const manifest = JSON.parse(readFileSync(packageJson, "utf8")) as { readonly name?: unknown };
-    return manifest.name === FLEET_CONSOLE_PACKAGE_NAME;
-  } catch {
-    return false;
-  }
+  return resolveConsolePackageRequire(currentFile, require);
 }
 
 function resolveUserShell(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
@@ -130,7 +103,7 @@ function resolveWindowsLaunchBinary(
 
 function buildShellLaunchEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
-    ...env,
+    ...stripConsoleInternalEnv(env),
     TERM: TERMINAL_TERM,
   };
 }

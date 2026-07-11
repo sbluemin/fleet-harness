@@ -3,7 +3,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { fetchOperations, renameOperation as renameOperationRequest } from "../api.js";
+import { fetchOperations } from "../api.js";
 import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -216,9 +216,6 @@ export function OperationsCanvas({
                 setMaximizedOperationId(operation.id);
               }
             },
-            onRename: (title) => {
-              void renamePluginOperation(operation.id, title);
-            },
             onSetAccent: (accentKey) => {
               onSetAccent(operation.id, accentKey);
             },
@@ -340,7 +337,6 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onClose: () => void;
   readonly onMinimize: () => void;
   readonly onMaximize: () => void;
-  readonly onRename: (title: string) => void;
   readonly onSetAccent: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
@@ -358,7 +354,6 @@ function renderPluginOperation(operation: OperationNode, options: {
       active={options.active}
       geometry={geometry}
       zoom={options.viewportZoom}
-      subtitle={descriptor.subtitle?.(operation)}
       status={options.status}
       minimized={options.minimized}
       maximized={options.maximized}
@@ -368,7 +363,6 @@ function renderPluginOperation(operation: OperationNode, options: {
       onClose={options.onClose}
       onMinimize={options.onMinimize}
       onMaximize={options.onMaximize}
-      onRename={options.onRename}
       onSetAccent={options.onSetAccent}
       onGeometryChange={options.onGeometryChange}
       onGeometryCommit={options.onGeometryCommit}
@@ -434,9 +428,4 @@ async function updatePluginOperationGeometry(operationId: string, geometry: Oper
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ geometry }),
   });
-}
-
-async function renamePluginOperation(operationId: string, title: string): Promise<void> {
-  await renameOperationRequest(operationId, title);
-  await fetchOperations(null).then(hydrateOperations);
 }

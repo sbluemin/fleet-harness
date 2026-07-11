@@ -1,6 +1,6 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-import type { CanvasViewport, OperationGeometry } from "./canvas-store.js";
+import { useFormationView, type CanvasViewport, type OperationGeometry } from "./canvas-store.js";
 import type { CanvasPoint } from "./coordinates.js";
 
 interface PluginOperationEntry {
@@ -35,7 +35,23 @@ const RADAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.radarCollapsed";
 export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSize, onJump }: CanvasMinimapProps) {
   const innerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
+  const collapsedBeforeFormationRef = useRef<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const formationView = useFormationView();
+
+  useEffect(() => {
+    if (formationView) {
+      if (collapsedBeforeFormationRef.current === null) {
+        collapsedBeforeFormationRef.current = collapsed;
+        setCollapsed(true);
+      }
+      return;
+    }
+    if (collapsedBeforeFormationRef.current === null) return;
+    // Formation의 기본 최소화와 수동 펼침은 세션 한정이다. 기존 Map 선호 저장값은 건드리지 않는다.
+    setCollapsed(collapsedBeforeFormationRef.current);
+    collapsedBeforeFormationRef.current = null;
+  }, [collapsed, formationView]);
 
   if (canvasSize.width <= 0 || canvasSize.height <= 0 || viewport.zoom <= 0) return null;
 
@@ -49,7 +65,8 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
   const toggle = () => {
     setCollapsed((value) => {
       const next = !value;
-      writeCollapsed(next);
+      // Formation 중에는 종료 시 진입 전 상태를 복원하므로 수동 펼침을 영속 선호로 기록하지 않는다.
+      if (!formationView) writeCollapsed(next);
       return next;
     });
   };

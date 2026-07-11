@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import { FloatingChromeHandles } from "./components/floating-chrome-handles.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
+import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
+import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
@@ -11,8 +12,6 @@ import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
-import { setRailChromeExpanded, useRailChromeExpanded } from "./rail/rail-store.js";
-import { setSideBarCollapsed, useSideBarState } from "./sidebar/operations-side-bar-store.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
@@ -25,8 +24,6 @@ import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 
-type ChromeRestoreFocusTarget = "sidebar" | "rail" | null;
-
 export function App() {
   const state = useConsoleState();
   const location = useLocation();
@@ -34,10 +31,7 @@ export function App() {
   const globalSettings = useGlobalSettingsStore();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
-  const sideBar = useSideBarState();
-  const railChromeExpanded = useRailChromeExpanded();
   const operationsViewVisible = pathname.startsWith("/operations");
-  const [chromeRestoreFocusTarget, setChromeRestoreFocusTarget] = useState<ChromeRestoreFocusTarget>(null);
 
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
@@ -83,6 +77,7 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isKeyboardShortcutsModalOpen()) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -94,18 +89,8 @@ export function App() {
   }, []);
 
   return (
-    <div
-      className="console-shell"
-      onClickCapture={(event) => {
-        if (!(event.target instanceof Element)) return;
-        if (!sideBar.collapsed && event.target.closest(".side-bar-collapse-btn")) {
-          setChromeRestoreFocusTarget("sidebar");
-        }
-        if (railChromeExpanded && event.target.closest(".right-rail-chrome-toggle")) {
-          setChromeRestoreFocusTarget("rail");
-        }
-      }}
-    >
+    <div className="console-shell">
+      <CommandBand operationsViewVisible={operationsViewVisible} />
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
@@ -115,21 +100,6 @@ export function App() {
           <Route path="*" element={<Navigate to="/operations" replace />} />
         </Routes>
       </main>
-      <FloatingChromeHandles
-        active={operationsViewVisible}
-        sidebarClosed={sideBar.collapsed}
-        railClosed={!railChromeExpanded}
-        pendingTarget={chromeRestoreFocusTarget}
-        onRestoreSidebar={() => {
-          setSideBarCollapsed(false);
-          setChromeRestoreFocusTarget("sidebar");
-        }}
-        onRestoreRail={() => {
-          setRailChromeExpanded(true);
-          setChromeRestoreFocusTarget("rail");
-        }}
-        onFocusComplete={() => setChromeRestoreFocusTarget(null)}
-      />
       <OperationSearch state={state} />
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />

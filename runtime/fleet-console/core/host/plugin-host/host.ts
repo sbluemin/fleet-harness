@@ -15,6 +15,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly upgrades: UpgradeRegistry;
   readonly host: FleetPluginHostCapabilities;
   readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
+  readonly bundleCacheDir?: string;
 }
 
 export interface FleetPluginHost {
@@ -34,9 +35,6 @@ const PLUGIN_DEV_EXTERNALS = [
   "child_process",
   "node-pty",
   "ws",
-  "@fleet-console/sdk",
-  "@fleet-console/sdk/*",
-  "@dotobokuri/*",
   "@fleet-plugins/*",
 ];
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +42,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHost {
   const plugins = filterDiscoveredPlugins(discoverFleetPlugins(deps));
   const sensitiveFieldsByPluginId = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.manifest.sensitiveFields ?? []]));
-  const importModule = deps.importModule ?? importPluginModule;
+  const importModule = deps.importModule ?? ((entry) => importPluginModule(entry, deps.bundleCacheDir));
 
   async function boot(): Promise<void> {
     for (const plugin of plugins) {
@@ -98,7 +96,7 @@ function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): rea
   return accepted;
 }
 
-async function importPluginModule(entry: string): Promise<FleetPluginRouteModule> {
+async function importPluginModule(entry: string, bundleCacheDir?: string): Promise<FleetPluginRouteModule> {
   if (entry.endsWith(".ts")) {
     const { build } = await import("esbuild");
     const output = await build({
@@ -110,17 +108,18 @@ async function importPluginModule(entry: string): Promise<FleetPluginRouteModule
       write: false,
       sourcemap: false,
       external: PLUGIN_DEV_EXTERNALS,
+      nodePaths: [resolveConsolePackageNodeModules()].filter((value): value is string => value !== null),
     });
     const bundled = output.outputFiles[0]?.text;
     if (!bundled) throw new Error("plugin_bundle_failed");
-    const bundledPath = await writeTemporaryPluginBundle(entry, bundled);
+    const bundledPath = await writeTemporaryPluginBundle(entry, bundled, bundleCacheDir);
     return await import(pathToFileURL(bundledPath).href) as FleetPluginRouteModule;
   }
   return await import(pathToFileURL(entry).href) as FleetPluginRouteModule;
 }
 
-async function writeTemporaryPluginBundle(entry: string, source: string): Promise<string> {
-  const cacheRoot = path.join(resolvePluginBundleNodeModules(entry), ".cache");
+async function writeTemporaryPluginBundle(entry: string, source: string, bundleCacheDir?: string): Promise<string> {
+  const cacheRoot = bundleCacheDir ?? path.join(resolvePluginBundleNodeModules(entry), ".cache");
   await mkdir(cacheRoot, { recursive: true });
   const dir = await mkdtemp(path.join(cacheRoot, "fleet-console-plugin-"));
   const file = path.join(dir, "routes.mjs");

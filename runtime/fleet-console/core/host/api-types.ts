@@ -6,6 +6,13 @@ export interface ConsoleLockPayload {
   readonly startedAt: number;
   readonly token: string;
   readonly version: string;
+  readonly owner?: ConsoleOwnerMetadata;
+}
+
+export interface ConsoleOwnerMetadata {
+  readonly kind: "cli" | "desktop";
+  readonly id: string;
+  readonly protocolVersion: number;
 }
 
 export interface ConsoleHealth {
@@ -20,6 +27,8 @@ export interface ConsoleHealth {
   readonly endpoint: string;
   readonly startedAt: number;
   readonly version: string;
+  readonly channel?: "stable" | "local" | "desktop";
+  readonly owner?: ConsoleOwnerMetadata;
   readonly workspaceCount: number;
 }
 
@@ -66,7 +75,7 @@ export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unk
 export interface ConsoleObserverStatus {
   readonly workspaces: number;
   readonly version: string;
-  readonly channel: "stable" | "local" | "unknown";
+  readonly channel: "stable" | "local" | "desktop" | "unknown";
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
   readonly port: number;

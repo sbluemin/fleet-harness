@@ -11,6 +11,8 @@ let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 let originalRequestAnimationFrame: typeof window.requestAnimationFrame;
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 beforeEach(() => {
   document.body.replaceChildren();
   window.localStorage.clear();
@@ -41,10 +43,10 @@ function menuItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
 
-describe("SideBarBrandFoot drop-up", () => {
-  it("focuses the first menu item on open and cycles with arrow keys", () => {
+describe("SideBarBrandFoot System Menu", () => {
+  it("focuses the first System Menu item on open and cycles with arrow keys", () => {
     mountFoot();
-    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-more")!;
+    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-system-trigger")!;
     act(() => trigger.click());
 
     const items = menuItems();
@@ -61,12 +63,30 @@ describe("SideBarBrandFoot drop-up", () => {
 
   it("closes on Escape and returns focus to the trigger", () => {
     mountFoot();
-    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-more")!;
+    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-system-trigger")!;
     act(() => trigger.click());
     expect(menuItems()).toHaveLength(2);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(menuItems()).toHaveLength(0);
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("shares Arrow/Home/End cycling with Help and includes GitHub links", () => {
+    mountFoot();
+    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-help-trigger")!;
+    act(() => trigger.click());
+
+    const items = menuItems();
+    expect(items).toHaveLength(4);
+    expect(document.activeElement).toBe(items[1]);
+    expect(items[2]?.getAttribute("aria-label")).toBe("Open GitHub repository");
+    expect(document.querySelector(".brand-foot-github-version")?.textContent).toMatch(/^v/);
+    expect(document.querySelector(".brand-foot-menu-version")).toBeNull();
+
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" })); });
+    expect(document.activeElement).toBe(items[3]);
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
+    expect(document.activeElement).toBe(items[1]);
   });
 });

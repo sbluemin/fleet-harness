@@ -100,7 +100,7 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
 
   const resolveUpdateStatus = async (): Promise<ConsoleUpdateStatus> => {
     const release = readRelease();
-    if (release.channel === "local") {
+    if (release.channel === "local" || release.channel === "desktop") {
       return NO_UPDATE_STATUS;
     }
     const latestVersion = await fetchLatest(FLEET_CONSOLE_PACKAGE_NAME);

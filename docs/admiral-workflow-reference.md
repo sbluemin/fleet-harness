@@ -9,7 +9,8 @@ This document is the operational doctrine for Admiral and Carrier agents working
 - `packages/core-agent` owns the host-agnostic executor/session/model runtime engine (`executeWithPool` / `executeOneShot`), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
-- `runtime/fleet-console` owns the standalone loopback HTTP backend for CLI register ingest, observer SSE, terminal WebSocket, and static console serving for a single workspace.
+- `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
+- `runtime/fleet-console-desktop` is an optional Electron main-process shell that supervises the Console Service's separately packaged standard Node sidecar and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
 
 ## 2. Ownership Model
 
@@ -68,9 +69,13 @@ Preserve:
 
 The Fleet Console can update both `fleet-cli` and `fleet-console` globally through its own UI. Operators and contributors should keep the following behavioral facts in mind:
 
-- **Local builds are rejected.** The `POST /update/apply` route returns `403` for unpublished/local builds (for example `pnpm fleet-console` or `tsx` runs). Self-update only works against globally installed npm packages.
+- **Local builds are rejected.** The `POST /api/v1/updates/apply` route returns `403` for unpublished/local builds (for example `pnpm console` or `tsx` runs). Self-update only works against globally installed npm packages.
 - **Update applies immediately.** The update route accepts the request regardless of active terminal sessions; the running PTY sessions are not terminated before the update proceeds.
-- **Preflight before stop.** A writable global `npm`/`pnpm` install that owns the current package is resolved *before* anything is torn down — first server-side (the `POST /update/apply` route returns `503` and never spawns a worker when no usable, writable global manager is found) and again inside the detached worker. A preflight failure leaves the running console untouched, so the operator can install by hand; the server-side rejection surfaces as the `503` response rather than a worker file. Only failures that occur after preflight — for example a `node-pty` native rebuild during the install step, which runs once the old server has begun stopping — produce the worker status/log files described below.
+- **Preflight before stop.** A writable global `npm`/`pnpm` install that owns the current package is resolved *before* anything is torn down — first server-side (the `POST /api/v1/updates/apply` route returns `503` and never spawns a worker when no usable, writable global manager is found) and again inside the detached worker. A preflight failure leaves the running console untouched, so the operator can install by hand; the server-side rejection surfaces as the `503` response rather than a worker file. Only failures that occur after preflight — for example a `node-pty` native rebuild during the install step, which runs once the old server has begun stopping — produce the worker status/log files described below.
 - **Failure recovery is file-based.** The detached worker writes a JSON status file and a plain-text log file under the console data directory. If the worker fails before the new server starts, inspect those files; do not rely on browser state.
 - **New server, new random port.** After a successful install the worker stops the old server and starts a fresh one on a new OS-assigned loopback port, then opens that URL in a browser. The previous tab is intentionally not reused or auto-reloaded.
 - **Version parity risk.** `fleet-cli` and `fleet-console` are updated as a matched pair from the same latest release. A partial update (for example a global `fleet-cli` install without the matching `fleet-console`) can leave cross-package interfaces out of sync; always update both packages together.
+
+### Desktop channel
+
+The `desktop` channel does not use the npm-global update worker or `POST /api/v1/updates/apply`; it returns `desktop_update_managed`. Electron main checks signed GitHub Release metadata and exposes update actions only through native menu, tray, and dialog surfaces. Release automation keeps the GitHub Release draft until supported assets and required verification/signing gates pass. macOS requires the configured Developer ID/notarization path, Windows requires the configured Authenticode path, and Linux AppImage integrity is checksum/GPG material when release credentials provide it; do not claim an unavailable local signing identity as a signed release.

@@ -21,6 +21,7 @@ import { createPluginSettingsRouter } from "./plugin-settings-routes.js";
 import { createSystemFontsRouter } from "./system-fonts-routes.js";
 import { createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
+import { readDesktopProtocolEnvironment } from "./desktop-protocol.js";
 import { createOperationsRouter } from "./operations/routes.js";
 import { createSanitizedOpDto } from "./operations/sanitize.js";
 import { createOperationStore } from "./operations/store.js";
@@ -256,6 +257,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const host = deps.host ?? DEFAULT_HOST;
   const port = deps.port ?? DEFAULT_PORT;
   const release = deps.release ?? readFleetConsoleRelease();
+  const desktop = readDesktopProtocolEnvironment();
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot);
   // 버전은 런타임에 package.json을 읽는 release.ts SSoT에서 해석한다(channel과 동일 경로).
   // 과거 빌드타임 상수(__PKG_VERSION__)는 tsup define에 주입된 적이 없어 항상 "0.0.0-dev"로
@@ -266,7 +268,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   registerDefaultCarriers(carrierRegistry);
   const lock = createConsoleLock({ hostname: () => host });
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
-  const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService();
+  const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
   const operations = createOperationStore();
@@ -390,8 +392,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
   };
+  // 번들 캐시가 durable dir(FLEET_CONSOLE_DIR 추종)로 이동해 번들 파일 위치 기준의 조상 탐색으로는
+  // 콘솔 패키지를 찾지 못할 수 있다 — 플러그인 external(node-pty·ws) 해석용 패키지 루트를 명시로 전달한다.
+  process.env.FLEET_CONSOLE_PACKAGE_ROOT = release.packageRoot;
   const pluginHost = createFleetPluginHost({
     ...resolveBuiltInPluginDiscoveryRoots(release.packageRoot),
+    bundleCacheDir: path.join(durablePaths.dir, "plugin-cache"),
     routes: routeRegistry,
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
@@ -635,6 +641,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         endpoint: payload.endpoint,
         startedAt: payload.startedAt,
         version: payload.version,
+        ...(channel === "desktop" ? { channel } : {}),
+        ...(payload.owner ? { owner: payload.owner } : {}),
         workspaceCount: operations.list().length,
       };
       writeJson(res, 200, body);
@@ -814,6 +822,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (body !== null && (!isPlainObject(body) || hasForbiddenUpdateApplyBodyKeys(body))) {
       writeJson(res, 400, { error: "invalid_update_apply_body" });
+      return;
+    }
+    if (channel === "desktop") {
+      writeJson(res, 403, { error: "desktop_update_managed" });
       return;
     }
     if (channel === "local") {
@@ -1069,7 +1081,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server = result.srv;
         loopbackServer = result.localLoopbackServer;
         portState = result.portState;
-        lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version });
+        lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
         activeLockFile = lockPaths.lockFile;
         activeEndpoint = result.endpoint;
       } catch (error) {
@@ -1099,6 +1111,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (deps.port !== undefined) {
       return {
         port,
+        requestedPort: null,
+        portMode: "dynamic",
+        allowFallback: false,
+      };
+    }
+    if (channel === "local") {
+      return {
+        port: DEFAULT_PORT,
         requestedPort: null,
         portMode: "dynamic",
         allowFallback: false,

@@ -52,7 +52,7 @@ export interface TheaterBootstrap {
 export interface ObserverStatus {
   readonly workspaces: number;
   readonly version: string;
-  readonly channel: "stable" | "local" | "unknown";
+  readonly channel: "stable" | "local" | "desktop" | "unknown";
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
   readonly port: number;
@@ -66,6 +66,7 @@ export interface ObserverStatus {
 export type ConsoleUpdateApplyError =
   | "console_not_ready"
   | "local_channel"
+  | "desktop_update_managed"
   | "update_already_in_progress"
   | "update_not_available"
   | "update_worker_unavailable";

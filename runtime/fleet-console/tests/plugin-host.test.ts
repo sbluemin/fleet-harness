@@ -60,6 +60,28 @@ afterEach(() => {
 });
 
 describe("plugin host", () => {
+  it("writes external TypeScript bundles only to the supplied writable cache", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-cache-"));
+    tempDirs.push(dir);
+    const pluginRoot = path.join(dir, "home", ".fleet", "plugins", "note");
+    const cacheDir = path.join(dir, "console-data", "plugin-cache");
+    writePlugin(pluginRoot, "note", { apiVersion: 1 });
+    fs.writeFileSync(path.join(pluginRoot, "routes.ts"), "export function register() {}\n");
+
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      bundleCacheDir: cacheDir,
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+    });
+    await host.boot();
+
+    expect(fs.readdirSync(cacheDir).some((entry) => entry.startsWith("fleet-console-plugin-"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "home", ".fleet", "plugins", "node_modules", ".cache"))).toBe(false);
+  });
+
   it("discovers built-in and home plugins while excluding shared", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugins-"));
     tempDirs.push(dir);

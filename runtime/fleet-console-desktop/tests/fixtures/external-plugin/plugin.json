@@ -1,0 +1,6 @@
+{
+  "id": "desktop-e2e-external-plugin",
+  "name": "Desktop E2E External Plugin",
+  "routes": "routes.ts",
+  "client": "client.tsx"
+}

@@ -58,6 +58,14 @@ fleet-console stop
 
 The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.
 
+## Desktop coexistence
+
+Fleet Console Desktop is a thin Electron shell around this service, not a second Console implementation. Its packaged standard Node `22.23.1` sidecar runs this package's `dist/cli.mjs serve` outside Electron's asar and loads exactly `http://127.0.0.1:<verified-port>/console/`. The service remains the owner of HTTP/REST/SSE/WebSocket, PTY, provider policy, plugin runtime, durable JSON state, and the React UI.
+
+Published stable CLI/browser and desktop share one canonical stable lock and `~/.fleet/console` durable-state namespace (unless the existing `FLEET_CONSOLE_DIR` override is deliberately set). Health/lock owner and protocol checks allow compatible browser/CLI attachment to a desktop-owned service. CLI `stop` and `restart` refuse to kill a desktop owner; use native **Quit** instead. A healthy CLI-owned daemon is never killed silently: Desktop asks before switching it.
+
+The stable browser/CLI channel retains npm-global updating. The `desktop` channel disables npm update checks and rejects `POST /api/v1/updates/apply` with `desktop_update_managed`; native Electron update UX consumes signed GitHub Release metadata.
+
 ## Development
 
 Source is split under `core/host/` for the Node CLI/backend and `core/client/` for the Vite React SPA. The built-in Terminal plugin package lives at `../fleet-plugins/terminal/`. The private `@fleet-console/sdk` package under `sdk/` is the shared plugin contract surface for core and built-in plugins.
