@@ -16,7 +16,7 @@ if (!signingKey) throw new Error("FLEET_LINUX_GPG_KEY is required to sign Linux 
 const releaseEntries = await readdir(releaseDirectory);
 const appImages = releaseEntries.filter((name) => name.endsWith(".AppImage")).sort();
 if (appImages.length === 0) throw new Error("No AppImage release artifact found");
-const signedArtifacts = [...appImages.flatMap((artifact) => [artifact, `${artifact}.blockmap`]), "latest-linux.yml"];
+const signedArtifacts = appImages;
 for (const artifact of signedArtifacts) await access(join(releaseDirectory, artifact));
 
 const checksumLines = await Promise.all(signedArtifacts.map(async (artifact) => {

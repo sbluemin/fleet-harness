@@ -14,7 +14,7 @@ export function configureTray(tray: Tray, MenuCtor: typeof Menu, actions: TrayAc
     { label: "Show Fleet Console", click: actions.show },
     { type: "separator" },
     { label: "Check for Updates", click: () => void actions.updates.check() },
-    { label: "Update and Restart", click: () => void actions.updates.install() },
+    ...(actions.updates.availableVersion() ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }] : []),
     { type: "separator" },
     { label: "Diagnostics", click: actions.diagnostics },
     { type: "separator" },

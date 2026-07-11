@@ -1,25 +1,42 @@
-import type { AppUpdater } from "electron-updater";
+import type { RegistryChecker } from "./runtime/registry-check.js";
 
-export interface UpdateController { check(): Promise<void>; install(): Promise<void>; }
+export interface UpdateDialogResult { readonly response: number; readonly checkboxChecked: boolean; }
 
-export function createUpdateController(updater: AppUpdater, isPackaged: boolean, beforeInstall: () => Promise<void>, onError: (error: Error) => void): UpdateController {
-  let checkedUpdate: ReturnType<AppUpdater["checkForUpdates"]> | null = null;
-  updater.autoDownload = false;
-  updater.on("error", (error) => onError(error));
+export interface UpdateControllerOptions {
+  readonly currentVersion: () => string;
+  readonly registry: RegistryChecker;
+  readonly showDialog: (version: string) => Promise<UpdateDialogResult>;
+  readonly prepareToQuit: () => Promise<void>;
+  readonly relaunch: () => void;
+  readonly quit: () => void;
+  readonly onStateChange?: () => void;
+}
+
+export interface UpdateController {
+  check(): Promise<void>;
+  install(): Promise<void>;
+  availableVersion(): string | null;
+}
+
+export function createUpdateController(options: UpdateControllerOptions): UpdateController {
+  let available: string | null = null;
+  const install = async (): Promise<void> => {
+    if (!available) return;
+    await options.prepareToQuit();
+    options.relaunch();
+    options.quit();
+  };
   return {
     async check() {
-      if (!isPackaged) return;
-      checkedUpdate = updater.checkForUpdates();
-      await checkedUpdate;
+      const result = await options.registry.check(options.currentVersion());
+      available = result.latest === options.currentVersion() ? null : result.latest;
+      options.onStateChange?.();
+      if (!result.shouldNotify || !available) return;
+      const dialog = await options.showDialog(available);
+      if (dialog.checkboxChecked) await options.registry.skip(available);
+      if (dialog.response === 0) await install();
     },
-    async install() {
-      if (!isPackaged) return;
-      const update = await (checkedUpdate ?? updater.checkForUpdates());
-      checkedUpdate = null;
-      if (update === null || update?.isUpdateAvailable === false) return;
-      if (typeof updater.downloadUpdate === "function") await updater.downloadUpdate();
-      await beforeInstall();
-      updater.quitAndInstall();
-    },
+    install,
+    availableVersion: () => available,
   };
 }

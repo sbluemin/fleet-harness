@@ -1,14 +1,6 @@
 appId: com.dotobokuri.fleet-console
 productName: Fleet Console
 artifactName: "Fleet Console-${version}-${os}-${arch}.${ext}"
-# CI에서 --publish always로 GitHub Release에 아티팩트 + electron-updater 매니페스트(latest*.yml)를 올린다.
-# 로컬 빌드(package:dir/unsigned)는 --publish never로 업로드는 건너뛰지만, publish 설정이 있으면
-# latest.yml 생성을 위해 owner/repo를 알아야 하므로 명시한다(desktop package.json엔 repository가 없고
-# 하위 디렉터리 실행이라 .git/config 자동 감지가 실패한다).
-publish:
-  provider: github
-  owner: sbluemin
-  repo: fleet-harness
 directories:
   buildResources: build
   output: release
@@ -16,20 +8,8 @@ files:
   - dist/**
   - package.json
 asar: true
-electronFuses:
-  runAsNode: false
-  enableNodeOptionsEnvironmentVariable: false
-  enableNodeCliInspectArguments: false
-  enableEmbeddedAsarIntegrityValidation: true
-  onlyLoadAppFromAsar: true
-  grantFileProtocolExtraPrivileges: false
-  resetAdHocDarwinSignature: true
+publish: null
 afterPack: ./scripts/verify-packaged-app.mjs
-extraResources:
-  - from: .stage/sidecar
-    to: sidecar
-    filter:
-      - "**/*"
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
@@ -56,6 +36,7 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  differentialPackage: false
 linux:
   icon: build/icon.png
   category: Development

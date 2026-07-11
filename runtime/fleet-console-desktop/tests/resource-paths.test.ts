@@ -9,20 +9,29 @@ import { resolveDesktopResourcePaths } from "../src/resource-paths.js";
 const posix = (value: string): string => value.split(path.sep).join("/");
 
 describe("desktop resource paths", () => {
-  it("keeps packaged Node and service resources outside asar", () => {
+  it("resolves packaged code from the durable desktop runtime", () => {
     const paths = resolveDesktopResourcePaths(true, "/Applications/Fleet Console.app/Contents/Resources");
-    expect(posix(paths.nodePath)).toContain("/Resources/sidecar/node/");
-    expect(posix(paths.serviceRoot)).toBe("/Applications/Fleet Console.app/Contents/Resources/sidecar/fleet-console");
-    expect(paths.cliPath).toBe(path.join(paths.serviceRoot, "dist", "cli.mjs"));
-    expect(paths.iconPath).toBe(path.join(paths.serviceRoot, "icon.png"));
+    expect(posix(paths.nodePath)).toMatch(/\.fleet\/desktop\/runtime\/node\//);
+    expect(posix(paths.serviceRoot)).toMatch(/\.fleet\/desktop\/runtime\/console\/latest$/);
+    expect(paths.cliPath).toBe(path.join(paths.serviceRoot, "node_modules", "@dotobokuri", "fleet-console", "dist", "cli.mjs"));
+    // 자산은 dist 앵커(모듈 디렉터리 기준) — copy-entry-assets가 dist/assets·dist/build로 나르고, packaged에선 ASAR 내 dist가 모듈 위치다.
+    expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-console-desktop\/(src|dist)\/build\/icon\.png$/);
+    expect(posix(paths.entryPagePath)).toMatch(/runtime\/fleet-console-desktop\/(src|dist)\/assets\/entry\/index\.html$/);
     expect(paths.nodePath).not.toContain("app.asar");
     expect(paths.serviceRoot).not.toContain("app.asar");
   });
 
   it("uses the Console distribution in development without selecting a writable resource root", () => {
-    const paths = resolveDesktopResourcePaths(false);
-    expect(posix(paths.serviceRoot)).toMatch(/runtime\/fleet-console$/);
-    expect(posix(paths.cliPath)).toMatch(/runtime\/fleet-console\/dist\/cli\.mjs$/);
-    expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-console-desktop\/build\/icon\.png$/);
+    const previous = process.env.FLEET_CONSOLE_NODE_PATH;
+    process.env.FLEET_CONSOLE_NODE_PATH = "/workspace/node";
+    try {
+      const paths = resolveDesktopResourcePaths(false);
+      expect(posix(paths.serviceRoot)).toMatch(/runtime\/fleet-console$/);
+      expect(posix(paths.cliPath)).toMatch(/runtime\/fleet-console\/dist\/cli\.mjs$/);
+      expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-console-desktop\/(src|dist)\/build\/icon\.png$/);
+    } finally {
+      if (previous === undefined) delete process.env.FLEET_CONSOLE_NODE_PATH;
+      else process.env.FLEET_CONSOLE_NODE_PATH = previous;
+    }
   });
 });

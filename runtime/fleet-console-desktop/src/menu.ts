@@ -21,7 +21,7 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
         { label: "Show", click: actions.show },
         { type: "separator" },
         { label: "Check for Updates", click: () => void actions.updates.check() },
-        { label: "Update and Restart", click: () => void actions.updates.install() },
+        ...(actions.updates.availableVersion() ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }] : []),
         { type: "separator" },
         { label: "Diagnostics", click: actions.diagnostics },
         { role: "quit", click: actions.quit },
