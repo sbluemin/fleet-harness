@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { installConsole, reconcileConsoleInstallations, replaceLatest } from "../src/runtime/console-installer.js";
@@ -10,7 +12,7 @@ function fileSystem(existing = new Set<string>()) {
   const rename = vi.fn(async (from: string, to: string) => { if (!existing.has(from) && !from.includes(".staging-test") && !from.endsWith(".package")) throw missing(); existing.delete(from); existing.add(to); });
   return {
     mkdir: vi.fn(async () => undefined),
-    readFile: vi.fn(async (target: string) => target.endsWith("package.json") ? JSON.stringify({ version: "1.2.3" }) : "1\n"),
+    readFile: vi.fn(async (target: string) => target.endsWith("package.json") ? JSON.stringify({ version: "1.2.3", engines: { node: ">=22.12.0" } }) : "1\n"),
     readdir: vi.fn(async (target: string) => target.endsWith(".package") ? ["package.json", "dist"] : []),
     rename,
     rm: vi.fn(async (target: string) => { existing.delete(target); }),
@@ -24,7 +26,7 @@ describe("console installer", () => {
     const fs = fileSystem();
     const run = vi.fn(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
-    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
+    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
     expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"]);
     expect(fs.rename).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/@dotobokuri/fleet-console", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test.package");
     expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/dist/cli.mjs");
@@ -37,7 +39,7 @@ describe("console installer", () => {
     const run = vi.fn(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
     for (const version of ["npm:attacker@1.0.0", "https://attacker.invalid/pkg.tgz", "^1.2.3", "1.2.3-beta.1"]) {
-      await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version, platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).rejects.toThrow("console_install_version_invalid");
+      await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version, nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).rejects.toThrow("console_install_version_invalid");
     }
     expect(run).not.toHaveBeenCalled();
   });
@@ -46,7 +48,7 @@ describe("console installer", () => {
     const fs = fileSystem();
     const run = vi.fn(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
-    await installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", platform: "win32", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } });
+    await installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "win32", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } });
     expect(run).toHaveBeenCalledWith(expect.stringContaining("node.exe"), expect.arrayContaining([expect.stringContaining("npm-cli.js")]));
   });
 
@@ -76,5 +78,22 @@ describe("console installer", () => {
     fs.rm.mockImplementation(async (target: string) => { if (target === "/console/latest.rollback") throw new Error("cleanup failed"); });
     await expect(replaceLatest("/console/latest", "/console/.staging", fs)).resolves.toBeUndefined();
     expect(fs.rename).toHaveBeenCalledWith("/console/.staging", "/console/latest");
+  });
+
+  it("keeps the existing latest when the staged Console requires a newer Node", async () => {
+    const paths = resolveRuntimePaths("/Users/fleet");
+    const fs = fileSystem(new Set([paths.latest]));
+    fs.readFile.mockImplementation(async (target: string) => target.endsWith("package.json") ? JSON.stringify({ version: "1.2.3", engines: { node: ">=23.0.0" } }) : "1\n");
+    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run: vi.fn(async () => undefined), randomSuffix: () => "test" } })).rejects.toThrow("console_install_node_engine_incompatible");
+    expect(fs.rename).not.toHaveBeenCalledWith(expect.stringContaining(".staging-test"), paths.latest);
+    expect(fs.rm).toHaveBeenCalledWith(path.join(paths.console, ".staging-test"));
+  });
+
+  it("continues with valid latest when re-entry cleanup cannot remove rollback or stale staging", async () => {
+    const paths = resolveRuntimePaths("/Users/fleet");
+    const fs = fileSystem(new Set([paths.latest, `${paths.latest}.rollback`]));
+    fs.readdir.mockResolvedValueOnce(["latest.rollback", ".staging-locked"]);
+    fs.rm.mockRejectedValue(new Error("locked"));
+    await expect(reconcileConsoleInstallations(paths, fs)).resolves.toBeUndefined();
   });
 });

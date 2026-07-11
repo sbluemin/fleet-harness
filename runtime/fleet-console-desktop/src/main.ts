@@ -14,7 +14,7 @@ import { createDesktopLogger } from "./logging.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations } from "./runtime/console-installer.js";
-import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
+import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
@@ -84,7 +84,7 @@ async function boot(): Promise<void> {
     ? createUpdateController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
       registry,
-      showDialog: async (version) => showUpdateDialog(window, version),
+      showDialog: async (version) => showUpdateDialog(window, version, () => registry.markPrompted?.(version)),
       prepareToQuit: () => lifecycle.prepareToQuit(),
       relaunch: () => app.relaunch(),
       quit: () => app.quit(),
@@ -103,35 +103,42 @@ async function boot(): Promise<void> {
 }
 
 async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress): Promise<SidecarRuntime> {
-  const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
-  const engine = readConsoleNodeEngine(runtimePaths.latest);
-  if (!satisfiesNodeEngine(manifest.version, engine)) throw new Error("managed_node_engine_unsupported");
-  if (!await isManagedNodeRuntimeValid(runtimePaths.node, manifest, process.platform)) {
-    await progress("node", "checksum verified", 0);
-    await bootstrapNodeRuntime({ destination: runtimePaths.node, manifest, platform: process.platform, architecture: process.arch });
-  }
-  await reconcileConsoleInstallations(runtimePaths, createInstallerFileSystem());
-  const installedVersion = readInstalledVersion(runtimePaths.latest);
-  const result = await registry.check(installedVersion ?? "");
-  const version = result.latest ?? installedVersion;
-  if (!version) throw new Error("console_runtime_unavailable");
-  if (result.latest) {
-    await progress("installing", `Fleet Console ${version}`, 0);
-    try {
-      await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, version, platform: process.platform });
-    } catch (error) {
-      if (!installedVersion) throw error;
-      await progress("offline", "update failed — installed latest");
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
+    const engine = readConsoleNodeEngine(runtimePaths.latest);
+    if (!satisfiesNodeEngine(manifest.version, engine)) throw new Error("managed_node_engine_unsupported");
+    if (await isManagedNodeRuntimeValid(runtimePaths.node, manifest, process.platform)) {
+      await reconcileNodeRuntime(runtimePaths.node);
+    } else {
+      await progress("node", "checksum verified", 0);
+      await bootstrapNodeRuntime({ destination: runtimePaths.node, manifest, platform: process.platform, architecture: process.arch });
     }
-  } else if (!installedVersion) {
-    throw new Error("console_runtime_unavailable");
-  } else if (result.unavailable) {
-    await progress("offline", "registry unreachable — installed latest");
+    await reconcileConsoleInstallations(runtimePaths, createInstallerFileSystem());
+    const installedVersion = readInstalledVersion(runtimePaths.latest);
+    const result = await registry.check(installedVersion ?? "");
+    const version = result.latest ?? installedVersion;
+    if (!version) throw new Error("console_runtime_unavailable");
+    if (result.latest) {
+      await progress("installing", `Fleet Console ${version}`, 0);
+      try {
+        await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, version, nodeRuntimeVersion: manifest.version, platform: process.platform });
+      } catch (error) {
+        if (!installedVersion) throw error;
+        await progress("offline", "update failed — installed latest");
+      }
+    } else if (!installedVersion) {
+      throw new Error("console_runtime_unavailable");
+    } else if (result.unavailable) {
+      await progress("offline", "registry unreachable — installed latest");
+    }
+    const serviceVersion = readInstalledVersion(runtimePaths.latest);
+    if (!serviceVersion) throw new Error("console_runtime_unavailable");
+    if (!satisfiesNodeEngine(manifest.version, readConsoleNodeEngine(runtimePaths.latest))) throw new Error("managed_node_engine_unsupported");
+    return { nodePath: path.join(runtimePaths.node, process.platform === "win32" ? "node.exe" : "bin/node"), cliPath: path.join(runtimePaths.latest, "dist", "cli.mjs"), serviceRoot: runtimePaths.latest, serviceVersion };
+  } catch (error) {
+    if (!readInstalledVersion(runtimePaths.latest)) throw new Error("console_runtime_unavailable");
+    throw error;
   }
-  const serviceVersion = readInstalledVersion(runtimePaths.latest);
-  if (!serviceVersion) throw new Error("console_runtime_unavailable");
-  if (!satisfiesNodeEngine(manifest.version, readConsoleNodeEngine(runtimePaths.latest))) throw new Error("managed_node_engine_unsupported");
-  return { nodePath: path.join(runtimePaths.node, process.platform === "win32" ? "node.exe" : "bin/node"), cliPath: path.join(runtimePaths.latest, "dist", "cli.mjs"), serviceRoot: runtimePaths.latest, serviceVersion };
 }
 
 function createInstallerFileSystem(): Parameters<typeof reconcileConsoleInstallations>[1] {
@@ -146,9 +153,12 @@ async function showFirstRunFailure(): Promise<boolean> {
   return false;
 }
 
-async function showUpdateDialog(window: BrowserWindow | null, version: string): Promise<{ response: number; checkboxChecked: boolean }> {
+async function showUpdateDialog(window: BrowserWindow | null, version: string, markPrompted: () => void): Promise<{ response: number; checkboxChecked: boolean }> {
   const options = { type: "info" as const, title: "Update available", message: `Fleet Console ${version} is ready to install.`, detail: "Takes a few seconds and restarts the console — running operations restore as dormant panels.", buttons: ["Update and Restart", "Later"], defaultId: 0, cancelId: 1, checkboxLabel: "Skip this version" };
-  const show = async (): Promise<{ response: number; checkboxChecked: boolean }> => window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+  const show = async (): Promise<{ response: number; checkboxChecked: boolean }> => {
+    markPrompted();
+    return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+  };
   // Windows 실기는 darwin에서 [Unverified]다. 숨은 트레이 창은 balloon 클릭 뒤에만 모달을 연다.
   return process.platform === "win32" ? showWindowsHiddenUpdateDialog(window, trayHolder.current, version, show) : show();
 }

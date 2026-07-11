@@ -11,10 +11,12 @@ function setup(state = '{"skipped":[]}') {
 }
 
 describe("registry checker", () => {
-  it("keeps Later in process memory, lets manual Check prompt again, and persists only Skip", async () => {
+  it("records Later only after dialog consumption, lets manual Check prompt again, and persists only Skip", async () => {
     const { checker, fileSystem, fetch } = setup();
     await expect(checker.check("1.0.0")).resolves.toEqual({ latest: "2.0.0", shouldNotify: true });
     expect(fetch).toHaveBeenCalledWith("https://registry.npmjs.org/%40dotobokuri%2Ffleet-console", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    await expect(checker.check("1.0.0")).resolves.toEqual({ latest: "2.0.0", shouldNotify: true });
+    checker.markPrompted?.("2.0.0");
     await expect(checker.check("1.0.0")).resolves.toEqual({ latest: "2.0.0", shouldNotify: false });
     await expect(checker.check("1.0.0", true)).resolves.toEqual({ latest: "2.0.0", shouldNotify: true });
     expect(fileSystem.writeFile).not.toHaveBeenCalled();

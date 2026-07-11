@@ -33,12 +33,15 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       dependencies.onWindowReady?.(push);
       window.show();
       let consoleUrl: string;
-      try {
-        consoleUrl = await dependencies.startOrAdopt();
-      } catch (error) {
-        await push("firstfail", error instanceof Error ? error.message : String(error));
-        if (!dependencies.onFirstRunFailure || !await dependencies.onFirstRunFailure()) throw error;
-        consoleUrl = await dependencies.startOrAdopt();
+      while (true) {
+        try {
+          consoleUrl = await dependencies.startOrAdopt();
+          break;
+        } catch (error) {
+          if (!isFirstRunProcurementFailure(error)) throw error;
+          await push("firstfail", error.message);
+          if (!dependencies.onFirstRunFailure || !await dependencies.onFirstRunFailure()) throw error;
+        }
       }
       dependencies.handoffOrigin(new URL(consoleUrl).origin);
       await push("starting", "ready");
@@ -46,6 +49,10 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       return window;
     },
   };
+}
+
+function isFirstRunProcurementFailure(error: unknown): error is Error {
+  return error instanceof Error && error.message === "console_runtime_unavailable";
 }
 
 function snapshotFor(state: RuntimeEntryState, dev: boolean, detail?: string, progress?: number): EntryPageSnapshot {

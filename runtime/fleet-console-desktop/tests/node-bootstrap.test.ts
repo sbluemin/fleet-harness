@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
+import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
 
 const manifest = { version: "22.23.1", source: "https://node.invalid", targets: { "darwin-arm64": { archive: "node.tar.gz", sha256: "good" }, "win32-x64": { archive: "node.zip", sha256: "good" } } };
 
@@ -47,5 +47,11 @@ describe("Node runtime bootstrap", () => {
     await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(false);
     fileSystem.stat.mockRejectedValueOnce(new Error("missing executable"));
     await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(false);
+  });
+
+  it("best-effort cleans a stale Node rollback once the managed runtime is valid", async () => {
+    const fileSystem = { rm: vi.fn(async () => { throw new Error("locked"); }) };
+    await expect(reconcileNodeRuntime("/runtime/node", fileSystem)).resolves.toBeUndefined();
+    expect(fileSystem.rm).toHaveBeenCalledWith("/runtime/node.rollback");
   });
 });

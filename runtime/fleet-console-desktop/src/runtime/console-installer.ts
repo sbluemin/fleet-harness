@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { satisfiesNodeEngine } from "./node-bootstrap.js";
 import type { RuntimePaths } from "./runtime-paths.js";
 
 export interface ConsoleInstallerFileSystem {
@@ -26,6 +27,7 @@ export interface InstallConsoleOptions {
   readonly nodeRoot: string;
   readonly packageName: string;
   readonly version: string;
+  readonly nodeRuntimeVersion: string;
   readonly platform: NodeJS.Platform;
   readonly dependencies?: ConsoleInstallerDependencies;
 }
@@ -52,7 +54,7 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
     // 번들 node 바이너리로 npm-cli.js를 직접 구동해야 postinstall(node-pty)도 번들 node의 PATH로 돈다.
     await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`]);
     await normalizePrefixInstallation(staging, options.packageName, dependencies.fileSystem);
-    await verifyInstallation(staging, options.version, dependencies.fileSystem);
+    await verifyInstallation(staging, options.version, options.nodeRuntimeVersion, dependencies.fileSystem);
     await replaceLatest(options.paths.latest, staging, dependencies.fileSystem);
     return { root: options.paths.latest, version: options.version };
   } catch (error) {
@@ -79,16 +81,22 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
 
 export async function reconcileConsoleInstallations(paths: RuntimePaths, fileSystem: ConsoleInstallerFileSystem): Promise<void> {
   const backup = `${paths.latest}.rollback`;
-  const hasLatest = await pathExists(paths.latest, fileSystem);
+  let hasLatest = await pathExists(paths.latest, fileSystem);
   const hasBackup = await pathExists(backup, fileSystem);
-  if (!hasLatest && hasBackup) await fileSystem.rename(backup, paths.latest);
-  else if (hasLatest && hasBackup) await fileSystem.rm(backup);
+  if (!hasLatest && hasBackup) {
+    await fileSystem.rename(backup, paths.latest);
+    hasLatest = true;
+  } else if (hasLatest && hasBackup) await bestEffortCleanup(backup, fileSystem);
   try {
     for (const entry of await fileSystem.readdir(paths.console)) {
-      if (entry.startsWith(".staging-")) await fileSystem.rm(path.join(paths.console, entry));
+      if (entry.startsWith(".staging-")) {
+        const staging = path.join(paths.console, entry);
+        if (hasLatest) await bestEffortCleanup(staging, fileSystem);
+        else await fileSystem.rm(staging);
+      }
     }
   } catch (error) {
-    if (!isMissing(error)) throw error;
+    if (!hasLatest && !isMissing(error)) throw error;
   }
 }
 
@@ -141,13 +149,15 @@ async function normalizePrefixInstallation(root: string, packageName: string, fi
   await fileSystem.writeFile(path.join(root, RESOURCE_ROOT_MARKER), `${DESKTOP_PROTOCOL_VERSION}\n`);
 }
 
-async function verifyInstallation(root: string, expectedVersion: string, fileSystem: ConsoleInstallerFileSystem): Promise<void> {
+async function verifyInstallation(root: string, expectedVersion: string, nodeRuntimeVersion: string, fileSystem: ConsoleInstallerFileSystem): Promise<void> {
   await fileSystem.stat(path.join(root, "dist", "cli.mjs"));
   await fileSystem.stat(path.join(root, "dist", "desktop-protocol.mjs"));
   await fileSystem.stat(path.join(root, "node_modules", "node-pty"));
   await fileSystem.stat(path.join(root, "node_modules", "ws"));
-  const packageJson = JSON.parse(await fileSystem.readFile(path.join(root, "package.json"))) as { version?: unknown };
+  const packageJson = JSON.parse(await fileSystem.readFile(path.join(root, "package.json"))) as { version?: unknown; engines?: { node?: unknown } };
   if (packageJson.version !== expectedVersion) throw new Error("console_install_version_mismatch");
+  const engine = typeof packageJson.engines?.node === "string" ? packageJson.engines.node : null;
+  if (!satisfiesNodeEngine(nodeRuntimeVersion, engine)) throw new Error("console_install_node_engine_incompatible");
   const marker = await fileSystem.readFile(path.join(root, RESOURCE_ROOT_MARKER));
   if (marker.trim() !== DESKTOP_PROTOCOL_VERSION) throw new Error("console_install_marker_invalid");
 }
@@ -167,6 +177,14 @@ async function pathExists(target: string, fileSystem: ConsoleInstallerFileSystem
   } catch (error) {
     if (isMissing(error)) return false;
     throw error;
+  }
+}
+
+async function bestEffortCleanup(target: string, fileSystem: ConsoleInstallerFileSystem): Promise<void> {
+  try {
+    await fileSystem.rm(target);
+  } catch {
+    // 유효 latest가 존재할 때의 정리 실패는 다음 시작으로 미루고 부팅을 막지 않는다.
   }
 }
 

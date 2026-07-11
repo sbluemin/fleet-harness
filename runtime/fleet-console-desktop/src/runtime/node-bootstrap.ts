@@ -61,6 +61,14 @@ export async function isManagedNodeRuntimeValid(destination: string, manifest: N
   }
 }
 
+export async function reconcileNodeRuntime(destination: string, fileSystem: Pick<NodeBootstrapFileSystem, "rm"> = createNodeBootstrapDependencies().fileSystem): Promise<void> {
+  try {
+    await fileSystem.rm(`${destination}.rollback`);
+  } catch {
+    // 유효한 managed Node가 있으면 transaction-only rollback 정리는 다음 시작으로 미룬다.
+  }
+}
+
 export function satisfiesNodeEngine(version: string, engine: string | null): boolean {
   if (!engine) return true;
   const minimum = engine.match(/^>=\s*(\d+)\.(\d+)\.(\d+)$/);

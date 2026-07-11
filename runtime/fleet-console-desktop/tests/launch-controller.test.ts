@@ -24,7 +24,7 @@ describe("launch controller", () => {
       startOrAdopt: vi.fn(async () => {
         attempts += 1;
         await progress?.(attempts === 1 ? "node" : "installing", "Fleet Console 1.2.4", 50);
-        if (attempts === 1) throw new Error("console_runtime_unavailable");
+        if (attempts < 3) throw new Error("console_runtime_unavailable");
         return "http://127.0.0.1:4310/console/";
       }),
       handoffOrigin: vi.fn(),
@@ -32,8 +32,18 @@ describe("launch controller", () => {
       onWindowReady: (push) => { progress = push; },
     });
     await controller.start();
-    expect(attempts).toBe(2);
-    expect(snapshots).toEqual(["Runtime ready", "Downloading Node runtime", "Installing Fleet Console", "Runtime ready", "Runtime ready"]);
+    expect(attempts).toBe(3);
+    expect(snapshots).toEqual(["Runtime ready", "Downloading Node runtime", "Installing Fleet Console", "Runtime ready", "Installing Fleet Console", "Runtime ready", "Runtime ready"]);
     expect(window.loadURL).toHaveBeenCalledWith("http://127.0.0.1:4310/console/");
+  });
+
+  it("does not mislabel supervisor ownership failures as first-run procurement failures", async () => {
+    const pushEntry = vi.fn(async () => undefined);
+    const onFirstRunFailure = vi.fn(async () => true);
+    const window = { webContents: { executeJavaScript: vi.fn(async () => undefined) }, show: vi.fn(), loadURL: vi.fn(async () => undefined) };
+    const controller = createLaunchController({ createWindow: vi.fn(async () => window), pushEntry, startOrAdopt: vi.fn(async () => { throw new Error("cli_daemon_requires_confirmation"); }), handoffOrigin: vi.fn(), onFirstRunFailure });
+    await expect(controller.start()).rejects.toThrow("cli_daemon_requires_confirmation");
+    expect(onFirstRunFailure).not.toHaveBeenCalled();
+    expect(pushEntry).toHaveBeenCalledTimes(1);
   });
 });

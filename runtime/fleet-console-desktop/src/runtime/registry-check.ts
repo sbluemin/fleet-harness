@@ -33,6 +33,7 @@ export interface RegistryCheckResult {
 
 export interface RegistryChecker {
   check(currentVersion: string, manual?: boolean): Promise<RegistryCheckResult>;
+  markPrompted?(version: string): void;
   skip(version: string): Promise<void>;
   startPolling(currentVersion: () => string, onUpdate: (version: string) => void): () => void;
 }
@@ -57,11 +58,11 @@ export function createRegistryChecker(options: RegistryCheckerOptions): Registry
     if (manual) prompted.delete(latest);
     const state = await readState(options.statePath, dependencies.fileSystem);
     if (state.skipped.includes(latest) || prompted.has(latest)) return { latest, shouldNotify: false };
-    prompted.add(latest);
     return { latest, shouldNotify: true };
   };
   return {
     check,
+    markPrompted(version) { prompted.add(version); },
     async skip(version) {
       const state = await readState(options.statePath, dependencies.fileSystem);
       await writeState(options.statePath, { skipped: unique([...state.skipped, version]) }, dependencies.fileSystem);
