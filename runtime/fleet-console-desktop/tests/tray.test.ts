@@ -9,7 +9,7 @@ describe("tray menu", () => {
     const show = vi.fn();
     const quit = vi.fn();
     const diagnostics = vi.fn();
-    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4" };
+    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
 
     configureTray(tray as never, menu as never, { show, quit, diagnostics, updates });
 

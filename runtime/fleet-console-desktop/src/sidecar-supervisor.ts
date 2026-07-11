@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@dotobokuri/fleet-console/desktop-protocol";
 
-export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; }
-export interface SidecarSupervisorOptions { readonly nodePath?: string; readonly cliPath?: string; readonly resolveRuntime?: () => Promise<SidecarRuntime>; readonly env: NodeJS.ProcessEnv; readonly lockFile: string; readonly ownerId: string; readonly appVersion: string; readonly log: { info(message: string): void; error(message: string): void }; }
+export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
+export interface SidecarSupervisorOptions { readonly nodePath?: string; readonly cliPath?: string; readonly serviceRoot?: string; readonly serviceVersion: string; readonly resolveRuntime?: () => Promise<SidecarRuntime>; readonly env: NodeJS.ProcessEnv; readonly lockFile: string; readonly ownerId: string; readonly log: { info(message: string): void; error(message: string): void }; }
 interface LockPayload { readonly pid: number; readonly endpoint: string; readonly token: string; readonly version: string; readonly owner?: ConsoleOwnerMetadata; }
 interface StoredLock { readonly contents: string; readonly lock: LockPayload; }
 interface MissingLockProbe { readonly kind: "missing"; }
@@ -20,7 +20,8 @@ const STOP_DELAY_MS = 100;
 
 export class SidecarSupervisor {
   private child: ChildProcess | null = null;
-  constructor(private readonly options: SidecarSupervisorOptions) {}
+  private serviceVersion: string;
+  constructor(private readonly options: SidecarSupervisorOptions) { this.serviceVersion = options.serviceVersion; }
   async startOrAdopt(): Promise<string> {
     const current = await this.probe();
     if (current.kind === "healthy") {
@@ -192,11 +193,16 @@ export class SidecarSupervisor {
       throw error;
     }
   }
-  private isOwned(lock: LockPayload): boolean { return isCompatibleDesktopOwner(lock.owner, lock.version, { id: this.options.ownerId, version: this.options.appVersion }); }
+  private isOwned(lock: LockPayload): boolean { return isCompatibleDesktopOwner(lock.owner, lock.version, { id: this.options.ownerId, version: this.serviceVersion }); }
   private async resolveRuntime(): Promise<SidecarRuntime> {
-    if (this.options.resolveRuntime) return this.options.resolveRuntime();
-    if (!this.options.nodePath || !this.options.cliPath) throw new Error("sidecar_runtime_resolver_missing");
-    return { nodePath: this.options.nodePath, cliPath: this.options.cliPath };
+    const runtime = this.options.resolveRuntime
+      ? await this.options.resolveRuntime()
+      : this.options.nodePath && this.options.cliPath && this.options.serviceRoot
+        ? { nodePath: this.options.nodePath, cliPath: this.options.cliPath, serviceRoot: this.options.serviceRoot, serviceVersion: this.options.serviceVersion }
+        : undefined;
+    if (!runtime) throw new Error("sidecar_runtime_resolver_missing");
+    this.serviceVersion = runtime.serviceVersion;
+    return runtime;
   }
   private createSpawnFailure(error: unknown): Error { return new Error(`sidecar_spawn_failed: ${error instanceof Error ? error.message : String(error)}`); }
   private describeError(error: unknown): string { return error instanceof Error ? error.message : String(error); }

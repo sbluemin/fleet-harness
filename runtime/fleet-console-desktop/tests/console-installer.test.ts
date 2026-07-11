@@ -1,20 +1,45 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { installConsole, replaceLatest } from "../src/runtime/console-installer.js";
+import { installConsole, reconcileConsoleInstallations, replaceLatest } from "../src/runtime/console-installer.js";
 import { resolveRuntimePaths } from "../src/runtime/runtime-paths.js";
 
-function fileSystem() {
-  return { mkdir: vi.fn(async () => undefined), readFile: vi.fn(async () => JSON.stringify({ version: "1.2.3" })), rename: vi.fn<(from: string, to: string) => Promise<void>>(async () => undefined), rm: vi.fn(async () => undefined), stat: vi.fn(async () => undefined) };
+function missing(): NodeJS.ErrnoException { const error = new Error("missing") as NodeJS.ErrnoException; error.code = "ENOENT"; return error; }
+
+function fileSystem(existing = new Set<string>()) {
+  const stat = vi.fn(async (target: string) => { if (!existing.has(target) && !target.includes(".staging-test/")) throw missing(); });
+  const rename = vi.fn(async (from: string, to: string) => { if (!existing.has(from) && !from.includes(".staging-test") && !from.endsWith(".package")) throw missing(); existing.delete(from); existing.add(to); });
+  return {
+    mkdir: vi.fn(async () => undefined),
+    readFile: vi.fn(async (target: string) => target.endsWith("package.json") ? JSON.stringify({ version: "1.2.3" }) : "1\n"),
+    readdir: vi.fn(async (target: string) => target.endsWith(".package") ? ["package.json", "dist"] : []),
+    rename,
+    rm: vi.fn(async (target: string) => { existing.delete(target); }),
+    stat,
+    writeFile: vi.fn(async () => undefined),
+  };
 }
 
 describe("console installer", () => {
-  it("uses bundled npm with a non-global prefix and validates before promotion", async () => {
+  it("uses bundled npm, normalizes the prefix package as latest root, and validates before promotion", async () => {
     const fs = fileSystem();
     const run = vi.fn(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
     await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
-    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "@dotobokuri/fleet-console@1.2.3"]);
-    expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/@dotobokuri/fleet-console/dist/cli.mjs");
+    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"]);
+    expect(fs.rename).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/@dotobokuri/fleet-console", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test.package");
+    expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/dist/cli.mjs");
+    expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty");
+    expect(fs.writeFile).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.fleet-console-resource-root", "1\n");
+  });
+
+  it("rejects npm aliases, URLs, ranges, and prereleases before spawning npm", async () => {
+    const fs = fileSystem();
+    const run = vi.fn(async () => undefined);
+    const paths = resolveRuntimePaths("/Users/fleet");
+    for (const version of ["npm:attacker@1.0.0", "https://attacker.invalid/pkg.tgz", "^1.2.3", "1.2.3-beta.1"]) {
+      await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version, platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).rejects.toThrow("console_install_version_invalid");
+    }
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("drives npm through node.exe and the npm-cli.js script on Windows", async () => {
@@ -22,18 +47,34 @@ describe("console installer", () => {
     const run = vi.fn(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
     await installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", platform: "win32", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } });
-    // npm.cmd 직접 spawn은 최신 Node 보안 정책이 거부하고, bin/npm 셔뱅은 시스템 Node를 요구한다 — 번들 node로 npm-cli.js를 구동해야 한다.
     expect(run).toHaveBeenCalledWith(expect.stringContaining("node.exe"), expect.arrayContaining([expect.stringContaining("npm-cli.js")]));
   });
 
-  it("restores the previous latest installation when atomic promotion fails", async () => {
-    const fs = fileSystem();
+  it("restores the previous latest installation when promotion fails", async () => {
+    const fs = fileSystem(new Set(["/console/latest", "/console/.staging"]));
     fs.rename.mockImplementation(async (from: string, to: string) => {
       if (from === "/console/.staging" && to === "/console/latest") throw new Error("rename failed");
+      if (from === "/console/latest") { fs.stat.mockImplementationOnce(async () => { throw missing(); }); }
     });
     await expect(replaceLatest("/console/latest", "/console/.staging", fs)).rejects.toThrow("rename failed");
     expect(fs.rename).toHaveBeenNthCalledWith(1, "/console/latest", "/console/latest.rollback");
     expect(fs.rename).toHaveBeenNthCalledWith(2, "/console/.staging", "/console/latest");
     expect(fs.rename).toHaveBeenNthCalledWith(3, "/console/latest.rollback", "/console/latest");
+  });
+
+  it("recovers an interrupted rollback and removes abandoned staging directories", async () => {
+    const paths = resolveRuntimePaths("/Users/fleet");
+    const fs = fileSystem(new Set([`${paths.latest}.rollback`]));
+    fs.readdir.mockResolvedValueOnce(["latest.rollback", ".staging-crashed", "keep"]);
+    await reconcileConsoleInstallations(paths, fs);
+    expect(fs.rename).toHaveBeenCalledWith(`${paths.latest}.rollback`, paths.latest);
+    expect(fs.rm).toHaveBeenCalledWith(`${paths.console}/.staging-crashed`);
+  });
+
+  it("keeps promoted latest when rollback cleanup fails so the next start can reconcile it", async () => {
+    const fs = fileSystem(new Set(["/console/latest", "/console/.staging"]));
+    fs.rm.mockImplementation(async (target: string) => { if (target === "/console/latest.rollback") throw new Error("cleanup failed"); });
+    await expect(replaceLatest("/console/latest", "/console/.staging", fs)).resolves.toBeUndefined();
+    expect(fs.rename).toHaveBeenCalledWith("/console/.staging", "/console/latest");
   });
 });

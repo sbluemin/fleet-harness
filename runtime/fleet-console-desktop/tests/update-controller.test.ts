@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createUpdateController } from "../src/update-controller.js";
+import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "../src/update-controller.js";
 
 function controller(result = { latest: "1.2.4", shouldNotify: true }, dialog = { response: 1, checkboxChecked: false }) {
   const registry = { check: vi.fn(async () => result), skip: vi.fn(async () => undefined), startPolling: vi.fn() };
@@ -25,5 +25,25 @@ describe("registry update controller", () => {
     expect(prepareToQuit).toHaveBeenCalledBefore(relaunch);
     expect(relaunch).toHaveBeenCalledOnce();
     expect(quit).toHaveBeenCalledOnce();
+  });
+
+  it("bypasses every update action in development", async () => {
+    const updates = createNoopUpdateController();
+    await updates.check();
+    await updates.install();
+    expect(updates.availableVersion()).toBeNull();
+    expect(updates.enabled()).toBe(false);
+  });
+
+  it("shows a Windows balloon before restoring a hidden window and opening its dialog", async () => {
+    const order: string[] = [];
+    let click: (() => void) | undefined;
+    const tray = { displayBalloon: vi.fn(() => order.push("balloon")), once: vi.fn((_event: "balloon-click", callback: () => void) => { click = callback; }) };
+    const window = { isVisible: () => false, show: vi.fn(() => order.push("show")) };
+    const result = showWindowsHiddenUpdateDialog(window, tray, "1.2.4", vi.fn(async () => { order.push("dialog"); return { response: 1, checkboxChecked: false }; }));
+    expect(order).toEqual(["balloon"]);
+    click?.();
+    await expect(result).resolves.toEqual({ response: 1, checkboxChecked: false });
+    expect(order).toEqual(["balloon", "show", "dialog"]);
   });
 });

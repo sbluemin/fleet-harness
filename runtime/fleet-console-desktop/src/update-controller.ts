@@ -13,9 +13,20 @@ export interface UpdateControllerOptions {
 }
 
 export interface UpdateController {
-  check(): Promise<void>;
+  check(manual?: boolean): Promise<void>;
   install(): Promise<void>;
   availableVersion(): string | null;
+  enabled(): boolean;
+}
+
+export interface WindowsUpdateWindow {
+  isVisible(): boolean;
+  show(): void;
+}
+
+export interface WindowsUpdateTray {
+  displayBalloon(options: { readonly title: string; readonly content: string }): void;
+  once(event: "balloon-click", callback: () => void): void;
 }
 
 export function createUpdateController(options: UpdateControllerOptions): UpdateController {
@@ -27,8 +38,8 @@ export function createUpdateController(options: UpdateControllerOptions): Update
     options.quit();
   };
   return {
-    async check() {
-      const result = await options.registry.check(options.currentVersion());
+    async check(manual = true) {
+      const result = await options.registry.check(options.currentVersion(), manual);
       available = result.latest === options.currentVersion() ? null : result.latest;
       options.onStateChange?.();
       if (!result.shouldNotify || !available) return;
@@ -38,5 +49,18 @@ export function createUpdateController(options: UpdateControllerOptions): Update
     },
     install,
     availableVersion: () => available,
+    enabled: () => true,
   };
+}
+
+export function createNoopUpdateController(): UpdateController {
+  return { check: async () => undefined, install: async () => undefined, availableVersion: () => null, enabled: () => false };
+}
+
+export async function showWindowsHiddenUpdateDialog(window: WindowsUpdateWindow | null, tray: WindowsUpdateTray | null, version: string, showDialog: () => Promise<UpdateDialogResult>): Promise<UpdateDialogResult> {
+  if (window && tray && !window.isVisible()) {
+    tray.displayBalloon({ title: "Update available", content: `Fleet Console ${version} is ready to install.` });
+    await new Promise<void>((resolve) => tray.once("balloon-click", () => { window.show(); resolve(); }));
+  }
+  return showDialog();
 }

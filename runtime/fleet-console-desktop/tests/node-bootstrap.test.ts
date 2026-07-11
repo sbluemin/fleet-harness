@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { bootstrapNodeRuntime } from "../src/runtime/node-bootstrap.js";
+import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
 
 const manifest = { version: "22.23.1", source: "https://node.invalid", targets: { "darwin-arm64": { archive: "node.tar.gz", sha256: "good" }, "win32-x64": { archive: "node.zip", sha256: "good" } } };
 
@@ -8,7 +8,7 @@ function dependencies() {
   return {
     download: vi.fn(async () => undefined),
     extract: vi.fn(async () => undefined),
-    fileSystem: { mkdir: vi.fn(async () => undefined), readFile: vi.fn(async () => new Uint8Array([1])), rename: vi.fn(async () => undefined), rm: vi.fn(async () => undefined), writeFile: vi.fn(async () => undefined) },
+    fileSystem: { mkdir: vi.fn(async () => undefined), readFile: vi.fn(async () => new Uint8Array([1])), rename: vi.fn(async () => undefined), rm: vi.fn(async () => undefined), stat: vi.fn(async () => undefined), writeFile: vi.fn(async () => undefined) },
     hash: () => "good",
   };
 }
@@ -32,5 +32,20 @@ describe("Node runtime bootstrap", () => {
   it("uses the Windows node executable without executing it", async () => {
     const injected = dependencies();
     await expect(bootstrapNodeRuntime({ destination: "C:/runtime/node", manifest, platform: "win32", architecture: "x64", dependencies: injected })).resolves.toMatchObject({ nodePath: "C:/runtime/node/node.exe" });
+  });
+
+  it("accepts the trusted manifest only when it satisfies the installed Console engine", () => {
+    expect(satisfiesNodeEngine("22.23.1", ">=22.12.0")).toBe(true);
+    expect(satisfiesNodeEngine("22.11.0", ">=22.12.0")).toBe(false);
+    expect(satisfiesNodeEngine("22.23.1", "^22.12.0")).toBe(false);
+  });
+
+  it("requires both the trusted marker and managed executable before reusing Node", async () => {
+    const fileSystem = { readFile: vi.fn(async () => new TextEncoder().encode("22.23.1\n")), stat: vi.fn(async () => undefined) };
+    await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(true);
+    fileSystem.readFile.mockResolvedValueOnce(new TextEncoder().encode("22.22.0\n"));
+    await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(false);
+    fileSystem.stat.mockRejectedValueOnce(new Error("missing executable"));
+    await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(false);
   });
 });

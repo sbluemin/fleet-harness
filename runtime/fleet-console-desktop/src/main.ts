@@ -5,22 +5,24 @@ import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, dialog, Menu, shell, Tray } from "electron";
 
-import { createDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { createDesktopLifecycle } from "./app-lifecycle.js";
+import { createDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
-import { createLaunchController } from "./launch-controller.js";
+import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopLogger } from "./logging.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
-import { installConsole } from "./runtime/console-installer.js";
-import { bootstrapNodeRuntime, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
+import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations } from "./runtime/console-installer.js";
+import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
-import { SidecarSupervisor } from "./sidecar-supervisor.js";
+import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray } from "./tray.js";
-import { createUpdateController } from "./update-controller.js";
+import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "./update-controller.js";
 import { applyWindowPolicy, createSecureWindow } from "./window-policy.js";
+
+type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
 const PACKAGE_NAME = "@dotobokuri/fleet-console";
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -46,12 +48,16 @@ async function boot(): Promise<void> {
   const environment = createDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   const registry = createRegistryChecker({ packageName: PACKAGE_NAME, statePath: path.join(runtimePaths.root, "registry-state.json") });
+  let pushRuntimeProgress: RuntimeProgress | null = null;
+  const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
   const supervisor = new SidecarSupervisor({
-    ...(isPackaged ? { resolveRuntime: () => resolvePackagedRuntime(runtimePaths, registry) } : { nodePath: desktopResources.nodePath, cliPath: desktopResources.cliPath }),
+    ...(isPackaged
+      ? { resolveRuntime: () => resolvePackagedRuntime(runtimePaths, registry, (state, detail, progress) => pushRuntimeProgress?.(state, detail, progress) ?? Promise.resolve()) }
+      : { nodePath: desktopResources.nodePath, cliPath: desktopResources.cliPath, serviceRoot: desktopResources.serviceRoot }),
     env: environment.serviceEnv,
     lockFile: path.join(environment.consoleDir, "console.lock"),
     ownerId: environment.ownerId,
-    appVersion: app.getVersion(),
+    serviceVersion: initialServiceVersion,
     log: logger,
   });
   let window: BrowserWindow | null = null;
@@ -65,24 +71,26 @@ async function boot(): Promise<void> {
         await window.loadFile(desktopResources.entryPagePath);
         return window;
       },
+      dev: !isPackaged,
       handoffOrigin: (origin) => policy?.activateConsoleOrigin(origin),
+      onFirstRunFailure: async () => showFirstRunFailure(),
+      onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
       startOrAdopt: () => supervisor.startOrAdopt(),
     });
     return launch.start() as Promise<BrowserWindow>;
   }, () => supervisor.stop());
-  const updates = createUpdateController({
-    currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? app.getVersion(),
-    registry,
-    showDialog: async (version) => {
-      const options = { type: "info" as const, title: "Update available", message: `Fleet Console ${version} is ready to install.`, detail: "Takes a few seconds and restarts the console — running operations restore as dormant panels.", buttons: ["Update and Restart", "Later"], defaultId: 0, cancelId: 1, checkboxLabel: "Skip this version" };
-      return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
-    },
-    prepareToQuit: () => lifecycle.prepareToQuit(),
-    relaunch: () => app.relaunch(),
-    quit: () => app.quit(),
-    onStateChange: () => refreshNativeUpdateActions?.(),
-  });
+  const updates = isPackaged
+    ? createUpdateController({
+      currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
+      registry,
+      showDialog: async (version) => showUpdateDialog(window, version),
+      prepareToQuit: () => lifecycle.prepareToQuit(),
+      relaunch: () => app.relaunch(),
+      quit: () => app.quit(),
+      onStateChange: () => refreshNativeUpdateActions?.(),
+    })
+    : createNoopUpdateController();
   const actions = { show: () => { void lifecycle.show(); }, quit: () => { void lifecycle.quit(); }, diagnostics: () => { void shell.openPath(path.join(app.getPath("userData"), "logs")); }, updates };
   if (process.platform !== "darwin") trayHolder.current = new Tray(desktopResources.iconPath);
   refreshNativeUpdateActions = () => {
@@ -91,25 +99,73 @@ async function boot(): Promise<void> {
   };
   refreshNativeUpdateActions();
   await lifecycle.start();
-  setInterval(() => { void updates.check(); }, 60 * 60 * 1_000);
+  if (isPackaged) setInterval(() => { void updates.check(false); }, 60 * 60 * 1_000);
 }
 
-async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>): Promise<{ nodePath: string; cliPath: string }> {
-  // 번들 main.mjs는 dist에서 실행되고 copy-entry-assets가 manifest를 dist/build로 나른다 — dist 앵커가 dev/packaged 공통 경로다.
+async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress): Promise<SidecarRuntime> {
   const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
-  if (!fs.existsSync(runtimePaths.node)) await bootstrapNodeRuntime({ destination: runtimePaths.node, manifest, platform: process.platform, architecture: process.arch });
+  const engine = readConsoleNodeEngine(runtimePaths.latest);
+  if (!satisfiesNodeEngine(manifest.version, engine)) throw new Error("managed_node_engine_unsupported");
+  if (!await isManagedNodeRuntimeValid(runtimePaths.node, manifest, process.platform)) {
+    await progress("node", "checksum verified", 0);
+    await bootstrapNodeRuntime({ destination: runtimePaths.node, manifest, platform: process.platform, architecture: process.arch });
+  }
+  await reconcileConsoleInstallations(runtimePaths, createInstallerFileSystem());
   const installedVersion = readInstalledVersion(runtimePaths.latest);
   const result = await registry.check(installedVersion ?? "");
   const version = result.latest ?? installedVersion;
   if (!version) throw new Error("console_runtime_unavailable");
-  if (version !== installedVersion) await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, version, platform: process.platform });
-  return { nodePath: path.join(runtimePaths.node, process.platform === "win32" ? "node.exe" : "bin/node"), cliPath: path.join(runtimePaths.latest, "node_modules", "@dotobokuri", "fleet-console", "dist", "cli.mjs") };
+  if (result.latest) {
+    await progress("installing", `Fleet Console ${version}`, 0);
+    try {
+      await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, version, platform: process.platform });
+    } catch (error) {
+      if (!installedVersion) throw error;
+      await progress("offline", "update failed — installed latest");
+    }
+  } else if (!installedVersion) {
+    throw new Error("console_runtime_unavailable");
+  } else if (result.unavailable) {
+    await progress("offline", "registry unreachable — installed latest");
+  }
+  const serviceVersion = readInstalledVersion(runtimePaths.latest);
+  if (!serviceVersion) throw new Error("console_runtime_unavailable");
+  if (!satisfiesNodeEngine(manifest.version, readConsoleNodeEngine(runtimePaths.latest))) throw new Error("managed_node_engine_unsupported");
+  return { nodePath: path.join(runtimePaths.node, process.platform === "win32" ? "node.exe" : "bin/node"), cliPath: path.join(runtimePaths.latest, "dist", "cli.mjs"), serviceRoot: runtimePaths.latest, serviceVersion };
 }
 
-function readInstalledVersion(latest: string): string | null {
+function createInstallerFileSystem(): Parameters<typeof reconcileConsoleInstallations>[1] {
+  const dependencies = createConsoleInstallerDependencies();
+  return dependencies.fileSystem;
+}
+
+async function showFirstRunFailure(): Promise<boolean> {
+  const result = await dialog.showMessageBox({ type: "error", title: "Fleet Console setup failed", message: "Fleet Console could not be installed.", detail: "Check your connection and retry; nothing was left half-installed.", buttons: ["Retry", "Quit"], defaultId: 0, cancelId: 1 });
+  if (result.response === 0) return true;
+  app.quit();
+  return false;
+}
+
+async function showUpdateDialog(window: BrowserWindow | null, version: string): Promise<{ response: number; checkboxChecked: boolean }> {
+  const options = { type: "info" as const, title: "Update available", message: `Fleet Console ${version} is ready to install.`, detail: "Takes a few seconds and restarts the console — running operations restore as dormant panels.", buttons: ["Update and Restart", "Later"], defaultId: 0, cancelId: 1, checkboxLabel: "Skip this version" };
+  const show = async (): Promise<{ response: number; checkboxChecked: boolean }> => window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+  // Windows 실기는 darwin에서 [Unverified]다. 숨은 트레이 창은 balloon 클릭 뒤에만 모달을 연다.
+  return process.platform === "win32" ? showWindowsHiddenUpdateDialog(window, trayHolder.current, version, show) : show();
+}
+
+function readInstalledVersion(root: string): string | null {
   try {
-    const packageJson = JSON.parse(fs.readFileSync(path.join(latest, "node_modules", "@dotobokuri", "fleet-console", "package.json"), "utf8")) as { version?: unknown };
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { version?: unknown };
     return typeof packageJson.version === "string" ? packageJson.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function readConsoleNodeEngine(root: string): string | null {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { engines?: { node?: unknown } };
+    return typeof packageJson.engines?.node === "string" ? packageJson.engines.node : null;
   } catch {
     return null;
   }

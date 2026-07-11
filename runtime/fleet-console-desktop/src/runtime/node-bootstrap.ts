@@ -1,25 +1,18 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-export interface NodeRuntimeTarget {
-  readonly archive: string;
-  readonly sha256: string;
-}
-
-export interface NodeRuntimeManifest {
-  readonly version: string;
-  readonly source: string;
-  readonly targets: Readonly<Record<string, NodeRuntimeTarget>>;
-}
+export interface NodeRuntimeTarget { readonly archive: string; readonly sha256: string; }
+export interface NodeRuntimeManifest { readonly version: string; readonly source: string; readonly targets: Readonly<Record<string, NodeRuntimeTarget>>; }
 
 export interface NodeBootstrapFileSystem {
   mkdir(path: string): Promise<void>;
   readFile(path: string): Promise<Uint8Array>;
   rename(from: string, to: string): Promise<void>;
   rm(path: string): Promise<void>;
+  stat(path: string): Promise<void>;
   writeFile(path: string, content: string): Promise<void>;
 }
 
@@ -30,18 +23,8 @@ export interface NodeBootstrapDependencies {
   readonly hash?: (content: Uint8Array) => string;
 }
 
-export interface NodeBootstrapResult {
-  readonly nodePath: string;
-  readonly version: string;
-}
-
-export interface BootstrapNodeRuntimeOptions {
-  readonly destination: string;
-  readonly manifest: NodeRuntimeManifest;
-  readonly platform: NodeJS.Platform;
-  readonly architecture: string;
-  readonly dependencies?: NodeBootstrapDependencies;
-}
+export interface NodeBootstrapResult { readonly nodePath: string; readonly version: string; }
+export interface BootstrapNodeRuntimeOptions { readonly destination: string; readonly manifest: NodeRuntimeManifest; readonly platform: NodeJS.Platform; readonly architecture: string; readonly dependencies?: NodeBootstrapDependencies; }
 
 export async function bootstrapNodeRuntime(options: BootstrapNodeRuntimeOptions): Promise<NodeBootstrapResult> {
   const dependencies = options.dependencies ?? createNodeBootstrapDependencies();
@@ -49,10 +32,10 @@ export async function bootstrapNodeRuntime(options: BootstrapNodeRuntimeOptions)
   const target = options.manifest.targets[targetKey];
   if (!target) throw new Error(`node_runtime_target_unsupported: ${targetKey}`);
   const staging = `${options.destination}.staging`;
-  const archive = path.join(staging, target.archive);
   try {
     await dependencies.fileSystem.rm(staging);
     await dependencies.fileSystem.mkdir(staging);
+    const archive = path.join(staging, target.archive);
     await dependencies.download(`${options.manifest.source}/${target.archive}`, archive);
     const downloaded = await dependencies.fileSystem.readFile(archive);
     const digest = (dependencies.hash ?? sha256)(downloaded);
@@ -60,25 +43,75 @@ export async function bootstrapNodeRuntime(options: BootstrapNodeRuntimeOptions)
     await dependencies.extract(archive, staging, options.platform);
     await dependencies.fileSystem.rm(archive);
     await dependencies.fileSystem.writeFile(path.join(staging, ".runtime-version"), `${options.manifest.version}\n`);
-    await dependencies.fileSystem.rm(options.destination);
-    await dependencies.fileSystem.rename(staging, options.destination);
-    return { nodePath: path.join(options.destination, options.platform === "win32" ? "node.exe" : "bin/node"), version: options.manifest.version };
+    await replaceNodeRuntime(options.destination, staging, dependencies.fileSystem);
+    return { nodePath: nodeBinaryPath(options.destination, options.platform), version: options.manifest.version };
   } catch (error) {
     await dependencies.fileSystem.rm(staging);
     throw error;
   }
 }
 
+export async function isManagedNodeRuntimeValid(destination: string, manifest: NodeRuntimeManifest, platform: NodeJS.Platform, fileSystem: Pick<NodeBootstrapFileSystem, "readFile" | "stat"> = createNodeBootstrapDependencies().fileSystem): Promise<boolean> {
+  try {
+    const version = new TextDecoder().decode(await fileSystem.readFile(path.join(destination, ".runtime-version"))).trim();
+    await fileSystem.stat(nodeBinaryPath(destination, platform));
+    return version === manifest.version;
+  } catch {
+    return false;
+  }
+}
+
+export function satisfiesNodeEngine(version: string, engine: string | null): boolean {
+  if (!engine) return true;
+  const minimum = engine.match(/^>=\s*(\d+)\.(\d+)\.(\d+)$/);
+  const current = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!minimum || !current) return false;
+  for (let index = 1; index <= 3; index += 1) {
+    const left = Number(current[index]);
+    const right = Number(minimum[index]);
+    if (left !== right) return left > right;
+  }
+  return true;
+}
+
 export function createNodeBootstrapDependencies(): NodeBootstrapDependencies {
   return {
-    download: download,
-    extract: extract,
-    fileSystem: { mkdir: async (target) => { await mkdir(target, { recursive: true }); }, readFile, rename, rm: async (target) => { await rm(target, { force: true, recursive: true }); }, writeFile: async (target, content) => { await writeFile(target, content); } },
+    download,
+    extract,
+    fileSystem: { mkdir: async (target) => { await mkdir(target, { recursive: true }); }, readFile, rename, rm: async (target) => { await rm(target, { force: true, recursive: true }); }, stat: async (target) => { await stat(target); }, writeFile: async (target, content) => { await writeFile(target, content); } },
   };
 }
 
-function sha256(content: Uint8Array): string {
-  return createHash("sha256").update(content).digest("hex");
+async function replaceNodeRuntime(destination: string, staging: string, fileSystem: NodeBootstrapFileSystem): Promise<void> {
+  const backup = `${destination}.rollback`;
+  let movedCurrent = false;
+  try {
+    if (await pathExists(destination, fileSystem)) {
+      await fileSystem.rm(backup);
+      await fileSystem.rename(destination, backup);
+      movedCurrent = true;
+    } else if (await pathExists(backup, fileSystem)) {
+      await fileSystem.rename(backup, destination);
+      await fileSystem.rename(destination, backup);
+      movedCurrent = true;
+    }
+    await fileSystem.rename(staging, destination);
+  } catch (error) {
+    if (movedCurrent && !await pathExists(destination, fileSystem)) {
+      try { await fileSystem.rename(backup, destination); } catch { /* 기존 런타임 복구 실패는 원인 오류로 보고한다. */ }
+    }
+    throw error;
+  }
+  if (movedCurrent) {
+    try { await fileSystem.rm(backup); } catch { /* 다음 갱신에서 고아 rollback을 정리한다. */ }
+  }
+}
+
+function sha256(content: Uint8Array): string { return createHash("sha256").update(content).digest("hex"); }
+function nodeBinaryPath(root: string, platform: NodeJS.Platform): string { return path.join(root, platform === "win32" ? "node.exe" : "bin/node"); }
+
+async function pathExists(target: string, fileSystem: Pick<NodeBootstrapFileSystem, "stat">): Promise<boolean> {
+  try { await fileSystem.stat(target); return true; } catch { return false; }
 }
 
 async function download(url: string, destination: string): Promise<void> {

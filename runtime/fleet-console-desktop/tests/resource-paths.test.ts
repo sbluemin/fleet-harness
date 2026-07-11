@@ -13,7 +13,7 @@ describe("desktop resource paths", () => {
     const paths = resolveDesktopResourcePaths(true, "/Applications/Fleet Console.app/Contents/Resources");
     expect(posix(paths.nodePath)).toMatch(/\.fleet\/desktop\/runtime\/node\//);
     expect(posix(paths.serviceRoot)).toMatch(/\.fleet\/desktop\/runtime\/console\/latest$/);
-    expect(paths.cliPath).toBe(path.join(paths.serviceRoot, "node_modules", "@dotobokuri", "fleet-console", "dist", "cli.mjs"));
+    expect(paths.cliPath).toBe(path.join(paths.serviceRoot, "dist", "cli.mjs"));
     // 자산은 dist 앵커(모듈 디렉터리 기준) — copy-entry-assets가 dist/assets·dist/build로 나르고, packaged에선 ASAR 내 dist가 모듈 위치다.
     expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-console-desktop\/(src|dist)\/build\/icon\.png$/);
     expect(posix(paths.entryPagePath)).toMatch(/runtime\/fleet-console-desktop\/(src|dist)\/assets\/entry\/index\.html$/);
