@@ -3847,6 +3847,31 @@
   pointer-events: auto;
 }
 
+/* .canvas-operation 프리픽스 필수 — hover 전개 규칙(.canvas-operation:hover .canvas-operation-icon-button, 0-3-0)이
+   width/padding을 24px로 되누르지 않도록 armed를 같은 특이도의 후순위로 둔다. */
+.canvas-operation .canvas-operation-icon-button.is-armed-close {
+  flex: none;
+  width: auto;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
+  background: color-mix(in oklch, var(--coral) 20%, transparent);
+  color: var(--coral);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 1;
+  pointer-events: auto;
+  animation: chip-close-arm 1.5s linear forwards;
+}
+
+.canvas-operation .canvas-operation-icon-button.is-armed-close:hover,
+.canvas-operation .canvas-operation-icon-button.is-armed-close:focus-visible {
+  background: color-mix(in oklch, var(--coral) 32%, transparent);
+  color: var(--coral);
+  outline: none;
+}
+
 /* 우측 앵커는 var(--space-2), 슬롯 폭은 24px이다. 따라서 rest dot 중심과 hover 닫기 중심은
    모두 우측 앵커+12px이며, padding·최소높이를 바꾸지 않아 x/y 편차가 1px 이하로 유지된다. */
 
@@ -3854,6 +3879,10 @@
   .canvas-operation-titlebar,
   .canvas-operation-icon-button {
     transition-duration: 0.01ms;
+  }
+
+  .canvas-operation-icon-button.is-armed-close {
+    animation: none;
   }
 }
 
