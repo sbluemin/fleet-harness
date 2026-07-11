@@ -59,6 +59,7 @@
   --surface-pillar: var(--ink-veil);
   --surface-rim: var(--hairline);
   --surface-rim-strong: var(--hairline-strong);
+  --surface-band: var(--canvas-sea-core);
 
   --identity-file-code: var(--aurora);
   --identity-file-markup: var(--brass);
@@ -155,6 +156,7 @@
   --surface-pillar: oklch(22% 0.05 248 / 86%);
   --surface-rim: oklch(64% 0.04 248 / 24%);
   --surface-rim-strong: oklch(72% 0.05 248 / 38%);
+  --surface-band: var(--ink-deep);
 
   --hairline: oklch(36% 0.035 248);
   --hairline-strong: oklch(48% 0.03 248);
@@ -197,6 +199,7 @@
   --surface-pillar: oklch(20% 0.008 252 / 88%);
   --surface-rim: oklch(62% 0.006 252 / 22%);
   --surface-rim-strong: oklch(70% 0.007 252 / 36%);
+  --surface-band: var(--ink-deep);
 
   --hairline: oklch(33% 0.006 252);
   --hairline-strong: oklch(45% 0.005 252);
