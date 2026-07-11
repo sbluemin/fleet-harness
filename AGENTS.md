@@ -1,49 +1,46 @@
+> **Instruction maintenance rule — risk-weighted minimalism**
+>
+> - Except for Fleet Wiki-governed instructions, treat each `AGENTS.md` and linked `CLAUDE.md` as always-loaded routing context, not a handbook. Keep a rule when its pre-work value outweighs recurring context and maintenance cost: normal exploration is unlikely to reveal it in time, violation is costly, and the fact is stable.
+> - Prefer directory-level ownership routes and non-obvious ownership, security, or operational invariants. Allow a rare file pointer only for a stable source of truth or authoring/generated boundary that materially prevents misrouting; never add exhaustive inventories or implementation walkthroughs.
+> - State each fact once at the nearest scope and retire stale or low-value guidance. Before removing still-required procedures, catalogs, or conventions, move them to reliable automation or on-demand documentation. Validate both the assembled instruction context and representative task outcomes under comparable prompt, tool, and retrieval conditions, and prune before adding.
+
 # Fleet
 
-> **A Multi-LLM Orchestration Kit**
->
-> A standalone multi-LLM orchestration kit.
-> The core purpose is to operate 8 carriers — Claude Code, Codex CLI, OpenCode Go, and Cursor Agent — through a single unified interface.
+Fleet is a multi-LLM orchestration kit. An Admiral host coordinates specialized Carrier personas through supported Agent CLI backends.
 
-## Structure
+## Domain map
 
-| Path | Description |
-|------|-------------|
-| `docs/` | **Developer Reference** — `fleet-development-reference.md` and `fleet-lightweight-followup.md`; **Operational Doctrine** — `admiral-workflow-reference.md`; **Admiral-only prompt/runtime architecture note** — `admiral-prompt-architecture.md`; plus the static landing page (`index.html`, `app.jsx`) |
-| `packages/` | First-party workspace packages: `core-process` (`@dotobokuri/core-process`), `core-agent` (`@dotobokuri/core-agent`), `core-unified-agent` (`@dotobokuri/core-unified-agent`), `fleet-admiral`, `fleet-carriers`, `core-infra`, and `fleet-wiki` |
-| `runtime/` | Runtime workspace packages: `fleet-cli` (CLI host and entry point — `runtime/fleet-cli/bin/fleet`, or `pnpm cli` from the repo root), `fleet-console` (the sole Console HTTP/REST/SSE/WebSocket/PTY/provider/plugin/state/UI owner), `fleet-desktop` (thin Electron native shell and standard-Node sidecar supervisor), and `fleet-plugins/*` (built-in console plugins such as `terminal`) |
-| `scripts/` | Repo maintenance scripts: core/agent boundary guards, publish helpers, and the node-pty postinstall fix |
+- **Admiral** — the host agent that plans, delegates, and integrates work.
+- **Carrier** — a specialized delegated persona backed by an Agent CLI executor.
+- **Theater** — a Fleet Console project root and the boundary for its local context.
+- **Operation** — a Console-managed unit inside a Theater.
 
-> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `runtime/fleet-console/AGENTS.md`, `runtime/fleet-desktop/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-admiral/AGENTS.md`, `packages/fleet-carriers/AGENTS.md`, `packages/core-infra/AGENTS.md`, and `packages/fleet-wiki/AGENTS.md`.
+## Directory index
 
-## TypeScript File Structure
+| Directory | Responsibility |
+|---|---|
+| `docs/` | Human-facing architecture, development, and operating references |
+| `packages/` | Reusable core and Fleet domain packages |
+| `runtime/fleet-cli/` | Terminal host and CLI composition root |
+| `runtime/fleet-console/` | Standalone Console service and web product |
+| `runtime/fleet-desktop/` | Optional thin native shell for Fleet Console |
+| `runtime/fleet-plugins/` | Built-in Console plugin implementations |
+| `scripts/` | Repository generation, packaging, and boundary gates |
+| `.agents/skills/` | On-demand task workflows and verification procedures |
+| `.changelog.d/` | Unreleased bilingual changelog fragments |
+| `examples/` | Reference plugin integrations |
+| `.fleet/knowledge/` | Workspace-local Fleet Wiki data and governance |
 
-All `.ts` source files must follow this top-to-bottom declaration order:
+## Architecture constraints
 
-```
-imports → types/interfaces → constants → functions
-```
+- Runtime hosts own composition, process lifecycle, UI, and host adapters. Reusable packages must not reach back into a host.
+- `core-*` packages are Fleet-domain-agnostic. Fleet semantics belong in `fleet-*` packages or runtime hosts; dependencies flow from runtime to Fleet domains to core capabilities.
+- Fleet CLI and Fleet Console are peer hosts. Console owns its service, browser, and plugin-host lifecycle; built-in plugin implementations live under `runtime/fleet-plugins/`, and Desktop remains a shell over the Console public protocol.
+- Cross-package construction uses explicit dependency objects. Do not add DI containers, service locators, or hidden cross-layer lookups.
+- Consume declared package exports only. Source deep imports create shadow APIs and are forbidden across package boundaries.
 
-- **Imports** — external packages first, then internal modules.
-- **Types / Interfaces** — `interface` and `type` declarations only; no logic.
-- **Constants** — `const` declarations. Module-private constants are `const` (unexported); public ones are `export const`.
-- **Functions** — exported functions first, then internal helpers at the bottom.
+## Repository-wide operational invariants
 
-Do **not** interleave constants and functions, or declare types mid-file.
-
-## Git Guidelines
-
-- **Commit Message Format:** Strictly adhere to the [Conventional Commits](https://www.conventionalcommits.org/) specification.
-  - Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
-- **Language:** All commit messages **MUST be written in English**.
-
-## Changelog Guidelines
-
-- **Compiler-owned outputs:** `CHANGELOG.md` and `CHANGELOG.ko.md` are compiler-managed outputs. Keep both `[Unreleased]` sections present and empty; do not manually add or edit release entries in either file.
-- **Format:** Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions (`Added`, `Changed`, `Fixed`, `Removed`, `Breaking Changes` subsections).
-- **Versioning:** Each release maps to a git tag (e.g., `## [0.1.1] - YYYY-MM-DD`). `CHANGELOG.ko.md` preserves the English H1, prose, blank lines, version/date headings, English section headings, package tags, and `Release v...` stubs byte-for-byte; only bullet summaries are Korean.
-- **Fragment SSoT:** Unreleased notes live in consolidated product + section `.changelog.d/<product>-<section>.md` fragments; PR boundaries do not determine fragment boundaries. Do not add `.changelog.d/README.md`; only `.gitkeep`, product/section fragments, `.changelog.d/AGENTS.md`, and its `.changelog.d/CLAUDE.md` symlink belong there.
-- **Fragment Format:** Each fragment uses frontmatter with exactly one `section: Added|Changed|Fixed|Removed|Breaking Changes`. Every `- [tag] English summary.` line must be immediately followed by exactly one `  ko: 한글 요약.` line (two leading spaces): English summaries are ASCII-only, Korean summaries are non-empty and contain Hangul, and blank, orphaned, duplicate, or differently indented Korean lines are invalid.
-- **Package Prefixes:** Fragment bullets must begin with one or more package tags from this vocabulary only: `[core-process]`, `[core-agent]`, `[core-unified-agent]`, `[core-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, `[fleet-cli]`. The retired tag names `core`, `wiki`, `wiki-web`, `agent-core`, `unified-agent`, `mcp-server`, `agent`, `carriers`, and `fleet-infra` must not be used as bracketed changelog prefixes. Do not include `@dotobokuri/` scopes in changelog tags.
-- **Entry Granularity:** Each locale summary is one physical line describing the user-/operator-visible change; do **not** reference source files, function names, line numbers, or implementation details. English remains plain ASCII English and Korean is a natural Korean translation.
-- **Korean terminology and protected tokens:** Use 캐리어, 워크트리, 패널, 플러그인, 런타임, 세션, 캐시, 폴백, 릴리스, and 명령 팔레트. Preserve Fleet, Fleet Console, Admiral, Theater, Operation, provider/carrier/product names, API, CLI, ACP, MCP, SSE, and the exact text and multiplicity of backtick spans, URLs, CLI flags/options, version strings, environment variables, identifiers, file paths, route paths, and literal protocol/status values.
+- Commits use English Conventional Commits.
+- Unreleased notes live in `.changelog.d/`; `CHANGELOG.md` and `CHANGELOG.ko.md` are compiler-owned outputs and must not be edited directly.
+- Bilingual changelog summaries describe user-visible behavior and preserve literal or protocol tokens across locales; exact fragment organization, syntax, and tags belong to the `.changelog.d/` instructions and changelog compiler.

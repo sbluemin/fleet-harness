@@ -38,7 +38,7 @@
 
 - [ ] Added one `.changelog.d/*.md` fragment, or applied the `no-changelog` label intentionally.
 - [ ] Fragment `section:` is one of `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`.
-- [ ] Fragment bullets are English and use only `[core-agent]`, `[core-unified-agent]`, `[fleet-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, or `[fleet-cli]`.
+- [ ] Fragment bullets are English and use only `[core-process]`, `[core-agent]`, `[core-unified-agent]`, `[core-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, or `[fleet-cli]`.
 
 ## Related Issues / PRs
 

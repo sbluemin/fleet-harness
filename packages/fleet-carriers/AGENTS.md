@@ -1,43 +1,23 @@
-# fleet-carriers Doctrine
+# fleet-carriers
 
-`packages/fleet-carriers` owns Fleet's default carrier persona catalog and the full carrier runtime implementation.
+Default Carrier personas and the complete Carrier dispatch, job, and state runtime.
 
-## Owns
+## Directory index
 
-- Default carrier persona metadata under `src/personas/`
-- Carrier runtime constants under `src/constants.ts`
-- Carrier runtime construction through `createCarrierRuntime(deps)`
-- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, sortie helpers, and carrier job stream event types plus the Set-based stream handler registry (`dispatch/types.ts` + `dispatch/framework.ts`)
-- `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
-- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/core-infra/fs-store`'s `withDirectoryLock`; `initStore(dir?)` resolves the data directory via `getFleetDataDir()` from `@dotobokuri/core-infra/data-dir` when no `dir` override is supplied; legacy `agentMode` values are ignored and carriers run through CLI dispatch mode.
-- Explicit default carrier registration via `registerDefaultCarriers()`
-- Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior
+| Directory | Responsibility |
+|---|---|
+| `src/personas/` | Default Carrier catalog |
+| `src/dispatch/` | Delegation, Task Force execution, and stream events |
+| `src/jobs/` | Detached job lifecycle and archive |
+| `src/store/` | Carrier overrides and resolved snapshots |
+| `tests/` | Persona, dispatch, job, and store contracts |
 
-## Must Not Own
+## Constraints
 
-- Host runtime wiring, message renderers, UI components, or host adapters
-- `fleet-admiral` protocol policy implementation
-- Raw filesystem, process, network, or settings I/O beyond carrier-owned state-store gates
-
-## Dependency Rules
-
-- The DI layer order is one-way: `fleet-cli` -> `fleet-carriers` -> `core-infra`.
-- This package sits above `core-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
-- `createCarrierRuntime(deps)` is the public construction boundary for carrier runtime services. Do not require callers to assemble dispatch/jobs/store/stream internals independently.
-- This package may import `@dotobokuri/core-infra`, `@dotobokuri/core-agent`, `@dotobokuri/core-unified-agent`, and `typebox`.
-- This package MUST NOT import `fleet-cli`, host UI/runtime packages, or host adapters.
-- Personas may declare executor tool IDs and builtin external MCP server IDs as opaque strings without importing host/UI/wiki packages.
-
-## Testing Doctrine
-
-- Use `clearRegisteredCarriers()` for dispatch framework isolation (`resetCarrierRegistryForTests()` is an equivalent wrapper).
-- Unregister stream event handlers returned from `registerStreamHandler()` for event registry isolation.
-- Use `resetStoreForTests()` plus `initStore(tempDir)` for store isolation.
-
-## TypeScript File Structure
-
-All `.ts` files must follow:
-
-```text
-imports -> types/interfaces -> constants -> functions
-```
+- This package owns Carrier runtime and defaults, not host UI, host lifecycle, or Admiral protocol policy.
+- Callers construct one Carrier runtime; they must not independently assemble its dispatch, jobs, stream, and store internals.
+- Dependencies point only toward core capabilities. Do not import Admiral or runtime host packages.
+- Persistent state stores operator overrides; defaults and healing are applied when building the resolved read model.
+- `carrier_dispatch` is the sole Carrier delegation surface and executes through the callback executor path; do not add a parallel orchestration API.
+- Carrier execution has one CLI-dispatch path; persisted legacy mode fields are ignored.
+- Persona tool and MCP identifiers are opaque values and must not create dependencies on the packages that implement them.
