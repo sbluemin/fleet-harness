@@ -52,14 +52,17 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
     await reconcileConsoleInstallations(options.paths, dependencies.fileSystem);
     await dependencies.fileSystem.rm(staging);
     await dependencies.fileSystem.mkdir(staging);
-    const npmConfiguration = path.join(staging, ".npmrc");
-    await dependencies.fileSystem.writeFile(npmConfiguration, "");
+    const npmUserConfiguration = path.join(staging, ".npmrc");
+    const npmGlobalConfiguration = path.join(staging, ".npmrc-global");
+    await dependencies.fileSystem.writeFile(npmUserConfiguration, "");
+    await dependencies.fileSystem.writeFile(npmGlobalConfiguration, "");
     // npm 셔뱅(#!/usr/bin/env node)·Windows .cmd 직접 실행은 시스템 Node 부재/spawn 보안 정책에서 깨진다 —
     // 번들 node 바이너리로 npm-cli.js를 직접 구동해야 postinstall(node-pty)도 번들 node의 PATH로 돈다.
     try {
-      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`], { env: createConsoleInstallerEnvironment(dependencies.environment, npmConfiguration) });
+      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`], { env: createConsoleInstallerEnvironment(dependencies.environment, npmUserConfiguration, npmGlobalConfiguration) });
     } finally {
-      await dependencies.fileSystem.rm(npmConfiguration);
+      await dependencies.fileSystem.rm(npmUserConfiguration);
+      await dependencies.fileSystem.rm(npmGlobalConfiguration);
     }
     await normalizePrefixInstallation(staging, options.packageName, dependencies.fileSystem);
     await verifyInstallation(staging, options.version, options.nodeRuntimeVersion, dependencies.fileSystem);
@@ -88,7 +91,7 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
   };
 }
 
-export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty.npmrc")): NodeJS.ProcessEnv {
+export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmUserConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty.npmrc"), npmGlobalConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty-global.npmrc")): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(source)) {
     const normalizedKey = key.toLowerCase();
@@ -97,8 +100,8 @@ export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = pr
   return {
     ...environment,
     npm_config_registry: "https://registry.npmjs.org/",
-    npm_config_userconfig: npmConfiguration,
-    npm_config_globalconfig: npmConfiguration,
+    npm_config_userconfig: npmUserConfiguration,
+    npm_config_globalconfig: npmGlobalConfiguration,
   };
 }
 

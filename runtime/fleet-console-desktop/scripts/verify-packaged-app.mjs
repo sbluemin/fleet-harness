@@ -42,8 +42,8 @@ async function verifyApplication(application, platform) {
   await access(application.asar);
   if (existsSync(join(application.resourcesDirectory, "sidecar"))) throw new Error("Embedded sidecar directory is forbidden");
   await assertShellOnlyAsar(application.asar);
-  const expectedArchitecture = expectedArchitectureFromDirectory(application.resourcesDirectory);
-  if (expectedArchitecture) await assertElectronArchitecture(application.fuseBinary, platform, expectedArchitecture);
+  const expectedArchitecture = expectedArchitectureForApplication(application.resourcesDirectory, platform);
+  await assertElectronArchitecture(application.fuseBinary, platform, expectedArchitecture);
   await assertFuses(application.fuseBinary);
   await assertMacSignature(application, platform);
   if (platform === "win32" && requiresReleaseSignature) await assertWindowsSignature(application.electronBinary);
@@ -145,6 +145,21 @@ export function expectedArchitectureFromDirectory(resourcesDirectory) {
     current = dirname(current);
   }
   return null;
+}
+
+export function expectedArchitectureForApplication(resourcesDirectory, platform, environment = process.env, nativeArchitecture = process.arch) {
+  const fromDirectory = expectedArchitectureFromDirectory(resourcesDirectory);
+  if (fromDirectory) return fromDirectory;
+  const target = environment.FLEET_DESKTOP_TARGET;
+  if (target) {
+    const match = /^(darwin|linux|win32)-(arm64|x64)$/.exec(target);
+    if (!match || match[1] !== platform) throw new Error(`FLEET_DESKTOP_TARGET cannot determine architecture for ${platform} package verification`);
+    return match[2];
+  }
+  const contextPlatform = environment.FLEET_DESKTOP_PLATFORM;
+  if (contextPlatform && contextPlatform !== platform) throw new Error(`FLEET_DESKTOP_PLATFORM does not match ${platform} package verification`);
+  if (nativeArchitecture === "arm64" || nativeArchitecture === "x64") return nativeArchitecture;
+  throw new Error(`Unable to determine expected Electron architecture for ${platform} package verification`);
 }
 
 async function signAndVerifyLinuxRelease(releaseDirectory) {

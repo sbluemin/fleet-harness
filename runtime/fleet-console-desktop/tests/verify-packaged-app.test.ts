@@ -38,6 +38,10 @@ describe("release package verification", () => {
       await expect(verifier.assertElectronArchitecture(binary, "win32", "x64")).resolves.toBeUndefined();
       await expect(verifier.assertElectronArchitecture(binary, "win32", "arm64")).rejects.toThrow("Electron binary target mismatch");
       expect(verifier.expectedArchitectureFromDirectory(path.join(directory, "win-x64-unpacked", "resources"))).toBe("x64");
+      const fallbackExpectedArchitecture = verifier.expectedArchitectureForApplication(path.join(directory, "win-unpacked", "resources"), "win32", { FLEET_DESKTOP_TARGET: "win32-x64" }, "arm64");
+      expect(fallbackExpectedArchitecture).toBe("x64");
+      await expect(verifier.assertElectronArchitecture(binary, "win32", fallbackExpectedArchitecture)).resolves.toBeUndefined();
+      expect(() => verifier.expectedArchitectureForApplication(path.join(directory, "win-unpacked", "resources"), "win32", {}, null)).toThrow("Unable to determine expected Electron architecture");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
