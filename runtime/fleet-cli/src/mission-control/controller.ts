@@ -23,17 +23,10 @@ import type {
   MissionControlStateKind,
 } from "./types.js";
 
-interface ActiveNative {
-  readonly cleanup?: () => void;
-  readonly profile: AgentCliProfile;
-  readonly terminalExclusive: true;
-}
-
 interface ActivePty {
   readonly cleanup?: () => void;
   readonly host: PtyHost;
   readonly profile: AgentCliProfile;
-  readonly terminalExclusive?: false;
   readonly view: PtyView;
 }
 
@@ -53,8 +46,6 @@ interface SystemMenuPanelOptions {
 type MissionControlControllerWithReleaseSetter = MissionControlController & {
   readonly setRelease: (release: NonNullable<CreateMissionControlControllerOptions["release"]>) => void;
 };
-
-type ActiveLaunch = ActiveNative | ActivePty;
 
 const EMPTY_MOUSE_PROTOCOL_STATE: MouseProtocolState = {
   activeEncoding: "default",
@@ -76,7 +67,7 @@ export function createMissionControlController(options: CreateMissionControlCont
   let lastExit: PtyExitEvent | undefined;
   let lastLaunchError: string | undefined;
   let lastLaunchWarning: string | undefined;
-  let active: ActiveLaunch | undefined;
+  let active: ActivePty | undefined;
   let activePanel: MissionControlPanel | undefined;
   let cols = 80;
   let rows = 0;
@@ -272,7 +263,6 @@ export function createMissionControlController(options: CreateMissionControlCont
         createPtyView: options.createPtyView ?? ((viewCols, viewRows) => new PtyView(viewCols, viewRows)),
         onActive: setActiveEmbeddedLaunch,
         onExit: completeActiveLaunch,
-        onNativeActive: setActiveNativeLaunch,
         onRenderRequest: options.onRenderRequest,
         profile,
         rows,
@@ -382,17 +372,6 @@ export function createMissionControlController(options: CreateMissionControlCont
 
   function setActiveEmbeddedLaunch(launch: MissionControlEmbeddedLaunch): void {
     active = launch;
-    state = "active";
-    stopShimmer();
-    suppressNextExit = false;
-  }
-
-  function setActiveNativeLaunch(profile: AgentCliProfile): void {
-    active = {
-      cleanup: profile.cleanup,
-      profile,
-      terminalExclusive: true,
-    };
     state = "active";
     stopShimmer();
     suppressNextExit = false;
@@ -655,8 +634,8 @@ function isFailedExit(event: PtyExitEvent): boolean {
   return (event.exitCode !== undefined && event.exitCode !== 0) || (event.signal !== undefined && event.signal !== 0);
 }
 
-function isActivePty(active: ActiveLaunch | undefined): active is ActivePty {
-  return active !== undefined && active.terminalExclusive !== true;
+function isActivePty(active: ActivePty | undefined): active is ActivePty {
+  return active !== undefined;
 }
 
 function normalizeRenderedRows(lines: readonly string[], rows: number): string[] {

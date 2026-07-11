@@ -4,7 +4,6 @@ import { createRequire } from "node:module";
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
 import { runDesktopDev } from "./desktop-command.js";
-import { runNativeApp } from "./native-app.js";
 import { readFleetCliRelease } from "./release.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
@@ -44,9 +43,7 @@ if (options.help) {
   process.exit(0);
 }
 
-const runFleetApp = options.nativeTerminal ? runNativeApp : runApp;
-
-runFleetApp({
+runApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
 }).catch((error: unknown) => {

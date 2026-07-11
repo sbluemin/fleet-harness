@@ -1,6 +1,6 @@
 # Fleet CLI Doctrine
 
-`runtime/fleet-cli` is the primary Fleet CLI entry point (`fleet`). The default boot path embeds a local CLI process inside a vertical two-pane Fleet TUI; `fleet --native` is the terminal-exclusive exception.
+`runtime/fleet-cli` is the primary Fleet CLI entry point (`fleet`). It embeds a local CLI process inside a vertical two-pane Fleet TUI.
 
 ## Package Identity & Boundary
 
@@ -40,17 +40,13 @@ The default app uses the permanent vertical two-pane layout:
 - **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
 - **Controls barrel**: `src/controls/index.ts` is an explicit package-local barrel; it is not a public workspace surface.
 - **Process runtime**: Cross-subsystem binary resolution and Windows shim wrapping are consumed from `@dotobokuri/core-agent`; update and agent-cli subsystems use that root API.
-- **Native-terminal exception**: `fleet --native` / internal `nativeTerminal` starts with Mission Control only, stops the Fleet TUI during launch, then runs the selected child inside a dedicated node-pty raw byte passthrough. The child owns the PTY while Fleet stays on the master side to relay stdin/stdout bytes directly and inject mid-session carrier result reminders through the shared `@dotobokuri/fleet-admiral` reminder endpoint and host programmatic input. After child exit, Fleet resumes Mission Control. This path creates no lower Fleet PTY, Mission Bridge, Job Bar, xterm-backed selected-child viewport, or encoded `PtyHost` for the selected child.
-
 ## Input Ownership
 
 - The old Fleet input mode system is retired. There is no mode toggle and no Fleet-owned global `Ctrl+C`, `Ctrl+Q`, or `Ctrl+T` shortcut.
 - Before launch, operator keyboard input belongs to Mission Control launcher and panel controls.
-- After launch in the default two-pane path, operator keyboard input belongs to the active embedded Agent CLI PTY.
-- After launch in `fleet --native`, operator keyboard input is relayed as raw bytes to the foreground child process that owns the dedicated native PTY.
+- After launch, operator keyboard input belongs to the active embedded Agent CLI PTY.
 - Fleet process exit is driven by launcher Exit selection, child process/PTY lifecycle, or process lifecycle cleanup signals; do not add a Fleet global exit shortcut.
 - **Mouse forwarding (Option C)**: Outer terminal motion is enabled via `?1000h?1002h?1006h`. When the active child is in app-mouse mode, press/motion/release/wheel events are forwarded as raw SGR sequences in local coordinates. Non-app-mouse events fall back to viewport scrollback or alt-buffer arrow navigation.
-- **Native terminology**: CLI `--native` / `nativeTerminal` means terminal-exclusive boot. It is unrelated to Fleet persona injection — dedicated CLIs now always launch with the persona injected, since the former `SessionOptions.native` / `FLEET_NATIVE` injection-skip mode was removed in #46. Fleet Console terminal sessions now spawn and observe their own Agent CLI sessions in-process rather than registering a fleet-cli host.
 
 ## Host Cursor Policy
 
