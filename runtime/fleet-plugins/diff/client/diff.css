@@ -621,10 +621,17 @@
   min-height: 0;
   overflow: hidden;
   container-type: inline-size;
+  transition: grid-template-columns var(--duration-base) var(--ease-spring);
 }
 
-.history-root.has-detail {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+@media (prefers-reduced-motion: reduce) {
+  .history-root {
+    transition-duration: 0.01ms;
+  }
+}
+
+.history-root.is-dragging {
+  transition: none;
 }
 
 .history-list-pane,
@@ -640,8 +647,19 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.history-root.has-detail .history-list-pane {
-  grid-column: 2;
+.history-divider {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--surface-rim);
+  transition: background 140ms;
+}
+
+.history-divider:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.history-divider:active {
+  background: color-mix(in oklch, var(--brass) 80%, transparent);
 }
 
 .history-toolbar {

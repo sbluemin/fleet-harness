@@ -9,9 +9,22 @@ interface ListPaneWidthInput {
   readonly dividerWidth: number;
 }
 
+interface PointerDragEventTarget {
+  addEventListener(type: string, listener: (event: Event) => void): void;
+  removeEventListener(type: string, listener: (event: Event) => void): void;
+}
+
+interface PointerDragLifecycleInput {
+  readonly documentTarget: PointerDragEventTarget;
+  readonly windowTarget: PointerDragEventTarget;
+  readonly onMove: (event: Event) => void;
+  readonly onFinish: () => void;
+}
+
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
 export const HUNK_PANE_MIN_WIDTH = 140;
+export const HISTORY_DETAIL_PANE_MIN_WIDTH = 140;
 export const DIFF_DIVIDER_WIDTH = 4;
 
 const NO_OP_SENTINEL = null;
@@ -34,4 +47,36 @@ export function clampListPaneWidth({
 export function buildDiffGridTemplate(listPaneWidth: number): string {
   const preservedLeftWidth = HUNK_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
   return `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedLeftWidth}px)))`;
+}
+
+export function buildHistoryGridTemplate(listPaneWidth: number): string {
+  const preservedLeftWidth = HISTORY_DETAIL_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
+  return `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedLeftWidth}px)))`;
+}
+
+export function installPointerDragLifecycle({ documentTarget, windowTarget, onMove, onFinish }: PointerDragLifecycleInput): () => void {
+  let active = true;
+  const removeListeners = () => {
+    documentTarget.removeEventListener("pointermove", onMove);
+    documentTarget.removeEventListener("pointerup", finish);
+    documentTarget.removeEventListener("pointercancel", finish);
+    windowTarget.removeEventListener("blur", finish);
+  };
+  const finish = () => {
+    if (!active) return;
+    active = false;
+    removeListeners();
+    onFinish();
+  };
+  const dispose = () => {
+    if (!active) return;
+    active = false;
+    removeListeners();
+  };
+
+  documentTarget.addEventListener("pointermove", onMove);
+  documentTarget.addEventListener("pointerup", finish);
+  documentTarget.addEventListener("pointercancel", finish);
+  windowTarget.addEventListener("blur", finish);
+  return dispose;
 }

@@ -26,33 +26,68 @@ interface FlatRow {
   readonly isLoading: boolean;
 }
 
+interface FilterDescendantLoadOptions {
+  readonly entries: readonly FolderEntry[];
+  readonly cachedResults: ReadonlyMap<string, FolderListResult>;
+  readonly files: PluginFilesClient;
+  readonly showHidden: boolean;
+  readonly isCurrent: () => boolean;
+  readonly onFolderResult: (relativePath: string, result: FolderListResult) => void;
+}
+
 const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
+export const FILTER_DIRECTORY_CAP = 500;
 
 export function isCurrentContextRequest(requestContextKey: string, currentContextKey: string): boolean {
   return requestContextKey === currentContextKey;
 }
 
-function hasFilterMatch(
-  entries: readonly FolderEntry[],
-  childResults: Map<string, FolderListResult>,
-  low: string,
-  showHidden: boolean,
-): boolean {
-  for (const e of entries) {
-    if (!showHidden && e.name.startsWith(".")) continue;
-    if (e.name.toLowerCase().includes(low)) return true;
-    if (e.kind === "dir") {
-      const children = childResults.get(e.relativePath)?.entries;
-      if (children && hasFilterMatch(children, childResults, low, showHidden)) return true;
+export async function loadFilterDescendants({ entries, cachedResults, files, showHidden, isCurrent, onFolderResult }: FilterDescendantLoadOptions): Promise<void> {
+  const pending: FolderEntry[] = [];
+  const knownResults = new Map(cachedResults);
+  const queuedPaths = new Set<string>();
+  const visitedFolders = new Set<string>();
+  let requestCount = 0;
+  const enqueue = (candidates: readonly FolderEntry[]) => {
+    for (const candidate of candidates) {
+      if (!isVisibleDirectory(candidate, showHidden) || queuedPaths.has(candidate.relativePath)) continue;
+      if (queuedPaths.size >= FILTER_DIRECTORY_CAP) return;
+      queuedPaths.add(candidate.relativePath);
+      pending.push(candidate);
+    }
+  };
+
+  enqueue(entries);
+  while (pending.length > 0 && isCurrent()) {
+    const entry = pending.shift();
+    if (!entry) return;
+    const cached = knownResults.get(entry.relativePath);
+    if (cached) {
+      if (visitedFolders.has(cached.relativePath)) continue;
+      visitedFolders.add(cached.relativePath);
+      enqueue(cached.entries);
+      continue;
+    }
+    if (requestCount >= FILTER_DIRECTORY_CAP) return;
+    requestCount += 1;
+    try {
+      const result = await files.listFolder(entry.relativePath);
+      if (!isCurrent()) return;
+      knownResults.set(entry.relativePath, result);
+      onFolderResult(entry.relativePath, result);
+      if (visitedFolders.has(result.relativePath)) continue;
+      visitedFolders.add(result.relativePath);
+      enqueue(result.entries);
+    } catch {
+      // 권한 오류나 사라진 폴더는 해당 하위 트리만 건너뛴다.
     }
   }
-  return false;
 }
 
-function buildFlatRows(
+export function buildFlatRows(
   entries: readonly FolderEntry[],
   depth: number,
   selectedPath: string | null,
@@ -61,31 +96,33 @@ function buildFlatRows(
   childResults: Map<string, FolderListResult>,
   low: string,
   showHidden: boolean,
+  ancestorFolders: ReadonlySet<string> = new Set(),
 ): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const entry of entries) {
     if (!showHidden && entry.name.startsWith(".")) continue;
+    const childResult = childResults.get(entry.relativePath);
+    const children = childResult?.entries;
+    const folderIdentity = childResult?.relativePath ?? entry.relativePath;
+    const isCycle = entry.kind === "dir" && ancestorFolders.has(folderIdentity);
+    const childMatch = entry.kind === "dir" && !isCycle && hasFilterMatch(children ?? [], childResults, low, showHidden);
     if (low) {
       const directMatch = entry.name.toLowerCase().includes(low);
-      const childMatch = entry.kind === "dir" && hasFilterMatch(
-        childResults.get(entry.relativePath)?.entries ?? [],
-        childResults,
-        low,
-        showHidden,
-      );
       if (!directMatch && !childMatch) continue;
     }
+    const isExpanded = expandedDirs.has(entry.relativePath) || Boolean(low && childMatch);
     rows.push({
       entry,
       depth,
       isSelected: selectedPath === entry.relativePath,
-      isExpanded: expandedDirs.has(entry.relativePath),
+      isExpanded,
       isLoading: loadingDirs.has(entry.relativePath),
     });
-    if (entry.kind === "dir" && expandedDirs.has(entry.relativePath)) {
-      const children = childResults.get(entry.relativePath)?.entries;
+    if (entry.kind === "dir" && isExpanded && !isCycle) {
       if (children) {
-        rows.push(...buildFlatRows(children, depth + 1, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden));
+        const nextAncestorFolders = new Set(ancestorFolders);
+        nextAncestorFolders.add(folderIdentity);
+        rows.push(...buildFlatRows(children, depth + 1, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, nextAncestorFolders));
       }
     }
   }
@@ -114,6 +151,10 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
   filesRef.current = files;
   const contextKeyRef = useRef(contextKey);
   contextKeyRef.current = contextKey;
+  const childResultsRef = useRef<Map<string, FolderListResult>>(childResults);
+  childResultsRef.current = childResults;
+  const filterRequestRef = useRef(0);
+  const isFiltering = Boolean(filterText);
 
   useEffect(() => {
     if (!theaterId) return;
@@ -138,6 +179,28 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
       setError(e instanceof Error ? e.message : "Unable to load folder");
     });
   }, [contextKey, theaterId, currentPath, files]);
+
+  useEffect(() => {
+    const requestId = ++filterRequestRef.current;
+    if (!isFiltering || !result) return;
+    let active = true;
+    const requestContextKey = contextKey;
+    const isCurrent = () => active
+      && requestId === filterRequestRef.current
+      && isCurrentContextRequest(requestContextKey, contextKeyRef.current);
+    void loadFilterDescendants({
+      entries: result.entries,
+      cachedResults: childResultsRef.current,
+      files,
+      showHidden,
+      isCurrent,
+      onFolderResult: (relativePath, folderResult) => {
+        if (!isCurrent()) return;
+        setChildResults((prev) => new Map(prev).set(relativePath, folderResult));
+      },
+    });
+    return () => { active = false; };
+  }, [contextKey, files, isFiltering, result, showHidden]);
 
   useEffect(() => {
     const el = treeRef.current;
@@ -399,6 +462,32 @@ export function FileTree({ contextKey, contextRelPath, files, theaterId, selecte
       </div>
     </div>
   );
+}
+
+function hasFilterMatch(
+  entries: readonly FolderEntry[],
+  childResults: Map<string, FolderListResult>,
+  low: string,
+  showHidden: boolean,
+  visitedFolders: ReadonlySet<string> = new Set(),
+): boolean {
+  for (const e of entries) {
+    if (!showHidden && e.name.startsWith(".")) continue;
+    if (e.name.toLowerCase().includes(low)) return true;
+    if (e.kind === "dir") {
+      const result = childResults.get(e.relativePath);
+      if (result && !visitedFolders.has(result.relativePath)) {
+        const nextVisitedFolders = new Set(visitedFolders);
+        nextVisitedFolders.add(result.relativePath);
+        if (hasFilterMatch(result.entries, childResults, low, showHidden, nextVisitedFolders)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isVisibleDirectory(entry: FolderEntry, showHidden: boolean): boolean {
+  return entry.kind === "dir" && (showHidden || !entry.name.startsWith("."));
 }
 
 interface FlatTreeRowProps {
