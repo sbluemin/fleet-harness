@@ -115,7 +115,9 @@ function findFuseBinary(resourcesDirectory, electronBinary, platform) {
 
 async function assertFuses(electronBinary) {
   const wire = await getCurrentFuseWire(electronBinary);
-  const required = [[FuseV1Options.RunAsNode, FuseState.DISABLE], [FuseV1Options.EnableNodeOptionsEnvironmentVariable, FuseState.DISABLE], [FuseV1Options.EnableNodeCliInspectArguments, FuseState.DISABLE], [FuseV1Options.EnableEmbeddedAsarIntegrityValidation, FuseState.ENABLE], [FuseV1Options.OnlyLoadAppFromAsar, FuseState.ENABLE]];
+  // GrantFileProtocolExtraPrivileges=ENABLE도 검증한다 — 이 fuse가 꺼지면 렌더러가 asar 내부 엔트리를
+  // file://로 못 읽어 부팅이 ERR_FILE_NOT_FOUND로 깨지므로, 부팅 필수 계약으로서 회귀를 여기서 잡는다.
+  const required = [[FuseV1Options.RunAsNode, FuseState.DISABLE], [FuseV1Options.EnableNodeOptionsEnvironmentVariable, FuseState.DISABLE], [FuseV1Options.EnableNodeCliInspectArguments, FuseState.DISABLE], [FuseV1Options.EnableEmbeddedAsarIntegrityValidation, FuseState.ENABLE], [FuseV1Options.OnlyLoadAppFromAsar, FuseState.ENABLE], [FuseV1Options.GrantFileProtocolExtraPrivileges, FuseState.ENABLE]];
   for (const [fuse, expected] of required) if (wire[fuse] !== expected) throw new Error(`Electron fuse ${fuse} is not configured securely`);
 }
 

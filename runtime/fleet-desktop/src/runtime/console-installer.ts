@@ -99,7 +99,10 @@ export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = pr
   for (const [key, value] of Object.entries(source)) {
     const normalizedKey = key.toLowerCase();
     if (value === undefined || normalizedKey === "node_options" || normalizedKey.startsWith("npm_config_")) continue;
-    if (normalizedKey === "path") { pathKey = key; existingPath = value; continue; }
+    // Windows 환경변수는 대소문자 무시라 PATH/Path를 하나로 보지만, POSIX는 대소문자를 구분하므로 정확히 PATH만
+    // 경로 변수로 취급한다(소문자 path 등은 별개 변수로 그대로 보존) — 번들 node bin을 엉뚱한 키에 붙이지 않게.
+    const isPathKey = platform === "win32" ? normalizedKey === "path" : key === "PATH";
+    if (isPathKey) { pathKey = key; existingPath = value; continue; }
     environment[key] = value;
   }
   // 번들 node의 bin을 PATH 맨 앞에 둔다. node-pty 등의 npm lifecycle 스크립트는 `sh -c "node …"`로 PATH에서

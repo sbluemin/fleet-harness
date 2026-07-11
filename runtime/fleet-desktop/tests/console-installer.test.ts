@@ -131,4 +131,10 @@ describe("console installer environment PATH", () => {
     const env = createConsoleInstallerEnvironment({ PATH: "/safe/bin" }, "/s/.npmrc", "/s/.npmrc-global");
     expect(env.PATH).toBe("/safe/bin");
   });
+
+  it("does not treat a lowercase 'path' as PATH on POSIX (case-sensitive env)", () => {
+    const env = createConsoleInstallerEnvironment({ path: "/not-the-path" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.path).toBe("/not-the-path");
+    expect(env.PATH).toBe("/runtime/node/bin");
+  });
 });
