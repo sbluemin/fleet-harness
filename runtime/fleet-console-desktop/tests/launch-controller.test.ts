@@ -46,4 +46,19 @@ describe("launch controller", () => {
     expect(onFirstRunFailure).not.toHaveBeenCalled();
     expect(pushEntry).toHaveBeenCalledTimes(1);
   });
+
+  it("does not push or hand off a window destroyed while procurement was pending", async () => {
+    let destroyed = false;
+    const pushEntry = vi.fn(async () => undefined);
+    const window = { isDestroyed: () => destroyed, webContents: { executeJavaScript: vi.fn(async () => undefined) }, show: vi.fn(), loadURL: vi.fn(async () => { throw new Error("destroyed window"); }) };
+    const controller = createLaunchController({
+      createWindow: vi.fn(async () => window),
+      pushEntry,
+      startOrAdopt: vi.fn(async () => { destroyed = true; return "http://127.0.0.1:4310/console/"; }),
+      handoffOrigin: vi.fn(),
+    });
+    await expect(controller.start()).resolves.toBe(window);
+    expect(pushEntry).toHaveBeenCalledOnce();
+    expect(window.loadURL).not.toHaveBeenCalled();
+  });
 });

@@ -3,6 +3,7 @@ import type { EntryPageSnapshot, EntryPageWebContents } from "./entry-page.js";
 export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "dev";
 
 export interface LaunchWindow {
+  isDestroyed?(): boolean;
   loadURL(url: string): Promise<void>;
   show(): void;
   webContents: EntryPageWebContents;
@@ -27,6 +28,7 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
     async start() {
       const window = await dependencies.createWindow();
       const push = async (state: RuntimeEntryState, detail?: string, progress?: number): Promise<void> => {
+        if (window.isDestroyed?.()) return;
         await dependencies.pushEntry(window.webContents, snapshotFor(state, dependencies.dev ?? false, detail, progress));
       };
       await push(dependencies.dev ? "dev" : "checking");
@@ -43,9 +45,10 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
           if (!dependencies.onFirstRunFailure || !await dependencies.onFirstRunFailure()) throw error;
         }
       }
+      if (window.isDestroyed?.()) return window;
       dependencies.handoffOrigin(new URL(consoleUrl).origin);
       await push("starting", "ready");
-      await window.loadURL(consoleUrl);
+      if (!window.isDestroyed?.()) await window.loadURL(consoleUrl);
       return window;
     },
   };

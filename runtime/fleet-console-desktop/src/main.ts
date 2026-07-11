@@ -67,6 +67,7 @@ async function boot(): Promise<void> {
     const launch = createLaunchController({
       createWindow: async () => {
         window = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
+        lifecycle.attachWindow(window);
         policy = applyWindowPolicy(window.webContents, async (external) => shell.openExternal(external));
         await window.loadFile(desktopResources.entryPagePath);
         return window;
