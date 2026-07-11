@@ -13,7 +13,7 @@ export interface ConsoleConflictHandlerDependencies {
   readonly showMessageBox: (options: ConsoleConflictDialogOptions) => Promise<unknown>;
 }
 
-const CONSOLE_CONFLICT_ERRORS = new Set(["cli_daemon_requires_confirmation", "console_lock_process_unhealthy"]);
+const CONSOLE_CONFLICT_ERRORS = new Set(["cli_daemon_requires_confirmation", "console_lock_foreign_process_unhealthy"]);
 const CONSOLE_CONFLICT_DIALOG: ConsoleConflictDialogOptions = {
   type: "warning",
   title: "Fleet Console is already running",

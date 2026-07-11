@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "../src/console-conflict.js";
 
 describe("Console conflict handling", () => {
-  it.each(["cli_daemon_requires_confirmation", "console_lock_process_unhealthy"])("classifies %s as a live external Console conflict", (message) => {
+  it.each(["cli_daemon_requires_confirmation", "console_lock_foreign_process_unhealthy"])("classifies %s as a live external Console conflict", (message) => {
     expect(isConsoleConflict(new Error(message))).toBe(true);
   });
 
-  it.each([new Error("console_lock_malformed: invalid_json"), new Error("sidecar_spawn_failed: missing node"), new Error("console_runtime_unavailable"), new Error("cli_daemon_requires_confirmation: extra"), "console_lock_process_unhealthy", null])("does not classify unrelated bootstrap failures as conflicts", (error) => {
+  it.each([new Error("console_lock_malformed: invalid_json"), new Error("sidecar_spawn_failed: missing node"), new Error("console_runtime_unavailable"), new Error("cli_daemon_requires_confirmation: extra"), new Error("console_lock_process_unhealthy"), "console_lock_foreign_process_unhealthy", null])("does not classify unrelated bootstrap failures as conflicts", (error) => {
     expect(isConsoleConflict(error)).toBe(false);
   });
 

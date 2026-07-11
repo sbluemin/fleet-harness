@@ -53,6 +53,6 @@ pnpm --filter @dotobokuri/fleet-console-desktop verify:package
 - **First install cannot finish:** the native dialog offers Retry or Quit only after staging cleanup; it never leaves a half-installed runtime.
 - **Registry unavailable:** an installed `latest` remains usable. If none exists, Retry after connectivity is restored.
 - **CLI-owned daemon exists:** do not delete a healthy lock or signal the process. Desktop only adopts a matching desktop owner.
-- **A live Console lock is unhealthy:** Desktop shows one warning, then exits. Stop or quit that Console before reopening Desktop; Desktop does not kill it.
+- **A live foreign Console lock is unhealthy:** Desktop shows one warning, then exits. Stop or quit that Console before reopening Desktop; Desktop does not kill it. An owned sidecar that cannot terminate remains a normal startup failure.
 - **Protocol is newer than the shell:** Desktop keeps the status passive and opens the Fleet releases page; it does not download a new shell automatically.
 - **Provider unavailable:** start Desktop from an environment where the provider CLI is on `PATH`; Desktop does not provide provider discovery.
