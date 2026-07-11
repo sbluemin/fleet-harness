@@ -20,6 +20,16 @@ describe("registry checker", () => {
     expect(fileSystem.writeFile).toHaveBeenLastCalledWith("/runtime/registry-state.json", "{\"skipped\":[\"2.0.0\"],\"notified\":[]}");
   });
 
+  it("never offers a downgrade or equal version when the registry lags the installed build", async () => {
+    const { checker, fileSystem } = setup();
+    // registry(2.0.0)가 설치본(2.1.0/2.0.0)보다 뒤처져도 설치 후보로 노출하면 매 부팅 다운그레이드가 된다.
+    await expect(checker.check("2.1.0")).resolves.toEqual({ latest: null, shouldNotify: false });
+    await expect(checker.check("2.0.0")).resolves.toEqual({ latest: null, shouldNotify: false });
+    expect(fileSystem.writeFile).not.toHaveBeenCalled();
+    // 최초 설치(현재 버전 없음)에서는 어떤 latest든 설치 후보다.
+    await expect(checker.check("")).resolves.toEqual({ latest: "2.0.0", shouldNotify: true });
+  });
+
   it("returns offline as no update and schedules a sixty-minute poll without real network access", async () => {
     const { checker, fetch, setInterval, clearInterval } = setup();
     fetch.mockRejectedValueOnce(new Error("offline"));

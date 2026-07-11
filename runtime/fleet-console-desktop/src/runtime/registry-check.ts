@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+
 export interface RegistryResponse {
   readonly ok: boolean;
   json(): Promise<unknown>;
@@ -44,8 +46,11 @@ export function createRegistryChecker(options: RegistryCheckerOptions): Registry
   const timeoutMilliseconds = options.timeoutMilliseconds ?? DEFAULT_TIMEOUT_MILLISECONDS;
   const pollIntervalMilliseconds = options.pollIntervalMilliseconds ?? DEFAULT_POLL_INTERVAL_MILLISECONDS;
   const check = async (currentVersion: string): Promise<RegistryCheckResult> => {
-    const latest = await fetchLatest(options.packageName, timeoutMilliseconds, dependencies.fetch);
-    if (!latest || latest === currentVersion) return { latest, shouldNotify: false };
+    const fetched = await fetchLatest(options.packageName, timeoutMilliseconds, dependencies.fetch);
+    // latest는 "설치 후보(현재보다 상위 버전)"일 때만 노출한다 — registry가 로컬 설치본보다
+    // 뒤처진 경우(카나리 선행 등) 매 부팅 다운그레이드가 일어나는 것을 막는 가드.
+    const latest = fetched && isNewerVersion(fetched, currentVersion) ? fetched : null;
+    if (!latest) return { latest, shouldNotify: false };
     const state = await readState(options.statePath, dependencies.fileSystem);
     if (state.skipped.includes(latest) || state.notified.includes(latest)) return { latest, shouldNotify: false };
     await writeState(options.statePath, { ...state, notified: [...state.notified, latest] }, dependencies.fileSystem);
@@ -101,4 +106,20 @@ async function writeState(statePath: string, state: RegistryState, fileSystem: R
 function unique(values: readonly string[]): string[] { return [...new Set(values)]; }
 
 function isString(value: unknown): value is string { return typeof value === "string"; }
-import { readFile, writeFile } from "node:fs/promises";
+
+// dist-tags latest는 정식 릴리스(x.y.z) 관례를 따른다 — 비정형 버전은 보수적으로 설치 대상에서 제외한다.
+function isNewerVersion(candidate: string, current: string): boolean {
+  if (!current) return true;
+  const a = parseVersionTriplet(candidate);
+  const b = parseVersionTriplet(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+}
+
+function parseVersionTriplet(version: string): readonly number[] | null {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
