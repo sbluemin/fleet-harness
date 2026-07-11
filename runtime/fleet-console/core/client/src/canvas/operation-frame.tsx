@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
@@ -44,12 +44,15 @@ type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 const RESIZE_DIRECTIONS: readonly ResizeDirection[] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
 const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
+const CLOSE_ARM_DURATION_MS = 1500;
 
 export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
+  const closeArmTimeoutRef = useRef<number | null>(null);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
+  const [isCloseArmed, setIsCloseArmed] = useState(false);
   const displayTitle = operation.title;
   // accent를 패널 외곽 box-shadow 링으로 칠한다(--op-accent). status(테두리·진행광)·focus(brass)와 채널이 달라 공존한다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
@@ -61,7 +64,32 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
 
+  useEffect(() => () => {
+    if (closeArmTimeoutRef.current !== null) window.clearTimeout(closeArmTimeoutRef.current);
+  }, []);
+
+  const clearCloseArmTimer = () => {
+    if (closeArmTimeoutRef.current === null) return;
+    window.clearTimeout(closeArmTimeoutRef.current);
+    closeArmTimeoutRef.current = null;
+  };
+
+  const disarmClose = () => {
+    clearCloseArmTimer();
+    setIsCloseArmed(false);
+  };
+
+  const armClose = () => {
+    clearCloseArmTimer();
+    setIsCloseArmed(true);
+    closeArmTimeoutRef.current = window.setTimeout(() => {
+      closeArmTimeoutRef.current = null;
+      setIsCloseArmed(false);
+    }, CLOSE_ARM_DURATION_MS);
+  };
+
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    disarmClose();
     if (maximized || interactionDisabled) return;
     if (event.button !== 0) return;
     event.preventDefault();
@@ -148,14 +176,36 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   };
 
   const minimize = () => {
+    disarmClose();
     const activeElement = typeof document !== "undefined" ? document.activeElement : null;
     if (activeElement instanceof HTMLElement && operationRef.current?.contains(activeElement)) activeElement.blur();
     onMinimize();
   };
 
+  const maximize = () => {
+    disarmClose();
+    onMaximize?.();
+  };
+
   const openAccentPopover = (anchor: DOMRect) => {
+    disarmClose();
     onActivate();
     setAccentAnchor(anchor);
+  };
+
+  const activateBeacon = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    event.stopPropagation();
+    disarmClose();
+    onActivate();
+  };
+
+  const close = () => {
+    if (!isCloseArmed) {
+      armClose();
+      return;
+    }
+    disarmClose();
+    onClose();
   };
 
   // 패널 좌표·크기를 정수 픽셀로 스냅해 패널·내부 xterm 캔버스 원점을 정수 픽셀에 정렬한다(서브픽셀 번짐 제거).
@@ -210,18 +260,18 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
             <span className={beaconStatusClass(status)} aria-hidden="true" />
           </button>
         ) : (
-          <span className={beaconStatusClass(status)} onPointerDown={(event) => { event.stopPropagation(); onActivate(); }} aria-hidden="true" />
+          <span className={beaconStatusClass(status)} onPointerDown={activateBeacon} aria-hidden="true" />
         )}
         <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={`Minimize operation ${displayTitle}`} title="Minimize operation">
           <MinimizeIcon />
         </button>
         {onMaximize ? (
-          <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={onMaximize} aria-label={maximized ? `Restore operation ${displayTitle}` : `Maximize operation ${displayTitle}`} aria-pressed={maximized} title={maximized ? "Restore operation" : "Maximize operation"}>
+          <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? `Restore operation ${displayTitle}` : `Maximize operation ${displayTitle}`} aria-pressed={maximized} title={maximized ? "Restore operation" : "Maximize operation"}>
             {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
           </button>
         ) : null}
-        <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={onClose} aria-label={`Close operation ${displayTitle}`} title="Close operation">
-          <CloseIcon />
+        <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? `Confirm close operation ${displayTitle}` : `Close operation ${displayTitle}`} title={isCloseArmed ? "Confirm close" : "Close operation"}>
+          {isCloseArmed ? "Close?" : <CloseIcon />}
         </button>
       </div>
       <div className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
