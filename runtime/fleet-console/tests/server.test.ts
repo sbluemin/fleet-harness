@@ -220,7 +220,7 @@ describe("console terminal observability", () => {
     expect(JSON.stringify(renamed)).not.toContain(dir);
   });
 
-  it("auto-names on every user prompt when the operator has not set a label", () => {
+  it("auto-names only the first valid user prompt and keeps the decision in memory", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-"));
     tempDirs.push(dir);
     const store = createConsoleObservabilityStore();
@@ -232,12 +232,12 @@ describe("console terminal observability", () => {
     expect(first?.session.label).toBe("Fix the login redirect bug");
     expect(store.listDurableOperations()[0]).toMatchObject({ label: "Fix the login redirect bug", labelSource: "auto" });
 
-    // 두 번째 프롬프트도 다른 라벨이면 auto 갱신이 허용된다.
-    expect(store.autoNameTerminalSession("session-a", "Add the search index")).toMatchObject({ renamed: true });
-    expect(store.listDurableOperations()[0]?.label).toBe("Add the search index");
+    // 두 번째 프롬프트부터는 다른 라벨이어도 최초 자동 작명을 유지한다.
+    expect(store.autoNameTerminalSession("session-a", "Add the search index")).toMatchObject({ renamed: false });
+    expect(store.listDurableOperations()[0]?.label).toBe("Fix the login redirect bug");
 
     // 동일 라벨은 no-op.
-    expect(store.autoNameTerminalSession("session-a", "Add the search index")).toMatchObject({ renamed: false });
+    expect(store.autoNameTerminalSession("session-a", "Fix the login redirect bug")).toMatchObject({ renamed: false });
 
     // 사용자가 수동 rename → labelSource "user" 기록.
     store.renameTerminalSession("session-a", "Bridge Watch");
@@ -246,12 +246,13 @@ describe("console terminal observability", () => {
     expect(store.autoNameTerminalSession("session-a", "A brand new prompt topic")).toMatchObject({ renamed: false });
     expect(store.listDurableOperations()[0]?.label).toBe("Bridge Watch");
 
-    // 빈 rename은 label·labelSource를 비워 다음 프롬프트 자동 작명을 재활성화한다.
+    // 빈 rename은 label·labelSource를 비우지만 인메모리 최초 처리 상태는 유지한다.
     store.renameTerminalSession("session-a", "   ");
     const cleared = store.listDurableOperations()[0];
     expect(cleared?.label).toBeUndefined();
     expect(cleared?.labelSource).toBeUndefined();
-    expect(store.autoNameTerminalSession("session-a", "Re-enabled auto label")?.session.label).toBe("Re-enabled auto label");
+    expect(store.autoNameTerminalSession("session-a", "Re-enabled auto label")).toMatchObject({ renamed: false });
+    expect(JSON.stringify(cleared)).not.toContain("autoNamePromptSeen");
   });
 
   it("treats a null or empty prompt as a no-op that does not block subsequent auto-names", () => {
