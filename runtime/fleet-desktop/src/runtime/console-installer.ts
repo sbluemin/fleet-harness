@@ -92,7 +92,7 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
   };
 }
 
-export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmUserConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty.npmrc"), npmGlobalConfiguration = path.join(os.tmpdir(), "fleet-console-desktop-empty-global.npmrc"), nodeBinDirectory?: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmUserConfiguration = path.join(os.tmpdir(), "fleet-desktop-empty.npmrc"), npmGlobalConfiguration = path.join(os.tmpdir(), "fleet-desktop-empty-global.npmrc"), nodeBinDirectory?: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   let pathKey = platform === "win32" ? "Path" : "PATH";
   let existingPath: string | undefined;

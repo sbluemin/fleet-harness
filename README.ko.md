@@ -54,7 +54,7 @@ fleet console
 
 자세한 설치 방법은 [SETUP.md](SETUP.md)를 참조하세요.
 
-Fleet Console Desktop은 Fleet Console용 선택적 네이티브 셸입니다. 기존 Console Service를 감독하고 정확한 로컬 `/console/` 경로를 로드하며, 두 번째 렌더러나 서버가 아닙니다. 지원 아티팩트, 설치, 업데이트 및 제한은 [runtime/fleet-console-desktop/README.md](runtime/fleet-console-desktop/README.md)를 참조하세요.
+Fleet Console Desktop은 Fleet Console용 선택적 네이티브 셸입니다. 기존 Console Service를 감독하고 정확한 로컬 `/console/` 경로를 로드하며, 두 번째 렌더러나 서버가 아닙니다. 지원 아티팩트, 설치, 업데이트 및 제한은 [runtime/fleet-desktop/README.md](runtime/fleet-desktop/README.md)를 참조하세요.
 
 > **AI 에이전트 이용** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
 >

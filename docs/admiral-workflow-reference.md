@@ -10,7 +10,7 @@ This document is the operational doctrine for Admiral and Carrier agents working
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
-- `runtime/fleet-console-desktop` is an optional Electron main-process shell that supervises the Console Service's separately packaged standard Node sidecar and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
+- `runtime/fleet-desktop` is an optional Electron main-process shell that supervises the Console Service's separately packaged standard Node sidecar and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
 
 ## 2. Ownership Model
 

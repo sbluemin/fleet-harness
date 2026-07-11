@@ -1,6 +1,6 @@
 # Fleet Console Desktop Doctrine
 
-`runtime/fleet-console-desktop` is the optional thin Electron shell for Fleet Console. It owns one native app lifecycle, one `BrowserWindow`, native menu/tray/dialog surfaces, the passive entry page, and supervision of the desktop-managed Console runtime.
+`runtime/fleet-desktop` is the optional thin Electron shell for Fleet Console. It owns one native app lifecycle, one `BrowserWindow`, native menu/tray/dialog surfaces, the passive entry page, and supervision of the desktop-managed Console runtime.
 
 ## Hard boundary
 

@@ -36,12 +36,12 @@ The only native inputs are first-install failure **Retry**/**Quit**, the J6 upda
 Run these from the repository root:
 
 ```bash
-pnpm --filter @dotobokuri/fleet-console-desktop typecheck
-pnpm --filter @dotobokuri/fleet-console-desktop build
-pnpm --filter @dotobokuri/fleet-console-desktop test
-pnpm --filter @dotobokuri/fleet-console-desktop package:dir
-pnpm --filter @dotobokuri/fleet-console-desktop package:unsigned
-pnpm --filter @dotobokuri/fleet-console-desktop verify:package
+pnpm --filter @dotobokuri/fleet-desktop typecheck
+pnpm --filter @dotobokuri/fleet-desktop build
+pnpm --filter @dotobokuri/fleet-desktop test
+pnpm --filter @dotobokuri/fleet-desktop package:dir
+pnpm --filter @dotobokuri/fleet-desktop package:unsigned
+pnpm --filter @dotobokuri/fleet-desktop verify:package
 ```
 
 `build` copies the entry HTML/CSS, pinned Node manifest, and icon into `dist`. `package:dir` is the credential-free local package check. `package:unsigned` produces local unsigned artifacts. `verify:package` requires a shell-only ASAR with entry assets and a Node manifest, while rejecting embedded Console/Node payloads, the legacy embedded runtime directory, updater metadata, and standalone blockmaps.

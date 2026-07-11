@@ -28,7 +28,7 @@ const cliPackageDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.
 export async function runDesktopDev(deps: DesktopDevLauncherDeps = {}): Promise<number> {
   const env = deps.env ?? process.env;
   const platform = deps.platform ?? process.platform;
-  const desktopPackageDirectory = deps.desktopPackageDirectory ?? path.resolve(cliPackageDirectory, "..", "fleet-console-desktop");
+  const desktopPackageDirectory = deps.desktopPackageDirectory ?? path.resolve(cliPackageDirectory, "..", "fleet-desktop");
   const invocation = platform === "win32"
     ? resolveWindowsPackageManager(env, deps.execPath ?? process.execPath, desktopPackageDirectory, deps.isPackageManagerExecutable)
     : { command: "pnpm", args: ["--dir", desktopPackageDirectory, "dev"] };

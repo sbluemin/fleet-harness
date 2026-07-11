@@ -48,7 +48,7 @@ jobs:
       - name: Build console protocol + desktop shell
         run: |
           pnpm --filter @dotobokuri/fleet-console build
-          pnpm --filter @dotobokuri/fleet-console-desktop build
+          pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installers (mac arm64)
         env:
           # 시크릿이 있으면 electron-builder가 서명+노터라이즈, 없으면 unsigned로 빌드한다.
@@ -58,17 +58,17 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: >-
-          pnpm --filter @dotobokuri/fleet-console-desktop exec electron-builder
+          pnpm --filter @dotobokuri/fleet-desktop exec electron-builder
           --mac --arm64 --publish never
       - name: Verify shell-only package
-        run: pnpm --filter @dotobokuri/fleet-console-desktop verify:package
+        run: pnpm --filter @dotobokuri/fleet-desktop verify:package
       - name: Upload shell installers to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           shopt -s nullglob
-          artifacts=(runtime/fleet-console-desktop/release/*.dmg runtime/fleet-console-desktop/release/*.zip)
+          artifacts=(runtime/fleet-desktop/release/*.dmg runtime/fleet-desktop/release/*.zip)
           if [ "${#artifacts[@]}" -eq 0 ]; then
             echo "No macOS shell installers were produced" >&2
             exit 1
@@ -101,21 +101,21 @@ jobs:
       - name: Build console protocol + desktop shell
         run: |
           pnpm --filter @dotobokuri/fleet-console build
-          pnpm --filter @dotobokuri/fleet-console-desktop build
+          pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installer (nsis, ${{ matrix.arch }})
         shell: bash
         run: >-
-          pnpm --filter @dotobokuri/fleet-console-desktop exec electron-builder
+          pnpm --filter @dotobokuri/fleet-desktop exec electron-builder
           --win --${{ matrix.arch }} --publish never
       - name: Verify shell-only package
         shell: bash
-        run: pnpm --filter @dotobokuri/fleet-console-desktop verify:package
+        run: pnpm --filter @dotobokuri/fleet-desktop verify:package
       - name: Locate installer
         id: art
         shell: bash
         run: |
           shopt -s nullglob
-          installers=(runtime/fleet-console-desktop/release/Fleet\ Console-*-win-${{ matrix.arch }}.exe)
+          installers=(runtime/fleet-desktop/release/Fleet\ Console-*-win-${{ matrix.arch }}.exe)
           if [ "${#installers[@]}" -ne 1 ]; then
             echo "Expected one Windows shell installer, found ${#installers[@]}" >&2
             exit 1
@@ -148,7 +148,7 @@ jobs:
           wait-for-completion-timeout-in-seconds: '1800'
           # 단일 exe이므로 압축 해제 없이 원본 파일명으로 내려받는다.
           skip-decompress: true
-          output-artifact-directory: runtime/fleet-console-desktop/release
+          output-artifact-directory: runtime/fleet-desktop/release
 
       - name: Upload shell installer to the GitHub Release
         env:

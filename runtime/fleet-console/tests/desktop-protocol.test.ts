@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("desktop protocol", () => {
   it("validates the marked resource root and exact owner protocol", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-desktop-resource-"));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-resource-"));
     TEMP_DIRS.push(root);
     fs.writeFileSync(path.join(root, DESKTOP_RESOURCE_ROOT_MARKER), `${DESKTOP_PROTOCOL_VERSION}\n`);
     const env = {
@@ -56,7 +56,7 @@ describe("desktop protocol", () => {
   });
 
   it("rejects an arbitrary marked resource root", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-desktop-resource-"));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-resource-"));
     TEMP_DIRS.push(root);
     fs.writeFileSync(path.join(root, DESKTOP_RESOURCE_ROOT_MARKER), `${DESKTOP_PROTOCOL_VERSION}\n`);
 

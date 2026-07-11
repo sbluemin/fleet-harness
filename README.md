@@ -54,7 +54,7 @@ fleet console
 
 See [SETUP.md](SETUP.md) for step-by-step instructions.
 
-Fleet Console Desktop is the optional native shell for Fleet Console. It supervises the existing Console Service and loads its exact local `/console/` route; it is not a second renderer or server. See [runtime/fleet-console-desktop/README.md](runtime/fleet-console-desktop/README.md) for supported artifacts, install, updates, and limits.
+Fleet Console Desktop is the optional native shell for Fleet Console. It supervises the existing Console Service and loads its exact local `/console/` route; it is not a second renderer or server. See [runtime/fleet-desktop/README.md](runtime/fleet-desktop/README.md) for supported artifacts, install, updates, and limits.
 
 > **With an AI Agent** — Copy and paste into your LLM agent:
 >
