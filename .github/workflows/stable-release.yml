@@ -36,7 +36,10 @@ jobs:
       should_release: ${{ steps.version.outputs.should_release }}
       next_version: ${{ steps.version.outputs.next_version }}
       next_tag: ${{ steps.version.outputs.next_tag }}
+      latest_tag: ${{ steps.version.outputs.latest_tag }}
       release_sha: ${{ steps.release.outputs.release_sha }}
+      desktop_changed: ${{ steps.desktop.outputs.desktop_changed }}
+      desktop_version: ${{ steps.desktop.outputs.desktop_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -114,6 +117,51 @@ jobs:
             echo "release_committed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # desktop 셸은 독립 버저닝: 마지막 성공 빌드 마커(desktop-v* 태그) 이후 desktop 경로에 변경이
+      # 있을 때만 빌드하고, 없으면 직전 릴리스의 셸 설치본을 이월한다. 감지 기준점을 직전 main 태그가
+      # 아닌 마지막 desktop-v* 태그로 잡아 "빌드 실패 후 무변경 릴리스"가 미빌드 변경을 놓치지 않게 한다.
+      - name: Resolve desktop shell version
+        if: steps.version.outputs.should_release == 'true'
+        id: desktop
+        run: |
+          pkg_version=$(node -p "require('./runtime/fleet-console-desktop/package.json').version")
+          last_tag=$(git tag --list 'desktop-v*' --sort=-version:refname | grep -E '^desktop-v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          emit() {
+            echo "desktop_changed=$1" >> "$GITHUB_OUTPUT"
+            echo "desktop_version=$2" >> "$GITHUB_OUTPUT"
+            echo "desktop_bump=$3" >> "$GITHUB_OUTPUT"
+          }
+
+          if [ -z "$last_tag" ]; then
+            # 부트스트랩: 성공 빌드 마커가 없으면 시드 버전 그대로 무조건 빌드한다(범프 없음).
+            emit true "$pkg_version" false
+            exit 0
+          fi
+
+          if [ "$pkg_version" != "${last_tag#desktop-v}" ]; then
+            # 이미 범프됨(릴리스 커밋 재실행 경로 또는 PR에서의 수동 범프) — 그 버전 그대로 빌드한다.
+            emit true "$pkg_version" false
+            exit 0
+          fi
+
+          if git diff --quiet "$last_tag"..HEAD -- runtime/fleet-console-desktop; then
+            emit false "$pkg_version" false
+            exit 0
+          fi
+
+          # main 버전 산정과 같은 규칙을 desktop 경로 커밋에만 적용한다: feat이면 minor, 아니면 patch.
+          bump="patch"
+          if git log --format=%B "$last_tag"..HEAD -- runtime/fleet-console-desktop | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
+            bump="minor"
+          fi
+          next=$(node -e "
+            const [major, minor, patch] = process.argv[1].split('.').map(Number);
+            const next = process.argv[2] === 'minor' ? [major, minor + 1, 0] : [major, minor, patch + 1];
+            console.log(next.join('.'));
+          " "$pkg_version" "$bump")
+          emit true "$next" true
+
       - name: Update version and changelog
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
@@ -128,7 +176,10 @@ jobs:
           const tracked = execSync('git ls-files', { encoding: 'utf8' })
             .split('\n')
             .filter(Boolean);
-          const files = tracked.filter((f) => f === 'package.json' || f.endsWith('/package.json'));
+          // desktop 셸은 독립 버저닝(desktop-v* 태그 트레인)을 쓰므로 릴리스 sync 대상에서 제외한다.
+          const files = tracked
+            .filter((f) => f === 'package.json' || f.endsWith('/package.json'))
+            .filter((f) => f !== 'runtime/fleet-console-desktop/package.json');
           for (const file of files) {
             const raw = fs.readFileSync(file, 'utf8');
             // 루트 레벨의 첫 "version" 필드만 치환한다 (각 package.json에서 1회만 등장).
@@ -143,6 +194,23 @@ jobs:
           export RELEASE_DATE
 
           node scripts/compile-changelog-fragments.mjs --version "$NEXT_VERSION" --date "$RELEASE_DATE" --allow-empty
+
+      - name: Bump desktop shell version
+        if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true' && steps.desktop.outputs.desktop_bump == 'true'
+        env:
+          DESKTOP_VERSION: ${{ steps.desktop.outputs.desktop_version }}
+        run: |
+          # desktop 변경이 감지된 릴리스에서만 셸 버전을 범프해 릴리스 커밋에 함께 담는다.
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'runtime/fleet-console-desktop/package.json';
+          const raw = fs.readFileSync(file, 'utf8');
+          const updated = raw.replace(/("version":\s*")[^"]+(")/, `$1${process.env.DESKTOP_VERSION}$2`);
+          if (updated === raw) {
+            throw new Error(`Failed to update the version field in ${file}`);
+          }
+          fs.writeFileSync(file, updated);
+          NODE
 
       - name: Verify workspace version sync
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
@@ -162,6 +230,11 @@ jobs:
           const offenders = [];
           let checked = 0;
           for (const file of files) {
+            if (file === 'runtime/fleet-console-desktop/package.json') {
+              // desktop 셸은 독립 버저닝이라 sync 검증 대상이 아니다.
+              console.log(`skipped ${file}: independent desktop shell versioning`);
+              continue;
+            }
             let pkg;
             try {
               pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -232,6 +305,9 @@ jobs:
         id: notes
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          DESKTOP_CHANGED: ${{ steps.desktop.outputs.desktop_changed }}
+          DESKTOP_VERSION: ${{ steps.desktop.outputs.desktop_version }}
+          LATEST_TAG: ${{ steps.version.outputs.latest_tag }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -248,8 +324,12 @@ jobs:
           const bodyStart = changelog.indexOf('\n', start);
           const nextHeader = changelog.indexOf('\n## [', bodyStart + 1);
           const body = changelog.slice(bodyStart + 1, nextHeader === -1 ? changelog.length : nextHeader).trim();
+          // desktop 셸은 독립 버저닝이라 이번 릴리스에서 빌드됐는지/이월됐는지를 노트에 명시한다.
+          const desktopLine = process.env.DESKTOP_CHANGED === 'true'
+            ? `**Desktop shell ${process.env.DESKTOP_VERSION}** — built in this release.`
+            : `**Desktop shell ${process.env.DESKTOP_VERSION}** — unchanged, carried over from ${process.env.LATEST_TAG}.`;
           const notesPath = 'release-notes.md';
-          const notes = `${body}\n\n---\n\n_Additional GitHub-generated release notes are appended below._\n`;
+          const notes = `${body}\n\n${desktopLine}\n\n---\n\n_Additional GitHub-generated release notes are appended below._\n`;
 
           fs.writeFileSync(notesPath, notes);
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `notes_path=${notesPath}\n`);
@@ -308,24 +388,81 @@ jobs:
       dist_tag: next
     secrets: inherit
 
-  # desktop 앱 → 네이티브 러너 매트릭스로 빌드해 초안 Release에 첨부(electron-updater 매니페스트 포함)
-  desktop:
+  # desktop 셸 → 마지막 성공 빌드(desktop-v* 태그) 이후 변경이 있을 때만 네이티브 러너 매트릭스로
+  # 빌드해 초안 Release에 첨부한다. 셸은 main v* 트레인과 별개의 독립 버저닝을 쓴다.
+  desktop-build:
     needs: release
-    if: needs.release.outputs.should_release == 'true'
+    if: needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'true'
     uses: ./.github/workflows/desktop-release.yml
     with:
       ref: ${{ needs.release.outputs.release_sha }}
       tag: ${{ needs.release.outputs.next_tag }}
     secrets: inherit
 
+  # desktop 무변경 릴리스 → 직전 릴리스의 셸 설치본을 그대로 초안 Release에 이월한다.
+  # 바이트 동일 복사라 서명/노터라이즈가 유지되고, 직전 릴리스에서 받으므로 무변경이 연속돼도
+  # 자산 체인이 자동으로 이어진다. 매 릴리스에 설치본이 항상 부착되게 하기 위한 장치.
+  desktop-carry:
+    needs: release
+    if: needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Carry forward desktop assets from the previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREV_TAG: ${{ needs.release.outputs.latest_tag }}
+          NEXT_TAG: ${{ needs.release.outputs.next_tag }}
+        run: |
+          mkdir -p desktop-assets
+          gh release download "$PREV_TAG" -R "${{ github.repository }}" \
+            --pattern '*.dmg' --pattern '*.zip' --pattern '*.exe' \
+            --dir desktop-assets
+          count=$(find desktop-assets -type f | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "No desktop shell assets found on $PREV_TAG to carry forward" >&2
+            exit 1
+          fi
+          gh release upload "$NEXT_TAG" desktop-assets/* --clobber -R "${{ github.repository }}"
+
+  # 셸 빌드가 성공했을 때만 성공-빌드 마커 태그(desktop-v*)를 릴리스 커밋에 남긴다.
+  # 이 태그가 다음 릴리스의 변경 감지 기준점이므로, 빌드 실패 시 태그가 남지 않아
+  # 다음 릴리스가 미빌드 변경을 다시 잡아 재빌드한다. 태그에 별도 Release는 만들지 않는다.
+  desktop-tag:
+    needs: [release, desktop-build]
+    if: needs.release.outputs.should_release == 'true' && needs.desktop-build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag the built desktop shell version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_TAG: desktop-v${{ needs.release.outputs.desktop_version }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$DESKTOP_TAG" >/dev/null 2>&1; then
+            echo "Tag $DESKTOP_TAG already exists. Treating as success."
+            exit 0
+          fi
+          gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/$DESKTOP_TAG" -f sha="$RELEASE_SHA"
+
   # 릴리스의 커밋 지점(commit point). 모든 산출물(npm next 태그 + desktop 아티팩트)이 준비된 뒤에만 실행된다.
-  # console/cli/desktop 중 하나라도 실패하면 이 잡은 실행되지 않아 → npm latest는 안 움직이고 Release는 draft로 남는다.
+  # console/cli가 실패하거나 desktop-build/desktop-carry 중 실행된 쪽이 실패하면 이 잡은 실행되지
+  # 않아 → npm latest는 안 움직이고 Release는 draft로 남는다. desktop 두 잡은 상호배타라 정확히
+  # 하나만 성공하면 된다(needs에 skipped 잡이 섞이므로 !cancelled() + 명시적 result 체크가 필수).
   # 여기서 하는 두 연산(npm latest 승격, draft 공개)은 모두 가역이라 사후 롤백이 가능하다:
   #   - 롤백: npm dist-tag add <pkg>@<이전버전> latest  (+ 필요시 npm deprecate <나쁜버전>). unpublish는 쓰지 않는다.
   #   - 두 스텝 모두 멱등이라(이미 latest면 no-op) 부분 실패 시 이 잡만 재실행하면 수렴한다.
   publish-release:
-    needs: [release, console, cli, desktop]
-    if: needs.release.outputs.should_release == 'true'
+    needs: [release, console, cli, desktop-build, desktop-carry]
+    if: >-
+      !cancelled() &&
+      needs.release.outputs.should_release == 'true' &&
+      needs.console.result == 'success' &&
+      needs.cli.result == 'success' &&
+      (needs.desktop-build.result == 'success' || needs.desktop-carry.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
