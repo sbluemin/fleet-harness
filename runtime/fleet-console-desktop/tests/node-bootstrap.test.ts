@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
+const execFileMock = vi.hoisted(() => vi.fn());
+
+vi.mock("node:child_process", () => ({ execFile: execFileMock }));
+
+import { bootstrapNodeRuntime, createNodeBootstrapDependencies, createPowerShellExtractionCommand, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
 
 const manifest = { version: "22.23.1", source: "https://node.invalid", targets: { "darwin-arm64": { archive: "node.tar.gz", sha256: "good" }, "win32-x64": { archive: "node.zip", sha256: "good" } } };
 
@@ -53,5 +57,19 @@ describe("Node runtime bootstrap", () => {
     const fileSystem = { rm: vi.fn(async () => { throw new Error("locked"); }) };
     await expect(reconcileNodeRuntime("/runtime/node", fileSystem)).resolves.toBeUndefined();
     expect(fileSystem.rm).toHaveBeenCalledWith("/runtime/node.rollback");
+  });
+
+  it("escapes apostrophes in every PowerShell literal path", () => {
+    const command = createPowerShellExtractionCommand("C:\\Users\\O'Brien\\node.zip", "C:\\Users\\O'Brien\\runtime");
+    expect(command).toContain("-LiteralPath 'C:\\Users\\O''Brien\\node.zip'");
+    expect(command).toContain("Join-Path 'C:\\Users\\O''Brien\\runtime' 'extract'");
+    expect(command).toContain("-Destination 'C:\\Users\\O''Brien\\runtime'");
+  });
+
+  it("passes the escaped PowerShell command to execFile for Windows ZIP extraction", async () => {
+    execFileMock.mockImplementationOnce((_command: string, _arguments: readonly string[], callback: (error: Error | null, stdout: string, stderr: string) => void) => callback(null, "", ""));
+    const dependencies = createNodeBootstrapDependencies();
+    await dependencies.extract("C:\\Users\\O'Brien\\node.zip", "C:\\Users\\O'Brien\\runtime", "win32");
+    expect(execFileMock).toHaveBeenCalledWith("powershell", ["-NoProfile", "-NonInteractive", "-Command", expect.stringContaining("O''Brien")], expect.any(Function));
   });
 });

@@ -82,6 +82,12 @@ export function satisfiesNodeEngine(version: string, engine: string | null): boo
   return true;
 }
 
+export function createPowerShellExtractionCommand(archive: string, destination: string): string {
+  const escapedArchive = escapePowerShellLiteral(archive);
+  const escapedDestination = escapePowerShellLiteral(destination);
+  return `\$extract = Join-Path '${escapedDestination}' 'extract'; Expand-Archive -LiteralPath '${escapedArchive}' -DestinationPath \$extract -Force; \$runtime = Get-ChildItem -LiteralPath \$extract -Directory | Select-Object -First 1; Move-Item -Path (Join-Path \$runtime.FullName '*') -Destination '${escapedDestination}' -Force; Remove-Item -LiteralPath \$extract -Recurse -Force`;
+}
+
 export function createNodeBootstrapDependencies(): NodeBootstrapDependencies {
   return {
     download,
@@ -131,9 +137,13 @@ async function download(url: string, destination: string): Promise<void> {
 async function extract(archive: string, destination: string, platform: NodeJS.Platform): Promise<void> {
   const execute = promisify(execFile);
   if (archive.endsWith(".zip")) {
-    if (platform === "win32") await execute("powershell", ["-NoProfile", "-NonInteractive", "-Command", `\$extract = Join-Path '${destination}' 'extract'; Expand-Archive -LiteralPath '${archive}' -DestinationPath \$extract -Force; \$runtime = Get-ChildItem -LiteralPath \$extract -Directory | Select-Object -First 1; Move-Item -Path (Join-Path \$runtime.FullName '*') -Destination '${destination}' -Force; Remove-Item -LiteralPath \$extract -Recurse -Force`]);
+    if (platform === "win32") await execute("powershell", ["-NoProfile", "-NonInteractive", "-Command", createPowerShellExtractionCommand(archive, destination)]);
     else await execute("unzip", ["-q", archive, "-d", destination]);
     return;
   }
   await execute("tar", ["-xf", archive, "-C", destination, "--strip-components=1"]);
+}
+
+function escapePowerShellLiteral(value: string): string {
+  return value.replaceAll("'", "''");
 }

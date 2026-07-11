@@ -22,7 +22,12 @@ export default async function verifyAfterPack(context) {
 
 if (invokedAsCli) {
   if (cliArguments.preflight) assertReleasePreflight();
-  else await verifyPackagedApplication(resolve(cliArguments.releaseDirectory ?? join(desktopDirectory, "release")), process.env.FLEET_DESKTOP_PLATFORM ?? process.platform);
+  else {
+    const releaseDirectory = resolve(cliArguments.releaseDirectory ?? join(desktopDirectory, "release"));
+    const platform = process.env.FLEET_DESKTOP_PLATFORM ?? process.platform;
+    await verifyPackagedApplication(releaseDirectory, platform);
+    if (requiresReleaseSignature && platform === "linux") await signAndVerifyLinuxRelease(releaseDirectory);
+  }
 }
 
 export async function verifyPackagedApplication(releaseDirectory, platform = process.platform) {
@@ -113,6 +118,12 @@ async function assertMacSignature(application, platform) {
 async function assertWindowsSignature(filePath) {
   const { stdout, stderr } = await execFileAsync("signtool", ["verify", "/pa", "/all", "/v", "/tw", filePath]);
   if (!/successfully verified/i.test(`${stdout}\n${stderr}`) || !/timestamp/i.test(`${stdout}\n${stderr}`)) throw new Error(`Authenticode timestamp verification failed: ${filePath}`);
+}
+
+async function signAndVerifyLinuxRelease(releaseDirectory) {
+  const scriptsDirectory = dirname(fileURLToPath(import.meta.url));
+  await execFileAsync(process.execPath, [join(scriptsDirectory, "sign-linux-checksums.mjs"), releaseDirectory]);
+  await execFileAsync(process.execPath, [join(scriptsDirectory, "verify-release-artifacts.mjs"), releaseDirectory]);
 }
 
 async function assertNoUpdaterArtifacts(root) {

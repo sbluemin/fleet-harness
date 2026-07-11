@@ -1,8 +1,10 @@
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { resolveDesktopResourcePaths } from "../src/resource-paths.js";
+import { resolveRuntimePaths } from "../src/runtime/runtime-paths.js";
 
 // resolveDesktopResourcePaths는 path.join/resolve로 호스트 네이티브 구분자를 쓴다(Windows=\, POSIX=/).
 // 런타임에는 네이티브 구분자가 맞으므로, 경로 비교는 구분자에 무관하게 정규화해서 검증한다.
@@ -19,6 +21,7 @@ describe("desktop resource paths", () => {
     expect(posix(paths.entryPagePath)).toMatch(/runtime\/fleet-console-desktop\/(src|dist)\/assets\/entry\/index\.html$/);
     expect(paths.nodePath).not.toContain("app.asar");
     expect(paths.serviceRoot).not.toContain("app.asar");
+    expect(paths.serviceRoot).toBe(resolveRuntimePaths(os.homedir()).latest);
   });
 
   it("uses the Console distribution in development without selecting a writable resource root", () => {
