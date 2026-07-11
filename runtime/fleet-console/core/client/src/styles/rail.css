@@ -460,8 +460,14 @@
   transition: none;
 }
 
+/* 외곽 .right-rail의 width(calc + --right-rail-panel-width)도 같은 이유로 꺼야 한다.
+   외곽 transition만 살아 있으면 flex 부모의 애니메이션 중인 폭이 슬롯을 flex-shrink로
+   압축해 슬롯의 transition:none을 무력화한다(실측: 매 프레임 슬롯 폭 ≡ rail 폭 − 45px,
+   60px 스텝 완주에 ~200ms). 닫기 toggle(.is-closed: width→0)은 is-dragging이 아닐 때만
+   타므로 그대로 유지된다. */
 .right-rail.is-dragging {
   user-select: none;
+  transition: none;
 }
 
 /* ── 빌트인/플러그인 패널 구분선 ─────────────────────────────────
