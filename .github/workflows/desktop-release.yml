@@ -1,15 +1,8 @@
 name: Desktop Release
 
 # stable-release.yml이 릴리스/태그를 만든 뒤 같은 런에서 호출한다(workflow_call).
-# 별도 이벤트(release/tag) 트리거를 쓰지 않는 이유: 릴리스·태그를 GITHUB_TOKEN으로 만들면
-# 그 이벤트는 다른 워크플로를 트리거하지 않기 때문(GitHub 무한루프 방지).
-#
-# 서명 정책:
-#   - macOS: 조건부. CSC_LINK 등 시크릿이 있으면 electron-builder가 서명+노터라이즈, 없으면 unsigned.
-#            (인증서는 유료 Apple Developer 필요 — 확보 전까지 mac은 electron-updater 자동업데이트 불가.)
-#   - Windows: 조건부 SignPath(OSS 무료 서명). 저장소 변수 vars.SIGNPATH_PROJECT_SLUG가 설정되면
-#            빌드(--publish never) → 설치본을 SignPath로 서명 → latest 매니페스트 해시 재생성 → 릴리스에 업로드.
-#            변수가 없으면 unsigned로 바로 게시된다(SmartScreen 경고만, 자동업데이트는 동작).
+# 셸은 GitHub Release에서 한 번 내려받는 정적 설치본이며 electron-updater를 쓰지 않는다.
+# Console 갱신은 셸에 동봉하지 않고 런타임 조달 경로가 담당한다.
 on:
   workflow_call:
     inputs:
@@ -18,7 +11,7 @@ on:
         required: true
         type: string
       tag:
-        description: 아티팩트를 업로드할 릴리스 태그 (예 v1.2.3)
+        description: 셸 설치본을 업로드할 릴리스 태그 (예 v1.2.3)
         required: true
         type: string
   workflow_dispatch:
@@ -27,12 +20,16 @@ on:
         description: 빌드할 git ref (미지정 시 기본 브랜치)
         required: false
         type: string
+      tag:
+        description: 셸 설치본을 업로드할 기존 GitHub Release 태그
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  # macOS arm64 — electron-builder가 직접 GitHub Release에 게시(dmg/zip/latest-mac.yml).
+  # macOS arm64 — dmg/zip 셸 설치본만 초안 Release에 명시적으로 업로드한다.
   macos:
     name: macOS arm64
     runs-on: macos-14
@@ -48,25 +45,37 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build console + desktop
+      - name: Build console protocol + desktop shell
         run: |
           pnpm --filter @dotobokuri/fleet-console build
           pnpm --filter @dotobokuri/fleet-console-desktop build
-      - name: Stage host-native sidecar
-        run: pnpm --filter @dotobokuri/fleet-console-desktop stage:sidecar
-      - name: Package and publish (mac arm64)
+      - name: Package shell installers (mac arm64)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 시크릿이 있으면 서명+노터라이즈, 없으면 unsigned로 빌드된다.
+          # 시크릿이 있으면 electron-builder가 서명+노터라이즈, 없으면 unsigned로 빌드한다.
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          PUBLISH: ${{ github.event_name == 'workflow_dispatch' && 'never' || 'always' }}
-        run: pnpm --filter @dotobokuri/fleet-console-desktop exec electron-builder --mac --arm64 --publish "$PUBLISH"
+        run: >-
+          pnpm --filter @dotobokuri/fleet-console-desktop exec electron-builder
+          --mac --arm64 --publish never
+      - name: Verify shell-only package
+        run: pnpm --filter @dotobokuri/fleet-console-desktop verify:package
+      - name: Upload shell installers to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifacts=(runtime/fleet-console-desktop/release/*.dmg runtime/fleet-console-desktop/release/*.zip)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No macOS shell installers were produced" >&2
+            exit 1
+          fi
+          gh release upload "${{ inputs.tag }}" "${artifacts[@]}" --clobber
 
-  # Windows x64 — arm64는 지원하지 않는다(electron-builder의 arm64 nsis가 malformed 설치본을 만든다).
+  # Windows x64 — arm64는 지원하지 않는다(electron-builder의 arm64 NSIS가 malformed 설치본을 만든다).
   # Windows-on-ARM 사용자는 x64 빌드를 에뮬레이션으로 실행한다.
   windows:
     name: Windows ${{ matrix.arch }}
@@ -79,7 +88,6 @@ jobs:
         include:
           - arch: x64
             runner: windows-2022
-            channel: latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,39 +98,31 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build console + desktop
+      - name: Build console protocol + desktop shell
         run: |
           pnpm --filter @dotobokuri/fleet-console build
           pnpm --filter @dotobokuri/fleet-console-desktop build
-      - name: Stage host-native sidecar
-        run: pnpm --filter @dotobokuri/fleet-console-desktop stage:sidecar
-
-      - name: Package (nsis, ${{ matrix.arch }})
+      - name: Package shell installer (nsis, ${{ matrix.arch }})
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # unsigned(공통) 경로에서는 electron-builder가 바로 릴리스에 게시(always).
-          # SignPath 설정 시에는 게시 전에 서명을 끼워야 하므로 never로 빌드하고 아래에서 수동 업로드한다.
-          PUBLISH: ${{ vars.SIGNPATH_PROJECT_SLUG != '' && 'never' || 'always' }}
         run: >-
           pnpm --filter @dotobokuri/fleet-console-desktop exec electron-builder
-          --win --${{ matrix.arch }}
-          --config.publish.channel=${{ matrix.channel }}
-          --publish "$PUBLISH"
-
-      # --- 이하 단계는 SignPath 서명이 설정된 경우에만 실행된다(unsigned는 위에서 게시 완료). ---
-
-      - name: Locate installer + manifest
+          --win --${{ matrix.arch }} --publish never
+      - name: Verify shell-only package
+        shell: bash
+        run: pnpm --filter @dotobokuri/fleet-console-desktop verify:package
+      - name: Locate installer
         id: art
-        if: vars.SIGNPATH_PROJECT_SLUG != ''
         shell: bash
         run: |
-          cd runtime/fleet-console-desktop/release
-          exe=$(ls "Fleet Console-"*-win-${{ matrix.arch }}.exe)
-          echo "exe=runtime/fleet-console-desktop/release/$exe" >> "$GITHUB_OUTPUT"
-          echo "yml=runtime/fleet-console-desktop/release/${{ matrix.channel }}.yml" >> "$GITHUB_OUTPUT"
+          shopt -s nullglob
+          installers=(runtime/fleet-console-desktop/release/Fleet\ Console-*-win-${{ matrix.arch }}.exe)
+          if [ "${#installers[@]}" -ne 1 ]; then
+            echo "Expected one Windows shell installer, found ${#installers[@]}" >&2
+            exit 1
+          fi
+          echo "exe=${installers[0]}" >> "$GITHUB_OUTPUT"
 
-      # SignPath는 GitHub Actions 아티팩트로 업로드된 파일을 서명한다.
+      # SignPath는 GitHub Actions 아티팩트로 업로드된 설치본만 서명한다.
       - name: Upload unsigned installer for SignPath
         id: unsigned
         if: vars.SIGNPATH_PROJECT_SLUG != ''
@@ -150,33 +150,8 @@ jobs:
           skip-decompress: true
           output-artifact-directory: runtime/fleet-console-desktop/release
 
-      # 서명으로 설치본 바이트가 바뀌었으므로 latest 매니페스트의 sha512/size를 재계산한다.
-      # (차등 업데이트 blockmap은 사이드카가 커서 이득이 적으므로 전체 다운로드로 단순화 — blockMapSize 제거)
-      - name: Rewrite update manifest for the signed installer
-        if: vars.SIGNPATH_PROJECT_SLUG != ''
-        shell: bash
-        run: |
-          node - "${{ steps.art.outputs.exe }}" "${{ steps.art.outputs.yml }}" <<'NODE'
-          const fs = require('node:fs');
-          const crypto = require('node:crypto');
-          const [exe, yml] = process.argv.slice(2);
-          const buf = fs.readFileSync(exe);
-          const sha512 = crypto.createHash('sha512').update(buf).digest('base64');
-          const size = buf.length;
-          let y = fs.readFileSync(yml, 'utf8');
-          y = y.replace(/sha512: .*/g, `sha512: ${sha512}`);
-          y = y.replace(/^(\s*)size: \d+/gm, `$1size: ${size}`);
-          y = y.replace(/^\s*blockMapSize: \d+\n/gm, '');
-          fs.writeFileSync(yml, y);
-          console.log(`patched ${yml}: sha512=${sha512.slice(0, 12)}… size=${size}`);
-          NODE
-
-      # 서명된 설치본 + 재계산된 매니페스트를 릴리스에 올린다(서명으로 blockmap이 무효화되므로 제외).
-      - name: Upload signed installer to the GitHub Release
-        if: vars.SIGNPATH_PROJECT_SLUG != ''
+      - name: Upload shell installer to the GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: |
-          gh release upload "${{ inputs.tag || github.ref_name }}" \
-            "${{ steps.art.outputs.exe }}" "${{ steps.art.outputs.yml }}" --clobber
+        run: gh release upload "${{ inputs.tag }}" "${{ steps.art.outputs.exe }}" --clobber

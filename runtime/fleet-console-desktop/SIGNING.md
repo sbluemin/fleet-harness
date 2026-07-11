@@ -9,21 +9,32 @@ Build targets: **macOS arm64**, **Windows x64**. Windows arm64 is intentionally 
 built (electron-builder's arm64 NSIS produces a malformed installer); Windows-on-ARM
 users run the x64 build under emulation.
 
-Signing is **conditional**: the workflow ships working (unsigned) artifacts today and
-automatically starts signing once the secrets/variables below are configured.
+## Shell-only release model
+
+GitHub Releases publish only native shell installers: macOS `.dmg`/`.zip` and Windows
+`.exe`. The workflow always builds with `--publish never` and uses `gh release upload`
+after package verification. It does not create or upload `latest*.yml` or `.blockmap`
+files: Fleet Console Desktop has no `electron-updater` automatic-update channel.
+
+The signed shell is a one-time download. It procures and updates Fleet Console at runtime
+from the npm registry; the Console package's registry `shasum` integrity metadata, rather
+than the shell installer signature, is the trust basis for downloaded Console code.
+
+Signing is **conditional**: the workflow ships working (unsigned) shell installers today
+and automatically starts signing once the secrets/variables below are configured.
 
 ## Current status (no certificates)
 
-| Platform | Signed? | Auto-update (electron-updater) | Note |
-|---|---|---|---|
-| Windows x64 | ❌ (until SignPath configured) | ✅ works unsigned | SmartScreen warning on first install |
-| macOS arm64 | ❌ (until Apple cert configured) | ❌ **blocked while unsigned** (Gatekeeper) | dmg/zip download works; users update manually |
+| Platform | Signed? | Note |
+|---|---|---|
+| Windows x64 | ❌ (until SignPath configured) | SmartScreen warning on first install |
+| macOS arm64 | ❌ (until Apple cert configured) | dmg/zip download works; unsigned apps need right-click → Open on first launch |
 
 ## Windows — SignPath (free for open-source)
 
 [SignPath Foundation](https://signpath.org) signs OSS projects for free. When configured,
-the Windows job builds the installer, signs it via SignPath, rewrites the update manifest
-hash, and uploads to the release.
+the Windows job builds and verifies the shell installer, signs it via SignPath, then uploads
+the signed `.exe` to the draft release. No updater manifest is rewritten or published.
 
 **One-time setup (only a maintainer can do this):**
 
@@ -51,15 +62,12 @@ Notes:
   inner binaries (installed `Fleet Console.exe` + native `.node`/`.dll`) — which SignPath
   can't reach inside NSIS — is a follow-up if you want the *installed* app fully signed;
   see the approach used by `stablyai/orca` (build `--dir` → batch-sign inner PEs → repackage).
-- Differential (blockmap) updates are dropped on the signed path (re-signing invalidates
-  the blockmap); updates become full downloads. This is fine — the bundled Node/node-pty/
-  esbuild sidecar makes delta savings small anyway.
 
 ## macOS — deferred (paid Apple Developer)
 
-macOS auto-update (Squirrel.Mac) **requires** a Developer ID signature + notarization, and
-there is no free option — an Apple Developer account ($99/yr) is required. When you obtain
-it, add these secrets and the mac job signs + notarizes automatically (no workflow change):
+An Apple Developer account ($99/yr) is required for a Developer ID signature and
+notarization. When you obtain it, add these secrets and the mac job signs + notarizes
+automatically (no workflow change):
 
 | Kind | Name |
 |---|---|
@@ -69,22 +77,20 @@ it, add these secrets and the mac job signs + notarizes automatically (no workfl
 | Secret | `APPLE_APP_SPECIFIC_PASSWORD` |
 | Secret | `APPLE_TEAM_ID` |
 
-Until then, mac users download the dmg/zip and update manually (unsigned apps also need a
-right-click → Open on first launch).
-
 ## Cross-building Windows x64 on an arm64 host
 
 Windows ships x64 only, but a dev machine may be Windows-on-ARM (e.g. Apple Silicon +
-Parallels). The sidecar staging is configured to always target **win32-x64** on Windows
-regardless of the host arch, so `pnpm desktop:package:dir` / `:unsigned` produce an x64
-build there too (it runs under emulation for local testing). This requires the
-`@esbuild/win32-x64` package, which the root `package.json` `pnpm.supportedArchitectures`
-config installs on any host.
+Parallels). Packaging is fixed to **win32-x64** on Windows regardless of host arch, so
+`pnpm desktop:package:dir` / `:unsigned` produce an x64 build there too (it runs under
+emulation for local testing). This requires the `@esbuild/win32-x64` package, which the
+root `package.json` `pnpm.supportedArchitectures` config installs on any host.
 
 ## Validation
 
-None of the signing paths can be exercised without the certificates/accounts above, so the
-**first real release run must be watched** — confirm on each platform that the installer is
-produced, uploaded to the release, and (Windows) that an installed build auto-updates to the
-next version. The Windows x64 build runs on the `windows-2022` runner; the macOS arm64 build
-on `macos-14`.
+Each CI job runs `verify:package` after packaging. The gate requires a shell-only ASAR,
+secure Electron fuses, no embedded runtime payload or sidecar directory, no updater
+metadata, and an Electron binary whose architecture matches the artifact directory.
+
+Windows/macOS release runners and signing credentials are unavailable locally, so the
+first real release run remains **[Unverified]**: confirm that only the expected installers
+are attached to the draft release and that the conditional signing paths complete.
