@@ -94,14 +94,54 @@ describe("canvas store", () => {
     expect(getSnapshot().minimized).toEqual([]);
   });
 
-  it("restores manually minimized Operations when entering Formation", () => {
+  it("keeps manually minimized Operations minimized when entering Formation", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
     minimizeOperation("op-b");
 
     toggleFormationView();
 
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual(["op-b"]);
+  });
+
+  it("restores every minimized Operation when entering Formation with restoreMinimized", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-b");
+
+    toggleFormationView({ restoreMinimized: true });
+
+    expect(getFormationView()).toBe(true);
     expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("adds minimized Operations to active Formation when restoreMinimized is requested", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-b");
+    toggleFormationView();
+
+    toggleFormationView({ restoreMinimized: true });
+
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("exits active Formation when restoreMinimized is requested with no minimized Operations", () => {
+    toggleFormationView();
+
+    toggleFormationView({ restoreMinimized: true });
+
+    expect(getFormationView()).toBe(false);
+  });
+
+  it("exits active Formation when toggled without options", () => {
+    toggleFormationView();
+
+    toggleFormationView();
+
+    expect(getFormationView()).toBe(false);
   });
 
   it("stores explicit Operation order and prunes stale Operation ids", () => {

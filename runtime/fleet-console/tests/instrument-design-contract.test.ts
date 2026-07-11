@@ -87,7 +87,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).not.toContain("command-band-formation-toggle");
     expect(source("sidebar/operations-side-bar.tsx")).toContain('className="side-bar-formation-toggle"');
-    expect(source("sidebar/operations-side-bar.tsx")).toContain("onClick={toggleFormationView}");
+    expect(source("sidebar/operations-side-bar.tsx")).toContain("onClick={() => toggleFormationView()}");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
     expect(layout).toContain("grid-template-columns: var(--command-band-left-width, 280px) minmax(0, 1fr) auto;");
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
