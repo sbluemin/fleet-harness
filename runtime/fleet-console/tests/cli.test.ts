@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import {
   buildConsoleHelpText,
+  assertCliCanControlDaemon,
+  isLockProcessAlive,
   main,
   openFleetConsole,
   parseConsoleCliMode,
@@ -34,6 +36,28 @@ afterEach(() => {
 });
 
 describe("fleet console CLI", () => {
+  it("refuses stop or restart control of a desktop-owned daemon", () => {
+    expect(() => assertCliCanControlDaemon({
+      ...LOCK,
+      owner: { kind: "desktop", id: "desktop-owner-1", protocolVersion: 1 },
+    })).toThrow("quit it from the native menu");
+    expect(() => assertCliCanControlDaemon(LOCK)).not.toThrow();
+  });
+
+  it("treats only dead lock processes as cleanable so a crashed desktop sidecar cannot brick the CLI", () => {
+    // 살아있는 pid(자기 자신)는 보호 대상, 존재하지 않는 pid는 stale lock 정리 대상이다.
+    expect(isLockProcessAlive(process.pid)).toBe(true);
+    let deadPid = process.pid + 40_000;
+    for (; deadPid < process.pid + 41_000; deadPid++) {
+      try {
+        process.kill(deadPid, 0);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ESRCH") break;
+      }
+    }
+    expect(isLockProcessAlive(deadPid)).toBe(false);
+  });
+
   it("parses subcommands and help flags, rejecting unknown commands", () => {
     expect(parseConsoleCliMode([])).toBe("start");
     expect(parseConsoleCliMode(["start"])).toBe("start");

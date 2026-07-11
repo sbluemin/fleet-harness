@@ -1,5 +1,4 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { Link } from "react-router-dom";
 
 import {
   loadCarrierSettings,
@@ -90,7 +89,6 @@ export function CarrierSettings() {
     <main className="carrier-settings-page">
       <section className="carrier-settings-hero" aria-labelledby="carrier-settings-title">
         <div>
-          <Link className="page-back-link" to="/operations">← Operations</Link>
           <p className="bridge-kicker">Configure Carrier settings</p>
           <h2 id="carrier-settings-title">Carrier Settings</h2>
         </div>

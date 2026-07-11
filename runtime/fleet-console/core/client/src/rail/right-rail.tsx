@@ -1,14 +1,15 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { fetchRailPathContext, putRailPathContext } from "./path-context-api.js";
 import { getState, subscribe } from "../store.js";
 import { PathContextDeck } from "./path-context-deck.js";
-import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailChrome, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
+import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -34,8 +35,10 @@ function readStoredPanelWidth(): number {
 }
 
 export function RightRail({ theaterId, api }: RightRailProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const activeId = useActiveRailPanelId();
   const railChromeExpanded = useRailChromeExpanded();
+  const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const pluginPanels = useRailPanels();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const allPanels = [...builtInPanels, ...pluginPanels];
@@ -51,6 +54,11 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
+
+  useLayoutEffect(() => {
+    if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
+    previousRailChromeExpandedRef.current = railChromeExpanded;
+  }, [railChromeExpanded]);
 
   useEffect(() => {
     selectRailPathContextTheater(theaterId);
@@ -98,10 +106,13 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
   return (
     <div
+      ref={rootRef}
       className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}${isPathContextDeckOpen ? " is-context-deck-open" : ""}`}
       data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
       role="complementary"
       aria-label="Activity Rail"
+      inert={!railChromeExpanded}
+      style={{ "--right-rail-panel-width": `${hasPanel ? panelWidth + extraWidth : 0}px` } as CSSProperties}
     >
       <div
         className="right-rail-panel-slot"
@@ -119,9 +130,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
         )}
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
-        <button type="button" className="right-rail-chrome-toggle" aria-label={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} title={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} onClick={toggleRailChrome}>
-          <RailChromeToggleIcon />
-        </button>
         <div className="right-rail-tabs" role="tablist" aria-label="Activity panels">
           {builtInPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
@@ -254,11 +262,3 @@ function RailIcon({ panel, isActive }: RailIconProps) {
 }
 
 /* 패널 접기 아이콘 — 우측 영역을 선으로 구분한 패널 모양(#44 시안, 우측 미러). */
-function RailChromeToggleIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="1.75" y="3" width="12.5" height="10" rx="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M9.6 3v10" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}

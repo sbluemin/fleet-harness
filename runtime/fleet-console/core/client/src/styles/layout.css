@@ -1,11 +1,13 @@
 .console-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
 .console-route-content {
-  height: 100%;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -15,6 +17,232 @@
 .console-body.is-canvas {
   height: 100%;
   min-height: 0;
+}
+
+.command-band {
+  display: grid;
+  grid-template-columns: var(--command-band-left-width, 280px) minmax(0, 1fr) auto;
+  flex: none;
+  height: var(--chrome-band-height);
+  min-height: var(--chrome-band-height);
+  border-bottom: 1px solid var(--surface-rim);
+  background: var(--canvas-sea-core);
+}
+
+.command-band.is-utility {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.command-band-left,
+.command-band-center,
+.command-band-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.command-band-left {
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+  border-right: 1px solid var(--surface-rim);
+  background: var(--surface-glass);
+  transition: background 200ms ease, border-color 200ms ease;
+}
+
+.command-band-left.is-collapsed {
+  border-color: transparent;
+  background: var(--canvas-sea-core);
+}
+
+.command-band.is-utility .command-band-left {
+  width: fit-content;
+  border-right-color: transparent;
+  background: transparent;
+}
+
+.command-band-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px 4px 5px;
+  border-radius: var(--radius-xs);
+  color: var(--ink-pearl);
+}
+
+.command-band-brand:hover,
+.command-band-brand:focus-visible {
+  background: var(--surface-glass);
+}
+
+.command-band-brand .brand-foot-glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.command-band-brand .brand-foot-wordmark {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 640;
+  letter-spacing: 0.01em;
+}
+
+.command-band-center {
+  justify-content: center;
+  gap: var(--space-3);
+  padding-inline: var(--space-3);
+}
+
+.command-band-right {
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+  /* titlebar-area-width는 드래그 영역 폭이므로, 창 폭에서 x 좌표와 그 폭을 빼 창 컨트롤 예약 폭만 계산한다. */
+  padding-inline-end: calc(var(--space-2) + max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+}
+
+.command-band-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.command-band-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.command-band-button:hover,
+.command-band-button:focus-visible {
+  border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
+  color: var(--ink-spectral);
+  outline: none;
+}
+
+.command-band-theater-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.command-band-theater-segment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.command-band-theater-mark {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--brass-glow);
+  color: var(--brass);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.command-band-theater-separator { color: var(--ink-fog); }
+
+.command-band-operation-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-pearl);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-band-rename-input {
+  min-width: 0;
+  width: min(28ch, 34vw);
+  padding: 2px 6px;
+  border: 1px solid color-mix(in oklch, var(--brass) 48%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: var(--ink-deep);
+  color: var(--ink-pearl);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.command-band-operation-attribute {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+
+.command-band-operation-kind { display: flex; align-items: center; line-height: 0; }
+.command-band-operation-kind svg { display: block; width: 13px; height: 13px; }
+
+.command-band-context { position: relative; }
+
+.command-band-context-separator {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  background: var(--surface-rim);
+}
+
+.command-band-context-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.command-band-context-trigger:hover,
+.command-band-context-trigger:focus-visible { background: var(--surface-glass); color: var(--ink-pearl); }
+.command-band-context-trigger svg { width: 12px; height: 12px; }
+
+.command-band-context-deck {
+  top: calc(100% + 6px);
+  right: auto;
+  left: 0;
+}
+
+/* window-policy.ts와 합의한 44px 밴드/76px 신호등 인셋 — 변경 시 데스크톱 셸과 동기한다. */
+html[data-desktop-shell="true"] .command-band {
+  -webkit-app-region: drag;
+}
+
+/* 브랜드 홈은 링크(a)로 렌더되므로 button만 겨냥하면 드래그 영역이 클릭을 삼킨다 — 인터랙티브 자식 전체를 no-drag로. */
+html[data-desktop-shell="true"] .command-band button,
+html[data-desktop-shell="true"] .command-band a,
+html[data-desktop-shell="true"] .command-band input {
+  -webkit-app-region: no-drag;
+}
+
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-left {
+  padding-inline-start: 88px;
 }
 
 .console-body.is-canvas {
@@ -40,7 +268,8 @@
 @media (prefers-reduced-motion: reduce) {
   .console-shell,
   .operations-side-bar,
-  .right-rail {
-    transition-duration: 0.01ms;
+  .right-rail,
+  .command-band-left {
+    transition: none !important;
   }
 }

@@ -13,6 +13,7 @@ const OWNED_SOURCES = [
   "canvas/canvas-minimap.tsx",
   "canvas/canvas.tsx",
   "pages/operations.tsx",
+  "components/command-band.tsx",
   "components/side-bar-brand-foot.tsx",
   "sidebar/operations-side-bar.tsx",
   "styles/theme.css",
@@ -63,24 +64,86 @@ describe("Instrument core design contract", () => {
     expect(store).toContain("setMaximizedOperationId");
   });
 
-  it("pins the progressive shell and closed-chrome contracts", () => {
+  it("pins the Command Band and closed-chrome contracts", () => {
     const app = source("app.tsx");
+    const commandBand = source("components/command-band.tsx");
+    const theme = source("styles/theme.css");
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
-    expect(app).toContain("FloatingChromeHandles");
-    expect(source("components/floating-chrome-handles.tsx")).toContain("float-handle float-left");
+    expect(app).toContain("<CommandBand operationsViewVisible={operationsViewVisible} />");
     expect(app).not.toContain("FocusMode");
     expect(app).not.toContain("is-focus-mode");
-    expect(app).toContain('closest(".side-bar-collapse-btn")');
-    expect(app).toContain('closest(".right-rail-chrome-toggle")');
     expect(app).not.toContain("GlobalNavigation");
     expect(layout).not.toContain("--console-gnb-height");
     expect(layout).not.toContain("is-focus-mode");
+    expect(theme).toContain("--chrome-band-height: 44px;");
+    expect(commandBand).toContain('className="command-band-button command-band-sidebar-toggle"');
+    expect(commandBand).toContain('<FleetBrandHome className="command-band-brand" />');
+    expect(commandBand).toContain("onClick={() => setSideBarCollapsed(!sideBar.collapsed)}");
+    expect(commandBand).toContain('className="command-band-button command-band-search"');
+    expect(commandBand).toContain("onClick={toggleOperationSearch}");
+    expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
+    expect(commandBand).toContain("onClick={toggleRailChrome}");
+    expect(commandBand).not.toContain("command-band-formation-toggle");
+    expect(source("sidebar/operations-side-bar.tsx")).toContain('className="side-bar-formation-toggle"');
+    expect(source("sidebar/operations-side-bar.tsx")).toContain("onClick={toggleFormationView}");
+    expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
+    expect(layout).toContain("grid-template-columns: var(--command-band-left-width, 280px) minmax(0, 1fr) auto;");
+    expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
+    // 브랜드 홈(a)·rename(input)까지 no-drag — button만 겨냥하면 데스크톱 드래그 영역이 클릭을 삼킨다.
+    expect(layout).toContain('html[data-desktop-shell="true"] .command-band button,');
+    expect(layout).toContain('html[data-desktop-shell="true"] .command-band a,');
+    expect(layout).toContain('html[data-desktop-shell="true"] .command-band input {');
+    expect(layout).toContain('html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-left {');
+    expect(commandBand).toContain("onDoubleClick={beginRename}");
+    expect(commandBand).toContain("commandBandRenameCommitTarget");
+    expect(commandBand).toContain("shouldCloseCommandBandContextDeck");
+    expect(commandBand).not.toContain("data-carrier");
+    expect(commandBand).toContain("<PathContextDeck");
+    expect(layout).toContain("padding-inline-start: 88px;");
+    expect(layout).toContain("max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))");
+    expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(layout).toContain(".command-band-left {");
     expect(components).toContain(".operations-side-bar.is-closed");
-    expect(components).toContain(".float-handle {");
+    expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
+    expect(layout).toContain(".command-band-context-separator {");
+    expect(layout).toContain(".command-band-theater-cluster {");
+    expect(layout).not.toContain("--command-band-carrier");
+  });
+
+  it("locks Command Band coordinate invariance to tint-only state changes", () => {
+    const layout = source("styles/layout.css");
+    const components = source("styles/components.css");
+    const rail = source("styles/rail.css");
+    // .command-band-left.is-collapsed 블록은 톤 전환(배경·경계색)만 가진다 —
+    // 위치·크기·여백 속성이 들어오는 순간 좌표 불변 계약이 깨진다.
+    const collapsedBlocks = layout.match(/^\.command-band-left\.is-collapsed \{[^}]*\}/gm) ?? [];
+    expect(collapsedBlocks).toHaveLength(1);
+    const collapsedDeclarations = (collapsedBlocks[0] ?? "")
+      .replace(/^\.command-band-left\.is-collapsed \{/, "")
+      .replace(/\}$/, "")
+      .split(";")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    expect(collapsedDeclarations.length).toBeGreaterThan(0);
+    for (const declaration of collapsedDeclarations) {
+      expect(declaration).toMatch(/^(?:background|border-color):/);
+    }
+    // 어떤 상태 셀렉터도 밴드 버튼의 기하를 조건부로 겨냥하지 못한다.
+    const statefulBandButtonRule =
+      /(?:is-closed|is-collapsed|data-sidebar|data-rail)[^{]*\.command-band-(?:button|sidebar-toggle|search|rail-toggle)|\.command-band-(?:button|sidebar-toggle|search|rail-toggle)[^{]*(?:is-closed|is-collapsed)/;
+    expect(layout).not.toMatch(statefulBandButtonRule);
+    expect(components).not.toMatch(statefulBandButtonRule);
+    expect(rail).not.toMatch(statefulBandButtonRule);
+    // reduced-motion 단락이 미디어 블록 내부에서 크롬 전환을 실제로 끊는지 블록 스코프로 고정한다.
+    const reducedMotionBlock = layout.slice(layout.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotionBlock).toContain(".operations-side-bar,");
+    expect(reducedMotionBlock).toContain(".right-rail,");
+    expect(reducedMotionBlock).toContain(".command-band-left {");
+    expect(reducedMotionBlock).toContain("transition: none !important;");
   });
 
   it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {
@@ -138,28 +201,14 @@ describe("Instrument core design contract", () => {
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const minimap = source("canvas/canvas-minimap.tsx");
-    const railProducer = source("rail/right-rail.tsx");
+    const commandBand = source("components/command-band.tsx");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
-    expect(sidebar).toContain('className="side-bar-search-btn"');
-    expect(sidebar).toContain("onClick={toggleOperationSearch}");
-    expect(sidebar).toContain('className="side-bar-formation-btn"');
-    expect(sidebar).toContain("onClick={toggleFormationView}");
-    expect(sidebar).toContain("disabled={activeTheaterId === null}");
-    expect(sidebar).toContain("aria-pressed={formationView}");
-    expect(sidebar).not.toContain("side-bar-settings-btn");
-    // 헤더 버튼 순서 계약: 접기 → Formation → 검색.
-    const headerBlock = sidebar.slice(sidebar.indexOf('className="operations-side-bar-header"'), sidebar.indexOf("</header>"));
-    const collapseAt = headerBlock.indexOf("side-bar-collapse-btn");
-    const formationAt = headerBlock.indexOf("side-bar-formation-btn");
-    const searchAt = headerBlock.indexOf("side-bar-search-btn");
-    expect(collapseAt).toBeGreaterThan(-1);
-    expect(formationAt).toBeGreaterThan(collapseAt);
-    expect(searchAt).toBeGreaterThan(formationAt);
     expect(source("canvas/canvas-context-menu.tsx")).toContain('export type CanvasContextMenuMode = "full" | "launch";');
     expect(brandFoot).toContain('className="brand-foot-dropup-menu" role="menu"');
-    expect(brandFoot).toContain('className="brand-foot-version"');
+    expect(brandFoot).toContain("System Menu");
+    expect(brandFoot).toContain("Keyboard Shortcuts");
     expect(brandFoot).toContain("openWhatsNew");
     expect(components).toContain(".side-bar-brand-foot {");
 
@@ -172,10 +221,15 @@ describe("Instrument core design contract", () => {
 
     expect(minimap).not.toContain("is-plugin");
     expect(components).not.toContain(".canvas-minimap-operation.is-plugin");
-    expect(components).toContain(".canvas-operation-cli {");
+    expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-title"');
+    expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-rename-input"');
+    expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
+    expect(components).toContain(".canvas-operation-beacon-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
-    expect(railProducer).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
+    expect(components).toContain("우측 앵커는 var(--space-2), 슬롯 폭은 24px이다.");
+    expect(source("styles/layout.css")).toContain(".command-band-operation-kind { display: flex; align-items: center; line-height: 0; }");
+    expect(source("styles/layout.css")).toContain("background: color-mix(in oklch, var(--ink-fog) 10%, transparent);");
+    expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
-    expect(rail).toContain("width: 16px");
   });
 });

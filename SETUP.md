@@ -46,6 +46,18 @@ fleet --help
 fleet wiki --help
 ```
 
+## Fleet Console Desktop
+
+Fleet Console Desktop is a separately packaged Electron application. It is optional: the npm-installed CLI and `fleet console` continue to open the browser Console. Install a released platform artifact from the Fleet Console GitHub Release, then launch **Fleet Console** from the installed app. The native shell starts a standard Node `22.23.1` sidecar and loads `http://127.0.0.1:<verified-port>/console/`.
+
+- macOS: separate arm64 and x64 DMG/ZIP artifacts.
+- Windows: x64 NSIS installer.
+- Linux: x64 AppImage.
+
+Desktop and the published CLI/browser use the same stable lock and durable-state namespace. If a healthy CLI-owned daemon is running, the app asks before switching it; cancel leaves that daemon unchanged. Closing the only window keeps the macOS app alive or hides it to the tray on Windows/Linux. Use the native **Quit** command to stop a desktop-owned sidecar. A later launch can adopt a matching sidecar left after an unexpected shell crash.
+
+Use the app's native update command for desktop releases. The browser/CLI stable channel keeps its npm-global updater; desktop never uses that updater. Linux release integrity is documented through checksum/GPG material when supplied with a release; platform signing availability is release-specific.
+
 ## Post-Install Warning
 
 After installation, warn the user:

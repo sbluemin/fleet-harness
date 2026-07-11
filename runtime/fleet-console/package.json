@@ -19,6 +19,10 @@
     "fleet-console": "./dist/cli.mjs"
   },
   "exports": {
+    "./desktop-protocol": {
+      "types": "./dist/desktop-protocol.d.ts",
+      "default": "./dist/desktop-protocol.mjs"
+    },
     "./cli": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.mjs"

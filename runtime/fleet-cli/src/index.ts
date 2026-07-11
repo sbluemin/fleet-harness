@@ -3,7 +3,9 @@ import { createRequire } from "node:module";
 
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
+import { runDesktopDev } from "./desktop-command.js";
 import { runNativeApp } from "./native-app.js";
+import { readFleetCliRelease } from "./release.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
@@ -12,6 +14,14 @@ const argv = process.argv.slice(2);
 
 if (argv[0] === "console") {
   process.exit(await relayToPackageCli("@dotobokuri/fleet-console/cli", argv.slice(1)));
+}
+
+if (argv[0] === "desktop" && readFleetCliRelease().channel === "local") {
+  if (argv.length > 1) {
+    process.stderr.write(`Unknown fleet desktop option: ${argv[1]}\n${HELP_HINT}\n`);
+    process.exit(1);
+  }
+  process.exit(await runDesktopDev());
 }
 
 if (argv[0] === "update") {
@@ -79,4 +89,3 @@ async function relayToPackageCli(specifier: string, args: readonly string[]): Pr
     });
   });
 }
-

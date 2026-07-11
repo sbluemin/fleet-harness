@@ -161,6 +161,22 @@ export function applyThemeToDocument(theme: ThemeId): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
 
+// Electron 데스크톱 셸에서만 `data-desktop-shell` 마커를 심는다 — 브라우저에는 마커가 없어
+// `-webkit-app-region` 드래그 규칙이 적용되지 않는다. channel status는 첫 페인트 이후 도착하므로,
+// 초기 렌더부터 창 드래그가 필요한 이 마커는 즉시 확인 가능한 userAgent로 판별한다.
+export function applyDesktopShellMarker(): void {
+  if (typeof document === "undefined" || typeof navigator === "undefined") return;
+  if (navigator.userAgent.includes("Electron")) {
+    document.documentElement.setAttribute("data-desktop-shell", "true");
+    const platform = navigator.userAgent.includes("Windows")
+      ? "win32"
+      : navigator.userAgent.includes("Mac OS X")
+        ? "darwin"
+        : "linux";
+    document.documentElement.setAttribute("data-desktop-platform", platform);
+  }
+}
+
 export function applyUiFontToDocument(uiFont: UiFontSettings): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-ui-font", uiFont.source);

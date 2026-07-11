@@ -6,6 +6,7 @@ import { fetchRailPathDirectories, fetchRailPathWorktrees, type RailPathWorktree
 import { PathContextTree } from "./path-context-tree.js";
 
 interface PathContextDeckProps {
+  readonly className?: string;
   readonly theaterId: string;
   readonly theaterLabel: string;
   readonly context: RailPathContext;
@@ -14,7 +15,7 @@ interface PathContextDeckProps {
   readonly onClose: () => void;
 }
 
-export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(function PathContextDeck({ theaterId, theaterLabel, context, isMutating, onSelect, onClose }, ref) {
+export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(function PathContextDeck({ className, theaterId, theaterLabel, context, isMutating, onSelect, onClose }, ref) {
   const [worktrees, setWorktrees] = useState<RailPathWorktreesResult | null>(null);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export const PathContextDeck = forwardRef<HTMLDivElement, PathContextDeckProps>(
   }, [isMutating, onSelect]);
 
   return (
-    <div ref={ref} className="rail-context-deck" role="dialog" aria-label="Path context">
+    <div ref={ref} className={`rail-context-deck${className ? ` ${className}` : ""}`} role="dialog" aria-label="Path context">
       <div className="rail-context-deck-caption">Path context · applies to all path-aware panels</div>
       <button className={`rail-context-row${context.relPath === null ? " is-selected" : ""}`} type="button" disabled={isMutating} onClick={() => selectContext(null)}>
         <span className="rail-context-badge rail-context-badge--root">ROOT</span>

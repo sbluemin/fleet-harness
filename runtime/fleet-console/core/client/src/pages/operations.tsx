@@ -13,6 +13,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
+import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, flattenGroupedOrder, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
@@ -60,6 +61,7 @@ export function Operations({ state }: OperationsProps) {
     const maximizedRef = { current: maximizedOperationId };
     const formationRef = { current: formationView };
     const handler = (event: KeyboardEvent) => {
+      if (!shouldHandleOperationsKeyboardShortcut()) return;
       if (!event.altKey || event.metaKey || event.ctrlKey) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;

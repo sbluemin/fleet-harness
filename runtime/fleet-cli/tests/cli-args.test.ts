@@ -59,6 +59,15 @@ describe("fleet CLI args", () => {
     expect(helpText).not.toContain("fleet —");
   });
 
+  it("documents the Desktop development command only for local workspace runs", () => {
+    const local = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "0.0.0-test", channel: "local" } });
+    const stable = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "1.23.0", channel: "stable" } });
+
+    expect(local).toContain("fleet desktop");
+    expect(local).toContain("Start Fleet Console Desktop from this workspace.");
+    expect(stable).not.toContain("fleet desktop");
+  });
+
   it("rejects unknown flags", () => {
     expect(() => parseFleetCliOptions(["--unknown"], {})).toThrow("Unknown fleet option: --unknown");
   });

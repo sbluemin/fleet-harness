@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -65,6 +66,7 @@ interface ExitablePty extends TerminalPtyHandle {
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];
 let previousStaticIndex: string | null | undefined;
+const CONSOLE_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
@@ -77,6 +79,27 @@ afterEach(async () => {
 });
 
 describe("console terminal observability", () => {
+  it("uses an OS-assigned port for local development despite a persisted static-port preference", async () => {
+    const staticPort = 43_199;
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const settingsFile = path.join(carrierStoreDir, "console", "settings.json");
+        fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+        fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, general: { consolePortMode: "static", consoleStaticPort: staticPort }, plugins: {} }));
+      },
+      release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT },
+      useDefaultPort: true,
+    });
+    const response = await fetch(`${fixture.endpoint}api/v1/health`, { headers: { Authorization: `Bearer ${fixture.lock.token}` } });
+    const health = await response.json() as { readonly portMode: string; readonly requestedPort: number | null; readonly effectivePort: number };
+
+    expect(response.status).toBe(200);
+    expect(health.portMode).toBe("dynamic");
+    expect(health.requestedPort).toBeNull();
+    expect(health.effectivePort).toBe(fixture.lock.port);
+    expect(health.effectivePort).not.toBe(staticPort);
+  });
+
   it("resolves terminal launch cwd from the selected console-owned session", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-"));
     tempDirs.push(dir);
@@ -776,6 +799,25 @@ describe("console static and terminal ticket boundary", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "local_channel" });
+  });
+
+  it("routes desktop update requests to native update management before the npm worker", async () => {
+    const updateCheck = { getStatus: vi.fn(() => ({ updateAvailable: true, latestVersion: "1.2.3" })), refresh: vi.fn() };
+    const fixture = await startFixture({
+      release: { channel: "desktop", version: "1.0.0", packageRoot: "/pkg" },
+      updateCheck,
+    });
+    updateCheck.refresh.mockClear();
+
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "desktop_update_managed" });
+    expect(updateCheck.refresh).not.toHaveBeenCalled();
   });
 
   it("accepts update apply after fresh recheck and starts shutdown after the 202 response", async () => {
@@ -1985,6 +2027,7 @@ async function startFixture(options: {
   readonly release?: ConsoleServerDeps["release"];
   readonly updateApply?: ConsoleServerDeps["updateApply"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
+  readonly useDefaultPort?: boolean;
 } = {}): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
   const carrierStoreDir = path.join(dir, "fleet-home");
@@ -1999,7 +2042,7 @@ async function startFixture(options: {
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
   const server = createConsoleServer({
-    port: 0,
+    ...(options.useDefaultPort ? {} : { port: 0 }),
     version: "test",
     agentRuntime: options.agentRuntime,
     // 기본은 4개 바이너리 모두 설치된 것으로 stub해 기존 테스트(claude/codex 세션)가 PATH 환경에

@@ -1,0 +1,90 @@
+name: Fleet Console Desktop
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "runtime/fleet-console/**"
+      - "runtime/fleet-console/markdown/**"
+      - "runtime/fleet-console/sdk/**"
+      - "runtime/fleet-console-desktop/**"
+      - "runtime/fleet-plugins/**"
+      - "packages/**"
+      - "scripts/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/fleet-console-desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-console-desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-structure:
+    name: ${{ matrix.label }} native structure
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS arm64
+            runner: macos-14
+          - label: macOS x64
+            runner: macos-13
+          - label: Windows x64
+            runner: windows-2022
+          - label: Linux x64
+            runner: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+
+      - name: Console typecheck, test, and build
+        run: |
+          pnpm --filter @dotobokuri/fleet-console typecheck
+          pnpm --filter @dotobokuri/fleet-console test
+          pnpm --filter @dotobokuri/fleet-console build
+
+      - name: Desktop typecheck, test, and build
+        run: |
+          pnpm --filter @dotobokuri/fleet-console-desktop typecheck
+          pnpm --filter @dotobokuri/fleet-console-desktop test
+          pnpm --filter @dotobokuri/fleet-console-desktop build
+
+      - name: Stage and verify the host-native Node sidecar
+        run: |
+          pnpm --filter @dotobokuri/fleet-console-desktop stage:sidecar
+          pnpm --filter @dotobokuri/fleet-console-desktop verify:sidecar
+
+      - name: Create unsigned host-native directory package
+        run: pnpm --filter @dotobokuri/fleet-console-desktop package:dir
+
+      - name: Verify unsigned package boundary
+        run: pnpm --filter @dotobokuri/fleet-console-desktop verify:package
+
+      - name: Upload disposable QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-console-desktop-${{ matrix.label }}-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            runtime/fleet-console-desktop/release/**
+            runtime/fleet-console-desktop/.stage/sidecar/manifest.json
+            runtime/fleet-console-desktop/.stage/sidecar/fleet-console/LICENSES.json

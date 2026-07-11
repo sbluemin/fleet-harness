@@ -18,6 +18,7 @@ import { createInfraServices, getFleetDataDir, type GlobalOptionsService } from 
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
+import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -237,7 +238,7 @@ function parseTerminalCommand(command: string | undefined): { readonly bin: stri
 
 function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined): NodeJS.ProcessEnv {
   return {
-    ...env,
+    ...stripConsoleInternalEnv(env),
     ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
     TERM: TERMINAL_TERM,
   };

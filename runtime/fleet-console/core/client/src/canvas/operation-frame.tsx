@@ -6,14 +6,12 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { operationActivityVisual } from "../operation-activity.js";
 import { AccentPopover } from "./accent-popover.js";
 import { resolveAccentColor } from "./operation-accent.js";
-import { useInlineRename } from "../use-inline-rename.js";
 
 interface OperationFrameProps {
   readonly operation: OperationNode;
   readonly active: boolean;
   readonly geometry: OperationGeometry;
   readonly zoom: number;
-  readonly subtitle?: string;
   readonly status?: OperationActivity;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
@@ -24,7 +22,6 @@ interface OperationFrameProps {
   readonly onClose: () => void;
   readonly onMinimize: () => void;
   readonly onMaximize?: () => void;
-  readonly onRename: (title: string) => void;
   readonly onSetAccent?: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
@@ -48,13 +45,12 @@ const RESIZE_DIRECTIONS: readonly ResizeDirection[] = ["n", "ne", "e", "se", "s"
 const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 
-export function OperationFrame({ operation, active, geometry, zoom, subtitle, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const displayTitle = operation.title;
-  const rename = useInlineRename({ currentTitle: displayTitle, onCommit: onRename, onBegin: onActivate });
   // accent를 패널 외곽 box-shadow 링으로 칠한다(--op-accent). status(테두리·진행광)·focus(brass)와 채널이 달라 공존한다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
@@ -142,11 +138,6 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
     event.stopPropagation();
   };
 
-  const stopTitlePointer = (event: ReactPointerEvent<HTMLElement>) => {
-    event.stopPropagation();
-    onActivate();
-  };
-
   const stopOperationPointer = (event: ReactPointerEvent<HTMLElement>) => {
     event.stopPropagation();
     onActivate();
@@ -219,25 +210,8 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
             <span className={beaconStatusClass(status)} aria-hidden="true" />
           </button>
         ) : (
-          <span className={beaconStatusClass(status)} onPointerDown={stopTitlePointer} aria-hidden="true" />
+          <span className={beaconStatusClass(status)} onPointerDown={(event) => { event.stopPropagation(); onActivate(); }} aria-hidden="true" />
         )}
-        {rename.renaming ? (
-          <input
-            ref={rename.inputRef}
-            className="canvas-operation-rename-input"
-            value={rename.draftTitle}
-            aria-label={`${displayTitle} 이름 변경`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => rename.setDraftTitle(event.target.value)}
-            onKeyDown={rename.handleKeyDown}
-            onBlur={rename.handleBlur}
-          />
-        ) : (
-          <span className="canvas-operation-title" onPointerDown={stopTitlePointer} onDoubleClick={rename.begin} title="Double-click to rename">
-            {displayTitle}
-          </span>
-        )}
-        {subtitle ? <span className="canvas-operation-cli" onPointerDown={stopTitlePointer}>{subtitle}</span> : null}
         <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={`Minimize operation ${displayTitle}`} title="Minimize operation">
           <MinimizeIcon />
         </button>

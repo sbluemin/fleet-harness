@@ -92,6 +92,8 @@
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-body-size: 14px;
 
+  --chrome-band-height: 44px;
+
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-glide: cubic-bezier(0.4, 0.14, 0.2, 1);
   --duration-fast: 140ms;

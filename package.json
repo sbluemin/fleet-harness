@@ -9,12 +9,17 @@
   "author": "sbluemin",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-console-desktop' build",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
     "check:protocol-sync": "node scripts/check-protocol-sync.mjs",
-    "fleet": "pnpm --filter @dotobokuri/core-unified-agent build && pnpm --filter @dotobokuri/fleet-cli dev",
-    "fleet-console": "pnpm --filter @dotobokuri/fleet-console cli",
-    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r build"
+    "cli": "pnpm --filter @dotobokuri/core-unified-agent build && pnpm --filter @dotobokuri/fleet-cli dev",
+    "console": "pnpm --filter @dotobokuri/fleet-console build && node runtime/fleet-console/dist/cli.mjs",
+    "desktop": "pnpm --filter @dotobokuri/fleet-console-desktop dev",
+    "desktop:build": "pnpm --filter @dotobokuri/fleet-console-desktop build",
+    "desktop:package": "pnpm --filter @dotobokuri/fleet-console-desktop package",
+    "desktop:package:dir": "pnpm --filter @dotobokuri/fleet-console-desktop package:dir",
+    "desktop:package:unsigned": "pnpm --filter @dotobokuri/fleet-console-desktop package:unsigned",
+    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-console-desktop' build"
   },
   "bin": {
     "fleet": "./runtime/fleet-cli/bin/fleet"

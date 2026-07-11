@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
-import { Link } from "react-router-dom";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
@@ -98,7 +97,6 @@ export function GlobalSettings() {
     <main className="global-settings-page">
       <section className="global-settings-hero" aria-labelledby="global-settings-title">
         <div>
-          <Link className="page-back-link" to="/operations">← Operations</Link>
           <p className="bridge-kicker">Console</p>
           <h2 id="global-settings-title">Settings</h2>
         </div>

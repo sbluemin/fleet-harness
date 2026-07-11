@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { openWhatsNew } from "../store.js";
+import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
 
@@ -25,51 +26,104 @@ const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargaz
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
+const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
 
-/* v5 브랜드 푸터 — 구분선 아래 [시그니처+Fleet][버전(What's New)][GitHub][★][Update?][⚙ 드롭업(Settings/Carriers)].
-   GNB 퇴역으로 이식된 콘솔 크롬의 유일한 상주 진입점. */
 export function SideBarBrandFoot() {
   const state = useConsoleState();
-  const latestReleaseVersion = state.releaseNotes.find((note) => note.version !== "Unreleased")?.version ?? null;
-  const hasUnreadRelease = state.automaticWhatsNewVersion !== null && state.automaticWhatsNewVersion === latestReleaseVersion;
 
   return (
     <div className="side-bar-brand-foot">
-      <Link className="brand-foot-home" to="/operations" aria-label="Operations">
-        <BrandMarkIcon />
-        <span className="brand-foot-wordmark">Fleet</span>
-      </Link>
-      <button
-        type="button"
-        className="brand-foot-version"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={openWhatsNew}
-        disabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)}
-        aria-label={`What's new for version ${state.version}`}
-        title={`What's new v${state.version}`}
-      >
-        {hasUnreadRelease ? <span className="brand-foot-version-dot" aria-hidden="true" /> : null}
-        <span>v{state.version}</span>
-      </button>
-      {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
-      <GithubLinks />
-      <SettingsDropup />
+      <SystemMenu latestVersion={state.latestVersion} updateAvailable={state.updateAvailable} />
+      <HelpMenu version={state.version} releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)} />
     </div>
   );
 }
 
-function SettingsDropup() {
+export function FleetBrandHome({ className = "brand-foot-home" }: { readonly className?: string }) {
+  return <Link className={className} to="/operations" aria-label="Operations"><BrandMarkIcon /><span className="brand-foot-wordmark">Fleet</span></Link>;
+}
+
+function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion: string | null; readonly updateAvailable: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
+  useFooterDropupKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
+
+  const go = (path: string) => {
+    setOpen(false);
+    navigate(path);
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>("main h2, h2");
+      target?.focus?.();
+      if (target && document.activeElement !== target) {
+        target.setAttribute("tabindex", "-1");
+        target.focus();
+      }
+    });
+  };
+
+  return (
+    <div ref={rootRef} className="brand-foot-dropup brand-foot-system-menu">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="brand-foot-system-trigger"
+        onClick={() => setOpen((previous) => !previous)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="System Menu"
+        title="System Menu"
+      >
+        <SettingsGlyph />
+        <span>System Menu</span>
+      </button>
+      {open ? (
+        <div ref={menuRef} className="brand-foot-dropup-menu" role="menu" aria-label="System Menu">
+          <button type="button" role="menuitem" onClick={() => go("/settings")}>
+            <SettingsGlyph />
+            <span>Settings</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => go("/carrier-settings")}>
+            <CarriersGlyph />
+            <span>Carriers</span>
+          </button>
+          {updateAvailable ? <><div className="brand-foot-menu-divider" role="separator" /><UpdateApplyControl latestVersion={latestVersion} /></> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HelpMenu({ releaseDisabled, version }: { readonly releaseDisabled: boolean; readonly version: string }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  useFooterDropupKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
+
+  return <div ref={rootRef} className="brand-foot-dropup brand-foot-help-menu">
+    <button ref={triggerRef} type="button" className="brand-foot-help-trigger" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label="Help" title="Help"><HelpGlyph /></button>
+    {open ? <div ref={menuRef} className="brand-foot-dropup-menu brand-foot-help-dropup-menu" role="menu" aria-label="Help">
+      <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>What's New</span></button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>Keyboard Shortcuts</span></button>
+      <div className="brand-foot-menu-divider" role="separator" />
+      <GithubLinks menuItem version={version} />
+    </div> : null}
+    {shortcutsOpen ? <KeyboardShortcutsDialog onClose={() => { setShortcutsOpen(false); triggerRef.current?.focus(); }} /> : null}
+  </div>;
+}
+
+function useFooterDropupKeyboard(rootRef: RefObject<HTMLDivElement | null>, triggerRef: RefObject<HTMLButtonElement | null>, menuRef: RefObject<HTMLDivElement | null>, open: boolean, setOpen: Dispatch<SetStateAction<boolean>>) {
   useEffect(() => {
     if (!open) return;
     // menu-button 패턴: 열리면 첫 menuitem으로 포커스 이동.
     const frame = window.requestAnimationFrame(() => {
-      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+      menuRef.current?.querySelector<HTMLElement>(ENABLED_MENU_ITEM_SELECTOR)?.focus();
     });
     const handlePointer = (event: PointerEvent) => {
       if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
@@ -82,7 +136,7 @@ function SettingsDropup() {
         return;
       }
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-      const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+      const items = [...(menuRef.current?.querySelectorAll<HTMLElement>(ENABLED_MENU_ITEM_SELECTOR) ?? [])];
       if (items.length === 0) return;
       event.preventDefault();
       const currentIndex = items.findIndex((item) => item === document.activeElement);
@@ -100,50 +154,7 @@ function SettingsDropup() {
       window.removeEventListener("pointerdown", handlePointer, true);
       window.removeEventListener("keydown", handleKey, true);
     };
-  }, [open]);
-
-  const go = (path: string) => {
-    setOpen(false);
-    navigate(path);
-    // 라우트 전환으로 푸터가 사라지므로 새 페이지의 복귀 링크(없으면 heading)로 포커스를 전달한다.
-    window.requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>(".page-back-link") ?? document.querySelector<HTMLElement>("main h2, h2");
-      target?.focus?.();
-      if (target && document.activeElement !== target) {
-        target.setAttribute("tabindex", "-1");
-        target.focus();
-      }
-    });
-  };
-
-  return (
-    <div ref={rootRef} className="brand-foot-dropup">
-      <button
-        ref={triggerRef}
-        type="button"
-        className="brand-foot-more"
-        onClick={() => setOpen((previous) => !previous)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Settings and Carriers"
-        title="Settings & Carriers"
-      >
-        <SettingsGlyph />
-      </button>
-      {open ? (
-        <div ref={menuRef} className="brand-foot-dropup-menu" role="menu" aria-label="Console pages">
-          <button type="button" role="menuitem" onClick={() => go("/settings")}>
-            <SettingsGlyph />
-            <span>Settings</span>
-          </button>
-          <button type="button" role="menuitem" onClick={() => go("/carrier-settings")}>
-            <CarriersGlyph />
-            <span>Carriers</span>
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
+  }, [menuRef, open, rootRef, setOpen, triggerRef]);
 }
 
 function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string | null }) {
@@ -197,18 +208,19 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
   );
 }
 
-function GithubLinks() {
+function GithubLinks({ menuItem = false, version }: { readonly menuItem?: boolean; readonly version: string }) {
   const stars = useGithubStars();
   const hasCount = stars.count !== null;
   return (
     <div className="brand-foot-github" role="group" aria-label="GitHub">
-      <a className="brand-foot-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Open GitHub repository" title="GitHub repository">
+      <a className="brand-foot-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label="Open GitHub repository" title="GitHub repository">
         <GithubMarkIcon />
       </a>
-      <a className="brand-foot-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" aria-label={hasCount ? `GitHub stars ${stars.count!.toLocaleString()}` : "Star on GitHub"} title="Star on GitHub">
+      <a className="brand-foot-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label={hasCount ? `GitHub stars ${stars.count!.toLocaleString()}` : "Star on GitHub"} title="Star on GitHub">
         <StarIcon />
         {hasCount ? <span className="brand-foot-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
       </a>
+      <span className="brand-foot-github-version">v{version}</span>
     </div>
   );
 }
@@ -321,6 +333,18 @@ function CarriersGlyph() {
 
 function SettingsGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /><circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /><circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function HelpGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M6.2 6.2a1.8 1.8 0 1 1 2.6 1.7c-.5.3-.8.6-.8 1.1v.4" fill="none" stroke="currentColor" strokeWidth="1.2" /><circle cx="8" cy="11.6" r=".7" fill="currentColor" /></svg>;
+}
+
+function WhatsNewGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h12v8H2zM2 5l2-2.5h8L14 5M8 5v8" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function KeyboardGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M4 7h1m2 0h1m2 0h1M5 9.5h6" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 function GithubMarkIcon() {

@@ -62,7 +62,7 @@ Outer-terminal cursor sync policy is owned here; `src/tui/` supplies the local r
 
 ## Development & Execution
 
-- Use the root `pnpm fleet` script.
+- Use the root `pnpm cli` script.
 - Installed or linked `fleet` commands enter through `runtime/fleet-cli/bin/fleet`.
 
 ## Operational Standards
