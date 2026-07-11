@@ -52,6 +52,7 @@ interface PendingTerminalSessionState {
   readonly cwdLabel: string;
   label?: string;
   labelSource?: AgentLabelSource;
+  autoNamePromptSeen?: boolean;
   cliId?: string;
   cliLabel?: string;
   readonly createdAt: number;
@@ -316,20 +317,22 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
-  // 자동 작명: 사용자 수동 라벨(labelSource "user")이 없는 세션에만 적용한다.
+  // 자동 작명: 사용자 수동 라벨(labelSource "user")이 없는 세션의 첫 유효 프롬프트에만 적용한다.
   // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다.
-  // 매 UserPromptSubmit마다 호출되며, 실제 라벨 변경이 있을 때만 patch/persist된다.
+  // 처리 여부는 패널의 인메모리 상태에만 남기며 durable operation에는 포함하지 않는다.
   function autoNameTerminalSession(sessionId: string, label: string | null): AutoNameTerminalSessionResult | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     const effectiveSource: AgentLabelSource | undefined = session.labelSource ?? (session.label ? "user" : undefined);
-    if (effectiveSource === "user") {
+    if (effectiveSource === "user" || session.autoNamePromptSeen) {
       return { session: toTerminalSessionInfo(session), renamed: false };
     }
     const next = label?.trim().slice(0, 200) ?? "";
-    if (next.length === 0 || next === session.label) {
+    if (next.length === 0) {
       return { session: toTerminalSessionInfo(session), renamed: false };
     }
+    session.autoNamePromptSeen = true;
+    if (next === session.label) return { session: toTerminalSessionInfo(session), renamed: false };
     session.label = next;
     session.labelSource = "auto";
     return { session: toTerminalSessionInfo(session), renamed: true };
