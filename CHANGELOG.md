@@ -5,6 +5,89 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-07-11
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] Apply the saved Codex launch choice when opening new carrier sessions.
+
+#### Removed
+- [fleet-cli] Remove the deprecated `--native` terminal-only launch mode so Fleet CLI always opens the embedded two-pane app.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add a Typography Font Browser with atomic UI font and size preferences.
+- [fleet-console] Add a server-saved global UI font preference with curated Manrope, JetBrains Mono, and Source Code Pro choices.
+- [fleet-console] Add a Plans activity rail panel that lists the active Theater's execution plans with wave/task progress and parallel-lane dispatch readiness, and opens them in a hardened in-panel markdown reader.
+- [fleet-console] Add a temporary Formation view for supervising visible Operations.
+- [fleet-console] Add a shared Activity Rail path context for selecting a Theater root, worktree, or directory.
+- [fleet-console] Unify window chrome into a 44px Command Band: sidebar and Activity Rail toggles, Operation search, and the Formation view toggle now live at fixed window positions that never move when panels collapse.
+- [fleet-console] Animate sidebar and Activity Rail collapse and expand with a 200ms width transition that is fully disabled under prefers-reduced-motion.
+- [fleet-console] Retire the floating edge expand tabs and the sidebar header button row; Add Theater moves to a full-width row at the top of the sidebar.
+- [fleet-console] Move the Fleet brand mark into the Command Band as the Operations home button and widen the macOS traffic light inset.
+- [fleet-console] Reinterpret the band center as a breadcrumb of the active Theater, the active panel name with double-click rename, and the panel CLI shown as an icon and text tag.
+- [fleet-console] Minimize the panel hover controls to the status dot plus minimize, maximize, and close, with the dot resting in the close slot and sliding left on hover.
+- [fleet-console] Surface the Activity Rail path context chip in the Command Band as a second synchronized surface.
+- [fleet-console] Replace the sidebar brand foot with System Menu and Help drop-ups, move Keyboard Shortcuts into a Help modal, and remove it from the canvas context menu.
+- [fleet-console] Keep the Command Band on the Settings and Carriers routes with brand and search only, and retire their back-to-Operations links.
+- [fleet-console] Add English and Korean What's New release notes with a server-persisted language preference.
+
+#### Changed
+- [fleet-console] Redesign Fleet Console with the Instrument visual system and full-height progressive navigation.
+- [fleet-console] Split Formation shortcuts for open panels and restoring minimized panels.
+- [fleet-console] Operation panels drop the separate title bar for an integrated single surface; each panel shows only a status dot at rest and reveals a top-right cluster with its name, CLI badge, and window controls on hover, which also serves as the drag handle.
+- [fleet-console] Replace the sidebar Canvas controls button with a Formation view toggle and swap the search and collapse buttons.
+
+#### Fixed
+- [fleet-console] Restore the Theme section in General settings with Instrument (default), Maritime, and Carbon themes.
+- [fleet-console] Command Band background now follows each theme's chrome palette, fixing the overly dark center and right segments in the Maritime and Carbon themes.
+- [fleet-console] Restore user-selected accent perimeters on Map Operation panels and side ticks on Operations SideBar chips.
+- [fleet-console] Activity Rail resize drag now tracks the cursor 1:1 instead of easing behind it and catching up only after the pointer stops.
+- [fleet-console] Require confirmation before closing a Map session panel.
+- [fleet-console] Clean stale plugin bundles at startup and current-run bundles at shutdown without disturbing active Console processes.
+
+#### Removed
+- [fleet-console] Remove the English fallback badge from localized What's New release notes.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] Introduce Fleet Console Desktop 0.1.0, an optional native home for the full Fleet Console experience.
+- [fleet-console] Set up and maintain the managed Console runtime automatically, including first-run installation, launch-time updates, offline fallback, and safe recovery from interrupted installs.
+- [fleet-console] Provide native desktop lifecycle controls with single-instance window restore, platform title-bar integration, tray and menu actions, update prompts, and clear startup conflict guidance.
+- [fleet-console] Keep the desktop shell lightweight by downloading Console code only when needed while preserving Fleet Console data independently from the removable managed runtime.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Add an Agent CLI setting to choose ACP or App Server for new Codex carrier sessions, defaulting to ACP.
+- [fleet-console] Add a Terminal Font Browser with built-in and installed monospace font choices, preview, and durable server settings.
+- [fleet-console] Filter changed files and history commits directly in the Diff rail.
+- [fleet-console] Let supported Activity Rail panels follow the selected Theater root, worktree, or directory context.
+
+#### Changed
+- [fleet-console] View repository history in its own right-rail panel across all branches and linked worktrees.
+
+#### Fixed
+- [fleet-console] Restore per-theme terminal color palettes so Operation terminals follow the selected theme.
+- [fleet-console] Fix Diff panels for file selection, non-Git Theaters, and narrow History layouts.
+- [fleet-console] Search unopened File Explorer folders recursively and resize History detail panes by dragging.
+- [fleet-console] Hook-provided panel names now apply only once per running panel while preserving operator renames.
+
+### fleet-core
+
+#### Added
+- [core-infra] [core-unified-agent] [fleet-admiral] Persist the Codex ACP or App Server launch choice and route carrier sessions accordingly, defaulting to ACP.
+- [fleet-carriers] Add a machine-readable checkbox task contract to plan authoring and wave-completion progress write-back, so execution progress becomes visible in plan files and the Console Plans surface.
+
+#### Changed
+- [fleet-carriers] [fleet-admiral] A single Kirov plan can declare safe parallel Ohio lanes; Ohio accepts an execution_scope to run one Dispatch Manifest lane for Parallel plans and preserves full sequential execution for legacy or Sequential plans.
+
+#### Fixed
+- [fleet-admiral] [fleet-carriers] Make naval role-playing follow the metaphor option while keeping the default prompt and carrier metadata neutral.
+
 ## [1.23.0] - 2026-07-10
 
 ### Changed

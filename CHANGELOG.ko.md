@@ -5,6 +5,89 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-07-11
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] 새 캐리어 세션을 열 때 저장된 Codex 시작 선택을 적용합니다.
+
+#### Removed
+- [fleet-cli] 더 이상 지원하지 않는 `--native` 터미널 전용 시작 모드를 제거하여 Fleet CLI가 항상 임베디드 2개 패널 앱을 엽니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] 원자적 UI 글꼴 및 크기 환경설정을 갖춘 Typography Font Browser를 추가합니다.
+- [fleet-console] 엄선된 Manrope, JetBrains Mono, Source Code Pro 선택지를 제공하는 서버 저장 전역 UI 글꼴 환경설정을 추가합니다.
+- [fleet-console] 활성 Theater의 실행 계획을 웨이브/작업 진행률과 병렬 레인 디스패치 준비 상태로 보여 주고, 강화된 인패널 마크다운 리더에서 열 수 있는 Plans 활동 레일 패널을 추가합니다.
+- [fleet-console] 표시되는 Operations를 감독할 수 있는 임시 Formation 보기를 추가했습니다.
+- [fleet-console] Theater 루트, 워크트리 또는 디렉토리를 선택하는 공유 Activity Rail 경로 컨텍스트를 추가합니다.
+- [fleet-console] 창 크롬을 44px Command Band로 통합합니다: 사이드바·Activity Rail 토글, Operation 검색, Formation view 토글이 패널을 접어도 움직이지 않는 고정 위치에 상주합니다.
+- [fleet-console] 사이드바와 Activity Rail의 접힘/펼침에 200ms 폭 전환 애니메이션을 추가하며, prefers-reduced-motion 환경에서는 완전히 비활성화됩니다.
+- [fleet-console] 플로팅 에지 펼침 탭과 사이드바 헤더 버튼 행을 퇴역시키고, Add Theater는 사이드바 최상단 전폭 행으로 이동합니다.
+- [fleet-console] Fleet 브랜드 마크를 Command Band로 옮겨 Operations 홈 버튼으로 삼고, macOS 신호등 인셋을 넓힙니다.
+- [fleet-console] 밴드 중앙을 활성 Theater, 더블클릭 이름 변경이 가능한 활성 패널 이름, 아이콘과 텍스트 태그로 표시되는 패널 CLI의 브레드크럼으로 재해석합니다.
+- [fleet-console] 패널 hover 컨트롤을 상태 dot과 최소화·최대화·닫기만으로 축소하고, dot는 평상시 닫기 슬롯에 머물다 hover 시 왼쪽으로 슬라이드합니다.
+- [fleet-console] Activity Rail의 경로 컨텍스트 칩을 Command Band에도 노출해 동기화된 두 번째 표면으로 제공합니다.
+- [fleet-console] 사이드바 브랜드 푸터를 System Menu와 Help 드롭업으로 재편하고, Keyboard Shortcuts를 Help 모달로 옮기며 캔버스 컨텍스트 메뉴에서는 제거합니다.
+- [fleet-console] Settings와 Carriers 화면에도 브랜드와 검색만 활성화된 Command Band를 유지하고 Operations로 돌아가기 링크를 퇴역시킵니다.
+- [fleet-console] 서버에 영속되는 언어 환경설정과 함께 영어 및 한국어 What's New 릴리스 노트를 추가합니다.
+
+#### Changed
+- [fleet-console] Instrument 시각 체계와 전고형 점진 내비게이션으로 Fleet Console을 전면 개편했습니다.
+- [fleet-console] 열려 있는 패널용 Formation 단축키와 최소화 패널을 복원하는 단축키를 분리합니다.
+- [fleet-console] Operation 패널이 별도의 상단 바를 없애고 일체형 단일 면으로 바뀌며, 평상시에는 상태 dot만 보이다가 마우스를 올리면 이름·CLI 배지·창 조작 버튼이 담긴 우측 상단 클러스터가 나타나고 이 클러스터가 이동 핸들도 겸합니다.
+- [fleet-console] 사이드바의 Canvas controls 버튼을 Formation view 토글로 교체하고 검색과 접기 버튼의 위치를 서로 바꿉니다.
+
+#### Fixed
+- [fleet-console] General 설정에 테마 섹션을 복원하고 Instrument 기본값과 Maritime, Carbon 테마 선택을 지원합니다.
+- [fleet-console] Command Band 배경이 테마별 크롬 팔레트를 따르도록 바로잡아 Maritime·Carbon 테마에서 중앙·우측 구간이 지나치게 어둡던 문제를 해결했습니다.
+- [fleet-console] Map Operation 패널의 사용자 선택 색상 외곽선과 Operations SideBar 칩의 사이드 틱을 복원합니다.
+- [fleet-console] Activity Rail 리사이즈 드래그가 커서를 지연 추적하다 멈춰야 따라잡던 문제를 고쳐 1:1로 즉시 따라오도록 수정.
+- [fleet-console] Map 세션 패널을 닫기 전에 확인을 요구합니다.
+- [fleet-console] 활성 Fleet Console 프로세스를 방해하지 않으면서 시작 시 오래된 플러그인 번들을, 종료 시 현재 실행의 번들을 정리합니다.
+
+#### Removed
+- [fleet-console] 현지화된 What's New 릴리스 노트에서 English fallback 배지를 제거합니다.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] 완전한 Fleet Console 경험을 네이티브 환경에서 제공하는 선택형 Fleet Console Desktop 0.1.0을 선보입니다.
+- [fleet-console] 최초 실행 설치, 시작 시 업데이트, 오프라인 폴백, 중단된 설치의 안전한 복구를 포함해 관리형 Console 런타임을 자동으로 준비하고 유지합니다.
+- [fleet-console] 단일 인스턴스 창 복원, 플랫폼 타이틀바 통합, 트레이·메뉴 액션, 업데이트 안내, 명확한 시작 충돌 가이드를 포함한 네이티브 데스크톱 수명주기 컨트롤을 제공합니다.
+- [fleet-console] 필요할 때만 Console 코드를 내려받고 Fleet Console 데이터는 제거 가능한 관리형 런타임과 분리해 보존하여 데스크톱 셸을 가볍게 유지합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] 새 Codex 캐리어 세션에 ACP 또는 App Server를 선택하는 Agent CLI 설정을 추가하며, 기본값은 ACP입니다.
+- [fleet-console] 기본 제공 및 설치된 고정폭 글꼴 선택, 미리보기, 영속 서버 설정을 갖춘 Terminal Font Browser를 추가합니다.
+- [fleet-console] Diff 레일에서 변경 파일과 이력 커밋을 바로 필터링할 수 있습니다.
+- [fleet-console] 지원되는 Activity Rail 패널이 선택된 Theater 루트, 워크트리 또는 디렉토리 컨텍스트를 따르도록 합니다.
+
+#### Changed
+- [fleet-console] 모든 브랜치와 연결된 워크트리에 걸친 저장소 이력을 전용 오른쪽 레일 패널에서 볼 수 있습니다.
+
+#### Fixed
+- [fleet-console] Operation 터미널이 선택한 테마를 따르도록 테마별 터미널 색상 팔레트를 복원합니다.
+- [fleet-console] Diff 파일 선택, Non-Git Theater 및 좁은 History 레이아웃 문제를 수정합니다.
+- [fleet-console] 열지 않은 File Explorer 폴더를 재귀적으로 검색하고 드래그로 History 상세 패널 크기를 조절합니다.
+- [fleet-console] 이제 Hook이 제공하는 패널 이름은 실행 중인 패널마다 한 번만 적용되며 사용자가 변경한 이름은 그대로 유지됩니다.
+
+### fleet-core
+
+#### Added
+- [core-infra] [core-unified-agent] [fleet-admiral] Codex ACP 또는 App Server 시작 선택을 영속하고 그에 따라 캐리어 세션을 연결하며, 기본값은 ACP입니다.
+- [fleet-carriers] 실행 진행 상황이 계획 파일과 Console Plans 화면에 표시되도록, 계획 작성과 웨이브 완료 진행 상태 기록에 기계 판독 가능한 체크박스 작업 계약을 추가합니다.
+
+#### Changed
+- [fleet-carriers] [fleet-admiral] 하나의 Kirov 계획에서 안전한 병렬 Ohio 레인을 선언할 수 있으며, Ohio는 Parallel 계획의 Dispatch Manifest 레인 하나를 실행하는 execution_scope를 받고 레거시 또는 Sequential 계획의 전체 순차 실행은 유지합니다.
+
+#### Fixed
+- [fleet-admiral] [fleet-carriers] 기본 프롬프트와 캐리어 메타데이터는 중립적으로 유지하면서 해군 역할극이 비유 옵션을 따르도록 수정합니다.
+
 ## [1.23.0] - 2026-07-10
 
 ### Changed
