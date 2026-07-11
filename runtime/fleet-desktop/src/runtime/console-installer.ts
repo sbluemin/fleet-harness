@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, constants, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -8,6 +8,8 @@ import { satisfiesNodeEngine } from "./node-bootstrap.js";
 import type { RuntimePaths } from "./runtime-paths.js";
 
 export interface ConsoleInstallerFileSystem {
+  accessExecutable(path: string): Promise<void>;
+  chmod(path: string, mode: number): Promise<void>;
   mkdir(path: string): Promise<void>;
   readFile(path: string): Promise<string>;
   readdir(path: string): Promise<readonly string[]>;
@@ -66,6 +68,7 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
       await dependencies.fileSystem.rm(npmGlobalConfiguration);
     }
     await normalizePrefixInstallation(staging, options.packageName, dependencies.fileSystem);
+    await repairConsoleNativeExecutables(staging, options.platform, process.arch, dependencies.fileSystem);
     await verifyInstallation(staging, options.version, options.nodeRuntimeVersion, dependencies.fileSystem);
     await replaceLatest(options.paths.latest, staging, dependencies.fileSystem);
     return { root: options.paths.latest, version: options.version };
@@ -79,6 +82,8 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
   return {
     environment: process.env,
     fileSystem: {
+      accessExecutable: async (target) => { await access(target, constants.X_OK); },
+      chmod,
       mkdir: async (target) => { await mkdir(target, { recursive: true }); },
       readFile: async (target) => readFile(target, "utf8"),
       readdir,
@@ -90,6 +95,17 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
     randomSuffix: () => Math.random().toString(36).slice(2),
     run: async (command, arguments_, options) => { await promisify(execFile)(command, [...arguments_], options); },
   };
+}
+
+export async function repairConsoleNativeExecutables(root: string, platform: NodeJS.Platform, architecture: string, fileSystem: ConsoleInstallerFileSystem): Promise<void> {
+  if (platform !== "darwin") return;
+  const spawnHelper = path.join(root, "node_modules", "node-pty", "prebuilds", `darwin-${architecture}`, "spawn-helper");
+  await fileSystem.chmod(spawnHelper, 0o755);
+  try {
+    await fileSystem.accessExecutable(spawnHelper);
+  } catch (error) {
+    throw new Error("console_install_node_pty_spawn_helper_not_executable", { cause: error });
+  }
 }
 
 export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = process.env, npmUserConfiguration = path.join(os.tmpdir(), "fleet-desktop-empty.npmrc"), npmGlobalConfiguration = path.join(os.tmpdir(), "fleet-desktop-empty-global.npmrc"), nodeBinDirectory?: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {

@@ -14,7 +14,7 @@ import { createLaunchController, type RuntimeEntryState } from "./launch-control
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
-import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations } from "./runtime/console-installer.js";
+import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
@@ -125,6 +125,7 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     }
     await reconcileConsoleInstallations(runtimePaths, createInstallerFileSystem());
     const installedVersion = readInstalledVersion(runtimePaths.latest);
+    if (installedVersion) await repairConsoleNativeExecutables(runtimePaths.latest, process.platform, process.arch, createInstallerFileSystem());
     const result = await registry.check(installedVersion ?? "");
     const version = result.latest ?? installedVersion;
     if (!version) throw new Error("console_runtime_unavailable");

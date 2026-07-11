@@ -47,6 +47,11 @@ async function createPrefixFixture(prefix: string): Promise<void> {
   const packageRoot = path.join(prefix, "node_modules", "@dotobokuri", "fleet-console");
   await mkdir(path.join(packageRoot, "dist"), { recursive: true });
   await mkdir(path.join(prefix, "node_modules", "node-pty"), { recursive: true });
+  const prebuildDirectory = path.join(prefix, "node_modules", "node-pty", "prebuilds", `darwin-${process.arch}`);
+  if (process.platform === "darwin") {
+    await mkdir(prebuildDirectory, { recursive: true });
+    await writeFile(path.join(prebuildDirectory, "spawn-helper"), "fixture", { mode: 0o644 });
+  }
   await mkdir(path.join(prefix, "node_modules", "ws"), { recursive: true });
   await writeFile(path.join(packageRoot, "package.json"), '{"name":"@dotobokuri/fleet-console","version":"1.2.3"}');
   await writeFile(path.join(packageRoot, "dist", "cli.mjs"), "export {};");

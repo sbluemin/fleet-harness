@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createConsoleInstallerEnvironment, installConsole, reconcileConsoleInstallations, replaceLatest } from "../src/runtime/console-installer.js";
+import { createConsoleInstallerEnvironment, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables, replaceLatest } from "../src/runtime/console-installer.js";
 import { resolveRuntimePaths } from "../src/runtime/runtime-paths.js";
 
 function missing(): NodeJS.ErrnoException { const error = new Error("missing") as NodeJS.ErrnoException; error.code = "ENOENT"; return error; }
@@ -11,6 +11,8 @@ function fileSystem(existing = new Set<string>()) {
   const stat = vi.fn(async (target: string) => { if (!existing.has(target) && !target.includes(".staging-test/")) throw missing(); });
   const rename = vi.fn(async (from: string, to: string) => { if (!existing.has(from) && !from.includes(".staging-test") && !from.endsWith(".package")) throw missing(); existing.delete(from); existing.add(to); });
   return {
+    accessExecutable: vi.fn(async () => undefined),
+    chmod: vi.fn(async () => undefined),
     mkdir: vi.fn(async () => undefined),
     readFile: vi.fn(async (target: string) => target.endsWith("package.json") ? JSON.stringify({ version: "1.2.3", engines: { node: ">=22.12.0" } }) : "1\n"),
     readdir: vi.fn(async (target: string) => target.endsWith(".package") ? ["package.json", "dist"] : []),
@@ -44,6 +46,8 @@ describe("console installer", () => {
     expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/dist/cli.mjs");
     expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty");
     expect(fs.writeFile).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.fleet-console-resource-root", "1\n");
+    expect(fs.chmod).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper", 0o755);
+    expect(fs.accessExecutable).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper");
   });
 
   it("rejects npm aliases, URLs, ranges, and prereleases before spawning npm", async () => {
@@ -62,6 +66,21 @@ describe("console installer", () => {
     const paths = resolveRuntimePaths("/Users/fleet");
     await installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "win32", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } });
     expect(run).toHaveBeenCalledWith(expect.stringContaining("node.exe"), expect.arrayContaining([expect.stringContaining("npm-cli.js")]), { env: expect.objectContaining({ npm_config_registry: "https://registry.npmjs.org/" }) });
+    expect(fs.chmod).not.toHaveBeenCalled();
+    expect(fs.accessExecutable).not.toHaveBeenCalled();
+  });
+
+  it("repairs an existing packaged macOS Console before sidecar launch", async () => {
+    const fs = fileSystem();
+    await repairConsoleNativeExecutables("/console/latest", "darwin", "x64", fs);
+    expect(fs.chmod).toHaveBeenCalledWith("/console/latest/node_modules/node-pty/prebuilds/darwin-x64/spawn-helper", 0o755);
+    expect(fs.accessExecutable).toHaveBeenCalledWith("/console/latest/node_modules/node-pty/prebuilds/darwin-x64/spawn-helper");
+  });
+
+  it("fails closed when the repaired macOS spawn helper is still not executable", async () => {
+    const fs = fileSystem();
+    fs.accessExecutable.mockRejectedValueOnce(new Error("EACCES"));
+    await expect(repairConsoleNativeExecutables("/console/latest", "darwin", "arm64", fs)).rejects.toThrow("console_install_node_pty_spawn_helper_not_executable");
   });
 
   it("restores the previous latest installation when promotion fails", async () => {
