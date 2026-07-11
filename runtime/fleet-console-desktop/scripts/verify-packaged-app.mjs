@@ -67,12 +67,12 @@ async function applyRequiredFuses(outputDirectory, platform) {
 }
 
 async function assertShellOnlyAsar(asar) {
-  const files = listPackage(asar, { isPack: false }).map((file) => file.replace(/^\//, ""));
+  const files = new Map(listPackage(asar, { isPack: false }).map((file) => [normalizeAsarContractPath(file), normalizeAsarEntryPath(file)]));
   const required = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/build/node-runtime.json"];
-  for (const file of required) if (!files.includes(file)) throw new Error(`Shell ASAR is missing ${file}`);
+  for (const file of required) if (!files.has(file)) throw new Error(`Shell ASAR is missing ${file}`);
   const forbidden = [".fleet-console-resource-root", "dist/cli.mjs", "fleet-console/", "node-pty/", "node_modules/"];
-  for (const file of files) if (forbidden.some((prefix) => file === prefix || file.includes(`/${prefix}`))) throw new Error(`Shell ASAR embeds forbidden runtime payload: ${file}`);
-  const entryHtml = extractFile(asar, "dist/assets/entry/index.html").toString("utf8");
+  for (const file of files.keys()) if (forbidden.some((prefix) => file === prefix || file.includes(`/${prefix}`))) throw new Error(`Shell ASAR embeds forbidden runtime payload: ${file}`);
+  const entryHtml = extractFile(asar, files.get("dist/assets/entry/index.html")).toString("utf8");
   if (!entryHtml.includes("default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'")) throw new Error("Entry CSP contract is missing");
   if (/<(script|button|a|form|input)\b|contenteditable|tabindex/i.test(entryHtml)) throw new Error("Entry HTML is not passive and scriptless");
 }
@@ -185,6 +185,14 @@ function readArchitecture(machine) {
   if (machine === 0x01000007 || machine === 0x8664 || machine === 62) return "x64";
   if (machine === 0x0100000c || machine === 0xaa64 || machine === 183) return "arm64";
   throw new Error(`Unsupported Electron binary machine code: ${machine}`);
+}
+
+function normalizeAsarContractPath(file) {
+  return file.replace(/\\/g, "/").replace(/^\//, "");
+}
+
+function normalizeAsarEntryPath(file) {
+  return file.replace(/^[\\/]/, "");
 }
 
 async function assertNoUpdaterArtifacts(root) {
