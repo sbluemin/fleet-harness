@@ -195,7 +195,7 @@ describe("Mission Control controller", () => {
     expect(plainOutput).not.toContain("[Replace* · opus-4-7 · Cursor off]");
     expect(plainOutput).not.toContain("Replace*");
     expect(plainOutput).not.toContain("opus-4-7");
-    expect(plainOutput).not.toMatch(/-rsp|-em|--disable-cursor-sync|--native|-n/);
+    expect(plainOutput).not.toMatch(/-rsp|-em|--disable-cursor-sync|-n/);
   });
 
   it("opens Options and System Menu from the launcher without legacy root hotkeys", () => {
@@ -618,14 +618,18 @@ describe("Mission Control controller", () => {
 
   it("launches through an injected strategy with the resolved profile", async () => {
     const launchProfile = vi.fn<MissionControlLaunchProfile>((launch) => {
-      launch.onNativeActive(launch.profile);
+      launch.onActive({
+        host: launch.createPtyHost(launch.profile),
+        profile: launch.profile,
+        view: launch.createPtyView(launch.cols, launch.rows),
+      });
       launch.onExit({ exitCode: 0, signal: undefined });
     });
     const controller = createTestController({
       injectProfile: (profile) => Promise.resolve({
         ...profile,
         args: ["--ready"],
-        launchWarnings: ["native warning"],
+        launchWarnings: ["launch warning"],
       }),
       launchProfile,
     });

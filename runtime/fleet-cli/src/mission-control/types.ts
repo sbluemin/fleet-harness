@@ -27,7 +27,6 @@ export interface MissionControlLaunchProfileOptions {
   readonly createPtyView: (cols: number, rows: number) => PtyView;
   readonly onActive: (launch: MissionControlEmbeddedLaunch) => void;
   readonly onExit: (event: PtyExitEvent) => void;
-  readonly onNativeActive: (profile: AgentCliProfile) => void;
   readonly onRenderRequest: () => void;
   readonly profile: AgentCliProfile;
   readonly rows: number;

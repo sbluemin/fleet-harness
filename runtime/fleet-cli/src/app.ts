@@ -251,7 +251,6 @@ function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
       cursorSync: options.cursorSync === false,
     },
     cursorSync: options.cursorSync !== false,
-    nativeTerminal: false,
     help: false,
   };
 }

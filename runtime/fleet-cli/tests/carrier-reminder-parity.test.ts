@@ -40,9 +40,8 @@ describe("carrier reminder encoding parity", () => {
     expect(formatCarrierResultReminderMessage(policy, text)).toEqual(writeLegacyProgrammaticMessage(policy, text));
   });
 
-  it("writes equivalent chunks through 2-pane and native sinks", () => {
+  it("writes encoded chunks through the two-pane sink", () => {
     const twoPaneWrites: string[] = [];
-    const nativeWrites: string[] = [];
     const policy: CliMessagePolicy = {
       bracketedPaste: true,
       lineTerminator: "\r",
@@ -68,21 +67,8 @@ describe("carrier reminder encoding parity", () => {
       }),
       resolvePolicy: () => policy,
     });
-    const disposeNative = createCarrierResultReminderRouter({
-      streamRegister(handler) {
-        handler(event);
-        return () => undefined;
-      },
-      resolveSink: () => ({
-        write: (data) => nativeWrites.push(data),
-      }),
-      resolvePolicy: () => policy,
-    });
-
     expect(twoPaneWrites).toEqual(expected);
-    expect(nativeWrites).toEqual(expected);
     disposeTwoPane();
-    disposeNative();
   });
 });
 
