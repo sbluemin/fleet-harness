@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
@@ -19,6 +19,7 @@ interface ChangedFilesProps {
   readonly selectedPath: string | null;
   readonly subPath: string;
   readonly onSelect: (entry: DiffFileEntry) => void;
+  readonly filterText: string;
 }
 
 interface ListFileRowProps {
@@ -41,11 +42,21 @@ const STATUS_LABEL: { [key: string]: string } = {
 
 // ─── ChangedFiles (export) ────────────────────────────────────────────────────
 
+export function filterDiffFiles(files: readonly DiffFileEntry[], filterText: string): readonly DiffFileEntry[] {
+  const normalizedFilter = filterText.toLowerCase();
+
+  if (!normalizedFilter) return files;
+
+  return files.filter((entry) => entry.path.toLowerCase().includes(normalizedFilter));
+}
+
+// ─── ChangedFiles (export) ────────────────────────────────────────────────────
+
 function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect }: ChangedFilesProps) {
+export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect, filterText }: ChangedFilesProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshToken, setRefreshToken] = useState(0);
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
@@ -93,6 +104,10 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect }:
       return next;
     });
   }, []);
+  const visibleFiles = useMemo(
+    () => state.kind === "ok" ? filterDiffFiles(state.files, filterText) : [],
+    [filterText, state],
+  );
 
   if (state.kind === "loading") {
     return <div className="diff-sections-loading">Loading…</div>;
@@ -123,6 +138,8 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect }:
     );
   }
 
+  const countLabel = filterText ? `${visibleFiles.length}/${state.files.length}` : String(state.files.length);
+
   return (
     <div className="diff-sections">
       <div className={`diff-section${changesCollapsed ? " is-collapsed" : ""}`}>
@@ -131,20 +148,20 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect }:
             <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span className="diff-section-name">Changes</span>
-          <span className="diff-count-badge">{state.files.length}</span>
+          <span className="diff-count-badge">{countLabel}</span>
         </button>
         {!changesCollapsed && (
           <div className="diff-section-rows">
-            {state.files.length === 0 ? (
-              <div className="diff-empty-row">No changes</div>
+            {visibleFiles.length === 0 ? (
+              <div className="diff-empty-row">{filterText ? "No matching items" : "No changes"}</div>
             ) : viewMode === "tree" ? (
               <DiffTreeView
-                files={state.files}
+                files={visibleFiles}
                 selectedPath={selectedPath}
                 onSelect={onSelect}
               />
             ) : (
-              state.files.map((entry) => (
+              visibleFiles.map((entry) => (
                 <ListFileRow
                   key={entry.path}
                   entry={entry}

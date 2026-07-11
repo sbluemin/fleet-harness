@@ -75,6 +75,8 @@ Replace each `<placeholder>` before running. Optional inputs default as noted.
 
 3. **agent-browser is available.** If the global command is missing, use `npx --yes agent-browser`. Run `agent-browser doctor --offline --quick` or `npx --yes agent-browser doctor --offline --quick` if launch/connect fails.
 
+   - **`--headed ignored: daemon already running` does not prove the session is headless.** When this warning appears, inspect the Chrome process for the exact `--session "$SESSION"` daemon and confirm its browser command line does not contain `--headless`; an already-running headed session legitimately ignores the repeated launch flag. If that session is headless, close only `--session "$SESSION"` and reopen it with `--headed` — never use `close --all`, because unrelated agents may own the other live sessions.
+
 ## Workflow
 
 ### Phase 1 - Headed session + pre-navigation instrumentation
