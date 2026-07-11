@@ -66,10 +66,10 @@ export function Operations({ state }: OperationsProps) {
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
       // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
-      if (event.code === "KeyF" && !event.shiftKey) {
+      if (event.code === "KeyF") {
         event.preventDefault();
         event.stopImmediatePropagation();
-        handleToggleFormation();
+        toggleFormationView({ restoreMinimized: event.shiftKey });
         return;
       }
       if (event.shiftKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;

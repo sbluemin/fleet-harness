@@ -385,13 +385,20 @@ export function clearMaximizedOperationId(): void {
   emitMaximizedOperation();
 }
 
-export function toggleFormationView(): void {
+export function toggleFormationView(options?: { readonly restoreMinimized?: boolean }): void {
   if (!activeTheaterId) return;
   if (formationView) {
+    if (options?.restoreMinimized === true && state.minimized.length > 0) {
+      setState({ minimized: [] });
+      return;
+    }
     clearFormationView();
     return;
   }
-  setState({ minimized: [] });
+  if (options?.restoreMinimized === true || maximizedOperationId !== null) {
+    // Maximize-created minimization is indistinguishable from manual minimization, so entering from maximize must restore all panels.
+    setState({ minimized: [] });
+  }
   clearMaximizedOperationId();
   formationViewsByTheater.set(activeTheaterId, true);
   formationView = true;

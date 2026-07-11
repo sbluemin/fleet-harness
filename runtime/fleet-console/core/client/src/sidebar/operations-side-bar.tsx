@@ -504,7 +504,7 @@ export function OperationsSideBar({
     >
       <div className="side-bar-theater-add-row">
         <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Add Theater</span></button>
-        <button type="button" className="side-bar-formation-toggle" onClick={toggleFormationView} disabled={activeTheaterId === null} aria-pressed={formationView} aria-label="Formation view" title="Formation view (Alt+F)"><FormationIcon /></button>
+        <button type="button" className="side-bar-formation-toggle" onClick={() => toggleFormationView()} disabled={activeTheaterId === null} aria-pressed={formationView} aria-label="Formation view" title="Formation view (Alt+F)"><FormationIcon /></button>
       </div>
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
