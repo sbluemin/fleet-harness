@@ -18,12 +18,16 @@ const stageDirectory = join(desktopDirectory, ".stage", "sidecar");
 const nodeDirectory = join(stageDirectory, "node");
 const serviceDirectory = join(stageDirectory, "fleet-console");
 const argumentsByName = new Map(process.argv.slice(2).map((value, index, values) => [value, values[index + 1]]));
-const nativeTarget = `${process.platform}-${process.arch}`;
-const runtimeTarget = argumentsByName.get("--target") ?? process.env.FLEET_DESKTOP_TARGET ?? nativeTarget;
+// Windows는 x64만 지원/배포한다. arm64 Windows(예: Apple Silicon Parallels)에서도 x64를 스테이징해
+// x64 산출물을 만들 수 있게 한다 — arm64 Windows가 x64를 에뮬레이션으로 실행하므로 로컬 테스트가 가능하다.
+// 스테이징은 네이티브 바이너리를 "복사"만 하므로(실행하지 않으므로) 크로스 arch가 안전하다.
+const supportedTarget = `${process.platform}-${process.platform === "win32" ? "x64" : process.arch}`;
+const runtimeTarget = argumentsByName.get("--target") ?? process.env.FLEET_DESKTOP_TARGET ?? supportedTarget;
 
-if (runtimeTarget !== nativeTarget) {
-  throw new Error(`Sidecar target ${runtimeTarget} does not match native staging host ${nativeTarget}`);
+if (runtimeTarget !== supportedTarget) {
+  throw new Error(`Sidecar target ${runtimeTarget} is not supported on this host (expected ${supportedTarget})`);
 }
+const runtimeArch = runtimeTarget.split("-")[1];
 
 await buildConsolePackage();
 await rm(stageDirectory, { force: true, recursive: true });
@@ -84,6 +88,11 @@ function resolveConsolePackageDirectory(name) {
 
 async function pruneNodePtyNativeHelpers() {
   const nodePtyDirectory = join(serviceDirectory, "node_modules", "node-pty");
+  // node-pty는 build/Release를 prebuilds보다 먼저 로드한다(lib/utils.js). build/는 호스트에서
+  // 컴파일된 산출물이라 크로스빌드(예: arm64 호스트→win32-x64)에서 arch가 어긋난다. 제거해서
+  // 배포용 arch별 prebuilds가 사용되게 한다(네이티브 빌드도 prebuilds로 동일하게 동작).
+  const nodePtyBuildDirectory = join(nodePtyDirectory, "build");
+  if (existsSync(nodePtyBuildDirectory)) await rm(nodePtyBuildDirectory, { force: true, recursive: true });
   const prebuildsDirectory = join(nodePtyDirectory, "prebuilds");
   const expectedPrebuild = runtimeTarget;
   for (const entry of await readdir(prebuildsDirectory, { withFileTypes: true })) {
@@ -99,7 +108,7 @@ async function pruneNodePtyNativeHelpers() {
     if (!version.isDirectory()) continue;
     const versionDirectory = join(conPtyDirectory, version.name);
     for (const entry of await readdir(versionDirectory, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name !== `win10-${process.arch}`) await rm(join(versionDirectory, entry.name), { force: true, recursive: true });
+      if (entry.isDirectory() && entry.name !== `win10-${runtimeArch}`) await rm(join(versionDirectory, entry.name), { force: true, recursive: true });
     }
   }
 }
@@ -108,7 +117,7 @@ async function copyEsbuildRuntime() {
   const packageJson = require.resolve("esbuild/package.json", { paths: [consoleDirectory] });
   const packageDirectory = dirname(packageJson);
   const packageManifest = JSON.parse(await readFile(packageJson, "utf8"));
-  const platformPackage = Object.keys(packageManifest.optionalDependencies ?? {}).find((name) => name === `@esbuild/${process.platform}-${process.arch}`);
+  const platformPackage = Object.keys(packageManifest.optionalDependencies ?? {}).find((name) => name === `@esbuild/${runtimeTarget}`);
   if (!platformPackage) throw new Error(`No esbuild runtime package for ${runtimeTarget}`);
   await cp(packageDirectory, join(serviceDirectory, "node_modules", "esbuild"), { dereference: true, recursive: true });
   // @esbuild/<platform>은 esbuild의 optional 의존성이라, pnpm isolated 레이아웃에서는 consoleDirectory가

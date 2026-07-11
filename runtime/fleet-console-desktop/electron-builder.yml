@@ -1,6 +1,14 @@
 appId: com.dotobokuri.fleet-console
 productName: Fleet Console
 artifactName: "Fleet Console-${version}-${os}-${arch}.${ext}"
+# CI에서 --publish always로 GitHub Release에 아티팩트 + electron-updater 매니페스트(latest*.yml)를 올린다.
+# 로컬 빌드(package:dir/unsigned)는 --publish never로 업로드는 건너뛰지만, publish 설정이 있으면
+# latest.yml 생성을 위해 owner/repo를 알아야 하므로 명시한다(desktop package.json엔 repository가 없고
+# 하위 디렉터리 실행이라 .git/config 자동 감지가 실패한다).
+publish:
+  provider: github
+  owner: sbluemin
+  repo: fleet-harness
 directories:
   buildResources: build
   output: release
@@ -38,8 +46,12 @@ win:
     - .exe
     - .dll
     - .node
+  # Windows는 x64만 지원한다(arm64 nsis는 electron-builder 결함으로 malformed 설치본을 만든다).
+  # arm64 Windows 사용자는 x64 빌드를 에뮬레이션으로 실행한다. arm64 호스트에서 빌드해도 x64가 나오도록 고정.
   target:
     - target: nsis
+      arch:
+        - x64
 nsis:
   oneClick: false
   perMachine: false

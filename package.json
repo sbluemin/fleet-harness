@@ -24,6 +24,13 @@
   "bin": {
     "fleet": "./runtime/fleet-cli/bin/fleet"
   },
+  "pnpm": {
+    "//supportedArchitectures": "배포 타깃(macOS arm64, Windows x64)의 optional 네이티브 패키지(@esbuild/*)를 호스트 arch와 무관하게 설치한다. arm64 Windows에서도 x64 desktop 패키징이 가능하도록.",
+    "supportedArchitectures": {
+      "os": ["current", "win32", "darwin"],
+      "cpu": ["current", "x64", "arm64"]
+    }
+  },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "typescript": "^6.0.2"

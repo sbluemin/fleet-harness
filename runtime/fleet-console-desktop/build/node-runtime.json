@@ -22,10 +22,6 @@
     "win32-x64": {
       "archive": "node-v22.23.1-win-x64.zip",
       "sha256": "7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29"
-    },
-    "win32-arm64": {
-      "archive": "node-v22.23.1-win-arm64.zip",
-      "sha256": "b470fdfe3502c05151656e06d495e3f47544f2ee8b1d9c8705090f2dd5996bd0"
     }
   }
 }
