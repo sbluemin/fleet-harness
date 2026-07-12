@@ -212,13 +212,18 @@ function createBoundCarrierDispatch(registry: CarrierRegistry, services: Carrier
       services.admission.assertOpen();
       const builder: CarrierDispatchToolBuilder = dispatchToolSpec.buildCarrierDispatchToolSpec;
       const toolSpec = builder(registry, deps, services);
-      return {
-        ...toolSpec,
-        execute(args: unknown, ctx: AgentToolCtx) {
-          services.admission.assertOpen();
-          return toolSpec.execute(args, ctx);
+      return Object.defineProperties({}, {
+        ...Object.getOwnPropertyDescriptors(toolSpec),
+        execute: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value(args: unknown, ctx: AgentToolCtx) {
+            services.admission.assertOpen();
+            return toolSpec.execute(args, ctx);
+          },
         },
-      };
+      }) as AgentToolSpec;
     },
   };
 }

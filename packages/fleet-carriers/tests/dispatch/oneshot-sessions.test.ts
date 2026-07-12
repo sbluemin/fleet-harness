@@ -101,6 +101,39 @@ afterEach(async () => {
 });
 
 describe("single dispatch context resume", () => {
+  it("rolls back a single dispatch when cleanup closes admission during baseline capture", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    const baseline = defer<readonly [] | null>();
+    const handles: OneShotExecution[] = [];
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const cliType = opts.cliType as CliType;
+      const completion = defer<ExecResult>();
+      const handle: OneShotExecution = {
+        readiness: Promise.resolve({ cliType, protocol: protocolFor(cliType), sessionId: `session-${cliType}` }),
+        completion: completion.promise,
+        startPrompt: vi.fn(),
+        abort: vi.fn(async () => { completion.resolve({ ...doneResult(`session-${cliType}`), status: "aborted" }); }),
+      };
+      handles.push(handle);
+      return handle;
+    });
+    const scanner = { snapshot: vi.fn(() => baseline.promise) };
+    const tool = runtime.buildDispatchToolSpec({ ...deps, workspaceChangeScanner: scanner });
+
+    const pending = tool.execute({ carrier_id: "ohio", label: "Cleanup race", request: "Do not open the prompt gate." }, { cwd: "/tmp", toolCallId: "single-cleanup-race" });
+    await vi.waitFor(() => expect(scanner.snapshot).toHaveBeenCalledTimes(1));
+    await runtime.cleanup();
+    baseline.resolve([]);
+
+    const result = await pending;
+    expect(details(result)).toMatchObject({ accepted: false, error: "Carrier runtime is closed to new dispatches." });
+    expect(handles).toHaveLength(1);
+    expect(handles[0]!.startPrompt).not.toHaveBeenCalled();
+    expect(handles[0]!.abort).toHaveBeenCalledTimes(1);
+    expect(getJobSummary("carrier:single-cleanup-race", Date.now())).toBeNull();
+  });
+
   it("returns and commits a fresh context_id when no resume_context_id is provided", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
@@ -200,6 +233,42 @@ describe("single dispatch context resume", () => {
 });
 
 describe("Task Force context barrier and resume", () => {
+  it("rolls back every Task Force backend when cleanup closes admission during baseline capture", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    configureTaskForce("ohio");
+    const baseline = defer<readonly [] | null>();
+    const handles: OneShotExecution[] = [];
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const cliType = opts.cliType as CliType;
+      const completion = defer<ExecResult>();
+      const handle: OneShotExecution = {
+        readiness: Promise.resolve({ cliType, protocol: protocolFor(cliType), sessionId: `session-${cliType}` }),
+        completion: completion.promise,
+        startPrompt: vi.fn(),
+        abort: vi.fn(async () => { completion.resolve({ ...doneResult(`session-${cliType}`), status: "aborted" }); }),
+      };
+      handles.push(handle);
+      return handle;
+    });
+    const scanner = { snapshot: vi.fn(() => baseline.promise) };
+    const tool = runtime.buildDispatchToolSpec({ ...deps, workspaceChangeScanner: scanner });
+
+    const pending = tool.execute({ carrier_id: "ohio", label: "Task Force cleanup race", request: "Do not open either prompt gate." }, { cwd: "/tmp", toolCallId: "taskforce-cleanup-race" });
+    await vi.waitFor(() => expect(scanner.snapshot).toHaveBeenCalledTimes(1));
+    await runtime.cleanup();
+    baseline.resolve([]);
+
+    const result = await pending;
+    expect(details(result)).toMatchObject({ accepted: false, error: "Carrier runtime is closed to new dispatches." });
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) {
+      expect(handle.startPrompt).not.toHaveBeenCalled();
+      expect(handle.abort).toHaveBeenCalledTimes(1);
+    }
+    expect(getJobSummary("taskforce:taskforce-cleanup-race", Date.now())).toBeNull();
+  });
+
   it("aborts every backend and sends zero prompts when one readiness fails", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));

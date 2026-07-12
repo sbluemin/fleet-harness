@@ -341,6 +341,45 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         });
       }
 
+      // Baseline must be complete before the prompt gate opens: a fast carrier may edit immediately.
+      const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
+
+      let startCompletion!: () => void;
+      const completion = new Promise<void>((resolve) => { startCompletion = resolve; }).then(() =>
+        finalizeSingleCarrierJob({
+          registry,
+          jobId: launch.jobId,
+          carrierId,
+          originSessionId: ctx.sessionLabel,
+          trackModelInfo,
+          label,
+          request,
+          cwd,
+          permit: launch.permit,
+          startedAt: t0,
+          toolName,
+          deps,
+          services,
+          lease: claim.lease,
+          contextId: claim.contextId,
+          ready,
+          handle,
+          baselineSnapshot,
+        }),
+      );
+      let untrack: () => void;
+      try {
+        untrack = services?.trackInFlight?.({ cancel: () => handle.abort(), completion }) ?? (() => {});
+      } catch (error) {
+        await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit, abort: () => handle.abort() });
+        releaseDispatchLease(services?.dispatchContexts, claim.lease);
+        return launchResponseResult({
+          job_id: launch.jobId,
+          accepted: false,
+          error: sanitizeProviderReason(error instanceof Error ? error.message : String(error)),
+        });
+      }
+
       emitJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, toolCallId, label, t0, trackModelInfo);
       emitStreamEvent(registry, {
         type: "track:begin",
@@ -350,32 +389,8 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         startedAt: Date.now(),
         requestPreview: request.trim().split(/\r?\n/, 1)[0],
       });
-
-      // Baseline must be complete before the prompt gate opens: a fast carrier may edit immediately.
-      const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
-
-      const completion = finalizeSingleCarrierJob({
-        registry,
-        jobId: launch.jobId,
-        carrierId,
-        originSessionId: ctx.sessionLabel,
-        trackModelInfo,
-        label,
-        request,
-        cwd,
-        permit: launch.permit,
-        startedAt: t0,
-        toolName,
-        deps,
-        services,
-        lease: claim.lease,
-        contextId: claim.contextId,
-        ready,
-        handle,
-        baselineSnapshot,
-      });
+      startCompletion();
       handle.startPrompt();
-      const untrack = services?.trackInFlight?.({ cancel: () => handle.abort(), completion }) ?? (() => {});
       void completion.finally(untrack);
 
       return launchResponseResult({

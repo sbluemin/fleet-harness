@@ -30,6 +30,20 @@ describe("context ID validation", () => {
 });
 
 describe("DispatchContextRegistry", () => {
+  it("keeps the bound dispatch schema dynamic when carriers register after tool construction", async () => {
+    const runtime = createCarrierRuntime();
+    const tool = runtime.buildDispatchToolSpec({} as Parameters<typeof runtime.buildDispatchToolSpec>[0]);
+    const carrierIds = () => (
+      tool.parameters as { properties: { carrier_id: { enum: readonly string[] } } }
+    ).properties.carrier_id.enum;
+
+    expect(carrierIds()).not.toContain("genesis");
+    runtime.registerCarrierDefaults();
+    expect(carrierIds()).toContain("genesis");
+
+    await runtime.cleanup();
+  });
+
   it("claims synchronously, commits atomically, and resumes only matching bindings", () => {
     const registry = new DispatchContextRegistry();
     const first = registry.claim("context-1", binding);

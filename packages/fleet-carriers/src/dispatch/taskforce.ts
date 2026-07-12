@@ -224,32 +224,48 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
   }
 
-  emitTaskForceJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, requestKey, activeBackends, startedAt, label, trackModelInfoByCli);
-
   // Baseline must be complete before any backend can pass the shared prompt gate.
   const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
-  const completion = runTaskForceCompletion({
-    registry,
-    jobId: launch.jobId,
-    carrierId,
-    originSessionId: ctx.sessionLabel,
-    activeBackends,
-    prepared,
-    request,
-    state,
-    requestKey,
-    cwd,
-    permit: launch.permit,
-    startedAt,
-    toolName,
-    label,
-    deps,
-    services,
-    lease: claim.lease,
-    contextId: claim.contextId,
-    baselineSnapshot,
-  });
+  let startCompletion!: () => void;
+  const completion = new Promise<void>((resolve) => { startCompletion = resolve; }).then(() =>
+    runTaskForceCompletion({
+      registry,
+      jobId: launch.jobId,
+      carrierId,
+      originSessionId: ctx.sessionLabel,
+      activeBackends,
+      prepared,
+      request,
+      state,
+      requestKey,
+      cwd,
+      permit: launch.permit,
+      startedAt,
+      toolName,
+      label,
+      deps,
+      services,
+      lease: claim.lease,
+      contextId: claim.contextId,
+      baselineSnapshot,
+    }),
+  );
+  let untrack: () => void;
+  try {
+    untrack = services?.trackInFlight?.({
+      cancel: async () => { await Promise.allSettled(prepared.map((p) => p.handle.abort())); },
+      completion,
+    }) ?? (() => {});
+  } catch (error) {
+    await Promise.allSettled(prepared.map((p) => p.handle.abort()));
+    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
+    releaseDispatchLease(services?.dispatchContexts, claim.lease);
+    clearTaskForceState(requestKey);
+    const message = error instanceof Error ? error.message : String(error);
+    return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
+  }
 
+  emitTaskForceJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, requestKey, activeBackends, startedAt, label, trackModelInfoByCli);
   const execStartedAt = Date.now();
   for (const backend of prepared) {
     emitStreamEvent(registry, {
@@ -260,13 +276,10 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
       startedAt: execStartedAt,
       requestPreview: request.trim().split(/\r?\n/, 1)[0],
     });
-    backend.handle.startPrompt();
   }
 
-  const untrack = services?.trackInFlight?.({
-    cancel: async () => { await Promise.allSettled(prepared.map((p) => p.handle.abort())); },
-    completion,
-  }) ?? (() => {});
+  startCompletion();
+  for (const backend of prepared) backend.handle.startPrompt();
   void completion.finally(untrack);
 
   return launchResponseResult({
