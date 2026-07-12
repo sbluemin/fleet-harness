@@ -1,6 +1,7 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { handleDiffCommit } from "./server/commit.js";
+import { handleDiffCommitFile } from "./server/commit-file.js";
 import { handleDiffChanged, handleDiffFile } from "./server/diff.js";
 import { handleDiffLog } from "./server/log.js";
 
@@ -21,6 +22,10 @@ export default definePlugin({
     });
     registerRouter(ctx, "commit", async ({ req, res }) => {
       await handleDiffCommit(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "commit-file", async ({ req, res }) => {
+      await handleDiffCommitFile(req, res, ctx);
       return true;
     });
   },

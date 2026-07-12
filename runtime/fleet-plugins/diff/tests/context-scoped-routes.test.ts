@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { handleDiffCommit } from "../server/commit.js";
+import { handleDiffCommitFile } from "../server/commit-file.js";
 import { handleDiffChanged, handleDiffFile } from "../server/diff.js";
 import { runGit } from "../server/git-executor.js";
 import { handleDiffLog } from "../server/log.js";
@@ -20,10 +21,16 @@ interface JsonWrite {
 interface ScopedRepoFixture {
   readonly theaterPath: string;
   readonly head: string;
+  readonly mergeHead: string;
 }
 
 interface ChangedPayload {
   readonly files: readonly { readonly path: string; readonly status: string }[];
+}
+
+interface CommitPayload {
+  readonly meta: { readonly subject: string };
+  readonly files: readonly { readonly path: string }[];
 }
 
 interface ContentPayload {
@@ -58,6 +65,7 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
   await fs.writeFile(path.join(insidePath, "changed.txt"), "before\n");
   await fs.writeFile(path.join(insidePath, "rename-old.txt"), "rename\n");
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside before\n");
+  await fs.writeFile(path.join(theaterPath, "..notes"), "before\n");
   await runGit(["add", "."], { cwd: theaterPath });
   await runGit(["commit", "-m", "base context commit"], { cwd: theaterPath });
 
@@ -67,15 +75,28 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
 
   await fs.writeFile(path.join(insidePath, "committed.txt"), "inside commit\n");
   await fs.writeFile(path.join(outsidePath, "committed.txt"), "outside commit\n");
+  await fs.writeFile(path.join(theaterPath, "..notes"), "after\n");
   await runGit(["add", "."], { cwd: theaterPath });
   await runGit(["commit", "-m", "mixed context commit"], { cwd: theaterPath });
   const head = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+
+  const mainBranch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", "-b", "merge-side"], { cwd: theaterPath });
+  await fs.writeFile(path.join(theaterPath, "merge-side.txt"), "from merge side\n");
+  await runGit(["add", "merge-side.txt"], { cwd: theaterPath });
+  await runGit(["commit", "-m", "merge side"], { cwd: theaterPath });
+  await runGit(["checkout", mainBranch], { cwd: theaterPath });
+  await fs.writeFile(path.join(theaterPath, "merge-main.txt"), "from merge main\n");
+  await runGit(["add", "merge-main.txt"], { cwd: theaterPath });
+  await runGit(["commit", "-m", "merge main"], { cwd: theaterPath });
+  await runGit(["merge", "--no-ff", "merge-side", "-m", "merge fixture"], { cwd: theaterPath });
+  const mergeHead = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
 
   await fs.writeFile(path.join(insidePath, "changed.txt"), "after\n");
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside after\n");
   await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
 
-  return { theaterPath, head };
+  return { theaterPath, head, mergeHead };
 }
 
 function makeContext(
@@ -185,10 +206,58 @@ describe("selected subdirectory diff route scope", () => {
       }, commitWrites),
     );
 
-    const commit = readPayload<ContentPayload>(commitWrites);
-    expect(commit.content).toContain("diff --git a/committed.txt b/committed.txt");
-    expect(commit.content).not.toContain(`${OUTSIDE_DIR}/committed.txt`);
-    expect(commit.content).not.toContain(`${INSIDE_DIR}/committed.txt`);
+    const commit = readPayload<CommitPayload>(commitWrites);
+    expect(commit.meta.subject).toBe("mixed context commit");
+    expect(commit.files.map((file) => file.path)).toContain("committed.txt");
+    expect(commit.files.map((file) => file.path)).not.toContain(`${OUTSIDE_DIR}/committed.txt`);
+  });
+
+  it("returns a selected commit file only and rejects option-like paths", async () => {
+    const fileWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "committed.txt" }, fileWrites),
+    );
+    const file = readPayload<ContentPayload>(fileWrites);
+    expect(file.content).toContain("diff --git a/inside/committed.txt b/inside/committed.txt");
+
+    const rejectedWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "--stat" }, rejectedWrites),
+    );
+    expect(rejectedWrites).toEqual([{ status: 400, payload: { error: "invalid_file_path" } }]);
+  });
+
+  it("diffs a real merge against its first parent and loads its selected file", async () => {
+    const commitWrites: JsonWrite[] = [];
+    await handleDiffCommit(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.mergeHead }, commitWrites),
+    );
+    const commit = readPayload<CommitPayload>(commitWrites);
+    expect(commit.files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "merge-side.txt" })]));
+
+    const fileWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.mergeHead, filePath: "merge-side.txt" }, fileWrites),
+    );
+    expect(readPayload<ContentPayload>(fileWrites).content).toContain("diff --git a/merge-side.txt b/merge-side.txt");
+  });
+
+  it("allows a legitimate in-repository ..-prefixed filename", async () => {
+    const writes: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.head, filePath: "..notes" }, writes),
+    );
+    expect(readPayload<ContentPayload>(writes).content).toContain("diff --git a/..notes b/..notes");
   });
 });
 

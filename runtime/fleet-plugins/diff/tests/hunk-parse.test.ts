@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseHunk } from "../client/hunk-parse.js";
+import { highlightEscapedDiffCode, parseHunk } from "../client/hunk-parse.js";
 
 const SAMPLE_UNIFIED = [
   "diff --git a/src/foo.ts b/src/foo.ts",
@@ -152,5 +152,15 @@ describe("parseHunk", () => {
     // hunk 내부의 진짜 빈 컨텍스트 라인(" ")은 별개로 보존된다
     const inner = parseHunk("@@ -1,3 +1,3 @@\n a\n \n b\n");
     expect(inner.filter((l) => l.kind === "ctx")).toHaveLength(3);
+  });
+});
+
+describe("highlightEscapedDiffCode", () => {
+  it("wraps escaped tokens without restoring executable HTML", () => {
+    const html = highlightEscapedDiffCode("const value = &lt;script&gt;42&lt;/script&gt;; // note");
+    expect(html).toContain('class="diff-token-keyword"');
+    expect(html).toContain('class="diff-token-number"');
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
   });
 });

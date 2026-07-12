@@ -6,6 +6,9 @@ import {
   HUNK_PANE_MIN_WIDTH,
   buildDiffGridTemplate,
   buildHistoryGridTemplate,
+  buildInspectorChangesGridTemplate,
+  buildInspectorDetailsGridTemplate,
+  clampSplitPaneSize,
   clampListPaneWidth,
   installPointerDragLifecycle,
 } from "../client/rail-layout.js";
@@ -44,18 +47,18 @@ describe("clampListPaneWidth", () => {
     })).toBe(248);
   });
 
-  it("clamps the right list pane to its minimum when dragging right", () => {
+  it("shrinks the Diff panel's right list pane when dragging right", () => {
     expect(clampListPaneWidth({
-      startWidth: 248,
-      dx: 400,
+      startWidth: 360,
+      dx: 40,
       containerWidth: 712,
       listPaneMinWidth: 220,
       hunkPaneMinWidth: 140,
       dividerWidth: 4,
-    })).toBe(220);
+    })).toBe(320);
   });
 
-  it("grows the right list pane by negative drag delta up to the hunk minimum", () => {
+  it("grows the Diff panel's right list pane when dragging left", () => {
     expect(clampListPaneWidth({
       startWidth: 248,
       dx: -500,
@@ -88,22 +91,35 @@ describe("buildDiffGridTemplate", () => {
 });
 
 describe("History detail/list layout", () => {
-  it("clamps the history list to preserve the detail pane minimum", () => {
-    expect(clampListPaneWidth({
-      startWidth: 360,
-      dx: -600,
-      containerWidth: 712,
-      listPaneMinWidth: 220,
-      hunkPaneMinWidth: HISTORY_DETAIL_PANE_MIN_WIDTH,
-      dividerWidth: DIFF_DIVIDER_WIDTH,
-    })).toBe(568);
+  it("grows the History panel's left master pane when dragging right", () => {
+    expect(clampSplitPaneSize(
+      360,
+      40,
+      712,
+      220,
+      HISTORY_DETAIL_PANE_MIN_WIDTH,
+      DIFF_DIVIDER_WIDTH,
+    )).toBe(400);
+    expect(clampSplitPaneSize(360, 600, 712, 220, HISTORY_DETAIL_PANE_MIN_WIDTH, DIFF_DIVIDER_WIDTH)).toBe(568);
   });
 
   it("builds a history grid that preserves the detail pane while honoring the stored list width", () => {
     const preservedDetailWidth = HISTORY_DETAIL_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
     expect(buildHistoryGridTemplate(360)).toBe(
-      `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(360px, calc(100% - ${preservedDetailWidth}px)))`,
+      `minmax(0, min(360px, calc(100% - ${preservedDetailWidth}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`,
     );
+  });
+});
+
+describe("inspector inner dividers", () => {
+  it("clamps both header and file-list dividers while preserving their siblings", () => {
+    expect(clampSplitPaneSize(176, 400, 500, 120, 120)).toBe(376);
+    expect(clampSplitPaneSize(176, -400, 500, 120, 120)).toBe(120);
+  });
+
+  it("builds the vertical and horizontal inspector templates", () => {
+    expect(buildInspectorDetailsGridTemplate(176)).toContain("176px");
+    expect(buildInspectorChangesGridTemplate(150)).toContain("150px");
   });
 });
 

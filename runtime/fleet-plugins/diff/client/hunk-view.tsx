@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { CommitDiffResult, DiffFileEntry, DiffFileMode, DiffHunkResult, LogCommitEntry } from "../server/types.js";
-import { parseHunk } from "./hunk-parse.js";
+import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
+import { highlightEscapedDiffCode, parseHunk } from "./hunk-parse.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -16,14 +16,14 @@ interface HunkViewProps {
 }
 
 export interface CommitSelection {
-  readonly commit: LogCommitEntry;
+  readonly fullHash: string;
   readonly subPath: string;
   readonly theaterId: string;
 }
 
 type LoadState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly result: DiffHunkResult | CommitDiffResult }
+  | { readonly kind: "ok"; readonly result: DiffHunkResult }
   | { readonly kind: "error"; readonly message: string };
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -49,12 +49,13 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
     setState({ kind: "loading" });
 
     if (commit) {
-      ctx.api.fetch("diff", "commit", {
+      ctx.api.fetch("diff", "commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.commit.fullHash, subPath: commit.subPath }),
+        body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.fullHash, filePath: file.path, subPath: commit.subPath }),
       }).then(async (res) => {
-        const result = await res.json() as CommitDiffResult;
+        if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
+        const result = await res.json() as DiffHunkResult;
         if (!cancelled) setState({ kind: "ok", result });
       }).catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
@@ -65,6 +66,7 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, subPath }),
       }).then(async (res) => {
+        if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;
         if (!cancelled) setState({ kind: "ok", result });
       }).catch((err: unknown) => {
@@ -84,10 +86,8 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
   }
 
   const { result } = state;
-  // 커밋(git show)은 다중 파일이라 파일 경계 라벨이 필요하지만, 단일 파일 뷰는 페인 헤더가 이미
-  // 파일명을 표시하므로 file-label 행은 중복이다 — 커밋 모드에서만 렌더한다.
   const parsed = parseHunk(result.content);
-  const lines = commit ? parsed : parsed.filter((l) => l.kind !== "file-label");
+  const lines = parsed.filter((l) => l.kind !== "file-label");
 
   return (
     <div className="diff-hunk-wrap">
@@ -121,7 +121,7 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
                     <td
                       className="diff-line-code"
                       // eslint-disable-next-line react/no-danger
-                      dangerouslySetInnerHTML={{ __html: escapeHtml(line.text.length > 0 ? line.text.slice(1) : line.text) }}
+                    dangerouslySetInnerHTML={{ __html: highlightEscapedDiffCode(escapeHtml(line.text.length > 0 ? line.text.slice(1) : line.text)) }}
                     />
                   </>
                 )}

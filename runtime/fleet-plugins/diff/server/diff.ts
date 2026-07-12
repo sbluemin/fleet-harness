@@ -16,16 +16,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 // git numstat 리네임 압축 표기 `{old => new}` 에서 new 경로를 추출
 function normalizeNumstatPath(p: string): string {
   const match = /^(.*?)\{[^}]* => ([^}]*)\}(.*)$/.exec(p);
-  if (!match) return p;
-  return (match[1] ?? "") + (match[2] ?? "") + (match[3] ?? "");
+  if (match) return (match[1] ?? "") + (match[2] ?? "") + (match[3] ?? "");
+  // Limitation: a literal filename containing ` => ` is indistinguishable from Git's non-NUL rename notation and gets zero stats.
+  const plainRename = /^.+ => (.+)$/.exec(p);
+  return plainRename?.[1] ?? p;
 }
 
-function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): DiffFileEntry[] {
+export function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): DiffFileEntry[] {
   const numstatMap = new Map<string, { readonly additions: number; readonly deletions: number }>();
   for (const line of numstatOutput.split("\n")) {
     const parts = line.split("\t");
     if (parts.length < 3) continue;
-    const [adds, dels, filePath] = parts;
+    const [adds, dels] = parts;
+    const filePath = parts.length > 3 ? parts[parts.length - 1] : parts[2];
     if (!filePath) continue;
     numstatMap.set(normalizeNumstatPath(filePath), {
       additions: parseInt(adds ?? "0", 10) || 0,
@@ -40,10 +43,11 @@ function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): Dif
     if (!rawStatus || pathParts.length === 0) continue;
     const statusChar = rawStatus.charAt(0).toUpperCase();
     if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R") continue;
+    const oldPath = statusChar === "R" ? pathParts[0] : undefined;
     const filePath = statusChar === "R" ? (pathParts[1] ?? pathParts[0] ?? "") : (pathParts[0] ?? "");
     if (!filePath) continue;
     const nums = numstatMap.get(filePath) ?? { additions: 0, deletions: 0 };
-    files.push({ path: filePath, status: statusChar as "M" | "A" | "D" | "R", ...nums });
+    files.push({ path: filePath, ...(oldPath ? { oldPath } : {}), status: statusChar as "M" | "A" | "D" | "R", ...nums });
   }
   return files;
 }
