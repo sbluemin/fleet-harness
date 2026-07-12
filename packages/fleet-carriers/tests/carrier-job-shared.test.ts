@@ -278,7 +278,7 @@ describe("job stream archive", () => {
     expect(archive?.blocks[0]?.text).toBe("[REDACTED:generic_secret]");
   });
 
-  it("expires archives after the 3h TTL", () => {
+  it("expires archives after the 6h TTL", () => {
     createJobArchive("sortie:1", 1000);
     expect(hasJobArchive("sortie:1", 1000 + CARRIER_JOB_TTL_MS - 1)).toBe(true);
     expect(hasJobArchive("sortie:1", 1000 + CARRIER_JOB_TTL_MS)).toBe(false);
@@ -454,7 +454,7 @@ describe("summary LRU cache", () => {
     expect(getJobSummary("sortie:1", 1002)?.summary).toBe("done");
   });
 
-  it("expires summaries after the 3h TTL", () => {
+  it("expires summaries after the 6h TTL", () => {
     putJobSummary(buildSummary("sortie:1", 1000), 1000);
     expect(getJobSummary("sortie:1", 1000 + CARRIER_JOB_TTL_MS - 1)).not.toBeNull();
     expect(getJobSummary("sortie:1", 1000 + CARRIER_JOB_TTL_MS)).toBeNull();

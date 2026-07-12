@@ -101,7 +101,7 @@ export interface JobSummaryOptions {
   readonly workspaceChanges?: WorkspaceChangeManifest;
 }
 
-export const CARRIER_JOB_TTL_MS = 3 * 60 * 60 * 1000;
+export const CARRIER_JOB_TTL_MS = 6 * 60 * 60 * 1000;
 export const CARRIER_JOBS_FULL_RESULT_BYTE_CAP = 20_000;
 export const CARRIER_JOBS_PER_SUBOP_BYTE_CAP = 20_000;
 export const CARRIER_JOBS_GLOBAL_BYTE_CAP = 60_000;
