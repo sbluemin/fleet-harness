@@ -19,6 +19,7 @@ export interface CommitSelection {
   readonly fullHash: string;
   readonly subPath: string;
   readonly theaterId: string;
+  readonly oldPath?: string;
 }
 
 type LoadState =
@@ -52,7 +53,7 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
       ctx.api.fetch("diff", "commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.fullHash, filePath: file.path, subPath: commit.subPath }),
+        body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}), subPath: commit.subPath }),
       }).then(async (res) => {
         if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;
@@ -75,7 +76,7 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
     }
 
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, file.path, mode, subPath, commit]);
+  }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, subPath, commit]);
 
   if (state.kind === "loading") {
     return <div className="diff-hunk-loading">Loading…</div>;

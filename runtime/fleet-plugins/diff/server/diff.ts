@@ -13,6 +13,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function literalPathspec(relativePath: string): string {
+  return `:(literal)${relativePath}`;
+}
+
 // git numstat 리네임 압축 표기 `{old => new}` 에서 new 경로를 추출
 function normalizeNumstatPath(p: string): string {
   const match = /^(.*?)\{[^}]* => ([^}]*)\}(.*)$/.exec(p);
@@ -239,7 +243,10 @@ export async function handleDiffFile(
         return;
       }
 
-      // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용
+      // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용.
+      // --no-index는 경로를 pathspec이 아닌 파일시스템 경로로 취급하므로 magic이 해석되지 않는다
+      // (위의 lexical + realpath containment로 이미 방어). 여기에 :(literal)을 붙이면
+      // git이 ":(literal)<path>"라는 없는 파일을 찾아 실패하므로 원본 경로를 그대로 전달한다.
       const result = await runGit(
         ["diff", "--no-index", "--relative", "--unified=3", "--", "/dev/null", relativePath],
         { cwd: gitCwd, allowExitCodes: [1] },
@@ -264,11 +271,11 @@ export async function handleDiffFile(
     }
     let result;
     try {
-      result = await runGit(["diff", "HEAD", "--relative", "--unified=3", "--", relativePath], { cwd: gitCwd });
+      result = await runGit(["diff", "HEAD", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
     } catch (err) {
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
-      result = await runGit(["diff", "--cached", "--relative", "--unified=3", "--", relativePath], { cwd: gitCwd });
+      result = await runGit(["diff", "--cached", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
     }
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {

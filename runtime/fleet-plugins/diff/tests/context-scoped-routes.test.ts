@@ -21,6 +21,7 @@ interface JsonWrite {
 interface ScopedRepoFixture {
   readonly theaterPath: string;
   readonly head: string;
+  readonly renameHead: string;
   readonly mergeHead: string;
 }
 
@@ -81,6 +82,12 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
   const head = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
 
   const mainBranch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", "-b", "rename-fixture"], { cwd: theaterPath });
+  await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
+  await runGit(["commit", "-m", "rename fixture"], { cwd: theaterPath });
+  const renameHead = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", mainBranch], { cwd: theaterPath });
+
   await runGit(["checkout", "-b", "merge-side"], { cwd: theaterPath });
   await fs.writeFile(path.join(theaterPath, "merge-side.txt"), "from merge side\n");
   await runGit(["add", "merge-side.txt"], { cwd: theaterPath });
@@ -96,7 +103,7 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside after\n");
   await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
 
-  return { theaterPath, head, mergeHead };
+  return { theaterPath, head, renameHead, mergeHead };
 }
 
 function makeContext(
@@ -229,6 +236,37 @@ describe("selected subdirectory diff route scope", () => {
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "--stat" }, rejectedWrites),
     );
     expect(rejectedWrites).toEqual([{ status: 400, payload: { error: "invalid_file_path" } }]);
+  });
+
+  it("treats commit and worktree file paths as literal pathspecs", async () => {
+    const commitWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: ":(top)outside/committed.txt" }, commitWrites),
+    );
+    expect(readPayload<ContentPayload>(commitWrites).content).toBe("");
+
+    const worktreeWrites: JsonWrite[] = [];
+    await handleDiffFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, filePath: ":(top)outside/base.txt", mode: "unified" }, worktreeWrites),
+    );
+    expect(readPayload<ContentPayload>(worktreeWrites).content).toBe("");
+  });
+
+  it("renders a renamed commit file with both literal paths", async () => {
+    const writes: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.renameHead, filePath: "rename-new.txt", oldPath: "rename-old.txt" }, writes),
+    );
+    const content = readPayload<ContentPayload>(writes).content;
+    expect(content).toContain("similarity index 100%");
+    expect(content).toMatch(/rename from .*rename-old\.txt/);
+    expect(content).toMatch(/rename to .*rename-new\.txt/);
   });
 
   it("diffs a real merge against its first parent and loads its selected file", async () => {
