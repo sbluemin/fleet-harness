@@ -12,6 +12,22 @@ describe("launch controller", () => {
     expect(order).toEqual(["entry", "show", "start", "origin=http://127.0.0.1:4310", "entry", "handoff"]);
   });
 
+  it("synchronizes the Console-owned title bar theme after origin activation and before handoff", async () => {
+    const order: string[] = [];
+    const window = { webContents: { executeJavaScript: vi.fn(async () => undefined) }, show: vi.fn(), loadURL: vi.fn(async () => { order.push("handoff"); }) };
+    const controller = createLaunchController({
+      createWindow: vi.fn(async () => window),
+      pushEntry: vi.fn(async () => undefined),
+      startOrAdopt: vi.fn(async () => "http://127.0.0.1:4310/console/"),
+      handoffOrigin: vi.fn(() => { order.push("origin"); }),
+      synchronizeTheme: vi.fn(async () => { order.push("theme"); }),
+    });
+
+    await controller.start();
+
+    expect(order).toEqual(["origin", "theme", "handoff"]);
+  });
+
   it("wires runtime progress, first-run failure Retry, and same-window handoff through the production launch graph", async () => {
     const snapshots: string[] = [];
     let progress: ((state: "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "dev", detail?: string, progress?: number) => Promise<void>) | undefined;

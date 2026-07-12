@@ -12,8 +12,7 @@ export interface WindowPolicy {
 export const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
-const WINDOWS_TITLE_BAR_COLOR = "#090f15";
-const WINDOWS_TITLE_BAR_SYMBOL_COLOR = "#989fa6";
+const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#090f15", symbolColor: "#989fa6", height: 44 } as const;
 
 export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, options: SecureWindowOptions): BrowserWindow {
   const windowOptions: BrowserWindowConstructorOptions = {
@@ -25,8 +24,7 @@ export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, opti
     minHeight: 560,
     // 신호등 좌표와 오버레이 높이(44)는 클라이언트 CSS의 --chrome-band-height: 44px 및 macOS 88px 인셋과 합의된 값이므로 변경 시 양쪽을 동기화한다.
     ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 } } : {}),
-    // `--ink-deep` oklch(16.5% 0.016 245)의 sRGB hex 근사값은 #090f15, `--text-secondary` oklch(70% 0.012 245)의 sRGB hex 근사값은 #989fa6이다. TODO: 테마 변경 시 setTitleBarOverlay 재호출로 실시간 추종한다.
-    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: { color: WINDOWS_TITLE_BAR_COLOR, symbolColor: WINDOWS_TITLE_BAR_SYMBOL_COLOR, height: 44 } } : {}),
+    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   };
   return new BrowserWindowCtor(windowOptions);

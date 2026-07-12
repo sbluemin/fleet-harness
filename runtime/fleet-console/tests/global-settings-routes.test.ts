@@ -16,6 +16,7 @@ interface RouterHarnessOptions {
   readonly bodyNull?: boolean;
   readonly general?: ConsoleGeneralSettings;
   readonly plugins?: ConsoleSettingsData["plugins"];
+  readonly onThemeChanged?: (theme: "instrument" | "maritime" | "carbon") => void;
 }
 
 describe("global settings routes", () => {
@@ -93,6 +94,20 @@ describe("global settings routes", () => {
       expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", theme, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
       expect(harness.currentGeneral()).toMatchObject({ theme });
     }
+  });
+
+  it("publishes a theme only after the durable settings update succeeds", async () => {
+    const published: string[] = [];
+    const harness = createRouterHarness({
+      authorized: true,
+      body: { theme: "carbon" },
+      onThemeChanged: (theme) => published.push(theme),
+    });
+
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+
+    expect(harness.currentGeneral()?.theme).toBe("carbon");
+    expect(published).toEqual(["carbon"]);
   });
 
   it("PUT /global-settings ignores enableMetaphor body field", async () => {
@@ -215,6 +230,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
       update: (mutate) => { updateCalls += 1; data = mutate(data); return data; },
     },
     isAuthorized: () => options.authorized ?? true,
+    onThemeChanged: options.onThemeChanged,
     readJsonBody: async () => (options.bodyNull ? null : (options.body ?? {})) as never,
     writeJson: (_res, status, body) => { writes.push({ status, body }); },
   });

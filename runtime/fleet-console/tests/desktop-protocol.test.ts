@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
+import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid, isDesktopThemeSnapshot } from "@fleet-console/desktop-protocol";
 
 import {
   DESKTOP_DEVELOPMENT_ENV,
@@ -42,6 +42,18 @@ describe("desktop protocol", () => {
     expect(source).not.toMatch(/node:(?:fs|child_process)/);
     expect(source).not.toMatch(/(?:@dotobokuri\/|fleet-desktop|fleet-plugins)/);
     expect(source).not.toMatch(/\b(?:process|electron)\b/);
+    expect(source).not.toContain("DESKTOP_TITLE_BAR_OVERLAYS");
+    expect(source).not.toContain("desktopThemeSnapshot");
+  });
+
+  it("accepts safely shaped future Console overlay colors without bundling a palette", () => {
+    expect(isDesktopThemeSnapshot({ theme: "maritime", titleBarOverlay: { color: "#123456", symbolColor: "#abcdef", height: 48 } })).toBe(true);
+    expect(isDesktopThemeSnapshot({ theme: "future-aurora", titleBarOverlay: { color: "#123456", symbolColor: "#abcdef", height: 48 } })).toBe(true);
+    expect(isDesktopThemeSnapshot({ theme: "carbon", titleBarOverlay: { color: "#1234", symbolColor: "#abc", height: 52 } })).toBe(true);
+    expect(isDesktopThemeSnapshot({ theme: "future aurora", titleBarOverlay: { color: "#123456", symbolColor: "#abcdef", height: 48 } })).toBe(false);
+    expect(isDesktopThemeSnapshot({ theme: "carbon", titleBarOverlay: { color: "white", symbolColor: "#abcdef", height: 44 } })).toBe(false);
+    expect(isDesktopThemeSnapshot({ theme: "carbon", titleBarOverlay: { color: "#abcdef", symbolColor: "#abcdef", height: 12.5 } })).toBe(false);
+    expect(isDesktopThemeSnapshot({ theme: "carbon", titleBarOverlay: { color: "#abcdef", symbolColor: "#abcdef", height: 129 } })).toBe(false);
   });
 
   it("validates the marked resource root and exact owner protocol", () => {
