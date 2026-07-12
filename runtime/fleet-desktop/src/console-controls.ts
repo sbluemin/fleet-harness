@@ -14,14 +14,13 @@ export interface ConsoleControlsWindow {
 export interface ConsoleControlsDependencies {
   readonly zoomState: ZoomState;
   readonly refreshNativeActions: () => void;
-  readonly schedule?: (callback: () => void) => void;
 }
 
 export interface ConsoleControls {
   attachWindow(window: ConsoleControlsWindow): void;
   handoffStarted(): void;
   onConsoleLoaded(): void;
-  zoomChanged(contents: ConsoleControlsWebContents): void;
+  zoomChanged(contents: ConsoleControlsWebContents, zoomDirection: "in" | "out"): void;
   zoomIn(): void;
   zoomOut(): void;
   actualSize(): void;
@@ -30,13 +29,9 @@ export interface ConsoleControls {
 }
 
 export function createConsoleControls(dependencies: ConsoleControlsDependencies): ConsoleControls {
-  // 휠 줌은 zoom-changed 발화 시점에 아직 적용 전일 수 있어 매크로태스크로 지연 판독한다.
-  const schedule = dependencies.schedule ?? ((callback: () => void) => { setImmediate(callback); });
   let window: ConsoleControlsWindow | null = null;
   let handoffPending = false;
   let handoffComplete = false;
-  let zoomSavePending = false;
-  let scheduledContents: ConsoleControlsWebContents | null = null;
 
   const activeContents = (): ConsoleControlsWebContents | null => window && !window.isDestroyed() ? window.webContents : null;
   const runWhenReady = (action: (contents: ConsoleControlsWebContents) => void): void => {
@@ -49,8 +44,6 @@ export function createConsoleControls(dependencies: ConsoleControlsDependencies)
       window = nextWindow;
       handoffPending = false;
       handoffComplete = false;
-      zoomSavePending = false;
-      scheduledContents = null;
     },
     handoffStarted(): void {
       if (activeContents()) handoffPending = true;
@@ -63,20 +56,10 @@ export function createConsoleControls(dependencies: ConsoleControlsDependencies)
       contents.setZoomLevel(dependencies.zoomState.load());
       dependencies.refreshNativeActions();
     },
-    zoomChanged(contents): void {
-      if (!handoffComplete || activeContents() !== contents || zoomSavePending) return;
-      zoomSavePending = true;
-      scheduledContents = contents;
-      schedule(() => {
-        if (scheduledContents !== contents) return;
-        zoomSavePending = false;
-        scheduledContents = null;
-        if (!handoffComplete || activeContents() !== contents) return;
-        const current = contents.getZoomLevel();
-        const clamped = clampZoomLevel(current);
-        if (clamped !== current) contents.setZoomLevel(clamped);
-        dependencies.zoomState.save(clamped);
-      });
+    zoomChanged(contents, zoomDirection): void {
+      // zoom-changed는 상태 통지가 아니라 사용자 요청이다 — Chromium이 줌을 적용해 주지 않으므로 방향대로 직접 적용·저장한다.
+      if (!handoffComplete || activeContents() !== contents) return;
+      setAndSaveZoom(contents, contents.getZoomLevel() + (zoomDirection === "in" ? 0.5 : -0.5), dependencies.zoomState);
     },
     zoomIn: () => runWhenReady((contents) => setAndSaveZoom(contents, contents.getZoomLevel() + 0.5, dependencies.zoomState)),
     zoomOut: () => runWhenReady((contents) => setAndSaveZoom(contents, contents.getZoomLevel() - 0.5, dependencies.zoomState)),

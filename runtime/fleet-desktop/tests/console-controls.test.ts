@@ -59,32 +59,36 @@ describe("console controls", () => {
     expect(second.webContents.reload).not.toHaveBeenCalled();
   });
 
-  it("applies and persists the clamped delayed wheel zoom once per tick", () => {
-    const scheduled: Array<() => void> = [];
+  it("applies and persists the requested wheel zoom direction with clamping", () => {
+    // zoom-changed는 상태 통지가 아니라 요청 이벤트다 — coordinator가 방향대로 직접 적용해야 휠 줌이 동작한다.
     let stored = 1;
     const zoomState = { load: vi.fn(() => stored), save: vi.fn((level: number) => { stored = level; }) };
-    const controls = createConsoleControls({ zoomState, refreshNativeActions: vi.fn(), schedule: (callback) => { scheduled.push(callback); } });
+    const controls = createConsoleControls({ zoomState, refreshNativeActions: vi.fn() });
     const first = createWindow();
 
     controls.attachWindow(first);
+    controls.zoomChanged(first.webContents, "in");
+    expect(first.webContents.setZoomLevel).not.toHaveBeenCalled();
+
     controls.handoffStarted();
     controls.onConsoleLoaded();
     first.webContents.setZoomLevel.mockClear();
-    first.webContents.setZoomLevel(4);
-    first.webContents.setZoomLevel.mockClear();
-    controls.zoomChanged(first.webContents);
-    controls.zoomChanged(first.webContents);
-    controls.zoomChanged(first.webContents);
-    expect(scheduled).toHaveLength(1);
-    expect(zoomState.save).not.toHaveBeenCalled();
 
-    scheduled[0]!();
-    expect(first.webContents.setZoomLevel).toHaveBeenCalledWith(3);
-    expect(zoomState.save).toHaveBeenCalledOnce();
-    expect(zoomState.save).toHaveBeenCalledWith(3);
+    controls.zoomChanged(first.webContents, "in");
+    expect(first.webContents.setZoomLevel).toHaveBeenLastCalledWith(1.5);
+    expect(zoomState.save).toHaveBeenLastCalledWith(1.5);
+    controls.zoomChanged(first.webContents, "out");
+    expect(first.webContents.setZoomLevel).toHaveBeenLastCalledWith(1);
+    expect(zoomState.save).toHaveBeenLastCalledWith(1);
+
+    for (let step = 0; step < 5; step++) controls.zoomChanged(first.webContents, "in");
+    expect(first.webContents.setZoomLevel).toHaveBeenLastCalledWith(3);
+    expect(zoomState.save).toHaveBeenLastCalledWith(3);
 
     const second = createWindow();
     controls.attachWindow(second);
+    controls.zoomChanged(first.webContents, "in");
+    expect(second.webContents.setZoomLevel).not.toHaveBeenCalled();
     controls.handoffStarted();
     controls.onConsoleLoaded();
     expect(second.webContents.setZoomLevel).toHaveBeenCalledWith(3);

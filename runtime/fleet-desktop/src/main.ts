@@ -93,7 +93,7 @@ async function boot(): Promise<void> {
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
-        createdWindow.webContents.on("zoom-changed", () => controls.zoomChanged(createdWindow.webContents));
+        createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => controls.zoomChanged(createdWindow.webContents, zoomDirection));
         refreshNativeUpdateActions?.();
         await createdWindow.loadFile(desktopResources.entryPagePath);
         return createdWindow;
