@@ -690,7 +690,7 @@ describe("console static and terminal ticket boundary", () => {
     runtime.emit({ type: "job:finalized", jobId: "missing-origin", status: "done", finishedAt: 1, summary: "missing", systemReminder: "drop me" });
     runtime.emit({ type: "job:finalized", jobId: "job-a", status: "done", finishedAt: 2, summary: "done", systemReminder: "line 1\nline 2\x1b[201~\x07" });
 
-    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~", "\r"]);
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~\r"]);
     expect(ptys.get(second.sessionId)?.writes).toEqual([]);
 
     runtime.emit({ type: "track:text", jobId: "job-b", originSessionId: second.sessionId, trackId: "t1", text: "progress" });
@@ -700,7 +700,7 @@ describe("console static and terminal ticket boundary", () => {
 
     expect(deleted.status).toBe(200);
     expect(ptys.get(second.sessionId)?.writes).toEqual([]);
-    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~", "\r"]);
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~\r"]);
   });
 
   it.skip("keeps carrier reminder payloads out of browser snapshots and SSE frames", async () => {

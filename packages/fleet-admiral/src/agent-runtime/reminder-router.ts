@@ -6,11 +6,6 @@ export interface PtyWriteSink {
   write(data: string): void;
 }
 
-interface AppliedMessagePolicy {
-  readonly payload: string;
-  readonly submit?: string;
-}
-
 const DEFAULT_BRACKETED_PASTE = false;
 const DEFAULT_LINE_TERMINATOR = "\r";
 const DEFAULT_MULTILINE_STRATEGY = "literal";
@@ -57,10 +52,7 @@ export function formatCarrierResultReminderMessage(
   text: string,
 ): string[] {
   const resolvedPolicy = resolveMessagePolicy(policy);
-  const appliedPolicy = applyMessagePolicy(text, resolvedPolicy);
-  return appliedPolicy.submit === undefined || appliedPolicy.submit.length === 0
-    ? [appliedPolicy.payload]
-    : [appliedPolicy.payload, appliedPolicy.submit];
+  return [applyMessagePolicy(text, resolvedPolicy)];
 }
 
 function resolveMessagePolicy(policy: CliMessagePolicy): Required<CliMessagePolicy> {
@@ -71,18 +63,13 @@ function resolveMessagePolicy(policy: CliMessagePolicy): Required<CliMessagePoli
   };
 }
 
-function applyMessagePolicy(
-  text: string,
-  policy: Required<CliMessagePolicy>,
-): AppliedMessagePolicy {
+function applyMessagePolicy(text: string, policy: Required<CliMessagePolicy>): string {
   const usePasteMode = policy.bracketedPaste || (policy.multilineStrategy === "paste-mode" && LINE_BREAK_PATTERN.test(text));
+  const body = usePasteMode ? `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}` : text;
 
-  if (!usePasteMode) {
-    return { payload: `${text}${policy.lineTerminator}` };
-  }
-
-  return {
-    payload: `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`,
-    submit: policy.lineTerminator,
-  };
+  // paste 블록과 제출 종결자(CR)를 반드시 하나의 PTY write로 내보낸다. 둘을 별도 write로
+  // 쪼개면 Windows ConPTY의 Codex TUI가 뒤따르는 CR을 Enter로 인식하지 못해, 붙여넣은
+  // 리마인더가 프롬프트에 남고 제출되지 않는다. 단일 원자적 write는 하나의 입력 레코드로
+  // 전달되어 안정적으로 제출되며, macOS/유닉스 PTY 동작에는 영향이 없다.
+  return `${body}${policy.lineTerminator}`;
 }

@@ -50,7 +50,7 @@ describe("carrier result reminder router", () => {
 
     handlers[0]?.(finalizedEvent("done"));
 
-    expect(writes).toEqual(["\x1b[200~done\x1b[201~", "\r"]);
+    expect(writes).toEqual(["\x1b[200~done\x1b[201~\r"]);
   });
 
   it("ignores finalized events without a string systemReminder", () => {
@@ -101,14 +101,12 @@ describe("carrier result reminder router", () => {
     expect(sanitizeCarrierResultReminder(`a\x1b[201~b\x9B201~c`)).toBe("abc");
   });
 
-  it("returns formatter chunks in write order", () => {
+  it("folds the submit terminator into a single atomic paste chunk", () => {
     expect(formatCarrierResultReminderMessage({ bracketedPaste: true, lineTerminator: "\n" }, "hello")).toEqual([
-      "\x1b[200~hello\x1b[201~",
-      "\n",
+      "\x1b[200~hello\x1b[201~\n",
     ]);
     expect(formatCarrierResultReminderMessage({ multilineStrategy: "paste-mode" }, "a\nb")).toEqual([
-      "\x1b[200~a\nb\x1b[201~",
-      "\r",
+      "\x1b[200~a\nb\x1b[201~\r",
     ]);
     expect(formatCarrierResultReminderMessage({ lineTerminator: "\n" }, "hello")).toEqual(["hello\n"]);
   });
