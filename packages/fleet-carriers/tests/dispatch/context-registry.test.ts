@@ -4,7 +4,8 @@ import { createCarrierRuntime } from "../../src/index.js";
 import * as dispatchToolSpec from "../../src/dispatch/tool-spec.js";
 import {
   DispatchContextRegistry,
-  isValidDispatchId,
+  createContextId,
+  isValidContextId,
   type DispatchBackendSession,
 } from "../../src/dispatch/context-registry.js";
 
@@ -17,13 +18,14 @@ const binding = {
 const session: DispatchBackendSession = { cliType: "codex", protocol: "codex-app-server", sessionId: "thread-1" };
 const claudeSession: DispatchBackendSession = { cliType: "claude", protocol: "acp", sessionId: "session-1" };
 
-describe("dispatch ID validation", () => {
+describe("context ID validation", () => {
   it("accepts only unchanged ASCII opaque tokens", () => {
-    expect(isValidDispatchId("a._:-9")).toBe(true);
-    expect(isValidDispatchId(" a")).toBe(false);
-    expect(isValidDispatchId("a ")).toBe(false);
-    expect(isValidDispatchId("é")).toBe(false);
-    expect(isValidDispatchId("a".repeat(129))).toBe(false);
+    expect(isValidContextId("a._:-9")).toBe(true);
+    expect(isValidContextId(" a")).toBe(false);
+    expect(isValidContextId("a ")).toBe(false);
+    expect(isValidContextId("é")).toBe(false);
+    expect(isValidContextId("a".repeat(129))).toBe(false);
+    expect(createContextId()).toMatch(/^ctx:[0-9a-f-]{36}$/);
   });
 });
 
@@ -100,6 +102,26 @@ describe("DispatchContextRegistry", () => {
     ]);
   });
 
+  it("expires old contexts and evicts the least recently committed context", () => {
+    const registry = new DispatchContextRegistry(2, 10);
+    for (const [contextId, now] of [["context-a", 0], ["context-b", 1], ["context-c", 2]] as const) {
+      const claim = registry.claim(contextId, binding, now);
+      expect(claim.accepted).toBe(true);
+      if (!claim.accepted) continue;
+      registry.confirmReadiness(claim.lease, [session]);
+      registry.commit(claim.lease, [session], now);
+    }
+    const evicted = registry.claim("context-a", binding, 3);
+    expect(evicted.accepted).toBe(true);
+    if (evicted.accepted) expect(evicted.resumeSessions).toBeUndefined();
+    registry.release({ contextId: "context-a" });
+    const expired = registry.claim("context-b", binding, 11);
+    expect(expired.accepted).toBe(true);
+    if (expired.accepted) expect(expired.resumeSessions).toBeUndefined();
+    registry.release({ contextId: "context-b" });
+    expect(registry.claim("context-b", binding, 11, true)).toEqual({ accepted: false, error: "not found" });
+  });
+
   it("is isolated per runtime and cleanup closes admission before cancelling tracked work", async () => {
     const first = createCarrierRuntime();
     const second = createCarrierRuntime();
@@ -118,7 +140,7 @@ describe("DispatchContextRegistry", () => {
     expect(() => first.trackInFlight({ cancel() {}, completion: Promise.resolve() })).toThrow(/closed to new dispatches/);
     expect(() => tool.execute({} as never, {} as never)).toThrow(/closed to new dispatches/);
     expect(first.dispatchContexts.claim("context-5", binding)).toEqual({ accepted: false, error: "disposed" });
-    expect(() => first.dispatchContexts.commit({ dispatchId: "context-5" }, [session])).not.toThrow();
+    expect(() => first.dispatchContexts.commit({ contextId: "context-5" }, [session])).not.toThrow();
     expect(second.dispatchContexts.claim("context-5", binding).accepted).toBe(true);
     expect(second.admission.accepting).toBe(true);
   });

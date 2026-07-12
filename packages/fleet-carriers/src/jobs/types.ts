@@ -73,6 +73,7 @@ export type CarrierJobRecord = CarrierJobBase;
 
 export interface CarrierJobLaunchResponse {
   job_id: string;
+  context_id?: string;
   accepted: boolean;
   error?: string;
 }
@@ -117,7 +118,13 @@ const JOB_PREFIXES = new Set<CarrierJobKind>(["carrier", "sortie", "taskforce"])
 export function formatLaunchResponseText(response: unknown, accepted: boolean): string {
   const payload = JSON.stringify(response);
   if (!accepted) return payload;
-  return JOB_LAUNCH_NOTICE + "\n" + payload;
+  const contextId = typeof response === "object" && response !== null && "context_id" in response
+    ? (response as { context_id?: unknown }).context_id
+    : undefined;
+  const resumeNotice = typeof contextId === "string"
+    ? "After this job completes successfully, pass context_id as resume_context_id in a later carrier_dispatch to continue the same provider session."
+    : undefined;
+  return [JOB_LAUNCH_NOTICE, resumeNotice, payload].filter(Boolean).join("\n");
 }
 
 export function computeFinalStatus(results: readonly FinalStatusInput[]): CarrierJobStatus {

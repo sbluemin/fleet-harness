@@ -36,7 +36,7 @@ import {
   claimDispatchContext,
   commitDispatchLease,
   confirmDispatchReadiness,
-  DISPATCH_ID_DESCRIPTION,
+  RESUME_CONTEXT_ID_DESCRIPTION,
   releaseDispatchLease,
   type DispatchBackendSession,
   type DispatchContextBindingInput,
@@ -90,6 +90,7 @@ interface SingleCarrierFinalizeOptions {
   deps: CarrierToolSpecDeps;
   services?: CarrierDispatchServices;
   lease?: DispatchContextLease;
+  contextId?: string;
   ready: OneShotReady;
   handle: OneShotExecution;
 }
@@ -158,7 +159,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ` Missing, empty, or non-string label is rejected before launch.`,
       `When composing a request, provide only background, context, objective, and constraints.` +
         ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
-        ` Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
+        ` Launch response schema is { job_id, context_id?, accepted, error? } and never includes synchronous result content.` +
         ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 6h.`,
       `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
         ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
@@ -166,9 +167,8 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ` The per-carrier request-block contract lives in the carrier-contracts skill —` +
         ` load it before composing a dispatch (skip reloading if its content is already in context).` +
         ` Missing required tags cause hard-error rejection that echoes the carrier's block contract.`,
-      `dispatch_id is optional: omit it for a fresh, independent carrier context;` +
-        ` reuse the same dispatch_id across calls to resume the same provider session in a fresh process.` +
-        ` A dispatch_id still in flight is rejected until its dispatch completes.`,
+      `Every successful fresh dispatch returns context_id. To continue that real provider session later,` +
+        ` wait for completion and pass that value as resume_context_id; omit resume_context_id to start fresh.`,
       CARRIER_REQUEST_BREVITY_GUIDELINE,
     ],
     guardrails: [
@@ -202,8 +202,8 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
             ` (e.g. a git worktree checkout) so the carrier spawns deterministically at that path.` +
             ` Omit to default to the host session cwd.`,
         })),
-        dispatch_id: Type.Optional(Type.String({
-          description: DISPATCH_ID_DESCRIPTION,
+        resume_context_id: Type.Optional(Type.String({
+          description: RESUME_CONTEXT_ID_DESCRIPTION,
         })),
       });
     },
@@ -269,7 +269,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
           cwd,
           deps,
           services,
-          dispatchId: args.dispatch_id,
+          resumeContextId: args.resume_context_id,
         });
       }
 
@@ -284,14 +284,14 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         });
       }
 
-      // dispatch_id 는 선택적 resume 토큰이다. 미전달 또는 런타임 레지스트리 부재 시 fresh 미추적 컨텍스트로 실행한다.
+      // 입력이 없으면 새 context_id를 발급하고, 있으면 해당 provider 세션을 명시 재개한다.
       const binding: DispatchContextBindingInput = {
         carrierId,
         cwd,
         shape: "single",
         backends: [{ cliType: trackModelInfo.cliType }],
       };
-      const claim = claimDispatchContext(services?.dispatchContexts, args.dispatch_id, binding);
+      const claim = claimDispatchContext(services?.dispatchContexts, args.resume_context_id, binding);
       if (!claim.ok) {
         return launchResponseResult({ job_id: jobId, accepted: false, error: claim.error });
       }
@@ -366,13 +366,18 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         deps,
         services,
         lease: claim.lease,
+        contextId: claim.contextId,
         ready,
         handle,
       });
       const untrack = services?.trackInFlight?.({ cancel: () => handle.abort(), completion }) ?? (() => {});
       void completion.finally(untrack);
 
-      return launchResponseResult({ job_id: launch.jobId, accepted: true });
+      return launchResponseResult({
+        job_id: launch.jobId,
+        ...(claim.contextId ? { context_id: claim.contextId } : {}),
+        accepted: true,
+      });
     },
   };
 }
@@ -519,6 +524,8 @@ async function finalizeSingleCarrierJob(opts: SingleCarrierFinalizeOptions): Pro
         summary,
         error: finalError,
         label: opts.label,
+        contextId: opts.contextId,
+        resumeAvailable: finalStatus === "done",
       }),
     });
   }
@@ -587,7 +594,7 @@ function buildCarrierDispatchRunId(jobId: string, carrierId: string): string {
   return `${jobId}:${carrierId}`;
 }
 
-function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string; cwd?: string; dispatch_id?: string } {
+function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string; cwd?: string; resume_context_id?: string } {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (
@@ -598,7 +605,7 @@ function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; r
     typeof obj.request === "string" &&
     obj.request.trim().length > 0 &&
     (obj.cwd === undefined || typeof obj.cwd === "string") &&
-    (obj.dispatch_id === undefined || typeof obj.dispatch_id === "string")
+    (obj.resume_context_id === undefined || typeof obj.resume_context_id === "string")
   );
 }
 

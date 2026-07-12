@@ -174,10 +174,11 @@ Carrier execution is routed through `@dotobokuri/core-agent` `executeOneShot()`,
 which builds a fresh provider client and child process per dispatch. Its
 two-phase handle resolves `readiness` after connect/resume, MCP setup, and real
 session/protocol discovery — the launch response waits for readiness while prompt
-completion runs detached in the background. Reusing an optional validated
-`dispatch_id` resumes the same real provider session in a new process via the
-`CarrierRuntime`-owned, process-local dispatch-context registry; omitting it runs
-a fresh untracked context. Carrier requests receive the request body composed by
+completion runs detached in the background. Each successful fresh launch returns
+a generated `context_id`; passing it back as `resume_context_id` resumes the same
+real provider session in a new process via the bounded, `CarrierRuntime`-owned,
+process-local dispatch-context registry. Omitting it starts a fresh context.
+Carrier requests receive the request body composed by
 the caller plus the carrier system prompt assembled by
 `buildCarrierSystemPrompt()`.
 

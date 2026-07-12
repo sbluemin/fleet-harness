@@ -377,7 +377,7 @@ describe("carrier_dispatch effort resolution", () => {
     await tool.execute({
       carrier_id: "ohio",
       label: "Untracked dispatch",
-      request: "Run without a dispatch_id.",
+      request: "Run without a resume_context_id.",
     }, {
       cwd: "/tmp",
       toolCallId: "dispatch-untracked",

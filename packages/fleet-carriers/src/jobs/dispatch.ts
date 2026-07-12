@@ -33,6 +33,8 @@ export interface CarrierResultSystemReminderInput {
   error?: string;
   taskforceBackend?: string;
   label?: string;
+  contextId?: string;
+  resumeAvailable?: boolean;
 }
 
 export interface CarrierJobsResponse {
@@ -103,6 +105,8 @@ export function buildCarrierResultSystemReminder(input: CarrierResultSystemRemin
     `changes=${sanitizeReminderText(changes)}`,
     input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
     input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
+    input.contextId ? `context_id=${sanitizeReminderText(input.contextId)}` : undefined,
+    input.contextId ? `resume_available=${input.resumeAvailable ? "yes" : "no"}` : undefined,
     input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,
   ].filter((part): part is string => Boolean(part));
   if (metadata.length > 0) lines.push(`  ${metadata.join(" ")}`);

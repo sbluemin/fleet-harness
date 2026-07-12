@@ -79,6 +79,7 @@ interface TaskForceCompletionOptions {
   deps: CarrierToolSpecDeps;
   services?: CarrierDispatchServices;
   lease?: DispatchContextLease;
+  contextId?: string;
 }
 
 interface TaskForceTrackModelInfo {
@@ -99,14 +100,14 @@ export interface TaskForceLaunchOptions {
   deps: CarrierToolSpecDeps;
   /** 런타임 소유 dispatch 컨텍스트 서비스(레지스트리/추적/admission). 없으면 미추적 실행. */
   services?: CarrierDispatchServices;
-  /** 선택적 resume 토큰. 재사용 시 동일 provider 세션 재개. */
-  dispatchId?: string;
+  /** 이전 성공 응답의 context_id. 전달 시 동일 provider 세션 재개. */
+  resumeContextId?: string;
 }
 
 const taskForceStateStore = new Map<string, TaskForceState>();
 
 export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promise<ReturnType<typeof launchResponseResult>> {
-  const { registry, carrierId, request, label, startedAt, toolName, ctx, cwd, deps, services, dispatchId } = options;
+  const { registry, carrierId, request, label, startedAt, toolName, ctx, cwd, deps, services, resumeContextId } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
 
   assertRegisteredCarrier(registry, carrierId);
@@ -139,14 +140,14 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     });
   }
 
-  // dispatch_id 바인딩: taskforce shape + 정렬된 백엔드 집합. 미전달/런타임 부재면 fresh 미추적.
+  // 입력이 없으면 새 context_id를 발급하고, 있으면 Task Force의 backend별 provider 세션을 명시 재개한다.
   const binding: DispatchContextBindingInput = {
     carrierId,
     cwd,
     shape: "taskforce",
     backends: activeBackends.map((cliType) => ({ cliType })),
   };
-  const claim = claimDispatchContext(services?.dispatchContexts, dispatchId, binding);
+  const claim = claimDispatchContext(services?.dispatchContexts, resumeContextId, binding);
   if (!claim.ok) {
     return launchResponseResult({
       job_id: buildCarrierJobId("taskforce", ctx.toolCallId ?? ""),
@@ -246,6 +247,7 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     deps,
     services,
     lease: claim.lease,
+    contextId: claim.contextId,
   });
   const untrack = services?.trackInFlight?.({
     cancel: async () => { await Promise.allSettled(prepared.map((p) => p.handle.abort())); },
@@ -253,7 +255,11 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
   }) ?? (() => {});
   void completion.finally(untrack);
 
-  return launchResponseResult({ job_id: launch.jobId, accepted: true });
+  return launchResponseResult({
+    job_id: launch.jobId,
+    ...(claim.contextId ? { context_id: claim.contextId } : {}),
+    accepted: true,
+  });
 }
 
 function readyToSession(ready: OneShotReady): DispatchBackendSession {
@@ -327,6 +333,8 @@ async function runTaskForceCompletion(opts: TaskForceCompletionOptions): Promise
         error: finalError,
         taskforceBackend: opts.activeBackends.join(", "),
         label: opts.label,
+        contextId: opts.contextId,
+        resumeAvailable: finalStatus === "done",
       }),
     });
     clearTaskForceState(opts.requestKey);
