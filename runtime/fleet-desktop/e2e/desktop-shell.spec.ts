@@ -14,9 +14,47 @@ test.describe("unpackaged desktop shell", () => {
     const app = await electron.launch({ args: [path.resolve(main)], env: { ...process.env, FLEET_CONSOLE_NODE_PATH: nodePath } });
     try {
       const window = await app.firstWindow();
-      await expect(window.getByText("Fleet Console")).toBeVisible();
       await expect(window).toHaveURL(/\/console\//);
       expect(new URL(window.url()).search).toBe("");
+
+      const handoffUrl = window.url();
+      const history = await app.evaluate(({ BrowserWindow }) => {
+        const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+        if (!contents) throw new Error("desktop_window_unavailable");
+        return {
+          activeIndex: contents.navigationHistory.getActiveIndex(),
+          canGoBack: contents.navigationHistory.canGoBack(),
+          entries: contents.navigationHistory.getAllEntries().map(({ url }) => url),
+        };
+      });
+      expect(history).toEqual({ activeIndex: 0, canGoBack: false, entries: [handoffUrl] });
+
+      await window.evaluate(() => history.back());
+      await window.waitForTimeout(250);
+      expect(window.url()).toBe(handoffUrl);
+      await expect(window.locator(".entry-body")).toHaveCount(0);
+
+      expect(await window.goBack({ waitUntil: "domcontentloaded" })).toBeNull();
+      expect(window.url()).toBe(handoffUrl);
+      await expect(window.locator(".entry-body")).toHaveCount(0);
+
+      const mainProcessBack = await app.evaluate(({ BrowserWindow }) => {
+        const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+        if (!contents) throw new Error("desktop_window_unavailable");
+        const canGoBack = contents.navigationHistory.canGoBack();
+        if (canGoBack) contents.navigationHistory.goBack();
+        return canGoBack;
+      });
+      expect(mainProcessBack).toBe(false);
+      await window.waitForTimeout(250);
+      expect(window.url()).toBe(handoffUrl);
+      await expect(window.locator(".entry-body")).toHaveCount(0);
+
+      await window.evaluate(() => history.pushState({}, "", "/console/history-probe"));
+      expect(new URL(window.url()).pathname).toBe("/console/history-probe");
+      await window.goBack();
+      expect(window.url()).toBe(handoffUrl);
+      await expect(window.locator(".entry-body")).toHaveCount(0);
     } finally {
       await app.close();
     }

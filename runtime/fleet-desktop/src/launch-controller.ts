@@ -6,7 +6,7 @@ export interface LaunchWindow {
   isDestroyed?(): boolean;
   loadURL(url: string): Promise<void>;
   show(): void;
-  webContents: EntryPageWebContents;
+  webContents: EntryPageWebContents & { navigationHistory: { clear(): void } };
 }
 
 export interface LaunchControllerDependencies {
@@ -52,7 +52,10 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       dependencies.handoffOrigin(origin);
       await dependencies.synchronizeTheme?.(origin);
       await push("starting", "ready");
-      if (!window.isDestroyed?.()) await window.loadURL(consoleUrl);
+      if (!window.isDestroyed?.()) {
+        await window.loadURL(consoleUrl);
+        if (!window.isDestroyed?.()) window.webContents.navigationHistory.clear();
+      }
       if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
       return window;
     },
