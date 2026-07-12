@@ -39,12 +39,17 @@ describe("Instrument core design contract", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
   });
 
-  it("keeps Map labels and navigation behavior while removing animation controls", () => {
+  it("keeps minimap navigation while removing Map collapse controls", () => {
     const minimap = source("canvas/canvas-minimap.tsx");
+    const canvas = source("canvas/canvas.tsx");
+    const components = source("styles/components.css");
     const contextMenu = source("canvas/canvas-context-menu.tsx");
     expect(minimap).toContain(">Map<");
     expect(minimap).toContain("onPointerMove={onPointerMove}");
     expect(minimap).toContain("onJump({");
+    expect(minimap).not.toMatch(/localStorage|Collapsed|Open Map|Collapse Map|canvas-minimap-(?:fab|toggle)/);
+    expect(canvas).toContain("{!formationView && !panelMaximized ? (");
+    expect(components).not.toMatch(/canvas-minimap-(?:fab|toggle)/);
     expect(contextMenu).toContain("Formation view");
     expect(contextMenu).not.toContain("onToggleRadar");
     expect(contextMenu).not.toContain("onTogglePerimeter");
