@@ -65,18 +65,18 @@ export const CARRIER_JOBS_DOCTRINE = {
     `carrier_jobs — Lookup/control detached carrier jobs: status, result, cancel, list.`,
   whenToUse: [
     `Use carrier_jobs when a follow-up push is missing, explicit job inspection is required, or the Admiral needs completion metadata, full archived output, cancellation, or a job list.`,
-    `Use action:"result" only after the job is finalized; full results remain repeatable for 3 hours.`,
+    `Use action:"result" only after the job is finalized; full results remain repeatable for 6 hours.`,
   ],
   whenNotToUse: [
     `Do not use carrier_jobs to delegate new work; use carrier_dispatch.`,
-    `Do not request results for active jobs. Results are finalized-only, read-many for 3 hours, and expire by TTL.`,
+    `Do not request results for active jobs. Results are finalized-only, read-many for 6 hours, and expire by TTL.`,
     `Do not poll, wait-check, or call carrier_jobs merely to see whether a launched job is done; terminal results arrive through the [carrier:result] follow-up push.`,
   ],
   usageGuidelines: [
     `carrier_jobs has exactly four actions: status, result, cancel, list.`,
     `After launch, continue independent work if available; otherwise stop tool use and wait passively for the follow-up push instead of issuing status probes.`,
     `Treat carrier_jobs as the fallback channel for missing pushes or explicit lookups, not as a polling loop.`,
-    `Results are finalized-only, read-many for 3h in process memory.`,
+    `Results are finalized-only, read-many for 6h in process memory.`,
     `Task Force dispatch full responses return results: { [cliType]: "..." }; non-Task-Force full responses still return full_result.`,
     `carrier_jobs reads the process-memory summary cache and JobStreamArchive only. It never reads the Agent Panel stream-store.`,
   ],
