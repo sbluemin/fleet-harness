@@ -13,8 +13,8 @@ const { executorMcpRuntimeProviderRuntime, executorPortRuntime } = await import(
 class FakeClient extends EventEmitter implements IUnifiedAgentClient {
   readonly connectCalls: UnifiedClientOptions[] = [];
   readonly messages: string[] = [];
-  disconnectCount = 0; cancelCount = 0; sessionId?: string; protocol: "acp" | "codex-app-server" = "codex-app-server"; connectError?: Error; state: "disconnected" | "ready" = "disconnected"; onSend?: () => void;
-  async connect(options: UnifiedClientOptions): Promise<ConnectResult> { this.connectCalls.push(options); if (this.connectError) throw this.connectError; this.state = "ready"; this.sessionId = options.sessionId ?? `session-${clients.indexOf(this) + 1}`; return { cli: "codex", protocol: this.protocol, session: { sessionId: this.sessionId } } as ConnectResult; }
+  disconnectCount = 0; cancelCount = 0; sessionId?: string; protocol: "acp" | "codex-app-server" = "codex-app-server"; connectError?: Error; state: "disconnected" | "ready" = "disconnected"; onConnect?: () => void; onSend?: () => void;
+  async connect(options: UnifiedClientOptions): Promise<ConnectResult> { this.connectCalls.push(options); this.onConnect?.(); if (this.connectError) throw this.connectError; this.state = "ready"; this.sessionId = options.sessionId ?? `session-${clients.indexOf(this) + 1}`; return { cli: "codex", protocol: this.protocol, session: { sessionId: this.sessionId } } as ConnectResult; }
   async disconnect(): Promise<void> { this.disconnectCount++; this.state = "disconnected"; }
   async endSession(): Promise<void> {} async detectClis(): Promise<[]> { return []; }
   async sendMessage(message: string | AcpContentBlock[]): Promise<AcpPromptResponse> { this.messages.push(typeof message === "string" ? message : JSON.stringify(message)); this.onSend?.(); return {} as AcpPromptResponse; }
@@ -45,6 +45,26 @@ describe("executeOneShot", () => {
     const execution = executeOneShot(options("resume", { resumeSessionId: "provider-session" }));
     await expect(execution.readiness).rejects.toThrow("session/load failed"); await expect(execution.completion).resolves.toMatchObject({ status: "err" });
     expect(buildMock).toHaveBeenCalledTimes(1); expect(clients[0]!.connectCalls).toEqual([expect.objectContaining({ sessionId: "provider-session" })]); expect(clients[0]!.messages).toEqual([]); expect(clients[0]!.disconnectCount).toBe(1);
+  });
+  it("rejects readiness without an unhandled EventEmitter error when the provider fails during connect", async () => {
+    let errorListenerCount = 0;
+    buildMock.mockImplementationOnce(async () => {
+      const client = new FakeClient();
+      client.onConnect = () => {
+        errorListenerCount = client.listenerCount("error");
+        client.emit("error", new Error("provider child spawn failed"));
+      };
+      clients.push(client);
+      return client;
+    });
+
+    const execution = executeOneShot(options("fail before prompt"));
+
+    await expect(execution.readiness).rejects.toThrow("provider child spawn failed");
+    await expect(execution.completion).resolves.toMatchObject({ status: "err", error: "provider child spawn failed" });
+    expect(errorListenerCount).toBe(1);
+    expect(clients[0]!.disconnectCount).toBe(1);
+    expect(clients[0]!.listenerCount("error")).toBe(0);
   });
   it("abort before prompt cleans the prepared one-shot without sending", async () => {
     const execution = executeOneShot(options("never-send")); await execution.readiness; await execution.abort();

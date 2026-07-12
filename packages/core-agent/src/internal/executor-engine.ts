@@ -110,6 +110,10 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
     let sessionId: string | undefined;
     let readinessSettled = false;
     const cleanups: Array<() => void> = [];
+    let rejectProviderFailure!: (error: Error) => void;
+    const providerFailure = new Promise<never>((_, reject) => { rejectProviderFailure = reject; });
+    const raceProviderFailure = <T>(promise: Promise<T>): Promise<T> => Promise.race([promise, providerFailure]);
+    let onProviderError: ((cause: unknown) => void) | undefined;
     const finish = (nextStatus: TrackStatus, nextError?: string) => {
       status = nextStatus;
       error = nextError;
@@ -127,20 +131,29 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       cleanups.push(() => opts.signal?.removeEventListener("abort", onSignalAbort));
 
       client = await buildProviderClient({ cli: opts.cliType });
+      onProviderError = (cause: unknown) => {
+        const providerError = cause instanceof Error ? cause : new Error(String(cause));
+        if (!readinessSettled) {
+          rejectReady(providerError);
+          readinessSettled = true;
+        }
+        rejectProviderFailure(providerError);
+      };
+      client.on("error", onProviderError);
       if (aborted) throw new Error("Aborted");
-      const mcpSetup = await setupExecutorMcp(opts.cwd, opts.signal, opts.scopeId, opts.reservedExternalMcpServerIds);
+      const mcpSetup = await raceProviderFailure(setupExecutorMcp(opts.cwd, opts.signal, opts.scopeId, opts.reservedExternalMcpServerIds));
       activeMcpTokens = mcpSetup?.tokens;
       if (aborted) throw new Error("Aborted");
       const model = opts.model ?? getProviderModels(opts.cliType).defaultModel;
       const effort = resolveEffort(opts.cliType, model, opts.effort);
-      const connectOpts = await buildConnectOptions(opts.cliType, opts.cwd, {
+      const connectOpts = await raceProviderFailure(buildConnectOptions(opts.cliType, opts.cwd, {
         model: opts.model,
         promptIdleTimeout: opts.promptIdleTimeout,
         effort,
-      }, opts.connectSystemPrompt, opts.authEnvResolver, mcpSetup?.mcpServers);
+      }, opts.connectSystemPrompt, opts.authEnvResolver, mcpSetup?.mcpServers));
       if (opts.resumeSessionId) connectOpts.sessionId = opts.resumeSessionId;
-      const connectResult = await raceAbort(client.connect(connectOpts), opts.signal);
-      await applyResolvedEffort(client, opts.cliType, model, effort);
+      const connectResult = await raceAbort(raceProviderFailure(client.connect(connectOpts)), opts.signal);
+      await raceProviderFailure(applyResolvedEffort(client, opts.cliType, model, effort));
       if (activeMcpTokens) installActiveExecutorToolCallRouter(activeMcpTokens, { cwd: opts.cwd, signal: opts.signal });
       sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? undefined;
       const protocol = client.getConnectionInfo().protocol ?? connectResult.protocol;
@@ -151,7 +164,7 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       resolveReady(ready);
       readinessSettled = true;
 
-      await promptGate;
+      await raceProviderFailure(promptGate);
       if (aborted) {
         finish("aborted");
         return { responseText, thoughtText, toolCalls, status, error, sessionId };
@@ -160,7 +173,6 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       finish("stream");
       const onMessageChunk = (text: string) => { responseText += text; opts.onMessageChunk?.(text); };
       const onThoughtChunk = (text: string) => { thoughtText += text; opts.onThoughtChunk?.(text); };
-      const onError = (err: Error) => { if (!aborted) error = err.message; };
       const upsertToolCall = (title: string, toolStatus: string, rawOutput?: string, toolCallId?: string) => {
         const existing = toolCalls.find((item) => toolCallId ? item.toolCallId === toolCallId : item.title === title);
         const isFirstPush = !existing;
@@ -178,9 +190,9 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       };
       const onToolCall = (title: string, toolStatus: string, _id: string, data?: AcpToolCall) => upsertToolCall(enrichToolTitle(title, data?.kind), toolStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
       const onToolCallUpdate = (title: string, toolStatus: string, _id: string, data?: AcpToolCallUpdate) => upsertToolCall(enrichToolTitle(title, data?.kind ?? undefined), toolStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
-      client.on("messageChunk", onMessageChunk).on("thoughtChunk", onThoughtChunk).on("toolCall", onToolCall).on("toolCallUpdate", onToolCallUpdate).on("error", onError);
-      cleanups.push(() => client?.off("messageChunk", onMessageChunk).off("thoughtChunk", onThoughtChunk).off("toolCall", onToolCall).off("toolCallUpdate", onToolCallUpdate).off("error", onError));
-      await client.sendMessage(opts.request);
+      client.on("messageChunk", onMessageChunk).on("thoughtChunk", onThoughtChunk).on("toolCall", onToolCall).on("toolCallUpdate", onToolCallUpdate);
+      cleanups.push(() => client?.off("messageChunk", onMessageChunk).off("thoughtChunk", onThoughtChunk).off("toolCall", onToolCall).off("toolCallUpdate", onToolCallUpdate));
+      await raceProviderFailure(client.sendMessage(opts.request));
       sessionId = client.getConnectionInfo().sessionId ?? sessionId;
       if (aborted) finish("aborted");
       else {
@@ -205,6 +217,7 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       activeMcpTokens = undefined;
       if (client) {
         await disconnectClient();
+        if (onProviderError) client.off("error", onProviderError);
         client.removeAllListeners();
       }
     }

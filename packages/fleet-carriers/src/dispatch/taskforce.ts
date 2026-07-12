@@ -224,45 +224,43 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
   }
 
-  // Baseline must be complete before any backend can pass the shared prompt gate.
-  const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
-  let startCompletion!: () => void;
-  const completion = new Promise<void>((resolve) => { startCompletion = resolve; }).then(() =>
-    runTaskForceCompletion({
-      registry,
-      jobId: launch.jobId,
-      carrierId,
-      originSessionId: ctx.sessionLabel,
-      activeBackends,
-      prepared,
-      request,
-      state,
-      requestKey,
-      cwd,
-      permit: launch.permit,
-      startedAt,
-      toolName,
-      label,
-      deps,
-      services,
-      lease: claim.lease,
-      contextId: claim.contextId,
-      baselineSnapshot,
-    }),
-  );
-  let untrack: () => void;
-  try {
-    untrack = services?.trackInFlight?.({
-      cancel: async () => { await Promise.allSettled(prepared.map((p) => p.handle.abort())); },
-      completion,
-    }) ?? (() => {});
-  } catch (error) {
+  // Start capture without opening a prompt gate, then expose every prepared backend to runtime cleanup.
+  const baselineSnapshot = captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
+  let settleCompletion!: () => void;
+  let failCompletion!: (error: unknown) => void;
+  const completion = new Promise<void>((resolve, reject) => { settleCompletion = resolve; failCompletion = reject; });
+  let completionStarted = false;
+  let rollbackPrepared: Promise<void> | undefined;
+  const rejectPrepared = () => rollbackPrepared ??= (async () => {
     await Promise.allSettled(prepared.map((p) => p.handle.abort()));
     await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
     releaseDispatchLease(services?.dispatchContexts, claim.lease);
     clearTaskForceState(requestKey);
+    settleCompletion();
+  })();
+  let untrack: () => void;
+  try {
+    untrack = services?.trackInFlight?.({
+      cancel: () => completionStarted
+        ? Promise.allSettled(prepared.map((p) => p.handle.abort())).then(() => undefined)
+        : rejectPrepared(),
+      completion,
+    }) ?? (() => {});
+  } catch (error) {
+    await rejectPrepared();
     const message = error instanceof Error ? error.message : String(error);
     return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
+  }
+  void completion.finally(untrack);
+
+  const baseline = await baselineSnapshot;
+  if (rollbackPrepared || services?.admission.accepting === false) {
+    await rejectPrepared();
+    return launchResponseResult({
+      job_id: launch.jobId,
+      accepted: false,
+      error: "Carrier runtime is closed to new dispatches.",
+    });
   }
 
   emitTaskForceJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, requestKey, activeBackends, startedAt, label, trackModelInfoByCli);
@@ -278,9 +276,29 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     });
   }
 
-  startCompletion();
+  completionStarted = true;
+  void runTaskForceCompletion({
+    registry,
+    jobId: launch.jobId,
+    carrierId,
+    originSessionId: ctx.sessionLabel,
+    activeBackends,
+    prepared,
+    request,
+    state,
+    requestKey,
+    cwd,
+    permit: launch.permit,
+    startedAt,
+    toolName,
+    label,
+    deps,
+    services,
+    lease: claim.lease,
+    contextId: claim.contextId,
+    baselineSnapshot: baseline,
+  }).then(settleCompletion, failCompletion);
   for (const backend of prepared) backend.handle.startPrompt();
-  void completion.finally(untrack);
 
   return launchResponseResult({
     job_id: launch.jobId,

@@ -124,6 +124,8 @@ describe("single dispatch context resume", () => {
     const pending = tool.execute({ carrier_id: "ohio", label: "Cleanup race", request: "Do not open the prompt gate." }, { cwd: "/tmp", toolCallId: "single-cleanup-race" });
     await vi.waitFor(() => expect(scanner.snapshot).toHaveBeenCalledTimes(1));
     await runtime.cleanup();
+    expect(handles[0]!.startPrompt).not.toHaveBeenCalled();
+    expect(handles[0]!.abort).toHaveBeenCalledTimes(1);
     baseline.resolve([]);
 
     const result = await pending;
@@ -257,6 +259,11 @@ describe("Task Force context barrier and resume", () => {
     const pending = tool.execute({ carrier_id: "ohio", label: "Task Force cleanup race", request: "Do not open either prompt gate." }, { cwd: "/tmp", toolCallId: "taskforce-cleanup-race" });
     await vi.waitFor(() => expect(scanner.snapshot).toHaveBeenCalledTimes(1));
     await runtime.cleanup();
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) {
+      expect(handle.startPrompt).not.toHaveBeenCalled();
+      expect(handle.abort).toHaveBeenCalledTimes(1);
+    }
     baseline.resolve([]);
 
     const result = await pending;

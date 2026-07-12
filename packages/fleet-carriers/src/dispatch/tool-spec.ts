@@ -341,42 +341,41 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         });
       }
 
-      // Baseline must be complete before the prompt gate opens: a fast carrier may edit immediately.
-      const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
-
-      let startCompletion!: () => void;
-      const completion = new Promise<void>((resolve) => { startCompletion = resolve; }).then(() =>
-        finalizeSingleCarrierJob({
-          registry,
-          jobId: launch.jobId,
-          carrierId,
-          originSessionId: ctx.sessionLabel,
-          trackModelInfo,
-          label,
-          request,
-          cwd,
-          permit: launch.permit,
-          startedAt: t0,
-          toolName,
-          deps,
-          services,
-          lease: claim.lease,
-          contextId: claim.contextId,
-          ready,
-          handle,
-          baselineSnapshot,
-        }),
-      );
-      let untrack: () => void;
-      try {
-        untrack = services?.trackInFlight?.({ cancel: () => handle.abort(), completion }) ?? (() => {});
-      } catch (error) {
+      // Start capture without opening the prompt gate, then expose the prepared handle to runtime cleanup.
+      const baselineSnapshot = captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
+      let settleCompletion!: () => void;
+      let failCompletion!: (error: unknown) => void;
+      const completion = new Promise<void>((resolve, reject) => { settleCompletion = resolve; failCompletion = reject; });
+      let completionStarted = false;
+      let rollbackPrepared: Promise<void> | undefined;
+      const rejectPrepared = () => rollbackPrepared ??= (async () => {
         await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit, abort: () => handle.abort() });
         releaseDispatchLease(services?.dispatchContexts, claim.lease);
+        settleCompletion();
+      })();
+      let untrack: () => void;
+      try {
+        untrack = services?.trackInFlight?.({
+          cancel: () => completionStarted ? handle.abort() : rejectPrepared(),
+          completion,
+        }) ?? (() => {});
+      } catch (error) {
+        await rejectPrepared();
         return launchResponseResult({
           job_id: launch.jobId,
           accepted: false,
           error: sanitizeProviderReason(error instanceof Error ? error.message : String(error)),
+        });
+      }
+      void completion.finally(untrack);
+
+      const baseline = await baselineSnapshot;
+      if (rollbackPrepared || services?.admission.accepting === false) {
+        await rejectPrepared();
+        return launchResponseResult({
+          job_id: launch.jobId,
+          accepted: false,
+          error: "Carrier runtime is closed to new dispatches.",
         });
       }
 
@@ -389,9 +388,28 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         startedAt: Date.now(),
         requestPreview: request.trim().split(/\r?\n/, 1)[0],
       });
-      startCompletion();
+      completionStarted = true;
+      void finalizeSingleCarrierJob({
+        registry,
+        jobId: launch.jobId,
+        carrierId,
+        originSessionId: ctx.sessionLabel,
+        trackModelInfo,
+        label,
+        request,
+        cwd,
+        permit: launch.permit,
+        startedAt: t0,
+        toolName,
+        deps,
+        services,
+        lease: claim.lease,
+        contextId: claim.contextId,
+        ready,
+        handle,
+        baselineSnapshot: baseline,
+      }).then(settleCompletion, failCompletion);
       handle.startPrompt();
-      void completion.finally(untrack);
 
       return launchResponseResult({
         job_id: launch.jobId,
