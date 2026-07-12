@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
@@ -34,12 +34,19 @@ function isBlockingDialogOpen(): boolean {
 
 export function App() {
   const state = useConsoleState();
+  const bootPanelsMinimizedRef = useRef(false);
   const location = useLocation();
   const registry = usePluginRegistry();
   const globalSettings = useGlobalSettingsStore();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
+
+  const claimBootPanelMinimization = useCallback((): boolean => {
+    if (bootPanelsMinimizedRef.current) return false;
+    bootPanelsMinimizedRef.current = true;
+    return true;
+  }, []);
 
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
@@ -118,7 +125,7 @@ export function App() {
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
-          <Route path="/operations" element={<Operations state={state} />} />
+          <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} />} />
           <Route path="/carrier-settings" element={<CarrierSettings />} />
           <Route path="/settings" element={<GlobalSettings />} />
           <Route path="*" element={<Navigate to="/operations" replace />} />
