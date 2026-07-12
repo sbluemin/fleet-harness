@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, minimizeOperation, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -191,6 +191,11 @@ export function Operations({ state }: OperationsProps) {
     if (viewportSize) focusCanvasOperation(operationId, viewportSize);
   }, []);
 
+  const handleMinimize = useCallback((operationId: string) => {
+    if (stateRef.current.activeOperationId === operationId) setActiveOperation(null);
+    minimizeOperation(operationId);
+  }, []);
+
   const handleSetAccent = useCallback((operationId: string, accentKey: string | null) => {
     void patchOperation(operationId, { accent: accentKey })
       .then(() => fetchOperations(null))
@@ -320,6 +325,7 @@ export function Operations({ state }: OperationsProps) {
         onLaunchKind={handleSideBarLaunchKind}
         onResetView={handleResetView}
         onClose={handleClose}
+        onMinimize={handleMinimize}
         onFocus={handleFocus}
         onSetAccent={handleSetAccent}
         onRename={handleRename}

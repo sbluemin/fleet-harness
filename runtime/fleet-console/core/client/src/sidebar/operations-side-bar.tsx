@@ -36,6 +36,7 @@ interface OperationsSideBarProps {
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onResetView: () => void;
   readonly onClose: (operationId: string) => void;
+  readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
   readonly onRename: (operationId: string, title: string) => void;
@@ -156,6 +157,7 @@ export function OperationsSideBar({
   onLaunchKind,
   onResetView,
   onClose,
+  onMinimize,
   onFocus,
   onSetAccent,
   onRename,
@@ -654,6 +656,7 @@ export function OperationsSideBar({
                         onArmClose={armClose}
                         onDisarmClose={disarmClose}
                         onClose={onClose}
+                        onMinimize={onMinimize}
                         onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
@@ -965,6 +968,7 @@ function TheaterPeekSection({
                       onArmClose={() => {}}
                       onDisarmClose={() => {}}
                       onClose={() => {}}
+                      onMinimize={() => {}}
                       onFocus={onFocus}
                       onKeyboardMove={() => {}}
                       onPointerDragStart={() => {}}
