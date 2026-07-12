@@ -6,7 +6,7 @@ This document is the operational doctrine for Admiral and Carrier agents working
 
 - `runtime/fleet-cli` owns the CLI host and Composition Root, consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`, and owns one in-process MCP HTTP/JSON-RPC server per CLI process plus the console register publisher.
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs (including detached jobs), store, and carrier runtime state.
-- `packages/core-agent` owns the host-agnostic executor/session/model runtime engine (`executeWithPool` / `executeOneShot`), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
+- `packages/core-agent` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.

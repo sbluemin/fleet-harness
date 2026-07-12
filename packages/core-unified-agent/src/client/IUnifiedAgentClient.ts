@@ -193,8 +193,7 @@ export interface IUnifiedAgentClient {
 
   /**
    * 현재 세션을 종료합니다.
-   * 프로세스는 유지되며 Pool에 반환하지 않습니다.
-   * disconnect()와 달리 연결 자체는 유지됩니다.
+   * disconnect()와 달리 프로세스와 연결 자체는 유지됩니다.
    */
   endSession(): Promise<void>;
 

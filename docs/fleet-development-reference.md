@@ -39,7 +39,7 @@ Put code here only when it concerns Electron main-process lifecycle, one native 
 
 ### 2.5 `packages/core-agent`
 
-Put code here when it owns the host-agnostic executor pool/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, or shared register data contracts.
+Put code here when it owns the host-agnostic one-shot executor/session/model runtime engine (fresh provider client per call, readiness/session discovery, and explicit resume), builtin external MCP catalog, generic in-process MCP server primitives, or shared register data contracts.
 
 ## 3. Import Rules
 
