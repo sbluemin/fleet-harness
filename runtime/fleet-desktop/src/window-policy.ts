@@ -22,6 +22,7 @@ export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, opti
     backgroundColor: CANVAS_FAR_BACKGROUND_COLOR,
     minWidth: 900,
     minHeight: 560,
+    ...(options.platform !== "darwin" ? { autoHideMenuBar: false } : {}),
     // Windows 오버레이 43px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 44px를 채운다. macOS 88px 인셋과 함께 변경 시 양쪽을 동기화한다.
     ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 } } : {}),
     ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
