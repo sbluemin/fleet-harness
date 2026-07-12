@@ -70,8 +70,8 @@ export async function handleDiffCommit(
   try {
     const [metaResult, nameStatusResult, numstatResult] = await Promise.all([
       runGit(["show", "-s", "--format=%an%x00%ae%x00%at%x00%s%x00%P%x00%b", ref], { cwd: gitCwd }),
-      runGit(["show", "--first-parent", "--format=", "--relative", "--name-status", "--diff-filter=MADR", ref, "--", "."], { cwd: gitCwd }),
-      runGit(["show", "--first-parent", "--format=", "--relative", "--numstat", "--diff-filter=MADR", ref, "--", "."], { cwd: gitCwd }),
+      runGit(["show", "--first-parent", "--format=", "--relative", "--name-status", "--diff-filter=MADRT", ref, "--", "."], { cwd: gitCwd }),
+      runGit(["show", "--first-parent", "--format=", "--relative", "--numstat", "--diff-filter=MADRT", ref, "--", "."], { cwd: gitCwd }),
     ]);
     const meta = parseCommitMeta(metaResult.stdout);
     if (!meta) { ctx.host.http.writeJson(res, 500, { error: "git_failed" }); return; }

@@ -37,6 +37,7 @@ const STATUS_LABEL: { [key: string]: string } = {
   A: "added",
   D: "deleted",
   R: "renamed",
+  T: "type changed",
   U: "untracked",
 };
 

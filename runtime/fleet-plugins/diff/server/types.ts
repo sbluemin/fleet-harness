@@ -4,7 +4,7 @@ export type DiffFileMode = "unified" | "untracked";
 export interface DiffFileEntry {
   readonly path: string;
   readonly oldPath?: string;
-  readonly status: "M" | "A" | "D" | "R" | "U";
+  readonly status: "M" | "A" | "D" | "R" | "T" | "U";
   readonly additions: number;
   readonly deletions: number;
 }

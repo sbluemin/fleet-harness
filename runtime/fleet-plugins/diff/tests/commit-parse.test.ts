@@ -15,4 +15,8 @@ describe("commit inspector server parsers", () => {
     expect(parseDiffFileList("R100\told.ts\tnew.ts\n", "3\t2\told.ts => new.ts\n")).toEqual([{ path: "new.ts", oldPath: "old.ts", status: "R", additions: 3, deletions: 2 }]);
     expect(parseDiffFileList("R100\told.ts\tnew.ts\n", "3\t2\told.ts\tnew.ts\n")[0]?.path).toBe("new.ts");
   });
+
+  it("includes type changes when numstat has no line counts", () => {
+    expect(parseDiffFileList("T\tentry\n", "-\t-\tentry\n")).toEqual([{ path: "entry", status: "T", additions: 0, deletions: 0 }]);
+  });
 });

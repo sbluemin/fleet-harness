@@ -21,6 +21,7 @@ interface JsonWrite {
 interface ScopedRepoFixture {
   readonly theaterPath: string;
   readonly head: string;
+  readonly typeChangeHead: string;
   readonly renameHead: string;
   readonly mergeHead: string;
 }
@@ -65,6 +66,7 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
 
   await fs.writeFile(path.join(insidePath, "changed.txt"), "before\n");
   await fs.writeFile(path.join(insidePath, "rename-old.txt"), "rename\n");
+  await fs.writeFile(path.join(insidePath, "type-change.txt"), "regular file\n");
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside before\n");
   await fs.writeFile(path.join(theaterPath, "..notes"), "before\n");
   await runGit(["add", "."], { cwd: theaterPath });
@@ -82,6 +84,14 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
   const head = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
 
   const mainBranch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", "-b", "type-change-fixture"], { cwd: theaterPath });
+  await fs.rm(path.join(insidePath, "type-change.txt"));
+  await fs.symlink("changed.txt", path.join(insidePath, "type-change.txt"));
+  await runGit(["add", path.join(INSIDE_DIR, "type-change.txt")], { cwd: theaterPath });
+  await runGit(["commit", "-m", "type change fixture"], { cwd: theaterPath });
+  const typeChangeHead = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", mainBranch], { cwd: theaterPath });
+
   await runGit(["checkout", "-b", "rename-fixture"], { cwd: theaterPath });
   await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
   await runGit(["commit", "-m", "rename fixture"], { cwd: theaterPath });
@@ -103,7 +113,7 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside after\n");
   await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
 
-  return { theaterPath, head, renameHead, mergeHead };
+  return { theaterPath, head, typeChangeHead, renameHead, mergeHead };
 }
 
 function makeContext(
@@ -267,6 +277,26 @@ describe("selected subdirectory diff route scope", () => {
     expect(content).toContain("similarity index 100%");
     expect(content).toMatch(/rename from .*rename-old\.txt/);
     expect(content).toMatch(/rename to .*rename-new\.txt/);
+  });
+
+  it("lists a type change and loads its per-file diff", async () => {
+    const commitWrites: JsonWrite[] = [];
+    await handleDiffCommit(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.typeChangeHead }, commitWrites),
+    );
+    expect(readPayload<CommitPayload>(commitWrites).files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "type-change.txt", status: "T" })]));
+
+    const fileWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.typeChangeHead, filePath: "type-change.txt" }, fileWrites),
+    );
+    const content = readPayload<ContentPayload>(fileWrites).content;
+    expect(content).toContain("deleted file mode 100644");
+    expect(content).toContain("new file mode 120000");
   });
 
   it("diffs a real merge against its first parent and loads its selected file", async () => {

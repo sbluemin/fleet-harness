@@ -46,12 +46,12 @@ export function parseDiffFileList(nameStatusOutput: string, numstatOutput: strin
     const [rawStatus, ...pathParts] = line.split("\t");
     if (!rawStatus || pathParts.length === 0) continue;
     const statusChar = rawStatus.charAt(0).toUpperCase();
-    if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R") continue;
+    if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R" && statusChar !== "T") continue;
     const oldPath = statusChar === "R" ? pathParts[0] : undefined;
     const filePath = statusChar === "R" ? (pathParts[1] ?? pathParts[0] ?? "") : (pathParts[0] ?? "");
     if (!filePath) continue;
     const nums = numstatMap.get(filePath) ?? { additions: 0, deletions: 0 };
-    files.push({ path: filePath, ...(oldPath ? { oldPath } : {}), status: statusChar as "M" | "A" | "D" | "R", ...nums });
+    files.push({ path: filePath, ...(oldPath ? { oldPath } : {}), status: statusChar as "M" | "A" | "D" | "R" | "T", ...nums });
   }
   return files;
 }
@@ -141,8 +141,8 @@ export async function handleDiffChanged(
     // git diff HEAD 통합 목록 시도 (staged+unstaged 합산)
     try {
       const [nameStatusResult, numstatResult] = await Promise.all([
-        runGit(["diff", "HEAD", "--relative", "--name-status", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
-        runGit(["diff", "HEAD", "--relative", "--numstat", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--name-status", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--numstat", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nameStatusResult.stdout, numstatResult.stdout);
       truncated = nameStatusResult.truncated || numstatResult.truncated;
@@ -150,8 +150,8 @@ export async function handleDiffChanged(
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged 목록으로 graceful fallback
       const [nsResult, nsNumstat] = await Promise.all([
-        runGit(["diff", "--cached", "--relative", "--name-status", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
-        runGit(["diff", "--cached", "--relative", "--numstat", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--name-status", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--numstat", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nsResult.stdout, nsNumstat.stdout);
       truncated = nsResult.truncated || nsNumstat.truncated;

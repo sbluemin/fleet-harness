@@ -38,7 +38,7 @@ interface TreeLeafProps extends TreeCommonProps {
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const STATUS_GLYPHS: { [key: string]: string } = { M: "M", A: "A", D: "D", R: "R", U: "U" };
+const STATUS_GLYPHS: { [key: string]: string } = { M: "M", A: "A", D: "D", R: "R", T: "T", U: "U" };
 
 // ─── buildDiffTree ───────────────────────────────────────────────────────────
 

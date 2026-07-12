@@ -321,6 +321,7 @@
 .diff-status-a { color: var(--positive); }
 .diff-status-d { color: var(--coral); }
 .diff-status-r { color: var(--aurora); }
+.diff-status-t { color: var(--warn); }
 .diff-status-u { color: var(--positive); }
 
 .diff-file-name {
@@ -910,6 +911,7 @@
 .history-segmented button { flex: 1; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; padding: 6px; transition: color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard); }
 .history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--ink-spectral); }
 .history-segmented span { color: var(--ink-fog); font-size: 9px; }
+.history-segmented .history-inspector-close { flex: 0 0 auto; width: 28px; min-width: 28px; height: 28px; padding: 0; border-color: transparent; }
 .history-details-tab { display: grid; min-height: 0; overflow: hidden; }
 .history-divider--horizontal { width: auto; height: 4px; cursor: row-resize; touch-action: none; }
 .history-inspector-head { min-height: 0; overflow: auto; padding: 14px 16px; border-bottom: 1px solid var(--surface-rim); }
