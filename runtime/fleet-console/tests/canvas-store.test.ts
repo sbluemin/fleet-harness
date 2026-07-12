@@ -81,13 +81,26 @@ describe("canvas store", () => {
     expect(getSnapshot().minimized).toEqual(["op-a"]);
   });
 
-  it("restores every minimized Operation when entering Formation from maximize", () => {
+  it("keeps maximize-docked Operations minimized when entering open-panel Formation", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
     setOperationGeometry("op-c", { ...GEOMETRY });
     setMaximizedOperationId("op-b");
 
     toggleFormationView();
+
+    expect(getFormationView()).toBe(true);
+    expect(getMaximizedOperationId()).toBeNull();
+    expect(getSnapshot().minimized).toEqual(["op-a", "op-c"]);
+  });
+
+  it("restores maximize-docked Operations when entering Formation with restoreMinimized", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    setOperationGeometry("op-c", { ...GEOMETRY });
+    setMaximizedOperationId("op-b");
+
+    toggleFormationView({ restoreMinimized: true });
 
     expect(getFormationView()).toBe(true);
     expect(getMaximizedOperationId()).toBeNull();

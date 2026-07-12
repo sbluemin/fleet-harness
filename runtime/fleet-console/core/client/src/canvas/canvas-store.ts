@@ -395,8 +395,8 @@ export function toggleFormationView(options?: { readonly restoreMinimized?: bool
     clearFormationView();
     return;
   }
-  if (options?.restoreMinimized === true || maximizedOperationId !== null) {
-    // Maximize-created minimization is indistinguishable from manual minimization, so entering from maximize must restore all panels.
+  if (options?.restoreMinimized === true) {
+    // Only the include-minimized entry restores docked panels. Open-panel entry keeps them minimized — including the panels a maximize sent to the dock, which stay docked until an explicit restore.
     setState({ minimized: [] });
   }
   clearMaximizedOperationId();
