@@ -39,6 +39,12 @@ function isTextEntryFocused(event: KeyboardEvent): boolean {
   return false;
 }
 
+// aria-modal 대화상자(Operation Search, 디렉터리 브라우저 등)가 열려 있으면 배경 크롬(사이드바/레일)을
+// 토글하지 않는다 — 모달 경계와 포커스 트랩 의미를 지키기 위함(포커스가 모달 내 버튼으로 이동한 경우 포함).
+function isBlockingDialogOpen(): boolean {
+  return document.querySelector('[aria-modal="true"]:not([hidden])') !== null;
+}
+
 export function App() {
   const state = useConsoleState();
   const location = useLocation();
@@ -99,13 +105,13 @@ export function App() {
         toggleOperationSearch();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !isTextEntryFocused(event)) {
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !isTextEntryFocused(event) && !isBlockingDialogOpen()) {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleRailChrome();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey && !isTextEntryFocused(event)) {
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey && !isTextEntryFocused(event) && !isBlockingDialogOpen()) {
         event.preventDefault();
         event.stopImmediatePropagation();
         setSideBarCollapsed(!getSideBarState().collapsed);
