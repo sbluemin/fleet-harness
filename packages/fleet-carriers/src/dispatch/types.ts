@@ -73,7 +73,7 @@ export interface CarrierMetadata {
 // ─── 공개 타입 ───────────────────────────────────────────
 
 export interface CarrierCoreConfig {
-  /** 고유 식별자 (carrierId) → 메시지 `{id}-user/{id}-response`, 풀/세션 키 */
+  /** 고유 식별자 (carrierId) → 메시지 `{id}-user/{id}-response`, dispatch 스코프/바인딩 키 */
   id: string;
   /** 정렬 및 HUD 표시용 슬롯 번호 (키바인딩에는 사용되지 않음) */
   slot: number;

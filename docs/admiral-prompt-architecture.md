@@ -160,16 +160,26 @@ performs boot side effects directly:
 - registers Fleet Wiki executor tools
 - starts the MCP server
 
-The lifecycle's `shutdown()` disconnects executor pools, cleans dedicated MCP
-sessions, stops the MCP server, and resets settings.
+The lifecycle's `shutdown()` first closes Carrier admission, then awaits
+`CarrierRuntime.cleanup()` — which cancels every in-flight one-shot dispatch and
+waits for its provider client to disconnect/finalize and its dispatch-context
+registry to be disposed — before cleaning dedicated MCP sessions, stopping the
+MCP server, and resetting settings. No global client pool is used.
 
 ---
 
 ## 5. Executor Path
 
-Carrier execution is routed through `@dotobokuri/core-agent`
-`executeWithPool()` and `executeOneShot()`. Carrier requests receive the request
-body composed by the caller plus the carrier system prompt assembled by
+Carrier execution is routed through `@dotobokuri/core-agent` `executeOneShot()`,
+which builds a fresh provider client and child process per dispatch. Its
+two-phase handle resolves `readiness` after connect/resume, MCP setup, and real
+session/protocol discovery — the launch response waits for readiness while prompt
+completion runs detached in the background. Each successful fresh launch returns
+a generated `context_id`; passing it back as `resume_context_id` resumes the same
+real provider session in a new process via the bounded, `CarrierRuntime`-owned,
+process-local dispatch-context registry. Omitting it starts a fresh context.
+Carrier requests receive the request body composed by
+the caller plus the carrier system prompt assembled by
 `buildCarrierSystemPrompt()`.
 
 Executor sessions receive their allowed MCP tools at connect time. They do not

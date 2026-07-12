@@ -6,7 +6,6 @@ import {
   sanitizeAgentCliType,
   sanitizeConfigKey,
 } from "./sanitize.js";
-import { disconnectCarrierExecutorPools } from "./pool-disconnect.js";
 import { readRawCarriers, updateCarriers } from "./state-io.js";
 import type { AgentCliSelection } from "./types.js";
 
@@ -65,5 +64,4 @@ export async function applyAgentCliTypeSelectionUpdate(
     if (nextCliType === defaultCliType) delete carriers[carrierId].agentCliType;
     states.carriers = carriers;
   });
-  await disconnectCarrierExecutorPools(carrierId);
 }

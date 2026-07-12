@@ -49,10 +49,6 @@ export function installExecutorToolCallRouter(
   });
 }
 
-export function detachExecutorToolCallRouter(runtime: McpRouterRuntime, sessionToken: string): void {
-  runtime.server.setOnToolCallArrived(sessionToken, null);
-}
-
 export function registerExecutorSessionTools(
   runtime: McpRouterRuntime,
   sessionToken: string,
@@ -62,12 +58,7 @@ export function registerExecutorSessionTools(
 }
 
 export function cleanupExecutorSession(runtime: McpRouterRuntime, sessionToken: string): void {
-  detachExecutorToolCallRouter(runtime, sessionToken);
+  runtime.server.setOnToolCallArrived(sessionToken, null);
   runtime.snapshotStore.removeToolsForSession(sessionToken);
-  runtime.server.clearPendingForSession(sessionToken);
-}
-
-export function detachExecutorMcpForReuse(runtime: McpRouterRuntime, sessionToken: string): void {
-  detachExecutorToolCallRouter(runtime, sessionToken);
   runtime.server.clearPendingForSession(sessionToken);
 }

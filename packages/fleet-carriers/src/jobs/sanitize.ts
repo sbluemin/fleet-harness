@@ -1,12 +1,32 @@
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
+import { redactSecrets } from "./archive.js";
+
 const LINE_BREAKS = /[\r\n]+/g;
 const CR_LINE_BREAKS = /\r\n?/g;
+const RESIDUAL_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/** Provider rejection reasons surface in a synchronous launch response — cap their length. */
+const PROVIDER_REASON_MAX_CHARS = 500;
 
 export function sanitizeChunk(text: string): string {
   return stripTerminalControlSequences(text)
     .replace(CR_LINE_BREAKS, "\n")
     .replace(MULTILINE_CONTROL_CHARS, "");
+}
+
+/**
+ * Collapse a raw provider connect/resume failure into a single public launch reason:
+ * redact known secret material, strip ANSI/C0/C1 controls, flatten whitespace, and cap length.
+ * The result is safe to echo in a synchronous { accepted: false, error } launch response.
+ */
+export function sanitizeProviderReason(text: string): string {
+  const collapsed = stripTerminalControlSequences(redactSecrets(text))
+    .replace(RESIDUAL_CONTROL_CHARS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (collapsed.length <= PROVIDER_REASON_MAX_CHARS) return collapsed;
+  return collapsed.slice(0, PROVIDER_REASON_MAX_CHARS).trimEnd();
 }
 
 export function sanitizeToolBlockLabel(value: string): string {

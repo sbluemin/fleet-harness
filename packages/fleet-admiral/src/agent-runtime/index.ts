@@ -3,7 +3,6 @@ import {
 	createInProcessMcpServer,
 	createMcpToolRegistry,
 	createMcpToolSnapshotStore,
-	disconnectAll,
 	executorMcpRuntimeProviderRuntime,
 	executorPortRuntime,
 	type AgentToolSpec,
@@ -110,9 +109,12 @@ export function createFleetAgentRuntimeLifecycle(
 		dedicatedMcpSession,
 		mcpRegistry: mcpRuntime.mcpRegistry,
 		async cleanup() {
+			// Ordering matters: stop admission, then let the Carrier runtime cancel and
+			// await every in-flight one-shot dispatch (disconnecting its client) BEFORE
+			// dedicated MCP sessions and the MCP server are torn down.
 			active = false;
+			await carrierRuntime.cleanup();
 			dedicatedMcpSession.cleanup();
-			await disconnectAll();
 			await mcpRuntime.mcpServer.stop();
 		},
 	};

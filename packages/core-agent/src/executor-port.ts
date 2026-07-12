@@ -35,8 +35,6 @@ export interface ExecutorMcpSession {
   readonly token: string;
   readonly mcpServer: McpServerConfig;
   cleanup(): void;
-  detachForReuse?(): void;
-  installForReuse?(ctx: { readonly cwd: string; readonly signal?: AbortSignal }): void;
 }
 
 export interface ExecutorMcpRuntimeProviderRuntime extends ExecutorMcpRuntimeProvider {

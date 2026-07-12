@@ -171,6 +171,18 @@ describe('AcpConnection.reconnectSession()', () => {
     expect(result.sessionId).toBe('existing-session');
   });
 
+  it('session/load 실패 시 session/new로 대체하지 않는다', async () => {
+    const conn = createConnection();
+    const mockAgent = createMockAgent({
+      loadSession: vi.fn().mockRejectedValue(new Error('missing session')),
+    } as unknown as Partial<Agent>);
+    conn.agentProxy = mockAgent;
+    conn.agentCapabilities = { loadSession: true };
+
+    await expect(conn.reconnectSession('/workspace', 'existing-session')).rejects.toThrow('missing session');
+    expect(mockAgent.newSession).not.toHaveBeenCalled();
+  });
+
   it('sessionId 있고 loadSession 미지원 시 에러 throw (E3 fail-fast)', async () => {
     const conn = createConnection();
     const mockAgent = createMockAgent();

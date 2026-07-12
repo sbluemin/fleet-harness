@@ -1,13 +1,5 @@
-/**
- * executor-engine — 풀 기반 executor 구현체.
- *
- * scope-agnostic 일반 executor. poolKey로 식별자를 일반화.
- * globalThis 대신 모듈 레벨 Map 사용.
- *
- * imports → types/interfaces → constants → functions 순서 준수.
- */
-
-import { createHash, randomUUID } from "node:crypto";
+/** Fresh, two-phase provider execution. */
+import { randomUUID } from "node:crypto";
 import {
   UnifiedAgent,
   getEffort,
@@ -15,50 +7,41 @@ import {
   type AcpToolCall,
   type AcpToolCallUpdate,
   type CliType,
-  type ConnectResult,
   type IUnifiedAgentClient,
   type McpServerConfig,
+  type ProtocolType,
   type UnifiedAgentBuildOptions,
   type UnifiedClientOptions,
 } from "@dotobokuri/core-unified-agent";
 
 import {
   cleanupExecutorSession as cleanupExecutorMcpSession,
-  detachExecutorMcpForReuse as detachExecutorMcpForSessionReuse,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
 } from "../mcp-router.js";
-
 import { executorMcpRuntimeProviderRuntime, executorPortRuntime, type ExecutorMcpSession } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
-import type { AgentToolSpec, TrackStatus } from "../types.js";
-import type { McpRouterRuntime } from "../mcp-router.js";
-import { convertToolSchema } from "../tool-snapshot.js";
-import { classifyResumeFailure } from "./session-errors.js";
+import type { TrackStatus } from "../types.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Types / Interfaces
-// ═══════════════════════════════════════════════════════════════════════════
-
 export interface ExecuteOptions {
-  poolKey: string;
-  scopeId?: string;
-  cliType: CliType;
-  authEnvResolver: AuthEnvResolver;
-  request: string;
-  cwd: string;
-  model?: string;
-  effort?: string;
-  promptIdleTimeout?: number;
-  connectSystemPrompt?: string | null;
-  signal?: AbortSignal;
-  onMessageChunk?: (text: string) => void;
-  onThoughtChunk?: (text: string) => void;
-  onToolCall?: (title: string, status: string, rawOutput?: string, toolCallId?: string) => void;
-  onConnected?: (info: { sessionId?: string; model?: string }) => void;
-  onStatusChange?: (status: TrackStatus) => void;
-  reservedExternalMcpServerIds?: readonly string[];
+  readonly cliType: CliType;
+  readonly authEnvResolver: AuthEnvResolver;
+  readonly request: string;
+  readonly cwd: string;
+  readonly resumeSessionId?: string;
+  readonly scopeId?: string;
+  readonly model?: string;
+  readonly effort?: string;
+  readonly promptIdleTimeout?: number;
+  readonly connectSystemPrompt?: string | null;
+  readonly signal?: AbortSignal;
+  readonly onMessageChunk?: (text: string) => void;
+  readonly onThoughtChunk?: (text: string) => void;
+  readonly onToolCall?: (title: string, status: string, rawOutput?: string, toolCallId?: string) => void;
+  readonly onConnected?: (info: { sessionId: string; model?: string }) => void;
+  readonly onStatusChange?: (status: TrackStatus) => void;
+  readonly reservedExternalMcpServerIds?: readonly string[];
 }
 
 export type AuthEnvResolver = (cli: CliType) => Promise<Record<string, string>>;
@@ -72,582 +55,191 @@ export type ExecResult = {
   sessionId?: string;
 };
 
-interface PooledClient {
-  client: IUnifiedAgentClient;
-  busy: boolean;
-  sessionId?: string;
-  mcpSessionTokens?: readonly ExecutorMcpSessionToken[];
-  builtinExternalMcpSignature?: string;
-  internalExecutorMcpSignature?: string;
+export interface OneShotReady {
+  readonly cliType: CliType;
+  readonly protocol: ProtocolType;
+  readonly sessionId: string;
 }
 
-interface LaunchConfig {
-  readonly model?: string;
-  readonly effort?: string;
+export interface OneShotExecution {
+  readonly readiness: Promise<OneShotReady>;
+  readonly completion: Promise<ExecResult>;
+  startPrompt(): void;
+  abort(): Promise<void>;
 }
 
-type ToolCallLike = (AcpToolCall | AcpToolCallUpdate) & {
-  content?: unknown;
-  rawOutput?: unknown;
-  toolCallId?: string;
-};
-
-export interface ExecutorMcpSessionToken {
-  readonly serverName: string;
-  readonly token: string;
-  readonly session?: ExecutorMcpSession;
-}
-
-interface ExecutorMcpSetup {
-  readonly tokens: readonly ExecutorMcpSessionToken[];
-  readonly mcpServers: McpServerConfig[];
-}
-
-type EffortResolution =
-  | { readonly kind: "explicit"; readonly effort: string }
-  | { readonly kind: "default"; readonly effort: string }
-  | { readonly kind: "fallback"; readonly effort: string }
-  | { readonly kind: "clear"; readonly effort?: undefined }
-  | { readonly kind: "unspecified"; readonly effort?: undefined };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Constants
-// ═══════════════════════════════════════════════════════════════════════════
+type ToolCallLike = (AcpToolCall | AcpToolCallUpdate) & { content?: unknown; rawOutput?: unknown; toolCallId?: string };
+interface ExecutorMcpSessionToken { readonly serverName: string; readonly token: string; readonly session?: ExecutorMcpSession; }
+interface ExecutorMcpSetup { readonly tokens: readonly ExecutorMcpSessionToken[]; readonly mcpServers: McpServerConfig[]; }
 
 const CLIENT_INFO = { name: "core-agent", version: "1.0.0" } as const;
 const MAX_TOOL_CALLS_TO_KEEP = 30;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Module-level pool (globalThis 대체)
-// ═══════════════════════════════════════════════════════════════════════════
-
-const clientPool = new Map<string, PooledClient[]>();
-const launchConfigs = new Map<string, LaunchConfig>();
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Functions (공개 — executor.ts facade에서 호출)
-// ═══════════════════════════════════════════════════════════════════════════
-
-export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
-  const { poolKey, scopeId, cliType, request, cwd, signal } = opts;
+export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
   assertAuthEnvResolver(opts.authEnvResolver);
-  const builtinExternalMcpSignature = buildBuiltinExternalMcpSignature(scopeId);
-  const internalExecutorMcpSignature = buildInternalExecutorMcpSignature(scopeId);
-
-  let responseText = "";
-  let thoughtText = "";
-  const toolCalls: ExecResult["toolCalls"] = [];
-  let status: TrackStatus = "conn";
-  let error: string | undefined;
-  let aborted = false;
-  let isLivePrompt = false;
-  let promptHandedOff = false;
-  let sessionId: string | undefined;
+  let client: IUnifiedAgentClient | undefined;
   let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
+  let promptStarted = false;
+  let aborted = false;
+  let clientDisconnected = false;
+  let releasePrompt!: () => void;
+  const promptGate = new Promise<void>((resolve) => { releasePrompt = resolve; });
+  let resolveReady!: (ready: OneShotReady) => void;
+  let rejectReady!: (error: unknown) => void;
+  const readiness = new Promise<OneShotReady>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
 
-  opts.onStatusChange?.("conn");
+  const disconnectClient = async () => {
+    if (!client || clientDisconnected) return;
+    clientDisconnected = true;
+    try { await client.disconnect(); } catch { /* cleanup is best effort */ }
+  };
 
-  const entries = clientPool.get(poolKey) ?? [];
-  let poolEntry: PooledClient | undefined;
-  let reconnectSessionId: string | undefined;
-
-  // 기존 entries에서 사용 가능한 entry를 찾고, dead/drifted entry는 정리한다.
-  const retained: PooledClient[] = [];
-  for (const entry of entries) {
-    if (entry.busy) {
-      retained.push(entry);
-      continue;
-    }
-    if (!isClientAlive(entry.client)) {
-      reconnectSessionId = entry.sessionId ?? reconnectSessionId;
-      if (entry.mcpSessionTokens) {
-        cleanupExecutorSessions(entry.mcpSessionTokens);
-      }
-      entry.client.removeAllListeners();
-      continue;
-    }
-    if (entry.builtinExternalMcpSignature !== builtinExternalMcpSignature) {
-      await discardSingleEntry(entry);
-      continue;
-    }
-    if (entry.internalExecutorMcpSignature !== internalExecutorMcpSignature) {
-      await discardSingleEntry(entry);
-      continue;
-    }
-    if (hasSystemPromptDrift(entry.client, opts.connectSystemPrompt ?? null)) {
-      debugSystemPromptDrift("executeWithPool", poolKey, cliType);
-      await discardSingleEntry(entry);
-      continue;
-    }
-    if (!poolEntry) {
-      poolEntry = entry;
-    }
-    retained.push(entry);
-  }
-
-  let client: IUnifiedAgentClient;
-
-  if (poolEntry) {
-    client = poolEntry.client;
-    poolEntry.busy = true;
-    // retained 배열에 이미 포함된 상태
-  } else {
-    client = await buildProviderClient({ cli: cliType });
-    poolEntry = {
-      client,
-      busy: true,
-      sessionId: reconnectSessionId,
-      builtinExternalMcpSignature,
-      internalExecutorMcpSignature,
-    };
-    retained.push(poolEntry);
-    client.on("exit", () => {
-      removeEntryFromPool(poolKey, client);
-    });
-  }
-
-  if (retained.length === 0) {
-    clientPool.delete(poolKey);
-  } else {
-    clientPool.set(poolKey, retained);
-  }
-
-  const onAbort = () => {
+  const abort = async () => {
     if (aborted) return;
     aborted = true;
-    status = "aborted";
-    opts.onStatusChange?.("aborted");
-    void Promise.allSettled([
-      client.cancelPrompt(),
-      removeAndDisconnectEntry(poolKey, client),
-    ]);
+    releasePrompt();
+    await Promise.allSettled([client?.cancelPrompt() ?? Promise.resolve(), disconnectClient()]);
   };
 
-  if (signal?.aborted) {
-    if (poolEntry) poolEntry.busy = false;
-    return { responseText: "", thoughtText: "", toolCalls: [], status: "aborted" };
-  }
+  const completion = (async (): Promise<ExecResult> => {
+    let responseText = "";
+    let thoughtText = "";
+    const toolCalls: ExecResult["toolCalls"] = [];
+    let status: TrackStatus = "conn";
+    let error: string | undefined;
+    let sessionId: string | undefined;
+    let readinessSettled = false;
+    const cleanups: Array<() => void> = [];
+    let rejectProviderFailure!: (error: Error) => void;
+    const providerFailure = new Promise<never>((_, reject) => { rejectProviderFailure = reject; });
+    const raceProviderFailure = <T>(promise: Promise<T>): Promise<T> => Promise.race([promise, providerFailure]);
+    let onProviderError: ((cause: unknown) => void) | undefined;
+    const finish = (nextStatus: TrackStatus, nextError?: string) => {
+      status = nextStatus;
+      error = nextError;
+      opts.onStatusChange?.(nextStatus);
+    };
+    opts.onStatusChange?.("conn");
+    try {
+      if (opts.signal?.aborted) {
+        aborted = true;
+        finish("aborted");
+        throw new Error("Aborted");
+      }
+      const onSignalAbort = () => { void abort(); };
+      opts.signal?.addEventListener("abort", onSignalAbort, { once: true });
+      cleanups.push(() => opts.signal?.removeEventListener("abort", onSignalAbort));
 
-  if (signal) signal.addEventListener("abort", onAbort, { once: true });
-
-  const onMessageChunk = (text: string) => {
-    if (!isLivePrompt) return;
-    responseText += text;
-    opts.onMessageChunk?.(text);
-  };
-  const onThoughtChunk = (text: string) => {
-    if (!isLivePrompt) return;
-    thoughtText += text;
-    opts.onThoughtChunk?.(text);
-  };
-  const upsertToolCall = (title: string, tcStatus: string, rawOutput?: string, toolCallId?: string) => {
-    if (!isLivePrompt) return;
-    const existing = toolCalls.find((tc) =>
-      toolCallId ? tc.toolCallId === toolCallId : tc.title === title,
-    );
-    const isFirstPush = !existing;
-    if (existing) {
-      // ACP 분할 도착: 후속 tool_call_update의 풍부한 title이 1차 빈약 title을 덮도록.
-      // 빈 값이 기존 값을 지우는 것은 방지.
-      if (title) existing.title = title;
-      if (tcStatus) existing.status = tcStatus;
-      if (rawOutput !== undefined) existing.rawOutput = rawOutput;
-    } else {
-      toolCalls.push({ title, status: tcStatus, rawOutput, toolCallId });
-    }
-    if (toolCalls.length > MAX_TOOL_CALLS_TO_KEEP) toolCalls.splice(0, toolCalls.length - MAX_TOOL_CALLS_TO_KEEP);
-    // ACP 분할 도착 UX 개선: 1차 빈약 toolCall(status=pending)은 외부 callback emit 보류.
-    // 풍부 title이 도착하는 후속 update에서 첫 effective emit 발생 → panel/host UI 깜빡임 방지.
-    if (isFirstPush && tcStatus === "pending") return;
-    // 후속 update의 빈 title/status는 머지된 latest 값으로 복원해서 callback에 전달.
-    // 그러지 않으면 sanitizeToolLabel("")이 "(unnamed)"로 변환되어 풍부 title을 덮어쓰는 회귀 발생.
-    const merged = existing ?? toolCalls[toolCalls.length - 1];
-    const effectiveTitle = title || merged?.title || "";
-    const effectiveStatus = tcStatus || merged?.status || "";
-    opts.onToolCall?.(effectiveTitle, effectiveStatus, rawOutput, toolCallId);
-  };
-  const onToolCall = (title: string, tcStatus: string, _sid: string, data?: AcpToolCall) => {
-    upsertToolCall(enrichToolTitle(title, data?.kind), tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
-  };
-  const onToolCallUpdate = (title: string, tcStatus: string, _sid: string, data?: AcpToolCallUpdate) => {
-    upsertToolCall(enrichToolTitle(title, data?.kind ?? undefined), tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
-  };
-  const onError = (err: Error) => {
-    if (!aborted) error = err.message;
-  };
-
-  const attachListeners = () => {
-    client.on("messageChunk", onMessageChunk);
-    client.on("thoughtChunk", onThoughtChunk);
-    client.on("toolCall", onToolCall);
-    client.on("toolCallUpdate", onToolCallUpdate);
-    client.on("error", onError);
-  };
-  const detachListeners = () => {
-    client.off("messageChunk", onMessageChunk);
-    client.off("thoughtChunk", onThoughtChunk);
-    client.off("toolCall", onToolCall);
-    client.off("toolCallUpdate", onToolCallUpdate);
-    client.off("error", onError);
-  };
-
-  attachListeners();
-
-  try {
-    let needsConnect = !isClientAlive(client);
-
-    if (needsConnect) {
-      const mcpSetup = await setupExecutorMcp(cwd, signal, scopeId, opts.reservedExternalMcpServerIds);
-      if (mcpSetup?.tokens) activeMcpTokens = mcpSetup.tokens;
-      const model = resolveModel(poolKey, cliType, opts.model);
-      const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
-
-      const connectOpts = await buildConnectOptions(cliType, cwd, {
+      client = await buildProviderClient({ cli: opts.cliType });
+      onProviderError = (cause: unknown) => {
+        const providerError = cause instanceof Error ? cause : new Error(String(cause));
+        if (!readinessSettled) {
+          rejectReady(providerError);
+          readinessSettled = true;
+        }
+        rejectProviderFailure(providerError);
+      };
+      client.on("error", onProviderError);
+      if (aborted) throw new Error("Aborted");
+      const mcpSetup = await raceProviderFailure(setupExecutorMcp(opts.cwd, opts.signal, opts.scopeId, opts.reservedExternalMcpServerIds));
+      activeMcpTokens = mcpSetup?.tokens;
+      if (aborted) throw new Error("Aborted");
+      const model = opts.model ?? getProviderModels(opts.cliType).defaultModel;
+      const effort = resolveEffort(opts.cliType, model, opts.effort);
+      const connectOpts = await raceProviderFailure(buildConnectOptions(opts.cliType, opts.cwd, {
         model: opts.model,
         promptIdleTimeout: opts.promptIdleTimeout,
-        effort: effortResolution.effort,
-      }, opts.connectSystemPrompt ?? null, opts.authEnvResolver, mcpSetup?.mcpServers);
+        effort,
+      }, opts.connectSystemPrompt, opts.authEnvResolver, mcpSetup?.mcpServers));
+      if (opts.resumeSessionId) connectOpts.sessionId = opts.resumeSessionId;
+      const connectResult = await raceAbort(raceProviderFailure(client.connect(connectOpts)), opts.signal);
+      await raceProviderFailure(applyResolvedEffort(client, opts.cliType, model, effort));
+      if (activeMcpTokens) installActiveExecutorToolCallRouter(activeMcpTokens, { cwd: opts.cwd, signal: opts.signal });
+      sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? undefined;
+      const protocol = client.getConnectionInfo().protocol ?? connectResult.protocol;
+      if (!sessionId || !protocol) throw new Error("Provider readiness did not expose a session identity and protocol.");
+      if (aborted) throw new Error("Aborted");
+      const ready = { cliType: opts.cliType, protocol, sessionId } as const;
+      opts.onConnected?.({ sessionId, model });
+      resolveReady(ready);
+      readinessSettled = true;
 
-      const savedSessionId = poolEntry?.sessionId ?? reconnectSessionId;
-      if (savedSessionId) connectOpts.sessionId = savedSessionId;
-
-      let connectResult: ConnectResult;
-      try {
-        connectResult = await raceAbort(client.connect(connectOpts), signal);
-      } catch (connectError) {
-        if (aborted) throw connectError;
-        if (!savedSessionId) throw connectError;
-        if (classifyResumeFailure(connectError) !== "dead-session") throw connectError;
-
-        console.error(
-          `[unified-agent] session/load 실패 (key=${poolKey}, sessionId=${savedSessionId}):`,
-          connectError instanceof Error ? connectError.message : connectError,
-        );
-
-        if (poolEntry) delete poolEntry.sessionId;
-        delete connectOpts.sessionId;
-
-        // dead-session MCP 토큰 rotate — 구 토큰 정리 후 재발급
-        if (activeMcpTokens) {
-          cleanupExecutorSessions(activeMcpTokens);
-          activeMcpTokens = undefined;
-        }
-
-        try { await client.disconnect(); } catch { }
-        detachListeners();
-        client = await buildProviderClient({ cli: cliType });
-        replaceEntryClient(poolKey, poolEntry!, client, builtinExternalMcpSignature, internalExecutorMcpSignature);
-        attachListeners();
-
-        const retryMcpSetup = await setupExecutorMcp(cwd, signal, scopeId, opts.reservedExternalMcpServerIds);
-        if (retryMcpSetup) {
-          activeMcpTokens = retryMcpSetup.tokens;
-          connectOpts.mcpServers = retryMcpSetup.mcpServers;
+      await raceProviderFailure(promptGate);
+      if (aborted) {
+        finish("aborted");
+        return { responseText, thoughtText, toolCalls, status, error, sessionId };
+      }
+      promptStarted = true;
+      finish("stream");
+      const onMessageChunk = (text: string) => { responseText += text; opts.onMessageChunk?.(text); };
+      const onThoughtChunk = (text: string) => { thoughtText += text; opts.onThoughtChunk?.(text); };
+      const upsertToolCall = (title: string, toolStatus: string, rawOutput?: string, toolCallId?: string) => {
+        const existing = toolCalls.find((item) => toolCallId ? item.toolCallId === toolCallId : item.title === title);
+        const isFirstPush = !existing;
+        if (existing) {
+          if (title) existing.title = title;
+          if (toolStatus) existing.status = toolStatus;
+          if (rawOutput !== undefined) existing.rawOutput = rawOutput;
         } else {
-          delete connectOpts.mcpServers;
+          toolCalls.push({ title, status: toolStatus, rawOutput, toolCallId });
+          if (toolCalls.length > MAX_TOOL_CALLS_TO_KEEP) toolCalls.splice(0, toolCalls.length - MAX_TOOL_CALLS_TO_KEEP);
         }
-
-        connectResult = await raceAbort(client.connect(connectOpts), signal);
+        const effective = existing ?? toolCalls[toolCalls.length - 1];
+        if (isFirstPush && toolStatus === "pending") return;
+        opts.onToolCall?.(title || effective?.title || "", toolStatus || effective?.status || "", rawOutput, toolCallId);
+      };
+      const onToolCall = (title: string, toolStatus: string, _id: string, data?: AcpToolCall) => upsertToolCall(enrichToolTitle(title, data?.kind), toolStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
+      const onToolCallUpdate = (title: string, toolStatus: string, _id: string, data?: AcpToolCallUpdate) => upsertToolCall(enrichToolTitle(title, data?.kind ?? undefined), toolStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
+      client.on("messageChunk", onMessageChunk).on("thoughtChunk", onThoughtChunk).on("toolCall", onToolCall).on("toolCallUpdate", onToolCallUpdate);
+      cleanups.push(() => client?.off("messageChunk", onMessageChunk).off("thoughtChunk", onThoughtChunk).off("toolCall", onToolCall).off("toolCallUpdate", onToolCallUpdate));
+      await raceProviderFailure(client.sendMessage(opts.request));
+      sessionId = client.getConnectionInfo().sessionId ?? sessionId;
+      if (aborted) finish("aborted");
+      else {
+        if (!responseText.trim()) responseText = "(no output)";
+        finish("done");
       }
-
-      sessionId = connectResult.session?.sessionId ?? undefined;
-
-      if (sessionId && poolEntry) {
-        poolEntry.sessionId = sessionId;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (!readinessSettled) {
+        rejectReady(cause);
+        readinessSettled = true;
       }
-
-      if (activeMcpTokens) {
-        if (poolEntry) poolEntry.mcpSessionTokens = activeMcpTokens;
-        installActiveExecutorToolCallRouter(activeMcpTokens, { cwd, signal });
+      if (aborted || message === "Aborted") finish("aborted");
+      else {
+        finish("err", message);
+        if (!responseText) responseText = `Error: ${message}`;
       }
-
-      const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
-      setLaunchConfig(poolKey, model, getStoredEffort(effortResolution, effortApplied));
-    } else {
-      const info = client.getConnectionInfo();
-      sessionId = info.sessionId ?? undefined;
-
-      if (sessionId && poolEntry) {
-        poolEntry.sessionId = sessionId;
-      }
-
-      const model = resolveModel(poolKey, cliType, opts.model);
-      const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
-      const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
-      setLaunchConfig(poolKey, model, getStoredEffort(effortResolution, effortApplied));
-
-      if (poolEntry?.mcpSessionTokens) {
-        activeMcpTokens = poolEntry.mcpSessionTokens;
-        installActiveExecutorToolCallRouter(activeMcpTokens, { cwd, signal });
-      }
-    }
-
-    if (aborted) {
-      return { responseText, thoughtText, toolCalls, status, error, sessionId };
-    }
-
-    opts.onConnected?.({ sessionId, model: undefined });
-    status = "stream";
-    opts.onStatusChange?.("stream");
-
-    responseText = "";
-    thoughtText = "";
-    toolCalls.length = 0;
-    isLivePrompt = true;
-
-    promptHandedOff = true;
-    await client.sendMessage(request);
-
-    const postSendInfo = client.getConnectionInfo();
-    if (postSendInfo.sessionId && postSendInfo.sessionId !== sessionId) {
-      sessionId = postSendInfo.sessionId;
-    }
-    if (sessionId && poolEntry) {
-      poolEntry.sessionId = sessionId;
-    }
-
-    if (!aborted) {
-      status = "done";
-      if (!responseText.trim()) responseText = "(no output)";
-      opts.onStatusChange?.("done");
-    }
-  } catch (err) {
-    if (!aborted) {
-      status = "err";
-      error = err instanceof Error ? err.message : String(err);
-      if (!responseText) responseText = error;
-      opts.onStatusChange?.("err");
-    }
-  } finally {
-    if (signal) signal.removeEventListener("abort", onAbort);
-    detachListeners();
-    if (poolEntry) poolEntry.busy = false;
-
-    if (promptHandedOff) {
-      const finalSessionId = client.getConnectionInfo().sessionId ?? sessionId;
-      if (finalSessionId) {
-        sessionId = finalSessionId;
-        if (poolEntry) poolEntry.sessionId = finalSessionId;
-      }
-    }
-
-    if (activeMcpTokens) {
-      if (poolEntry?.mcpSessionTokens === activeMcpTokens) {
-        detachExecutorMcpForReuse(activeMcpTokens);
-      } else {
-        cleanupExecutorSessions(activeMcpTokens);
-      }
-    }
-  }
-
-  return { responseText, thoughtText, toolCalls, status, error, sessionId };
-}
-
-export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecResult> {
-  const { poolKey, scopeId, cliType, request, cwd, signal } = opts;
-  assertAuthEnvResolver(opts.authEnvResolver);
-
-  let responseText = "";
-  let thoughtText = "";
-  const toolCalls: ExecResult["toolCalls"] = [];
-  let status: TrackStatus = "conn";
-  let error: string | undefined;
-  let sessionId: string | undefined;
-
-  opts.onStatusChange?.("conn");
-
-  const client = await buildProviderClient({ cli: cliType });
-  let aborted = false;
-  let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
-
-  const onAbort = () => {
-    if (aborted) return;
-    aborted = true;
-    status = "aborted";
-    opts.onStatusChange?.("aborted");
-    void Promise.allSettled([client.cancelPrompt(), client.disconnect()]);
-  };
-
-  try {
-    if (signal?.aborted) {
-      return { responseText: "", thoughtText: "", toolCalls: [], status: "aborted" };
-    }
-
-    if (signal) signal.addEventListener("abort", onAbort, { once: true });
-
-    const mcpSetup = await setupExecutorMcp(cwd, signal, scopeId, opts.reservedExternalMcpServerIds);
-    if (mcpSetup) activeMcpTokens = mcpSetup.tokens;
-    const model = resolveModel(poolKey, cliType, opts.model);
-    const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
-
-    const connectOpts = await buildConnectOptions(cliType, cwd, {
-      model: opts.model,
-      promptIdleTimeout: opts.promptIdleTimeout,
-      effort: effortResolution.effort,
-    }, opts.connectSystemPrompt ?? null, opts.authEnvResolver, mcpSetup?.mcpServers);
-
-    const connectResult = await raceAbort(client.connect(connectOpts), signal);
-    await applyResolvedEffort(client, cliType, model, effortResolution);
-
-    if (activeMcpTokens) {
-      installActiveExecutorToolCallRouter(activeMcpTokens, { cwd, signal });
-    }
-
-    if (aborted) {
-      return { responseText, thoughtText, toolCalls, status, error, sessionId };
-    }
-
-    sessionId = connectResult.session?.sessionId ?? undefined;
-
-    opts.onConnected?.({ sessionId });
-    status = "stream";
-    opts.onStatusChange?.("stream");
-
-    client.on("messageChunk", (text: string) => {
-      responseText += text;
-      opts.onMessageChunk?.(text);
-    });
-    client.on("thoughtChunk", (text: string) => {
-      thoughtText += text;
-      opts.onThoughtChunk?.(text);
-    });
-    const upsertToolCall = (title: string, tcStatus: string, rawOutput?: string, toolCallId?: string) => {
-      const existing = toolCalls.find((tc) =>
-        toolCallId ? tc.toolCallId === toolCallId : tc.title === title,
-      );
-      if (existing) {
-        existing.status = tcStatus;
-        if (rawOutput !== undefined) existing.rawOutput = rawOutput;
-      } else {
-        toolCalls.push({ title, status: tcStatus, rawOutput, toolCallId });
-      }
-      opts.onToolCall?.(title, tcStatus, rawOutput, toolCallId);
-    };
-    client.on("toolCall", (title: string, tcStatus: string, _sid: string, data?: AcpToolCall) => {
-      upsertToolCall(title, tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
-    });
-    client.on("toolCallUpdate", (title: string, tcStatus: string, _sid: string, data?: AcpToolCallUpdate) => {
-      upsertToolCall(title, tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
-    });
-
-    await client.sendMessage(request);
-
-    if (!aborted) {
-      status = "done";
-      if (!responseText.trim()) responseText = "(no output)";
-      opts.onStatusChange?.("done");
-    }
-  } catch (e) {
-    if (!aborted) {
-      status = "err";
-      error = e instanceof Error ? e.message : String(e);
-      if (!responseText) responseText = `Error: ${error}`;
-      opts.onStatusChange?.("err");
-    }
-  } finally {
-    if (signal) signal.removeEventListener("abort", onAbort);
-    if (activeMcpTokens) {
-      cleanupExecutorSessions(activeMcpTokens);
+    } finally {
+      if (!readinessSettled) rejectReady(new Error("One-shot execution finalized before readiness."));
+      for (const cleanup of cleanups.reverse()) cleanup();
+      if (activeMcpTokens) cleanupExecutorSessions(activeMcpTokens);
       activeMcpTokens = undefined;
-    }
-    try { await client.disconnect(); } catch { /* 정리 실패 무시 */ }
-    client.removeAllListeners();
-  }
-
-  return { responseText, thoughtText, toolCalls, status, error, sessionId };
-}
-
-/** connections.ts에서 호출 — 특정 풀 키의 모든 엔트리 종료 */
-export async function engineDisconnect(poolKey: string): Promise<boolean> {
-  const entries = clientPool.get(poolKey);
-  if (!entries || entries.length === 0) return false;
-  clientPool.delete(poolKey);
-  const promises: Promise<void>[] = [];
-  for (const entry of entries) {
-    entry.busy = false;
-    if (entry.mcpSessionTokens) {
-      cleanupExecutorSessions(entry.mcpSessionTokens);
-      entry.mcpSessionTokens = undefined;
-    }
-    promises.push(entry.client.disconnect().catch(() => { }));
-    entry.client.removeAllListeners();
-  }
-  await Promise.allSettled(promises);
-  return true;
-}
-
-/** connections.ts에서 호출 — 전체 풀 정리 */
-export async function engineDisconnectAll(): Promise<void> {
-  const promises: Promise<void>[] = [];
-  for (const [, entries] of clientPool) {
-    for (const entry of entries) {
-      if (entry.mcpSessionTokens) {
-        cleanupExecutorSessions(entry.mcpSessionTokens);
-        entry.mcpSessionTokens = undefined;
+      if (client) {
+        await disconnectClient();
+        if (onProviderError) client.off("error", onProviderError);
+        client.removeAllListeners();
       }
-      promises.push(entry.client.disconnect().catch(() => { }));
     }
-  }
-  await Promise.allSettled(promises);
-  clientPool.clear();
-  launchConfigs.clear();
+    return { responseText, thoughtText, toolCalls, status, error, sessionId };
+  })();
+
+  return {
+    readiness,
+    completion,
+    startPrompt() { if (!aborted && !promptStarted) releasePrompt(); },
+    abort: async () => { await abort(); await completion; },
+  };
 }
 
-/** connections.ts에서 호출 — 현재 executor 풀에 등록된 opaque poolKey 목록 조회 */
-export function engineListActivePoolKeys(): string[] {
-  return Array.from(clientPool.keys());
+function resolveEffort(cliType: CliType, model: string, explicit?: string): string | undefined {
+  if (explicit) return explicit;
+  const configured = getEffort(cliType, model);
+  return configured.supported ? configured.default : undefined;
 }
 
-/** connections.ts에서 호출 — busy가 아닌 클라이언트 정리 (풀 축소) */
-export function engineCleanIdle(): void {
-  for (const [key, entries] of clientPool) {
-    const active = entries.filter((entry) => {
-      if (entry.busy) return true;
-      if (entry.mcpSessionTokens) {
-        cleanupExecutorSessions(entry.mcpSessionTokens);
-        entry.mcpSessionTokens = undefined;
-      }
-      entry.client.disconnect().catch(() => { });
-      entry.client.removeAllListeners();
-      return false;
-    });
-    if (active.length === 0) {
-      clientPool.delete(key);
-    } else {
-      clientPool.set(key, active);
-    }
-  }
-}
-
-/** connections.ts에서 호출 — 살아 있는 풀 엔트리의 sessionId 조회 */
-export function engineGetPooledSessionId(poolKey: string): string | undefined {
-  const entries = clientPool.get(poolKey);
-  if (!entries || entries.length === 0) return undefined;
-  for (const entry of entries) {
-    if (!isClientAlive(entry.client)) {
-      if (entry.busy) continue;
-      continue;
-    }
-    if (entry.sessionId) return entry.sessionId;
-  }
-  // 살아 있는 entry가 없으면 dead non-busy entries 정리
-  const alive = entries.filter((entry) => {
-    if (entry.busy) return true;
-    if (!isClientAlive(entry.client)) {
-      if (entry.mcpSessionTokens) {
-        cleanupExecutorSessions(entry.mcpSessionTokens);
-      }
-      entry.client.removeAllListeners();
-      return false;
-    }
-    return true;
-  });
-  if (alive.length === 0) {
-    clientPool.delete(poolKey);
-  } else if (alive.length !== entries.length) {
-    clientPool.set(poolKey, alive);
-  }
-  return undefined;
+async function applyResolvedEffort(client: IUnifiedAgentClient, cliType: CliType, model: string, effort?: string): Promise<void> {
+  if (effort) await applyPostConnectConfig(client, cliType, model, { effort });
 }
 
 export function assertInternalMcpTokensNotShared(
@@ -655,270 +247,97 @@ export function assertInternalMcpTokensNotShared(
   tokens: readonly ExecutorMcpSessionToken[],
   reservedIds: readonly string[] = [],
 ): void {
-  if (tokens.length === 0) return;
-  const internalMcpServerNames = new Set([
-    ...tokens.map((token) => token.serverName),
-    ...reservedIds,
-  ]);
-  const tokenValues = new Map<string, string>();
+  if (!tokens.length) return;
+  const internalNames = new Set([...tokens.map((token) => token.serverName), ...reservedIds]);
+  const tokenOwners = new Map<string, string>();
   for (const { serverName, token } of tokens) {
-    if (tokenValues.has(token)) {
-      throw new Error(
-        `Internal MCP Bearer token reused by "${tokenValues.get(token)}" and "${serverName}".`,
-      );
-    }
-    tokenValues.set(token, serverName);
+    const owner = tokenOwners.get(token);
+    if (owner) throw new Error(`Internal MCP Bearer token reused by "${owner}" and "${serverName}".`);
+    tokenOwners.set(token, serverName);
   }
-
   for (const server of mcpServers) {
-    if (internalMcpServerNames.has(server.name)) continue;
+    if (internalNames.has(server.name)) continue;
     for (const { serverName, token } of tokens) {
       if (server.headers?.some((header) => header.value.includes(token))) {
-        throw new Error(
-          `Internal MCP Bearer token for "${serverName}" leaked into external MCP server "${server.name}".`,
-        );
+        throw new Error(`Internal MCP Bearer token for "${serverName}" leaked into external MCP server "${server.name}".`);
       }
     }
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Internal helpers
-// ═══════════════════════════════════════════════════════════════════════════
-
-function getMcpRouterRuntime(serverName: string): McpRouterRuntime | undefined {
-  return executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes()
-    .find((entry) => entry.name === serverName)?.runtime;
-}
-
-function cleanupExecutorSessions(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
-  for (const { serverName, token, session } of sessionTokens) {
-    if (session) {
-      session.cleanup();
-      continue;
+function cleanupExecutorSessions(tokens: readonly ExecutorMcpSessionToken[]): void {
+  for (const { serverName, token, session } of tokens) {
+    if (session) session.cleanup();
+    else {
+      const runtime = executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().find((entry) => entry.name === serverName)?.runtime;
+      if (runtime) cleanupExecutorMcpSession(runtime, token);
     }
-    const runtime = getMcpRouterRuntime(serverName);
-    if (runtime) cleanupExecutorMcpSession(runtime, token);
   }
 }
 
-function detachExecutorMcpForReuse(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
-  for (const { serverName, token, session } of sessionTokens) {
-    if (session) {
-      session.detachForReuse?.();
-      continue;
-    }
-    const runtime = getMcpRouterRuntime(serverName);
-    if (runtime) detachExecutorMcpForSessionReuse(runtime, token);
-  }
-}
-
-function installActiveExecutorToolCallRouter(
-  sessionTokens: readonly ExecutorMcpSessionToken[],
-  ctx: { cwd: string; signal?: AbortSignal },
-): void {
-  for (const { serverName, token, session } of sessionTokens) {
-    if (session) {
-      session.installForReuse?.(ctx);
-      continue;
-    }
-    const runtime = getMcpRouterRuntime(serverName);
+function installActiveExecutorToolCallRouter(tokens: readonly ExecutorMcpSessionToken[], ctx: { cwd: string; signal?: AbortSignal }): void {
+  for (const { serverName, token } of tokens) {
+    const runtime = executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().find((entry) => entry.name === serverName)?.runtime;
     if (runtime) installExecutorToolCallRouter(runtime, token, ctx);
   }
 }
 
-function registerActiveExecutorSessionTools(
-  runtime: McpRouterRuntime,
-  sessionToken: string,
-  specs: AgentToolSpec[],
-): void {
-  registerExecutorSessionTools(runtime, sessionToken, specs);
-}
-
-function resolveEffort(
-  poolKey: string,
-  cliType: CliType,
-  model: string,
-  modelOverride: string | undefined,
-  effortOverride: string | undefined,
-): EffortResolution {
-  if (effortOverride) {
-    return { kind: "explicit", effort: effortOverride };
+async function setupExecutorMcp(cwd: string, signal?: AbortSignal, scopeId?: string, reservedIds: readonly string[] = []): Promise<ExecutorMcpSetup | null> {
+  if (signal?.aborted) return null;
+  const tokens: ExecutorMcpSessionToken[] = [];
+  const mcpServers: McpServerConfig[] = [];
+  const provider = executorMcpRuntimeProviderRuntime.getProvider();
+  try {
+    for (const { name, runtime } of provider.getExecutorMcpRouterRuntimes()) {
+      const specs = executorPortRuntime.getExecutorMcpTools(name, scopeId);
+      if (!specs.length) continue;
+      if (provider.createExecutorMcpSession) {
+        const session = await provider.createExecutorMcpSession({ serverName: name, specs, cwd, signal });
+        tokens.push({ serverName: name, token: session.token, session });
+        mcpServers.push(session.mcpServer);
+      } else {
+        const token = randomUUID();
+        registerExecutorSessionTools(runtime, token, [...specs]);
+        tokens.push({ serverName: name, token });
+        mcpServers.push({ type: "http", url: await runtime.server.start(), headers: [{ name: "Authorization", value: `Bearer ${token}` }], name, toolTimeout: 1800 });
+      }
+    }
+    try {
+      mcpServers.push(...resolveBuiltinExternalMcpServers(executorPortRuntime.getScopeExternalMcpServerIds(scopeId), { reservedIds }));
+    } catch (error) {
+      console.warn(
+        `[unified-agent] builtin external MCP resolve 실패 (scopeId=${scopeId ?? "none"}, servers=${formatBuiltinExternalMcpServerIds(scopeId)}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    assertInternalMcpTokensNotShared(mcpServers, tokens, reservedIds);
+    return mcpServers.length ? { tokens, mcpServers } : null;
+  } catch (error) {
+    cleanupExecutorSessions(tokens);
+    throw error;
   }
-
-  const launchConfig = launchConfigs.get(poolKey);
-  const modelChanged = modelOverride !== undefined &&
-    launchConfig?.model !== undefined &&
-    launchConfig.model !== model;
-
-  if (!modelChanged) {
-    return launchConfig?.effort
-      ? { kind: "fallback", effort: launchConfig.effort }
-      : { kind: "unspecified" };
-  }
-
-  const modelEffort = getEffort(cliType, model);
-  return modelEffort.supported
-    ? { kind: "default", effort: modelEffort.default }
-    : { kind: "clear" };
 }
 
-function resolveModel(poolKey: string, cliType: CliType, override?: string): string {
-  return override ?? launchConfigs.get(poolKey)?.model ?? getProviderModels(cliType).defaultModel;
+async function buildConnectOptions(cli: CliType, cwd: string, overrides: { model?: string; promptIdleTimeout?: number; effort?: string }, systemPrompt: string | null | undefined, authEnvResolver: AuthEnvResolver, mcpServers?: McpServerConfig[]): Promise<UnifiedClientOptions> {
+  const options: UnifiedClientOptions = { cwd, cli, autoApprove: true, clientInfo: CLIENT_INFO, timeout: 0, strictMcp: true };
+  if (overrides.model) options.model = overrides.model;
+  if (overrides.effort) options.effort = overrides.effort;
+  if (overrides.promptIdleTimeout !== undefined) options.promptIdleTimeout = overrides.promptIdleTimeout;
+  if (systemPrompt) options.systemPrompt = systemPrompt;
+  if (mcpServers) options.mcpServers = mcpServers;
+  const env = await authEnvResolver(cli);
+  if (Object.keys(env).length) options.env = env;
+  return options;
 }
 
-async function applyResolvedEffort(
-  client: IUnifiedAgentClient,
-  cliType: CliType,
-  model: string,
-  resolution: EffortResolution,
-): Promise<boolean> {
-  if (resolution.kind === "clear" || resolution.kind === "unspecified") {
-    return false;
-  }
-  return applyPostConnectConfig(client, cliType, model, { effort: resolution.effort });
-}
-
-function getStoredEffort(
-  resolution: EffortResolution,
-  applied: boolean,
-): string | null | undefined {
-  if (resolution.kind === "clear") {
-    return null;
-  }
-  if (resolution.kind === "unspecified") {
-    return undefined;
-  }
-  return applied ? resolution.effort : null;
-}
-
-function setLaunchConfig(poolKey: string, model: string, effort: string | null | undefined): void {
-  const previous = launchConfigs.get(poolKey);
-  const next: { model: string; effort?: string } = { ...previous, model };
-  if (effort === null) {
-    delete next.effort;
-  } else if (effort !== undefined) {
-    next.effort = effort;
-  }
-  launchConfigs.set(poolKey, next);
-}
-
-async function discardSingleEntry(entry: PooledClient): Promise<void> {
-  entry.busy = false;
-  if (entry.mcpSessionTokens) {
-    cleanupExecutorSessions(entry.mcpSessionTokens);
-    entry.mcpSessionTokens = undefined;
-  }
-  delete entry.sessionId;
-  try { await entry.client.disconnect(); } catch { /* 정리 실패 무시 */ }
-  entry.client.removeAllListeners();
-}
-
-function removeEntryFromPool(poolKey: string, client: IUnifiedAgentClient): void {
-  const entries = clientPool.get(poolKey);
-  if (!entries) return;
-  const idx = entries.findIndex((e) => e.client === client);
-  if (idx < 0) return;
-  const entry = entries[idx]!;
-  if (entry.mcpSessionTokens) {
-    cleanupExecutorSessions(entry.mcpSessionTokens);
-    entry.mcpSessionTokens = undefined;
-  }
-  entries.splice(idx, 1);
-  if (entries.length === 0) clientPool.delete(poolKey);
-}
-
-async function removeAndDisconnectEntry(poolKey: string, client: IUnifiedAgentClient): Promise<void> {
-  const entries = clientPool.get(poolKey);
-  if (!entries) return;
-  const idx = entries.findIndex((e) => e.client === client);
-  if (idx < 0) return;
-  const entry = entries[idx]!;
-  entry.busy = false;
-  if (entry.mcpSessionTokens) {
-    cleanupExecutorSessions(entry.mcpSessionTokens);
-    entry.mcpSessionTokens = undefined;
-  }
-  entries.splice(idx, 1);
-  if (entries.length === 0) clientPool.delete(poolKey);
-  try { await client.disconnect(); } catch { /* 정리 실패 무시 */ }
-  client.removeAllListeners();
-}
-
-function replaceEntryClient(
-  poolKey: string,
-  entry: PooledClient,
-  newClient: IUnifiedAgentClient,
-  builtinExternalMcpSignature: string,
-  internalExecutorMcpSignature: string,
-): void {
-  entry.client.removeAllListeners();
-  entry.client = newClient;
-  entry.builtinExternalMcpSignature = builtinExternalMcpSignature;
-  entry.internalExecutorMcpSignature = internalExecutorMcpSignature;
-  delete entry.sessionId;
-  entry.mcpSessionTokens = undefined;
-  newClient.on("exit", () => {
-    removeEntryFromPool(poolKey, newClient);
-  });
-}
-
-function isClientAlive(client: IUnifiedAgentClient): boolean {
-  const info = client.getConnectionInfo();
-  return info.state === "ready" || info.state === "connected";
+function assertAuthEnvResolver(value: AuthEnvResolver | undefined): asserts value is AuthEnvResolver {
+  if (!value) throw new Error("core-agent execution requires authEnvResolver before connecting to a provider client.");
 }
 
 function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
   if (signal.aborted) return Promise.reject(new Error("Aborted"));
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) => {
-      signal.addEventListener("abort", () => reject(new Error("Aborted")), { once: true });
-    }),
-  ]);
+  return Promise.race([promise, new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new Error("Aborted")), { once: true }))]);
 }
-
-async function buildConnectOptions(
-  cli: CliType,
-  cwd: string,
-  overrides: { model?: string; promptIdleTimeout?: number; effort?: string } | undefined,
-  systemPrompt: string | null | undefined,
-  authEnvResolver: AuthEnvResolver,
-  mcpServers?: McpServerConfig[],
-): Promise<UnifiedClientOptions> {
-  const opts: UnifiedClientOptions = {
-    cwd,
-    cli,
-    autoApprove: true,
-    clientInfo: CLIENT_INFO,
-    timeout: 0,
-  };
-  if (overrides?.model) opts.model = overrides.model;
-  if (overrides?.effort) opts.effort = overrides.effort;
-  if (overrides?.promptIdleTimeout !== undefined) opts.promptIdleTimeout = overrides.promptIdleTimeout;
-  if (systemPrompt) opts.systemPrompt = systemPrompt;
-  if (mcpServers) opts.mcpServers = mcpServers;
-  opts.strictMcp = true;
-  const env = await authEnvResolver(cli);
-  if (Object.keys(env).length > 0) opts.env = env;
-  return opts;
-}
-
-function assertAuthEnvResolver(authEnvResolver: AuthEnvResolver | undefined): asserts authEnvResolver is AuthEnvResolver {
-  if (!authEnvResolver) {
-    throw new Error("core-agent execution requires authEnvResolver before connecting to a provider client.");
-  }
-}
-
-function hasSystemPromptDrift(client: IUnifiedAgentClient, expected: string | null | undefined): boolean {
-  return (client.getCurrentSystemPrompt()?.trim() ?? "") !== (expected?.trim() ?? "");
-}
-
-function debugSystemPromptDrift(scope: string, poolKey: string, cliType: CliType): void {
-  console.warn(`[unified-agent] systemPrompt drift 감지 (${scope}, key=${poolKey}, cli=${cliType})`);
-}
-
 
 function extractToolResultText(data?: ToolCallLike): string | undefined {
   if (!data) return undefined;
@@ -954,33 +373,14 @@ function extractContentText(content: unknown): string | undefined {
       parts.push(`${typedItem.path}: ${delta >= 0 ? `+${delta}` : `${delta}`} lines`);
     }
   }
-  return parts.length === 0 ? undefined : parts.join("\n");
+  return parts.length ? parts.join("\n") : undefined;
 }
 
-async function buildProviderClient(options: UnifiedAgentBuildOptions): Promise<IUnifiedAgentClient> {
-  return UnifiedAgent.build(options);
-}
-
-/**
- * ACP `tool_call_update`의 title이 도구 종류 prefix 없이 파일 경로/인자만 도착하는 경우
- * (예: `"packages/.../npx.ts"`), `data.kind`를 활용해 사람이 읽기 쉬운 prefix를 합성한다.
- *
- * - title이 비어있으면 그대로 빈 문자열 반환 (머지 가드 동작 유지)
- * - title이 이미 kind 라벨로 시작하면 변형하지 않음 (예: "Read /tmp/x.txt")
- * - 파일 경로 패턴(슬래시 또는 점으로 시작)이면 `{Label} {title}` 형태로 prefix 추가
- * - 그 외(이미 의미있는 단어로 시작하는 일반 라벨)는 변형하지 않음
- */
 function enrichToolTitle(title: string, kind?: string): string {
-  if (!title) return "";
-  if (!kind) return title;
+  if (!title || !kind) return title;
   const label = toolKindLabel(kind);
-  if (!label) return title;
-  if (title.toLowerCase().startsWith(label.toLowerCase())) return title;
-  // 파일 경로 패턴이면 prefix 합성
-  if (title.startsWith("/") || title.startsWith(".") || title.includes("/")) {
-    return `${label} ${title}`;
-  }
-  return title;
+  if (!label || title.toLowerCase().startsWith(label.toLowerCase())) return title;
+  return title.startsWith("/") || title.startsWith(".") || title.includes("/") ? `${label} ${title}` : title;
 }
 
 function toolKindLabel(kind: string): string {
@@ -999,104 +399,9 @@ function toolKindLabel(kind: string): string {
   }
 }
 
-async function setupExecutorMcp(
-  cwd: string,
-  signal?: AbortSignal,
-  scopeId?: string,
-  reservedExternalMcpServerIds: readonly string[] = [],
-): Promise<ExecutorMcpSetup | null> {
-  if (signal?.aborted) return null;
-  const tokens: ExecutorMcpSessionToken[] = [];
-  const mcpServers: McpServerConfig[] = [];
-  const provider = executorMcpRuntimeProviderRuntime.getProvider();
-
-  for (const { name, runtime } of provider.getExecutorMcpRouterRuntimes()) {
-    const specs = executorPortRuntime.getExecutorMcpTools(name, scopeId);
-    if (specs.length === 0) continue;
-    try {
-      if (provider.createExecutorMcpSession) {
-        const session = await provider.createExecutorMcpSession({ serverName: name, specs, cwd, signal });
-        tokens.push({ serverName: name, token: session.token, session });
-        mcpServers.push(session.mcpServer);
-        continue;
-      }
-      const mcpUrl = await runtime.server.start();
-      const token = randomUUID();
-      registerActiveExecutorSessionTools(runtime, token, [...specs]);
-      tokens.push({ serverName: name, token });
-      mcpServers.push({
-        type: "http",
-        url: mcpUrl,
-        headers: [{ name: "Authorization", value: `Bearer ${token}` }],
-        name,
-        toolTimeout: 1800,
-      });
-    } catch (err) {
-      cleanupExecutorSessions(tokens);
-      throw err;
-    }
-  }
-
-  try {
-    mcpServers.push(...resolveBuiltinExternalMcpServers(
-      getAllowedBuiltinExternalMcpServerIds(scopeId),
-      { reservedIds: reservedExternalMcpServerIds },
-    ));
-  } catch (err) {
-    console.warn(
-      `[unified-agent] builtin external MCP resolve 실패 (scopeId=${scopeId ?? "none"}, servers=${formatBuiltinExternalMcpServerIds(scopeId)}): ${err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  assertInternalMcpTokensNotShared(mcpServers, tokens, reservedExternalMcpServerIds);
-  if (mcpServers.length === 0) {
-    return null;
-  }
-  return { tokens, mcpServers };
-}
-
-function getAllowedBuiltinExternalMcpServerIds(scopeId?: string): readonly string[] {
-  return executorPortRuntime.getScopeExternalMcpServerIds(scopeId);
-}
-
 function formatBuiltinExternalMcpServerIds(scopeId?: string): string {
-  const ids = getAllowedBuiltinExternalMcpServerIds(scopeId);
+  const ids = executorPortRuntime.getScopeExternalMcpServerIds(scopeId);
   return ids.length === 0 ? "none" : ids.join(",");
 }
 
-function buildBuiltinExternalMcpSignature(scopeId?: string): string {
-  const ids = [...getAllowedBuiltinExternalMcpServerIds(scopeId)].sort();
-  return createHash("sha256").update(ids.join("\0")).digest("hex");
-}
-
-function buildInternalExecutorMcpSignature(scopeId?: string): string {
-  const entries: string[] = [];
-
-  for (const { name } of executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes()) {
-    const specs = executorPortRuntime.getExecutorMcpTools(name, scopeId);
-    if (specs.length === 0) continue;
-    for (const spec of specs) {
-      entries.push(`${name}\0${spec.id}\0${stableStringify(convertToolSchema(spec.parameters))}`);
-    }
-  }
-
-  entries.sort();
-  return createHash("sha256").update(entries.join("\0")).digest("hex");
-}
-
-function stableStringify(value: unknown): string {
-  if (value === undefined) {
-    return "undefined";
-  }
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? String(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-  }
-
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
-}
+async function buildProviderClient(options: UnifiedAgentBuildOptions): Promise<IUnifiedAgentClient> { return UnifiedAgent.build(options); }

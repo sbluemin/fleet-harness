@@ -9,29 +9,39 @@ import path from "node:path";
 import { Type } from "typebox";
 import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolSpec } from "@dotobokuri/core-agent";
+import type { AgentToolSpec, OneShotExecution, OneShotReady } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
+import type { CarrierDispatchServices } from "../index.js";
 import type {
   CarrierJobStatus,
   CarrierMetadata,
   TrackMeta,
+  TrackStatus,
 } from "./types.js";
 
 import { appendBlock, toArchiveBlock } from "../jobs/archive.js";
 import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
-import { launchResponseResult } from "../jobs/lifecycle.js";
-import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
-import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
+import { finalizeDetachedJob, launchResponseResult, rollbackRejectedDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
+import { sanitizeChunk, sanitizeProviderReason, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary } from "../jobs/types.js";
-import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/workspace-manifest.js";
-import { executeWithPool } from "@dotobokuri/core-agent";
+import { captureJobWindowManifest, captureWorkspaceSnapshot, type WorkspaceChangeSnapshotEntry } from "../jobs/workspace-manifest.js";
+import { executeOneShot } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
   loadCarrierStates,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
-import { buildCarrierExecutorPoolKey } from "./pool-key.js";
+import {
+  claimDispatchContext,
+  commitDispatchLease,
+  confirmDispatchReadiness,
+  RESUME_CONTEXT_ID_DESCRIPTION,
+  releaseDispatchLease,
+  type DispatchBackendSession,
+  type DispatchContextBindingInput,
+  type DispatchContextLease,
+} from "./context-registry.js";
 import {
   buildCarrierSystemPrompt,
   formatRequestBlocksGuide,
@@ -65,7 +75,7 @@ interface CarrierSingleResult {
   toolCalls?: { title: string; status: string }[];
 }
 
-interface CarrierBackgroundOptions {
+interface SingleCarrierFinalizeOptions {
   registry: CarrierRegistry;
   jobId: string;
   carrierId: string;
@@ -73,12 +83,17 @@ interface CarrierBackgroundOptions {
   trackModelInfo: CarrierTrackModelInfo;
   label: string;
   request: string;
-  signal: AbortSignal | undefined;
   cwd: string;
   permit: JobPermitAccepted;
   startedAt: number;
   toolName: `carrier_${string}`;
   deps: CarrierToolSpecDeps;
+  services?: CarrierDispatchServices;
+  lease?: DispatchContextLease;
+  contextId?: string;
+  ready: OneShotReady;
+  handle: OneShotExecution;
+  baselineSnapshot: readonly WorkspaceChangeSnapshotEntry[] | null;
 }
 
 interface CarrierTrackModelInfo {
@@ -125,7 +140,7 @@ export const CARRIER_REQUEST_BREVITY_GUIDELINE =
 /**
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합한 AgentToolSpec을 반환합니다.
  */
-export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: CarrierToolSpecDeps): AgentToolSpec {
+export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: CarrierToolSpecDeps, services?: CarrierDispatchServices): AgentToolSpec {
   return {
     id: "carrier_dispatch",
     tag: "carrier_dispatch",
@@ -145,7 +160,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ` Missing, empty, or non-string label is rejected before launch.`,
       `When composing a request, provide only background, context, objective, and constraints.` +
         ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
-        ` Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
+        ` Launch response schema is { job_id, context_id?, accepted, error? } and never includes synchronous result content.` +
         ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 6h.`,
       `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
         ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
@@ -153,6 +168,8 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ` The per-carrier request-block contract lives in the carrier-contracts skill —` +
         ` load it before composing a dispatch (skip reloading if its content is already in context).` +
         ` Missing required tags cause hard-error rejection that echoes the carrier's block contract.`,
+      `Every successful fresh dispatch returns context_id. To continue that real provider session later,` +
+        ` wait for completion and pass that value as resume_context_id; omit resume_context_id to start fresh.`,
       CARRIER_REQUEST_BREVITY_GUIDELINE,
     ],
     guardrails: [
@@ -185,6 +202,9 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
             ` MUST be an absolute path. Provide it when delegating work to a directory other than the host session cwd` +
             ` (e.g. a git worktree checkout) so the carrier spawns deterministically at that path.` +
             ` Omit to default to the host session cwd.`,
+        })),
+        resume_context_id: Type.Optional(Type.String({
+          description: RESUME_CONTEXT_ID_DESCRIPTION,
         })),
       });
     },
@@ -249,6 +269,8 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
           ctx,
           cwd,
           deps,
+          services,
+          resumeContextId: args.resume_context_id,
         });
       }
 
@@ -263,6 +285,18 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         });
       }
 
+      // 입력이 없으면 새 context_id를 발급하고, 있으면 해당 provider 세션을 명시 재개한다.
+      const binding: DispatchContextBindingInput = {
+        carrierId,
+        cwd,
+        shape: "single",
+        backends: [{ cliType: trackModelInfo.cliType }],
+      };
+      const claim = claimDispatchContext(services?.dispatchContexts, args.resume_context_id, binding);
+      if (!claim.ok) {
+        return launchResponseResult({ job_id: jobId, accepted: false, error: claim.error });
+      }
+
       const launch = startDetachedJob({
         jobKind: "carrier",
         toolName,
@@ -271,27 +305,117 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         carrierIds: [carrierId],
         signal: ctx.signal,
       });
-      if (!launch.accepted) return launch.response;
+      if (!launch.accepted) {
+        releaseDispatchLease(services?.dispatchContexts, claim.lease);
+        return launch.response;
+      }
 
-      emitJobRegistered(registry, jobId, carrierId, ctx.sessionLabel, toolCallId, label, t0, trackModelInfo);
+      const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
+      const handle = executeOneShot({
+        scopeId: carrierId,
+        authEnvResolver: deps.authEnvResolver,
+        reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
+        cliType: trackModelInfo.cliType,
+        request,
+        cwd,
+        model: trackModelInfo.model,
+        effort: trackModelInfo.effort,
+        resumeSessionId: claim.resumeSessions?.get(trackModelInfo.cliType),
+        connectSystemPrompt: buildCarrierSystemPrompt(carrierConfig?.carrierMetadata),
+        signal: launch.signal,
+        ...buildSingleTrackListeners(registry, launch.jobId, carrierId, ctx.sessionLabel),
+      });
 
-      void runCarrierJobInBackground({
+      let settleCompletion!: () => void;
+      let failCompletion!: (error: unknown) => void;
+      const completion = new Promise<void>((resolve, reject) => { settleCompletion = resolve; failCompletion = reject; });
+      let completionStarted = false;
+      let rollbackPrepared: Promise<void> | undefined;
+      const rejectPrepared = () => rollbackPrepared ??= (async () => {
+        await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit, abort: () => handle.abort() });
+        releaseDispatchLease(services?.dispatchContexts, claim.lease);
+        settleCompletion();
+      })();
+      let untrack: () => void;
+      try {
+        untrack = services?.trackInFlight?.({
+          cancel: () => completionStarted ? handle.abort() : rejectPrepared(),
+          completion,
+        }) ?? (() => {});
+      } catch (error) {
+        await rejectPrepared();
+        return launchResponseResult({
+          job_id: launch.jobId,
+          accepted: false,
+          error: sanitizeProviderReason(error instanceof Error ? error.message : String(error)),
+        });
+      }
+      void completion.finally(untrack);
+
+      // 런치 응답은 readiness(연결/재개·MCP·프로토콜 확인)까지 대기하되, 프롬프트 완료는 백그라운드로 분리한다.
+      let ready: OneShotReady;
+      try {
+        ready = await handle.readiness;
+        confirmDispatchReadiness(services?.dispatchContexts, claim.lease, [readyToSession(ready)]);
+      } catch (error) {
+        await rejectPrepared();
+        return launchResponseResult({
+          job_id: launch.jobId,
+          accepted: false,
+          error: sanitizeProviderReason(error instanceof Error ? error.message : String(error)),
+        });
+      }
+
+      // Start capture without opening the prompt gate, then expose the prepared handle to runtime cleanup.
+      const baselineSnapshot = captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
+
+      const baseline = await baselineSnapshot;
+      if (rollbackPrepared || services?.admission.accepting === false) {
+        await rejectPrepared();
+        return launchResponseResult({
+          job_id: launch.jobId,
+          accepted: false,
+          error: "Carrier runtime is closed to new dispatches.",
+        });
+      }
+
+      emitJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, toolCallId, label, t0, trackModelInfo);
+      emitStreamEvent(registry, {
+        type: "track:begin",
+        jobId: launch.jobId,
+        originSessionId: ctx.sessionLabel,
+        trackId: carrierId,
+        startedAt: Date.now(),
+        requestPreview: request.trim().split(/\r?\n/, 1)[0],
+      });
+      completionStarted = true;
+      void finalizeSingleCarrierJob({
         registry,
-        jobId,
+        jobId: launch.jobId,
         carrierId,
         originSessionId: ctx.sessionLabel,
         trackModelInfo,
         label,
         request,
-        signal: launch.signal,
         cwd,
         permit: launch.permit,
         startedAt: t0,
         toolName,
         deps,
-      });
+        services,
+        lease: claim.lease,
+        contextId: claim.contextId,
+        ready,
+        handle,
+        baselineSnapshot: baseline,
+      }).then(settleCompletion, failCompletion);
+      handle.startPrompt();
 
-      return launchResponseResult({ job_id: jobId, accepted: true });
+      return launchResponseResult({
+        job_id: launch.jobId,
+        ...(claim.contextId ? { context_id: claim.contextId } : {}),
+        accepted: true,
+      });
     },
   };
 }
@@ -300,24 +424,105 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
 // 내부 헬퍼
 // ═════════════════════════════════════════════════════════
 
-async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promise<void> {
+/** Streaming listeners for a single-carrier one-shot handle — emit track events and archive output. */
+function buildSingleTrackListeners(
+  registry: CarrierRegistry,
+  jobId: string,
+  carrierId: string,
+  originSessionId: string | undefined,
+) {
+  return {
+    onStatusChange: (status: TrackStatus) => {
+      emitStreamEvent(registry, { type: "track:status", jobId, originSessionId, trackId: carrierId, status });
+    },
+    onMessageChunk: (text: string) => {
+      const cleanText = sanitizeChunk(text);
+      appendBlock(jobId, toArchiveBlock("text", carrierId, text));
+      emitStreamEvent(registry, { type: "track:text", jobId, originSessionId, trackId: carrierId, text: cleanText });
+    },
+    onThoughtChunk: (text: string) => {
+      const cleanText = sanitizeChunk(text);
+      appendBlock(jobId, toArchiveBlock("thought", carrierId, text));
+      emitStreamEvent(registry, { type: "track:thought", jobId, originSessionId, trackId: carrierId, text: cleanText });
+    },
+    onToolCall: (toolTitle: string, toolStatus: string, rawOutput?: string, toolCallId?: string) => {
+      const title = sanitizeToolLabel(toolTitle);
+      const status = sanitizeToolLabel(toolStatus);
+      emitStreamEvent(registry, {
+        type: "track:tool",
+        jobId,
+        originSessionId,
+        trackId: carrierId,
+        detailChars: rawOutput?.length ?? 0,
+        title,
+        status,
+        toolCallId,
+      });
+    },
+  };
+}
+
+function readyToSession(ready: OneShotReady): DispatchBackendSession {
+  return { cliType: ready.cliType, protocol: ready.protocol, sessionId: ready.sessionId };
+}
+
+/**
+ * Drive a single-carrier one-shot handle to completion after its prompt gate opens.
+ * Emits the finalized track/job events, records the workspace manifest, and commits the
+ * dispatch mapping only on a `done` turn (any other outcome unlocks without committing).
+ */
+async function finalizeSingleCarrierJob(opts: SingleCarrierFinalizeOptions): Promise<void> {
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let result: CarrierSingleResult | undefined;
-  const baselineSnapshot = await captureWorkspaceSnapshot(opts.deps.workspaceChangeScanner, opts.cwd);
   try {
-    result = await runSingleCarrier(opts);
-    finalStatus = result.status;
-    if (finalStatus === "error") {
-      finalError = result.error ?? result.responseText;
+    const execResult = await opts.handle.completion;
+    finalStatus = toCarrierJobStatus(execResult.status);
+    const sessionId = execResult.sessionId ?? opts.ready.sessionId;
+    emitStreamEvent(opts.registry, {
+      type: "track:finalized",
+      jobId: opts.jobId,
+      originSessionId: opts.originSessionId,
+      trackId: opts.carrierId,
+      status: toTrackFinalStatus(finalStatus),
+      finishedAt: Date.now(),
+      sessionId,
+      fallbackText: sanitizeChunk(execResult.responseText),
+      fallbackThought: sanitizeChunk(execResult.thoughtText),
+      error: finalStatus === "aborted" ? "aborted" : execResult.error,
+    });
+    result = {
+      carrierId: opts.carrierId,
+      displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId),
+      status: finalStatus,
+      responseText: execResult.responseText || "(no output)",
+      sessionId,
+      error: execResult.error,
+      thinking: execResult.thoughtText,
+      toolCalls: execResult.toolCalls.map((tc) => ({ title: tc.title, status: tc.status })),
+    };
+    if (finalStatus === "error") finalError = execResult.error ?? execResult.responseText;
+    if (finalStatus === "done") {
+      commitDispatchLease(opts.services?.dispatchContexts, opts.lease, [readyToSession(opts.ready)]);
+    } else {
+      releaseDispatchLease(opts.services?.dispatchContexts, opts.lease);
     }
   } catch (error) {
     finalStatus = "error";
     finalError = error instanceof Error ? error.message : String(error);
+    emitStreamEvent(opts.registry, {
+      type: "track:finalized",
+      jobId: opts.jobId,
+      originSessionId: opts.originSessionId,
+      trackId: opts.carrierId,
+      status: "err",
+      finishedAt: Date.now(),
+      error: finalError,
+    });
+    releaseDispatchLease(opts.services?.dispatchContexts, opts.lease);
   } finally {
     const finishedAt = Date.now();
-    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, baselineSnapshot);
-    const assignments = [{ carrier: opts.carrierId, request: opts.request }];
+    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, opts.baselineSnapshot);
     const results = result
       ? [result]
       : [{ carrierId: opts.carrierId, displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId), status: "error" as CarrierJobStatus, responseText: finalError ?? "Unknown error", error: finalError }];
@@ -325,7 +530,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
       jobId: opts.jobId,
       startedAt: opts.startedAt,
       finishedAt,
-      carriers: assignments.map((assignment) => assignment.carrier),
+      carriers: [opts.carrierId],
       results,
       status: finalStatus as StoredCarrierJobStatus,
       error: finalError,
@@ -356,106 +561,10 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
         summary,
         error: finalError,
         label: opts.label,
+        contextId: opts.contextId,
+        resumeAvailable: finalStatus === "done",
       }),
     });
-  }
-}
-
-async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<CarrierSingleResult> {
-  const execStartedAt = Date.now();
-  const carrierConfig = getRegisteredCarrierConfig(opts.registry, opts.carrierId);
-  const { cliType, effort, model } = opts.trackModelInfo;
-  let sessionId: string | undefined;
-
-
-  emitStreamEvent(opts.registry, {
-    type: "track:begin",
-    jobId: opts.jobId,
-    originSessionId: opts.originSessionId,
-    trackId: opts.carrierId,
-    startedAt: execStartedAt,
-    requestPreview: opts.request.trim().split(/\r?\n/, 1)[0],
-  });
-
-  try {
-    const execResult = await executeWithPool({
-      poolKey: buildCarrierExecutorPoolKey(opts.carrierId, opts.originSessionId, opts.cwd),
-      scopeId: opts.carrierId,
-      authEnvResolver: opts.deps.authEnvResolver,
-      reservedExternalMcpServerIds: opts.deps.reservedExternalMcpServerIds,
-      cliType,
-      request: opts.request,
-      cwd: opts.cwd,
-      model,
-      effort,
-      connectSystemPrompt: buildCarrierSystemPrompt(carrierConfig?.carrierMetadata),
-      signal: opts.signal,
-      onConnected: (info) => {
-        sessionId = info.sessionId;
-      },
-      onStatusChange: (status) => {
-        emitStreamEvent(opts.registry, { type: "track:status", jobId: opts.jobId, originSessionId: opts.originSessionId, trackId: opts.carrierId, status });
-      },
-      onMessageChunk: (text) => {
-        const cleanText = sanitizeChunk(text);
-        appendBlock(opts.jobId, toArchiveBlock("text", opts.carrierId, text));
-        emitStreamEvent(opts.registry, { type: "track:text", jobId: opts.jobId, originSessionId: opts.originSessionId, trackId: opts.carrierId, text: cleanText });
-      },
-      onThoughtChunk: (text) => {
-        const cleanText = sanitizeChunk(text);
-        appendBlock(opts.jobId, toArchiveBlock("thought", opts.carrierId, text));
-        emitStreamEvent(opts.registry, { type: "track:thought", jobId: opts.jobId, originSessionId: opts.originSessionId, trackId: opts.carrierId, text: cleanText });
-      },
-      onToolCall: (toolTitle, toolStatus, rawOutput, toolCallId) => {
-        const title = sanitizeToolLabel(toolTitle);
-        const status = sanitizeToolLabel(toolStatus);
-        emitStreamEvent(opts.registry, {
-          type: "track:tool",
-          jobId: opts.jobId,
-          originSessionId: opts.originSessionId,
-          trackId: opts.carrierId,
-          detailChars: rawOutput?.length ?? 0,
-          title,
-          status,
-          toolCallId,
-        });
-      },
-    });
-    const finalStatus = toCarrierJobStatus(execResult.status);
-    emitStreamEvent(opts.registry, {
-      type: "track:finalized",
-      jobId: opts.jobId,
-      originSessionId: opts.originSessionId,
-      trackId: opts.carrierId,
-      status: toTrackFinalStatus(finalStatus),
-      finishedAt: Date.now(),
-      sessionId,
-      fallbackText: sanitizeChunk(execResult.responseText),
-      fallbackThought: sanitizeChunk(execResult.thoughtText),
-      error: finalStatus === "aborted" ? "aborted" : execResult.error,
-    });
-    return {
-      carrierId: opts.carrierId,
-      displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId),
-      status: finalStatus,
-      responseText: execResult.responseText || "(no output)",
-      sessionId,
-      error: execResult.error,
-      thinking: execResult.thoughtText,
-      toolCalls: execResult.toolCalls.map((tc) => ({ title: tc.title, status: tc.status })),
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    emitStreamEvent(opts.registry, {
-      type: "track:finalized",
-      jobId: opts.jobId,
-      originSessionId: opts.originSessionId,
-      trackId: opts.carrierId,
-      status: "err",
-      finishedAt: Date.now(),
-      error: message,
-    });
-    throw error;
   }
 }
 
@@ -522,7 +631,7 @@ function buildCarrierDispatchRunId(jobId: string, carrierId: string): string {
   return `${jobId}:${carrierId}`;
 }
 
-function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string; cwd?: string } {
+function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string; cwd?: string; resume_context_id?: string } {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (
@@ -532,7 +641,8 @@ function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; r
     obj.label.trim().length > 0 &&
     typeof obj.request === "string" &&
     obj.request.trim().length > 0 &&
-    (obj.cwd === undefined || typeof obj.cwd === "string")
+    (obj.cwd === undefined || typeof obj.cwd === "string") &&
+    (obj.resume_context_id === undefined || typeof obj.resume_context_id === "string")
   );
 }
 

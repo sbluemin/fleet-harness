@@ -178,7 +178,10 @@ export interface IUnifiedAgentClient {
   /**
    * CLI에 연결합니다.
    *
-   * @param options - 연결 옵션. provider별 연결·첫 프롬프트 설정을 포함합니다.
+   * `options.sessionId` is one explicit resume attempt. A provider must not
+   * silently create a fresh session if that resume fails.
+   *
+   * @param options - provider별 연결·첫 프롬프트 설정을 포함합니다. `options.effort`는 Claude 구현에서만 connect 시점 `_meta`로 사용됩니다.
    * @returns 연결 결과
    */
   connect(options: UnifiedClientOptions): Promise<ConnectResult>;
@@ -190,8 +193,7 @@ export interface IUnifiedAgentClient {
 
   /**
    * 현재 세션을 종료합니다.
-   * 프로세스는 유지되며 Pool에 반환하지 않습니다.
-   * disconnect()와 달리 연결 자체는 유지됩니다.
+   * disconnect()와 달리 프로세스와 연결 자체는 유지됩니다.
    */
   endSession(): Promise<void>;
 

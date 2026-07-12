@@ -3,7 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
-  disconnectAll,
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
   type AgentToolCtx,
@@ -56,7 +55,6 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
   });
 
   afterEach(async () => {
-    await disconnectAll();
     resetJobArchivesForTest();
     resetJobSummaryCacheForTest();
     resetJobConcurrencyForTest();
@@ -94,35 +92,26 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
       request: "Trigger deterministic codex-acp startup failure.",
     }, dispatchCtx) as ToolExecutionResult<{ job_id: string; accepted: boolean; error?: string }>;
 
-    expect(dispatchResult.isError).toBe(false);
-    expect(dispatchResult.details).toEqual({
-      job_id: "carrier:codex-acp-stderr",
-      accepted: true,
-    });
+    // 연결/초기화 실패는 프롬프트 이전 readiness 단계에서 발생하므로 동기 accepted:false 로 반환된다.
+    expect(dispatchResult.isError).toBe(true);
+    expect(dispatchResult.details.accepted).toBe(false);
+    expect(dispatchResult.details.job_id).toBe("carrier:codex-acp-stderr");
 
-    const jobsTool = buildCarrierJobsToolSpec();
-    let errorText = "";
-
-    await vi.waitFor(async () => {
-      const jobsResult = await jobsTool.execute({
-        action: "result",
-        format: "summary",
-        job_id: "carrier:codex-acp-stderr",
-      }, {
-        cwd,
-        toolCallId: "carrier-jobs-codex-acp-stderr",
-      }) as ToolExecutionResult<CarrierJobsResponse>;
-      const response = jobsResult.details;
-
-      expect(response.ok).toBe(true);
-      expect(response.status).toBe("error");
-      expect(response.summary?.error).toContain("ACP initialize stderr tail:");
-      errorText = response.summary?.error ?? "";
-    }, { timeout: 5_000 });
-
-    expect(errorText).toContain("codex-acp deterministic failure: git repository required");
+    const errorText = dispatchResult.details.error ?? "";
     expect(errorText).toContain("[REDACTED:generic_secret]");
     expect(errorText).not.toContain(SECRET_VALUE);
+
+    // 거부된 런치는 잔여 job/summary/archive 를 남기지 않는다.
+    const jobsTool = buildCarrierJobsToolSpec();
+    const jobsResult = await jobsTool.execute({
+      action: "result",
+      format: "summary",
+      job_id: "carrier:codex-acp-stderr",
+    }, {
+      cwd,
+      toolCallId: "carrier-jobs-codex-acp-stderr",
+    }) as ToolExecutionResult<CarrierJobsResponse>;
+    expect(jobsResult.details.ok).toBe(false);
   });
 
   it("성공한 carrier_jobs 결과에는 stderr 진단을 싣지 않는다", async () => {

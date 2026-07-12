@@ -47,8 +47,7 @@ export type {
   ExecutorSessionManager,
   ExecutorSessionRequest,
 } from "./executor-session-manager.js";
-export type { AuthEnvResolver, ExecuteOptions, ExecResult } from "./executor.js";
-export type { ResumeFailureKind } from "./internal/session-errors.js";
+export type { AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady } from "./executor.js";
 export type {
   SelectableThinkingLevel,
 } from "./models.js";
@@ -85,8 +84,6 @@ export type {
 } from "./global-package-updater.js";
 export {
   cleanupExecutorSession,
-  detachExecutorMcpForReuse,
-  detachExecutorToolCallRouter,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
   specToMcpTool,
@@ -123,20 +120,7 @@ export {
   resolveBinary,
   resolvePathBinary,
 } from "@dotobokuri/core-process";
-export {
-  disconnect,
-  disconnectAll,
-  cleanIdle,
-  getSessionIdFor,
-  listActivePoolKeys,
-} from "./connections.js";
-export {
-  executeWithPool,
-  executeOneShot,
-} from "./executor.js";
-export {
-  classifyResumeFailure,
-} from "./internal/session-errors.js";
+export { executeOneShot } from "./executor.js";
 export {
   fetchLatestVersion,
   isVersionGreater,

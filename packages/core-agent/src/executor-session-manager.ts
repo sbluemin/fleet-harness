@@ -4,7 +4,6 @@ import type { McpServerConfig } from "@dotobokuri/core-unified-agent";
 
 import {
   cleanupExecutorSession,
-  detachExecutorMcpForReuse,
   installExecutorToolCallRouter,
   type McpRouterRuntime,
   registerExecutorSessionTools,
@@ -36,8 +35,6 @@ export interface CoreExecutorMcpSession {
   readonly token: string;
   readonly mcpServer: McpServerConfig;
   cleanup(): void;
-  detachForReuse(): void;
-  installForReuse(ctx: { readonly cwd: string; readonly sessionLabel?: string; readonly signal?: AbortSignal }): void;
 }
 
 export interface CoreExecutorMcpSessionRequest {
@@ -129,14 +126,6 @@ function createExecutorMcpSession(
     token,
     mcpServer: buildMcpServerConfig(request.serverName, url, token, toolTimeoutSeconds),
     cleanup: () => cleanupExecutorSession(runtime.runtime, token),
-    detachForReuse: () => detachExecutorMcpForReuse(runtime.runtime, token),
-    installForReuse: (ctx) => {
-      installExecutorToolCallRouter(runtime.runtime, token, {
-        cwd: ctx.cwd,
-        sessionLabel: ctx.sessionLabel,
-        signal: ctx.signal,
-      });
-    },
   }));
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildCarrierResultSystemReminder } from "../../src/jobs/dispatch.js";
-import type { CarrierJobSummary } from "../../src/jobs/types.js";
+import { formatLaunchResponseText, type CarrierJobSummary } from "../../src/jobs/types.js";
 
 const BASE_SUMMARY: CarrierJobSummary = {
   jobId: "sortie:1",
@@ -14,6 +14,12 @@ const BASE_SUMMARY: CarrierJobSummary = {
 };
 
 describe("buildCarrierResultSystemReminder", () => {
+  it("puts the fresh context handle in the launch response attention path", () => {
+    const text = formatLaunchResponseText({ job_id: "sortie:1", context_id: "ctx:one", accepted: true }, true);
+    expect(text).toContain("pass context_id as resume_context_id");
+    expect(text).toContain('"context_id":"ctx:one"');
+  });
+
   it("matches the previous single carrier completion push envelope", () => {
     expect(buildCarrierResultSystemReminder({
       jobId: "sortie:1",
@@ -46,6 +52,32 @@ describe("buildCarrierResultSystemReminder", () => {
     expect(reminder).toContain("kind=carrier");
     expect(reminder).toContain("status=error");
     expect(reminder).toContain("error=boom");
+  });
+
+  it("repeats context resumability in the completion push", () => {
+    const reminder = buildCarrierResultSystemReminder({
+      jobId: "sortie:1",
+      kind: "carrier",
+      status: "done",
+      summary: BASE_SUMMARY,
+      contextId: "ctx:one",
+      resumeAvailable: true,
+    });
+    expect(reminder).toContain("context_id=ctx:one");
+    expect(reminder).toContain("resume_available=yes");
+  });
+
+  it("marks a failed context as unavailable for resume", () => {
+    const reminder = buildCarrierResultSystemReminder({
+      jobId: "sortie:1",
+      kind: "carrier",
+      status: "error",
+      summary: { ...BASE_SUMMARY, status: "error" },
+      contextId: "ctx:failed",
+      resumeAvailable: false,
+    });
+    expect(reminder).toContain("context_id=ctx:failed");
+    expect(reminder).toContain("resume_available=no");
   });
 
   it("includes taskforce backend labels", () => {
