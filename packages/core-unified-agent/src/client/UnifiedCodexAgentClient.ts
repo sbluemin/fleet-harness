@@ -184,7 +184,13 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       });
     }
 
-    this.sessionId = connection.sessionId;
+    const sessionId = connection.sessionId;
+    if (!sessionId) {
+      await this.cleanupFailedConnection();
+      throw new Error('[codex] App Server 연결에서 유효한 세션 ID를 받지 못했습니다.');
+    }
+
+    this.sessionId = sessionId;
     this.sessionCwd = options.cwd;
     this.currentSystemPrompt = developerInstructions;
     this.pendingOverrides = {
@@ -198,6 +204,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     return {
       cli: 'codex',
       protocol: 'codex-app-server',
+      session: { sessionId },
     };
   }
 

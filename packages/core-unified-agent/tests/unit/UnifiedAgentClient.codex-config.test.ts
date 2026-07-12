@@ -21,22 +21,30 @@ const originalCodexUseAcp = process.env.CODEX_USE_ACP;
 const originalCodexConfig = process.env.CODEX_CONFIG;
 
 function createMockCodexConnection(): EventEmitter & Record<string, unknown> {
-  const emitter = new EventEmitter();
-  Object.assign(emitter, {
-    connect: mockCodexConnect,
+  const connection = new EventEmitter() as EventEmitter & Record<string, unknown>;
+  Object.assign(connection, {
+    connect: async (...args: unknown[]) => {
+      const result = await mockCodexConnect(...args);
+      connection.sessionId = result.thread.id;
+      return result;
+    },
     disconnect: mockCodexDisconnect,
     endSession: mockCodexEndSession,
     resetSession: mockCodexResetSession,
-    loadSession: mockCodexLoadSession,
+    loadSession: async (...args: unknown[]) => {
+      const result = await mockCodexLoadSession(...args);
+      connection.sessionId = result.thread.id;
+      return result;
+    },
     sendMessage: mockCodexSendMessage,
     cancelPrompt: mockCodexCancelPrompt,
     setPendingModel: mockSetPendingModel,
     setPendingEffort: mockSetPendingEffort,
     removeAllListeners: mockRemoveAllListeners,
     connectionState: 'ready',
-    sessionId: 'codex-thread-1',
+    sessionId: null,
   });
-  return emitter as EventEmitter & Record<string, unknown>;
+  return connection;
 }
 
 // ACP 경로용 mock 연결. instanceof AcpConnection이 true가 되도록 prototype을 상속시키고,
@@ -87,11 +95,11 @@ type CodexClient = InstanceType<typeof UnifiedCodexAgentClient>;
 // 특정 app-server config 스테이징 검증은 전송 선택과 분리하기 위해
 // 내부 connectAppServer 경로를 직접 구동한다.
 // (소스 동작은 변경하지 않는 테스트 전용 우회 — element access로 private 메서드 호출)
-async function connectAppServer(
+function connectAppServer(
   client: CodexClient,
   options: Parameters<CodexClient['connect']>[0],
-): Promise<void> {
-  await client['connectAppServer'](options);
+): ReturnType<CodexClient['connect']> {
+  return client['connectAppServer'](options);
 }
 
 // ACP 연결 생성자에 전달된 첫 호출 인자(env/args)를 추출한다.
@@ -135,10 +143,28 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('CODEX_USE_ACP 미설정 시 App Server로 연결한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await client.connect({ cwd: '/workspace', cli: 'codex' });
+    const result = await client.connect({ cwd: '/workspace', cli: 'codex' });
 
     expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
     expect(AcpConnection).not.toHaveBeenCalled();
+    expect(result.session).toEqual({ sessionId: 'codex-thread-1' });
+  });
+
+  it('App Server가 세션 ID 없이 연결되면 연결을 정리하고 실패한다', async () => {
+    mockCodexConnect.mockResolvedValue({ thread: { id: '' } });
+    const client = new UnifiedCodexAgentClient();
+
+    await expect(client.connect({ cwd: '/workspace', cli: 'codex' })).rejects.toThrow(
+      '[codex] App Server 연결에서 유효한 세션 ID를 받지 못했습니다.',
+    );
+
+    expect(mockCodexDisconnect).toHaveBeenCalledTimes(1);
+    expect(client.getConnectionInfo()).toEqual({
+      cli: null,
+      protocol: null,
+      sessionId: null,
+      state: 'disconnected',
+    });
   });
 
   it("options.env CODEX_USE_ACP='false'는 App Server로 연결한다", async () => {
@@ -415,7 +441,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('codex session resume은 thread/resume에 정책과 systemPrompt를 재전달한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await connectAppServer(client, {
+    const result = await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       sessionId: 'codex-thread-existing',
@@ -435,6 +461,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
       developerInstructions: '재개 지침',
       config: undefined,
     });
+    expect(result.session).toEqual({ sessionId: 'codex-thread-9' });
     expect(client.getCurrentSystemPrompt()).toBe('재개 지침');
   });
 
