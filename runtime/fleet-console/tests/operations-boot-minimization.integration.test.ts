@@ -6,7 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
-import { getState, hydrateOperations, setState } from "../core/client/src/store.js";
+import { focusOperation, getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
 const apiMocks = vi.hoisted(() => ({
@@ -157,6 +157,48 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().operations).toHaveProperty("initial");
     expect(getSnapshot().operations).toHaveProperty("launched");
   });
+
+  it("minimizes a second Theater's existing panels on first in-session view, surfacing only the selected panel", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+
+    // 부팅 응답에는 두 Theater의 기존 패널이 모두 담긴다.
+    await act(async () => {
+      operations.resolve([
+        operation("a1", 1, "theater-a"),
+        operation("b1", 1, "theater-b"),
+        operation("b2", 1, "theater-b"),
+      ]);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      theaters.resolve({ theaters: [theater(), theater("theater-b", "Theater B")] });
+      await Promise.resolve();
+    });
+
+    // 활성 Theater(A)는 부팅 최소화로 깨끗하게 열린다.
+    expect(getState().activeTheaterId).toBe("theater-a");
+    expect(getSnapshot().minimized).toEqual(["a1"]);
+
+    // 다른 Theater(B)의 패널을 선택 = Theater 전환. B는 이번 세션 최초 진입이므로 기존 패널을 최소화하되,
+    // 선택한 b1만 표면화되어 "하나씩" 노출된다. (수정 전에는 B의 모든 패널이 한꺼번에 노출됐다.)
+    await act(async () => {
+      focusOperation("b1");
+      await Promise.resolve();
+    });
+
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getSnapshot().minimized).toEqual(["b2"]);
+    expect(getSnapshot().operations).toHaveProperty("b1");
+    expect(getSnapshot().operations).toHaveProperty("b2");
+  });
 });
 
 async function navigateTo(pathname: string): Promise<void> {
@@ -175,10 +217,10 @@ function deferred<Value>() {
   return { promise, resolve };
 }
 
-function theater() {
+function theater(id = "theater-a", label = "Theater A") {
   return {
-    id: "theater-a",
-    label: "Theater A",
+    id,
+    label,
     createdAt: "2026-07-12T00:00:00.000Z",
     lastOpenedAt: "2026-07-12T00:00:00.000Z",
     hasWiki: false,
@@ -186,10 +228,10 @@ function theater() {
   };
 }
 
-function operation(id: string, createdAt = 1): OperationNode {
+function operation(id: string, createdAt = 1, theaterId = "theater-a"): OperationNode {
   return {
     id,
-    theaterId: "theater-a",
+    theaterId,
     type: "shell",
     pluginId: "terminal",
     title: id,

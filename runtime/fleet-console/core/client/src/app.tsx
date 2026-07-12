@@ -34,7 +34,7 @@ function isBlockingDialogOpen(): boolean {
 
 export function App() {
   const state = useConsoleState();
-  const bootPanelsMinimizedRef = useRef(false);
+  const minimizedTheatersRef = useRef<Set<string>>(new Set());
   const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
   const registry = usePluginRegistry();
@@ -43,9 +43,13 @@ export function App() {
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
 
-  const claimBootPanelMinimization = useCallback((): readonly string[] | null => {
-    if (bootPanelsMinimizedRef.current || bootOperationIdsRef.current === null) return null;
-    bootPanelsMinimizedRef.current = true;
+  // 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
+  // App boot의 활성 Theater뿐 아니라 이후 선택·전환으로 처음 진입하는 Theater도 깨끗하게 열려, 선택한 패널만 하나씩 표면화된다.
+  // 반환값은 전 Theater를 아우르는 초기 id 목록이고, 실제 최소화는 호출 측이 현재 Theater 패널로 좁힌다.
+  const claimBootPanelMinimization = useCallback((theaterId: string): readonly string[] | null => {
+    if (bootOperationIdsRef.current === null) return null;
+    if (minimizedTheatersRef.current.has(theaterId)) return null;
+    minimizedTheatersRef.current.add(theaterId);
     return bootOperationIdsRef.current;
   }, []);
 
