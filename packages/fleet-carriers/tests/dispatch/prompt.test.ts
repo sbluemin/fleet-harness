@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CarrierMetadata } from "../../src/index.js";
-import { formatRequestBlocksGuide, validateRequiredRequestBlocks } from "../../src/index.js";
+import { KIROV_METADATA, formatRequestBlocksGuide, validateRequiredRequestBlocks } from "../../src/index.js";
 
 const META: CarrierMetadata = {
   category: "operations",
@@ -42,6 +42,15 @@ describe("validateRequiredRequestBlocks", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain("(empty body)");
+  });
+
+  it("rejects a Kirov dispatch without its required plan_file", () => {
+    const result = validateRequiredRequestBlocks(KIROV_METADATA, "<goal>Plan the migration</goal>", "kirov");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.missing).toEqual(["plan_file"]);
+    expect(result.error).toContain("<plan_file> required:");
   });
 });
 

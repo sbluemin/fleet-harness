@@ -5,7 +5,7 @@
  * UnifiedAgent 빌더를 사용하는 외부 호출자는 동일한 기대 동작을 관찰해야 합니다.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   UnifiedAgent,
@@ -35,7 +35,7 @@ const CONTRACT_CASES: ContractCase[] = [
   },
   {
     cli: 'codex',
-    expectedProtocol: 'acp',
+    expectedProtocol: 'codex-app-server',
     model: 'gpt-5.6-sol',
     supportsResetSession: true,
   },
@@ -46,11 +46,31 @@ for (const contractCase of CONTRACT_CASES) {
 
   describe.skipIf(!installed)(`UnifiedAgent contract: ${contractCase.cli}`, () => {
     let client: IUnifiedAgentClient | null = null;
+    let originalCodexUseAcp: string | undefined;
+
+    beforeEach(() => {
+      if (contractCase.cli !== 'codex') return;
+      originalCodexUseAcp = process.env.CODEX_USE_ACP;
+      delete process.env.CODEX_USE_ACP;
+    });
 
     afterEach(async () => {
-      if (client) {
-        await client.disconnect();
-        client = null;
+      try {
+        if (client) {
+          try {
+            await client.disconnect();
+          } finally {
+            client = null;
+          }
+        }
+      } finally {
+        if (contractCase.cli === 'codex') {
+          if (originalCodexUseAcp === undefined) {
+            delete process.env.CODEX_USE_ACP;
+          } else {
+            process.env.CODEX_USE_ACP = originalCodexUseAcp;
+          }
+        }
       }
     });
 

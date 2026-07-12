@@ -5,7 +5,7 @@
 
 import { EventEmitter } from 'events';
 import type { ChildProcess } from 'child_process';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import {
   isCliInstalled,
   connectClient,
@@ -101,11 +101,28 @@ const CODEX_EFFORT_MATRIX = [
 
 describe.skipIf(!installed)('E2E: Codex official ACP bridge', () => {
   let client: IUnifiedAgentClient | null = null;
+  let originalCodexUseAcp: string | undefined;
+
+  beforeEach(() => {
+    originalCodexUseAcp = process.env.CODEX_USE_ACP;
+    process.env.CODEX_USE_ACP = 'true';
+  });
 
   afterEach(async () => {
-    if (client) {
-      await client.disconnect();
-      client = null;
+    try {
+      if (client) {
+        try {
+          await client.disconnect();
+        } finally {
+          client = null;
+        }
+      }
+    } finally {
+      if (originalCodexUseAcp === undefined) {
+        delete process.env.CODEX_USE_ACP;
+      } else {
+        process.env.CODEX_USE_ACP = originalCodexUseAcp;
+      }
     }
   });
 

@@ -58,7 +58,7 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
 export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettingsState {
   return {
     enableMetaphor: data.enableMetaphor ?? false,
-    codexLaunchMode: data.codexLaunchMode ?? "acp",
+    codexLaunchMode: data.codexLaunchMode ?? "app-server",
   };
 }
 

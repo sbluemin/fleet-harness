@@ -191,7 +191,7 @@ export class AcpConnection extends BaseConnection {
     workspace: string,
     sessionId?: string,
     mcpServers?: McpServer[],
-    systemPrompt?: string,
+    _systemPrompt?: string,
     strictMcp?: boolean,
     effort?: string,
   ): Promise<NewSessionResponse> {
@@ -209,7 +209,7 @@ export class AcpConnection extends BaseConnection {
           cwd: workspace,
           mcpServers: servers,
         };
-        const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
+        const meta = this.buildClaudeSessionMeta(strictMcp, effort);
         if (meta) {
           loadSessionParams._meta = meta;
         }
@@ -229,7 +229,7 @@ export class AcpConnection extends BaseConnection {
           mcpServers: servers,
         };
 
-        const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
+        const meta = this.buildClaudeSessionMeta(strictMcp, effort);
         if (meta) {
           newSessionParams._meta = meta;
         }
@@ -301,7 +301,7 @@ export class AcpConnection extends BaseConnection {
         ? { additionalDirectories: params.additionalDirectories }
         : {}),
     };
-    const meta = this.buildClaudeSessionMeta(undefined, undefined, effort);
+    const meta = this.buildClaudeSessionMeta(undefined, effort);
     if (meta) {
       loadSessionParams._meta = meta;
     }
@@ -385,22 +385,8 @@ export class AcpConnection extends BaseConnection {
     return this.cliType === 'claude';
   }
 
-  /** Claude bridge만 native system prompt append를 지원하므로 이 경로만 사용합니다. */
-  private getClaudeSystemPrompt(systemPrompt?: string): string | null {
-    if (!this.isClaudeBackend()) {
-      return null;
-    }
-
-    if (!systemPrompt) {
-      return null;
-    }
-
-    return systemPrompt;
-  }
-
-  /** Claude bridge 전용 `_meta`를 조립합니다. */
+  /** Claude bridge 전용 strict-MCP와 effort `_meta`를 조립합니다. */
   private buildClaudeSessionMeta(
-    systemPrompt?: string,
     strictMcp?: boolean,
     effort?: string,
   ): Record<string, unknown> | undefined {
@@ -408,21 +394,14 @@ export class AcpConnection extends BaseConnection {
       return undefined;
     }
 
-    const claudeSystemPrompt = this.getClaudeSystemPrompt(systemPrompt);
     const shouldInjectStrictMcp = strictMcp;
     const shouldInjectEffort = !!effort;
 
-    if (!claudeSystemPrompt && !shouldInjectStrictMcp && !shouldInjectEffort) {
+    if (!shouldInjectStrictMcp && !shouldInjectEffort) {
       return undefined;
     }
 
     const meta: Record<string, unknown> = {};
-    if (claudeSystemPrompt) {
-      meta.systemPrompt = {
-        append: claudeSystemPrompt,
-      };
-    }
-
     if (shouldInjectStrictMcp || shouldInjectEffort) {
       const claudeOptions: Record<string, unknown> = {};
       if (shouldInjectStrictMcp) {

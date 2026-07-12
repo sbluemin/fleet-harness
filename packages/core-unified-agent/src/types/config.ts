@@ -134,10 +134,8 @@ export interface UnifiedClientOptions extends ConnectionOptions {
   /** 재개할 기존 세션 ID */
   sessionId?: string;
   /** 세션 초기 시스템 지침.
-   * Claude에서는 native system prompt에 append되며,
-   * Codex에서는 app-server의 developerInstructions로 전달되고,
-   * OpenCode Go에서는 세션의 최초 user turn 앞에 선행 text block으로 주입됨
-   * (best-effort initial session instructions). */
+   * Claude와 Codex는 fresh 세션의 첫 user turn 앞에 한 번만 선행 text block으로 주입하며,
+   * resetSession()은 이를 다시 대기시킵니다. 기존 세션의 connect(sessionId) 및 loadSession()에는 주입하지 않습니다. */
   systemPrompt?: string;
   /** 에이전트에 연결할 MCP 서버 목록 (선택) */
   mcpServers?: McpServerConfig[];
