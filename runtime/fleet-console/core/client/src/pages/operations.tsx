@@ -25,7 +25,7 @@ const closingOperationIds = new Set<string>();
 
 interface OperationsProps {
   readonly state: ConsoleState;
-  readonly claimBootPanelMinimization: () => readonly string[] | null;
+  readonly claimBootPanelMinimization: (theaterId: string) => readonly string[] | null;
 }
 
 export function Operations({ state, claimBootPanelMinimization }: OperationsProps) {
@@ -109,11 +109,15 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
-    // App 최초 요청에서 받은 id만 한 번 최소화한다. 이후 생성·Theater 전환·route 재진입은 초기화에 포함하지 않는다.
+    // 각 Theater를 세션 중 처음 열 때 한 번, 그 Theater의 부팅 시점 기존 패널을 최소화한다.
+    // (App boot 활성 Theater뿐 아니라 선택·전환으로 처음 진입하는 Theater도 포함 — Map을 항상 깨끗하게 연다.)
+    // 이후 생성·route 재진입·같은 세션 재진입은 대상에서 빠져, 사용자의 restore를 보존한다.
     if (!state.activeTheaterId) return;
-    const bootOperationIds = claimBootPanelMinimization();
+    const bootOperationIds = claimBootPanelMinimization(state.activeTheaterId);
     if (bootOperationIds === null) return;
-    minimizeOperations(bootOperationIds);
+    // 선택으로 진입한 경우(pendingOperationFocus) 그 패널은 최소화에서 제외해 곧바로 표면화한다 — 선택한 패널만 하나씩 노출.
+    const focusId = stateRef.current.pendingOperationFocus;
+    minimizeOperations(focusId ? bootOperationIds.filter((id) => id !== focusId) : bootOperationIds);
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated]);
 
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
