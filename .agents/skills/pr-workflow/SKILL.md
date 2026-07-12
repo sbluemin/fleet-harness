@@ -22,6 +22,7 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 - `<draft>` — `true` | `false`. Optional. Default `false`.
 - `<scope_hint>` — Optional. Free-form note restricting review-fix scope (e.g., "only Codex P1/P2"). If omitted, default to "every actionable, unresolved review comment on the PR".
 - `<review_poll_interval>` — Optional. Poll cadence for the Phase 3 background wait loop (e.g., `30s`). If omitted, default ~`30s` for the background poll (or `1m` for the cron fallback).
+- `<review_activation_timeout>` — Optional. Bounded wait after an explicit `@codex` review request for Codex to acknowledge it. Default `60s`. If no Codex reaction, review, or comment appears, treat automated review as unavailable and proceed to merge.
 - `<repo>` — `owner/name` slug. Optional. If omitted, infer from `gh repo view --json nameWithOwner` (must be `sbluemin/fleet-harness`).
 - `<merge_method>` — `squash` | `merge` | `rebase`. Optional. Default `squash` (the repo convention — squash-merge titles read `type(scope): summary (#N)`). Used by Phase 6 auto-merge.
 - `<auto_merge>` — `true` | `false`. Optional. Default `true`. When `true`, Phase 6 merges the PR after approval (rebasing the head onto `<base>` and force-pushing first when it conflicts). When `false`, stop at approval and report the PR as approved-but-unmerged (the legacy behavior).
@@ -97,8 +98,13 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
 The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **waits with a deterministic background poll that wakes you only when something real changes** — never ask the Admiral to run `/loop` by hand, and prefer this over a fixed-interval cron that re-invokes the model every tick whether or not anything happened. A cheap `gh` loop runs in the background (no model tokens) and re-invokes you on the first genuine signal.
 
 0. **Ensure PR metadata and the right branch.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit.
-1. **Freeze the wait baseline.** Record what is *already* on the PR so the poll only fires on something new: the latest pushed head commit timestamp `HEAD_TS` (`gh api repos/<repo>/commits/<head_sha> -q .commit.committer.date`, or the time of the Phase 2 / Phase 5 push) and the current review count `BASE_REVIEWS` (`gh pr view <pr_number> --repo <repo> --json reviews -q '.reviews | length'`).
-2. **Launch the background poll (signal-driven, not interval-driven).** Start one `run_in_background` Bash loop that polls with `gh` every ~30s (or `<review_poll_interval>`), capped at ~40 min, and **exits — re-invoking you — only on a genuine signal**, printing which:
+1. **Activate the initial review before waiting.** Apply this gate once per PR, before the first long-running poll. Skip it after Codex has already reacted, reviewed, commented, or been explicitly requested.
+   1. Check PR-body reactions, reviews, and Codex top-level comments. Any `chatgpt-codex-connector[bot]` reaction, review, or comment means the reviewer is active; continue to step 2.
+   2. If no Codex signal exists, post `@codex Please review this PR.` as a PR comment and record its comment ID, URL, and creation time. Do not start the 40-minute poll yet.
+   3. For `<review_activation_timeout>` (default 60 seconds), check every ~10 seconds for a Codex reaction on either the PR body or request comment, a Codex review, or a Codex top-level comment newer than the request. Any one is activation; continue to step 2. An `eyes` reaction means active, not approved.
+   4. If the bounded window expires, refresh all four surfaces once to avoid a boundary race. If no signal exists, set `REVIEW_BYPASS_REASON=codex_activation_timeout` and go directly to Phase 6. This fallback is not approval and never bypasses branch protection or required checks.
+2. **Freeze the wait baseline.** Record what is *already* on the PR so the poll only fires on something new: the latest pushed head commit timestamp `HEAD_TS` (`gh api repos/<repo>/commits/<head_sha> -q .commit.committer.date`, or the time of the Phase 2 / Phase 5 push) and the current review count `BASE_REVIEWS` (`gh pr view <pr_number> --repo <repo> --json reviews -q '.reviews | length'`).
+3. **Launch the background poll (signal-driven, not interval-driven).** Start one `run_in_background` Bash loop that polls with `gh` every ~30s (or `<review_poll_interval>`), capped at ~40 min, and **exits — re-invoking you — only on a genuine signal**, printing which:
    - **approval** — a `chatgpt-codex-connector[bot]` `+1` reaction on the PR body with `created_at > HEAD_TS` (fresh, not a stale carry-over);
    - **new review** — the review count exceeds `BASE_REVIEWS` (a new review pass carries its inline comments);
    - **new top-level** — a Codex top-level comment with `created_at > HEAD_TS`.
@@ -121,10 +127,10 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
      echo "SIGNAL=TIMEOUT"; exit 0
      ```
      Do **not** wrap the loop in `nohup … &` — that detaches it from the harness, so its exit never re-invokes you. The `run_in_background` call itself is the only backgrounding needed.
-3. **On wake, read the full state and route.** When the poll exits, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; PR-body reactions `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`. Then:
+4. **On wake, read the full state and route.** When the poll exits, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; PR-body reactions `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`. Then:
    - **Approval = merge trigger.** A fresh `chatgpt-codex-connector[bot]` `+1` on the PR body (`created_at` newer than both the latest pushed head commit and the most recent `@codex` re-review comment) **and** no new actionable comments → approval is final, go to Phase 6 (auto-merge). A `+1` predating the latest push is stale (GitHub keeps the old reaction) — ignore it. A bare `eyes` reaction means the review is still in progress (pending), not approval.
    - **New actionable feedback** → Phase 4.
-   - **Spurious wake or timeout** (only `eyes`, a re-anchored old comment, or nothing genuinely new) → relaunch the background poll (step 2) and keep waiting.
+   - **Spurious wake or timeout** (only `eyes`, a re-anchored old comment, or nothing genuinely new) → relaunch the background poll (step 3) and keep waiting.
 
 **Fallback — cron.** If the harness cannot re-invoke you when a background task completes, fall back to a recurring `CronCreate` (`*/1 * * * *`, `recurring: true`, prompt re-entering Phase 3 with `<pr_number>`/`<repo>`), armed exactly once; the same baseline, freshness, and re-anchor rules apply on each tick. Stop it with `CronDelete` at Phase 6 (instead of `TaskStop`).
 
@@ -160,9 +166,9 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 
 ### Phase 6 — Auto-merge
 
-Reached only after Phase 3 confirms a final approval (a fresh Codex `+1` with no open actionable comments). When `<auto_merge>` is `false`, skip this phase: stop the Phase 3 wait poll (`TaskStop` the background task, or `CronDelete` the cron-fallback job) and go straight to Phase 7, reporting the PR as approved-but-unmerged.
+Reached after Phase 3 confirms either final approval (a fresh Codex `+1` with no open actionable comments) or `REVIEW_BYPASS_REASON=codex_activation_timeout` from the bounded explicit activation gate. The timeout fallback authorizes normal merge checks only; it never bypasses branch protection or required checks. When `<auto_merge>` is `false`, skip this phase and report the PR as approved-but-unmerged or review-unavailable-and-unmerged.
 
-1. **Stop the wait loop.** Stop the Phase 3 background poll — `TaskStop` its task id (or `CronDelete` the cron-fallback job). Approval is final, no more review polling.
+1. **Stop the wait loop.** If Phase 3 started a background poll, stop it with `TaskStop` (or `CronDelete` for the cron fallback). Under `codex_activation_timeout`, no long-running poll exists; continue directly. No more review polling occurs after this point.
 2. **Check mergeability.** `gh pr view <pr_number> --repo <repo> --json mergeable,mergeStateStatus,baseRefName,headRefName`.
    - `mergeable: MERGEABLE` with `mergeStateStatus` `CLEAN` / `UNSTABLE` / `BEHIND` (no conflict) → go to step 4 (merge directly).
    - `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY` → the head conflicts with `<base>`; go to step 3 (rebase path).
@@ -189,7 +195,7 @@ Then report in Korean:
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
 - Files changed, commit SHA(s), push target(s).
 - Validation commands and pass/fail status; note any check not run.
-- The approval signal observed (Codex `+1` on the PR body) and the `@codex` follow-up comment URL(s).
+- The approval signal observed (Codex `+1` on the PR body), or the explicit activation request URL plus `codex_activation_timeout`; include every `@codex` follow-up comment URL.
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The Phase 3 wait poll was stopped in Phase 6.
 - **Cleanup outcome**: worktree removed / tmux session killed / local branch force-deleted, or skipped (with reason).
 
