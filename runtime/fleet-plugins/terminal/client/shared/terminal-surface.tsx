@@ -10,6 +10,7 @@ import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-prefs-store.js";
+import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
 export interface TerminalSurfaceProps {
@@ -119,6 +120,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
+  const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
   // 줌 보정 effect에서 fit()을 재호출하기 위해 마운트 effect의 지역 FitAddon을 ref로 끌어올린다.
   const fitAddonRef = useRef<FitAddon | null>(null);
   // 실제 보정에 반영된 줌(=settle된 zoom). zoom prop은 보간 중 매 프레임 바뀌므로 디바운스로 이 값에 수렴시킨다.
@@ -174,14 +176,32 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       imeEventTarget.addEventListener("focusout", imeHandler.onCompositionCancel);
       terminal.attachCustomKeyEventHandler(imeHandler.handleKeyEvent);
 
-      const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false);
+      const scrollFollow = createTerminalScrollFollow({
+        getViewport: () => terminal.buffer.active,
+        scrollToBottom: () => scrollTerminalToBottom(terminal),
+        scrollToLine: (line) => scrollTerminalToLine(terminal, line),
+        requestFrame: (callback) => window.requestAnimationFrame(callback),
+        cancelFrame: (handle) => window.cancelAnimationFrame(handle),
+      });
+      scrollFollowRef.current = scrollFollow;
+      const scrollGesture = createTerminalScrollGestureTracker(
+        container,
+        imeEventTarget,
+        scrollFollow.recordUserViewportChange,
+      );
+      const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false, scrollFollow.restoreAfterOutputParsing);
       outputSchedulerRef.current = outputScheduler;
       const connection = createTerminalConnection({
         operationId,
         ticketPath,
         wsPath,
         terminal: {
-          onData: (listener) => terminal.onData(listener),
+          onData: (listener) => terminal.onData((data) => {
+            // xterm's normal scrollOnUserInput behavior resumes follow for every local input,
+            // not only Enter. Keep the explicit follow state in lockstep with it.
+            scrollFollow.resumeFollowing();
+            listener(data);
+          }),
           write: outputScheduler.write,
         },
         onExit: () => onExitRef.current?.(),
@@ -191,13 +211,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       });
       connectionRef.current = connection;
 
-      const fitAndResize = () => {
-        fitAddon.fit();
-        connection.resize(terminal.cols, terminal.rows);
-      };
       const fitResizeAndRefresh = () => {
-        fitAndResize();
-        terminal.refresh(0, terminal.rows - 1);
+        scrollFollow.preserveAfterGeometryChange(() => {
+          fitAddon.fit();
+          connection.resize(terminal.cols, terminal.rows);
+          terminal.refresh(0, terminal.rows - 1);
+        });
       };
       const scheduleFitAndResize = () => {
         if (resizeDebounce) clearTimeout(resizeDebounce);
@@ -231,10 +250,13 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         imeEventTarget.removeEventListener("focusout", imeHandler.onCompositionCancel);
         imeHandler.dispose();
         connection.dispose();
+        scrollGesture.dispose();
         outputScheduler.dispose();
+        scrollFollow.dispose();
         terminalRef.current = null;
         connectionRef.current = null;
         outputSchedulerRef.current = null;
+        scrollFollowRef.current = null;
         fitAddonRef.current = null;
         // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
         // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
@@ -262,15 +284,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   }, [operationId, ticketPath, wsPath]);
 
   // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 주고
-  // 스크롤백을 최신 출력으로 복귀시킨다. 비활성 전환에서는 scheduler 속도만 낮춘다.
+  // 기존 contract대로 bottom following을 명시적으로 재개한다. 비활성 전환에서는 scheduler 속도만 낮춘다.
   useEffect(() => {
     outputSchedulerRef.current?.setActive(active !== false);
     if (!active) return;
-    focusAndScrollTerminalToBottom(terminalRef.current);
-    const frame = window.requestAnimationFrame(() => {
-      if (activeRef.current === true) scrollTerminalToBottom(terminalRef.current);
-    });
-    return () => window.cancelAnimationFrame(frame);
+    terminalRef.current?.focus();
+    scrollFollowRef.current?.resumeFollowing();
   }, [active]);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
@@ -331,7 +350,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.fontFamily = terminalFontSettings.family;
-    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current);
+    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current, scrollFollowRef.current);
   }, [terminalFontSettings.family, mountedTerminalEpoch]);
 
   // 줌 settle 감지: zoom prop은 rAF 보간 중 매 프레임 바뀌므로, 마지막 변경 후 ZOOM_SETTLE_MS가 지나야
@@ -358,7 +377,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     // 바뀌면 xterm이 옵션 변경 핸들러(_handleOptionsChanged→_refreshCharAtlas→acquireTextureAtlas)에서 새
     // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
     // fit + refresh로 재배치/재도색한다.
-    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current);
+    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current, scrollFollowRef.current);
   }, [appliedZoom, terminalFontSettings.size, mountedTerminalEpoch]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
@@ -399,19 +418,95 @@ function terminalThemeFor(theme: "instrument" | "maritime" | "carbon"): ITheme {
   return INSTRUMENT_TERMINAL_THEME;
 }
 
-function focusAndScrollTerminalToBottom(terminal: XtermTerminal | null): void {
-  if (!terminal) return;
-  terminal.focus();
-  scrollTerminalToBottom(terminal);
-}
-
 function scrollTerminalToBottom(terminal: XtermTerminal | null): void {
   if (!terminal) return;
   terminal.scrollToBottom();
   if (terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
 }
 
-function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean): TerminalOutputScheduler {
+function scrollTerminalToLine(terminal: XtermTerminal | null, line: number): void {
+  if (!terminal) return;
+  terminal.scrollToLine(line);
+  if (terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
+}
+
+interface TerminalScrollGestureTracker {
+  readonly dispose: () => void;
+}
+
+function createTerminalScrollGestureTracker(
+  container: HTMLElement,
+  keyboardTarget: HTMLElement,
+  recordUserViewportChange: () => void,
+): TerminalScrollGestureTracker {
+  const viewport = container.querySelector<HTMLElement>(".xterm-viewport");
+  if (!viewport) return { dispose: () => undefined };
+
+  let pointerScrolling = false;
+  let gestureFrame: number | null = null;
+
+  const scheduleUserViewportRecord = () => {
+    if (gestureFrame !== null) window.cancelAnimationFrame(gestureFrame);
+    // xterm synchronizes its DOM viewport on the frame after key/wheel handling. Read the public
+    // buffer position after that synchronization instead of trying to correlate onScroll timing.
+    gestureFrame = window.requestAnimationFrame(() => {
+      gestureFrame = window.requestAnimationFrame(() => {
+        gestureFrame = null;
+        recordUserViewportChange();
+      });
+    });
+  };
+  const onWheel = () => scheduleUserViewportRecord();
+  const onTouchStart = () => { pointerScrolling = true; };
+  const onPointerDown = (event: PointerEvent) => {
+    // Native scrollbar drags target the viewport itself; touch panning may target terminal content.
+    pointerScrolling = event.pointerType === "touch" || event.target === viewport;
+  };
+  const onViewportScroll = () => {
+    if (pointerScrolling) scheduleUserViewportRecord();
+  };
+  const onPointerEnd = () => {
+    const shouldRecord = pointerScrolling;
+    pointerScrolling = false;
+    if (shouldRecord) scheduleUserViewportRecord();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (isTerminalScrollbackKey(event)) scheduleUserViewportRecord();
+  };
+
+  // Capture the gesture boundary before xterm's viewport handlers; the tracker records the
+  // resulting public viewport after xterm has synchronized it, never from raw onScroll timing.
+  viewport.addEventListener("wheel", onWheel, { capture: true, passive: true });
+  viewport.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+  viewport.addEventListener("touchend", onPointerEnd);
+  viewport.addEventListener("touchcancel", onPointerEnd);
+  viewport.addEventListener("pointerdown", onPointerDown, true);
+  viewport.addEventListener("scroll", onViewportScroll);
+  window.addEventListener("pointerup", onPointerEnd);
+  window.addEventListener("pointercancel", onPointerEnd);
+  keyboardTarget.addEventListener("keydown", onKeyDown, true);
+
+  return {
+    dispose: () => {
+      viewport.removeEventListener("wheel", onWheel, true);
+      viewport.removeEventListener("touchstart", onTouchStart, true);
+      viewport.removeEventListener("touchend", onPointerEnd);
+      viewport.removeEventListener("touchcancel", onPointerEnd);
+      viewport.removeEventListener("pointerdown", onPointerDown, true);
+      viewport.removeEventListener("scroll", onViewportScroll);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerEnd);
+      keyboardTarget.removeEventListener("keydown", onKeyDown, true);
+      if (gestureFrame !== null) window.cancelAnimationFrame(gestureFrame);
+    },
+  };
+}
+
+function isTerminalScrollbackKey(event: KeyboardEvent): boolean {
+  return event.key === "PageUp" || event.key === "PageDown" || event.key === "Home" || event.key === "End";
+}
+
+function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean, afterOutputParsing: () => void): TerminalOutputScheduler {
   let active = initiallyActive;
   let disposed = false;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -430,7 +525,9 @@ function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive:
     const output = concatTerminalOutput(pending, pendingBytes);
     pending = [];
     pendingBytes = 0;
-    terminal.write(output);
+    terminal.write(output, () => {
+      if (!disposed) afterOutputParsing();
+    });
   };
 
   const scheduleFlush = () => {
@@ -480,8 +577,20 @@ function concatTerminalOutput(chunks: readonly Uint8Array[], totalBytes: number)
   return output;
 }
 
-function fitResizeAndRefreshTerminal(terminal: XtermTerminal, fitAddon: FitAddon | null, connection: TerminalConnection | null): void {
-  fitAddon?.fit();
-  connection?.resize(terminal.cols, terminal.rows);
-  terminal.refresh(0, terminal.rows - 1);
+function fitResizeAndRefreshTerminal(
+  terminal: XtermTerminal,
+  fitAddon: FitAddon | null,
+  connection: TerminalConnection | null,
+  scrollFollow: TerminalScrollFollowController | null,
+): void {
+  const fitResizeAndRefresh = () => {
+    fitAddon?.fit();
+    connection?.resize(terminal.cols, terminal.rows);
+    terminal.refresh(0, terminal.rows - 1);
+  };
+  if (scrollFollow) {
+    scrollFollow.preserveAfterGeometryChange(fitResizeAndRefresh);
+    return;
+  }
+  fitResizeAndRefresh();
 }
