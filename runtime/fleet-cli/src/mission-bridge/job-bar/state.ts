@@ -8,7 +8,6 @@ import {
   getActiveBackgroundJobCount,
   getRegisteredOrder,
 } from "@dotobokuri/fleet-carriers";
-import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/core-agent";
 
 import {
   ANIM_INTERVAL_MS,
@@ -197,7 +196,8 @@ function makeCols(clis?: readonly string[]): AgentCol[] {
     blocks: [],
     cli,
     scroll: 0,
-    sessionId: getSessionIdFor(cli),
+    // Session IDs are event-driven only; a fresh column has none until track:finalized reports one.
+    sessionId: undefined,
     status: "wait" as const,
     text: "",
     thinking: "",
@@ -240,18 +240,15 @@ function syncColsWithRegisteredOrder(): void {
 
   state.cols = orderedIds.map((cli) => {
     const col = existing.get(cli);
-    const sessionId = getSessionIdFor(cli);
-    if (col) {
-      col.sessionId = sessionId ?? col.sessionId;
-      return col;
-    }
+    // Preserve an existing column's event-fed sessionId; a new column starts with none.
+    if (col) return col;
 
     return {
       blocks: [],
       cli,
       error: undefined,
       scroll: 0,
-      sessionId,
+      sessionId: undefined,
       status: "wait" as const,
       text: "",
       thinking: "",
@@ -273,7 +270,7 @@ function makeFooterCols(): AgentCol[] {
       cli,
       error: undefined,
       scroll: 0,
-      sessionId: getSessionIdFor(cli),
+      sessionId: undefined,
       status: "wait" as const,
       text: "",
       thinking: "",
@@ -383,8 +380,8 @@ function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:re
   };
   state.panelJobs.set(job.jobId, job);
   for (const track of job.tracks) {
-    const run = ensureRun(canonicalRunKey(track), track.displayCli, "wait");
-    run.sessionId = getSessionIdFor(track.displayCli) ?? run.sessionId;
+    ensureRun(canonicalRunKey(track), track.displayCli, "wait");
+    // The run's sessionId stays empty until its track:finalized event carries one.
     syncCarrierActivityStatus(track.displayCli);
   }
   state.streaming = true;
@@ -589,7 +586,7 @@ function syncCarrierActivityStatus(carrierId: string): void {
     .flatMap((job) => job.tracks)
     .filter((track) => track.displayCli === carrierId);
   const status = resolveAggregateCarrierStatus(carrierTracks);
-  const sessionId = getSessionIdFor(carrierId) ?? col.sessionId;
+  const sessionId = col.sessionId;
   Object.assign(col, {
     blocks: [],
     error: status === "err" ? resolveAggregateCarrierError(carrierTracks) : undefined,
@@ -714,10 +711,6 @@ function toReadonlyPanelJob(job: MutablePanelJob): PanelJob {
     status: job.status,
     tracks: job.tracks.map((track) => ({ ...track })),
   };
-}
-
-function getSessionIdFor(carrierId: string): string | undefined {
-  return getAgentSessionIdFor(carrierId);
 }
 
 function getJobBarStateBindings(): JobBarStateBindings {

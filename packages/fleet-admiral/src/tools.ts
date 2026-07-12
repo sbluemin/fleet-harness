@@ -1,5 +1,4 @@
 import {
-  buildCarrierDispatchToolSpec,
   buildCarrierJobsToolSpec,
   type CarrierRuntime,
   type CarrierToolSpecDeps,
@@ -13,7 +12,9 @@ export function registerAgentToolDefaults(
   carrierRuntime: CarrierRuntime,
   deps: CarrierToolSpecDeps,
 ): void {
-  registry.registerAgentTool(buildCarrierDispatchToolSpec(carrierRuntime.registry, deps));
+  // Build carrier_dispatch through the runtime so the tool owns this runtime's
+  // dispatch-context registry, admission gate, and in-flight tracker.
+  registry.registerAgentTool(carrierRuntime.buildDispatchToolSpec(deps));
   registry.registerAgentTool(buildCarrierJobsToolSpec());
 }
 

@@ -554,6 +554,61 @@ describe("job bar renderer", () => {
 
     expect(sections.map(desiredHeight)).toEqual([1, 2]);
   });
+
+  it("populates run session ids only from track:finalized events for single and Task Force runs", () => {
+    const state = createTestJobBarState();
+
+    state.handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "carrier:sess",
+      kind: "carrier",
+      ownerCarrierId: "genesis",
+      label: "Single dispatch",
+      startedAt: 1000,
+      tracks: [{
+        displayCli: "genesis",
+        displayName: "Genesis",
+        kind: "carrier",
+        runId: "run:sess",
+        streamKey: "genesis",
+        trackId: "genesis",
+      }],
+    });
+    // No provider/registry lookup seeds a session id before the finalized event arrives.
+    expect([...state.getPanelRuns().values()].some((run) => run.sessionId !== undefined)).toBe(false);
+
+    state.handleCarrierJobStreamEvent({
+      type: "track:finalized",
+      jobId: "carrier:sess",
+      trackId: "genesis",
+      status: "done",
+      sessionId: "single-session",
+    });
+    expect([...state.getPanelRuns().values()].some((run) => run.sessionId === "single-session")).toBe(true);
+
+    state.handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "taskforce:sess",
+      kind: "taskforce",
+      ownerCarrierId: "ohio",
+      label: "Coordinate backends",
+      startedAt: 2000,
+      tracks: [
+        { displayCli: "claude", displayName: "claude", effort: "medium", kind: "backend", model: firstModel("claude"), runId: "taskforce:sess:claude", streamKey: "claude", trackId: "claude" },
+        { displayCli: "codex", displayName: "codex", effort: "high", kind: "backend", model: firstModel("codex"), runId: "taskforce:sess:codex", streamKey: "codex", trackId: "codex" },
+      ],
+    });
+    state.handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "taskforce:sess", trackId: "claude", status: "done", sessionId: "claude-session" });
+    state.handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "taskforce:sess", trackId: "codex", status: "done", sessionId: "codex-session" });
+
+    const runs = state.getPanelRuns();
+    const claudeRun = [...runs.values()].find((run) => run.sessionId === "claude-session");
+    const codexRun = [...runs.values()].find((run) => run.sessionId === "codex-session");
+    // Each backend keeps its own event-fed session id, with no cross-wiring.
+    expect(claudeRun).toBeDefined();
+    expect(codexRun).toBeDefined();
+    expect(claudeRun).not.toBe(codexRun);
+  });
 });
 
 let currentJobBarState: JobBarState | undefined;
