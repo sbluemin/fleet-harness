@@ -84,8 +84,8 @@ const { AcpConnection } = await import('../../src/connection/AcpConnection.js');
 
 type CodexClient = InstanceType<typeof UnifiedCodexAgentClient>;
 
-// 공개 connect()는 CODEX_USE_ACP 기본값(true)으로 항상 ACP 경로를 타므로,
-// 레거시 app-server config 스테이징 검증은 내부 connectAppServer 경로를 직접 구동한다.
+// 특정 app-server config 스테이징 검증은 전송 선택과 분리하기 위해
+// 내부 connectAppServer 경로를 직접 구동한다.
 // (소스 동작은 변경하지 않는 테스트 전용 우회 — element access로 private 메서드 호출)
 async function connectAppServer(
   client: CodexClient,
@@ -132,13 +132,13 @@ describe('UnifiedCodexAgentClient config staging', () => {
     restoreEnvironmentVariable('CODEX_CONFIG', originalCodexConfig);
   });
 
-  it('CODEX_USE_ACP 미설정 시 ACP로 연결한다', async () => {
+  it('CODEX_USE_ACP 미설정 시 App Server로 연결한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
     await client.connect({ cwd: '/workspace', cli: 'codex' });
 
-    expect(AcpConnection).toHaveBeenCalledTimes(1);
-    expect(CodexAppServerConnection).not.toHaveBeenCalled();
+    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
+    expect(AcpConnection).not.toHaveBeenCalled();
   });
 
   it("options.env CODEX_USE_ACP='false'는 App Server로 연결한다", async () => {
@@ -180,7 +180,36 @@ describe('UnifiedCodexAgentClient config staging', () => {
     expect(CodexAppServerConnection).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['false', false],
+    ['0', false],
+    ['true', true],
+    ['yes', true],
+  ] as const)('process.env CODEX_USE_ACP=%s 선택을 적용한다', async (value, usesAcp) => {
+    process.env.CODEX_USE_ACP = value;
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'codex' });
+
+    expect(AcpConnection).toHaveBeenCalledTimes(usesAcp ? 1 : 0);
+    expect(CodexAppServerConnection).toHaveBeenCalledTimes(usesAcp ? 0 : 1);
+  });
+
   it('options.env가 process.env CODEX_USE_ACP보다 우선한다', async () => {
+    process.env.CODEX_USE_ACP = 'true';
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      env: { CODEX_USE_ACP: 'false' },
+    });
+
+    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
+    expect(AcpConnection).not.toHaveBeenCalled();
+  });
+
+  it('options.env ACP 선택도 process.env App Server 선택보다 우선한다', async () => {
     process.env.CODEX_USE_ACP = 'false';
     const client = new UnifiedCodexAgentClient();
 
@@ -256,6 +285,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
       cwd: '/workspace',
       cli: 'codex',
       systemPrompt: '개발자 지침',
+      env: { CODEX_USE_ACP: 'true' },
     });
 
     const options = acpCtorOptions();
@@ -274,6 +304,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
       cli: 'codex',
       systemPrompt: '우선 지침',
       env: {
+        CODEX_USE_ACP: 'true',
         CODEX_CONFIG: JSON.stringify({ model: 'gpt-5.4', developer_instructions: '무시될 지침' }),
       },
     });
@@ -289,6 +320,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     await client.connect({
       cwd: '/workspace',
       cli: 'codex',
+      env: { CODEX_USE_ACP: 'true' },
     });
 
     const options = acpCtorOptions();

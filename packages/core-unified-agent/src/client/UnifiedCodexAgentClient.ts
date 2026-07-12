@@ -887,9 +887,9 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   }
 }
 
-// 호출별 환경변수로 Codex 전송 경로를 선택하며, 미설정은 ACP로 유지한다.
+// 호출별 환경변수로 Codex 전송 경로를 선택하며, 미설정은 App Server를 사용한다.
 function shouldUseCodexAcp(options: UnifiedClientOptions): boolean {
   const value = options.env?.CODEX_USE_ACP ?? process.env.CODEX_USE_ACP;
   const normalized = value?.trim().toLowerCase();
-  return normalized !== 'false' && normalized !== '0';
+  return normalized !== undefined && normalized !== 'false' && normalized !== '0';
 }

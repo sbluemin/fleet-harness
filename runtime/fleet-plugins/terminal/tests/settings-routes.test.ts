@@ -19,13 +19,22 @@ interface HarnessOptions {
 }
 
 describe("terminal settings routes", () => {
-  it("GET /plugins/terminal/settings returns the default ACP Codex launch mode", async () => {
+  it("GET /plugins/terminal/settings returns the default App Server Codex launch mode", async () => {
     const harness = createRouteHarness({
       data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "acp" } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "app-server" } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
+  });
+
+  it("GET /plugins/terminal/settings preserves the persisted ACP Codex launch mode", async () => {
+    const harness = createRouteHarness({
+      data: { version: 1, enableMetaphor: false, codexLaunchMode: "acp" },
+    });
+    await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "acp" } }]);
+    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: false, codexLaunchMode: "acp" });
   });
 
   it("PUT /plugins/terminal/settings updates enableMetaphor in global options", async () => {
@@ -46,6 +55,16 @@ describe("terminal settings routes", () => {
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "app-server" } }]);
     expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: false, codexLaunchMode: "app-server" });
+  });
+
+  it("PUT /plugins/terminal/settings updates the Codex launch mode to ACP in global options", async () => {
+    const harness = createRouteHarness({
+      body: { codexLaunchMode: "acp" },
+      data: { version: 1, enableMetaphor: false, codexLaunchMode: "app-server" },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, codexLaunchMode: "acp" } }]);
+    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: false, codexLaunchMode: "acp" });
   });
 
   it("PUT /plugins/terminal/settings rejects non-boolean payloads", async () => {
