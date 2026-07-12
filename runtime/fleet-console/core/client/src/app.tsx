@@ -75,8 +75,12 @@ export function App() {
         setState({ theaterError: error instanceof Error ? error.message : String(error) });
         resolveOnboardingOnBootstrap();
       });
+    const bootOperationsRequestStartedAt = Date.now();
     void fetchOperations(null, abort.signal).then((operations) => {
-      bootOperationIdsRef.current = operations.map((operation) => operation.id);
+      // 요청 시작 뒤 생성된 Operation은 응답에 포함돼도 새 launch로 취급한다.
+      bootOperationIdsRef.current = operations
+        .filter((operation) => operation.ts.createdAt < bootOperationsRequestStartedAt)
+        .map((operation) => operation.id);
       hydrateInitialOperations(operations);
     }).catch(() => {});
     void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});

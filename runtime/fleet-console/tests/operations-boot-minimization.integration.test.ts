@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getSnapshot, loadForTheater, minimizeOperation, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { getSnapshot, loadForTheater, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 import { getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -80,6 +80,7 @@ afterEach(() => {
   root = null;
   container = null;
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("Operations boot minimization", () => {
@@ -126,6 +127,7 @@ describe("Operations boot minimization", () => {
   it("does not minimize an Operation launched before the initial fetch resolves", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
+    vi.spyOn(Date, "now").mockReturnValue(100);
     apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
     apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
     const { App } = await import("../core/client/src/app.js");
@@ -142,17 +144,16 @@ describe("Operations boot minimization", () => {
     expect(getState().operationsHydrated).toBe(false);
 
     await act(async () => {
-      hydrateOperations([operation("launched")]);
+      hydrateOperations([operation("launched", 100)]);
     });
-    minimizeOperation("launched");
-    expect(getSnapshot().minimized).toEqual(["launched"]);
+    expect(getSnapshot().minimized).toEqual([]);
 
     await act(async () => {
-      operations.resolve([operation("initial")]);
+      operations.resolve([operation("initial", 99), operation("launched", 100)]);
       await Promise.resolve();
     });
 
-    expect(getSnapshot().minimized).toEqual(["launched", "initial"]);
+    expect(getSnapshot().minimized).toEqual(["initial"]);
     expect(getSnapshot().operations).toHaveProperty("initial");
     expect(getSnapshot().operations).toHaveProperty("launched");
   });
@@ -185,7 +186,7 @@ function theater() {
   };
 }
 
-function operation(id: string): OperationNode {
+function operation(id: string, createdAt = 1): OperationNode {
   return {
     id,
     theaterId: "theater-a",
@@ -194,6 +195,6 @@ function operation(id: string): OperationNode {
     title: id,
     payload: {},
     geometry: null,
-    ts: { createdAt: 1, updatedAt: 1 },
+    ts: { createdAt, updatedAt: createdAt },
   };
 }
