@@ -6,7 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
-import { getState, hydrateOperations } from "../core/client/src/store.js";
+import { getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
 const apiMocks = vi.hoisted(() => ({
@@ -67,6 +67,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState({}, "", "/operations");
   loadForTheater(null);
+  setState({ activeOperationId: null, activeTheaterId: null, groups: [], operations: [], operationsHydrated: false, theaters: [] });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -120,6 +121,39 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual([]);
     expect(getSnapshot().operations).toHaveProperty("initial");
     expect(getSnapshot().operations).toHaveProperty("later");
+  });
+
+  it("does not minimize an Operation launched before the initial fetch resolves", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+
+    await act(async () => {
+      theaters.resolve({ theaters: [theater()] });
+      await Promise.resolve();
+    });
+    expect(getState().activeTheaterId).toBe("theater-a");
+    expect(getState().operationsHydrated).toBe(false);
+
+    await act(async () => {
+      hydrateOperations([operation("launched")]);
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+
+    await act(async () => {
+      operations.resolve([operation("initial")]);
+      await Promise.resolve();
+    });
+
+    expect(getSnapshot().minimized).toEqual(["initial"]);
+    expect(getSnapshot().operations).toHaveProperty("initial");
+    expect(getSnapshot().operations).toHaveProperty("launched");
   });
 });
 

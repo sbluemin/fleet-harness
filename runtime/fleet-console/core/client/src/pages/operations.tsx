@@ -25,7 +25,7 @@ const closingOperationIds = new Set<string>();
 
 interface OperationsProps {
   readonly state: ConsoleState;
-  readonly claimBootPanelMinimization: () => boolean;
+  readonly claimBootPanelMinimization: () => readonly string[] | null;
 }
 
 export function Operations({ state, claimBootPanelMinimization }: OperationsProps) {
@@ -109,9 +109,11 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
-    // App 부트에서 한 번만 권한을 얻는다. 이후 생성·Theater 전환·route 재진입은 초기화에 포함하지 않는다.
-    if (!state.activeTheaterId || !claimBootPanelMinimization()) return;
-    minimizeOperations(operationOrder);
+    // App 최초 요청에서 받은 id만 한 번 최소화한다. 이후 생성·Theater 전환·route 재진입은 초기화에 포함하지 않는다.
+    if (!state.activeTheaterId) return;
+    const bootOperationIds = claimBootPanelMinimization();
+    if (bootOperationIds === null) return;
+    minimizeOperations(bootOperationIds);
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated]);
 
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.

@@ -17,7 +17,7 @@ import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
@@ -35,6 +35,7 @@ function isBlockingDialogOpen(): boolean {
 export function App() {
   const state = useConsoleState();
   const bootPanelsMinimizedRef = useRef(false);
+  const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
   const registry = usePluginRegistry();
   const globalSettings = useGlobalSettingsStore();
@@ -42,10 +43,10 @@ export function App() {
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
 
-  const claimBootPanelMinimization = useCallback((): boolean => {
-    if (bootPanelsMinimizedRef.current) return false;
+  const claimBootPanelMinimization = useCallback((): readonly string[] | null => {
+    if (bootPanelsMinimizedRef.current || bootOperationIdsRef.current === null) return null;
     bootPanelsMinimizedRef.current = true;
-    return true;
+    return bootOperationIdsRef.current;
   }, []);
 
   useEffect(() => {
@@ -74,7 +75,10 @@ export function App() {
         setState({ theaterError: error instanceof Error ? error.message : String(error) });
         resolveOnboardingOnBootstrap();
       });
-    void fetchOperations(null, abort.signal).then(hydrateOperations).catch(() => {});
+    void fetchOperations(null, abort.signal).then((operations) => {
+      bootOperationIdsRef.current = operations.map((operation) => operation.id);
+      hydrateInitialOperations(operations);
+    }).catch(() => {});
     void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});
     refreshObserverStatus();
     // cold-start 보정: 서버 백그라운드 refresh 완료를 기다렸다가 한 번 더 읽어 배지를 채운다.
