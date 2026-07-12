@@ -14,11 +14,13 @@ describe("Console Desktop theme mapping", () => {
     expect(desktopThemeSnapshot("instrument").titleBarOverlay).toMatchObject({
       color: oklchToHex(readToken(css, "base", "ink-deep")),
       symbolColor: oklchToHex(readToken(css, "base", "text-secondary")),
+      height: 43,
     });
     for (const theme of ["maritime", "carbon"] as const) {
       expect(desktopThemeSnapshot(theme).titleBarOverlay).toMatchObject({
         color: oklchToHex(readToken(css, theme, "ink-deep")),
         symbolColor: oklchToHex(readToken(css, theme, "ink-spectral")),
+        height: 43,
       });
     }
   });
