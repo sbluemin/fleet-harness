@@ -63,6 +63,7 @@ function renderChip(status: OperationActivity | undefined): HTMLSpanElement {
     onArmClose: () => {},
     onDisarmClose: () => {},
     onClose: () => {},
+    onMinimize: () => {},
     onFocus: () => {},
     onKeyboardMove: () => {},
     onPointerDragStart: () => {},

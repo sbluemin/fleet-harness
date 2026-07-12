@@ -28,6 +28,7 @@ interface SideBarChipProps {
   readonly onArmClose: (operationId: string) => void;
   readonly onDisarmClose: () => void;
   readonly onClose: (operationId: string) => void;
+  readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onKeyboardMove: (operationId: string, direction: -1 | 1) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => void;
@@ -47,6 +48,7 @@ export function OperationsSideBarChip({
   onArmClose,
   onDisarmClose,
   onClose,
+  onMinimize,
   onFocus,
   onKeyboardMove,
   onPointerDragStart,
@@ -161,6 +163,21 @@ export function OperationsSideBarChip({
         aria-label={chipStatusLabel(status)}
         title={chipStatusLabel(status)}
       />
+      {!preview && !minimized ? (
+        <button
+          type="button"
+          className="side-bar-chip-minimize"
+          onPointerDown={stopClosePointer}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMinimize(operation.id);
+          }}
+          aria-label={`Minimize operation ${title}`}
+          title="Minimize operation"
+        >
+          <SideBarMinimizeIcon />
+        </button>
+      ) : null}
       {preview ? null : (
         <button
           type="button"
@@ -203,6 +220,14 @@ function SideBarCloseIcon() {
         strokeWidth="1.35"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function SideBarMinimizeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 11.5h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
