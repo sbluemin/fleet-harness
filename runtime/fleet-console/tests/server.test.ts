@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-theme.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
@@ -79,6 +80,23 @@ afterEach(async () => {
 });
 
 describe("console terminal observability", () => {
+  it("requires the exact Console Origin for Desktop theme snapshot and SSE routes", async () => {
+    const fixture = await startFixture();
+    const origin = new URL(fixture.endpoint).origin;
+
+    for (const pathname of [DESKTOP_THEME_PATH, DESKTOP_THEME_EVENTS_PATH]) {
+      const exact = await fetch(new URL(pathname.slice(1), fixture.endpoint), { headers: { Origin: origin } });
+      expect(exact.status).toBe(200);
+      await exact.body?.cancel();
+
+      const missing = await fetch(new URL(pathname.slice(1), fixture.endpoint));
+      expect(missing.status).toBe(401);
+
+      const foreign = await fetch(new URL(pathname.slice(1), fixture.endpoint), { headers: { Origin: "http://127.0.0.1:9999" } });
+      expect(foreign.status).toBe(401);
+    }
+  });
+
   it("uses an OS-assigned port for local development despite a persisted static-port preference", async () => {
     const staticPort = 43_199;
     const fixture = await startFixture({

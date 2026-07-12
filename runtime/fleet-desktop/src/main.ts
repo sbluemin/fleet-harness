@@ -12,6 +12,7 @@ import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
+import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
@@ -70,11 +71,20 @@ async function boot(): Promise<void> {
   });
   let window: BrowserWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
+  const themeSynchronizer = process.platform === "win32"
+    ? createDesktopThemeSynchronizer({
+      applyTheme: (snapshot) => {
+        if (!window || window.isDestroyed()) return;
+        window.setTitleBarOverlay(snapshot.titleBarOverlay);
+      },
+    })
+    : null;
   let refreshNativeUpdateActions: (() => void) | null = null;
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
         window = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
+        window.once("closed", () => themeSynchronizer?.stop());
         lifecycle.attachWindow(window);
         policy = applyWindowPolicy(window.webContents, async (external) => shell.openExternal(external));
         await window.loadFile(desktopResources.entryPagePath);
@@ -82,6 +92,7 @@ async function boot(): Promise<void> {
       },
       dev: !isPackaged,
       handoffOrigin: (origin) => policy?.activateConsoleOrigin(origin),
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,

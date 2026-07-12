@@ -42,6 +42,14 @@ describe("desktop protocol", () => {
     expect(source).not.toMatch(/node:(?:fs|child_process)/);
     expect(source).not.toMatch(/(?:@dotobokuri\/|fleet-desktop|fleet-plugins)/);
     expect(source).not.toMatch(/\b(?:process|electron)\b/);
+    expect(source).not.toContain("DESKTOP_TITLE_BAR_OVERLAYS");
+    expect(source).not.toContain("desktopThemeSnapshot");
+  });
+
+  it("publishes no theme transport exports", () => {
+    const source = fs.readFileSync(path.join(CONSOLE_PACKAGE_ROOT, "desktop-protocol", "index.ts"), "utf8");
+
+    expect(source).not.toMatch(/^export (?:type |interface |const |function )(?:ConsoleThemeId|DesktopThemeId|DesktopTitleBarOverlay|DesktopThemeSnapshot|DESKTOP_THEME_PATH|DESKTOP_THEME_EVENTS_PATH|DESKTOP_THEME_EVENT|isDesktopThemeSnapshot)\b/gmu);
   });
 
   it("validates the marked resource root and exact owner protocol", () => {

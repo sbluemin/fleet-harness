@@ -14,7 +14,9 @@ import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResp
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
-import { createConsoleSettingsStore } from "./console-settings.js";
+import { createConsoleSettingsStore, type ConsoleThemeId } from "./console-settings.js";
+import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-theme.js";
+import { createDesktopThemeRouter } from "./desktop-theme-routes.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createPluginSettingsRouter } from "./plugin-settings-routes.js";
@@ -292,6 +294,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const operationSseSubscribers = new Set<http.ServerResponse>();
+  const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
   }) ?? null;
@@ -456,6 +459,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
+    onThemeChanged: broadcastDesktopThemeChanged,
+  });
+  const desktopThemeRouter = createDesktopThemeRouter({
+    getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
+    isAuthorized: isExactConsoleOrigin,
+    writeJson,
+    subscribe: (res, snapshot) => {
+      res.writeHead(200, withSecurityHeaders({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      }));
+      res.write(":connected\n\n");
+      res.write(encodeSseData(DESKTOP_THEME_EVENT, snapshot));
+      desktopThemeSseSubscribers.add(res);
+      res.on("close", () => {
+        desktopThemeSseSubscribers.delete(res);
+      });
+    },
   });
   const pluginSettingsRouter = createPluginSettingsRouter({
     consoleSettingsStore,
@@ -531,6 +553,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
   });
+  routeRegistry.register("/api/v1/desktop", desktopThemeRouter);
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -1032,6 +1055,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData("update:available", {});
     for (const res of operationSseSubscribers) {
+      res.write(data);
+    }
+  }
+
+  function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
+    if (desktopThemeSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme));
+    for (const res of desktopThemeSseSubscribers) {
       res.write(data);
     }
   }

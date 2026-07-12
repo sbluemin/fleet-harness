@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { DurableJsonStore } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "./api-catalog.js";
-import { DEFAULT_UI_FONT_SETTINGS, isUiFontSettings, type ConsoleSettingsData } from "./console-settings.js";
+import { DEFAULT_UI_FONT_SETTINGS, isUiFontSettings, type ConsoleSettingsData, type ConsoleThemeId } from "./console-settings.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./global-settings-types.js";
 
 interface GlobalSettingsRouteDeps {
@@ -11,6 +11,7 @@ interface GlobalSettingsRouteDeps {
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
+  readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
 }
 
 interface GlobalSettingsRouteContext {
@@ -108,6 +109,7 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
   }
+  const theme = body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon" ? body.theme : undefined;
   const updated = deps.consoleSettingsStore.update((current) => ({
     ...current,
     version: 1,
@@ -116,11 +118,12 @@ async function mutateGlobalSettings(
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
-      ...(body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon" ? { theme: body.theme } : {}),
+      ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
     plugins: current.plugins,
   }));
+  if (theme !== undefined) deps.onThemeChanged?.(theme);
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
 }
