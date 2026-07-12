@@ -3,15 +3,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { executeWithPool } from "@dotobokuri/core-agent";
-import type { AgentToolCtx } from "@dotobokuri/core-agent";
-import { getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
+import { executeOneShot } from "@dotobokuri/core-agent";
+import type { AgentToolCtx, ExecResult, OneShotExecution, OneShotReady } from "@dotobokuri/core-agent";
+import { getEffort, getProviderModels, type CliType, type ProtocolType } from "@dotobokuri/core-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
-  buildCarrierExecutorPoolKey,
   buildCarrierStatusEntries,
-  buildTaskForceExecutorPoolKey,
-  buildTaskForceRunId,
   PRIOR_JOBS_REQUEST_HINT,
   readCarrierStatusEntries,
   type CarrierConfig,
@@ -40,7 +37,7 @@ vi.mock("@dotobokuri/core-agent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@dotobokuri/core-agent")>();
   return {
     ...actual,
-    executeWithPool: vi.fn(),
+    executeOneShot: vi.fn(),
   };
 });
 
@@ -50,6 +47,47 @@ const testDeps = {
 };
 
 let tempDir: string | null = null;
+
+// ── One-shot handle stubbing ────────────────────────────────
+// executeOneShot returns a two-phase handle synchronously; readiness resolves
+// (or rejects) before the prompt gate opens, and completion carries the turn result.
+
+function protocolFor(cliType: CliType): ProtocolType {
+  return cliType === "codex" ? "codex-app-server" : "acp";
+}
+
+function stubOneShot(
+  cliType: CliType,
+  overrides?: { result?: Partial<ExecResult>; ready?: Partial<OneShotReady>; readinessError?: unknown },
+): OneShotExecution {
+  const ready: OneShotReady = {
+    cliType,
+    protocol: protocolFor(cliType),
+    sessionId: `session-${cliType}`,
+    ...overrides?.ready,
+  };
+  const result: ExecResult = {
+    status: "done",
+    responseText: "ok",
+    thoughtText: "",
+    toolCalls: [],
+    sessionId: ready.sessionId,
+    ...overrides?.result,
+  };
+  return {
+    readiness: overrides?.readinessError !== undefined
+      ? Promise.reject(overrides.readinessError)
+      : Promise.resolve(ready),
+    completion: Promise.resolve(result),
+    startPrompt: vi.fn(),
+    abort: vi.fn(async () => {}),
+  };
+}
+
+/** Default: every backend reaches readiness and completes `done`. */
+function mockOneShotResolved(): void {
+  vi.mocked(executeOneShot).mockImplementation((opts) => stubOneShot(opts.cliType as CliType));
+}
 
 describe("carrier displayName resolution", () => {
   beforeEach(() => {
@@ -251,16 +289,11 @@ describe("carrier_dispatch effort resolution", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-effort-"));
     initStore(tempDir);
-    vi.mocked(executeWithPool).mockResolvedValue({
-      status: "done",
-      responseText: "ok",
-      thoughtText: "",
-      toolCalls: [],
-    });
+    mockOneShotResolved();
   });
 
   afterEach(() => {
-    vi.mocked(executeWithPool).mockReset();
+    vi.mocked(executeOneShot).mockReset();
     resetStoreForTests();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
@@ -294,9 +327,9 @@ describe("carrier_dispatch effort resolution", () => {
     }, ctx);
 
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(1);
+      expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
-    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+    expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
       scopeId: "ohio",
       cliType: "claude",
       model: "sonnet",
@@ -323,14 +356,38 @@ describe("carrier_dispatch effort resolution", () => {
     });
 
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(1);
+      expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
-    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+    expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
       scopeId: "ohio",
       cliType: "claude",
       model: "sonnet",
       effort: "max",
     }));
+  });
+
+  it("omits a resume session id for an untracked single dispatch", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      defaultModel: "sonnet",
+    });
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Untracked dispatch",
+      request: "Run without a dispatch_id.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-untracked",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeOneShot).toHaveBeenCalledTimes(1);
+    });
+    const [options] = vi.mocked(executeOneShot).mock.calls[0]!;
+    expect(options.resumeSessionId).toBeUndefined();
   });
 
   it("emits single carrier model and effort in the registered track metadata", async () => {
@@ -373,9 +430,9 @@ describe("carrier_dispatch effort resolution", () => {
       }),
     ]);
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(1);
+      expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
-    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+    expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
       scopeId: "ohio",
       cliType: "claude",
       effort,
@@ -384,80 +441,89 @@ describe("carrier_dispatch effort resolution", () => {
   });
 });
 
-describe("carrier_dispatch executor pool origin isolation", () => {
+describe("carrier_dispatch readiness gating", () => {
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-pool-origin-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-readiness-"));
     initStore(tempDir);
-    vi.mocked(executeWithPool).mockResolvedValue({
-      status: "done",
-      responseText: "ok",
-      thoughtText: "",
-      toolCalls: [],
-    });
   });
 
   afterEach(() => {
-    vi.mocked(executeWithPool).mockReset();
+    vi.mocked(executeOneShot).mockReset();
     resetStoreForTests();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
   });
 
-  it("namespaces same-carrier pool keys by console terminal origin", async () => {
+  it("returns a sanitized synchronous rejection when readiness fails and emits no job", async () => {
+    vi.mocked(executeOneShot).mockImplementation((opts) =>
+      stubOneShot(opts.cliType as CliType, {
+        readinessError: new Error("provider connect failed OPENAI_API_KEY=sk-should-be-redacted-000000000000"),
+      }),
+    );
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
-    await tool.execute({ carrier_id: "ohio", label: "A dispatch", request: "Run from A." }, {
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Trigger readiness failure",
+      request: "Fail before the prompt.",
+    }, {
       cwd: "/tmp",
-      sessionLabel: "terminal-a",
-      toolCallId: "dispatch-origin-a",
-    });
-    await tool.execute({ carrier_id: "ohio", label: "B dispatch", request: "Run from B." }, {
-      cwd: "/tmp",
-      sessionLabel: "terminal-b",
-      toolCallId: "dispatch-origin-b",
-    });
+      toolCallId: "dispatch-readiness-fail",
+    }) as CarrierDispatchToolResult;
+    unregister();
 
-    await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(2);
-    });
-    expect(executeWithPool).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      poolKey: buildCarrierExecutorPoolKey("ohio", "terminal-a", "/tmp"),
-      scopeId: "ohio",
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual(expect.objectContaining({
+      job_id: "carrier:dispatch-readiness-fail",
+      accepted: false,
     }));
-    expect(executeWithPool).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      poolKey: buildCarrierExecutorPoolKey("ohio", "terminal-b", "/tmp"),
-      scopeId: "ohio",
-    }));
+    expect(JSON.stringify(result.details)).toContain("[REDACTED:generic_secret]");
+    expect(JSON.stringify(result.details)).not.toContain("sk-should-be-redacted-000000000000");
+    expect(events.some((event) => event.type === "job:registered")).toBe(false);
+    // Rolled-back launch leaves no summary/archive residue.
+    expect(getJobSummary("carrier:dispatch-readiness-fail", Date.now())).toBeNull();
   });
 
-  it("keeps fleet-cli style repeated dispatches on one stable process label in the same pool", async () => {
+  it("awaits readiness before opening the prompt gate on a successful single dispatch", async () => {
+    let startedBeforeReady = false;
+    let releaseReady!: () => void;
+    const readyGate = new Promise<void>((resolve) => { releaseReady = resolve; });
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const startPrompt = vi.fn();
+      const ready: OneShotReady = { cliType: opts.cliType as CliType, protocol: protocolFor(opts.cliType as CliType), sessionId: "sess" };
+      return {
+        readiness: readyGate.then(() => {
+          startedBeforeReady = startPrompt.mock.calls.length > 0;
+          return ready;
+        }),
+        completion: Promise.resolve({ status: "done", responseText: "ok", thoughtText: "", toolCalls: [], sessionId: "sess" }),
+        startPrompt,
+        abort: vi.fn(async () => {}),
+      };
+    });
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
-    const sessionLabel = "agent:claude:stable-process";
 
-    await tool.execute({ carrier_id: "ohio", label: "First dispatch", request: "Run first." }, {
+    const execution = tool.execute({
+      carrier_id: "ohio",
+      label: "Gate ordering",
+      request: "Prompt must wait for readiness.",
+    }, {
       cwd: "/tmp",
-      sessionLabel,
-      toolCallId: "dispatch-reuse-a",
-    });
-    await tool.execute({ carrier_id: "ohio", label: "Second dispatch", request: "Run second." }, {
-      cwd: "/tmp",
-      sessionLabel,
-      toolCallId: "dispatch-reuse-b",
-    });
+      toolCallId: "dispatch-gate-order",
+    }) as Promise<CarrierDispatchToolResult>;
+    releaseReady();
+    const result = await execution;
 
-    await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(2);
-    });
-    const poolKeys = vi.mocked(executeWithPool).mock.calls.map(([options]) => options.poolKey);
-    expect(poolKeys).toEqual([
-      buildCarrierExecutorPoolKey("ohio", sessionLabel, "/tmp"),
-      buildCarrierExecutorPoolKey("ohio", sessionLabel, "/tmp"),
-    ]);
-    expect(buildCarrierExecutorPoolKey("ohio", undefined)).toBe("ohio");
+    expect(result.details).toEqual({ job_id: "carrier:dispatch-gate-order", accepted: true });
+    expect(startedBeforeReady).toBe(false);
+    const [, execHandle] = [null, vi.mocked(executeOneShot).mock.results[0]!.value as OneShotExecution];
+    expect(execHandle.startPrompt).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -465,16 +531,11 @@ describe("carrier_dispatch workspace manifest recording", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-manifest-"));
     initStore(tempDir);
-    vi.mocked(executeWithPool).mockResolvedValue({
-      status: "done",
-      responseText: "ok",
-      thoughtText: "",
-      toolCalls: [],
-    });
+    mockOneShotResolved();
   });
 
   afterEach(() => {
-    vi.mocked(executeWithPool).mockReset();
+    vi.mocked(executeOneShot).mockReset();
     resetStoreForTests();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
@@ -575,16 +636,11 @@ describe("carrier_dispatch taskforce stream metadata", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-taskforce-metadata-"));
     initStore(tempDir);
-    vi.mocked(executeWithPool).mockResolvedValue({
-      status: "done",
-      responseText: "ok",
-      thoughtText: "",
-      toolCalls: [],
-    });
+    mockOneShotResolved();
   });
 
   afterEach(() => {
-    vi.mocked(executeWithPool).mockReset();
+    vi.mocked(executeOneShot).mockReset();
     resetStoreForTests();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
@@ -638,7 +694,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     ]);
   });
 
-  it("namespaces Task Force backend pool keys by console terminal origin", async () => {
+  it("builds one fresh one-shot handle per Task Force backend with its own scope", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
     updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
@@ -647,29 +703,20 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
-    await tool.execute({ carrier_id: "ohio", label: "Task Force A", request: "Run from A." }, {
+    await tool.execute({ carrier_id: "ohio", label: "Task Force", request: "Run both backends." }, {
       cwd: "/tmp",
       sessionLabel: "terminal-a",
-      toolCallId: "taskforce-origin-a",
-    });
-    await tool.execute({ carrier_id: "ohio", label: "Task Force B", request: "Run from B." }, {
-      cwd: "/tmp",
-      sessionLabel: "terminal-b",
-      toolCallId: "taskforce-origin-b",
+      toolCallId: "taskforce-fresh-handles",
     });
 
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(4);
+      expect(executeOneShot).toHaveBeenCalledTimes(2);
     });
-    const poolKeys = vi.mocked(executeWithPool).mock.calls.map(([options]) => options.poolKey).sort();
-    expect(poolKeys).toEqual([
-      buildTaskForceExecutorPoolKey("ohio", "claude", "terminal-a", "/tmp"),
-      buildTaskForceExecutorPoolKey("ohio", "codex", "terminal-a", "/tmp"),
-      buildTaskForceExecutorPoolKey("ohio", "claude", "terminal-b", "/tmp"),
-      buildTaskForceExecutorPoolKey("ohio", "codex", "terminal-b", "/tmp"),
-    ].sort());
-    for (const [options] of vi.mocked(executeWithPool).mock.calls) {
+    const calls = vi.mocked(executeOneShot).mock.calls.map(([options]) => options);
+    expect(calls.map((options) => options.cliType).sort()).toEqual(["claude", "codex"]);
+    for (const options of calls) {
       expect(options.scopeId).toBe("ohio");
+      expect(options.resumeSessionId).toBeUndefined();
     }
   });
 
@@ -753,7 +800,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     }));
     expect(JSON.stringify(result.details)).toContain("not-a-real-model");
     expect(events.some((event) => event.type === "job:registered")).toBe(false);
-    expect(executeWithPool).not.toHaveBeenCalled();
+    expect(executeOneShot).not.toHaveBeenCalled();
   });
 });
 
@@ -761,16 +808,11 @@ describe("carrier_dispatch explicit cwd injection", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-cwd-"));
     initStore(tempDir);
-    vi.mocked(executeWithPool).mockResolvedValue({
-      status: "done",
-      responseText: "ok",
-      thoughtText: "",
-      toolCalls: [],
-    });
+    mockOneShotResolved();
   });
 
   afterEach(() => {
-    vi.mocked(executeWithPool).mockReset();
+    vi.mocked(executeOneShot).mockReset();
     resetStoreForTests();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
@@ -791,9 +833,9 @@ describe("carrier_dispatch explicit cwd injection", () => {
     });
 
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(1);
+      expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
-    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+    expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
       scopeId: "ohio",
       cwd: "/host/session/cwd",
     }));
@@ -815,9 +857,9 @@ describe("carrier_dispatch explicit cwd injection", () => {
     });
 
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(1);
+      expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
-    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+    expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
       scopeId: "ohio",
       cwd: "/abs/worktree/path",
     }));
@@ -844,7 +886,7 @@ describe("carrier_dispatch explicit cwd injection", () => {
       accepted: false,
     }));
     expect(JSON.stringify(result.details)).toContain("must be an absolute path");
-    expect(executeWithPool).not.toHaveBeenCalled();
+    expect(executeOneShot).not.toHaveBeenCalled();
   });
 
   it("forwards an explicit absolute cwd to every Task Force backend spawn", async () => {
@@ -867,45 +909,11 @@ describe("carrier_dispatch explicit cwd injection", () => {
     });
 
     await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(2);
+      expect(executeOneShot).toHaveBeenCalledTimes(2);
     });
-    for (const [options] of vi.mocked(executeWithPool).mock.calls) {
+    for (const [options] of vi.mocked(executeOneShot).mock.calls) {
       expect(options.cwd).toBe("/abs/worktree/path");
     }
-  });
-
-  it("namespaces the executor pool key by resolved cwd so a different worktree does not reuse the session", async () => {
-    const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
-    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
-
-    await tool.execute({
-      carrier_id: "ohio",
-      label: "Main cwd",
-      request: "Run in main checkout.",
-    }, {
-      cwd: "/host/session/cwd",
-      sessionLabel: "term",
-      toolCallId: "dispatch-cwd-pool-main",
-    });
-    await tool.execute({
-      carrier_id: "ohio",
-      label: "Worktree cwd",
-      request: "Run in worktree.",
-      cwd: "/abs/worktree/path",
-    }, {
-      cwd: "/host/session/cwd",
-      sessionLabel: "term",
-      toolCallId: "dispatch-cwd-pool-worktree",
-    });
-
-    await vi.waitFor(() => {
-      expect(executeWithPool).toHaveBeenCalledTimes(2);
-    });
-    const poolKeys = vi.mocked(executeWithPool).mock.calls.map(([options]) => options.poolKey);
-    expect(poolKeys[0]).toBe(buildCarrierExecutorPoolKey("ohio", "term", "/host/session/cwd"));
-    expect(poolKeys[1]).toBe(buildCarrierExecutorPoolKey("ohio", "term", "/abs/worktree/path"));
-    expect(poolKeys[0]).not.toBe(poolKeys[1]);
   });
 });
 

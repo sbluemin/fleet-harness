@@ -6,10 +6,10 @@
 
 import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolCtx } from "@dotobokuri/core-agent";
+import type { AgentToolCtx, ExecResult, OneShotExecution, OneShotReady } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
-import type { ExecResult } from "@dotobokuri/core-agent";
+import type { CarrierDispatchServices } from "../index.js";
 import type { CarrierJobStatus, TrackMeta, TrackStatus } from "./types.js";
 
 import {
@@ -17,11 +17,11 @@ import {
 } from "../constants.js";
 import { appendBlock, toArchiveBlock } from "../jobs/archive.js";
 import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
-import { finalizeDetachedJob, launchResponseResult, startDetachedJob } from "../jobs/lifecycle.js";
-import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
+import { finalizeDetachedJob, launchResponseResult, rollbackRejectedDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
+import { sanitizeChunk, sanitizeProviderReason, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
 import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/workspace-manifest.js";
-import { executeWithPool } from "@dotobokuri/core-agent";
+import { executeOneShot } from "@dotobokuri/core-agent";
 import {
   emitStreamEvent,
   getRegisteredCarrierConfig,
@@ -39,32 +39,46 @@ import {
   getTaskForceModelConfig,
 } from "../store/index.js";
 import {
-  buildTaskForceExecutorPoolKey,
-  buildTaskForceRunId,
-} from "./pool-key.js";
+  claimDispatchContext,
+  commitDispatchLease,
+  confirmDispatchReadiness,
+  releaseDispatchLease,
+  type DispatchBackendSession,
+  type DispatchContextBindingInput,
+  type DispatchContextLease,
+} from "./context-registry.js";
 import {
+  type BackendProgress,
   type TaskForceCliType,
   type TaskForceResult,
   type TaskForceState,
 } from "./types.js";
 
-interface TaskForceBackgroundOptions {
+interface PreparedTaskForceBackend {
+  readonly cliType: TaskForceCliType;
+  readonly trackId: string;
+  readonly handle: OneShotExecution;
+  readonly ready: OneShotReady;
+}
+
+interface TaskForceCompletionOptions {
   registry: CarrierRegistry;
   jobId: string;
   carrierId: string;
   originSessionId?: string;
-  requestKey: string;
   activeBackends: TaskForceCliType[];
-  trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>;
+  prepared: PreparedTaskForceBackend[];
   request: string;
   state: TaskForceState;
-  signal: AbortSignal | undefined;
+  requestKey: string;
   cwd: string;
   permit: JobPermitAccepted;
   startedAt: number;
   toolName: `carrier_${string}`;
   label: string;
   deps: CarrierToolSpecDeps;
+  services?: CarrierDispatchServices;
+  lease?: DispatchContextLease;
 }
 
 interface TaskForceTrackModelInfo {
@@ -83,14 +97,17 @@ export interface TaskForceLaunchOptions {
   /** carrier_dispatch에서 해석된 작업 디렉토리(명시 절대경로 또는 호스트 세션 cwd fallback). */
   cwd: string;
   deps: CarrierToolSpecDeps;
+  /** 런타임 소유 dispatch 컨텍스트 서비스(레지스트리/추적/admission). 없으면 미추적 실행. */
+  services?: CarrierDispatchServices;
+  /** 선택적 resume 토큰. 재사용 시 동일 provider 세션 재개. */
+  dispatchId?: string;
 }
 
 const taskForceStateStore = new Map<string, TaskForceState>();
 
-export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
-  const { registry, carrierId, request, label, startedAt, toolName, ctx, cwd, deps } = options;
+export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promise<ReturnType<typeof launchResponseResult>> {
+  const { registry, carrierId, request, label, startedAt, toolName, ctx, cwd, deps, services, dispatchId } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
-  const backendIds = getConfiguredTaskForceBackends(carrierId);
 
   assertRegisteredCarrier(registry, carrierId);
   const activeBackends = assertTaskForceFormable(carrierId);
@@ -104,9 +121,8 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
       carrierId,
     );
     if (!blockValidation.ok) {
-      const jobId = buildCarrierJobId("taskforce", ctx.toolCallId ?? "");
       return launchResponseResult({
-        job_id: jobId,
+        job_id: buildCarrierJobId("taskforce", ctx.toolCallId ?? ""),
         accepted: false,
         error: blockValidation.error,
       });
@@ -123,6 +139,22 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     });
   }
 
+  // dispatch_id 바인딩: taskforce shape + 정렬된 백엔드 집합. 미전달/런타임 부재면 fresh 미추적.
+  const binding: DispatchContextBindingInput = {
+    carrierId,
+    cwd,
+    shape: "taskforce",
+    backends: activeBackends.map((cliType) => ({ cliType })),
+  };
+  const claim = claimDispatchContext(services?.dispatchContexts, dispatchId, binding);
+  if (!claim.ok) {
+    return launchResponseResult({
+      job_id: buildCarrierJobId("taskforce", ctx.toolCallId ?? ""),
+      accepted: false,
+      error: claim.error,
+    });
+  }
+
   const launch = startDetachedJob({
     jobKind: "taskforce",
     toolName,
@@ -131,50 +163,131 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     carrierIds: [carrierId],
     signal: ctx.signal,
   });
-  if (!launch.accepted) return launch.response;
+  if (!launch.accepted) {
+    releaseDispatchLease(services?.dispatchContexts, claim.lease);
+    return launch.response;
+  }
 
   const state = initTaskForceState(carrierId, requestKey, activeBackends);
+
+  // 백엔드마다 fresh one-shot 핸들을 만들고, resume 세션은 백엔드별로 분리해 주입한다.
+  const handles = activeBackends.map((cliType) => {
+    const modelInfo = trackModelInfoByCli.get(cliType);
+    if (!modelInfo) throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
+    const trackId = `${launch.jobId}:${cliType}`;
+    const progress = state.backends.get(cliType)!;
+    const handle = executeOneShot({
+      scopeId: carrierId,
+      authEnvResolver: deps.authEnvResolver,
+      reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
+      cliType: cliType as CliType,
+      request,
+      cwd,
+      model: modelInfo.model,
+      effort: modelInfo.effort,
+      resumeSessionId: claim.resumeSessions?.get(cliType),
+      connectSystemPrompt: buildCarrierSystemPrompt(carrierConfig?.carrierMetadata),
+      signal: launch.signal,
+      ...buildTaskForceBackendListeners(registry, launch.jobId, ctx.sessionLabel, carrierId, cliType, trackId, progress),
+    });
+    return { cliType, trackId, handle };
+  });
+
+  // 전-백엔드 readiness 배리어 — 하나라도 실패하면 프롬프트를 0건 전송하고 준비된 모든 핸들을 정리한다.
+  const readinessResults = await Promise.allSettled(handles.map((h) => h.handle.readiness));
+  const failure = readinessResults.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failure) {
+    await Promise.allSettled(handles.map((h) => h.handle.abort()));
+    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
+    releaseDispatchLease(services?.dispatchContexts, claim.lease);
+    clearTaskForceState(requestKey);
+    const message = failure.reason instanceof Error ? failure.reason.message : String(failure.reason);
+    return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
+  }
+
+  const prepared: PreparedTaskForceBackend[] = handles.map((h, index) => ({
+    cliType: h.cliType,
+    trackId: h.trackId,
+    handle: h.handle,
+    ready: (readinessResults[index] as PromiseFulfilledResult<OneShotReady>).value,
+  }));
+  confirmDispatchReadiness(services?.dispatchContexts, claim.lease, prepared.map((p) => readyToSession(p.ready)));
+
   emitTaskForceJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, requestKey, activeBackends, startedAt, label, trackModelInfoByCli);
 
-  void runTaskForceJobInBackground({
+  const execStartedAt = Date.now();
+  for (const backend of prepared) {
+    emitStreamEvent(registry, {
+      type: "track:begin",
+      jobId: launch.jobId,
+      originSessionId: ctx.sessionLabel,
+      trackId: backend.trackId,
+      startedAt: execStartedAt,
+      requestPreview: request.trim().split(/\r?\n/, 1)[0],
+    });
+    backend.handle.startPrompt();
+  }
+
+  const completion = runTaskForceCompletion({
     registry,
     jobId: launch.jobId,
     carrierId,
     originSessionId: ctx.sessionLabel,
-    requestKey,
     activeBackends,
-    trackModelInfoByCli,
+    prepared,
     request,
     state,
-    signal: launch.signal,
+    requestKey,
     cwd,
     permit: launch.permit,
     startedAt,
     toolName,
     label,
     deps,
+    services,
+    lease: claim.lease,
   });
+  const untrack = services?.trackInFlight?.({
+    cancel: async () => { await Promise.allSettled(prepared.map((p) => p.handle.abort())); },
+    completion,
+  }) ?? (() => {});
+  void completion.finally(untrack);
 
   return launchResponseResult({ job_id: launch.jobId, accepted: true });
 }
 
-async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Promise<void> {
+function readyToSession(ready: OneShotReady): DispatchBackendSession {
+  return { cliType: ready.cliType, protocol: ready.protocol, sessionId: ready.sessionId };
+}
+
+/**
+ * Drive every Task Force backend one-shot handle to completion after the shared prompt gate opens.
+ * Commits the dispatch mapping only when every backend turn is `done` (atomic all-backend commit);
+ * any other outcome unlocks the lease without committing.
+ */
+async function runTaskForceCompletion(opts: TaskForceCompletionOptions): Promise<void> {
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let results: TaskForceResult[] = [];
   const baselineSnapshot = await captureWorkspaceSnapshot(opts.deps.workspaceChangeScanner, opts.cwd);
   try {
     const settledResults = await Promise.allSettled(
-      opts.activeBackends.map((cliType) =>
-        runTaskForceBackend(opts.registry, cliType, opts.carrierId, opts.originSessionId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId, opts.trackModelInfoByCli, opts.deps),
+      opts.prepared.map((backend) =>
+        finalizeTaskForceBackend(opts.registry, backend, opts.jobId, opts.originSessionId, opts.state),
       ),
     );
     opts.state.finishedAt = Date.now();
     results = collectTaskForceResults(settledResults, opts.activeBackends);
     finalStatus = computeFinalStatus(results) as CarrierJobStatus;
+    if (finalStatus === "done") {
+      commitDispatchLease(opts.services?.dispatchContexts, opts.lease, opts.prepared.map((p) => readyToSession(p.ready)));
+    } else {
+      releaseDispatchLease(opts.services?.dispatchContexts, opts.lease);
+    }
   } catch (error) {
     finalStatus = "error";
     finalError = error instanceof Error ? error.message : String(error);
+    releaseDispatchLease(opts.services?.dispatchContexts, opts.lease);
   } finally {
     const finishedAt = Date.now();
     const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, baselineSnapshot);
@@ -246,92 +359,63 @@ function getRequiredTaskForceModelConfig(
   throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
 }
 
-async function runTaskForceBackend(
+/** Streaming listeners for one Task Force backend one-shot handle. */
+function buildTaskForceBackendListeners(
   registry: CarrierRegistry,
-  cliType: TaskForceCliType,
-  carrierId: string,
-  originSessionId: string | undefined,
-  requestKey: string,
-  request: string,
-  state: TaskForceState,
-  signal: AbortSignal | undefined,
-  cwd: string,
   jobId: string,
-  trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>,
-  deps: CarrierToolSpecDeps,
+  originSessionId: string | undefined,
+  carrierId: string,
+  cliType: TaskForceCliType,
+  trackId: string,
+  progress: BackendProgress,
+) {
+  return {
+    onStatusChange: (status: TrackStatus) => {
+      emitTrackStatus(registry, jobId, originSessionId, trackId, status);
+    },
+    onMessageChunk: (text: string) => {
+      progress.status = "streaming";
+      progress.lineCount++;
+      const cleanText = sanitizeChunk(text);
+      appendBlock(jobId, toArchiveBlock("text", carrierId, text, cliType));
+      emitStreamEvent(registry, { type: "track:text", jobId, originSessionId, trackId, text: cleanText });
+    },
+    onThoughtChunk: (text: string) => {
+      const cleanText = sanitizeChunk(text);
+      appendBlock(jobId, toArchiveBlock("thought", carrierId, text, cliType));
+      emitStreamEvent(registry, { type: "track:thought", jobId, originSessionId, trackId, text: cleanText });
+    },
+    onToolCall: (title: string, status: string, rawOutput?: string, toolCallId?: string) => {
+      progress.status = "streaming";
+      progress.toolCallCount++;
+      const cleanTitle = sanitizeToolLabel(title);
+      const cleanStatus = sanitizeToolLabel(status);
+      emitStreamEvent(registry, {
+        type: "track:tool",
+        jobId,
+        originSessionId,
+        trackId,
+        detailChars: rawOutput?.length ?? 0,
+        title: cleanTitle,
+        status: cleanStatus,
+        toolCallId,
+      });
+    },
+  };
+}
+
+async function finalizeTaskForceBackend(
+  registry: CarrierRegistry,
+  backend: PreparedTaskForceBackend,
+  jobId: string,
+  originSessionId: string | undefined,
+  state: TaskForceState,
 ): Promise<TaskForceResult> {
-  const execStartedAt = Date.now();
-  const progress = state.backends.get(cliType)!;
-  const poolKey = buildTaskForceExecutorPoolKey(carrierId, cliType, originSessionId, cwd);
-  const streamKey = buildTaskForceScopedRunId(requestKey, cliType);
-  const modelInfo = trackModelInfoByCli.get(cliType);
-  if (!modelInfo) throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
-  const trackId = `${jobId}:${cliType}`;
-
-
-  emitStreamEvent(registry, {
-    type: "track:begin",
-    jobId,
-    originSessionId,
-    trackId,
-    startedAt: execStartedAt,
-    requestPreview: request.trim().split(/\r?\n/, 1)[0],
-  });
-
-  try {
-    const result = await executeWithPool({
-      poolKey,
-      scopeId: carrierId,
-      authEnvResolver: deps.authEnvResolver,
-      reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
-      cliType: cliType as CliType,
-      request,
-      cwd,
-      model: modelInfo.model,
-      effort: modelInfo.effort,
-      connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(registry, carrierId)?.carrierMetadata),
-      signal,
-      onStatusChange: (status) => {
-        emitTrackStatus(registry, jobId, originSessionId, trackId, status);
-      },
-      onMessageChunk: (text) => {
-        progress.status = "streaming";
-        progress.lineCount++;
-        const cleanText = sanitizeChunk(text);
-        appendBlock(jobId, toArchiveBlock("text", carrierId, text, cliType));
-        emitStreamEvent(registry, { type: "track:text", jobId, originSessionId, trackId, text: cleanText });
-      },
-      onThoughtChunk: (text) => {
-        const cleanText = sanitizeChunk(text);
-        appendBlock(jobId, toArchiveBlock("thought", carrierId, text, cliType));
-        emitStreamEvent(registry, { type: "track:thought", jobId, originSessionId, trackId, text: cleanText });
-      },
-      onToolCall: (title, status, rawOutput, toolCallId) => {
-        progress.status = "streaming";
-        progress.toolCallCount++;
-        const cleanTitle = sanitizeToolLabel(title);
-        const cleanStatus = sanitizeToolLabel(status);
-        emitStreamEvent(registry, {
-          type: "track:tool",
-          jobId,
-          originSessionId,
-          trackId,
-          detailChars: rawOutput?.length ?? 0,
-          title: cleanTitle,
-          status: cleanStatus,
-          toolCallId,
-        });
-      },
-    });
-
-    progress.status = result.status === "done" ? "done" : "error";
-    emitTrackFinalized(registry, jobId, originSessionId, trackId, result);
-    return buildTaskForceResult(cliType, result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    emitStreamEvent(registry, { type: "track:finalized", jobId, originSessionId, trackId, status: "err", finishedAt: Date.now(), error: message });
-    throw error;
-  }
+  const result = await backend.handle.completion;
+  const progress = state.backends.get(backend.cliType);
+  if (progress) progress.status = result.status === "done" ? "done" : "error";
+  emitTrackFinalized(registry, jobId, originSessionId, backend.trackId, result, backend.ready.sessionId);
+  return buildTaskForceResult(backend.cliType, result);
 }
 
 function emitTaskForceJobRegistered(
@@ -434,7 +518,7 @@ function emitTrackStatus(registry: CarrierRegistry, jobId: string, originSession
   emitStreamEvent(registry, { type: "track:status", jobId, originSessionId, trackId, status });
 }
 
-function emitTrackFinalized(registry: CarrierRegistry, jobId: string, originSessionId: string | undefined, trackId: string, result: ExecResult): void {
+function emitTrackFinalized(registry: CarrierRegistry, jobId: string, originSessionId: string | undefined, trackId: string, result: ExecResult, sessionId?: string): void {
   const status = toCarrierJobStatus(result.status);
   emitStreamEvent(registry, {
     type: "track:finalized",
@@ -444,6 +528,7 @@ function emitTrackFinalized(registry: CarrierRegistry, jobId: string, originSess
     status: toTrackFinalStatus(status),
     finishedAt: Date.now(),
     error: status === "aborted" ? "aborted" : result.error,
+    sessionId: result.sessionId ?? sessionId,
     fallbackText: sanitizeChunk(result.responseText),
     fallbackThought: sanitizeChunk(result.thoughtText),
   });

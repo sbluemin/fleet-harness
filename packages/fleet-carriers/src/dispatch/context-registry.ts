@@ -182,3 +182,82 @@ function sameSessions(existing: ReadonlyMap<CliType, DispatchBackendSession>, se
 function freezeSession(session: DispatchBackendSession): DispatchBackendSession {
   return Object.freeze({ ...session });
 }
+
+// ═════════════════════════════════════════════════════════
+// Dispatch-flow helpers — bridge the runtime-owned registry to the launch path.
+// Every helper is a no-op when no registry is present (untracked dispatch) or no
+// lease was reserved, so single/Task Force launch code stays free of null checks.
+// ═════════════════════════════════════════════════════════
+
+/** Public `dispatch_id` parameter guidance — shared by the tool schema and prompt snippet. */
+export const DISPATCH_ID_DESCRIPTION =
+  "Optional opaque resume token. Omit for a fresh, untracked context; reuse the same value to resume the same real provider session in a new process. " +
+  "Must be a 1–128 byte ASCII token matching ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ with no surrounding whitespace.";
+
+export type DispatchClaimOutcome =
+  | { readonly ok: true; readonly lease?: DispatchContextLease; readonly resumeSessions?: ReadonlyMap<CliType, string> }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Resolve an optional `dispatch_id` against the runtime registry before a launch.
+ * - Omitted `dispatch_id`, or no runtime registry: a fresh untracked context (ok, no lease).
+ * - Present, valid, and free: a synchronous reservation (ok, lease plus optional resume sessions).
+ * - Invalid format or a rejected claim: `ok:false` with a public reason.
+ */
+export function claimDispatchContext(
+  registry: DispatchContextRegistry | undefined,
+  rawDispatchId: string | undefined,
+  binding: DispatchContextBindingInput,
+): DispatchClaimOutcome {
+  if (rawDispatchId === undefined || !registry) return { ok: true };
+  const dispatchId = validateDispatchId(rawDispatchId);
+  if (!dispatchId) {
+    return {
+      ok: false,
+      error: "Invalid dispatch_id: must be a 1–128 byte ASCII token matching ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ with no surrounding whitespace.",
+    };
+  }
+  const claim = registry.claim(dispatchId, binding);
+  if (!claim.accepted) return { ok: false, error: describeClaimError(claim.error) };
+  return { ok: true, lease: claim.lease, resumeSessions: claim.resumeSessions };
+}
+
+function describeClaimError(error: "busy" | "binding mismatch" | "disposed"): string {
+  switch (error) {
+    case "busy":
+      return "dispatch_id is already in flight; wait for the prior dispatch to finish or use a new dispatch_id.";
+    case "binding mismatch":
+      return "dispatch_id was bound to a different carrier, cwd, shape, or backend set; use a new dispatch_id to start over.";
+    case "disposed":
+      return "Carrier runtime is shutting down; dispatch_id resume is unavailable.";
+  }
+}
+
+/** Confirm readiness protocol/session identity against a reserved lease; throws on binding drift. */
+export function confirmDispatchReadiness(
+  registry: DispatchContextRegistry | undefined,
+  lease: DispatchContextLease | undefined,
+  backends: readonly DispatchBackendSession[],
+): void {
+  if (!lease || !registry) return;
+  registry.confirmReadiness(lease, backends);
+}
+
+/** Commit a completed-turn mapping for a reserved lease. */
+export function commitDispatchLease(
+  registry: DispatchContextRegistry | undefined,
+  lease: DispatchContextLease | undefined,
+  backends: readonly DispatchBackendSession[],
+): void {
+  if (!lease || !registry) return;
+  registry.commit(lease, backends);
+}
+
+/** Release a reserved lease without committing; retains any prior committed mapping. */
+export function releaseDispatchLease(
+  registry: DispatchContextRegistry | undefined,
+  lease: DispatchContextLease | undefined,
+): void {
+  if (!lease || !registry) return;
+  registry.release(lease);
+}
