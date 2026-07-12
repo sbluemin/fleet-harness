@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, minimizeOperation, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -25,9 +25,10 @@ const closingOperationIds = new Set<string>();
 
 interface OperationsProps {
   readonly state: ConsoleState;
+  readonly claimBootPanelMinimization: () => readonly string[] | null;
 }
 
-export function Operations({ state }: OperationsProps) {
+export function Operations({ state, claimBootPanelMinimization }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const maximizedOperationId = useMaximizedOperationId();
   const formationView = useFormationView();
@@ -106,8 +107,14 @@ export function Operations({ state }: OperationsProps) {
 
   useEffect(() => {
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
-    if (state.operationsHydrated) pruneOperations(operationOrder);
-  }, [operationOrder, state.operationsHydrated]);
+    if (!state.operationsHydrated) return;
+    pruneOperations(operationOrder);
+    // App 최초 요청에서 받은 id만 한 번 최소화한다. 이후 생성·Theater 전환·route 재진입은 초기화에 포함하지 않는다.
+    if (!state.activeTheaterId) return;
+    const bootOperationIds = claimBootPanelMinimization();
+    if (bootOperationIds === null) return;
+    minimizeOperations(bootOperationIds);
+  }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated]);
 
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
   useEffect(() => {

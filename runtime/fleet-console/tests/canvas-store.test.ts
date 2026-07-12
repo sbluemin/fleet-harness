@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -79,6 +79,51 @@ describe("canvas store", () => {
 
     expect(getMaximizedOperationId()).toBe("op-b");
     expect(getSnapshot().minimized).toEqual(["op-a"]);
+  });
+
+  it("minimizes boot panels without changing their stored geometry", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 48, y: 72, zIndex: 4 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 96, y: 144, zIndex: 8 });
+    const geometry = getSnapshot().operations;
+
+    minimizeOperations(["op-a", "op-b", "missing"]);
+
+    expect(getSnapshot().minimized).toEqual(["op-a", "op-b"]);
+    expect(getSnapshot().operations).toEqual(geometry);
+  });
+
+  it("keeps existing minimized panels first when adding boot panels", () => {
+    setOperationGeometry("launched", { ...GEOMETRY });
+    setOperationGeometry("initial", { ...GEOMETRY });
+    minimizeOperation("launched");
+
+    minimizeOperations(["initial", "launched", "missing", "initial"]);
+
+    expect(getSnapshot().minimized).toEqual(["launched", "initial"]);
+  });
+
+  it("does not minimize Operations added after boot initialization", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    minimizeOperations(["op-a"]);
+    setOperationGeometry("op-b", { ...GEOMETRY });
+
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
+  });
+
+  it("keeps boot-minimized panels and geometry scoped to their Theater", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 48, y: 72 });
+    minimizeOperations(["op-a"]);
+
+    loadForTheater("theater-b");
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 96, y: 144 });
+
+    loadForTheater("theater-a");
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
+    expect(getSnapshot().operations["op-a"]).toMatchObject({ x: 48, y: 72 });
+
+    loadForTheater("theater-b");
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getSnapshot().operations["op-b"]).toMatchObject({ x: 96, y: 144 });
   });
 
   it("keeps maximize-docked Operations minimized when entering open-panel Formation", () => {

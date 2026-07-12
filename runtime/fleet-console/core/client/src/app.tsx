@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
@@ -17,7 +17,7 @@ import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
@@ -34,12 +34,20 @@ function isBlockingDialogOpen(): boolean {
 
 export function App() {
   const state = useConsoleState();
+  const bootPanelsMinimizedRef = useRef(false);
+  const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
   const registry = usePluginRegistry();
   const globalSettings = useGlobalSettingsStore();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
+
+  const claimBootPanelMinimization = useCallback((): readonly string[] | null => {
+    if (bootPanelsMinimizedRef.current || bootOperationIdsRef.current === null) return null;
+    bootPanelsMinimizedRef.current = true;
+    return bootOperationIdsRef.current;
+  }, []);
 
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
@@ -67,7 +75,14 @@ export function App() {
         setState({ theaterError: error instanceof Error ? error.message : String(error) });
         resolveOnboardingOnBootstrap();
       });
-    void fetchOperations(null, abort.signal).then(hydrateOperations).catch(() => {});
+    const bootOperationsRequestStartedAt = Date.now();
+    void fetchOperations(null, abort.signal).then((operations) => {
+      // 요청 시작 뒤 생성된 Operation은 응답에 포함돼도 새 launch로 취급한다.
+      bootOperationIdsRef.current = operations
+        .filter((operation) => operation.ts.createdAt < bootOperationsRequestStartedAt)
+        .map((operation) => operation.id);
+      hydrateInitialOperations(operations);
+    }).catch(() => {});
     void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});
     refreshObserverStatus();
     // cold-start 보정: 서버 백그라운드 refresh 완료를 기다렸다가 한 번 더 읽어 배지를 채운다.
@@ -118,7 +133,7 @@ export function App() {
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
-          <Route path="/operations" element={<Operations state={state} />} />
+          <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} />} />
           <Route path="/carrier-settings" element={<CarrierSettings />} />
           <Route path="/settings" element={<GlobalSettings />} />
           <Route path="*" element={<Navigate to="/operations" replace />} />

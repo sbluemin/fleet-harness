@@ -225,6 +225,24 @@ export function minimizeOperation(sessionId: string): void {
   setState({ minimized: [...state.minimized, sessionId] });
 }
 
+// 초기 부팅처럼 현재 존재하는 패널 집합을 최소화할 때 쓴다. 기존 최소화 순서는 보존하고 새 id만 뒤에 더한다.
+export function minimizeOperations(sessionIds: readonly string[]): void {
+  const seen = new Set<string>();
+  const validMinimized = state.minimized.filter((sessionId) => {
+    if (seen.has(sessionId) || !(sessionId in state.operations)) return false;
+    seen.add(sessionId);
+    return true;
+  });
+  const minimized = [...validMinimized, ...sessionIds.filter((sessionId) => {
+    if (seen.has(sessionId) || !(sessionId in state.operations)) return false;
+    seen.add(sessionId);
+    return true;
+  })];
+  if (stringArraysEqual(state.minimized, minimized)) return;
+  if (maximizedOperationId && minimized.includes(maximizedOperationId)) clearMaximizedOperationId();
+  setState({ minimized });
+}
+
 // 최소화한 Operation을 복원한다 — 목록에서 제거하고 보존된 geometry를 최상단 zIndex로 끌어올려 원위치·원크기로 되돌린다.
 // 활성화(selectTerminalSession)는 호출 측 책임으로 남겨, Operation 활성 조정을 한 곳(canvas)에서 유지한다.
 export function restoreOperation(sessionId: string): void {
