@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { handleDiffCommit } from "../server/commit.js";
+import { handleDiffCommitFile } from "../server/commit-file.js";
 import { handleDiffChanged, handleDiffFile } from "../server/diff.js";
 import { runGit } from "../server/git-executor.js";
 import { handleDiffLog } from "../server/log.js";
@@ -20,10 +21,18 @@ interface JsonWrite {
 interface ScopedRepoFixture {
   readonly theaterPath: string;
   readonly head: string;
+  readonly typeChangeHead: string;
+  readonly renameHead: string;
+  readonly mergeHead: string;
 }
 
 interface ChangedPayload {
   readonly files: readonly { readonly path: string; readonly status: string }[];
+}
+
+interface CommitPayload {
+  readonly meta: { readonly subject: string };
+  readonly files: readonly { readonly path: string }[];
 }
 
 interface ContentPayload {
@@ -57,7 +66,9 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
 
   await fs.writeFile(path.join(insidePath, "changed.txt"), "before\n");
   await fs.writeFile(path.join(insidePath, "rename-old.txt"), "rename\n");
+  await fs.writeFile(path.join(insidePath, "type-change.txt"), "regular file\n");
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside before\n");
+  await fs.writeFile(path.join(theaterPath, "..notes"), "before\n");
   await runGit(["add", "."], { cwd: theaterPath });
   await runGit(["commit", "-m", "base context commit"], { cwd: theaterPath });
 
@@ -67,15 +78,42 @@ async function createScopedRepo(tmpDir: string): Promise<ScopedRepoFixture> {
 
   await fs.writeFile(path.join(insidePath, "committed.txt"), "inside commit\n");
   await fs.writeFile(path.join(outsidePath, "committed.txt"), "outside commit\n");
+  await fs.writeFile(path.join(theaterPath, "..notes"), "after\n");
   await runGit(["add", "."], { cwd: theaterPath });
   await runGit(["commit", "-m", "mixed context commit"], { cwd: theaterPath });
   const head = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+
+  const mainBranch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", "-b", "type-change-fixture"], { cwd: theaterPath });
+  await fs.rm(path.join(insidePath, "type-change.txt"));
+  await fs.symlink("changed.txt", path.join(insidePath, "type-change.txt"));
+  await runGit(["add", path.join(INSIDE_DIR, "type-change.txt")], { cwd: theaterPath });
+  await runGit(["commit", "-m", "type change fixture"], { cwd: theaterPath });
+  const typeChangeHead = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", mainBranch], { cwd: theaterPath });
+
+  await runGit(["checkout", "-b", "rename-fixture"], { cwd: theaterPath });
+  await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
+  await runGit(["commit", "-m", "rename fixture"], { cwd: theaterPath });
+  const renameHead = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+  await runGit(["checkout", mainBranch], { cwd: theaterPath });
+
+  await runGit(["checkout", "-b", "merge-side"], { cwd: theaterPath });
+  await fs.writeFile(path.join(theaterPath, "merge-side.txt"), "from merge side\n");
+  await runGit(["add", "merge-side.txt"], { cwd: theaterPath });
+  await runGit(["commit", "-m", "merge side"], { cwd: theaterPath });
+  await runGit(["checkout", mainBranch], { cwd: theaterPath });
+  await fs.writeFile(path.join(theaterPath, "merge-main.txt"), "from merge main\n");
+  await runGit(["add", "merge-main.txt"], { cwd: theaterPath });
+  await runGit(["commit", "-m", "merge main"], { cwd: theaterPath });
+  await runGit(["merge", "--no-ff", "merge-side", "-m", "merge fixture"], { cwd: theaterPath });
+  const mergeHead = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
 
   await fs.writeFile(path.join(insidePath, "changed.txt"), "after\n");
   await fs.writeFile(path.join(outsidePath, "base.txt"), "outside after\n");
   await runGit(["mv", path.join(INSIDE_DIR, "rename-old.txt"), path.join(INSIDE_DIR, "rename-new.txt")], { cwd: theaterPath });
 
-  return { theaterPath, head };
+  return { theaterPath, head, typeChangeHead, renameHead, mergeHead };
 }
 
 function makeContext(
@@ -185,10 +223,112 @@ describe("selected subdirectory diff route scope", () => {
       }, commitWrites),
     );
 
-    const commit = readPayload<ContentPayload>(commitWrites);
-    expect(commit.content).toContain("diff --git a/committed.txt b/committed.txt");
-    expect(commit.content).not.toContain(`${OUTSIDE_DIR}/committed.txt`);
-    expect(commit.content).not.toContain(`${INSIDE_DIR}/committed.txt`);
+    const commit = readPayload<CommitPayload>(commitWrites);
+    expect(commit.meta.subject).toBe("mixed context commit");
+    expect(commit.files.map((file) => file.path)).toContain("committed.txt");
+    expect(commit.files.map((file) => file.path)).not.toContain(`${OUTSIDE_DIR}/committed.txt`);
+  });
+
+  it("returns a selected commit file and neutralizes option-like paths as literal pathspecs", async () => {
+    const fileWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "committed.txt" }, fileWrites),
+    );
+    const file = readPayload<ContentPayload>(fileWrites);
+    expect(file.content).toContain("diff --git a/inside/committed.txt b/inside/committed.txt");
+
+    // A leading-dash path is no longer rejected (a real `-file` must be openable); the `--` separator
+    // and `:(literal)` prefix mean `--stat` reaches git as a literal pathspec (no such file → empty),
+    // never as an executed `--stat` option, so no diffstat is injected.
+    const optionLikeWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "--stat" }, optionLikeWrites),
+    );
+    expect(readPayload<ContentPayload>(optionLikeWrites).content).toBe("");
+  });
+
+  it("treats commit and worktree file paths as literal pathspecs", async () => {
+    const commitWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: ":(top)outside/committed.txt" }, commitWrites),
+    );
+    expect(readPayload<ContentPayload>(commitWrites).content).toBe("");
+
+    const worktreeWrites: JsonWrite[] = [];
+    await handleDiffFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, filePath: ":(top)outside/base.txt", mode: "unified" }, worktreeWrites),
+    );
+    expect(readPayload<ContentPayload>(worktreeWrites).content).toBe("");
+  });
+
+  it("renders a renamed commit file with both literal paths", async () => {
+    const writes: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.renameHead, filePath: "rename-new.txt", oldPath: "rename-old.txt" }, writes),
+    );
+    const content = readPayload<ContentPayload>(writes).content;
+    expect(content).toContain("similarity index 100%");
+    expect(content).toMatch(/rename from .*rename-old\.txt/);
+    expect(content).toMatch(/rename to .*rename-new\.txt/);
+  });
+
+  it("lists a type change and loads its per-file diff", async () => {
+    const commitWrites: JsonWrite[] = [];
+    await handleDiffCommit(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.typeChangeHead }, commitWrites),
+    );
+    expect(readPayload<CommitPayload>(commitWrites).files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "type-change.txt", status: "T" })]));
+
+    const fileWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.typeChangeHead, filePath: "type-change.txt" }, fileWrites),
+    );
+    const content = readPayload<ContentPayload>(fileWrites).content;
+    expect(content).toContain("deleted file mode 100644");
+    expect(content).toContain("new file mode 120000");
+  });
+
+  it("diffs a real merge against its first parent and loads its selected file", async () => {
+    const commitWrites: JsonWrite[] = [];
+    await handleDiffCommit(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.mergeHead }, commitWrites),
+    );
+    const commit = readPayload<CommitPayload>(commitWrites);
+    expect(commit.files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "merge-side.txt" })]));
+
+    const fileWrites: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.mergeHead, filePath: "merge-side.txt" }, fileWrites),
+    );
+    expect(readPayload<ContentPayload>(fileWrites).content).toContain("diff --git a/merge-side.txt b/merge-side.txt");
+  });
+
+  it("allows a legitimate in-repository ..-prefixed filename", async () => {
+    const writes: JsonWrite[] = [];
+    await handleDiffCommitFile(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.head, filePath: "..notes" }, writes),
+    );
+    expect(readPayload<ContentPayload>(writes).content).toContain("diff --git a/..notes b/..notes");
   });
 });
 

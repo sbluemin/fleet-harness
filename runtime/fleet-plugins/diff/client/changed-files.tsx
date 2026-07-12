@@ -37,6 +37,7 @@ const STATUS_LABEL: { [key: string]: string } = {
   A: "added",
   D: "deleted",
   R: "renamed",
+  T: "type changed",
   U: "untracked",
 };
 
@@ -162,7 +163,7 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect, f
               />
             ) : (
               visibleFiles.map((entry) => (
-                <ListFileRow
+                <FileRow
                   key={entry.path}
                   entry={entry}
                   isSelected={entry.path === selectedPath}
@@ -179,7 +180,7 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect, f
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
-function ListFileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
+export function FileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
   const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   // 미추적 디렉터리는 trailing slash 경로로 오므로, 이름은 마지막 비어있지 않은 세그먼트로 취한다
   const trimmed = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;

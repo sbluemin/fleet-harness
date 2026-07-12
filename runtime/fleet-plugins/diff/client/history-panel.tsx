@@ -2,168 +2,74 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
+import type { CommitResult, DiffFileEntry, LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
+import { FileRow } from "./changed-files.js";
 import { pathContextKey } from "./context-key.js";
+import { DiffTreeView } from "./diff-tree.js";
 import { GraphGutter } from "./graph-gutter.js";
 import { layoutGraph } from "./graph-layout.js";
-import type { CommitSelection } from "./hunk-view.js";
 import { HunkView } from "./hunk-view.js";
 import { formatCommitTime, refBadges } from "./log-parse.js";
-import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_WIDTH, buildHistoryGridTemplate, clampListPaneWidth, installPointerDragLifecycle } from "./rail-layout.js";
+import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_WIDTH, buildHistoryGridTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 
-type LoadState =
-  | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly truncated: boolean }
-  | { readonly kind: "error"; readonly message: string };
-
-interface HistoryPanelProps {
-  readonly ctx: RailPanelContext;
-}
-
-interface CommitRowProps {
-  readonly entry: LogCommitEntry;
-  readonly checkouts: readonly WorktreeCheckout[];
-  readonly selected: boolean;
-  readonly graphNode: import("./graph-layout.js").GraphNode;
-  readonly laneCount: number;
-  readonly layoutCollapsed: boolean;
-  readonly onSelect: (entry: LogCommitEntry) => void;
-}
+type LoadState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly truncated: boolean } | { readonly kind: "error"; readonly message: string };
+type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
+type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
+type FilesViewMode = "list" | "tree";
 
 const EXTENDED_EXTRA_WIDTH = 400;
 const PREFS_LIST_PANE_WIDTH = "fleet-console.history.listPaneWidth";
+const PREFS_HEADER_HEIGHT = "fleet-console.history.headerHeight";
+const PREFS_FILE_LIST_WIDTH = "fleet-console.history.fileListWidth";
+const PREFS_FILES_VIEW = "fleet-console.history.filesView";
 const LIST_PANE_DEFAULT_WIDTH = 360;
 const LIST_PANE_MIN_WIDTH = 220;
+const HEADER_DEFAULT_HEIGHT = 214;
+const FILE_LIST_DEFAULT_WIDTH = 180;
 
-export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly WorktreeCheckout[]): WorktreeCheckout | null {
-  return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null;
-}
-
+export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly WorktreeCheckout[]): WorktreeCheckout | null { return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null; }
 export function filterHistoryCommits(commits: readonly LogCommitEntry[], filterText: string): readonly LogCommitEntry[] {
-  const normalizedFilter = filterText.toLowerCase();
-
-  if (!normalizedFilter) return commits;
-
-  return commits.filter((entry) => (
-    entry.subject.toLowerCase().includes(normalizedFilter)
-    || entry.authorName.toLowerCase().includes(normalizedFilter)
-    || entry.shortHash.toLowerCase().includes(normalizedFilter)
-    || entry.fullHash.toLowerCase().includes(normalizedFilter)
-    || entry.refs.some((ref) => ref.toLowerCase().includes(normalizedFilter))
-    || refBadges(entry).some((badge) => badge.label.toLowerCase().includes(normalizedFilter))
-  ));
+  const value = filterText.toLowerCase();
+  return value ? commits.filter((entry) => entry.subject.toLowerCase().includes(value) || entry.authorName.toLowerCase().includes(value) || entry.shortHash.toLowerCase().includes(value) || entry.fullHash.toLowerCase().includes(value) || entry.refs.some((ref) => ref.toLowerCase().includes(value)) || refBadges(entry).some((badge) => badge.label.toLowerCase().includes(value))) : commits;
 }
 
-function CheckoutIcon({ current }: { readonly current: boolean }) {
-  return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none" aria-label="Current checkout"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none" aria-label="Checked out in another worktree"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>;
+export function isInspectorDismissKey(key: string): boolean { return key === "Escape"; }
+
+function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
+
+function CommitRow({ entry, checkouts, selected, graphNode, laneCount, layoutCollapsed, onSelect }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly graphNode: import("./graph-layout.js").GraphNode; readonly laneCount: number; readonly layoutCollapsed: boolean; readonly onSelect: (entry: LogCommitEntry) => void }) {
+  const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
+  return <button type="button" className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}`} onClick={() => onSelect(entry)}><span className="history-commit-subject">{entry.subject}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt)}</span><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout && <CheckoutIcon current={checkout.isCurrent} />}{badge.label}</span>; })}{detached && <span className="history-badge history-badge--worktree"><CheckoutIcon current={detached.isCurrent} />detached</span>}</span><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} laneCount={laneCount} collapsed={layoutCollapsed} /></span></button>;
 }
 
-function CommitRow({ entry, checkouts, selected, graphNode, laneCount, layoutCollapsed, onSelect }: CommitRowProps) {
-  const badges = refBadges(entry);
-  const detachedCheckout = findDetachedCheckout(entry, checkouts);
-  return <button type="button" className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}`} onClick={() => onSelect(entry)}><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} laneCount={laneCount} collapsed={layoutCollapsed} /></span><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((candidate) => candidate.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout ? <CheckoutIcon current={checkout.isCurrent} /> : null}{badge.label}</span>; })}{detachedCheckout ? <span className="history-badge history-badge--worktree"><CheckoutIcon current={detachedCheckout.isCurrent} />detached</span> : null}</span><span className="history-commit-subject">{entry.subject}</span><span className="history-commit-author">{entry.authorName}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt)}</span></button>;
+function CommitInspector({ ctx, target, onSelectCommit, onClose }: { readonly ctx: RailPanelContext; readonly target: CommitTarget; readonly onSelectCommit: (target: CommitTarget) => void; readonly onClose: () => void }) {
+  const [state, setState] = useState<InspectorState>({ kind: "loading" }); const [tab, setTab] = useState<"details" | "changes">("details"); const [selectedPath, setSelectedPath] = useState<string | null>(null); const [copied, setCopied] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(() => readSize(PREFS_HEADER_HEIGHT, HEADER_DEFAULT_HEIGHT)); const [fileListWidth, setFileListWidth] = useState(() => readSize(PREFS_FILE_LIST_WIDTH, FILE_LIST_DEFAULT_WIDTH));
+  const [filesView, setFilesView] = useState<FilesViewMode>(readFilesViewMode);
+  const detailsRef = useRef<HTMLDivElement>(null); const changesRef = useRef<HTMLDivElement>(null); const disposeRef = useRef<(() => void) | null>(null); const headerHeightRef = useRef(headerHeight); const fileListWidthRef = useRef(fileListWidth);
+  const commit = useMemo(() => ({ fullHash: target.fullHash, theaterId: ctx.theaterId ?? "", subPath: ctx.pathContext.relPath ?? "" }), [target.fullHash, ctx.theaterId, ctx.pathContext.relPath]);
+  useEffect(() => { let cancelled = false; setState({ kind: "loading" }); ctx.api.fetch("diff", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, ref: target.fullHash, subPath: ctx.pathContext.relPath ?? "" }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; }).then((result) => { if (!cancelled) { setState({ kind: "ok", result }); setSelectedPath(result.files[0]?.path ?? null); } }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.pathContext.relPath, ctx.theaterId, target.fullHash]);
+  useEffect(() => () => disposeRef.current?.(), []);
+  const startDrag = useCallback((event: React.PointerEvent<HTMLDivElement>, axis: "x" | "y") => { event.preventDefault(); const container = axis === "y" ? detailsRef.current : changesRef.current; if (!container) return; const start = axis === "y" ? headerHeightRef.current : fileListWidthRef.current; const startPointer = axis === "y" ? event.clientY : event.clientX; const size = axis === "y" ? container.getBoundingClientRect().height : container.getBoundingClientRect().width; disposeRef.current?.(); disposeRef.current = installPointerDragLifecycle({ documentTarget: document, windowTarget: window, onMove: (moveEvent) => { const move = moveEvent as PointerEvent; const next = clampSplitPaneSize(start, (axis === "y" ? move.clientY : move.clientX) - startPointer, size, 120, 120); if (next !== null) { if (axis === "y") { headerHeightRef.current = next; setHeaderHeight(next); } else { fileListWidthRef.current = next; setFileListWidth(next); } } }, onFinish: () => { const value = axis === "y" ? headerHeightRef.current : fileListWidthRef.current; try { localStorage.setItem(axis === "y" ? PREFS_HEADER_HEIGHT : PREFS_FILE_LIST_WIDTH, String(value)); } catch { /* ignore */ } disposeRef.current = null; } }); }, []);
+  const content = state.kind === "loading" ? <div className="history-inspector-empty">Loading commit…</div> : state.kind === "error" ? <div className="history-inspector-empty history-inspector-error">{state.message}</div> : (() => { const { meta, files } = state.result; const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null; const additions = files.reduce((sum, file) => sum + file.additions, 0); const deletions = files.reduce((sum, file) => sum + file.deletions, 0); const entry = target.entry; const chooseFile = (file: DiffFileEntry, showChanges: boolean) => { setSelectedPath(file.path); if (showChanges) setTab("changes"); }; const chooseFilesView = (next: FilesViewMode) => { setFilesView(next); try { localStorage.setItem(PREFS_FILES_VIEW, next); } catch { /* ignore */ } }; const copySha = () => { const copiedPromise = navigator.clipboard?.writeText(target.fullHash); if (!copiedPromise) return; void copiedPromise.then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1200); }).catch(() => undefined); }; return tab === "details" ? <div ref={detailsRef} className="history-details-tab" style={{ gridTemplateRows: buildInspectorDetailsGridTemplate(headerHeight) }}><CommitHeader meta={meta} entry={entry} fullHash={target.fullHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} /><div className="history-divider history-divider--horizontal" onPointerDown={(event) => startDrag(event, "y")} /><CommitFiles files={files} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, true)} /></div> : <div className="history-changes-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}><CommitFiles files={files} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, false)} /><div className="history-divider" onPointerDown={(event) => startDrag(event, "x")} />{selectedFile ? <div className="history-file-diff"><div className="history-file-diff-head"><span title={selectedFile.path}>{selectedFile.path}</span><div><button type="button" aria-label="Previous file" disabled={files.indexOf(selectedFile) === 0} onClick={() => chooseFile(files[files.indexOf(selectedFile) - 1]!, false)}>‹</button><button type="button" aria-label="Next file" disabled={files.indexOf(selectedFile) === files.length - 1} onClick={() => chooseFile(files[files.indexOf(selectedFile) + 1]!, false)}>›</button></div></div><HunkView ctx={ctx} file={selectedFile} mode="unified" subPath={ctx.pathContext.relPath ?? ""} commit={commit} /></div> : <div className="history-inspector-empty">No changed files</div>}</div></div>; })();
+  return <div className="history-inspector" onKeyDown={(event) => { if (isInspectorDismissKey(event.key)) { event.preventDefault(); onClose(); } }}><div className="history-segmented"><button type="button" aria-pressed={tab === "details"} onClick={() => setTab("details")}>Details</button><button type="button" aria-pressed={tab === "changes"} onClick={() => setTab("changes")}>Changes {state.kind === "ok" && <span>{state.result.files.length}</span>}</button><button type="button" className="history-detail-close history-inspector-close" aria-label="Close inspector" title="Close inspector" onClick={onClose}>✕</button></div>{content}</div>;
 }
 
-function HistoryPanel({ ctx }: HistoryPanelProps) {
-  const contextKey = pathContextKey(ctx.theaterId, ctx.pathContext.relPath);
+function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent }: { readonly meta: CommitResult["meta"]; readonly entry?: LogCommitEntry; readonly fullHash: string; readonly copied: boolean; readonly onCopy: () => void; readonly onParent: (full: string) => void }) { return <div className="history-inspector-head"><div className="history-inspector-subject">{meta.subject}</div>{meta.body && <pre className="history-inspector-message">{meta.body}</pre>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString()}>{entry?.relTime ?? formatCommitTime(meta.authorAt)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? "copied" : "copy"}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>parent {parent.short}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{badge.label}</span>)}</div>}</div>; }
+function CommitFiles({ files, selectedPath, additions, deletions, viewMode, onViewMode, onSelect }: { readonly files: readonly DiffFileEntry[]; readonly selectedPath: string | null; readonly additions: number; readonly deletions: number; readonly viewMode: FilesViewMode; readonly onViewMode: (mode: FilesViewMode) => void; readonly onSelect: (file: DiffFileEntry) => void }) { return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">Changed files</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><div className="diff-view-toggle history-files-view-toggle"><button type="button" className={`diff-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title="List view" aria-label="List view" aria-pressed={viewMode === "list"} onClick={() => onViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`diff-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title="Tree view" aria-label="Tree view" aria-pressed={viewMode === "tree"} onClick={() => onViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div><div className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} onSelect={onSelect} />)}</div></section>; }
 
-  return <HistoryPanelBody key={contextKey} ctx={ctx} />;
+function HistoryPanel({ ctx }: { readonly ctx: RailPanelContext }) { return <HistoryPanelBody key={pathContextKey(ctx.theaterId, ctx.pathContext.relPath)} ctx={ctx} />; }
+function HistoryPanelBody({ ctx }: { readonly ctx: RailPanelContext }) {
+  const [state, setState] = useState<LoadState>({ kind: "loading" }); const [target, setTarget] = useState<CommitTarget | null>(null); const [filterText, setFilterText] = useState(""); const [refreshToken, setRefreshToken] = useState(0); const [listWidth, setListWidth] = useState(readListPaneWidth); const rootRef = useRef<HTMLDivElement>(null); const dragDisposeRef = useRef<(() => void) | null>(null); const listWidthRef = useRef(listWidth); const subPath = ctx.pathContext.relPath ?? "";
+  useEffect(() => { if (!ctx.theaterId) { setState({ kind: "ok", commits: [], checkouts: [], truncated: false }); return; } let cancelled = false; setState({ kind: "loading" }); ctx.api.fetch("diff", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<LogResult>; }).then((data) => { if (!cancelled) setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, truncated: data.truncated ?? false }); }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, refreshToken, subPath]);
+  useLayoutEffect(() => { ctx.requestExtraWidth?.(target ? EXTENDED_EXTRA_WIDTH : null); return () => ctx.requestExtraWidth?.(null); }, [ctx.requestExtraWidth, target]); useEffect(() => () => dragDisposeRef.current?.(), []);
+  const handleDivider = useCallback((event: React.PointerEvent<HTMLDivElement>) => { event.preventDefault(); const root = rootRef.current; if (!root) return; const start = listWidthRef.current; const startX = event.clientX; const width = root.getBoundingClientRect().width; dragDisposeRef.current?.(); dragDisposeRef.current = installPointerDragLifecycle({ documentTarget: document, windowTarget: window, onMove: (moveEvent) => { const next = clampSplitPaneSize(start, (moveEvent as PointerEvent).clientX - startX, width, LIST_PANE_MIN_WIDTH, HISTORY_DETAIL_PANE_MIN_WIDTH, DIFF_DIVIDER_WIDTH); if (next !== null) { listWidthRef.current = next; setListWidth(next); } }, onFinish: () => { try { localStorage.setItem(PREFS_LIST_PANE_WIDTH, String(listWidthRef.current)); } catch { /* ignore */ } dragDisposeRef.current = null; } }); }, []);
+  const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]); const layout = state.kind === "ok" ? layoutGraph(visible) : null;
+  return <div ref={rootRef} className="history-root" style={target ? { gridTemplateColumns: buildHistoryGridTemplate(listWidth) } : undefined}><div className="history-list-pane"><div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder="Filter…" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{state.kind === "ok" && <span className="history-count">{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span>}</div><div className="history-list">{state.kind === "loading" && <div className="history-empty">Loading…</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="diff-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">No history</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">No matching items</div>}{state.kind === "ok" && layout && visible.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} laneCount={layout.activeLaneCount} layoutCollapsed={layout.collapsed} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} />)}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) && <div className="history-truncated">History capped at 200 commits.</div>}</div></div>{target && <><div className="history-divider" onPointerDown={handleDivider} /><div className="history-detail-pane"><CommitInspector ctx={ctx} target={target} onSelectCommit={setTarget} onClose={() => setTarget(null)} /></div></>}</div>;
 }
-
-function HistoryPanelBody({ ctx }: HistoryPanelProps) {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [selectedCommit, setSelectedCommit] = useState<CommitSelection | null>(null);
-  const [filterText, setFilterText] = useState("");
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
-  const fetchSeqRef = useRef(0);
-  const listPaneWidthRef = useRef(listPaneWidth);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const dragDisposeRef = useRef<(() => void) | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const subPath = ctx.pathContext.relPath ?? "";
-
-  useEffect(() => {
-    if (!ctx.theaterId) {
-      setState({ kind: "ok", commits: [], checkouts: [], truncated: false });
-      return;
-    }
-    const sequence = ++fetchSeqRef.current;
-    setState({ kind: "loading" });
-    ctx.api.fetch("diff", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then(async (response) => {
-      if (sequence !== fetchSeqRef.current) return;
-      if (!response.ok) {
-        const payload = await response.json() as { readonly error?: string };
-        setState({ kind: "error", message: payload.error ?? "unknown" });
-        return;
-      }
-      const data = await response.json() as LogResult;
-      if (sequence === fetchSeqRef.current) setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, truncated: data.truncated ?? false });
-    }).catch((error: unknown) => {
-      if (sequence === fetchSeqRef.current) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
-    });
-  }, [ctx.api, ctx.theaterId, refreshToken, subPath]);
-
-  useLayoutEffect(() => {
-    ctx.requestExtraWidth?.(selectedCommit ? EXTENDED_EXTRA_WIDTH : null);
-    return () => ctx.requestExtraWidth?.(null);
-  }, [ctx.requestExtraWidth, selectedCommit]);
-
-  useEffect(() => () => {
-    dragDisposeRef.current?.();
-    dragDisposeRef.current = null;
-  }, []);
-
-  const handleSelectCommit = useCallback((entry: LogCommitEntry) => {
-    if (ctx.theaterId) setSelectedCommit({ commit: entry, subPath, theaterId: ctx.theaterId });
-  }, [ctx.theaterId, subPath]);
-  const handleDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const container = rootRef.current;
-    if (!container) return;
-    const containerWidth = container.getBoundingClientRect().width;
-    const startX = event.clientX;
-    const startWidth = listPaneWidthRef.current;
-    dragDisposeRef.current?.();
-    setIsDragging(true);
-    const onMove = (event: Event) => {
-      const move = event as PointerEvent;
-      const next = clampListPaneWidth({ startWidth, dx: move.clientX - startX, containerWidth, listPaneMinWidth: LIST_PANE_MIN_WIDTH, hunkPaneMinWidth: HISTORY_DETAIL_PANE_MIN_WIDTH, dividerWidth: DIFF_DIVIDER_WIDTH });
-      if (next !== null) {
-        listPaneWidthRef.current = next;
-        setListPaneWidth(next);
-      }
-    };
-    const onFinish = () => {
-      dragDisposeRef.current = null;
-      setIsDragging(false);
-      try { localStorage.setItem(PREFS_LIST_PANE_WIDTH, String(listPaneWidthRef.current)); } catch { /* ignore */ }
-    };
-    dragDisposeRef.current = installPointerDragLifecycle({ documentTarget: document, windowTarget: window, onMove, onFinish });
-  }, []);
-  const visibleCommits = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
-  const layout = state.kind === "ok" ? layoutGraph(visibleCommits) : null;
-  const countLabel = state.kind === "ok" ? filterText ? `${visibleCommits.length}/${state.commits.length}` : String(state.commits.length) : null;
-  return <div ref={rootRef} className={`history-root${selectedCommit ? " has-detail" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedCommit ? { gridTemplateColumns: buildHistoryGridTemplate(listPaneWidth) } : undefined}>{selectedCommit ? <div className="history-detail-pane"><div className="history-detail-head"><span className="history-detail-sha">{selectedCommit.commit.shortHash}</span><span className="history-detail-subject">{selectedCommit.commit.subject}</span><button type="button" className="history-detail-close" aria-label="Close commit diff" onClick={() => setSelectedCommit(null)}>✕</button></div><div className="history-detail-body"><HunkView ctx={ctx} file={{ path: "", status: "M", additions: 0, deletions: 0 }} mode="unified" subPath={selectedCommit.subPath} commit={selectedCommit} /></div></div> : null}{selectedCommit ? <div className="history-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}<div className="history-list-pane"><div className="history-toolbar"><div className="history-filter"><input type="text" className="history-filter-input" placeholder="Filter…" aria-label="Filter commits" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="history-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div>{countLabel ? <span className="history-count">{countLabel}</span> : null}</div><div className="history-list">{state.kind === "loading" ? <div className="history-empty">Loading…</div> : null}{state.kind === "error" ? <div className="history-error"><span>{state.message}</span><button type="button" className="diff-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div> : null}{state.kind === "ok" && state.commits.length === 0 ? <div className="history-empty">No history</div> : null}{state.kind === "ok" && state.commits.length > 0 && visibleCommits.length === 0 ? <div className="history-empty">No matching items</div> : null}{state.kind === "ok" && layout ? visibleCommits.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={selectedCommit?.commit.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} laneCount={layout.activeLaneCount} layoutCollapsed={layout.collapsed} onSelect={handleSelectCommit} />) : null}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) ? <div className="history-truncated">History capped at 200 commits.</div> : null}</div></div></div>;
-}
-
-function HistoryIcon() {
-  return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3v12M10 7v8M14 11v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /><path d="M5 7c1.8 0 2.4 0 5 0M10 11c1.4 0 2.2 0 4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
-}
-
-export const historyPanel: RailPanelDescriptor = {
-  id: "history",
-  title: "History",
-  icon: () => <HistoryIcon />,
-  pathAware: true,
-  render: (ctx: RailPanelContext) => <HistoryPanel ctx={ctx} />,
-};
-
-function readListPaneWidth(): number {
-  try {
-    const value = localStorage.getItem(PREFS_LIST_PANE_WIDTH);
-    const width = value === null ? NaN : Number.parseFloat(value);
-    if (Number.isFinite(width) && width > 0) return Math.max(LIST_PANE_MIN_WIDTH, width);
-  } catch { /* ignore */ }
-  return LIST_PANE_DEFAULT_WIDTH;
-}
+function readListPaneWidth(): number { return readSize(PREFS_LIST_PANE_WIDTH, LIST_PANE_DEFAULT_WIDTH, LIST_PANE_MIN_WIDTH); }
+function readFilesViewMode(): FilesViewMode { try { const value = localStorage.getItem(PREFS_FILES_VIEW); if (value === "list" || value === "tree") return value; } catch { /* ignore */ } return "list"; }
+function readSize(key: string, fallback: number, minimum = 0): number { try { const value = Number.parseFloat(localStorage.getItem(key) ?? ""); if (Number.isFinite(value) && value >= minimum) return value; } catch { /* ignore */ } return fallback; }
+function initials(name: string): string { return name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?"; }
+function HistoryIcon() { return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3v12M10 7v8M14 11v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /><path d="M5 7c1.8 0 2.4 0 5 0M10 11c1.4 0 2.2 0 4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>; }
+export const historyPanel: RailPanelDescriptor = { id: "history", title: "History", icon: () => <HistoryIcon />, pathAware: true, render: (ctx) => <HistoryPanel ctx={ctx} /> };

@@ -3,7 +3,8 @@ export type DiffFileMode = "unified" | "untracked";
 
 export interface DiffFileEntry {
   readonly path: string;
-  readonly status: "M" | "A" | "D" | "R" | "U";
+  readonly oldPath?: string;
+  readonly status: "M" | "A" | "D" | "R" | "T" | "U";
   readonly additions: number;
   readonly deletions: number;
 }
@@ -43,7 +44,22 @@ export interface LogResult {
   readonly truncated?: boolean;
 }
 
-export interface CommitDiffResult {
-  readonly content: string;
+export interface CommitParent {
+  readonly full: string;
+  readonly short: string;
+}
+
+export interface CommitMeta {
+  readonly authorName: string;
+  readonly authorEmail: string;
+  readonly authorAt: number;
+  readonly subject: string;
+  readonly body: string;
+  readonly parents: readonly CommitParent[];
+}
+
+export interface CommitResult {
+  readonly meta: CommitMeta;
+  readonly files: readonly DiffFileEntry[];
   readonly truncated?: boolean;
 }

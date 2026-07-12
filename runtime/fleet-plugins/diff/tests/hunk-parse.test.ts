@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseHunk } from "../client/hunk-parse.js";
+import { highlightEscapedDiffCode, parseHunk } from "../client/hunk-parse.js";
 
 const SAMPLE_UNIFIED = [
   "diff --git a/src/foo.ts b/src/foo.ts",
@@ -39,6 +39,19 @@ const UNTRACKED_NO_INDEX = [
   "+export const a = 1;",
   "+export const b = 2;",
   "+export const c = 3;",
+].join("\n");
+
+const RENAME_ONLY = [
+  "diff --git a/old-name.txt b/new-name.txt",
+  "similarity index 100%",
+  "rename from old-name.txt",
+  "rename to new-name.txt",
+].join("\n");
+
+const MODE_ONLY = [
+  "diff --git a/script.sh b/script.sh",
+  "old mode 100644",
+  "new mode 100755",
 ].join("\n");
 
 describe("parseHunk", () => {
@@ -152,5 +165,31 @@ describe("parseHunk", () => {
     // hunk 내부의 진짜 빈 컨텍스트 라인(" ")은 별개로 보존된다
     const inner = parseHunk("@@ -1,3 +1,3 @@\n a\n \n b\n");
     expect(inner.filter((l) => l.kind === "ctx")).toHaveLength(3);
+  });
+
+  it("⑩ rename-only diff의 메타데이터를 빈 pane 대신 보존한다", () => {
+    expect(parseHunk(RENAME_ONLY).filter((line) => line.kind === "meta").map((line) => line.text)).toEqual([
+      "similarity index 100%",
+      "rename from old-name.txt",
+      "rename to new-name.txt",
+    ]);
+  });
+
+  it("⑪ mode-only diff의 메타데이터를 보존하고 일반 hunk 분류는 유지한다", () => {
+    expect(parseHunk(MODE_ONLY).filter((line) => line.kind === "meta").map((line) => line.text)).toEqual([
+      "old mode 100644",
+      "new mode 100755",
+    ]);
+    expect(parseHunk(SAMPLE_UNIFIED).filter((line) => line.kind === "meta")).toEqual([]);
+  });
+});
+
+describe("highlightEscapedDiffCode", () => {
+  it("wraps escaped tokens without restoring executable HTML", () => {
+    const html = highlightEscapedDiffCode("const value = &lt;script&gt;42&lt;/script&gt;; // note");
+    expect(html).toContain('class="diff-token-keyword"');
+    expect(html).toContain('class="diff-token-number"');
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
   });
 });

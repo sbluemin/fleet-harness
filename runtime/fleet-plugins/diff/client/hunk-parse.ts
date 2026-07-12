@@ -1,6 +1,6 @@
 // ─── types ───────────────────────────────────────────────────────────────────
 
-export type HunkLineKind = "hunk-label" | "add" | "del" | "ctx" | "file-label";
+export type HunkLineKind = "hunk-label" | "meta" | "add" | "del" | "ctx" | "file-label";
 
 export interface ParsedLine {
   readonly kind: HunkLineKind;
@@ -8,6 +8,30 @@ export interface ParsedLine {
   readonly oldLine?: number;
   readonly newLine?: number;
   readonly oldPath?: string;
+}
+
+const KEYWORDS = new Set(["import", "export", "from", "const", "let", "var", "function", "return", "await", "async", "new", "interface", "type", "extends", "implements", "class", "if", "else", "for", "while", "switch", "case", "of", "in", "typeof", "void", "null", "undefined", "true", "false", "as", "default", "throw", "try", "catch", "describe", "it", "expect", "require", "module", "public", "private", "readonly"]);
+
+/** Receives escaped source only; every generated span therefore remains inert markup. */
+export function highlightEscapedDiffCode(code: string): string {
+  let out = "";
+  let i = 0;
+  const wrap = (kind: string, value: string) => `<span class="diff-token-${kind}">${value}</span>`;
+  while (i < code.length) {
+    const char = code[i]!;
+    if (char === "&") { const end = code.indexOf(";", i + 1); if (end >= 0) { out += code.slice(i, end + 1); i = end + 1; continue; } }
+    if ((char === "/" && code[i + 1] === "/") || char === "#") { out += wrap("comment", code.slice(i)); break; }
+    if (char === '"' || char === "'" || char === "`") {
+      const quote = char; const start = i++;
+      while (i < code.length) { if (code[i] === "\\") { i += 2; continue; } if (code[i++] === quote) break; }
+      out += wrap("string", code.slice(start, i)); continue;
+    }
+    if (/[0-9]/.test(char) && !/[A-Za-z0-9_$]/.test(code[i - 1] ?? "")) { const start = i; while (i < code.length && /[0-9.xXa-fA-F]/.test(code[i]!)) i++; out += wrap("number", code.slice(start, i)); continue; }
+    if (/[A-Za-z_$]/.test(char)) { const start = i; while (i < code.length && /[A-Za-z0-9_$]/.test(code[i]!)) i++; const word = code.slice(start, i); out += KEYWORDS.has(word) ? wrap("keyword", word) : /^[A-Z]/.test(word) ? wrap("type", word) : word; continue; }
+    if ("{}()[].,;:=<>+-*/&|?!".includes(char)) { out += wrap("punctuation", char); i++; continue; }
+    out += char; i++;
+  }
+  return out;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -46,11 +70,8 @@ export function parseHunk(content: string): ParsedLine[] {
     }
 
     if (inHeader) {
-      // diff --git ~ @@ 이전 헤더 라인 드롭(index, ---, +++, mode 변경 등)
+      // 사용자에게 변경 이유를 알려주는 rename/mode 메타데이터는 hunk가 없어도 보존한다.
       if (
-        line.startsWith("index ") ||
-        line.startsWith("--- ") ||
-        line.startsWith("+++ ") ||
         line.startsWith("new file mode") ||
         line.startsWith("deleted file mode") ||
         line.startsWith("old mode") ||
@@ -59,6 +80,16 @@ export function parseHunk(content: string): ParsedLine[] {
         line.startsWith("rename to ") ||
         line.startsWith("similarity index") ||
         line.startsWith("dissimilarity index")
+      ) {
+        result.push({ kind: "meta", text: line });
+        continue;
+      }
+
+      // 순수 Git 헤더 노이즈는 드롭한다.
+      if (
+        line.startsWith("index ") ||
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ")
       ) {
         continue;
       }

@@ -13,19 +13,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function literalPathspec(relativePath: string): string {
+  return `:(literal)${relativePath}`;
+}
+
 // git numstat 리네임 압축 표기 `{old => new}` 에서 new 경로를 추출
 function normalizeNumstatPath(p: string): string {
   const match = /^(.*?)\{[^}]* => ([^}]*)\}(.*)$/.exec(p);
-  if (!match) return p;
-  return (match[1] ?? "") + (match[2] ?? "") + (match[3] ?? "");
+  if (match) return (match[1] ?? "") + (match[2] ?? "") + (match[3] ?? "");
+  // Limitation: a literal filename containing ` => ` is indistinguishable from Git's non-NUL rename notation and gets zero stats.
+  const plainRename = /^.+ => (.+)$/.exec(p);
+  return plainRename?.[1] ?? p;
 }
 
-function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): DiffFileEntry[] {
+export function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): DiffFileEntry[] {
   const numstatMap = new Map<string, { readonly additions: number; readonly deletions: number }>();
   for (const line of numstatOutput.split("\n")) {
     const parts = line.split("\t");
     if (parts.length < 3) continue;
-    const [adds, dels, filePath] = parts;
+    const [adds, dels] = parts;
+    const filePath = parts.length > 3 ? parts[parts.length - 1] : parts[2];
     if (!filePath) continue;
     numstatMap.set(normalizeNumstatPath(filePath), {
       additions: parseInt(adds ?? "0", 10) || 0,
@@ -39,11 +46,12 @@ function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): Dif
     const [rawStatus, ...pathParts] = line.split("\t");
     if (!rawStatus || pathParts.length === 0) continue;
     const statusChar = rawStatus.charAt(0).toUpperCase();
-    if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R") continue;
+    if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R" && statusChar !== "T") continue;
+    const oldPath = statusChar === "R" ? pathParts[0] : undefined;
     const filePath = statusChar === "R" ? (pathParts[1] ?? pathParts[0] ?? "") : (pathParts[0] ?? "");
     if (!filePath) continue;
     const nums = numstatMap.get(filePath) ?? { additions: 0, deletions: 0 };
-    files.push({ path: filePath, status: statusChar as "M" | "A" | "D" | "R", ...nums });
+    files.push({ path: filePath, ...(oldPath ? { oldPath } : {}), status: statusChar as "M" | "A" | "D" | "R" | "T", ...nums });
   }
   return files;
 }
@@ -133,8 +141,8 @@ export async function handleDiffChanged(
     // git diff HEAD 통합 목록 시도 (staged+unstaged 합산)
     try {
       const [nameStatusResult, numstatResult] = await Promise.all([
-        runGit(["diff", "HEAD", "--relative", "--name-status", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
-        runGit(["diff", "HEAD", "--relative", "--numstat", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--name-status", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--numstat", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nameStatusResult.stdout, numstatResult.stdout);
       truncated = nameStatusResult.truncated || numstatResult.truncated;
@@ -142,8 +150,8 @@ export async function handleDiffChanged(
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged 목록으로 graceful fallback
       const [nsResult, nsNumstat] = await Promise.all([
-        runGit(["diff", "--cached", "--relative", "--name-status", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
-        runGit(["diff", "--cached", "--relative", "--numstat", "--diff-filter=MADR", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--name-status", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--numstat", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nsResult.stdout, nsNumstat.stdout);
       truncated = nsResult.truncated || nsNumstat.truncated;
@@ -235,7 +243,10 @@ export async function handleDiffFile(
         return;
       }
 
-      // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용
+      // --no-index는 차이가 있으면 항상 exit code 1을 반환 → allowExitCodes 사용.
+      // --no-index는 경로를 pathspec이 아닌 파일시스템 경로로 취급하므로 magic이 해석되지 않는다
+      // (위의 lexical + realpath containment로 이미 방어). 여기에 :(literal)을 붙이면
+      // git이 ":(literal)<path>"라는 없는 파일을 찾아 실패하므로 원본 경로를 그대로 전달한다.
       const result = await runGit(
         ["diff", "--no-index", "--relative", "--unified=3", "--", "/dev/null", relativePath],
         { cwd: gitCwd, allowExitCodes: [1] },
@@ -260,11 +271,11 @@ export async function handleDiffFile(
     }
     let result;
     try {
-      result = await runGit(["diff", "HEAD", "--relative", "--unified=3", "--", relativePath], { cwd: gitCwd });
+      result = await runGit(["diff", "HEAD", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
     } catch (err) {
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
-      result = await runGit(["diff", "--cached", "--relative", "--unified=3", "--", relativePath], { cwd: gitCwd });
+      result = await runGit(["diff", "--cached", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
     }
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {

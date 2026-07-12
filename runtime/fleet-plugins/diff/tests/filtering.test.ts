@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { filterDiffFiles } from "../client/changed-files.js";
-import { filterHistoryCommits } from "../client/history-panel.js";
+import { filterHistoryCommits, isInspectorDismissKey } from "../client/history-panel.js";
 import type { DiffFileEntry, LogCommitEntry } from "../server/types.js";
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -70,5 +70,12 @@ describe("filterHistoryCommits", () => {
 
     expect(filterHistoryCommits(COMMITS, "missing")).toEqual([]);
     expect(selected.fullHash).toBe(COMMITS[0]?.fullHash);
+  });
+});
+
+describe("inspector dismissal", () => {
+  it("recognizes only Escape as the scoped inspector dismiss key", () => {
+    expect(isInspectorDismissKey("Escape")).toBe(true);
+    expect(isInspectorDismissKey("Enter")).toBe(false);
   });
 });

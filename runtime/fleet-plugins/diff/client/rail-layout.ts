@@ -50,8 +50,22 @@ export function buildDiffGridTemplate(listPaneWidth: number): string {
 }
 
 export function buildHistoryGridTemplate(listPaneWidth: number): string {
-  const preservedLeftWidth = HISTORY_DETAIL_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
-  return `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedLeftWidth}px)))`;
+  const preservedDetailWidth = HISTORY_DETAIL_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
+  return `minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedDetailWidth}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`;
+}
+
+export function clampSplitPaneSize(startSize: number, delta: number, containerSize: number, firstPaneMinSize: number, secondPaneMinSize: number, dividerWidth = DIFF_DIVIDER_WIDTH): number | null {
+  const maxSize = containerSize - secondPaneMinSize - dividerWidth;
+  if (maxSize < firstPaneMinSize) return NO_OP_SENTINEL;
+  return Math.max(firstPaneMinSize, Math.min(maxSize, startSize + delta));
+}
+
+export function buildInspectorDetailsGridTemplate(headerHeight: number): string {
+  return `minmax(120px, min(${headerHeight}px, calc(100% - 124px))) ${DIFF_DIVIDER_WIDTH}px minmax(120px, 1fr)`;
+}
+
+export function buildInspectorChangesGridTemplate(fileListWidth: number): string {
+  return `minmax(120px, min(${fileListWidth}px, calc(100% - 144px))) ${DIFF_DIVIDER_WIDTH}px minmax(140px, 1fr)`;
 }
 
 export function installPointerDragLifecycle({ documentTarget, windowTarget, onMove, onFinish }: PointerDragLifecycleInput): () => void {
