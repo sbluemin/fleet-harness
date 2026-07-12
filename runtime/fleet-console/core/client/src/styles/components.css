@@ -3573,19 +3573,73 @@
   cursor: grabbing;
 }
 
-/* rest에서는 status beacon만 코너에 남긴다. Tab으로 숨은 컨트롤에 진입하면
-   필 스코프의 focus-within만으로 다시 열려 xterm 본문 포커스와 분리된다. */
+/* inactive panel의 identity는 beacon 바로 왼쪽에 놓인다. hover/focus에서 controls는 기존처럼
+   beacon의 오른쪽으로 전개되며, active panel은 identity를 렌더하지 않고 기존 chrome만 유지한다. */
 .canvas-operation:hover .canvas-operation-titlebar,
 .canvas-operation-titlebar:focus-within {
-  /* 필은 우앵커라 gap은 ✕ 슬롯 위치를 바꾸지 않는다 — rest dot=✕ 정합(≤1px)은 padding 0이 지킨다. */
+  /* 필은 우앵커다. rest identity는 중립 ink만 사용하고, status 색은 beacon에만 남긴다. */
   gap: var(--space-2);
   min-height: 24px;
   padding: 0;
   border-color: color-mix(in oklch, var(--surface-rim) 86%, transparent);
-  border-width: 1px;
   overflow: visible;
   background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
   box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
+}
+
+.canvas-operation:not(.is-active) .canvas-operation-titlebar {
+  gap: var(--space-1);
+  overflow: visible;
+  background: color-mix(in oklch, var(--ink-deep) 76%, transparent);
+  box-shadow: 0 6px 16px -14px color-mix(in oklch, var(--ink-abyss) 92%, transparent);
+}
+
+.canvas-operation-identity-name,
+.canvas-operation-identity-input {
+  min-width: 0;
+  max-width: calc(100% - 24px);
+  font-family: var(--font-body);
+  font-size: calc(var(--font-body-size) * 0.86);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.canvas-operation-identity-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  padding: 4px 3px 4px 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: color-mix(in oklch, var(--ink-pearl) 72%, transparent);
+  background: transparent;
+  cursor: text;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-operation-identity-name:hover {
+  color: var(--ink-pearl);
+}
+
+.canvas-operation-identity-name:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
+  outline-offset: -2px;
+}
+
+.canvas-operation-identity-input {
+  flex: 1 1 auto;
+  width: 0;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in oklch, var(--brass) 68%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--ink-abyss) 88%, transparent);
+  outline: none;
+}
+
+.canvas-operation-identity-input:focus {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 32%, transparent);
 }
 
 .canvas-operation-drag-edge {
@@ -3936,8 +3990,8 @@
   outline: none;
 }
 
-/* 우측 앵커는 var(--space-2), 슬롯 폭은 24px이다. 따라서 rest dot 중심과 hover 닫기 중심은
-   모두 우측 앵커+12px이며, padding·최소높이를 바꾸지 않아 x/y 편차가 1px 이하로 유지된다. */
+/* inactive rest는 name → beacon → collapsed controls 순서다. hover/focus controls는 beacon 오른쪽으로
+   전개되어 기존 product placement를 유지하며, beacon 이동은 이 명시적 상호작용에서 허용된다. */
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
