@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
+
 import {
   DESKTOP_DEVELOPMENT_ENV,
   DESKTOP_OWNER_ID_ENV,
@@ -27,6 +29,21 @@ afterEach(() => {
 });
 
 describe("desktop protocol", () => {
+  it("shares the version-1 resource-root marker formatter and trim-tolerant validator", () => {
+    expect(formatDesktopResourceRootMarker()).toBe("1\n");
+    expect(isDesktopResourceRootMarkerValid("1\n")).toBe(true);
+    expect(isDesktopResourceRootMarkerValid(" \t1\r\n")).toBe(true);
+    expect(isDesktopResourceRootMarkerValid("2\n")).toBe(false);
+  });
+
+  it("keeps the shared contract free of host and filesystem ownership", () => {
+    const source = fs.readFileSync(path.join(CONSOLE_PACKAGE_ROOT, "desktop-protocol", "index.ts"), "utf8");
+
+    expect(source).not.toMatch(/node:(?:fs|child_process)/);
+    expect(source).not.toMatch(/(?:@dotobokuri\/|fleet-desktop|fleet-plugins)/);
+    expect(source).not.toMatch(/\b(?:process|electron)\b/);
+  });
+
   it("validates the marked resource root and exact owner protocol", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-resource-"));
     TEMP_DIRS.push(root);

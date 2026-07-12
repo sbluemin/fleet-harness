@@ -8,6 +8,7 @@
 |---|---|
 | `core/host/` | Server lifecycle, security, durable state, and core APIs |
 | `core/client/` | React application, host chrome, and browser state |
+| `desktop-protocol/` | Shared Console-Desktop protocol contract |
 | `sdk/` | Plugin-facing contracts and stateless helpers |
 | `markdown/` | Shared sanitized markdown and diagram rendering |
 | `font-picker/` | Shared controlled font-selection surface |
@@ -37,5 +38,6 @@
 
 - Console serves its own web build; there is no second gateway or embedded web owner.
 - Published Console artifacts are self-contained: workspace packages are bundled and must not survive as workspace-version dependencies.
+- The published `./desktop-protocol` subpath is a compatibility surface for shipped Desktop shells under always-latest Console installs; keep its export surface unchanged.
 - Host and built-in plugin bundles may load separate copies of a module. Never coordinate across that boundary through module-scoped singleton state.
 - Built-in plugin server code must resolve package-level native or external dependencies from the Console package rather than the generated plugin cache; validate the affected path against the built distribution because source tests and builds can stay green.

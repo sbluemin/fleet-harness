@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@dotobokuri/fleet-console/desktop-protocol";
+import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/desktop-protocol";
 
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
 export interface SidecarSupervisorOptions { readonly nodePath?: string; readonly cliPath?: string; readonly serviceRoot?: string; readonly serviceVersion: string; readonly resolveRuntime?: () => Promise<SidecarRuntime>; readonly env: NodeJS.ProcessEnv; readonly lockFile: string; readonly ownerId: string; readonly log: { info(message: string): void; error(message: string): void }; }

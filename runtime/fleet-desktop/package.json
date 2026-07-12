@@ -27,6 +27,7 @@
     "@dotobokuri/core-process": "workspace:*",
     "@electron/asar": "3.4.1",
     "@dotobokuri/fleet-console": "workspace:*",
+    "@fleet-console/desktop-protocol": "workspace:*",
     "@electron/fuses": "2.1.3",
     "electron": "43.1.0",
     "electron-builder": "26.15.3",
