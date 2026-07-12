@@ -26,19 +26,6 @@ import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 
-// 사이드바/레일 토글 단축키(Mod+B / Mod+Alt+B)가 터미널·텍스트 입력 포커스를 가로채지 않도록 판별한다.
-// 예: 터미널 포커스 중 Ctrl+B는 readline backward-character나 tmux prefix로 터미널에 전달돼야 한다.
-function isTextEntryFocused(event: KeyboardEvent): boolean {
-  for (const node of [event.target, document.activeElement]) {
-    if (!(node instanceof Element)) continue;
-    if (node.closest(".xterm")) return true;
-    const tag = node.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-    if (node.closest('[contenteditable=""], [contenteditable="true"], [role="textbox"]')) return true;
-  }
-  return false;
-}
-
 // aria-modal 대화상자(Operation Search, 디렉터리 브라우저 등)가 열려 있으면 배경 크롬(사이드바/레일)을
 // 토글하지 않는다 — 모달 경계와 포커스 트랩 의미를 지키기 위함(포커스가 모달 내 버튼으로 이동한 경우 포함).
 function isBlockingDialogOpen(): boolean {
@@ -105,13 +92,17 @@ export function App() {
         toggleOperationSearch();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !isTextEntryFocused(event) && !isBlockingDialogOpen()) {
+      // Mod+Alt+B(rail): macOS는 ⌘(+⌥)로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.
+      // Win/Linux의 Ctrl+Alt는 일부 레이아웃에서 AltGr(문자 입력)와 동일하게 보고되고, Firefox/Windows는
+      // 진성 Ctrl+Alt에도 AltGraph=true를 주므로(신뢰 불가) AltGraph 대신 "이 키가 실제로 문자 b를
+      // 냈는가"(event.key)로 판정한다: meta면 발화, 아니면 key가 'b'일 때만 발화(AltGr `{` 등은 미삼킴).
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && (event.metaKey || event.key.toLowerCase() === "b") && !isBlockingDialogOpen()) {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleRailChrome();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey && !isTextEntryFocused(event) && !isBlockingDialogOpen()) {
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey && !isBlockingDialogOpen()) {
         event.preventDefault();
         event.stopImmediatePropagation();
         setSideBarCollapsed(!getSideBarState().collapsed);
