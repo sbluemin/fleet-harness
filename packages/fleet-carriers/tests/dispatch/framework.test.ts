@@ -541,15 +541,20 @@ describe("carrier_dispatch workspace manifest recording", () => {
     tempDir = null;
   });
 
-  it("stores a window-approximate workspace manifest on single dispatch finalization", async () => {
+  it("captures a single dispatch edit made immediately after the prompt gate opens", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const scanner = createSequenceScanner([
-      [],
-      [{ status: "M", path: "src/file.ts" }],
-    ]);
+    let edited = false;
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const handle = stubOneShot(opts.cliType as CliType);
+      handle.startPrompt = vi.fn(() => { edited = true; });
+      return handle;
+    });
+    const scanner: WorkspaceChangeScanner = {
+      snapshot: vi.fn(async () => edited ? [{ status: "M", path: "src/file.ts" }] : []),
+    };
     const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
 
     await tool.execute({
@@ -720,7 +725,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     }
   });
 
-  it("stores a window-approximate workspace manifest on Task Force finalization", async () => {
+  it("captures Task Force edits made immediately after the shared prompt gate opens", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
     updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
@@ -729,10 +734,15 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const scanner = createSequenceScanner([
-      [],
-      [{ status: "A", path: "docs/plan.md" }],
-    ]);
+    let edited = false;
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const handle = stubOneShot(opts.cliType as CliType);
+      handle.startPrompt = vi.fn(() => { edited = true; });
+      return handle;
+    });
+    const scanner: WorkspaceChangeScanner = {
+      snapshot: vi.fn(async () => edited ? [{ status: "A", path: "docs/plan.md" }] : []),
+    };
     const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
 
     await tool.execute({

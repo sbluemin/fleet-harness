@@ -9,6 +9,7 @@ import { getEffort, getProviderModels, type CliType, type ProtocolType } from "@
 import {
   createCarrierRuntime,
   initStore,
+  getJobSummary,
   registerCarrier,
   resetJobCancelRegistryForTest,
   resetJobConcurrencyForTest,
@@ -251,5 +252,62 @@ describe("Task Force context barrier and resume", () => {
     expect(claudeResume?.resumeSessionId).toBe("session-claude");
     expect(codexResume?.resumeSessionId).toBe("session-codex");
     expect(details(resumed).context_id).toBe(contextId);
+  });
+
+  it("rolls back every prepared Task Force resource when readiness confirmation rejects a resumed binding", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    configureTaskForce("ohio");
+    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
+    const tool = runtime.buildDispatchToolSpec(deps);
+
+    const first = await tool.execute({ carrier_id: "ohio", label: "TF first", request: "Run." }, { cwd: "/tmp", toolCallId: "tf-confirm-first" });
+    const contextId = details(first).context_id;
+    expect(contextId).toMatch(/^ctx:/);
+    await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
+
+    const rejectedHandles: OneShotExecution[] = [];
+    vi.mocked(executeOneShot).mockReset();
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const cliType = opts.cliType as CliType;
+      const handle: OneShotExecution = {
+        readiness: Promise.resolve({
+          cliType,
+          protocol: cliType === "codex" ? "acp" : protocolFor(cliType),
+          sessionId: `mismatched-${cliType}`,
+        }),
+        completion: Promise.resolve(doneResult(`mismatched-${cliType}`)),
+        startPrompt: vi.fn(),
+        abort: vi.fn(async () => {}),
+      };
+      rejectedHandles.push(handle);
+      return handle;
+    });
+
+    const rejected = await tool.execute({
+      carrier_id: "ohio",
+      label: "TF mismatched resume",
+      request: "Resume with a changed provider protocol.",
+      resume_context_id: contextId,
+    }, { cwd: "/tmp", toolCallId: "tf-confirm-rejected" });
+
+    expect(details(rejected)).toMatchObject({ accepted: false, error: "context_id binding mismatch" });
+    expect(rejectedHandles).toHaveLength(2);
+    for (const handle of rejectedHandles) {
+      expect(handle.startPrompt).not.toHaveBeenCalled();
+      expect(handle.abort).toHaveBeenCalledTimes(1);
+    }
+    expect(getJobSummary("taskforce:tf-confirm-rejected", Date.now())).toBeNull();
+    expect(runtime.dispatchContexts.size).toBe(1);
+
+    vi.mocked(executeOneShot).mockReset();
+    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
+    const retry = await tool.execute({
+      carrier_id: "ohio",
+      label: "TF retry",
+      request: "Resume after the rejected readiness confirmation.",
+      resume_context_id: contextId,
+    }, { cwd: "/tmp", toolCallId: "tf-confirm-retry" });
+    expect(details(retry)).toMatchObject({ accepted: true, context_id: contextId });
   });
 });

@@ -20,7 +20,7 @@ import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { finalizeDetachedJob, launchResponseResult, rollbackRejectedDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeProviderReason, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
-import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/workspace-manifest.js";
+import { captureJobWindowManifest, captureWorkspaceSnapshot, type WorkspaceChangeSnapshotEntry } from "../jobs/workspace-manifest.js";
 import { executeOneShot } from "@dotobokuri/core-agent";
 import {
   emitStreamEvent,
@@ -80,6 +80,7 @@ interface TaskForceCompletionOptions {
   services?: CarrierDispatchServices;
   lease?: DispatchContextLease;
   contextId?: string;
+  baselineSnapshot: readonly WorkspaceChangeSnapshotEntry[] | null;
 }
 
 interface TaskForceTrackModelInfo {
@@ -212,23 +213,21 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     handle: h.handle,
     ready: (readinessResults[index] as PromiseFulfilledResult<OneShotReady>).value,
   }));
-  confirmDispatchReadiness(services?.dispatchContexts, claim.lease, prepared.map((p) => readyToSession(p.ready)));
+  try {
+    confirmDispatchReadiness(services?.dispatchContexts, claim.lease, prepared.map((p) => readyToSession(p.ready)));
+  } catch (error) {
+    await Promise.allSettled(handles.map((h) => h.handle.abort()));
+    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
+    releaseDispatchLease(services?.dispatchContexts, claim.lease);
+    clearTaskForceState(requestKey);
+    const message = error instanceof Error ? error.message : String(error);
+    return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
+  }
 
   emitTaskForceJobRegistered(registry, launch.jobId, carrierId, ctx.sessionLabel, requestKey, activeBackends, startedAt, label, trackModelInfoByCli);
 
-  const execStartedAt = Date.now();
-  for (const backend of prepared) {
-    emitStreamEvent(registry, {
-      type: "track:begin",
-      jobId: launch.jobId,
-      originSessionId: ctx.sessionLabel,
-      trackId: backend.trackId,
-      startedAt: execStartedAt,
-      requestPreview: request.trim().split(/\r?\n/, 1)[0],
-    });
-    backend.handle.startPrompt();
-  }
-
+  // Baseline must be complete before any backend can pass the shared prompt gate.
+  const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
   const completion = runTaskForceCompletion({
     registry,
     jobId: launch.jobId,
@@ -248,7 +247,22 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     services,
     lease: claim.lease,
     contextId: claim.contextId,
+    baselineSnapshot,
   });
+
+  const execStartedAt = Date.now();
+  for (const backend of prepared) {
+    emitStreamEvent(registry, {
+      type: "track:begin",
+      jobId: launch.jobId,
+      originSessionId: ctx.sessionLabel,
+      trackId: backend.trackId,
+      startedAt: execStartedAt,
+      requestPreview: request.trim().split(/\r?\n/, 1)[0],
+    });
+    backend.handle.startPrompt();
+  }
+
   const untrack = services?.trackInFlight?.({
     cancel: async () => { await Promise.allSettled(prepared.map((p) => p.handle.abort())); },
     completion,
@@ -275,7 +289,6 @@ async function runTaskForceCompletion(opts: TaskForceCompletionOptions): Promise
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let results: TaskForceResult[] = [];
-  const baselineSnapshot = await captureWorkspaceSnapshot(opts.deps.workspaceChangeScanner, opts.cwd);
   try {
     const settledResults = await Promise.allSettled(
       opts.prepared.map((backend) =>
@@ -296,7 +309,7 @@ async function runTaskForceCompletion(opts: TaskForceCompletionOptions): Promise
     releaseDispatchLease(opts.services?.dispatchContexts, opts.lease);
   } finally {
     const finishedAt = Date.now();
-    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, baselineSnapshot);
+    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, opts.baselineSnapshot);
     const summary = buildJobSummary({
       jobId: opts.jobId,
       startedAt: opts.startedAt,

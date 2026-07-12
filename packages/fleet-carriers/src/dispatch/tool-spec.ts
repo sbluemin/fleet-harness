@@ -25,7 +25,7 @@ import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { finalizeDetachedJob, launchResponseResult, rollbackRejectedDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeProviderReason, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary } from "../jobs/types.js";
-import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/workspace-manifest.js";
+import { captureJobWindowManifest, captureWorkspaceSnapshot, type WorkspaceChangeSnapshotEntry } from "../jobs/workspace-manifest.js";
 import { executeOneShot } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
@@ -93,6 +93,7 @@ interface SingleCarrierFinalizeOptions {
   contextId?: string;
   ready: OneShotReady;
   handle: OneShotExecution;
+  baselineSnapshot: readonly WorkspaceChangeSnapshotEntry[] | null;
 }
 
 interface CarrierTrackModelInfo {
@@ -349,7 +350,9 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         startedAt: Date.now(),
         requestPreview: request.trim().split(/\r?\n/, 1)[0],
       });
-      handle.startPrompt();
+
+      // Baseline must be complete before the prompt gate opens: a fast carrier may edit immediately.
+      const baselineSnapshot = await captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
 
       const completion = finalizeSingleCarrierJob({
         registry,
@@ -369,7 +372,9 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         contextId: claim.contextId,
         ready,
         handle,
+        baselineSnapshot,
       });
+      handle.startPrompt();
       const untrack = services?.trackInFlight?.({ cancel: () => handle.abort(), completion }) ?? (() => {});
       void completion.finally(untrack);
 
@@ -437,7 +442,6 @@ async function finalizeSingleCarrierJob(opts: SingleCarrierFinalizeOptions): Pro
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let result: CarrierSingleResult | undefined;
-  const baselineSnapshot = await captureWorkspaceSnapshot(opts.deps.workspaceChangeScanner, opts.cwd);
   try {
     const execResult = await opts.handle.completion;
     finalStatus = toCarrierJobStatus(execResult.status);
@@ -485,7 +489,7 @@ async function finalizeSingleCarrierJob(opts: SingleCarrierFinalizeOptions): Pro
     releaseDispatchLease(opts.services?.dispatchContexts, opts.lease);
   } finally {
     const finishedAt = Date.now();
-    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, baselineSnapshot);
+    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, opts.baselineSnapshot);
     const results = result
       ? [result]
       : [{ carrierId: opts.carrierId, displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId), status: "error" as CarrierJobStatus, responseText: finalError ?? "Unknown error", error: finalError }];
