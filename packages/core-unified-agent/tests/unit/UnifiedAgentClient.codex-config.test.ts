@@ -13,6 +13,7 @@ const mockSetPendingEffort = vi.fn();
 const mockRemoveAllListeners = vi.fn();
 
 const mockAcpConnect = vi.fn();
+const mockAcpLoadSession = vi.fn();
 const mockAcpSendPrompt = vi.fn();
 const mockAcpSetMode = vi.fn();
 const mockAcpSetModel = vi.fn();
@@ -58,6 +59,7 @@ function createMockAcpConnection(): Record<string, unknown> {
     emit: emitter.emit.bind(emitter),
     removeAllListeners: vi.fn(),
     connect: mockAcpConnect,
+    loadSession: mockAcpLoadSession,
     sendPrompt: mockAcpSendPrompt,
     setMode: mockAcpSetMode,
     setModel: mockAcpSetModel,
@@ -129,6 +131,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     mockCodexSendMessage.mockResolvedValue(undefined);
     mockCodexCancelPrompt.mockResolvedValue(undefined);
     mockAcpConnect.mockResolvedValue({ sessionId: 'acp-session-1' });
+    mockAcpLoadSession.mockResolvedValue({});
     mockAcpSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
     mockAcpSetMode.mockResolvedValue(undefined);
     mockAcpSetModel.mockResolvedValue(undefined);
@@ -274,9 +277,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     expect(AcpConnection).not.toHaveBeenCalled();
   });
 
-  it('ACP resetSession 후 첫 프롬프트는 사용자 content만 전달한다(prepend 없음)', async () => {
-    // systemPrompt 주입은 connect 시점 CODEX_CONFIG env가 담당하므로, reconnect 후에도
-    // 프롬프트에 지침을 prepend하지 않고 사용자 입력만 그대로 전달해야 한다.
+  it('ACP resetSession 후 첫 프롬프트에 systemPrompt를 한 번만 prepend한다', async () => {
     const client = new UnifiedCodexAgentClient();
     const mockAcpConnection = Object.assign(Object.create(AcpConnection.prototype), {
       canResetSession: true,
@@ -290,6 +291,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
       sessionId: 'acp-session-1',
       sessionCwd: '/workspace',
       currentSystemPrompt: '리셋 후 지침',
+      firstPromptPending: null,
     });
 
     await client.resetSession();
@@ -298,13 +300,15 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
     expect(mockAcpConnection.endSession).toHaveBeenCalledWith('acp-session-1');
     expect(mockAcpConnection.reconnectSession).toHaveBeenCalledWith('/workspace');
-    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-2', '첫 요청');
+    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-2', [
+      { type: 'text', text: '리셋 후 지침' },
+      { type: 'text', text: '첫 요청' },
+    ]);
     expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-2', '두 번째 요청');
-    // 리셋 이후에도 snapshot은 보존된다(env 상주).
     expect(client.getCurrentSystemPrompt()).toBe('리셋 후 지침');
   });
 
-  it('ACP 연결은 systemPrompt를 CODEX_CONFIG env로 주입하고 argv에는 넣지 않는다', async () => {
+  it('ACP 연결은 systemPrompt를 CODEX_CONFIG에 주입하지 않고 첫 프롬프트에만 prepend한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
     await client.connect({
@@ -315,14 +319,71 @@ describe('UnifiedCodexAgentClient config staging', () => {
     });
 
     const options = acpCtorOptions();
-    const config = JSON.parse(options.env?.CODEX_CONFIG ?? '{}') as Record<string, unknown>;
-    expect(config.developer_instructions).toBe('개발자 지침');
-    // argv에는 -c / developer_instructions 흔적이 없어야 한다(argv 주입 폐기).
-    expect(options.args).not.toContain('-c');
-    expect(options.args.some((arg) => arg.includes('developer_instructions'))).toBe(false);
+    expect(options.env?.CODEX_CONFIG).toBeUndefined();
+
+    await client.sendMessage('첫 요청');
+    await client.sendMessage('두 번째 요청');
+
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-1', [
+      { type: 'text', text: '개발자 지침' },
+      { type: 'text', text: '첫 요청' },
+    ]);
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-1', '두 번째 요청');
   });
 
-  it('호출자 제공 CODEX_CONFIG(valid JSON)는 병합되고 developer_instructions는 systemPrompt가 우선한다', async () => {
+  it('Codex ACP failed-first-send는 Tier-2를 재시도하고 성공 뒤에는 반복하지 않는다', async () => {
+    mockAcpSendPrompt
+      .mockRejectedValueOnce(new Error('transient send failure'))
+      .mockResolvedValue({ stopReason: 'endTurn' });
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      systemPrompt: 'Tier-2 지침',
+      env: { CODEX_USE_ACP: 'true' },
+    });
+    await expect(client.sendMessage('첫 요청')).rejects.toThrow('transient send failure');
+    await client.sendMessage('재시도 요청');
+    await client.sendMessage('다음 요청');
+
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-1', [
+      { type: 'text', text: 'Tier-2 지침' },
+      { type: 'text', text: '첫 요청' },
+    ]);
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-1', [
+      { type: 'text', text: 'Tier-2 지침' },
+      { type: 'text', text: '재시도 요청' },
+    ]);
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(3, 'acp-session-1', '다음 요청');
+  });
+
+  it('Codex ACP resumed and loaded sessions send user content only', async () => {
+    const resumed = new UnifiedCodexAgentClient();
+    await resumed.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      sessionId: 'existing',
+      systemPrompt: 'Tier-2 지침',
+      env: { CODEX_USE_ACP: 'true' },
+    });
+    await resumed.sendMessage('재개 요청');
+
+    const loaded = new UnifiedCodexAgentClient();
+    await loaded.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      systemPrompt: 'Tier-2 지침',
+      env: { CODEX_USE_ACP: 'true' },
+    });
+    await loaded.loadSession('loaded-session');
+    await loaded.sendMessage('로드 요청');
+
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-1', '재개 요청');
+    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(2, 'loaded-session', '로드 요청');
+  });
+
+  it('호출자 제공 CODEX_CONFIG의 developer_instructions는 systemPrompt와 별개로 보존한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
     await client.connect({
@@ -337,7 +398,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
     const options = acpCtorOptions();
     const config = JSON.parse(options.env?.CODEX_CONFIG ?? '{}') as Record<string, unknown>;
-    expect(config).toEqual({ model: 'gpt-5.4', developer_instructions: '우선 지침' });
+    expect(config).toEqual({ model: 'gpt-5.4', developer_instructions: '무시될 지침' });
   });
 
   it('systemPrompt·configOverrides·호출자 CODEX_CONFIG가 모두 없으면 env에 CODEX_CONFIG를 넣지 않는다', async () => {
@@ -353,10 +414,10 @@ describe('UnifiedCodexAgentClient config staging', () => {
     expect(options.env?.CODEX_CONFIG).toBeUndefined();
   });
 
-  it('codex 연결 시 systemPrompt를 developerInstructions로 전달한다', async () => {
+  it('App Server 연결은 systemPrompt를 developerInstructions로 전달하지 않고 첫 프롬프트에만 prepend한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await connectAppServer(client, {
+    await client.connect({
       cwd: '/workspace',
       cli: 'codex',
       systemPrompt: '개발자 지침',
@@ -375,12 +436,57 @@ describe('UnifiedCodexAgentClient config staging', () => {
       ],
     }));
     expect(mockCodexConnect).toHaveBeenCalledWith({
-      developerInstructions: '개발자 지침',
+      developerInstructions: undefined,
       model: 'gpt-5.4',
       approvalPolicy: 'never',
       sandbox: 'danger-full-access',
     });
+    await client.sendMessage('첫 요청');
+    await client.sendMessage('두 번째 요청');
+    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(1, [
+      { type: 'text', text: '개발자 지침', text_elements: [] },
+      { type: 'text', text: '첫 요청', text_elements: [] },
+    ]);
+    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(2, [
+      { type: 'text', text: '두 번째 요청', text_elements: [] },
+    ]);
     expect(client.getConnectionInfo().protocol).toBe('codex-app-server');
+  });
+
+  it('Codex App Server failed-first-send는 Tier-2를 재시도하고 성공 뒤에는 반복하지 않는다', async () => {
+    mockCodexSendMessage
+      .mockRejectedValueOnce(new Error('transient send failure'))
+      .mockResolvedValue(undefined);
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'codex', systemPrompt: 'Tier-2 지침' });
+    await expect(client.sendMessage('첫 요청')).rejects.toThrow('transient send failure');
+    await client.sendMessage('재시도 요청');
+    await client.sendMessage('다음 요청');
+
+    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(1, [
+      { type: 'text', text: 'Tier-2 지침', text_elements: [] },
+      { type: 'text', text: '첫 요청', text_elements: [] },
+    ]);
+    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(2, [
+      { type: 'text', text: 'Tier-2 지침', text_elements: [] },
+      { type: 'text', text: '재시도 요청', text_elements: [] },
+    ]);
+    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(3, [
+      { type: 'text', text: '다음 요청', text_elements: [] },
+    ]);
+  });
+
+  it('Codex App Server loaded sessions send user content only', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'codex', systemPrompt: 'Tier-2 지침' });
+    await client.loadSession('loaded-thread');
+    await client.sendMessage('로드 요청');
+
+    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+      { type: 'text', text: '로드 요청', text_elements: [] },
+    ]);
   });
 
   it('codex MCP 서버 설정은 app-server 시작 -c 인자로 전달한다', async () => {
@@ -438,7 +544,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     }));
   });
 
-  it('codex session resume은 thread/resume에 정책과 systemPrompt를 재전달한다', async () => {
+  it('codex session resume은 systemPrompt를 developerInstructions나 첫 프롬프트에 재전달하지 않는다', async () => {
     const client = new UnifiedCodexAgentClient();
 
     const result = await connectAppServer(client, {
@@ -458,10 +564,14 @@ describe('UnifiedCodexAgentClient config staging', () => {
       model: 'gpt-5.4',
       approvalPolicy: 'never',
       sandbox: 'danger-full-access',
-      developerInstructions: '재개 지침',
+      developerInstructions: undefined,
       config: undefined,
     });
     expect(result.session).toEqual({ sessionId: 'codex-thread-9' });
+    await client.sendMessage('재개 요청');
+    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+      { type: 'text', text: '재개 요청', text_elements: [] },
+    ]);
     expect(client.getCurrentSystemPrompt()).toBe('재개 지침');
   });
 
@@ -525,7 +635,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     expect(mockCodexSendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('resetSession은 초기 mode와 systemPrompt를 thread/start payload로 보존한다', async () => {
+  it('resetSession은 systemPrompt를 developerInstructions 없이 다음 첫 프롬프트에 전달한다', async () => {
     const client = new UnifiedCodexAgentClient();
     await connectAppServer(client, {
       cwd: '/workspace',
@@ -540,9 +650,14 @@ describe('UnifiedCodexAgentClient config staging', () => {
       cwd: '/workspace',
       approvalPolicy: 'on-request',
       sandbox: 'read-only',
-      developerInstructions: '초기 지침',
+      developerInstructions: undefined,
       config: undefined,
     });
+    await client.sendMessage('리셋 후 요청');
+    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+      { type: 'text', text: '초기 지침', text_elements: [] },
+      { type: 'text', text: '리셋 후 요청', text_elements: [] },
+    ]);
     expect(client.getCurrentSystemPrompt()).toBe('초기 지침');
   });
 
@@ -563,7 +678,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
       cwd: '/next-workspace',
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
-      developerInstructions: '리셋 지침',
+      developerInstructions: undefined,
       config: {
         notify: 'false',
         model_reasoning_summary: 'auto',
@@ -577,7 +692,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     }));
   });
 
-  it('sessionId resume 경로도 fresh thread/start와 동등한 정책과 developerInstructions를 전달한다', async () => {
+  it('sessionId resume 경로는 developerInstructions를 전달하지 않는다', async () => {
     const client = new UnifiedCodexAgentClient();
 
     await connectAppServer(client, {
@@ -595,7 +710,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
     });
     expect(mockCodexLoadSession).toHaveBeenCalledWith('thread-existing', {
       cwd: '/workspace',
-      developerInstructions: '재개 지침',
+      developerInstructions: undefined,
       model: 'gpt-5.4',
       approvalPolicy: 'on-request',
       sandbox: 'read-only',

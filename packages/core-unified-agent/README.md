@@ -219,7 +219,7 @@ const result = await client.connect({
 });
 ```
 
-For Codex, `systemPrompt` is passed to the native app-server as `developerInstructions` during thread creation rather than being prefixed onto the first user turn.
+For Claude and Codex, `systemPrompt` is prepended once to the first user turn of a fresh session. It is not sent through provider system/developer-instruction channels, is not repeated on later turns, and is not injected when connecting to an existing session.
 
 #### `sendMessage(content: string | AcpContentBlock[]): Promise<PromptResponse>`
 

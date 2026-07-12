@@ -8,6 +8,8 @@ const mockConnect = vi.fn();
 const mockDisconnect = vi.fn();
 const mockEndSession = vi.fn();
 const mockReconnectSession = vi.fn();
+const mockLoadSession = vi.fn();
+const mockSendPrompt = vi.fn();
 const mockSetMode = vi.fn();
 const mockSetModel = vi.fn();
 const mockRemoveAllListeners = vi.fn();
@@ -19,6 +21,8 @@ function createMockAcpConnection(): EventEmitter & Record<string, unknown> {
     disconnect: mockDisconnect,
     endSession: mockEndSession,
     reconnectSession: mockReconnectSession,
+    loadSession: mockLoadSession,
+    sendPrompt: mockSendPrompt,
     setMode: mockSetMode,
     setModel: mockSetModel,
     connectionState: 'ready',
@@ -138,5 +142,80 @@ describe('resetSession()', () => {
     await client.resetSession();
 
     expect(callOrder).toEqual(['endSession', 'reconnectSession']);
+  });
+
+  it('Claude systemPrompt는 ACP meta가 아닌 fresh 세션의 첫 프롬프트에 한 번만 prepend한다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'claude', systemPrompt: 'Tier-2 지침' });
+    await client.sendMessage('첫 요청');
+    await client.sendMessage('두 번째 요청');
+
+    expect(mockConnect).toHaveBeenCalledWith('/workspace', undefined, [], undefined, undefined, undefined);
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(1, 'initial-session', [
+      { type: 'text', text: 'Tier-2 지침' },
+      { type: 'text', text: '첫 요청' },
+    ]);
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(2, 'initial-session', '두 번째 요청');
+  });
+
+  it('Claude resetSession은 systemPrompt를 새 세션의 첫 프롬프트에 다시 prepend한다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockReconnectSession.mockResolvedValue(newSession);
+    mockSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'claude', systemPrompt: 'Tier-2 지침' });
+    await client.resetSession();
+    await client.sendMessage('리셋 후 요청');
+
+    expect(mockReconnectSession).toHaveBeenCalledWith('/workspace', undefined, undefined, undefined, undefined, undefined);
+    expect(mockSendPrompt).toHaveBeenCalledWith('new-session-after-reset', [
+      { type: 'text', text: 'Tier-2 지침' },
+      { type: 'text', text: '리셋 후 요청' },
+    ]);
+  });
+
+  it('Claude failed-first-send는 Tier-2를 재시도하고 성공 뒤에는 반복하지 않는다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockSendPrompt
+      .mockRejectedValueOnce(new Error('transient send failure'))
+      .mockResolvedValue({ stopReason: 'endTurn' });
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'claude', systemPrompt: 'Tier-2 지침' });
+    await expect(client.sendMessage('첫 요청')).rejects.toThrow('transient send failure');
+    await client.sendMessage('재시도 요청');
+    await client.sendMessage('다음 요청');
+
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(1, 'initial-session', [
+      { type: 'text', text: 'Tier-2 지침' },
+      { type: 'text', text: '첫 요청' },
+    ]);
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(2, 'initial-session', [
+      { type: 'text', text: 'Tier-2 지침' },
+      { type: 'text', text: '재시도 요청' },
+    ]);
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(3, 'initial-session', '다음 요청');
+  });
+
+  it('Claude resumed and loaded sessions send user content only', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockLoadSession.mockResolvedValue({});
+    mockSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
+    const resumed = new UnifiedClaudeAgentClient();
+
+    await resumed.connect({ cwd: '/workspace', cli: 'claude', sessionId: 'existing', systemPrompt: 'Tier-2 지침' });
+    await resumed.sendMessage('재개 요청');
+
+    const loaded = new UnifiedClaudeAgentClient();
+    await loaded.connect({ cwd: '/workspace', cli: 'claude', systemPrompt: 'Tier-2 지침' });
+    await loaded.loadSession('loaded-session');
+    await loaded.sendMessage('로드 요청');
+
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(1, 'initial-session', '재개 요청');
+    expect(mockSendPrompt).toHaveBeenNthCalledWith(2, 'loaded-session', '로드 요청');
   });
 });

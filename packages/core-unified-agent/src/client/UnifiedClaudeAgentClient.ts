@@ -50,6 +50,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
   private sessionId: string | null = null;
   private sessionCwd: string | null = null;
   private currentSystemPrompt: string | null = null;
+  private firstPromptPending: string | null = null;
   private currentEffort: string | null = null;
   private detector = new CliDetector();
   private readonly cliType: CliType & 'claude';
@@ -151,7 +152,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
         options.cwd,
         options.sessionId,
         acpMcpServers,
-        options.systemPrompt,
+        undefined,
         options.strictMcp,
         options.effort,
       );
@@ -214,7 +215,20 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
       throw new Error('연결되어 있지 않습니다');
     }
 
-    return this.connection.sendPrompt(this.sessionId, content);
+    const systemPrompt = this.firstPromptPending;
+    if (!systemPrompt) {
+      return this.connection.sendPrompt(this.sessionId, content);
+    }
+
+    const userBlocks: AcpContentBlock[] = typeof content === 'string'
+      ? [{ type: 'text', text: content }]
+      : content;
+    const response = await this.connection.sendPrompt(this.sessionId, [
+      { type: 'text', text: systemPrompt },
+      ...userBlocks,
+    ]);
+    this.firstPromptPending = null;
+    return response;
   }
 
   async cancelPrompt(): Promise<void> {
@@ -282,6 +296,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     }, this.currentEffort ?? undefined);
     this.sessionId = sessionId;
     this.currentSystemPrompt = null;
+    this.firstPromptPending = null;
   }
 
   async resetSession(cwd?: string): Promise<ConnectResult> {
@@ -297,26 +312,18 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     await this.connection.endSession(this.sessionId);
     this.sessionId = null;
 
-    const session = this.currentSystemPrompt
-      ? await this.connection.reconnectSession(
-          targetCwd,
-          undefined,
-          undefined,
-          this.currentSystemPrompt,
-          undefined,
-          this.currentEffort ?? undefined,
-        )
-      : await this.connection.reconnectSession(
-          targetCwd,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          this.currentEffort ?? undefined,
-        );
+    const session = await this.connection.reconnectSession(
+      targetCwd,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      this.currentEffort ?? undefined,
+    );
 
     this.sessionId = session.sessionId;
     this.sessionCwd = targetCwd;
+    this.firstPromptPending = this.currentSystemPrompt;
 
     return {
       cli: this.cliType,
@@ -352,6 +359,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     this.sessionId = session.sessionId;
     this.sessionCwd = options.cwd;
     this.currentSystemPrompt = options.systemPrompt ?? null;
+    this.firstPromptPending = options.sessionId ? null : this.currentSystemPrompt;
     this.currentEffort = options.effort ?? null;
 
     return {
@@ -365,6 +373,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     this.sessionId = null;
     this.sessionCwd = null;
     this.currentSystemPrompt = null;
+    this.firstPromptPending = null;
     this.currentEffort = null;
   }
 

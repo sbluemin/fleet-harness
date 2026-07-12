@@ -17,7 +17,7 @@ All carriers accept an optional `<prior_jobs>` block: Prior finalized carrier jo
   - <artifacts?> optional: Relevant code snippets, file paths, error logs to examine.
 - **kirov** (Kirov · Operational Planning) — wrap request content in these blocks (? = optional):
   - <goal> required: What the user wants to build, fix, or achieve — specific feature, PRD, behavior, and any stated constraints.
-  - <plan_file?> optional: If provided, exact repo-relative .fleet/plans/{name}.md path Kirov must create or update. Do not choose a different filename.
+  - <plan_file> required: Required exact repo-relative .fleet/plans/{name}.md path Kirov must create or update. Do not choose a different filename.
   - <context?> optional: Relevant codebase context — files, modules, patterns, prior host-agent direction, or implementation realities the planner should respect.
   - <constraints?> optional: Business rules, tech stack requirements, scope boundaries, fixed decisions, or explicit exclusions the plan must respect.
   - <intent_type?> optional: If known: Refactoring | Build from Scratch | Mid-sized | Collaborative | Architecture Follow-through | Research-to-Plan.

@@ -178,7 +178,7 @@ export interface IUnifiedAgentClient {
   /**
    * CLI에 연결합니다.
    *
-   * @param options - 연결 옵션. `options.effort`는 Claude 구현에서만 connect 시점 `_meta`로 사용됩니다.
+   * @param options - 연결 옵션. provider별 연결·첫 프롬프트 설정을 포함합니다.
    * @returns 연결 결과
    */
   connect(options: UnifiedClientOptions): Promise<ConnectResult>;

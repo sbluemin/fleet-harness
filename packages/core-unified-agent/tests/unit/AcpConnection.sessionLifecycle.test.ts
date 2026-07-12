@@ -61,6 +61,28 @@ describe('AcpConnection stderr diagnostics', () => {
   });
 });
 
+describe('AcpConnection Claude session metadata', () => {
+  it('ignores the legacy systemPrompt argument instead of emitting _meta.systemPrompt', async () => {
+    const conn = new TestAcpConnection({
+      command: 'claude',
+      args: ['--acp'],
+      cliType: 'claude',
+      cwd: process.cwd(),
+    }) as unknown as TestableAcpConnection;
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await (conn as unknown as {
+      createSession: (workspace: string, sessionId?: string, mcpServers?: unknown[], systemPrompt?: string) => Promise<NewSessionResponse>;
+    }).createSession('/workspace', undefined, [], 'Tier-2 지침');
+
+    expect(mockAgent.newSession).toHaveBeenCalledWith({
+      cwd: '/workspace',
+      mcpServers: [],
+    });
+  });
+});
+
 // ─── endSession ───────────────────────────────────────────
 
 describe('AcpConnection.endSession()', () => {

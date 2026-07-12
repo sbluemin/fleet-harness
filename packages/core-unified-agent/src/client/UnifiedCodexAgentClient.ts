@@ -88,6 +88,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private sessionId: string | null = null;
   private sessionCwd: string | null = null;
   private currentSystemPrompt: string | null = null;
+  private firstPromptPending: string | null = null;
   private pendingOverrides: CodexPendingOverrides | null = null;
   private detector = new CliDetector();
 
@@ -138,7 +139,6 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     const cleanEnv = cleanEnvironment(process.env, options.env);
     const command = options.cliPath ?? backend.cliCommand;
     const baseArgs = backend.appServerArgs ?? ['app-server', '--listen', 'stdio://'];
-    const developerInstructions = options.systemPrompt ?? null;
     const modeMapping = this.resolveMode(options.yoloMode === false ? 'default' : 'yolo');
     const args = [
       ...baseArgs,
@@ -171,13 +171,13 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
         this.buildCodexThreadDefaultsForResume(
           options.cwd,
           options.model,
-          developerInstructions,
+          null,
           modeMapping,
         ),
       );
     } else {
       await connection.connect({
-        developerInstructions: developerInstructions ?? undefined,
+        developerInstructions: undefined,
         model: options.model,
         approvalPolicy: modeMapping.approvalPolicy,
         sandbox: modeMapping.sandbox,
@@ -192,7 +192,8 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
 
     this.sessionId = sessionId;
     this.sessionCwd = options.cwd;
-    this.currentSystemPrompt = developerInstructions;
+    this.currentSystemPrompt = options.systemPrompt ?? null;
+    this.firstPromptPending = options.sessionId ? null : this.currentSystemPrompt;
     this.pendingOverrides = {
       turnConfig: options.effort ? { effort: options.effort } : {},
       threadConfig: {
@@ -211,10 +212,9 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private async connectAcp(options: UnifiedClientOptions): Promise<ConnectResult> {
     const cleanEnv = cleanEnvironment(process.env, options.env);
     const spawnConfig = createSpawnConfig('codex', options);
-    // codex-acp 브릿지는 argv를 무시하므로 systemPrompt/configOverrides는 CODEX_CONFIG env로 주입한다.
+    // codex-acp 브릿지는 argv를 무시하므로 configOverrides는 CODEX_CONFIG env로 주입한다.
     // 브릿지가 thread/start·thread/resume config에 spread하며, 모든 플랫폼 단일 경로로 동작한다.
     const codexConfigEnv = buildCodexConfigEnv(
-      options.systemPrompt,
       options.configOverrides,
       cleanEnv.CODEX_CONFIG as string | undefined,
     );
@@ -334,9 +334,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       if (!this.sessionId) {
         throw new Error('연결되어 있지 않습니다');
       }
-      // systemPrompt는 connect 시점 CODEX_CONFIG env로 이미 주입되어 프로세스 전체에 상주하므로
-      // 프롬프트에 prepend하지 않는다.
-      return this.connection.sendPrompt(this.sessionId, content);
+      return this.sendPromptWithPendingSystemPrompt(content);
     }
 
     this.applyPendingOverrides();
@@ -345,8 +343,38 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       : content.map((block) => ('text' in block
         ? { type: 'text' as const, text: block.text, text_elements: [] }
         : { type: 'text' as const, text: JSON.stringify(block), text_elements: [] }));
-    await this.connection.sendMessage(input);
+    const systemPrompt = this.firstPromptPending;
+    const prompt = systemPrompt
+      ? [{ type: 'text' as const, text: systemPrompt, text_elements: [] }, ...input]
+      : input;
+    await this.connection.sendMessage(prompt);
+    if (systemPrompt) {
+      this.firstPromptPending = null;
+    }
     return { stopReason: 'end_turn' } as PromptResponse;
+  }
+
+  private async sendPromptWithPendingSystemPrompt(
+    content: string | AcpContentBlock[],
+  ): Promise<PromptResponse> {
+    if (!(this.connection instanceof AcpConnection) || !this.sessionId) {
+      throw new Error('연결되어 있지 않습니다');
+    }
+
+    const systemPrompt = this.firstPromptPending;
+    if (!systemPrompt) {
+      return this.connection.sendPrompt(this.sessionId, content);
+    }
+
+    const userBlocks: AcpContentBlock[] = typeof content === 'string'
+      ? [{ type: 'text', text: content }]
+      : content;
+    const response = await this.connection.sendPrompt(this.sessionId, [
+      { type: 'text', text: systemPrompt },
+      ...userBlocks,
+    ]);
+    this.firstPromptPending = null;
+    return response;
   }
 
   async cancelPrompt(): Promise<void> {
@@ -440,7 +468,8 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
         mcpServers: this.resolveAcpMcpServers(mcpServers),
       });
       this.sessionId = sessionId;
-      // connect 시점 CODEX_CONFIG env 지침이 load 이후에도 상주하므로 snapshot을 보존한다.
+      this.currentSystemPrompt = null;
+      this.firstPromptPending = null;
       return;
     }
 
@@ -456,11 +485,13 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       this.buildCodexThreadDefaultsForResume(
         targetCwd,
         undefined,
-        this.currentSystemPrompt,
+        null,
         this.pendingOverrides?.threadConfig ?? {},
       ),
     );
     this.sessionId = sessionId;
+    this.currentSystemPrompt = null;
+    this.firstPromptPending = null;
   }
 
   async resetSession(cwd?: string): Promise<ConnectResult> {
@@ -481,7 +512,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       const session = await this.connection.reconnectSession(targetCwd);
       this.sessionId = session.sessionId;
       this.sessionCwd = targetCwd;
-      // CODEX_CONFIG env는 프로세스 수준이라 reconnectSession의 새 thread/start가 지침을 자동 재적용한다.
+      this.firstPromptPending = this.currentSystemPrompt;
 
       return {
         cli: 'codex',
@@ -495,6 +526,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     );
     this.sessionId = result.thread.id;
     this.sessionCwd = targetCwd;
+    this.firstPromptPending = this.currentSystemPrompt;
     this.pendingOverrides = {
       turnConfig: {},
       threadConfig: this.pendingOverrides?.threadConfig ?? {},
@@ -516,6 +548,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.sessionId = session.sessionId;
     this.sessionCwd = options.cwd;
     this.currentSystemPrompt = options.systemPrompt ?? null;
+    this.firstPromptPending = options.sessionId ? null : this.currentSystemPrompt;
     this.pendingOverrides = {
       turnConfig: {},
       threadConfig: {},
@@ -537,6 +570,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.sessionId = null;
     this.sessionCwd = null;
     this.currentSystemPrompt = null;
+    this.firstPromptPending = null;
     this.pendingOverrides = null;
   }
 
@@ -730,7 +764,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       cwd,
       approvalPolicy,
       sandbox,
-      developerInstructions: this.currentSystemPrompt ?? undefined,
+      developerInstructions: undefined,
       config,
     };
   }

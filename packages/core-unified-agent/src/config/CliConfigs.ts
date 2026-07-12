@@ -196,15 +196,13 @@ export function getAllBackendConfigs(): CliBackendConfig[] {
 /**
  * Codex ACP 브릿지(`codex-acp`)가 읽는 `CODEX_CONFIG` 환경변수 값을 생성합니다.
  * 브릿지는 이 JSON 맵을 `thread/start`/`thread/resume` config에 spread하므로,
- * developer instruction과 설정 오버라이드를 argv 대신 env로 주입합니다.
+ * 설정 오버라이드를 argv 대신 env로 주입합니다.
  *
- * @param systemPrompt - 세션 시작 시 주입할 시스템 지침 (있으면 최우선으로 developer_instructions에 반영)
  * @param configOverrides - `key=value` 형태의 설정 오버라이드 배열 (dotted key는 중첩 객체로 확장)
  * @param baseConfigJson - 호출자가 이미 지정한 CODEX_CONFIG(JSON) 값. 유효한 JSON 객체면 시작점으로 병합.
  * @returns JSON 문자열(맵에 키가 하나 이상일 때) 또는 undefined(빈 맵)
  */
 export function buildCodexConfigEnv(
-  systemPrompt?: string | null,
   configOverrides?: string[],
   baseConfigJson?: string,
 ): string | undefined {
@@ -218,11 +216,6 @@ export function buildCodexConfigEnv(
     const key = override.slice(0, eqIndex);
     const rawValue = override.slice(eqIndex + 1);
     assignNestedKey(map, key, parseOverrideValue(rawValue));
-  }
-
-  if (systemPrompt) {
-    // developer_instructions는 base/override보다 우선하도록 마지막에 설정한다.
-    map.developer_instructions = systemPrompt;
   }
 
   if (Object.keys(map).length === 0) {
@@ -340,4 +333,3 @@ function assignNestedKey(
   }
   cursor[segments[segments.length - 1]] = value;
 }
-
