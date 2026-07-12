@@ -911,7 +911,10 @@
 .history-root > .history-divider { grid-column: 2; grid-row: 1; touch-action: none; }
 .history-divider { touch-action: none; }
 .history-commit-row { grid-template-columns: auto minmax(96px, 1fr) 7ch auto auto; gap: 0 7px; }
-.history-graph-gutter { grid-column: 1; }
+/* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해
+   유령 2행 트랙(0px 28px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 28px 트랙 중앙으로 반 행 어긋난다.
+   grid-row: 1로 전 셀을 단일 28px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. */
+.history-graph-gutter { grid-column: 1; grid-row: 1; }
 .history-commit-subject { grid-column: 2; min-width: 96px; }
 .history-commit-sha { grid-column: 3; }
 .history-commit-time { grid-column: 4; }
