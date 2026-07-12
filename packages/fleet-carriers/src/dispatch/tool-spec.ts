@@ -146,7 +146,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       `When composing a request, provide only background, context, objective, and constraints.` +
         ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
         ` Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
-        ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 3h.`,
+        ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 6h.`,
       `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
         ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
       `Some carriers require structured request blocks (e.g., <objective>, <context>).` +
