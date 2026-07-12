@@ -8,15 +8,14 @@ import {
   registerDefaultCarriers,
 } from "@dotobokuri/fleet-carriers";
 import { createInfraServices } from "@dotobokuri/core-infra";
-import { DESKTOP_THEME_EVENT, type ConsoleThemeId } from "@fleet-console/desktop-protocol";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
-import { createConsoleSettingsStore } from "./console-settings.js";
-import { desktopThemeSnapshot } from "./desktop-theme.js";
+import { createConsoleSettingsStore, type ConsoleThemeId } from "./console-settings.js";
+import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-theme.js";
 import { createDesktopThemeRouter } from "./desktop-theme-routes.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";

@@ -1,14 +1,13 @@
 import type http from "node:http";
 
+import type { ApiCatalogEntry } from "./api-catalog.js";
+import type { ConsoleThemeId } from "./console-settings.js";
 import {
   DESKTOP_THEME_EVENTS_PATH,
   DESKTOP_THEME_PATH,
-  type ConsoleThemeId,
+  desktopThemeSnapshot,
   type DesktopThemeSnapshot,
-} from "@fleet-console/desktop-protocol";
-
-import type { ApiCatalogEntry } from "./api-catalog.js";
-import { desktopThemeSnapshot } from "./desktop-theme.js";
+} from "./desktop-theme.js";
 
 interface DesktopThemeRouteDeps {
   readonly getTheme: () => ConsoleThemeId;

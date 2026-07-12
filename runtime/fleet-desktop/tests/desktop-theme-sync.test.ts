@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DESKTOP_THEME_EVENT } from "@fleet-console/desktop-protocol";
-
 import { createDesktopThemeSynchronizer, MAX_DESKTOP_THEME_SSE_BUFFER_CHARS, parseDesktopThemeEvent } from "../src/desktop-theme-sync.js";
+
+const DESKTOP_THEME_EVENT = "desktop:theme";
 
 describe("desktop theme synchronizer", () => {
   it("applies the saved Console snapshot before subscribing to same-origin events", async () => {
@@ -42,7 +42,7 @@ describe("desktop theme synchronizer", () => {
   it("aborts an active same-origin event stream during cleanup", async () => {
     let eventSignal: AbortSignal | undefined;
     const fetch = vi.fn((url: Parameters<typeof globalThis.fetch>[0], init?: Parameters<typeof globalThis.fetch>[1]) => {
-      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#090f15", "#989fa6")));
+      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#03080e", "#989fa6")));
       eventSignal = init?.signal ?? undefined;
       return new Promise<Response>((_resolve, reject) => {
         eventSignal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
@@ -54,7 +54,7 @@ describe("desktop theme synchronizer", () => {
     await synchronizer.start("http://127.0.0.1:4310");
     synchronizer.stop();
 
-    expect(applyTheme).toHaveBeenCalledWith(snapshot("instrument", "#090f15", "#989fa6"));
+    expect(applyTheme).toHaveBeenCalledWith(snapshot("instrument", "#03080e", "#989fa6"));
     expect(eventSignal?.aborted).toBe(true);
   });
 
@@ -78,7 +78,7 @@ describe("desktop theme synchronizer", () => {
     let cancelled = false;
     const setTimeout = vi.fn((_callback: () => void, delay: number) => delay as never);
     const fetch = vi.fn((url: Parameters<typeof globalThis.fetch>[0]) => {
-      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#090f15", "#989fa6")));
+      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#03080e", "#989fa6")));
       const stream = new ReadableStream({
         start: (controller) => {
           controller.enqueue(new TextEncoder().encode(`${":".repeat(MAX_DESKTOP_THEME_SSE_BUFFER_CHARS)}\n\n`));
@@ -101,7 +101,7 @@ describe("desktop theme synchronizer", () => {
     let cancelled = false;
     const setTimeout = vi.fn((_callback: () => void, delay: number) => delay as never);
     const fetch = vi.fn((url: Parameters<typeof globalThis.fetch>[0]) => {
-      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#090f15", "#989fa6")));
+      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#03080e", "#989fa6")));
       return Promise.resolve(new Response(new ReadableStream({
         start: (controller) => controller.enqueue(new TextEncoder().encode(`${":".repeat(MAX_DESKTOP_THEME_SSE_BUFFER_CHARS + 1)}\n\n`)),
         cancel: () => { cancelled = true; },
@@ -123,7 +123,7 @@ describe("desktop theme synchronizer", () => {
       return scheduled.length as never;
     });
     const fetch = vi.fn((url: Parameters<typeof globalThis.fetch>[0]) => {
-      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#090f15", "#989fa6")));
+      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#03080e", "#989fa6")));
       return Promise.resolve(new Response(new ReadableStream({
         start: (controller) => controller.enqueue(new TextEncoder().encode(":".repeat(MAX_DESKTOP_THEME_SSE_BUFFER_CHARS + 1))),
         cancel: () => { cancelled += 1; },
@@ -149,7 +149,7 @@ describe("desktop theme synchronizer", () => {
       return 1 as never;
     });
     const fetch = vi.fn((url: Parameters<typeof globalThis.fetch>[0]) => {
-      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#090f15", "#989fa6")));
+      if (String(url).endsWith("/api/v1/desktop/theme")) return Promise.resolve(jsonResponse(snapshot("instrument", "#03080e", "#989fa6")));
       eventRequests += 1;
       if (eventRequests === 1) return Promise.resolve(new Response(new ReadableStream({ start: (controller) => controller.close() })));
       return new Promise<Response>(() => undefined);
@@ -168,6 +168,7 @@ describe("desktop theme synchronizer", () => {
     const synchronizer = createDesktopThemeSynchronizer({ applyTheme: vi.fn(), fetch: vi.fn() });
 
     await expect(synchronizer.start("https://fleet.example")).rejects.toThrow("desktop_theme_origin_invalid");
+    expect(parseDesktopThemeEvent(`event: ${DESKTOP_THEME_EVENT}\ndata: ${JSON.stringify(snapshot("future-aurora", "#123456", "#abcdef", 48))}`)).toEqual(snapshot("future-aurora", "#123456", "#abcdef", 48));
     expect(parseDesktopThemeEvent(`event: ${DESKTOP_THEME_EVENT}\ndata: {"theme":"carbon","titleBarOverlay":{"color":"white","symbolColor":"#ffffff","height":44}}`)).toBeNull();
     expect(parseDesktopThemeEvent(`event: other\ndata: ${JSON.stringify(snapshot("carbon", "#334455", "#ddeeff", 52))}`)).toBeNull();
     expect(parseDesktopThemeEvent(`event: ${DESKTOP_THEME_EVENT}\ndata: ${JSON.stringify(snapshot("carbon", "#334455", "#ddeeff", 52))}`)).toEqual(snapshot("carbon", "#334455", "#ddeeff", 52));
@@ -178,6 +179,6 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
 }
 
-function snapshot(theme: string, color: string, symbolColor: string, height = 44) {
+function snapshot(theme: string, color: string, symbolColor: string, height = 43) {
   return { theme, titleBarOverlay: { color, symbolColor, height } } as const;
 }

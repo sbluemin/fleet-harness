@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
-import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "@fleet-console/desktop-protocol";
 
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-theme.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";

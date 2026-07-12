@@ -1,4 +1,19 @@
-import type { ConsoleThemeId, DesktopThemeSnapshot } from "@fleet-console/desktop-protocol";
+import type { ConsoleThemeId } from "./console-settings.js";
+
+export interface DesktopTitleBarOverlay {
+  readonly color: string;
+  readonly symbolColor: string;
+  readonly height: number;
+}
+
+export interface DesktopThemeSnapshot {
+  readonly theme: ConsoleThemeId;
+  readonly titleBarOverlay: DesktopTitleBarOverlay;
+}
+
+export const DESKTOP_THEME_PATH = "/api/v1/desktop/theme";
+export const DESKTOP_THEME_EVENTS_PATH = "/api/v1/desktop/theme/events";
+export const DESKTOP_THEME_EVENT = "desktop:theme";
 
 const DESKTOP_TITLE_BAR_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
   instrument: { color: "#03080e", symbolColor: "#989fa6", height: 43 },
