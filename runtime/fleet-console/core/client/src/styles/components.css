@@ -7283,12 +7283,17 @@ body[data-codex-side="true"] .command-card {
 }
 
 .whatsnew-body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   min-height: 0;
   padding: 22px clamp(22px, 4vw, 36px);
   overflow: auto;
   scrollbar-color: color-mix(in oklch, var(--brass) 42%, transparent) transparent;
+}
+
+.whatsnew-body > * {
+  flex: none;
 }
 
 .whatsnew-version-selector {

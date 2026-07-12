@@ -144,6 +144,21 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain("--command-band-carrier");
   });
 
+  it("keeps long What's new content inside the scrollable body without shrinking controls", () => {
+    const components = source("styles/components.css");
+    const cardBlock = components.match(/\.whatsnew-card \{[^}]*\}/)?.[0] ?? "";
+    const bodyBlock = components.match(/\.whatsnew-body \{[^}]*\}/)?.[0] ?? "";
+    const bodyChildrenBlock = components.match(/\.whatsnew-body > \* \{[^}]*\}/)?.[0] ?? "";
+
+    expect(cardBlock).toContain("grid-template-rows: auto minmax(0, 1fr) auto;");
+    expect(cardBlock).toContain("overflow: hidden;");
+    expect(bodyBlock).toContain("display: flex;");
+    expect(bodyBlock).toContain("flex-direction: column;");
+    expect(bodyBlock).toContain("min-height: 0;");
+    expect(bodyBlock).toContain("overflow: auto;");
+    expect(bodyChildrenBlock).toContain("flex: none;");
+  });
+
   it("locks Command Band coordinate invariance to tint-only state changes", () => {
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
