@@ -13,6 +13,12 @@ import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side
 import { hydrateOperations, toggleOperationSearch } from "../store.js";
 import { useInlineRename } from "../use-inline-rename.js";
 
+interface NavigatorWithUserAgentData extends Navigator {
+  readonly userAgentData?: {
+    readonly platform?: string;
+  };
+}
+
 interface CommandBandProps {
   readonly operationsViewVisible: boolean;
 }
@@ -22,6 +28,9 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const registry = usePluginRegistry();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
+  const modLabel = resolveModLabel();
+  const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
+  const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId) ?? null;
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
@@ -94,7 +103,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     <header className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}`} style={{ "--command-band-left-width": `${sideBar.width}px` } as CSSProperties}>
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
-        {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} title={sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+        {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
           <PanelToggleIcon side="left" />
         </button> : null}
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
@@ -116,12 +125,18 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         </div></> : null}
       </div>
       <div className="command-band-right">
-        {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} title={railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"}>
+        {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={`${railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} (${railShortcut})`} title={`${railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} (${railShortcut})`}>
           <PanelToggleIcon side="right" />
         </button> : null}
       </div>
     </header>
   );
+}
+
+function resolveModLabel(): string {
+  const userAgentDataPlatform = (navigator as NavigatorWithUserAgentData).userAgentData?.platform;
+  const platform = userAgentDataPlatform ?? navigator.platform;
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
 }
 
 function SearchIcon() {

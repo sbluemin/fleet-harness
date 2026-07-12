@@ -15,9 +15,11 @@ import { usePluginRegistry } from "./plugin-registry.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
+import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
+import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -82,6 +84,18 @@ export function App() {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleOperationSearch();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleRailChrome();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setSideBarCollapsed(!getSideBarState().collapsed);
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);

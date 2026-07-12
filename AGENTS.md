@@ -41,6 +41,7 @@ Fleet is a multi-LLM orchestration kit. An Admiral host coordinates specialized 
 
 ## Repository-wide operational invariants
 
+- Repository-modifying work proceeds in a dedicated `canary`-based git worktree (via the `git-worktree` skill), not the main checkout, unless the user explicitly directs otherwise; read-only or conversational tasks need no worktree.
 - Commits use English Conventional Commits.
 - Unreleased notes live in `.changelog.d/`; `CHANGELOG.md` and `CHANGELOG.ko.md` are compiler-owned outputs and must not be edited directly.
 - Bilingual changelog summaries describe user-visible behavior and preserve literal or protocol tokens across locales; exact fragment organization, syntax, and tags belong to the `.changelog.d/` instructions and changelog compiler.
