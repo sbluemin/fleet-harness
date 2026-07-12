@@ -15,14 +15,35 @@ import { usePluginRegistry } from "./plugin-registry.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
+import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { hydrateGroups, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
+import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
+
+// 사이드바/레일 토글 단축키(Mod+B / Mod+Alt+B)가 터미널·텍스트 입력 포커스를 가로채지 않도록 판별한다.
+// 예: 터미널 포커스 중 Ctrl+B는 readline backward-character나 tmux prefix로 터미널에 전달돼야 한다.
+function isTextEntryFocused(event: KeyboardEvent): boolean {
+  for (const node of [event.target, document.activeElement]) {
+    if (!(node instanceof Element)) continue;
+    if (node.closest(".xterm")) return true;
+    const tag = node.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (node.closest('[contenteditable=""], [contenteditable="true"], [role="textbox"]')) return true;
+  }
+  return false;
+}
+
+// aria-modal 대화상자(Operation Search, 디렉터리 브라우저 등)가 열려 있으면 배경 크롬(사이드바/레일)을
+// 토글하지 않는다 — 모달 경계와 포커스 트랩 의미를 지키기 위함(포커스가 모달 내 버튼으로 이동한 경우 포함).
+function isBlockingDialogOpen(): boolean {
+  return document.querySelector('[aria-modal="true"]:not([hidden])') !== null;
+}
 
 export function App() {
   const state = useConsoleState();
@@ -82,6 +103,18 @@ export function App() {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleOperationSearch();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !isTextEntryFocused(event) && !isBlockingDialogOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleRailChrome();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey && !isTextEntryFocused(event) && !isBlockingDialogOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setSideBarCollapsed(!getSideBarState().collapsed);
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);
