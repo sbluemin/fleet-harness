@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { operationActivityVisual } from "../operation-activity.js";
+import { useInlineRename } from "../use-inline-rename.js";
 import { AccentPopover } from "./accent-popover.js";
 import { resolveAccentColor } from "./operation-accent.js";
 
@@ -22,6 +23,7 @@ interface OperationFrameProps {
   readonly onClose: () => void;
   readonly onMinimize: () => void;
   readonly onMaximize?: () => void;
+  readonly onRename: (title: string) => void;
   readonly onSetAccent?: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
@@ -46,14 +48,26 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
+  const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const closeArmTimeoutRef = useRef<number | null>(null);
+  const restoreIdentityFocusRef = useRef(false);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
   const displayTitle = operation.title;
+  const rename = useInlineRename({
+    currentTitle: operation.title,
+    onBegin: () => {
+      disarmClose();
+    },
+    onCommit: (title) => {
+      onRename(title);
+      restoreIdentityFocusRef.current = true;
+    },
+  });
   // 사용자 accent는 패널 전체 외곽선을 소유한다. status 비콘 채널은 별도로 유지한다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
@@ -67,6 +81,13 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   useEffect(() => () => {
     if (closeArmTimeoutRef.current !== null) window.clearTimeout(closeArmTimeoutRef.current);
   }, []);
+
+  useEffect(() => {
+    if (rename.renaming || !restoreIdentityFocusRef.current) return;
+    restoreIdentityFocusRef.current = false;
+    const frame = window.requestAnimationFrame(() => identityTriggerRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [rename.renaming]);
 
   const clearCloseArmTimer = () => {
     if (closeArmTimeoutRef.current === null) return;
@@ -166,6 +187,11 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.stopPropagation();
   };
 
+  const stopIdentityPointer = (event: ReactPointerEvent<HTMLButtonElement | HTMLInputElement>) => {
+    event.stopPropagation();
+    disarmClose();
+  };
+
   const stopOperationPointer = (event: ReactPointerEvent<HTMLElement>) => {
     event.stopPropagation();
     onActivate();
@@ -208,6 +234,23 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     onClose();
   };
 
+  const beginRename = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    rename.begin();
+  };
+
+  const beginRenameFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "Enter" && event.key !== "F2") return;
+    event.preventDefault();
+    event.stopPropagation();
+    rename.begin();
+  };
+
+  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") restoreIdentityFocusRef.current = true;
+    rename.handleKeyDown(event);
+  };
+
   // 패널 좌표·크기를 정수 픽셀로 스냅해 패널·내부 xterm 캔버스 원점을 정수 픽셀에 정렬한다(서브픽셀 번짐 제거).
   const frameStyle = {
     left: Math.round(geometry.x),
@@ -247,6 +290,31 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         onPointerCancel={endDrag}
         data-canvas-blocker
       >
+        {!active && rename.renaming ? (
+          <input
+            ref={rename.inputRef}
+            className="canvas-operation-identity-input"
+            value={rename.draftTitle}
+            aria-label={`Rename operation ${displayTitle}`}
+            onChange={(event) => rename.setDraftTitle(event.target.value)}
+            onKeyDown={handleRenameKeyDown}
+            onBlur={rename.handleBlur}
+            onPointerDown={stopIdentityPointer}
+          />
+        ) : !active ? (
+          <button
+            ref={identityTriggerRef}
+            type="button"
+            className="canvas-operation-identity-name"
+            onPointerDown={stopIdentityPointer}
+            onDoubleClick={beginRename}
+            onKeyDown={beginRenameFromKeyboard}
+            aria-label={`Rename operation ${displayTitle}`}
+            title={`${displayTitle} — Double-click, Enter, or F2 to rename`}
+          >
+            {displayTitle}
+          </button>
+        ) : null}
         {onSetAccent ? (
           <button
             type="button"

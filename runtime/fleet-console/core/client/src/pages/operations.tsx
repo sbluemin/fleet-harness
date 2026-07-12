@@ -346,6 +346,7 @@ export function Operations({ state }: OperationsProps) {
           onToggleFormation={handleToggleFormation}
           onClose={handleClose}
           onFocus={handleFocus}
+          onRename={handleRename}
           onSetAccent={handleSetAccent}
         />
       </div>

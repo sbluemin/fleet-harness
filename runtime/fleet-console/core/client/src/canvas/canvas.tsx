@@ -28,6 +28,7 @@ interface OperationsCanvasProps {
   readonly onToggleFormation: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
+  readonly onRename: (operationId: string, title: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
 }
 
@@ -64,6 +65,7 @@ export function OperationsCanvas({
   onToggleFormation,
   onClose,
   onFocus,
+  onRename,
   onSetAccent,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -216,6 +218,9 @@ export function OperationsCanvas({
                 setMaximizedOperationId(operation.id);
               }
             },
+            onRename: (title) => {
+              onRename(operation.id, title);
+            },
             onSetAccent: (accentKey) => {
               onSetAccent(operation.id, accentKey);
             },
@@ -337,6 +342,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onClose: () => void;
   readonly onMinimize: () => void;
   readonly onMaximize: () => void;
+  readonly onRename: (title: string) => void;
   readonly onSetAccent: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
@@ -363,6 +369,7 @@ function renderPluginOperation(operation: OperationNode, options: {
       onClose={options.onClose}
       onMinimize={options.onMinimize}
       onMaximize={options.onMaximize}
+      onRename={options.onRename}
       onSetAccent={options.onSetAccent}
       onGeometryChange={options.onGeometryChange}
       onGeometryCommit={options.onGeometryCommit}
