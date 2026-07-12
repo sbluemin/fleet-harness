@@ -105,6 +105,13 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
                     // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
+                ) : line.kind === "meta" ? (
+                  <td
+                    colSpan={4}
+                    className="diff-line-meta"
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
+                  />
                 ) : line.kind === "file-label" ? (
                   <td
                     colSpan={4}

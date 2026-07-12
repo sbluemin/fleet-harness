@@ -1,6 +1,6 @@
 // ─── types ───────────────────────────────────────────────────────────────────
 
-export type HunkLineKind = "hunk-label" | "add" | "del" | "ctx" | "file-label";
+export type HunkLineKind = "hunk-label" | "meta" | "add" | "del" | "ctx" | "file-label";
 
 export interface ParsedLine {
   readonly kind: HunkLineKind;
@@ -70,11 +70,8 @@ export function parseHunk(content: string): ParsedLine[] {
     }
 
     if (inHeader) {
-      // diff --git ~ @@ 이전 헤더 라인 드롭(index, ---, +++, mode 변경 등)
+      // 사용자에게 변경 이유를 알려주는 rename/mode 메타데이터는 hunk가 없어도 보존한다.
       if (
-        line.startsWith("index ") ||
-        line.startsWith("--- ") ||
-        line.startsWith("+++ ") ||
         line.startsWith("new file mode") ||
         line.startsWith("deleted file mode") ||
         line.startsWith("old mode") ||
@@ -83,6 +80,16 @@ export function parseHunk(content: string): ParsedLine[] {
         line.startsWith("rename to ") ||
         line.startsWith("similarity index") ||
         line.startsWith("dissimilarity index")
+      ) {
+        result.push({ kind: "meta", text: line });
+        continue;
+      }
+
+      // 순수 Git 헤더 노이즈는 드롭한다.
+      if (
+        line.startsWith("index ") ||
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ")
       ) {
         continue;
       }

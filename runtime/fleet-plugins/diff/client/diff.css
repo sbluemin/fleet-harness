@@ -543,6 +543,16 @@
   color: var(--ink-fog);
 }
 
+.diff-line-meta {
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.diff-line-meta td {
+  padding: 1px 12px;
+}
+
 .diff-line-add {
   background: color-mix(in oklch, var(--positive) 12%, transparent);
 }
