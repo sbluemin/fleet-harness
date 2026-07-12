@@ -92,7 +92,9 @@ export function App() {
         toggleOperationSearch();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !isBlockingDialogOpen()) {
+      // AltGr(=브라우저상 Ctrl+Alt)로 문자를 입력하는 레이아웃에서 AltGr+B가 rail 토글로 가로채여
+      // 문자 입력이 막히지 않도록, AltGraph 활성 시에는 무시한다(진성 Ctrl+Alt+B는 AltGraph=false).
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !event.getModifierState("AltGraph") && !isBlockingDialogOpen()) {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleRailChrome();
