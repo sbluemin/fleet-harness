@@ -26,6 +26,19 @@ import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 
+// 사이드바/레일 토글 단축키(Mod+B / Mod+Alt+B)가 터미널·텍스트 입력 포커스를 가로채지 않도록 판별한다.
+// 예: 터미널 포커스 중 Ctrl+B는 readline backward-character나 tmux prefix로 터미널에 전달돼야 한다.
+function isTextEntryFocused(event: KeyboardEvent): boolean {
+  for (const node of [event.target, document.activeElement]) {
+    if (!(node instanceof Element)) continue;
+    if (node.closest(".xterm")) return true;
+    const tag = node.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (node.closest('[contenteditable=""], [contenteditable="true"], [role="textbox"]')) return true;
+  }
+  return false;
+}
+
 export function App() {
   const state = useConsoleState();
   const location = useLocation();
@@ -86,13 +99,13 @@ export function App() {
         toggleOperationSearch();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey) {
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && !isTextEntryFocused(event)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleRailChrome();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey) {
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey && !isTextEntryFocused(event)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         setSideBarCollapsed(!getSideBarState().collapsed);
