@@ -13,7 +13,7 @@ describe("secure window policy", () => {
     const Ctor = vi.fn();
     createSecureWindow(Ctor as never, { iconPath: "/assets/icon.png", platform: "win32" });
 
-    expect(Ctor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hidden", titleBarOverlay: { color: "#090f15", symbolColor: "#989fa6", height: 43 }, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+    expect(Ctor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hidden", titleBarOverlay: { color: "#03080e", symbolColor: "#989fa6", height: 43 }, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   });
 
   it("keeps the Linux native title bar without an overlay", () => {

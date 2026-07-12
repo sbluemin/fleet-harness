@@ -12,7 +12,7 @@ describe("Console Desktop theme mapping", () => {
   it("keeps native title bar colors in parity with the Console CSS theme tokens", () => {
     const css = fs.readFileSync(path.join(CONSOLE_PACKAGE_ROOT, "core", "client", "src", "styles", "theme.css"), "utf8");
     expect(desktopThemeSnapshot("instrument").titleBarOverlay).toMatchObject({
-      color: oklchToHex(readToken(css, "base", "ink-deep")),
+      color: oklchToHex(readToken(css, "base", "canvas-sea-core")),
       symbolColor: oklchToHex(readToken(css, "base", "text-secondary")),
       height: 43,
     });

@@ -12,7 +12,7 @@ export interface WindowPolicy {
 export const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
-const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#090f15", symbolColor: "#989fa6", height: 43 } as const;
+const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 43 } as const;
 
 export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, options: SecureWindowOptions): BrowserWindow {
   const windowOptions: BrowserWindowConstructorOptions = {
