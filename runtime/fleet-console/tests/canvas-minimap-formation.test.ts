@@ -2,21 +2,57 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
-import { clearFormationView, loadForTheater, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearFormationView, clearMaximizedOperationId, getSnapshot, loadForTheater, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
+
+vi.mock("../core/client/src/plugin-registry.js", () => ({
+  usePluginRegistry: () => ({ plugins: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }),
+}));
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
+let resizeObserverDescriptor: PropertyDescriptor | undefined;
+let setPointerCaptureDescriptor: PropertyDescriptor | undefined;
+let releasePointerCaptureDescriptor: PropertyDescriptor | undefined;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeEach(() => {
   document.body.replaceChildren();
   window.localStorage.clear();
-  loadForTheater("formation-minimap-test");
+  resizeObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+  setPointerCaptureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "setPointerCapture");
+  releasePointerCaptureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "releasePointerCapture");
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+
+      observe(target: Element) {
+        Object.defineProperties(target, {
+          clientWidth: { configurable: true, value: 900 },
+          clientHeight: { configurable: true, value: 600 },
+        });
+        this.callback([], this as unknown as ResizeObserver);
+      }
+
+      disconnect() {}
+      unobserve() {}
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => {} });
+  Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => {} });
+  loadForTheater("minimap-boundary");
   clearFormationView();
+  clearMaximizedOperationId();
+  setState({
+    viewport: { x: 0, y: 0, zoom: 1 },
+    operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -25,13 +61,20 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   clearFormationView();
+  clearMaximizedOperationId();
+  loadForTheater(null);
+  window.localStorage.clear();
+  restoreProperty(globalThis, "ResizeObserver", resizeObserverDescriptor);
+  restoreProperty(HTMLElement.prototype, "setPointerCapture", setPointerCaptureDescriptor);
+  restoreProperty(HTMLElement.prototype, "releasePointerCapture", releasePointerCaptureDescriptor);
   container?.remove();
   root = null;
   container = null;
 });
 
-describe("CanvasMinimap Formation behavior", () => {
-  it("collapses on Formation entry and restores the pre-entry state on exit", () => {
+describe("CanvasMinimap visibility", () => {
+  it("always renders the full minimap in the default canvas state", () => {
+    window.localStorage.setItem("fleet-console.map.radarCollapsed", "true");
     act(() => root!.render(createElement(CanvasMinimap, {
       operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },
       pluginOperations: {},
@@ -39,15 +82,139 @@ describe("CanvasMinimap Formation behavior", () => {
       canvasSize: { width: 900, height: 600 },
       onJump: () => {},
     })));
-    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
+    expect(document.querySelector('[aria-label="Open Map"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Collapse Map"]')).toBeNull();
+  });
+
+  it("preserves the no-operations and invalid-viewport guards", () => {
+    act(() => root!.render(createElement(CanvasMinimap, {
+      operations: {},
+      pluginOperations: {},
+      viewport: { x: 0, y: 0, zoom: 1 },
+      canvasSize: { width: 900, height: 600 },
+      onJump: () => {},
+    })));
+    expect(document.querySelector(".canvas-minimap")).toBeNull();
+
+    act(() => root!.render(createElement(CanvasMinimap, {
+      operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },
+      pluginOperations: {},
+      viewport: { x: 0, y: 0, zoom: 0 },
+      canvasSize: { width: 900, height: 600 },
+      onJump: () => {},
+    })));
+    expect(document.querySelector(".canvas-minimap")).toBeNull();
+  });
+
+  it("mounts at the OperationsCanvas boundary only in the default state and restores after Formation or maximize", () => {
+    renderOperationsCanvas();
+    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
 
     act(() => toggleFormationView());
-    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
-
-    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Open Map"]')!.click());
-    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+    expect(document.querySelector(".canvas-minimap")).toBeNull();
 
     act(() => clearFormationView());
-    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
+
+    act(() => setMaximizedOperationId("operation"));
+    expect(document.querySelector(".canvas-minimap")).toBeNull();
+
+    act(() => clearMaximizedOperationId());
+    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
+  });
+
+  it("moves the canvas viewport when the mounted minimap receives pointer navigation", () => {
+    renderOperationsCanvas();
+    const inner = document.querySelector<HTMLDivElement>(".canvas-minimap-inner");
+    expect(inner).not.toBeNull();
+    Object.defineProperty(inner!, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0 }),
+    });
+    const pointerDown = new MouseEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 });
+    Object.defineProperty(pointerDown, "pointerId", { value: 1 });
+
+    act(() => inner!.dispatchEvent(pointerDown));
+
+    expect(getSnapshot().viewport).toMatchObject({ zoom: 1 });
+    expect(getSnapshot().viewport.x).toBeGreaterThan(0);
+    expect(getSnapshot().viewport.y).toBeGreaterThan(0);
   });
 });
+
+const OPERATION: OperationNode = {
+  id: "operation",
+  theaterId: "minimap-boundary",
+  type: "shell",
+  pluginId: "test-plugin",
+  title: "Minimap boundary",
+  payload: {},
+  geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
+  ts: { createdAt: 0, updatedAt: 0 },
+};
+
+const CANVAS_STATE: ConsoleState = {
+  connection: "connecting",
+  connectionError: null,
+  activeTheme: "maritime",
+  version: "test",
+  updateAvailable: false,
+  latestVersion: null,
+  portMode: "dynamic",
+  requestedPort: null,
+  effectivePort: 0,
+  portHonored: true,
+  theaters: [],
+  operations: [OPERATION],
+  operationsHydrated: true,
+  groups: [],
+  activeTheaterId: "minimap-boundary",
+  activeOperationId: null,
+  operationStatus: {},
+  addingTheater: false,
+  theaterError: null,
+  operationsViewActive: true,
+  operationSearchOpen: false,
+  whatsNewOpen: false,
+  releaseNotes: [],
+  releaseNotesLoading: false,
+  releaseNotesError: null,
+  releaseNotesSourceRef: null,
+  releaseNotesFetchedAt: null,
+  releaseNotesStale: false,
+  automaticWhatsNewVersion: null,
+  selectedReleaseNoteKey: null,
+  onboardingOpen: false,
+  bootstrapped: true,
+  pendingOperationFocus: null,
+  operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
+  codexReader: null,
+  codexReaderExpanded: false,
+};
+
+function renderOperationsCanvas() {
+  act(() => root!.render(createElement(OperationsCanvas, {
+    state: CANVAS_STATE,
+    catalog: [],
+    canLaunch: false,
+    renderKindIcon: () => null,
+    onLaunchKind: () => {},
+    onLaunchAtGeometry: () => {},
+    onResetView: () => {},
+    onToggleFormation: () => {},
+    onClose: () => {},
+    onFocus: () => {},
+    onRename: () => {},
+    onSetAccent: () => {},
+  })));
+}
+
+function restoreProperty(target: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined) {
+  if (descriptor) {
+    Object.defineProperty(target, key, descriptor);
+  } else {
+    Reflect.deleteProperty(target, key);
+  }
+}
