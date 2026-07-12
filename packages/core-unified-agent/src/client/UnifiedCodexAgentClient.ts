@@ -194,7 +194,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.sessionCwd = options.cwd;
     this.currentSystemPrompt = developerInstructions;
     this.pendingOverrides = {
-      turnConfig: {},
+      turnConfig: options.effort ? { effort: options.effort } : {},
       threadConfig: {
         approvalPolicy: modeMapping.approvalPolicy,
         sandbox: modeMapping.sandbox,

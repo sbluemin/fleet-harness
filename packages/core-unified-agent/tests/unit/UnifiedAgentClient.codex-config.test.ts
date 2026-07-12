@@ -488,6 +488,29 @@ describe('UnifiedCodexAgentClient config staging', () => {
     expect(mockSetPendingEffort).toHaveBeenCalledTimes(1);
   });
 
+  it('App Server 연결 effort는 첫 sendMessage에서 한 번만 적용한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      effort: 'high',
+    });
+    await client.sendMessage('첫 요청');
+
+    expect(mockSetPendingEffort).toHaveBeenCalledWith('high');
+    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+      { type: 'text', text: '첫 요청', text_elements: [] },
+    ]);
+
+    await client.sendMessage('두 번째 요청');
+
+    expect(mockSetPendingEffort).toHaveBeenCalledTimes(1);
+    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(2, [
+      { type: 'text', text: '두 번째 요청', text_elements: [] },
+    ]);
+  });
+
   it('setMode는 Codex pending mode로 저장되고 즉시 ACP 호출하지 않는다', async () => {
     const client = new UnifiedCodexAgentClient();
     await connectAppServer(client, {
