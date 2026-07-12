@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, Menu, shell, Tray } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
+import { createConsoleControls } from "./console-controls.js";
 import { createDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
@@ -23,6 +24,7 @@ import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js"
 import { configureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "./update-controller.js";
 import { applyWindowPolicy, createSecureWindow } from "./window-policy.js";
+import { createZoomState } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
@@ -80,19 +82,29 @@ async function boot(): Promise<void> {
     })
     : null;
   let refreshNativeUpdateActions: (() => void) | null = null;
+  const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
+  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
-        window = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
-        window.once("closed", () => themeSynchronizer?.stop());
-        lifecycle.attachWindow(window);
-        policy = applyWindowPolicy(window.webContents, async (external) => shell.openExternal(external));
-        await window.loadFile(desktopResources.entryPagePath);
-        return window;
+        const createdWindow = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
+        window = createdWindow;
+        createdWindow.once("closed", () => themeSynchronizer?.stop());
+        controls.attachWindow(createdWindow);
+        lifecycle.attachWindow(createdWindow);
+        policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
+        createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => controls.zoomChanged(createdWindow.webContents, zoomDirection));
+        refreshNativeUpdateActions?.();
+        await createdWindow.loadFile(desktopResources.entryPagePath);
+        return createdWindow;
       },
       dev: !isPackaged,
-      handoffOrigin: (origin) => policy?.activateConsoleOrigin(origin),
+      handoffOrigin: (origin) => {
+        policy?.activateConsoleOrigin(origin);
+        controls.handoffStarted();
+      },
       synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
+      onConsoleLoaded: () => controls.onConsoleLoaded(),
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
@@ -111,10 +123,23 @@ async function boot(): Promise<void> {
       onStateChange: () => refreshNativeUpdateActions?.(),
     })
     : createNoopUpdateController();
-  const actions = { show: () => { void lifecycle.show(); }, quit: () => { void lifecycle.quit(); }, diagnostics: () => { void shell.openPath(path.join(app.getPath("userData"), "logs")); }, updates };
-  if (process.platform !== "darwin") trayHolder.current = new Tray(desktopResources.iconPath);
+  const actions = {
+    show: () => { void lifecycle.show(); },
+    quit: () => { void lifecycle.quit(); },
+    diagnostics: () => { void shell.openPath(path.join(app.getPath("userData"), "logs")); },
+    zoomIn: () => controls.zoomIn(),
+    zoomOut: () => controls.zoomOut(),
+    actualSize: () => controls.actualSize(),
+    reloadConsole: () => controls.reloadConsole(),
+    consoleReady: () => controls.consoleReady(),
+    updates,
+  };
+  if (process.platform !== "darwin") {
+    trayHolder.current = new Tray(desktopResources.iconPath);
+    trayHolder.current.on("click", actions.show);
+  }
   refreshNativeUpdateActions = () => {
-    installApplicationMenu(Menu, actions, process.platform);
+    installApplicationMenu(Menu, actions, process.platform, window ?? undefined);
     if (trayHolder.current) configureTray(trayHolder.current, Menu, actions);
   };
   refreshNativeUpdateActions();

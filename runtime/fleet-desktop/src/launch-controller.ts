@@ -13,6 +13,7 @@ export interface LaunchControllerDependencies {
   readonly createWindow: () => Promise<LaunchWindow>;
   readonly handoffOrigin: (origin: string) => void;
   readonly synchronizeTheme?: (origin: string) => Promise<void>;
+  readonly onConsoleLoaded?: () => void;
   readonly pushEntry: (contents: EntryPageWebContents, snapshot: EntryPageSnapshot) => Promise<void>;
   readonly startOrAdopt: () => Promise<string>;
   readonly dev?: boolean;
@@ -52,6 +53,7 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       await dependencies.synchronizeTheme?.(origin);
       await push("starting", "ready");
       if (!window.isDestroyed?.()) await window.loadURL(consoleUrl);
+      if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
       return window;
     },
   };
