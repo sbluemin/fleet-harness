@@ -1,26 +1,14 @@
-/**
- * executor — scope-agnostic executor 공개 facade.
- *
- * 풀 기반 executeWithPool과 일회성 executeOneShot을 export.
- * 내부 구현은 internal/executor-engine.ts에 위임.
- *
- * imports → types/interfaces → constants → functions 순서 준수.
- */
-
 import {
-  engineExecuteWithPool,
   engineExecuteOneShot,
   type AuthEnvResolver,
   type ExecuteOptions,
   type ExecResult,
+  type OneShotExecution,
+  type OneShotReady,
 } from "./internal/executor-engine.js";
 
-export type { AuthEnvResolver, ExecuteOptions, ExecResult };
+export type { AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady };
 
-export async function executeWithPool(opts: ExecuteOptions): Promise<ExecResult> {
-  return engineExecuteWithPool(opts);
-}
-
-export async function executeOneShot(opts: ExecuteOptions): Promise<ExecResult> {
+export function executeOneShot(opts: ExecuteOptions): OneShotExecution {
   return engineExecuteOneShot(opts);
 }

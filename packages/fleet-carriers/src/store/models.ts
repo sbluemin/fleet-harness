@@ -11,7 +11,6 @@ import {
   sanitizeGeneration,
   sanitizeTaskforce,
 } from "./sanitize.js";
-import { disconnectCarrierExecutorPools } from "./pool-disconnect.js";
 import { readRawCarriers, readRawCarriersOrDefaultStore, updateCarriers } from "./state-io.js";
 import type {
   AgentCliSelection,
@@ -61,7 +60,6 @@ export async function updateAgentCliSelection(
     };
     states.carriers = carriers;
   });
-  await disconnectCarrierExecutorPools(sanitizedCarrierId);
 }
 
 export function getAgentCliSelection(

@@ -1,6 +1,7 @@
 import type { CarrierJobFinalStatus, CarrierJobKind, CarrierJobLaunchResponse, CarrierJobRecord, CarrierJobSummary } from "./types.js";
 import { buildCarrierJobId, formatLaunchResponseText } from "./types.js";
 import { createJobArchive, finalizeJobArchive } from "./archive.js";
+import { detachJobArchive } from "./archive.js";
 import { putJobSummary } from "./summary-cache.js";
 
 interface GuardState {
@@ -69,6 +70,12 @@ export interface FinalizeDetachedJobOptions {
   finishedAt: number;
   summary: CarrierJobSummary;
   permit: JobPermitAccepted;
+}
+
+export interface RollbackRejectedDetachedJobOptions {
+  jobId: string;
+  permit: JobPermitAccepted;
+  abort?: () => void | Promise<void>;
 }
 
 const DEFAULT_MAX_DETACHED_JOBS = 5;
@@ -282,6 +289,17 @@ export function finalizeDetachedJob(options: FinalizeDetachedJobOptions): void {
   finalizeJobArchive(options.jobId, options.status, options.finishedAt);
   unregisterJobAbortControllers(options.jobId);
   options.permit.release({ status: options.status, error: options.error, finishedAt: options.finishedAt });
+}
+
+/** Undo a launch that failed before it was accepted by the caller. */
+export async function rollbackRejectedDetachedJob(options: RollbackRejectedDetachedJobOptions): Promise<void> {
+  try {
+    await options.abort?.();
+  } finally {
+    unregisterJobAbortControllers(options.jobId);
+    detachJobArchive(options.jobId);
+    options.permit.release();
+  }
 }
 
 function notifyActiveJobCountChange(state: GuardState): void {

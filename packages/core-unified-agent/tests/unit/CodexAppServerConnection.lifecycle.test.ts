@@ -72,6 +72,16 @@ describe('CodexAppServerConnection lifecycle', () => {
     connection = new TestCodexAppServerConnection(child);
   });
 
+  it('thread/resume 실패 시 thread/start로 대체하지 않는다', async () => {
+    await establishSession(connection, child);
+    const loadPromise = connection.loadSession('missing-thread');
+    await flushMicrotask();
+    expect(readOutgoingMethods(child).at(-1)).toBe('thread/resume');
+    child.stdout.emit('data', `${jsonRpcError(3, 'missing thread')}\n`);
+    await expect(loadPromise).rejects.toThrow('missing thread');
+    expect(readOutgoingMethods(child)).toEqual(['initialize', 'thread/start', 'thread/resume']);
+  });
+
   it('initialize → thread/start → turn/completed까지 연결 lifecycle을 처리한다', async () => {
     const promptComplete = vi.fn();
     connection.on('promptComplete', promptComplete);

@@ -11,7 +11,9 @@ import {
 import {
   acquireJobPermit,
   configureDetachedJobCap,
+  getActiveJob,
   listActiveJobs,
+  rollbackRejectedDetachedJob,
   resetJobConcurrencyForTest,
 } from "../src/jobs/lifecycle.js";
 import {
@@ -530,6 +532,32 @@ describe("cancel registry", () => {
 
     unregisterJobAbortControllers("sortie:1");
     expect(cancelJob("sortie:1")).toEqual({ cancelled: false, status: "not_found" });
+  });
+});
+
+describe("rejected detached-job rollback", () => {
+  it("aborts and removes all unaccepted launch state", async () => {
+    const record = buildRecord("sortie:rollback", ["genesis"]);
+    const permit = acquireJobPermit(record);
+    expect(permit.accepted).toBe(true);
+    if (!permit.accepted) return;
+    createJobArchive("sortie:rollback", 1000);
+    const controller = new AbortController();
+    registerJobAbortController("sortie:rollback", controller);
+
+    await rollbackRejectedDetachedJob({
+      jobId: "sortie:rollback",
+      permit,
+      abort: () => controller.abort(),
+    });
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(hasJobCancelControllers("sortie:rollback")).toBe(false);
+    expect(listActiveJobs()).toEqual([]);
+    expect(getActiveJob("sortie:rollback")).toBeNull();
+    expect(record.status).toBe("active");
+    expect(hasJobArchive("sortie:rollback", 1001)).toBe(false);
+    expect(getJobSummary("sortie:rollback", 1001)).toBeNull();
   });
 });
 
