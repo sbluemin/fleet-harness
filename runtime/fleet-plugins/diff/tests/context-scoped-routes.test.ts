@@ -229,7 +229,7 @@ describe("selected subdirectory diff route scope", () => {
     expect(commit.files.map((file) => file.path)).not.toContain(`${OUTSIDE_DIR}/committed.txt`);
   });
 
-  it("returns a selected commit file only and rejects option-like paths", async () => {
+  it("returns a selected commit file and neutralizes option-like paths as literal pathspecs", async () => {
     const fileWrites: JsonWrite[] = [];
     await handleDiffCommitFile(
       { method: "POST" } as never,
@@ -239,13 +239,16 @@ describe("selected subdirectory diff route scope", () => {
     const file = readPayload<ContentPayload>(fileWrites);
     expect(file.content).toContain("diff --git a/inside/committed.txt b/inside/committed.txt");
 
-    const rejectedWrites: JsonWrite[] = [];
+    // A leading-dash path is no longer rejected (a real `-file` must be openable); the `--` separator
+    // and `:(literal)` prefix mean `--stat` reaches git as a literal pathspec (no such file → empty),
+    // never as an executed `--stat` option, so no diffstat is injected.
+    const optionLikeWrites: JsonWrite[] = [];
     await handleDiffCommitFile(
       { method: "POST" } as never,
       {} as never,
-      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "--stat" }, rejectedWrites),
+      makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "--stat" }, optionLikeWrites),
     );
-    expect(rejectedWrites).toEqual([{ status: 400, payload: { error: "invalid_file_path" } }]);
+    expect(readPayload<ContentPayload>(optionLikeWrites).content).toBe("");
   });
 
   it("treats commit and worktree file paths as literal pathspecs", async () => {

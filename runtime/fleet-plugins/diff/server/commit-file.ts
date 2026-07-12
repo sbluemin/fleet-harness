@@ -28,8 +28,10 @@ export async function handleDiffCommitFile(req: http.IncomingMessage, res: http.
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly filePath?: unknown; readonly oldPath?: unknown }>(req);
   if (!isPlainObject(body) || typeof body.theaterId !== "string" || typeof body.ref !== "string" || typeof body.filePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   if (!REF_RE.test(body.ref)) { ctx.host.http.writeJson(res, 400, { error: "invalid_ref" }); return; }
-  if (!body.filePath || body.filePath.startsWith("-")) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
-  if (body.oldPath !== undefined && (typeof body.oldPath !== "string" || !body.oldPath || body.oldPath.startsWith("-"))) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
+  // 옵션 주입은 아래 git 호출의 `--` 구분자 + `:(literal)` pathspec으로 이미 차단되므로,
+  // `-`로 시작하는 정당한 파일명(예: `-dash.txt`)까지 막지 않도록 leading-dash는 거부하지 않는다.
+  if (!body.filePath) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
+  if (body.oldPath !== undefined && (typeof body.oldPath !== "string" || !body.oldPath)) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
   const cwdResult = await resolveGitCwd(theaterPath, typeof body.subPath === "string" ? body.subPath : "");
