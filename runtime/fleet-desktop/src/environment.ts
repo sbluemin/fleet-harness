@@ -136,11 +136,12 @@ export function sanitizeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 function createPackagedServiceEnvironment(sanitized: NodeJS.ProcessEnv, loginShellPath: string | undefined, platform: NodeJS.Platform): NodeJS.ProcessEnv {
-  if (platform !== "darwin") return prependPathEntries(sanitized, desktopExecutableSearchPaths(os.homedir(), sanitized, platform), { platform });
+  const fallbackEnvironment = prependPathEntries(sanitized, desktopExecutableSearchPaths(os.homedir(), sanitized, platform), { platform });
+  if (platform !== "darwin" || loginShellPath === undefined) return fallbackEnvironment;
   // 로그인 셸, Finder가 물려준 PATH, 기존의 결정적 폴백 순서로 한 번만 정규화한다.
   // 셸에서 온 값은 오직 PATH 출력이며, 다른 셸 환경 변수는 sidecar로 전달하지 않는다.
   const inheritedAndFallbackPath = [sanitized.PATH, ...desktopExecutableSearchPaths(os.homedir(), sanitized, platform)].filter((value): value is string => value !== undefined).join(path.delimiter);
-  return prependPathEntries({ ...sanitized, PATH: inheritedAndFallbackPath }, loginShellPath?.split(path.delimiter) ?? [], { platform });
+  return prependPathEntries({ ...sanitized, PATH: inheritedAndFallbackPath }, loginShellPath.split(path.delimiter), { platform });
 }
 
 function isSafeLoginShellPath(value: string): boolean {

@@ -157,7 +157,13 @@ describe("desktop environment", () => {
         SHELL: "/bin/zsh",
         PATH: "/inherited/bin",
       }, { platform: "darwin", loginShellPathProbe });
-      expect(environment.serviceEnv.PATH).toContain("/inherited/bin");
+      expect(environment.serviceEnv.PATH?.split(path.delimiter)).toEqual([
+        path.join(os.homedir(), ".local", "bin"),
+        path.join(os.homedir(), "Library", "pnpm"),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/inherited/bin",
+      ]);
       expect(environment.serviceEnv.PATH).not.toContain(".opencode");
     }
   });
