@@ -43,4 +43,25 @@ describe("client api parsing", () => {
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ notes: [{ version: "1", date: null, sections: [] }], sourceRef: "main", fetchedAt: 10, stale: false }))) as typeof fetch;
     await expect(fetchReleaseNotes()).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("accepts omitted or known provenance and rejects null, unknown, and non-string values", async () => {
+    const responseFor = (product: unknown, includeProduct = true) => new Response(JSON.stringify({
+      notes: [{ version: "1", date: null, sections: [{ heading: "Added", items: [{ packageTags: [], text: "Note", ...(includeProduct ? { product } : {}) }] }], localizationFallback: false }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    }));
+
+    for (const product of ["fleet-cli", "fleet-console", "fleet-desktop", "fleet-plugin", "fleet-core"] as const) {
+      globalThis.fetch = vi.fn(async () => responseFor(product)) as typeof fetch;
+      await expect(fetchReleaseNotes()).resolves.toMatchObject({ notes: [{ sections: [{ items: [{ product }] }] }] });
+    }
+    globalThis.fetch = vi.fn(async () => responseFor(undefined, false)) as typeof fetch;
+    await expect(fetchReleaseNotes()).resolves.toMatchObject({ notes: [{ sections: [{ items: [{ text: "Note" }] }] }] });
+
+    for (const product of [null, "fleet-unknown", 7]) {
+      globalThis.fetch = vi.fn(async () => responseFor(product)) as typeof fetch;
+      await expect(fetchReleaseNotes()).rejects.toBeInstanceOf(ApiError);
+    }
+  });
 });

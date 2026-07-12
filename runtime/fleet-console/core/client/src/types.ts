@@ -4,6 +4,8 @@ export type ThemeId = "instrument" | "maritime" | "carbon";
 
 export type ReleaseNotesLocale = "en" | "ko";
 
+export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop" | "fleet-plugin" | "fleet-core";
+
 export type ConsoleLanguagePreference = "auto" | ReleaseNotesLocale;
 
 export type UiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
@@ -20,6 +22,7 @@ export interface ReleaseNoteSection {
 export interface ReleaseNoteItem {
   readonly packageTags: readonly string[];
   readonly text: string;
+  readonly product?: ReleaseNoteProduct;
 }
 
 export interface ReleaseNotes {

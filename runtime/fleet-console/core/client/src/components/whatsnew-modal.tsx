@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
@@ -6,6 +6,7 @@ import { requestReleaseNotes } from "../release-notes-fetch.js";
 import { closeWhatsNew, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
 import { resolveReleaseNotesLocale } from "../whatsnew-i18n.js";
+import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable, type WhatsNewTabId } from "../whatsnew-tabs.js";
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;
@@ -28,11 +29,38 @@ const RELEASE_NOTE_PAGE_SIZE = 10;
 
 export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const outsideFocusHistoryRef = useRef<HTMLElement[]>([]);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
+  const tabRefs = useRef(new Map<WhatsNewTabId, HTMLButtonElement>());
+  const [activeTab, setActiveTab] = useState<WhatsNewTabId>("overview");
   const globalSettings = useGlobalSettingsStore();
   // 모달 크롬은 영어 원형을 유지한다 — locale은 릴리스 노트 "본문" 언어(fetch·폴백 배지·선택기 상태)에만 관여한다.
   const locale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
+  const selectedKey = state.selectedReleaseNoteKey ?? releaseNoteKey(state.releaseNotes[0]?.version ?? "", 0);
+  const selectedIndex = state.releaseNotes.findIndex((note, index) => releaseNoteKey(note.version, index) === selectedKey);
+  const selected = state.releaseNotes[selectedIndex] ?? state.releaseNotes[0];
+  const selectedValue = selected ? releaseNoteKey(selected.version, selectedIndex >= 0 ? selectedIndex : 0) : "";
+  const tabs = selected ? deriveWhatsNewTabs(selected) : [];
+
+  useEffect(() => {
+    setActiveTab("overview");
+  }, [selectedValue]);
+
+  useEffect(() => {
+    if (selected && !isWhatsNewTabAvailable(selected, activeTab)) setActiveTab("overview");
+  }, [activeTab, selected]);
+
+  useEffect(() => {
+    const rememberOutsideFocus = (event: FocusEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target || target.closest(".whatsnew-card")) return;
+      const history = outsideFocusHistoryRef.current.filter((element) => element !== target && element.isConnected);
+      outsideFocusHistoryRef.current = [...history.slice(-4), target];
+    };
+    document.addEventListener("focusin", rememberOutsideFocus, true);
+    return () => document.removeEventListener("focusin", rememberOutsideFocus, true);
+  }, []);
 
   // What's new는 자동으로 열리므로, 다른 우선 오버레이가 떠 있거나 아직 theater bootstrap이 끝나지 않은
   // 동안에는 양보한다. 그렇지 않으면 뒤에 숨은 What's new의 window capture 리스너가 stopImmediatePropagation으로
@@ -54,6 +82,8 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
       if (event.key === "Escape") {
         event.preventDefault();
         closeWhatsNew();
+      } else if (handleTabNavigation(event, cardRef.current, setActiveTab)) {
+        event.preventDefault();
       } else if (event.key === "Tab") {
         trapFocus(event, cardRef.current);
       }
@@ -63,17 +93,15 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
     window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
-      const target = returnFocusRef.current;
+      const target = returnFocusRef.current?.isConnected
+        ? returnFocusRef.current
+        : [...outsideFocusHistoryRef.current].reverse().find((element) => element.isConnected);
       returnFocusRef.current = null;
       target?.focus?.();
     };
   }, [state.whatsNewOpen, whatsNewSuppressed]);
 
-  if (!state.whatsNewOpen || whatsNewSuppressed || state.releaseNotes.length === 0) return null;
-  const selectedKey = state.selectedReleaseNoteKey ?? releaseNoteKey(state.releaseNotes[0]?.version ?? "", 0);
-  const selectedIndex = state.releaseNotes.findIndex((note, index) => releaseNoteKey(note.version, index) === selectedKey);
-  const selected = state.releaseNotes[selectedIndex] ?? state.releaseNotes[0]!;
-  const selectedValue = releaseNoteKey(selected.version, selectedIndex >= 0 ? selectedIndex : 0);
+  if (!state.whatsNewOpen || whatsNewSuppressed || selected === undefined) return null;
   const handleRefresh = () => {
     void requestReleaseNotes({ force: true, locale });
   };
@@ -92,6 +120,10 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
     const targetIndex = targetPage * RELEASE_NOTE_PAGE_SIZE;
     const target = state.releaseNotes[targetIndex];
     if (target) selectReleaseNote(releaseNoteKey(target.version, targetIndex));
+  };
+  const selectTabAndFocus = (tabId: WhatsNewTabId) => {
+    setActiveTab(tabId);
+    requestAnimationFrame(() => tabRefs.current.get(tabId)?.focus());
   };
 
   return (
@@ -152,10 +184,44 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
               {state.releaseNotesLoading ? "Refreshing" : "Refresh"}
             </button>
           </div>
+          <div className="whatsnew-tabs" role="tablist" aria-label="Release update categories">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                ref={(element) => {
+                  if (element) tabRefs.current.set(tab.id, element);
+                  else tabRefs.current.delete(tab.id);
+                }}
+                id={`whatsnew-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                className="whatsnew-tab"
+                data-tab-id={tab.id}
+                aria-selected={activeTab === tab.id}
+                aria-controls="whatsnew-tab-panel"
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
           {state.releaseNotesError ? <p className="whatsnew-error">Release notes could not be refreshed.</p> : null}
-          {selected.sections.map((section, index) => (
-            <ReleaseNoteSectionView key={section.heading} section={section} index={index} />
-          ))}
+          <div id="whatsnew-tab-panel" role="tabpanel" aria-labelledby={`whatsnew-tab-${activeTab}`}>
+            {activeTab === "overview" ? (
+              <div className="whatsnew-overview" aria-label="Release update overview">
+                {deriveWhatsNewOverview(selected).map((item) => (
+                  <button key={item.id} type="button" className="whatsnew-overview-card" onClick={() => selectTabAndFocus(item.id)}>
+                    <span className="whatsnew-overview-label">{item.label}</span>
+                    <span className="whatsnew-overview-count">{item.count} {item.count === 1 ? "update" : "updates"}</span>
+                    <span className="whatsnew-overview-summary">{item.summary}</span>
+                  </button>
+                ))}
+              </div>
+            ) : filterWhatsNewSections(selected, activeTab).map((section, index) => (
+              <ReleaseNoteSectionView key={section.heading} section={section} index={index} />
+            ))}
+          </div>
         </div>
         <footer className="whatsnew-footer">
           <button type="button" className="whatsnew-done" onClick={closeWhatsNew}>
@@ -216,4 +282,24 @@ function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {
     event.preventDefault();
     first.focus();
   }
+}
+
+function handleTabNavigation(
+  event: KeyboardEvent,
+  container: HTMLElement | null,
+  setActiveTab: (tab: WhatsNewTabId) => void,
+): boolean {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return false;
+  const target = event.target instanceof HTMLElement ? event.target.closest<HTMLButtonElement>(".whatsnew-tab[role='tab']") : null;
+  if (!target || !container) return false;
+  const tabs = Array.from(container.querySelectorAll<HTMLButtonElement>(".whatsnew-tab[role='tab']"));
+  const currentIndex = tabs.indexOf(target);
+  if (currentIndex < 0 || tabs.length === 0) return false;
+  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  const next = tabs[nextIndex]!;
+  const tabId = next.dataset.tabId as WhatsNewTabId | undefined;
+  if (!tabId) return false;
+  setActiveTab(tabId);
+  next.focus();
+  return true;
 }

@@ -1,4 +1,4 @@
-import type { ConsoleReleaseNoteItem, ConsoleReleaseNoteSection, ConsoleReleaseNotes } from "./types.js";
+import type { ConsoleReleaseNoteItem, ConsoleReleaseNoteSection, ConsoleReleaseNotes, ReleaseNoteProduct } from "./types.js";
 
 type ReleaseNoteHeading = ConsoleReleaseNoteSection["heading"];
 
@@ -10,7 +10,7 @@ interface MutableReleaseNoteSection {
 const RELEASE_NOTE_HEADINGS: readonly ReleaseNoteHeading[] = ["Added", "Changed", "Fixed", "Removed", "Breaking Changes"];
 const VERSION_HEADER_PATTERN = /^## \[([^\]]+)\](?: - ([0-9]{4}-[0-9]{2}-[0-9]{2}))?$/;
 const SECTION_HEADER_PATTERN = /^### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
-const PRODUCT_HEADER_PATTERN = /^### fleet-(cli|console|desktop|plugin|core)$/;
+const PRODUCT_HEADER_PATTERN = /^### (fleet-(?:cli|console|desktop|plugin|core))$/;
 const PRODUCT_SECTION_HEADER_PATTERN = /^#### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
 const BULLET_PATTERN = /^- (.+)$/;
 const PACKAGE_TAG_PATTERN = /^\[([^\]]+)\]/;
@@ -38,29 +38,30 @@ function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteS
   const productSections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
   const legacyHeadings = new Set<ReleaseNoteHeading>();
   let current: MutableReleaseNoteSection | null = null;
-  let isProductContext = false;
+  let currentProduct: ReleaseNoteProduct | null = null;
   for (const line of lines) {
     const sectionMatch = SECTION_HEADER_PATTERN.exec(line);
     if (sectionMatch !== null) {
       const heading = sectionMatch[1] as ReleaseNoteHeading;
-      isProductContext = false;
+      currentProduct = null;
       current = legacyHeadings.has(heading) ? null : getSection(legacySections, heading);
       legacyHeadings.add(heading);
       continue;
     }
-    if (PRODUCT_HEADER_PATTERN.test(line)) {
-      isProductContext = true;
+    const productMatch = PRODUCT_HEADER_PATTERN.exec(line);
+    if (productMatch !== null) {
+      currentProduct = productMatch[1] as ReleaseNoteProduct;
       current = null;
       continue;
     }
     if (line.startsWith("### ")) {
-      isProductContext = false;
+      currentProduct = null;
       current = null;
       continue;
     }
     const productSectionMatch = PRODUCT_SECTION_HEADER_PATTERN.exec(line);
     if (productSectionMatch !== null) {
-      current = isProductContext ? getSection(productSections, productSectionMatch[1] as ReleaseNoteHeading) : null;
+      current = currentProduct === null ? null : getSection(productSections, productSectionMatch[1] as ReleaseNoteHeading);
       continue;
     }
     if (current === null) continue;
@@ -69,7 +70,7 @@ function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteS
       continue;
     }
     const bulletMatch = BULLET_PATTERN.exec(line);
-    if (bulletMatch !== null) current.items.push(parseReleaseNoteItem(bulletMatch[1] ?? ""));
+    if (bulletMatch !== null) current.items.push(parseReleaseNoteItem(bulletMatch[1] ?? "", currentProduct));
   }
   return RELEASE_NOTE_HEADINGS
     .map((heading) => combineSections(heading, legacySections.get(heading), productSections.get(heading)))
@@ -96,7 +97,7 @@ function getSection(
   return section;
 }
 
-function parseReleaseNoteItem(rawText: string): ConsoleReleaseNoteItem {
+function parseReleaseNoteItem(rawText: string, product: ReleaseNoteProduct | null): ConsoleReleaseNoteItem {
   const packageTags: string[] = [];
   let text = rawText.trim();
   while (true) {
@@ -105,5 +106,5 @@ function parseReleaseNoteItem(rawText: string): ConsoleReleaseNoteItem {
     packageTags.push(match[1] ?? "");
     text = text.slice(match[0].length).trimStart();
   }
-  return { packageTags, text: text.trim() };
+  return product === null ? { packageTags, text: text.trim() } : { packageTags, text: text.trim(), product };
 }
