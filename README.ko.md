@@ -51,25 +51,25 @@ Fleet Console은 병렬 에이전트 작업을 탐색 가능한 작전 공간으
 
 ### 라이브 작업을 공간에 배치
 
-<img src=".github/console-operations.png" alt="Claude Operation 2개와 Codex, Shell이 배치된 Fleet Console Formation View" width="100%" />
+<img src=".github/console-formation-instrument.png" alt="Claude Operation 2개와 Codex, Shell이 배치된 Fleet Console Formation View" width="100%" />
 
 무한 캔버스에 여러 Operation을 열고 작업에 맞게 배치하세요. Map으로 전체를 조망하거나 Formation으로 Claude, Codex, Shell과 다른 에이전트 런타임을 하나의 집중 작업 세트로 정렬할 수 있습니다. Theater 사이드바에서는 모든 프로젝트와 세션에 즉시 접근합니다.
 
 ### 터미널 옆에 프로젝트 컨텍스트 배치
 
-<img src=".github/console-workspace.png" alt="Files Activity Rail이 열린 Fleet Console" width="100%" />
+<img src=".github/console-activity-files.png" alt="Files Activity Rail이 열린 Fleet Console" width="100%" />
 
 Activity Rail은 Files, Plans, Diff, History, Skills, Alerts, Global Shell을 라이브 Operation 옆에 둡니다. 지원 패널은 서버에 영속된 Theater 경로 컨텍스트를 공유하므로, 원본 파일시스템 경로를 브라우저에 노출하지 않고 탐색 범위를 동기화합니다.
 
 ### 트랜스크립트가 아닌 결정을 축적
 
-<img src=".github/console-codex.png" alt="Codex Fleet Wiki 패널이 열린 Fleet Console" width="100%" />
+<img src=".github/console-fleet-wiki.png" alt="Codex Fleet Wiki 패널이 열린 Fleet Console" width="100%" />
 
 Fleet Wiki는 아키텍처 결정, 제품 히스토리, 가이드, 리뷰 큐를 실행 환경과 같은 워크스페이스에 보존합니다. 작전을 벗어나지 않고 지식을 검색하고 검토할 수 있습니다.
 
 ### 모든 전문 Carrier를 독립적으로 설정
 
-<img src=".github/console-carriers.png" alt="Fleet Console Carrier Settings" width="100%" />
+<img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier Settings" width="100%" />
 
 각 Carrier의 CLI 백엔드, 모델, 추론 강도, Task Force 구성을 하나의 시각적 로스터에서 선택합니다. 기본 제공되는 8개의 전문 Carrier는 전략, 기획, 구현, 다단 실행, QA, 정찰, 외부 인텔리전스, 문서화를 담당합니다.
 
@@ -91,7 +91,7 @@ Mission Control은 Carrier Roster와 함대 전체 제어를 제공합니다. **
 
 Fleet Console Desktop은 Fleet Console 위의 선택적 얇은 네이티브 셸이며, 두 번째 서버나 분기된 UI가 아닙니다. 표준 Console 서비스를 감독하고 정확한 루프백 원본을 검증한 뒤, 샌드박스 처리된 Node-free 렌더러에서 같은 `/console/` 제품을 로드합니다.
 
-<img src=".github/desktop-console.png" alt="Instrument 테마에서 4개 Operation Formation을 실행하는 Fleet Console Desktop" width="100%" />
+<img src=".github/desktop-formation-instrument.png" alt="Instrument 테마에서 4개 Operation Formation을 실행하는 Fleet Console Desktop" width="100%" />
 
 - 네이티브 창, 트레이 라이프사이클, 플랫폼 업데이트 흐름
 - 사용자 상태와 독립적으로 교체 가능한 관리형 Node·Console 런타임

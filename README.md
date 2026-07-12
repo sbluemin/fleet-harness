@@ -51,25 +51,25 @@ Fleet Console turns parallel agent work into a navigable operations space. Every
 
 ### Arrange live work spatially
 
-<img src=".github/console-operations.png" alt="Fleet Console Formation View with two Claude operations, Codex, and Shell" width="100%" />
+<img src=".github/console-formation-instrument.png" alt="Fleet Console Formation View with two Claude operations, Codex, and Shell" width="100%" />
 
 Open multiple Operations on an infinite canvas, arrange them around the task, zoom out through the Map, or switch to Formation to tile Claude, Codex, shell, and other agent runtimes into a focused working set. The Theater sidebar keeps every project and session within reach.
 
 ### Bring project context beside the terminal
 
-<img src=".github/console-workspace.png" alt="Fleet Console with the Files Activity Rail open" width="100%" />
+<img src=".github/console-activity-files.png" alt="Fleet Console with the Files Activity Rail open" width="100%" />
 
 The Activity Rail places Files, Plans, Diff, History, Skills, alerts, and a global shell beside live Operations. Supported panels share server-persisted Theater path context, so project exploration stays synchronized without exposing raw filesystem paths to the browser.
 
 ### Keep decisions, not just transcripts
 
-<img src=".github/console-codex.png" alt="Fleet Console with the Codex Fleet Wiki panel open" width="100%" />
+<img src=".github/console-fleet-wiki.png" alt="Fleet Console with the Codex Fleet Wiki panel open" width="100%" />
 
 Fleet Wiki keeps architecture decisions, product history, guides, and review queues in the same workspace as execution. Search and inspect knowledge without leaving the operation.
 
 ### Configure every specialist independently
 
-<img src=".github/console-carriers.png" alt="Fleet Console Carrier Settings" width="100%" />
+<img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier Settings" width="100%" />
 
 Choose each Carrier's CLI backend, model, reasoning effort, and Task Force composition from one visual roster. Eight built-in specialists cover strategy, planning, implementation, multi-wave execution, QA, reconnaissance, external intelligence, and documentation.
 
@@ -91,7 +91,7 @@ Mission Control exposes the Carrier Roster and fleet-wide controls. Launch one s
 
 Fleet Console Desktop is an optional thin native shell over Fleet Console—not a second server or a forked UI. It supervises the standard Console service, verifies the exact loopback origin, and loads the same `/console/` product in a sandboxed, Node-free renderer.
 
-<img src=".github/desktop-console.png" alt="Fleet Console Desktop in Instrument theme with a four-operation Formation" width="100%" />
+<img src=".github/desktop-formation-instrument.png" alt="Fleet Console Desktop in Instrument theme with a four-operation Formation" width="100%" />
 
 - Native window, tray lifecycle, and platform update flow
 - Managed Node and Console runtime, replaceable independently of user state
