@@ -1,4 +1,4 @@
-import type { ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -457,10 +457,22 @@ function assertReleaseNoteSection(value: unknown, status: number): ReleaseNoteSe
 
 function assertReleaseNoteItem(value: unknown, status: number): ReleaseNoteItem {
   const payload = value as Partial<ReleaseNoteItem>;
-  if (!payload || !Array.isArray(payload.packageTags) || !payload.packageTags.every((tag) => typeof tag === "string") || typeof payload.text !== "string") {
+  if (
+    !payload
+    || !Array.isArray(payload.packageTags)
+    || !payload.packageTags.every((tag) => typeof tag === "string")
+    || typeof payload.text !== "string"
+    || ("product" in payload && !isReleaseNoteProduct(payload.product))
+  ) {
     throw new ApiError(status, "Invalid release notes response");
   }
-  return { packageTags: payload.packageTags, text: payload.text };
+  return "product" in payload
+    ? { packageTags: payload.packageTags, text: payload.text, product: payload.product }
+    : { packageTags: payload.packageTags, text: payload.text };
+}
+
+function isReleaseNoteProduct(value: unknown): value is ReleaseNoteProduct {
+  return value === "fleet-cli" || value === "fleet-console" || value === "fleet-desktop" || value === "fleet-plugin" || value === "fleet-core";
 }
 
 function assertTheaterFolderList(value: unknown, status: number): TheaterFolderListResponse {

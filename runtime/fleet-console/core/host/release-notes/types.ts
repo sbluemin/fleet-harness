@@ -1,6 +1,9 @@
+export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop" | "fleet-plugin" | "fleet-core";
+
 export interface ConsoleReleaseNoteItem {
   readonly packageTags: readonly string[];
   readonly text: string;
+  readonly product?: ReleaseNoteProduct;
 }
 
 export interface ConsoleReleaseNoteSection {

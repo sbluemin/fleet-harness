@@ -1,5 +1,5 @@
 import { parseConsoleReleaseNotes } from "./parser.js";
-import { ConsoleReleaseNotesUnavailableError, type ConsoleReleaseNotes, type ConsoleReleaseNotesResponse, type LocalizedConsoleReleaseNotes, type ReleaseNotesLocale } from "./types.js";
+import { ConsoleReleaseNotesUnavailableError, type ConsoleReleaseNoteSection, type ConsoleReleaseNotes, type ConsoleReleaseNotesResponse, type LocalizedConsoleReleaseNotes, type ReleaseNotesLocale } from "./types.js";
 
 interface ConsoleReleaseNotesServiceDeps {
   readonly fetchImpl?: typeof fetch;
@@ -175,7 +175,7 @@ function mergeKoreanOverlay(canonical: ConsoleReleaseNotesResponse, koreanNotes:
     notes: canonical.notes.map((english) => {
       const korean = occurrences.get(english.version)?.shift();
       return korean && hasMatchingStructure(english, korean)
-        ? { ...english, sections: korean.sections, localizationFallback: false }
+        ? { ...english, sections: overlayLocalizedText(english.sections, korean.sections), localizationFallback: false }
         : withFallback(english);
     }),
   };
@@ -192,8 +192,24 @@ function hasMatchingStructure(english: ConsoleReleaseNotes, korean: ConsoleRelea
       const localizedSection = korean.sections[sectionIndex];
       return localizedSection?.heading === section.heading
         && localizedSection.items.length === section.items.length
-        && section.items.every((item, itemIndex) => sameTags(item.packageTags, localizedSection.items[itemIndex]?.packageTags));
+        && section.items.every((item, itemIndex) => {
+          const localizedItem = localizedSection.items[itemIndex];
+          return sameTags(item.packageTags, localizedItem?.packageTags) && item.product === localizedItem?.product;
+        });
     });
+}
+
+function overlayLocalizedText(
+  englishSections: readonly ConsoleReleaseNoteSection[],
+  koreanSections: readonly ConsoleReleaseNoteSection[],
+): readonly ConsoleReleaseNoteSection[] {
+  return englishSections.map((section, sectionIndex) => ({
+    ...section,
+    items: section.items.map((item, itemIndex) => ({
+      ...item,
+      text: koreanSections[sectionIndex]!.items[itemIndex]!.text,
+    })),
+  }));
 }
 
 function sameTags(left: readonly string[], right: readonly string[] | undefined): boolean {

@@ -177,6 +177,23 @@ const UNKNOWN_PRODUCT_CONTEXT_CHANGELOG = `# Changelog
 - [fleet-console] Ignore the post-product note.
 `;
 
+const MISLEADING_TAGS_CHANGELOG = `# Changelog
+
+## [0.27.0] - 2026-07-12
+
+### fleet-cli
+
+#### Added
+
+- [fleet-console] Keep the misleading tag.
+
+### fleet-unknown
+
+#### Added
+
+- [fleet-cli] Ignore the unknown product.
+`;
+
 describe("release note parser", () => {
   it("collects every non-empty version block without collapsing duplicates", () => {
     const notes = parseConsoleReleaseNotes(CHANGELOG);
@@ -201,6 +218,7 @@ describe("release note parser", () => {
       text: "Runtime notes now load lazily.",
     });
     expect(notes[1]?.sections[1]?.items[0]).toEqual({ packageTags: [], text: "Plain text fix." });
+    expect(Object.hasOwn(notes[1]?.sections[1]?.items[0] ?? {}, "product")).toBe(false);
   });
 
   it("flattens future product sections in product order without expanding the API", () => {
@@ -209,17 +227,17 @@ describe("release note parser", () => {
 
     expect(sections?.map((section) => section.heading)).toEqual(["Added", "Fixed", "Removed"]);
     expect(sections?.[0]?.items).toEqual([
-      { packageTags: ["fleet-cli"], text: "Open the embedded app." },
-      { packageTags: ["fleet-console"], text: "Add the Console surface." },
-      { packageTags: ["fleet-console"], text: "Add the Desktop shell." },
-      { packageTags: ["fleet-console"], text: "Add the plugin surface." },
-      { packageTags: ["fleet-admiral"], text: "Add the core surface." },
+      { packageTags: ["fleet-cli"], text: "Open the embedded app.", product: "fleet-cli" },
+      { packageTags: ["fleet-console"], text: "Add the Console surface.", product: "fleet-console" },
+      { packageTags: ["fleet-console"], text: "Add the Desktop shell.", product: "fleet-desktop" },
+      { packageTags: ["fleet-console"], text: "Add the plugin surface.", product: "fleet-plugin" },
+      { packageTags: ["fleet-admiral"], text: "Add the core surface.", product: "fleet-core" },
     ]);
     expect(sections?.[1]?.items).toEqual([
-      { packageTags: ["fleet-console"], text: "Fix the Console surface." },
-      { packageTags: ["fleet-console"], text: "Fix the plugin surface." },
+      { packageTags: ["fleet-console"], text: "Fix the Console surface.", product: "fleet-console" },
+      { packageTags: ["fleet-console"], text: "Fix the plugin surface.", product: "fleet-plugin" },
     ]);
-    expect(sections?.[2]?.items).toEqual([{ packageTags: ["fleet-cli"], text: "Remove the legacy mode." }]);
+    expect(sections?.[2]?.items).toEqual([{ packageTags: ["fleet-cli"], text: "Remove the legacy mode.", product: "fleet-cli" }]);
   });
 
   it("keeps only the first repeated legacy section", () => {
@@ -236,8 +254,8 @@ describe("release note parser", () => {
 
     expect(fixed?.items).toEqual([
       { packageTags: ["fleet-console"], text: "Keep the legacy fix first." },
-      { packageTags: ["fleet-cli"], text: "Keep the CLI product fix." },
-      { packageTags: ["fleet-console"], text: "Keep the Console product fix." },
+      { packageTags: ["fleet-cli"], text: "Keep the CLI product fix.", product: "fleet-cli" },
+      { packageTags: ["fleet-console"], text: "Keep the Console product fix.", product: "fleet-console" },
     ]);
   });
 
@@ -247,9 +265,17 @@ describe("release note parser", () => {
     expect(notes[0]?.sections).toEqual([{
       heading: "Added",
       items: [
-        { packageTags: ["fleet-cli"], text: "Keep the CLI product note." },
-        { packageTags: ["fleet-console"], text: "Keep the Console product note." },
+        { packageTags: ["fleet-cli"], text: "Keep the CLI product note.", product: "fleet-cli" },
+        { packageTags: ["fleet-console"], text: "Keep the Console product note.", product: "fleet-console" },
       ],
     }]);
+  });
+
+  it("stamps only recognized product headings and never infers provenance from package tags", () => {
+    const notes = parseConsoleReleaseNotes(MISLEADING_TAGS_CHANGELOG);
+
+    expect(notes[0]?.sections[0]?.items).toEqual([
+      { packageTags: ["fleet-console"], text: "Keep the misleading tag.", product: "fleet-cli" },
+    ]);
   });
 });

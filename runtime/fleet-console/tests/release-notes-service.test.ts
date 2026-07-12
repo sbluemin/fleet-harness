@@ -21,6 +21,28 @@ const KOREAN_CHANGELOG = `# 변경 이력
 - [fleet-console] 런타임 노트.
 `;
 
+const PRODUCT_CHANGELOG = `# Changelog
+
+## [1.1.0] - 2026-06-21
+
+### fleet-cli
+
+#### Changed
+
+- [fleet-console] CLI product text.
+`;
+
+const KOREAN_PRODUCT_CHANGELOG = `# 변경 이력
+
+## [1.1.0] - 2026-06-21
+
+### fleet-cli
+
+#### Changed
+
+- [fleet-console] CLI 제품 텍스트.
+`;
+
 describe("release note service", () => {
   it("fetches the main changelog and returns the settled envelope", async () => {
     let now = 10;
@@ -139,6 +161,26 @@ describe("release note service", () => {
       "https://raw.githubusercontent.com/sbluemin/fleet-harness/main/CHANGELOG.md",
       "https://raw.githubusercontent.com/sbluemin/fleet-harness/main/CHANGELOG.ko.md",
     ]));
+  });
+
+  it("keeps English metadata and replaces only matching Korean text", async () => {
+    const fetchImpl = vi.fn(async (url: string) => new Response(url.endsWith("CHANGELOG.ko.md") ? KOREAN_PRODUCT_CHANGELOG : PRODUCT_CHANGELOG));
+    const service = createConsoleReleaseNotesService({ fetchImpl: fetchImpl as typeof fetch, now: () => 10 });
+
+    const result = await service.refresh({ locale: "ko" });
+    const item = result.notes[0]?.sections[0]?.items[0];
+
+    expect(item).toEqual({ packageTags: ["fleet-console"], product: "fleet-cli", text: "CLI 제품 텍스트." });
+  });
+
+  it("falls back for a Korean provenance mismatch", async () => {
+    const mismatchedKorean = KOREAN_PRODUCT_CHANGELOG.replace("### fleet-cli", "### fleet-console");
+    const fetchImpl = vi.fn(async (url: string) => new Response(url.endsWith("CHANGELOG.ko.md") ? mismatchedKorean : PRODUCT_CHANGELOG));
+    const service = createConsoleReleaseNotesService({ fetchImpl: fetchImpl as typeof fetch, now: () => 10 });
+
+    const result = await service.refresh({ locale: "ko" });
+
+    expect(result.notes[0]).toMatchObject({ localizationFallback: true, sections: [{ items: [{ product: "fleet-cli", text: "CLI product text." }] }] });
   });
 
   it("falls back per release for missing, mismatched, and duplicate Korean occurrences", async () => {

@@ -7372,6 +7372,81 @@ body[data-codex-side="true"] .command-card {
   opacity: 0.65;
 }
 
+.whatsnew-tabs {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-color: color-mix(in oklch, var(--brass) 42%, transparent) transparent;
+}
+
+.whatsnew-tab {
+  flex: none;
+  min-height: 34px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  background: color-mix(in oklch, var(--ink-mid) 62%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.whatsnew-tab[aria-selected="true"] {
+  border-color: color-mix(in oklch, var(--brass) 50%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-bright);
+}
+
+.whatsnew-tab:hover,
+.whatsnew-tab:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 60%, transparent);
+  color: var(--ink-pearl);
+}
+
+.whatsnew-overview {
+  display: grid;
+  gap: 10px;
+}
+
+.whatsnew-overview-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 54%, transparent);
+  color: var(--ink-spectral);
+  text-align: left;
+}
+
+.whatsnew-overview-card:hover,
+.whatsnew-overview-card:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.whatsnew-overview-label,
+.whatsnew-overview-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.whatsnew-overview-label { color: var(--brass-bright); }
+.whatsnew-overview-count { color: var(--ink-fog); }
+.whatsnew-overview-summary {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--ink-spectral);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .whatsnew-pagination {
   display: inline-flex;
   align-items: center;
@@ -7772,6 +7847,10 @@ body[data-codex-side="true"] .command-card {
 
   .whatsnew-section {
     padding: 15px;
+  }
+
+  .whatsnew-tabs {
+    margin-inline: -2px;
   }
 }
 
