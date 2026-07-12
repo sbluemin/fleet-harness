@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, Menu, shell, Tray } from "electron";
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
 import { createConsoleControls } from "./console-controls.js";
-import { createDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
+import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
@@ -55,7 +55,7 @@ async function boot(): Promise<void> {
   await app.whenReady();
   applyDesktopDockIcon(app, desktopResources.iconPath);
   const runtimePaths = resolveRuntimePaths(os.homedir());
-  const environment = createDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
+  const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
   const registry = createRegistryChecker({ packageName: PACKAGE_NAME, statePath: path.join(runtimePaths.root, "registry-state.json") });
