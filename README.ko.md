@@ -1,179 +1,123 @@
 <p align="center">
-  <br/>
-  ⚓ ─────────── ⚓
-  <br/><br/>
-  <img src=".github/logo.png" width="520" alt="fleet" />
-  <br/><br/>
-  <strong>F L E E T</strong>
-  <br/>
-  <em>One Fleet. All LLMs.</em>
-  <br/><br/>
-  ⚓ ─────────── ⚓
-  <br/>
+  <img src=".github/logo.png" width="420" alt="Fleet" />
+</p>
+
+<h1 align="center">하나의 함대. 모든 프론티어 CLI.</h1>
+
+<p align="center">
+  <strong>Claude Code, Codex, OpenCode, Cursor Agent를 하나의 로컬 함대에서 지휘하세요.</strong><br/>
+  네이티브 에이전트 런타임. 공식 프로토콜. API 래핑이나 프록시 없음.
 </p>
 
 <p align="center">
-    <strong>Claude Code와 Codex CLI를 하나의 통합 인터페이스로 운용하는 멀티 LLM 오케스트레이션 킷 — 터미널에서, 또는 로컬 웹 콘솔에서 — 네이티브 CLI를 직접 사용하며, API 래핑이나 프록싱 없음.</strong>
+  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-cli"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=c9a455" alt="npm"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-4aab8f" alt="License"></a>
+  <br/>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a>
 </p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-cli"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=blue" alt="npm"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
-</p>
-
-<p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.ko.md">한국어</a>
-</p>
-
----
 
 <div align="center">
-  <img src=".github/fleet-harness.gif" alt="fleet demo" width="640" />
+  <img src=".github/fleet-harness.gif" alt="여러 Carrier를 오케스트레이션하는 Fleet CLI" width="720" />
 </div>
 
-## 빠른 시작
+## 하나의 지휘 체계, 세 가지 작업 방식
 
-npm으로 Fleet CLI를 전역 설치하세요:
+Fleet은 각 CLI의 네이티브 에이전트 루프를 그대로 보존하면서 기획, 디스패치, 관측, 결과 비교를 하나의 지휘 체계로 연결합니다.
+
+| 제품 | 시작 방법 | 가장 적합한 경험 |
+|---|---|---|
+| **Fleet CLI** | `fleet` | 터미널을 벗어나지 않는 빠른 키보드 중심 지휘 |
+| **Fleet Console** | `fleet console` | 공간형 멀티 에이전트 작전, 라이브 터미널, 프로젝트 도구, 시각적 설정 |
+| **Fleet Console Desktop** | [최신 GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest) | 관리형 런타임과 업데이트를 갖춘 선택적 네이티브 Console 창 |
+
+세 제품은 같은 Carrier와 오케스트레이션 엔진을 지휘합니다. Fleet은 로컬에서 실행되고 Console은 루프백 전용이며, 브라우저 표면에는 MCP·세션 토큰이 전달되지 않습니다.
+
+## 함대 시작하기
+
+Node.js 20+와 `PATH`에 등록된 인증 완료 지원 CLI가 하나 이상 필요합니다.
 
 ```bash
 npm install -g @dotobokuri/fleet-cli
+
+fleet              # 터미널 지휘 센터
+fleet console      # 로컬 웹 지휘 센터
 ```
 
-터미널 인터페이스를 실행합니다:
+설치 후 `fleet --help`로 CLI를 검증하고 원하는 인터페이스를 실행하세요.
 
-```bash
-fleet
-```
+## Fleet Console — 작전 전체를 한눈에
 
-또는 같은 함대를 위한 로컬·루프백 전용 웹 GUI인 **Fleet Console**을 엽니다:
+Fleet Console은 병렬 에이전트 작업을 탐색 가능한 작전 공간으로 바꿉니다. 각 Operation은 로컬 서버가 소유하는 실제 터미널 세션이므로 브라우저 탭을 닫아도 작업은 중단되지 않습니다.
 
-```bash
-fleet console
-```
+### 라이브 작업을 공간에 배치
 
-자세한 설치 방법은 [SETUP.md](SETUP.md)를 참조하세요.
+<img src=".github/console-operations.png" alt="Claude Operation 2개와 Codex, Shell이 배치된 Fleet Console Formation View" width="100%" />
 
-Fleet Console Desktop은 Fleet Console용 선택적 네이티브 셸입니다. 기존 Console Service를 감독하고 정확한 로컬 `/console/` 경로를 로드하며, 두 번째 렌더러나 서버가 아닙니다. 지원 아티팩트, 설치, 업데이트 및 제한은 [runtime/fleet-desktop/README.md](runtime/fleet-desktop/README.md)를 참조하세요.
+무한 캔버스에 여러 Operation을 열고 작업에 맞게 배치하세요. Map으로 전체를 조망하거나 Formation으로 Claude, Codex, Shell과 다른 에이전트 런타임을 하나의 집중 작업 세트로 정렬할 수 있습니다. Theater 사이드바에서는 모든 프로젝트와 세션에 즉시 접근합니다.
 
-> **AI 에이전트 이용** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
->
-> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
+### 터미널 옆에 프로젝트 컨텍스트 배치
 
-## 동기
+<img src=".github/console-workspace.png" alt="Files Activity Rail이 열린 Fleet Console" width="100%" />
 
-Claude Code, Codex, OpenCode, Cursor와 같은 모든 프론티어 CLI는 각자의 기반 모델에 최적화된 에이전트 루프를 탑재하고 있습니다. Claude의 루프는 심층 추론과 도구 오케스트레이션을 위해 설계되었고, Codex는 빠른 코드 생성과 반복 실행에 최적화되어 있습니다. OpenCode는 여러 모델을 하나의 적응형 루프 아래 통합합니다. Cursor는 단일 에이전트 루프 안에서 여러 프론티어 모델을 라우팅합니다. 이들은 얇은 API 래퍼가 아니라, 각 제작사가 세밀하게 다듬은 완전한 모델-네이티브 에이전트 런타임입니다.
+Activity Rail은 Files, Plans, Diff, History, Skills, Alerts, Global Shell을 라이브 Operation 옆에 둡니다. 지원 패널은 서버에 영속된 Theater 경로 컨텍스트를 공유하므로, 원본 파일시스템 경로를 브라우저에 노출하지 않고 탐색 범위를 동기화합니다.
 
-문제는 이 모든 도구가 별도의 터미널에 존재한다는 점입니다. 하나의 작업에 여러 CLI의 강점을 조합하려면 창 사이로 컨텍스트를 복사하고, 상태를 수동으로 동기화하며, 각기 다른 상호작용 패턴 사이를 오가야 합니다. 다중 도구 조율의 마찰은 결국 단일 CLI에 만족하게 만들고, 나머지 도구의 고유한 능력은 활용하지 못한 채 남겨두게 됩니다.
+### 트랜스크립트가 아닌 결정을 축적
 
-Fleet은 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하지 않기 위해 만들어졌습니다. 모든 네이티브 에이전트 런타임을 해군 **함대(Fleet)** 내의 **항공모함(Carrier)**으로 대우하고, 중앙의 Admiral이 공식 프로토콜을 통해 여러 Carrier를 병렬로 지휘합니다. 각 모델의 네이티브 루프는 설계 그대로 실행되되, 단일 명령 아래 조율됩니다. 한 번의 명령으로 함대 전체가 함께 실행되며, 각 Carrier가 자신만의 강점을 기여합니다.
+<img src=".github/console-codex.png" alt="Codex Fleet Wiki 패널이 열린 Fleet Console" width="100%" />
 
-## 해군 함대 계층 구조
+Fleet Wiki는 아키텍처 결정, 제품 히스토리, 가이드, 리뷰 큐를 실행 환경과 같은 워크스페이스에 보존합니다. 작전을 벗어나지 않고 지식을 검색하고 검토할 수 있습니다.
 
-4단계 지휘 체계가 사용자, 오케스트레이터, 에이전트를 명확한 역할로 매핑합니다:
+### 모든 전문 Carrier를 독립적으로 설정
 
-- **Admiral of the Navy (대원수)** — 사용자. 전략을 수립하고 명령을 내립니다.
-- **Fleet Admiral (사령관)** — 다중 함대 오케스트레이터 정책 계층(현재 `fleet-cli` 내부에 호스트).
-- **Admiral (제독)** — 워크스페이스 에이전트 인스턴스. 작전을 기획하고 Carrier를 배치합니다.
-- **Captain (함장)** — Carrier 에이전트의 지휘관 페르소나.
+<img src=".github/console-carriers.png" alt="Fleet Console Carrier Settings" width="100%" />
 
-**Carrier**는 독립된 설정을 가진 CLI 도구의 실행 인스턴스입니다. **Captain**은 이를 지휘하는 페르소나(예: Chief Engineer, Scout Specialist)입니다.
+각 Carrier의 CLI 백엔드, 모델, 추론 강도, Task Force 구성을 하나의 시각적 로스터에서 선택합니다. 기본 제공되는 8개의 전문 Carrier는 전략, 기획, 구현, 다단 실행, QA, 정찰, 외부 인텔리전스, 문서화를 담당합니다.
 
-## 항공모함
+> Fleet Console은 리서치 프리뷰입니다.
 
-> 각 항공모함의 설정(모델, 추론 레벨, Task Force, SubAgent 모드 등)은 Fleet Console의 **Carrier Settings** 표면에서, 또는 CLI의 Mission Control 메뉴 내 Carrier Roster 항목에서 조정할 수 있습니다.
+## Fleet CLI — 키보드에서 지휘
 
-8개의 기본 Carrier가 각각 고유한 작전 역할을 수행합니다:
+Fleet CLI는 셸을 벗어나지 않고 같은 함대를 기획·디스패치·감시하는 터미널 네이티브 브리지입니다.
 
-- **Nimitz** — 전략 지휘·판단. 읽기 전용 아키텍처 결정·트레이드오프 재결.
-- **Kirov** — 작전 기획 브리지. 요구사항 명확화 및 Ohio에 전달할 plan_file 작성(.fleet/plans/*.md).
-- **Genesis** — 수석 엔지니어. 제독 직접 지휘 하의 단발 구현.
-- **Ohio** — 다단 파상 타격 집행. Kirov가 작성한 plan_file을 받아 웨이브 단위로 실행.
-- **Sentinel** — QA & Security Lead. 코드 리뷰, 결함 탐지, 취약점 헌팅.
-- **Vanguard** — Scout Specialist. 코드베이스 탐색, 심볼 추적, 웹 리서치.
-- **Tempest** — 전방 외부 첩보 타격. GitHub 인텔리전스 및 외부 레포 분석.
-- **Chronicle** — Chief Knowledge Officer. 문서화, 변경 로그, 변경 영향 보고.
+<img src=".github/hud.png" alt="Fleet CLI Bridge HUD" width="100%" />
 
-## 멀티 LLM 오케스트레이션
+Bridge는 풀 에디터, 실시간 Carrier 상태, 세션 상태, 토큰 사용량, 비용, 스트리밍 결과를 하나의 키보드 중심 화면에 결합합니다.
 
-Fleet은 API를 래핑하거나 프록시를 운용하지 않습니다 — **프론티어 CLI 도구를 네이티브로 직접 오케스트레이션**합니다. 각 Carrier는 실제 CLI 바이너리를 실행하고 공식 프로토콜(ACP)을 통해 통신하므로, 각 도구의 완전한 네이티브 기능을 통합된 명령 구조 안에서 그대로 사용할 수 있습니다.
+<img src=".github/carrier_status.png" alt="Fleet CLI Carrier Roster" width="100%" />
 
-| CLI | 제공자 | 프로토콜 | 주요 기능 |
-|-----|--------|----------|-----------|
-| **Claude Code** | Anthropic | ACP | 심층 추론, 아키텍처 판단 |
-| **Codex CLI** | OpenAI | ACP | 빠른 코드 생성, 다단계 실행 |
-| **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
-| **Cursor Agent** | Cursor | ACP | 프론티어 모델 다중 라우팅 |
+Mission Control은 Carrier Roster와 함대 전체 제어를 제공합니다. **Sortie**로 한 전문 Carrier를 출격시키거나, 여러 Carrier를 병렬 배치하거나, 여러 CLI 백엔드에 **Task Force**를 실행해 접근 방식을 비교하고 합의를 확인할 수 있습니다.
 
-모든 Carrier가 단일 명령 구조 아래 병렬로 실행되며, 통합된 진행 상황 추적을 통해 전체 함대의 상태를 한눈에 파악할 수 있습니다. Carrier별로 모델 선택과 추론 레벨을 독립적으로 세밀하게 조정할 수 있으며, Fleet Action은 라우팅, 위임, 리뷰, 문서화를 위한 자율 운영 프레임워크를 제공합니다.
+## Fleet Console Desktop — 필요할 때 네이티브로
 
-Fleet은 같은 함대를 다루는 **두 가지 방법**을 제공합니다 — 로컬 웹 GUI인 **Fleet Console**과 터미널 인터페이스인 **Fleet CLI**. 둘 다 동일한 Carrier·오케스트레이션 엔진·프로젝트 플러그인을 구동하므로, 상황에 맞는 것을 고르면 됩니다.
+Fleet Console Desktop은 Fleet Console 위의 선택적 얇은 네이티브 셸이며, 두 번째 서버나 분기된 UI가 아닙니다. 표준 Console 서비스를 감독하고 정확한 루프백 원본을 검증한 뒤, 샌드박스 처리된 Node-free 렌더러에서 같은 `/console/` 제품을 로드합니다.
 
----
+<img src=".github/desktop-console.png" alt="Instrument 테마에서 4개 Operation Formation을 실행하는 Fleet Console Desktop" width="100%" />
 
-## 🖥️ Fleet Console
+- 네이티브 창, 트레이 라이프사이클, 플랫폼 업데이트 흐름
+- 사용자 상태와 독립적으로 교체 가능한 관리형 Node·Console 런타임
+- 위에서 본 것과 동일한 Operations, Activity Rail, Carrier Settings, Fleet Wiki
+- 브라우저·CLI 채널과 안전하게 공존하며 검증되지 않은 Console 프로세스를 종료하지 않음
 
-`fleet console`은 Fleet Console을 엽니다 — 터미널에서 운용하던 바로 그 함대를 위한 로컬 웹 지휘 센터입니다. 클라우드나 프록시 없이 사용자 머신에서 루프백 전용 서버로 동작하며, 모든 Carrier를 관측·운용하는 실시간 스트리밍 GUI를 제공합니다. *(리서치 프리뷰.)*
+[최신 GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest)에서 플랫폼 아티팩트를 설치하세요. 아티팩트, 업데이트 동작, 현재 제한은 [Desktop 가이드](runtime/fleet-desktop/README.md)를 참조하세요.
 
-### 라이브 대시보드
+## 네이티브 런타임을 대체하지 않고 조율
 
-<img src=".github/console-bridge.png" alt="Fleet Console 대시보드" width="100%" />
+각 지원 CLI에는 제작사가 다듬은 모델 네이티브 에이전트 루프가 있습니다. Fleet은 실제 CLI 바이너리를 실행하고 지원 프로토콜로 통신하므로, 이미 사용 중인 기능과 인증 모델을 그대로 보존합니다.
 
-진입 화면은 작전 전체의 준비 상태판입니다 — Theater 역량 매트릭스(프로젝트 루트와 Codex·라이브 터미널 상태), 각 Carrier의 CLI·모델·추론 강도·Task Force·모드를 보여주는 Carrier 준비도 매트릭스, Codex 지식 패널, 그리고 런타임 상태가 모두 실시간으로 갱신됩니다.
+| CLI | 제공자 | 프로토콜 | 대표 강점 |
+|---|---|---|---|
+| **Claude Code** | Anthropic | ACP | 심층 추론과 아키텍처 판단 |
+| **Codex CLI** | OpenAI | ACP | 빠른 구현과 반복 실행 |
+| **OpenCode Go** | OpenCode | ACP | 폭넓은 오픈 모델 접근 |
+| **Cursor Agent** | Cursor | ACP | 다중 모델 라우팅 |
 
-### Operations Map
+Fleet은 이를 명확한 지휘 체계로 표현합니다. 사용자는 **Admiral of the Navy(대원수)**, 워크스페이스 호스트는 **Admiral(제독)**, 각 전문 **Carrier**는 Captain 페르소나가 지휘합니다. 이 메타포는 장식이 아니라 소유권, 위임, 검증을 명확하게 만드는 운용 언어입니다.
 
-<img src=".github/console-operations.png" alt="Operations Map 캔버스" width="100%" />
+## 더 알아보기
 
-각 Carrier 터미널이 하나의 패널이 되어 자유롭게 패닝·줌·배치할 수 있는 캔버스입니다. Shift-드래그로 새 작전을 그리고, 스크롤로 줌, 드래그로 패닝 — 여러 라이브 에이전트 세션을 나란히 지켜보고, 어떤 터미널이든 인라인으로 진입하며, 어떤 carrier job이든 가운데 스트림 오버레이로 펼쳐 봅니다. 집중 레이아웃이 필요하면 **Helm**으로 전환해 클래식 단일 터미널 뷰를 씁니다.
-
-### Carrier Settings
-
-<img src=".github/console-carriers.png" alt="Carrier Settings" width="100%" />
-
-브라우저에서 모든 Carrier를 구성합니다 — CLI 백엔드·모델·추론 강도 선택, 이름 변경, SubAgent 모드 토글, 다중 CLI Task Force 구성까지. 손으로 편집할 설정 파일 없이, 변경은 함대 전체에 적용됩니다.
-
-### Codex / Fleet Wiki
-
-<img src=".github/console-codex.png" alt="Codex / Fleet Wiki" width="100%" />
-
-프로젝트의 지식 베이스가 콘솔 안에 그대로 마운트됩니다 — Fleet Wiki 엔트리 탐색, `⌘K` 즉시 검색, Drydock 큐 검토, 결정 로그와 다이어그램 열람을 라이브 작전과 한 지붕 아래에서 수행합니다.
-
-터미널 세션은 서버가 소유하며 브라우저 연결이 끊겨도 유지되므로, 탭을 닫아도 에이전트는 계속 실행됩니다. 모든 표면은 루프백 전용이며, MCP·세션 토큰은 브라우저에 절대 노출되지 않습니다.
-
----
-
-## ⌨️ Fleet CLI
-
-`fleet`은 Fleet CLI를 실행합니다 — 셸을 벗어나지 않고 함대를 기획·출격·감시하는 터미널 네이티브 지휘 센터입니다.
-
-### Fleet Bridge
-
-<img src=".github/hud.png" alt="Fleet Bridge HUD" width="100%" />
-
-Fleet Bridge는 터미널 속 당신의 임무 통제 센터입니다. 통합 헤즈업 디스플레이는 모든 정보를 하나의 화면에 담습니다 — 풀기능 에디터, 실시간 상태 표시줄, 그리고 세션 상태와 토큰 사용량, 비용을 추적하는 컨텍스트 푸터까지. 메타포 기반 지시어 정제는 복잡한 요청을 명확한 작전 구역으로 나누어 주며, 자동 세션 요약과 내장 씽킹 타이머로 워크플로우를 투명하고 측정 가능하게 유지합니다.
-
-모든 활성 Carrier의 실시간 스트리밍 결과를 감시하고, Carrier 슬롯 사이를 인라인으로 탐색하며, 특정 에이전트의 출력을 집중적으로 확인해야 할 때 상세 뷰를 전환할 수 있습니다. 단일 통합 인터페이스에서 모두 가능합니다.
-
-### Carrier Dispatch
-
-<img src=".github/carrier_status.png" alt="Carrier Roster" width="100%" />
-
-Carrier 계층은 함대의 실행 엔진입니다. 단일 에이전트가 필요한지, 조율된 편대가 필요한지, 아니면 교차 모델 태스크 포스가 필요한지 — 모든 작전을 통합된 디스패치 인터페이스를 통해 배치하고 제어합니다.
-
-#### Sortie
-
-단일 Carrier나 전체 편대를 한 번의 명령으로 배치하세요. Sortie는 Fire-and-forget 위임, 한 번의 호출로 병렬 다중 Carrier를 출격시키는 기능, 그리고 푸시 알림이나 `carrier_jobs` 조회를 통한 비동기 결과 전달을 모두 지원합니다. 목표를 설정하고 함대를 출격시키면, 결과가 도착하는 대로 수집하면 됩니다.
-
-#### Task Force
-
-Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한 뒤 교차 모델 합의를 도출합니다. 중요한 결정의 검증, 동일한 문제에 대해 각 모델이 어떻게 접근하는지 비교, 그리고 단일 모델의 사각지대를 실행 전에 제거하는 데 활용하세요.
-
-## 문서
-
-- [Fleet 개발 레퍼런스](./docs/fleet-development-reference.md) — Fleet 호스트 확장 개발과 SDK 사용을 위한 종합 가이드.
-- [제독 워크플로우 레퍼런스](./docs/admiral-workflow-reference.md) — 해군 함대 아키텍처 및 운용 원칙에 대한 심층 분석.
-- [CHANGELOG](./CHANGELOG.md) — 프로젝트 변경 이력 및 릴리스 노트.
+- [Fleet 개발 레퍼런스](docs/fleet-development-reference.md) — 호스트 확장과 SDK
+- [제독 워크플로 레퍼런스](docs/admiral-workflow-reference.md) — 오케스트레이션 아키텍처와 원칙
+- [변경 이력](CHANGELOG.ko.md) — 릴리스 히스토리
 
 ## 라이선스
 

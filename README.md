@@ -1,181 +1,123 @@
 <p align="center">
-  <br/>
-  ⚓ ─────────── ⚓
-  <br/><br/>
-  <img src=".github/logo.png" width="520" alt="fleet" />
-  <br/><br/>
-  <strong>F L E E T</strong>
-  <br/>
-  <em>One Fleet. All LLMs.</em>
-  <br/><br/>
-  ⚓ ─────────── ⚓
-  <br/>
+  <img src=".github/logo.png" width="420" alt="Fleet" />
+</p>
+
+<h1 align="center">One Fleet. Every frontier CLI.</h1>
+
+<p align="center">
+  <strong>Command Claude Code, Codex, OpenCode, and Cursor Agent from one local fleet.</strong><br/>
+  Native agent runtimes. Official protocols. No API wrapping or proxying.
 </p>
 
 <p align="center">
-    <strong>A multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface — in your terminal or a local web console — using native CLIs directly, no API wrapping or proxying.</strong>
+  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-cli"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=c9a455" alt="npm"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-4aab8f" alt="License"></a>
+  <br/>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a>
 </p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-cli"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=blue" alt="npm"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
-</p>
-
-<p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.ko.md">한국어</a>
-</p>
-
----
 
 <div align="center">
-  <img src=".github/fleet-harness.gif" alt="fleet demo" width="640" />
+  <img src=".github/fleet-harness.gif" alt="Fleet CLI orchestrating multiple carriers" width="720" />
 </div>
 
-## Quick Start
+## One command center, three ways to work
 
-Install the Fleet CLI globally via npm:
+Fleet preserves the native agent loop behind every CLI, then gives you one place to plan, dispatch, observe, and compare their work.
+
+| Product | Start with | Made for |
+|---|---|---|
+| **Fleet CLI** | `fleet` | A fast, keyboard-first command center that stays in your terminal |
+| **Fleet Console** | `fleet console` | Spatial multi-agent operations, live terminals, project tools, and visual configuration |
+| **Fleet Console Desktop** | [Latest GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest) | The full Console experience in an optional native window with managed runtime and updates |
+
+All three command the same carriers and orchestration engine. Fleet runs locally; Console is loopback-only, and browser surfaces never receive MCP or session tokens.
+
+## Start your fleet
+
+Requires Node.js 20+ and at least one authenticated supported CLI on `PATH`.
 
 ```bash
 npm install -g @dotobokuri/fleet-cli
+
+fleet              # terminal command center
+fleet console      # local web command center
 ```
 
-Launch the terminal interface:
+Run `fleet --help` after installation to verify the CLI, then launch the interface you prefer.
 
-```bash
-fleet
-```
+## Fleet Console — see the whole operation
 
-Or open the **Fleet Console** — a local, loopback-only web GUI for the same fleet:
+Fleet Console turns parallel agent work into a navigable operations space. Every Operation remains a real terminal session owned by the local server, so closing a browser tab does not stop the work.
 
-```bash
-fleet console
-```
+### Arrange live work spatially
 
-See [SETUP.md](SETUP.md) for step-by-step instructions.
+<img src=".github/console-operations.png" alt="Fleet Console Formation View with two Claude operations, Codex, and Shell" width="100%" />
 
-Fleet Console Desktop is the optional native shell for Fleet Console. It supervises the existing Console Service and loads its exact local `/console/` route; it is not a second renderer or server. See [runtime/fleet-desktop/README.md](runtime/fleet-desktop/README.md) for supported artifacts, install, updates, and limits.
+Open multiple Operations on an infinite canvas, arrange them around the task, zoom out through the Map, or switch to Formation to tile Claude, Codex, shell, and other agent runtimes into a focused working set. The Theater sidebar keeps every project and session within reach.
 
-> **With an AI Agent** — Copy and paste into your LLM agent:
->
-> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
+### Bring project context beside the terminal
 
-## Motivation
+<img src=".github/console-workspace.png" alt="Fleet Console with the Files Activity Rail open" width="100%" />
 
-Every frontier CLI — Claude Code, Codex, OpenCode, Cursor — ships with an agent loop tuned specifically for its underlying model. Claude's loop is built for deep reasoning and tool orchestration. Codex optimizes for rapid code generation and iterative execution. OpenCode unifies multiple models under one adaptive loop. Cursor routes between multiple frontier models within a single agent loop. These are not thin API wrappers; they are full-fledged, model-native agent runtimes refined by their creators.
+The Activity Rail places Files, Plans, Diff, History, Skills, alerts, and a global shell beside live Operations. Supported panels share server-persisted Theater path context, so project exploration stays synchronized without exposing raw filesystem paths to the browser.
 
-The problem is that they all live in separate terminals. To combine their strengths on a single task, you must copy context between windows, manually sync state, and context-switch across different interaction patterns. The friction of multi-tool coordination often forces you to settle for a single CLI, leaving the unique capabilities of the others on the table.
+### Keep decisions, not just transcripts
 
-Fleet was built to remove that friction without sacrificing what makes each CLI special. It treats every native agent runtime as a **Carrier** within a naval **Fleet**. A central Admiral orchestrates multiple Carriers in parallel through their official protocols, so each model's native loop runs exactly as designed — just coordinated under one command. You give the order once; the fleet executes together, with every Carrier contributing its distinct strengths.
+<img src=".github/console-codex.png" alt="Fleet Console with the Codex Fleet Wiki panel open" width="100%" />
 
-## Naval Fleet Hierarchy
+Fleet Wiki keeps architecture decisions, product history, guides, and review queues in the same workspace as execution. Search and inspect knowledge without leaving the operation.
 
-A 4-tier command structure maps users, orchestrators, and agents into clear roles:
+### Configure every specialist independently
 
-- **Admiral of the Navy** — The user. Sets strategy and gives orders.
-- **Fleet Admiral** — Multi-fleet orchestrator policy now hosted inside `fleet-cli`.
-- **Admiral** — A workspace agent instance. Plans and dispatches Carriers.
-- **Captain** — The commander persona of a Carrier agent.
+<img src=".github/console-carriers.png" alt="Fleet Console Carrier Settings" width="100%" />
 
-A **Carrier** is an execution instance of a CLI tool with isolated configuration. A **Captain** is the persona (e.g., Chief Engineer, Scout Specialist) that commands it.
+Choose each Carrier's CLI backend, model, reasoning effort, and Task Force composition from one visual roster. Eight built-in specialists cover strategy, planning, implementation, multi-wave execution, QA, reconnaissance, external intelligence, and documentation.
 
-## Carriers
+> Fleet Console is a research preview.
 
-> Per-carrier configuration (model, reasoning level, Task Force, SubAgent mode, etc.) can be adjusted from the **Carrier Settings** surface in the Fleet Console, or the Carrier Roster entry in the CLI's Mission Control menu.
+## Fleet CLI — command from the keyboard
 
-Eight built-in Carriers, each with a distinct operational role:
+Fleet CLI is the terminal-native bridge for planning, dispatching, and monitoring the same fleet without leaving your shell.
 
-- **Nimitz** — Strategic Command & Judgment. Read-only architecture decisions and trade-off adjudication.
-- **Kirov** — Operational Planning Bridge. Clarifies requirements and authors plan_file under .fleet/plans/*.md for Ohio.
-- **Genesis** — Chief Engineer. Single-shot implementation under Admiral direction.
-- **Ohio** — Multi-Wave Strike Execution. Consumes Kirov-authored plan_file and executes wave-by-wave to completion.
-- **Sentinel** — QA & Security Lead. Code review, defect detection, and vulnerability hunting.
-- **Vanguard** — Scout Specialist. Codebase exploration, symbol tracing, and web research.
-- **Tempest** — Forward External Intelligence Strike. GitHub intelligence and external repo analysis.
-- **Chronicle** — Chief Knowledge Officer. Documentation, changelogs, and change-impact reporting.
+<img src=".github/hud.png" alt="Fleet CLI Bridge HUD" width="100%" />
 
-## Multi-LLM Orchestration
+The Bridge combines a full editor, live carrier status, session state, token usage, cost, and streamed results in a single keyboard-first view.
 
-Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP), giving you the full native capabilities of each tool within a unified command structure.
+<img src=".github/carrier_status.png" alt="Fleet CLI Carrier Roster" width="100%" />
 
-| CLI | Provider | Protocol | Key Capabilities |
-|-----|----------|----------|------------------|
-| **Claude Code** | Anthropic | ACP | Deep reasoning, architecture judgment |
-| **Codex CLI** | OpenAI | ACP | Fast code generation, multi-wave execution |
-| **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
-| **Cursor Agent** | Cursor | ACP | Multi-model routing across frontier models |
+Mission Control exposes the Carrier Roster and fleet-wide controls. Launch one specialist with a **Sortie**, dispatch several in parallel, or run a **Task Force** across multiple CLI backends to compare approaches and surface consensus.
 
-Every carrier runs in parallel under a single command structure, with unified progress tracking so you always know the status of the entire fleet. Fine-tune each carrier independently — select models, set reasoning levels, and adjust parameters without leaving the fleet interface. Fleet Action provides the autonomous operating framework for routing, delegation, review, and documentation.
+## Fleet Console Desktop — native when you want it
 
-Fleet gives you **two ways to command the same fleet** — the **Fleet Console**, a local web GUI, and the **Fleet CLI**, a terminal interface. Both drive the same carriers, orchestration engine, and project plugins; pick whichever fits the moment.
+Fleet Console Desktop is an optional thin native shell over Fleet Console—not a second server or a forked UI. It supervises the standard Console service, verifies the exact loopback origin, and loads the same `/console/` product in a sandboxed, Node-free renderer.
 
----
+<img src=".github/desktop-console.png" alt="Fleet Console Desktop in Instrument theme with a four-operation Formation" width="100%" />
 
-## 🖥️ Fleet Console
+- Native window, tray lifecycle, and platform update flow
+- Managed Node and Console runtime, replaceable independently of user state
+- The same Operations, Activity Rail, Carrier Settings, and Fleet Wiki shown above
+- Coexists safely with the browser/CLI channel and never terminates an unverified Console process
 
-`fleet console` opens the Fleet Console — a local web command center for the same fleet you run in the terminal. It runs as a loopback-only server on your own machine (no cloud, no proxy) and serves a live, streaming GUI for observing and operating every carrier. *(Research preview.)*
+Install a platform artifact from the [latest GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest). See the [Desktop guide](runtime/fleet-desktop/README.md) for artifacts, update behavior, and current limits.
 
-### Live dashboard
+## Native runtimes, coordinated—not replaced
 
-<img src=".github/console-bridge.png" alt="Fleet Console dashboard" width="100%" />
+Every supported CLI brings a model-native agent loop refined by its creator. Fleet launches the actual CLI binary and communicates through its supported protocol, preserving the capabilities and authentication model you already use.
 
-The landing view is a readiness board for the whole operation: a Theater capability matrix (project roots, with Codex and live-terminal status), a carrier readiness matrix showing each carrier's CLI, model, reasoning effort, Task Force, and mode, a Codex knowledge panel, and runtime status — all kept current in real time.
+| CLI | Provider | Protocol | Typical strength |
+|---|---|---|---|
+| **Claude Code** | Anthropic | ACP | Deep reasoning and architecture judgment |
+| **Codex CLI** | OpenAI | ACP | Rapid implementation and iterative execution |
+| **OpenCode Go** | OpenCode | ACP | Broad open-model access |
+| **Cursor Agent** | Cursor | ACP | Multi-model routing |
 
-### Operations Map
+Fleet maps that system into a clear command chain: the user is the **Admiral of the Navy**, a workspace host acts as **Admiral**, and each specialized **Carrier** is commanded by a Captain persona. The metaphor is more than decoration—it makes ownership, delegation, and verification explicit.
 
-<img src=".github/console-operations.png" alt="Operations Map canvas" width="100%" />
+## Go deeper
 
-A free-placement canvas where each carrier terminal is a panel you can pan, zoom, and arrange spatially. Shift-drag to draw a new operation, scroll to zoom, drag to pan — watch multiple live agent sessions side by side, drop into any terminal inline, and open a centered stream overlay for any carrier job. Prefer a focused layout? Flip to **Helm** for the classic single-terminal view.
-
-### Carrier Settings
-
-<img src=".github/console-carriers.png" alt="Carrier Settings" width="100%" />
-
-Configure every carrier from the browser — pick its CLI backend, model, and reasoning effort, rename it, toggle SubAgent mode, or compose a multi-CLI Task Force. No config files to hand-edit; changes apply fleet-wide.
-
-### Codex / Fleet Wiki
-
-<img src=".github/console-codex.png" alt="Codex / Fleet Wiki" width="100%" />
-
-Your project's knowledge base, mounted right inside the console: browse Fleet Wiki entries, search instantly with `⌘K`, review the Drydock queue, and read decision logs and diagrams — under the same roof as your live operations.
-
-Terminal sessions are server-owned and survive browser disconnects, so closing the tab leaves your agents running. Every surface is loopback-only, and MCP/session tokens never reach the browser.
-
-Activity Rail panels can share a server-persisted path context for a Theater, letting supported Files, Plans, Diff, and History views focus on the same selected root without exposing local filesystem paths to the browser.
-
----
-
-## ⌨️ Fleet CLI
-
-`fleet` launches the Fleet CLI — the terminal-native command center that plans, dispatches, and monitors the fleet without ever leaving your shell.
-
-### Fleet Bridge
-
-<img src=".github/hud.png" alt="Fleet Bridge HUD" width="100%" />
-
-Fleet Bridge is your mission control center in the terminal. The integrated heads-up display puts everything you need in one view — a full-featured editor, a real-time status bar, and a contextual footer that tracks session state, token usage, and cost. Metaphor-based directive refinement breaks complex requests into clear operational sections, while automatic session summaries and a built-in thinking timer keep your workflow transparent and measurable.
-
-Watch every active carrier stream results in real time, navigate between carrier slots inline, and toggle a detailed focus view when you need to drill down into a specific agent's output. All from a single, unified interface.
-
-### Carrier Dispatch
-
-<img src=".github/carrier_status.png" alt="Carrier Roster" width="100%" />
-
-The Carrier layer is the fleet's execution engine. Whether you need a single agent, a coordinated wing, or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
-
-#### Sortie
-
-Deploy one carrier or an entire wing with a single command. Sortie supports fire-and-forget delegation, parallel multi-carrier dispatch in one call, and asynchronous result delivery through push notifications or on-demand lookup via `carrier_jobs`. Set your objectives, launch the fleet, and collect results as they arrive.
-
-#### Task Force
-
-Task Force runs the same mission across multiple CLI backends at once, then surfaces a cross-model consensus. Use it to validate critical decisions, compare how different models approach the same problem, and eliminate single-model blind spots before committing to a course of action.
-
-## Documentation
-
-- [Fleet Development Reference](./docs/fleet-development-reference.md) — The comprehensive guide for developing Fleet host extensions and using the SDK.
-- [Admiral Workflow Reference](./docs/admiral-workflow-reference.md) — Deep dive into the naval fleet architecture and operational doctrine.
-- [CHANGELOG](./CHANGELOG.md) — Project history and release notes.
+- [Fleet Development Reference](docs/fleet-development-reference.md) — extend hosts and use the SDK
+- [Admiral Workflow Reference](docs/admiral-workflow-reference.md) — orchestration architecture and doctrine
+- [Changelog](CHANGELOG.md) — release history
 
 ## License
 
