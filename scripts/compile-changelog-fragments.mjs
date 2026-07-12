@@ -12,6 +12,8 @@ const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_CHANGELOG_KO = 'CHANGELOG.ko.md';
 const DEFAULT_FRAGMENTS_DIR = '.changelog.d';
 const IGNORED_FRAGMENT_FILES = new Set(['AGENTS.md', 'CLAUDE.md']);
+const PR_FRAGMENT_PATTERN = /^pr-([1-9]\d*)\.md$/;
+const CANARY_FRAGMENT_NAME = 'canary.md';
 const IS_DIRECT_EXECUTION = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (IS_DIRECT_EXECUTION) main();
@@ -87,26 +89,35 @@ function readFragments(fragmentsDir) {
   if (!fs.statSync(fragmentsDir).isDirectory()) throw new Error(`${fragmentsDir} is not a directory.`);
   return fs.readdirSync(fragmentsDir)
     .filter((name) => name.endsWith('.md') && !IGNORED_FRAGMENT_FILES.has(name))
-    .sort()
+    .sort(compareFragmentNames)
     .map((name) => {
-    const fragmentPath = path.join(fragmentsDir, name);
-    if (!fs.statSync(fragmentPath).isFile()) throw new Error(`${fragmentPath} must be a file directly under ${fragmentsDir}.`);
-    const product = PRODUCTS.find((candidate) => name.startsWith(`${candidate}-`));
-    if (!product) throw new Error(`${name}: filename must start with a supported product followed by a section slug.`);
-    return { content: fs.readFileSync(fragmentPath, 'utf8'), name, path: fragmentPath, product };
-  });
+      const fragmentPath = path.join(fragmentsDir, name);
+      if (!fs.statSync(fragmentPath).isFile()) throw new Error(`${fragmentPath} must be a file directly under ${fragmentsDir}.`);
+      const product = PRODUCTS.find((candidate) => name.startsWith(`${candidate}-`)) ?? null;
+      const grouped = name === CANARY_FRAGMENT_NAME || PR_FRAGMENT_PATTERN.test(name);
+      if (!product && !grouped) throw new Error(`${name}: filename must be canary.md, pr-<positive-number>.md, or a supported legacy product-section name.`);
+      return { content: fs.readFileSync(fragmentPath, 'utf8'), grouped, name, path: fragmentPath, product };
+    });
+}
+
+function compareFragmentNames(left, right) {
+  const leftPr = PR_FRAGMENT_PATTERN.exec(left);
+  const rightPr = PR_FRAGMENT_PATTERN.exec(right);
+  if (leftPr && rightPr) return Number(leftPr[1]) - Number(rightPr[1]);
+  return left.localeCompare(right);
 }
 
 function validateFragments(fragments) {
   return fragments.flatMap((fragment) => {
-    const parsed = parseFragment(fragment);
+    if (fragment.grouped) return parseGroupedFragment(fragment);
+    const parsed = parseLegacyFragment(fragment);
     const expectedName = `${fragment.product}-${parsed.section.toLowerCase().replaceAll(' ', '-')}.md`;
     if (fragment.name !== expectedName) throw new Error(`${fragment.name}: expected filename ${expectedName} for its product and section.`);
     return parsed.entries.map((entry) => ({ ...entry, file: fragment.name, product: fragment.product, section: parsed.section }));
   });
 }
 
-function parseFragment(fragment) {
+function parseLegacyFragment(fragment) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(fragment.content);
   if (!match) throw new Error(`${fragment.name}: missing frontmatter.`);
   const frontmatterLines = match[1].trim().split(/\r?\n/).filter(Boolean);
@@ -127,6 +138,44 @@ function parseFragment(fragment) {
     entries.push(parseEntry(fragment.name, english, korean.slice('  ko: '.length)));
   }
   return { entries, section };
+}
+
+function parseGroupedFragment(fragment) {
+  const lines = fragment.content.split(/\r?\n/);
+  const entries = [];
+  let product = null;
+  let section = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    if (line.startsWith('### ')) {
+      const candidate = line.slice('### '.length).trim();
+      if (!PRODUCTS.includes(candidate)) throw new Error(`${fragment.name}: unsupported product "${candidate}" at line ${index + 1}.`);
+      product = candidate;
+      section = null;
+      continue;
+    }
+    if (line.startsWith('#### ')) {
+      if (!product) throw new Error(`${fragment.name}: section heading at line ${index + 1} requires a preceding product heading.`);
+      const candidate = line.slice('#### '.length).trim();
+      if (!SECTIONS.includes(candidate)) throw new Error(`${fragment.name}: unsupported section "${candidate}" at line ${index + 1}.`);
+      section = candidate;
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      if (!product || !section) throw new Error(`${fragment.name}: English bullet at line ${index + 1} requires product and section headings.`);
+      const korean = lines[index + 1];
+      if (korean === undefined) throw new Error(`${fragment.name}: English bullet at line ${index + 1} is missing its adjacent Korean summary.`);
+      if (!korean.startsWith('  ko: ')) throw new Error(`${fragment.name}: English bullet at line ${index + 1} must be followed immediately by exactly "  ko: <summary>".`);
+      if (korean.startsWith('   ') || !/^  ko: \S(?:.*\S)?$/.test(korean)) throw new Error(`${fragment.name}: Korean summary at line ${index + 2} must use exactly two spaces and be non-empty.`);
+      entries.push({ ...parseEntry(fragment.name, line, korean.slice('  ko: '.length)), product, section, file: fragment.name });
+      index += 1;
+      continue;
+    }
+    throw new Error(`${fragment.name}: expected a product heading, section heading, or English bullet at line ${index + 1}.`);
+  }
+  if (entries.length === 0) throw new Error(`${fragment.name}: body must contain at least one product-scoped English/Korean pair.`);
+  return entries;
 }
 
 function trimOuterBlankLines(lines) {

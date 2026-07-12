@@ -10,11 +10,25 @@ Follow the root `AGENTS.md` changelog rules in full: compiler-owned changelogs r
 - `runtime/fleet-plugins/**` maps to `fleet-plugin`.
 - All other `packages/**` paths map to `fleet-core`.
 
-## Fragment Boundaries
+## Fragment Identity and Workflow
 
-Name each fragment `<product>-<section>.md`, with `section` one of `added`, `changed`, `fixed`, `removed`, or `breaking-changes`. The filename identifies the product only; bullets retain the root-contract package tag vocabulary.
+- For a pull request, create exactly one `pr-<positive-number>.md` after GitHub assigns the PR number. Implement and push the product change first, open the PR, then add the fragment in a second commit and push it before requesting review.
+- For an explicitly authorized direct `canary` change, create or update `canary.md` in the same commit. Append to an existing `canary.md`; do not overwrite another direct change.
+- Do not create new `<product>-<section>.md` fragments. The compiler accepts that legacy shape only until already-open fragments are released.
+- A change explicitly classified as `no-changelog` creates neither file. Policy, instruction, and release-tooling changes may use this exception only when the user or release owner states that they are not release-facing.
 
-PR boundaries do not determine fragment boundaries; product + section do. When one change spans products, split its release-facing claims by the product surface actually changed and do not duplicate the same behavior across fragments.
+## Grouped Fragment Body
+
+Put product and section identity in the fragment body. A single PR or canary fragment may contain multiple product and section groups:
+
+```md
+### fleet-console
+#### Changed
+- [fleet-console] Organize release notes by product.
+  ko: 릴리스 노트를 제품별로 구성합니다.
+```
+
+Product headings use the Product Mapping values above. Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`. Every English bullet and Korean `ko:` line remain adjacent; package tags retain the root-contract vocabulary. Product and section groups may be authored in any order because the compiler emits the canonical product and section order.
 
 The fragment compiler renders new releases with product headings first, in the order `fleet-cli`, `fleet-console`, `fleet-desktop`, `fleet-plugin`, `fleet-core`, and nests the standard changelog sections beneath each product. Existing compiled release history remains unchanged; do not rewrite historical releases merely to adopt this layout.
 

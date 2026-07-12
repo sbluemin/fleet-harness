@@ -47,6 +47,45 @@ test('renders all five products in exact order with nested sections', () => {
   assert.match(result.stdout, /### fleet-core\n\n#### Fixed/);
 });
 
+test('renders PR-number and canary fragments with product-scoped sections', () => {
+  const fixture = createFixture();
+  writeGroupedFragment(fixture, 'pr-235.md', `### fleet-desktop
+
+#### Added
+
+- [fleet-console] Add desktop support.
+  ko: 데스크톱 지원을 추가합니다.
+
+### fleet-console
+
+#### Changed
+
+- [fleet-console] Change the Console.
+  ko: Console을 변경합니다.`);
+  writeGroupedFragment(fixture, 'canary.md', `### fleet-cli
+#### Fixed
+- [fleet-cli] Fix the CLI.
+  ko: CLI를 수정합니다.`);
+
+  const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /### fleet-cli\n\n#### Fixed[\s\S]*- \[fleet-cli\] Fix the CLI\./);
+  assert.match(result.stdout, /### fleet-console\n\n#### Changed[\s\S]*- \[fleet-console\] Change the Console\./);
+  assert.match(result.stdout, /### fleet-desktop\n\n#### Added[\s\S]*- \[fleet-console\] Add desktop support\./);
+});
+
+test('orders PR-number fragment entries numerically', () => {
+  const fixture = createFixture();
+  writeGroupedFragment(fixture, 'pr-10.md', '### fleet-console\n#### Added\n- [fleet-console] Add tenth.\n  ko: 열 번째를 추가합니다.');
+  writeGroupedFragment(fixture, 'pr-2.md', '### fleet-console\n#### Added\n- [fleet-console] Add second.\n  ko: 두 번째를 추가합니다.');
+
+  const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.indexOf('Add second.') < result.stdout.indexOf('Add tenth.'));
+});
+
 test('ignores local agent doctrine files in the fragments directory', () => {
   const fixture = createFixture();
   writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
@@ -62,12 +101,27 @@ test('ignores local agent doctrine files in the fragments directory', () => {
   if (supportsSymlinks) assert.equal(fs.readlinkSync(claudePath), 'AGENTS.md');
 });
 
-test('rejects unsupported product and product-section filenames', () => {
-  for (const name of ['console-added.md', 'fleet-console-new.md']) {
+test('rejects unsupported legacy and PR fragment filenames', () => {
+  for (const name of ['console-added.md', 'fleet-console-new.md', '235.md', 'pr-0.md', 'pr-next.md']) {
     const fixture = createFixture();
     writeNamedFragment(fixture, name, 'Added', '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
     const result = run(fixture, '--check');
     assert.notEqual(result.status, 0, name);
+  }
+});
+
+test('rejects malformed grouped fragment structure and bilingual pairs', () => {
+  for (const body of [
+    '#### Added\n- [fleet-console] Add one.\n  ko: 하나를 추가합니다.',
+    '### fleet-unknown\n#### Added\n- [fleet-console] Add one.\n  ko: 하나를 추가합니다.',
+    '### fleet-console\n#### Updated\n- [fleet-console] Add one.\n  ko: 하나를 추가합니다.',
+    '### fleet-console\n- [fleet-console] Add one.\n  ko: 하나를 추가합니다.',
+    '### fleet-console\n#### Added\n- [fleet-console] Add one.\n\n  ko: 하나를 추가합니다.',
+  ]) {
+    const fixture = createFixture();
+    writeGroupedFragment(fixture, 'pr-235.md', body);
+    const result = run(fixture, '--check');
+    assert.notEqual(result.status, 0, body);
   }
 });
 
@@ -102,7 +156,7 @@ test('retains English ASCII and Korean Hangul validation with every package tag 
 
 test('writes both custom targets before deleting fragments', () => {
   const fixture = createFixture();
-  writeFragment(fixture, '- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
+  writeGroupedFragment(fixture, 'pr-235.md', '### fleet-console\n#### Added\n- [fleet-console] Add one.\n  ko: 하나를 추가합니다.');
   const agentsPath = path.join(fixture, '.changelog.d', 'AGENTS.md');
   const claudePath = path.join(fixture, '.changelog.d', 'CLAUDE.md');
   fs.writeFileSync(agentsPath, '# Changelog Fragments\n');
@@ -116,7 +170,7 @@ test('writes both custom targets before deleting fragments', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(fs.readFileSync(en, 'utf8'), /Add one\./);
   assert.match(fs.readFileSync(ko, 'utf8'), /하나를 추가합니다\./);
-  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'fleet-console-added.md')), false);
+  assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'pr-235.md')), false);
   assert.equal(fs.existsSync(agentsPath), true);
   if (supportsSymlinks) assert.equal(fs.readlinkSync(claudePath), 'AGENTS.md');
 });
@@ -221,6 +275,10 @@ function writeFragment(directory, body) {
 
 function writeNamedFragment(directory, name, section, body) {
   fs.writeFileSync(path.join(directory, '.changelog.d', name), `---\nsection: ${section}\n---\n\n${body}\n`);
+}
+
+function writeGroupedFragment(directory, name, body) {
+  fs.writeFileSync(path.join(directory, '.changelog.d', name), `${body}\n`);
 }
 
 function run(directory, ...args) {
