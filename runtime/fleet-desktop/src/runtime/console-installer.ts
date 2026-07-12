@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
+
 import { satisfiesNodeEngine } from "./node-bootstrap.js";
 import type { RuntimePaths } from "./runtime-paths.js";
 
@@ -42,8 +44,6 @@ export interface InstalledConsole {
 }
 
 const STABLE_SEMVER = /^\d+\.\d+\.\d+$/;
-const RESOURCE_ROOT_MARKER = ".fleet-console-resource-root";
-const DESKTOP_PROTOCOL_VERSION = "1";
 
 export async function installConsole(options: InstallConsoleOptions): Promise<InstalledConsole> {
   if (!STABLE_SEMVER.test(options.version)) throw new Error("console_install_version_invalid");
@@ -202,7 +202,7 @@ async function normalizePrefixInstallation(root: string, packageName: string, fi
   } finally {
     await fileSystem.rm(heldPackage);
   }
-  await fileSystem.writeFile(path.join(root, RESOURCE_ROOT_MARKER), `${DESKTOP_PROTOCOL_VERSION}\n`);
+  await fileSystem.writeFile(path.join(root, DESKTOP_RESOURCE_ROOT_MARKER), formatDesktopResourceRootMarker());
 }
 
 async function verifyInstallation(root: string, expectedVersion: string, nodeRuntimeVersion: string, fileSystem: ConsoleInstallerFileSystem): Promise<void> {
@@ -214,8 +214,8 @@ async function verifyInstallation(root: string, expectedVersion: string, nodeRun
   if (packageJson.version !== expectedVersion) throw new Error("console_install_version_mismatch");
   const engine = typeof packageJson.engines?.node === "string" ? packageJson.engines.node : null;
   if (!satisfiesNodeEngine(nodeRuntimeVersion, engine)) throw new Error("console_install_node_engine_incompatible");
-  const marker = await fileSystem.readFile(path.join(root, RESOURCE_ROOT_MARKER));
-  if (marker.trim() !== DESKTOP_PROTOCOL_VERSION) throw new Error("console_install_marker_invalid");
+  const marker = await fileSystem.readFile(path.join(root, DESKTOP_RESOURCE_ROOT_MARKER));
+  if (!isDesktopResourceRootMarkerValid(marker)) throw new Error("console_install_marker_invalid");
 }
 
 function nodeBinaryPath(nodeRoot: string, platform: NodeJS.Platform): string {

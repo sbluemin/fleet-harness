@@ -8,14 +8,31 @@ const BACKUP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.j
 const TEMP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.json.prepack-tmp");
 const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list"];
 
-const action = process.argv[2];
+if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const action = process.argv[2];
 
-if (action === "prepack") {
-  prepack();
-} else if (action === "postpack") {
-  postpack();
-} else {
-  throw new Error("Usage: pack-fleet-console-manifest.mjs <prepack|postpack>");
+  if (action === "prepack") {
+    prepack();
+  } else if (action === "postpack") {
+    postpack();
+  } else {
+    throw new Error("Usage: pack-fleet-console-manifest.mjs <prepack|postpack>");
+  }
+}
+
+export function createPublishedFleetConsoleManifest(originalPkg) {
+  const pkg = JSON.parse(JSON.stringify(originalPkg));
+  const externalDeps = {};
+  for (const name of EXTERNAL_DEP_NAMES) {
+    const range = pkg.dependencies?.[name];
+    if (!range) throw new Error(`external dependency ${name} not found in ${PKG_PATH}`);
+    externalDeps[name] = range;
+  }
+  delete pkg.private;
+  pkg.dependencies = externalDeps;
+  pkg.scripts = { postinstall: "node postinstall.mjs" };
+  stripWorkspaceDependencySpecifiers(pkg);
+  return pkg;
 }
 
 function prepack() {
@@ -25,21 +42,9 @@ function prepack() {
   const original = readFileSync(PKG_PATH, "utf8");
   let backupCreated = false;
   try {
-    const pkg = JSON.parse(original);
-    const externalDeps = {};
-    for (const name of EXTERNAL_DEP_NAMES) {
-      const range = pkg.dependencies?.[name];
-      if (!range) {
-        throw new Error(`external dependency ${name} not found in ${PKG_PATH}`);
-      }
-      externalDeps[name] = range;
-    }
-
     atomicWrite(BACKUP_PATH, original);
     backupCreated = true;
-    delete pkg.private;
-    pkg.dependencies = externalDeps;
-    pkg.scripts = { postinstall: "node postinstall.mjs" };
+    const pkg = createPublishedFleetConsoleManifest(JSON.parse(original));
     atomicWrite(PKG_PATH, `${JSON.stringify(pkg, null, 2)}\n`);
   } catch (error) {
     if (backupCreated) {
@@ -63,4 +68,13 @@ function restoreBackup() {
 function atomicWrite(targetPath, content) {
   writeFileSync(TEMP_PATH, content);
   renameSync(TEMP_PATH, targetPath);
+}
+
+function stripWorkspaceDependencySpecifiers(pkg) {
+  for (const [section, entries] of Object.entries(pkg)) {
+    if (!section.endsWith("Dependencies") || entries === null || typeof entries !== "object" || Array.isArray(entries)) continue;
+    for (const [name, value] of Object.entries(entries)) {
+      if (typeof value === "string" && value.startsWith("workspace:")) delete entries[name];
+    }
+  }
 }

@@ -6,7 +6,7 @@ export default defineConfig({
   entry: { main: "src/main.ts" },
   external: ["electron"],
   format: ["esm"],
-  noExternal: ["@dotobokuri/fleet-console/desktop-protocol"],
+  noExternal: ["@fleet-console/desktop-protocol"],
   outDir: "dist",
   outExtension: () => ({ js: ".mjs" }),
   platform: "node",

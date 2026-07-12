@@ -21,7 +21,8 @@
       "@dotobokuri/fleet-admiral": ["../../packages/fleet-admiral/dist/index.d.ts"],
       "@dotobokuri/fleet-carriers": ["../../packages/fleet-carriers/dist/index.d.ts"],
       "@dotobokuri/core-infra": ["../../packages/core-infra/dist/index.d.ts"],
-      "@dotobokuri/fleet-wiki": ["../../packages/fleet-wiki/dist/index.d.ts"]
+      "@dotobokuri/fleet-wiki": ["../../packages/fleet-wiki/dist/index.d.ts"],
+      "@fleet-console/desktop-protocol": ["desktop-protocol/index.ts"]
     }
   },
   "include": ["core/host/**/*.ts", "tests/**/*.ts", "tsup.config.ts", "vitest.config.ts"]
