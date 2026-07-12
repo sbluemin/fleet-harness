@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fleet Desktop E2E"
+  short_description: "Test and diagnose the Fleet Electron shell end to end"
+  default_prompt: "Run an isolated headed Fleet Desktop E2E and report evidence across shell, Console handoff, security, lifecycle, logs, and packaging."
