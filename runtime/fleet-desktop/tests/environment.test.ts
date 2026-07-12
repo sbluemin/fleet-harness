@@ -2,11 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV } from "@fleet-console/desktop-protocol";
 
-import { createDesktopEnvironment, desktopExecutableSearchPaths, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
+import { createDesktopEnvironment, createHydratedDesktopEnvironment, desktopExecutableSearchPaths, readInteractiveLoginShellPath, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
 
 const TEMP_DIRS: string[] = [];
 
@@ -107,6 +107,82 @@ describe("desktop environment", () => {
 
   it("sanitizes case-insensitive Electron, Node, and Desktop control keys", () => {
     expect(sanitizeEnvironment({ Electron_No_Asar: "1", node_options: "--inspect", FLEET_CONSOLE_DIR: "/console", Fleet_Console_Owner_Id: "owner", PRESERVED: "yes" })).toEqual({ PRESERVED: "yes" });
+  });
+
+  it("reads only a valid interactive login-shell PATH with a sanitized probe environment", async () => {
+    const run = vi.fn(async () => ({ stdout: "/Users/alice/.opencode/bin:/usr/bin" }));
+
+    await expect(readInteractiveLoginShellPath(true, {
+      SHELL: "/bin/zsh",
+      PATH: "/usr/bin",
+      NODE_OPTIONS: "--require attacker.js",
+      ELECTRON_RUN_AS_NODE: "1",
+      FLEET_CONSOLE_DIR: "/untrusted/console",
+      PRESERVED: "yes",
+    }, { platform: "darwin", loginShellPathProbe: { run } })).resolves.toBe("/Users/alice/.opencode/bin:/usr/bin");
+
+    expect(run).toHaveBeenCalledWith("/bin/zsh", ["-ilc", "printf '%s' \"$PATH\""], {
+      env: { SHELL: "/bin/zsh", PATH: "/usr/bin", PRESERVED: "yes" },
+      maxBuffer: 8 * 1_024,
+      timeout: 1_000,
+      windowsHide: true,
+    });
+  });
+
+  it("does not probe outside packaged macOS", async () => {
+    const run = vi.fn(async () => ({ stdout: "/Users/alice/.opencode/bin" }));
+
+    await expect(readInteractiveLoginShellPath(false, { SHELL: "/bin/zsh" }, { platform: "darwin", loginShellPathProbe: { run } })).resolves.toBeUndefined();
+    await expect(readInteractiveLoginShellPath(true, { SHELL: "/bin/zsh" }, { platform: "linux", loginShellPathProbe: { run } })).resolves.toBeUndefined();
+    await expect(readInteractiveLoginShellPath(true, {}, { platform: "darwin", loginShellPathProbe: { run } })).resolves.toBeUndefined();
+    await expect(readInteractiveLoginShellPath(true, { SHELL: "zsh" }, { platform: "darwin", loginShellPathProbe: { run } })).resolves.toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid login-shell output and falls back after probe failure or timeout", async () => {
+    for (const stdout of ["", "/Users/alice/.opencode/bin\n/usr/bin", "/Users/alice/.opencode\u0000/bin", "\u001b[31m/usr/bin"]) {
+      const invalid = { run: vi.fn(async () => ({ stdout })) };
+      await expect(readInteractiveLoginShellPath(true, { SHELL: "/bin/zsh" }, { platform: "darwin", loginShellPathProbe: invalid })).resolves.toBeUndefined();
+    }
+
+    const fallbackProbes = [
+      { run: vi.fn(async () => ({ stdout: "/Users/alice/.opencode/bin\n/usr/bin" })) },
+      { run: vi.fn(async () => { throw new Error("shell failed"); }) },
+      { run: vi.fn(async () => { throw Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }); }) },
+    ];
+    for (const loginShellPathProbe of fallbackProbes) {
+      const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-shell-path-fallback-"));
+      TEMP_DIRS.push(userDataDir);
+      const environment = await createHydratedDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/fleet-console", true, {
+        SHELL: "/bin/zsh",
+        PATH: "/inherited/bin",
+      }, { platform: "darwin", loginShellPathProbe });
+      expect(environment.serviceEnv.PATH).toContain("/inherited/bin");
+      expect(environment.serviceEnv.PATH).not.toContain(".opencode");
+    }
+  });
+
+  it("orders and deduplicates packaged macOS shell, inherited, and deterministic PATH entries", async () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-shell-path-"));
+    TEMP_DIRS.push(userDataDir);
+    const home = os.homedir();
+    const environment = await createHydratedDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/fleet-console", true, {
+      SHELL: "/bin/zsh",
+      PATH: "/inherited/bin:/shared/bin",
+      npm_config_prefix: "/fallback-prefix",
+      PNPM_HOME: "/shared/bin",
+    }, { platform: "darwin", loginShellPathProbe: { run: vi.fn(async () => ({ stdout: "/Users/alice/.opencode/bin:/shared/bin" })) } });
+
+    expect(environment.serviceEnv.PATH).toBe([
+      "/Users/alice/.opencode/bin",
+      "/shared/bin",
+      "/inherited/bin",
+      "/fallback-prefix/bin",
+      path.join(home, ".local", "bin"),
+      path.join(home, "Library", "pnpm"),
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+    ].join(path.delimiter));
   });
 
   it("adds macOS user and npm executable locations for a packaged GUI launch", () => {
