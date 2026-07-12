@@ -195,14 +195,38 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     return { cliType, trackId, handle };
   });
 
+  let settleCompletion!: () => void;
+  let failCompletion!: (error: unknown) => void;
+  const completion = new Promise<void>((resolve, reject) => { settleCompletion = resolve; failCompletion = reject; });
+  let completionStarted = false;
+  let rollbackPrepared: Promise<void> | undefined;
+  const rejectPrepared = () => rollbackPrepared ??= (async () => {
+    await Promise.allSettled(handles.map((entry) => entry.handle.abort()));
+    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
+    releaseDispatchLease(services?.dispatchContexts, claim.lease);
+    clearTaskForceState(requestKey);
+    settleCompletion();
+  })();
+  let untrack: () => void;
+  try {
+    untrack = services?.trackInFlight?.({
+      cancel: () => completionStarted
+        ? Promise.allSettled(handles.map((entry) => entry.handle.abort())).then(() => undefined)
+        : rejectPrepared(),
+      completion,
+    }) ?? (() => {});
+  } catch (error) {
+    await rejectPrepared();
+    const message = error instanceof Error ? error.message : String(error);
+    return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
+  }
+  void completion.finally(untrack);
+
   // 전-백엔드 readiness 배리어 — 하나라도 실패하면 프롬프트를 0건 전송하고 준비된 모든 핸들을 정리한다.
   const readinessResults = await Promise.allSettled(handles.map((h) => h.handle.readiness));
   const failure = readinessResults.find((r): r is PromiseRejectedResult => r.status === "rejected");
   if (failure) {
-    await Promise.allSettled(handles.map((h) => h.handle.abort()));
-    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
-    releaseDispatchLease(services?.dispatchContexts, claim.lease);
-    clearTaskForceState(requestKey);
+    await rejectPrepared();
     const message = failure.reason instanceof Error ? failure.reason.message : String(failure.reason);
     return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
   }
@@ -216,42 +240,13 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
   try {
     confirmDispatchReadiness(services?.dispatchContexts, claim.lease, prepared.map((p) => readyToSession(p.ready)));
   } catch (error) {
-    await Promise.allSettled(handles.map((h) => h.handle.abort()));
-    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
-    releaseDispatchLease(services?.dispatchContexts, claim.lease);
-    clearTaskForceState(requestKey);
+    await rejectPrepared();
     const message = error instanceof Error ? error.message : String(error);
     return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
   }
 
   // Start capture without opening a prompt gate, then expose every prepared backend to runtime cleanup.
   const baselineSnapshot = captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
-  let settleCompletion!: () => void;
-  let failCompletion!: (error: unknown) => void;
-  const completion = new Promise<void>((resolve, reject) => { settleCompletion = resolve; failCompletion = reject; });
-  let completionStarted = false;
-  let rollbackPrepared: Promise<void> | undefined;
-  const rejectPrepared = () => rollbackPrepared ??= (async () => {
-    await Promise.allSettled(prepared.map((p) => p.handle.abort()));
-    await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit });
-    releaseDispatchLease(services?.dispatchContexts, claim.lease);
-    clearTaskForceState(requestKey);
-    settleCompletion();
-  })();
-  let untrack: () => void;
-  try {
-    untrack = services?.trackInFlight?.({
-      cancel: () => completionStarted
-        ? Promise.allSettled(prepared.map((p) => p.handle.abort())).then(() => undefined)
-        : rejectPrepared(),
-      completion,
-    }) ?? (() => {});
-  } catch (error) {
-    await rejectPrepared();
-    const message = error instanceof Error ? error.message : String(error);
-    return launchResponseResult({ job_id: launch.jobId, accepted: false, error: sanitizeProviderReason(message) });
-  }
-  void completion.finally(untrack);
 
   const baseline = await baselineSnapshot;
   if (rollbackPrepared || services?.admission.accepting === false) {

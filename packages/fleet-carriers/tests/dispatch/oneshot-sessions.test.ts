@@ -32,12 +32,14 @@ let runtime: CarrierRuntime | null = null;
 interface Deferred<T> {
   readonly promise: Promise<T>;
   resolve(value: T): void;
+  reject(reason: unknown): void;
 }
 
 function defer<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => { resolve = r; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 
 function protocolFor(cliType: CliType): ProtocolType {
@@ -101,6 +103,40 @@ afterEach(async () => {
 });
 
 describe("single dispatch context resume", () => {
+  it("tracks and rolls back a single prepared handle while readiness is pending", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    const readiness = defer<OneShotReady>();
+    const completion = defer<ExecResult>();
+    const abortGate = defer<void>();
+    const handle: OneShotExecution = {
+      readiness: readiness.promise,
+      completion: completion.promise,
+      startPrompt: vi.fn(),
+      abort: vi.fn(async () => {
+        readiness.reject(new Error("runtime cleanup"));
+        completion.resolve({ ...doneResult("session-claude"), status: "aborted" });
+        await abortGate.promise;
+      }),
+    };
+    vi.mocked(executeOneShot).mockReturnValue(handle);
+    const tool = runtime.buildDispatchToolSpec(deps);
+
+    const pending = tool.execute({ carrier_id: "ohio", label: "Pending readiness cleanup", request: "Keep readiness pending." }, { cwd: "/tmp", toolCallId: "single-readiness-cleanup" });
+    await vi.waitFor(() => expect(executeOneShot).toHaveBeenCalledTimes(1));
+    let cleanupFinished = false;
+    const cleanup = runtime.cleanup().then(() => { cleanupFinished = true; });
+    await vi.waitFor(() => expect(handle.abort).toHaveBeenCalledTimes(1));
+    expect(handle.startPrompt).not.toHaveBeenCalled();
+    expect(cleanupFinished).toBe(false);
+    abortGate.resolve(undefined);
+    await cleanup;
+
+    const result = await pending;
+    expect(details(result).accepted).toBe(false);
+    expect(getJobSummary("carrier:single-readiness-cleanup", Date.now())).toBeNull();
+  });
+
   it("rolls back a single dispatch when cleanup closes admission during baseline capture", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
@@ -235,6 +271,48 @@ describe("single dispatch context resume", () => {
 });
 
 describe("Task Force context barrier and resume", () => {
+  it("tracks and rolls back every prepared Task Force handle while readiness is pending", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    configureTaskForce("ohio");
+    const abortGate = defer<void>();
+    const handles: OneShotExecution[] = [];
+    vi.mocked(executeOneShot).mockImplementation((opts) => {
+      const cliType = opts.cliType as CliType;
+      const readiness = defer<OneShotReady>();
+      const completion = defer<ExecResult>();
+      const handle: OneShotExecution = {
+        readiness: readiness.promise,
+        completion: completion.promise,
+        startPrompt: vi.fn(),
+        abort: vi.fn(async () => {
+          readiness.reject(new Error(`runtime cleanup ${cliType}`));
+          completion.resolve({ ...doneResult(`session-${cliType}`), status: "aborted" });
+          await abortGate.promise;
+        }),
+      };
+      handles.push(handle);
+      return handle;
+    });
+    const tool = runtime.buildDispatchToolSpec(deps);
+
+    const pending = tool.execute({ carrier_id: "ohio", label: "Pending Task Force readiness cleanup", request: "Keep every readiness pending." }, { cwd: "/tmp", toolCallId: "taskforce-readiness-cleanup" });
+    await vi.waitFor(() => expect(handles).toHaveLength(2));
+    let cleanupFinished = false;
+    const cleanup = runtime.cleanup().then(() => { cleanupFinished = true; });
+    await vi.waitFor(() => {
+      for (const handle of handles) expect(handle.abort).toHaveBeenCalledTimes(1);
+    });
+    for (const handle of handles) expect(handle.startPrompt).not.toHaveBeenCalled();
+    expect(cleanupFinished).toBe(false);
+    abortGate.resolve(undefined);
+    await cleanup;
+
+    const result = await pending;
+    expect(details(result).accepted).toBe(false);
+    expect(getJobSummary("taskforce:taskforce-readiness-cleanup", Date.now())).toBeNull();
+  });
+
   it("rolls back every Task Force backend when cleanup closes admission during baseline capture", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));

@@ -326,23 +326,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ...buildSingleTrackListeners(registry, launch.jobId, carrierId, ctx.sessionLabel),
       });
 
-      // 런치 응답은 readiness(연결/재개·MCP·프로토콜 확인)까지 대기하되, 프롬프트 완료는 백그라운드로 분리한다.
-      let ready: OneShotReady;
-      try {
-        ready = await handle.readiness;
-        confirmDispatchReadiness(services?.dispatchContexts, claim.lease, [readyToSession(ready)]);
-      } catch (error) {
-        await rollbackRejectedDetachedJob({ jobId: launch.jobId, permit: launch.permit, abort: () => handle.abort() });
-        releaseDispatchLease(services?.dispatchContexts, claim.lease);
-        return launchResponseResult({
-          job_id: launch.jobId,
-          accepted: false,
-          error: sanitizeProviderReason(error instanceof Error ? error.message : String(error)),
-        });
-      }
-
-      // Start capture without opening the prompt gate, then expose the prepared handle to runtime cleanup.
-      const baselineSnapshot = captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
       let settleCompletion!: () => void;
       let failCompletion!: (error: unknown) => void;
       const completion = new Promise<void>((resolve, reject) => { settleCompletion = resolve; failCompletion = reject; });
@@ -368,6 +351,23 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         });
       }
       void completion.finally(untrack);
+
+      // 런치 응답은 readiness(연결/재개·MCP·프로토콜 확인)까지 대기하되, 프롬프트 완료는 백그라운드로 분리한다.
+      let ready: OneShotReady;
+      try {
+        ready = await handle.readiness;
+        confirmDispatchReadiness(services?.dispatchContexts, claim.lease, [readyToSession(ready)]);
+      } catch (error) {
+        await rejectPrepared();
+        return launchResponseResult({
+          job_id: launch.jobId,
+          accepted: false,
+          error: sanitizeProviderReason(error instanceof Error ? error.message : String(error)),
+        });
+      }
+
+      // Start capture without opening the prompt gate, then expose the prepared handle to runtime cleanup.
+      const baselineSnapshot = captureWorkspaceSnapshot(deps.workspaceChangeScanner, cwd);
 
       const baseline = await baselineSnapshot;
       if (rollbackPrepared || services?.admission.accepting === false) {
