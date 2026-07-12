@@ -2788,6 +2788,22 @@
   opacity: 0.55;
 }
 
+.side-bar-formation-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.side-bar-formation-group .side-bar-formation-seg {
+  border-radius: 0;
+}
+
+.side-bar-formation-group .side-bar-formation-seg + .side-bar-formation-seg {
+  border-left: 1px solid var(--surface-rim);
+}
+
 .side-bar-formation-toggle {
   display: grid;
   place-items: center;

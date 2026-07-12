@@ -110,8 +110,14 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).not.toContain("command-band-formation-toggle");
-    expect(source("sidebar/operations-side-bar.tsx")).toContain('className="side-bar-formation-toggle"');
-    expect(source("sidebar/operations-side-bar.tsx")).toContain("onClick={() => toggleFormationView()}");
+    const sidebar = source("sidebar/operations-side-bar.tsx");
+    expect(sidebar).toContain('<div className="side-bar-formation-group" role="group" aria-label="Formation view">');
+    expect(sidebar).toContain('className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView()}');
+    expect(sidebar).toContain('aria-pressed={formationView} aria-label="Formation view (open panels only)"');
+    expect(sidebar).toContain('className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView({ restoreMinimized: true })}');
+    expect(sidebar).toContain('aria-pressed={formationView && minimizedSet.size === 0} aria-label="Formation view including minimized panels"');
+    expect(components).toContain(".side-bar-formation-group {");
+    expect(components).toContain("border-left: 1px solid var(--surface-rim);");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
     expect(layout).toContain("grid-template-columns: var(--command-band-left-width, 280px) minmax(0, 1fr) auto;");
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
