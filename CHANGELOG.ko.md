@@ -5,6 +5,54 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-07-12
+
+### fleet-console
+
+#### Added
+- [fleet-console] `Mod+B`와 `Mod+Alt+B` 단축키로 좌측 사이드바와 우측 Activity Rail을 토글합니다.
+- [fleet-console] 좌측 사이드바 operation 칩에 최소화 버튼을 추가하여 사이드바에서 바로 패널을 최소화할 수 있게 합니다. 버튼은 hover 시 close 버튼 왼쪽에 나타나며, 이미 최소화된 칩과 비활성 Theater의 preview 칩에는 표시하지 않습니다.
+- [fleet-console] 비활성 Operation 이름을 패널 상태 비콘 옆에 표시하고 인라인 이름 변경 기능을 제공합니다.
+
+#### Changed
+- [fleet-console] 사이드바 Formation view 토글을 2분할 세그먼트 컨트롤로 나눠, 열린 패널만과 최소화 패널 포함 Formation을 각각의 버튼으로 제공합니다.
+- [fleet-console] What's New를 Overview 및 제품 탭으로 구성하면서 레거시 및 혼합 릴리스 업데이트를 보존합니다.
+- [fleet-console] Formation view의 열린 패널만 세그먼트는 이제 최소화·최대화로 도크에 내려간 패널을 그대로 두고 현재 열린 패널만 정렬하며, 최소화 패널 포함 세그먼트는 여전히 모든 패널을 먼저 복원합니다.
+- [fleet-console] 세션 중 각 Theater를 처음 열 때 기존 Operation 패널을 최소화된 상태로 시작하고, 선택한 패널만 단독으로 나타냅니다.
+- [fleet-console] 기본 캔버스 화면에서 미니맵을 항상 표시하고 Map 접기 버튼을 제거합니다.
+
+#### Fixed
+- [fleet-console] 릴리스 노트가 모달 본문을 넘쳐도 What's New 제어 버튼이 계속 보이도록 합니다.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] 저장된 Fleet Console 테마와 실시간 테마 변경에 맞춰 Fleet Desktop Windows 제목 표시줄 오버레이를 동기화합니다.
+- [fleet-console] 영속 줌 수준을 사용하는 네이티브 Console 확대와 새로 고침 제어를 추가합니다.
+
+#### Fixed
+- [fleet-console] macOS 로그인 셸 PATH에서 Agent CLI 검색을 복원합니다.
+- [fleet-console] Console 전환 후 뒤로가기로 부트스트랩 페이지가 다시 열리지 않도록 수정했습니다.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Diff History 커밋 뷰를 Segmented Commit Inspector로 개편합니다. Details 탭은 작성자, 상대·절대 시각, 복사 가능한 전체 SHA, 클릭 가능한 부모, ref 칩, 메시지 본문을 보여주고 Changes 탭은 파일 단위 탐색, 변경 파일의 목록·트리 뷰, 구문 강조 diff를 제공합니다.
+- [fleet-console] 기본 History rail 폭에서도 커밋 제목이 잘리지 않게 하고 브랜치 그래프를 좌측 마스터로 유지하며 그래프, 인스펙터, 파일 창 사이에 크기 조절 구분자를 추가합니다.
+- [fleet-console] 새 Codex Agent CLI 설정의 기본값을 App Server로 지정하며 명시적인 ACP 선택은 유지합니다.
+
+#### Fixed
+- [fleet-console] Diff History 커밋 그래프 노드를 해당 커밋 행에 정렬해 각 그래프 마커가 더 이상 커밋보다 반 행 아래로 어긋나지 않게 합니다.
+- [fleet-console] 스트리밍 상태 패널이나 다른 레이아웃 변경으로 터미널 크기가 바뀌어도 사용자의 스크롤 위치를 보존합니다.
+
+### fleet-core
+
+#### Changed
+- [fleet-carriers] 완료된 캐리어 작업 정보를 6시간 동안 보존합니다.
+- [core-unified-agent] 시작 모드 재정의가 없으면 Codex 연결에 App Server를 사용합니다.
+- [core-unified-agent] Claude와 Codex의 Carrier 지침을 제출 프롬프트에 함께 전달하고 Kirov 디스패치가 플랜 파일을 지정하고 생성하도록 요구합니다.
+- [fleet-carriers] 각 Carrier 디스패치를 새로운 CLI 프로세스에서 실행하고 `context_id`를 반환하며, 호출자가 이를 `resume_context_id`로 전달하면 실제 프로바이더 세션을 재개합니다.
+
 ## [1.24.0] - 2026-07-11
 
 ### fleet-cli

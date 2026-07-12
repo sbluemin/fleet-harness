@@ -5,6 +5,54 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-07-12
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add `Mod+B` and `Mod+Alt+B` shortcuts to toggle the left sidebar and right Activity Rail.
+- [fleet-console] Add a minimize button to left sidebar operation chips so a panel can be minimized directly from the sidebar; it appears on hover to the left of the close button, and is hidden on already-minimized chips and on inactive-Theater preview chips.
+- [fleet-console] Show inactive Operation names beside their panel status beacons with inline rename controls.
+
+#### Changed
+- [fleet-console] Split the sidebar Formation view toggle into a two-segment control, giving open-panel and include-minimized formation each their own button.
+- [fleet-console] Organize What's New into Overview and product tabs while preserving legacy and mixed release updates.
+- [fleet-console] Formation view's open-panel segment now leaves minimized and maximize-docked panels in the dock, arranging only the currently open panels; the include-minimized segment still restores every panel first.
+- [fleet-console] Start existing Operation panels minimized the first time each Theater opens in a session, and reveal a selected panel on its own.
+- [fleet-console] Keep the minimap visible in the default canvas view and remove the Map collapse button.
+
+#### Fixed
+- [fleet-console] Keep What's New controls visible when release notes overflow the modal body.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] Synchronize the Fleet Desktop Windows title bar overlay with the saved Fleet Console theme and live theme changes.
+- [fleet-console] Add native Console zoom and reload controls with persistent zoom levels.
+
+#### Fixed
+- [fleet-console] Restore Agent CLI discovery from the macOS login-shell PATH.
+- [fleet-console] Prevent back navigation from reopening the bootstrap page after Console handoff.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Rework the Diff History commit view into a Segmented Commit Inspector: a Details tab with author, relative and absolute timestamps, a copyable full SHA, clickable parents, ref chips, and the message body, and a Changes tab with per-file navigation, a list or tree view of changed files, and syntax-highlighted diffs.
+- [fleet-console] Keep the commit subject legible at the default History rail width, keep the branch graph as the left master, and add resize dividers between the graph, inspector, and file panes.
+- [fleet-console] Default new Codex Agent CLI settings to App Server while preserving explicit ACP selections.
+
+#### Fixed
+- [fleet-console] Align the Diff History commit graph nodes with their commit rows so each graph marker no longer sits half a row below the commit it belongs to.
+- [fleet-console] Preserve terminal scroll intent when streaming status panels or other layout changes resize the terminal.
+
+### fleet-core
+
+#### Changed
+- [fleet-carriers] Retain finalized carrier job information for 6 hours.
+- [core-unified-agent] Use App Server for Codex connections when no launch-mode override is configured.
+- [core-unified-agent] Deliver Claude and Codex Carrier instructions with the submitted prompt and require Kirov dispatches to name and produce their plan file.
+- [fleet-carriers] Run each Carrier dispatch in a fresh CLI process, return a `context_id`, and resume its real provider session when callers pass it back as `resume_context_id`.
+
 ## [1.24.0] - 2026-07-11
 
 ### fleet-cli
