@@ -170,6 +170,9 @@ export function OperationsSideBarChip({
           onPointerDown={stopClosePointer}
           onClick={(event) => {
             event.stopPropagation();
+            // 다른 칩 액션(focus·rename·accent)과 동일하게, 최소화 전에 armed close를 먼저 해제한다 —
+            // 그러지 않으면 최소화 후에도 "Close?" armed 상태가 타임아웃까지 남아 단발 클릭 close 위험이 생긴다.
+            onDisarmClose();
             onMinimize(operation.id);
           }}
           aria-label={`Minimize operation ${title}`}
