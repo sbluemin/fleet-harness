@@ -92,6 +92,16 @@ describe("canvas store", () => {
     expect(getSnapshot().operations).toEqual(geometry);
   });
 
+  it("keeps existing minimized panels first when adding boot panels", () => {
+    setOperationGeometry("launched", { ...GEOMETRY });
+    setOperationGeometry("initial", { ...GEOMETRY });
+    minimizeOperation("launched");
+
+    minimizeOperations(["initial", "launched", "missing", "initial"]);
+
+    expect(getSnapshot().minimized).toEqual(["launched", "initial"]);
+  });
+
   it("does not minimize Operations added after boot initialization", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     minimizeOperations(["op-a"]);

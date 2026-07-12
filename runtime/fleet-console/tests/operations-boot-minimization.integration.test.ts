@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getSnapshot, loadForTheater, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { getSnapshot, loadForTheater, minimizeOperation, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 import { getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -144,14 +144,15 @@ describe("Operations boot minimization", () => {
     await act(async () => {
       hydrateOperations([operation("launched")]);
     });
-    expect(getSnapshot().minimized).toEqual([]);
+    minimizeOperation("launched");
+    expect(getSnapshot().minimized).toEqual(["launched"]);
 
     await act(async () => {
       operations.resolve([operation("initial")]);
       await Promise.resolve();
     });
 
-    expect(getSnapshot().minimized).toEqual(["initial"]);
+    expect(getSnapshot().minimized).toEqual(["launched", "initial"]);
     expect(getSnapshot().operations).toHaveProperty("initial");
     expect(getSnapshot().operations).toHaveProperty("launched");
   });

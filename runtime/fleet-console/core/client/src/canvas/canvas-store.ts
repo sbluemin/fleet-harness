@@ -225,14 +225,19 @@ export function minimizeOperation(sessionId: string): void {
   setState({ minimized: [...state.minimized, sessionId] });
 }
 
-// 초기 부팅처럼 현재 존재하는 패널 집합 전체를 최소화할 때 쓴다. geometry는 유지하고 없는 id는 무시한다.
+// 초기 부팅처럼 현재 존재하는 패널 집합을 최소화할 때 쓴다. 기존 최소화 순서는 보존하고 새 id만 뒤에 더한다.
 export function minimizeOperations(sessionIds: readonly string[]): void {
   const seen = new Set<string>();
-  const minimized = sessionIds.filter((sessionId) => {
+  const validMinimized = state.minimized.filter((sessionId) => {
     if (seen.has(sessionId) || !(sessionId in state.operations)) return false;
     seen.add(sessionId);
     return true;
   });
+  const minimized = [...validMinimized, ...sessionIds.filter((sessionId) => {
+    if (seen.has(sessionId) || !(sessionId in state.operations)) return false;
+    seen.add(sessionId);
+    return true;
+  })];
   if (stringArraysEqual(state.minimized, minimized)) return;
   if (maximizedOperationId && minimized.includes(maximizedOperationId)) clearMaximizedOperationId();
   setState({ minimized });
