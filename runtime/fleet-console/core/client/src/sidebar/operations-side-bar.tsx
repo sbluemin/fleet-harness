@@ -504,7 +504,10 @@ export function OperationsSideBar({
     >
       <div className="side-bar-theater-add-row">
         <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Add Theater</span></button>
-        <button type="button" className="side-bar-formation-toggle" onClick={() => toggleFormationView()} disabled={activeTheaterId === null} aria-pressed={formationView} aria-label="Formation view" title="Formation view (Alt+F)"><FormationIcon /></button>
+        <div className="side-bar-formation-group" role="group" aria-label="Formation view">
+          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView()} disabled={activeTheaterId === null} aria-pressed={formationView} aria-label="Formation view (open panels only)" title="Formation view (Alt+F)"><FormationIcon /></button>
+          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView({ restoreMinimized: true })} disabled={activeTheaterId === null} aria-pressed={formationView && minimizedSet.size === 0} aria-label="Formation view including minimized panels" title="Formation view incl. minimized (Alt+Shift+F)"><FormationFilledIcon /></button>
+        </div>
       </div>
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
@@ -745,6 +748,10 @@ export function OperationsSideBar({
 
 function FormationIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function FormationFilledIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="currentColor" /></svg>;
 }
 
 interface GroupSection {
