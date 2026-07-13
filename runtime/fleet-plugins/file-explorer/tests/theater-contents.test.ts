@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { listTheaterContents } from "../server/folder-browser.js";
 
@@ -38,5 +38,31 @@ describe("listTheaterContents", () => {
     expect(fileNames).toEqual([...fileNames].sort((a, b) => a.localeCompare(b)));
 
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each([
+    { entryCount: 499, expectedLength: 499, truncated: false },
+    { entryCount: 500, expectedLength: 500, truncated: false },
+    { entryCount: 501, expectedLength: 500, truncated: true },
+  ])("$entryCount개 항목에서 500개 cap과 truncation을 유지한다", async ({ entryCount, expectedLength, truncated }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-cap-"));
+    const opendir = vi.fn(fs.promises.opendir);
+    for (let index = 0; index < entryCount; index++) {
+      fs.writeFileSync(path.join(dir, `file-${String(index).padStart(3, "0")}.txt`), "");
+    }
+
+    try {
+      const result = await listTheaterContents(dir, "", { opendir });
+
+      expect(opendir).toHaveBeenCalledWith(fs.realpathSync(dir), { bufferSize: 501 });
+      expect(result.entries).toHaveLength(expectedLength);
+      if (truncated) {
+        expect(result).toMatchObject({ truncated: true });
+      } else {
+        expect(result).not.toHaveProperty("truncated");
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
