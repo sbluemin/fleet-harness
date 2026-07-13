@@ -12,6 +12,7 @@ interface RailPathContextState {
 interface RailStore {
   readonly activeRailPanelId: string | null;
   readonly railChromeExpanded: boolean;
+  readonly rightRailWidth: number;
   readonly panelExtraWidth: number;
   readonly pathContextTheaterId: string | null;
   readonly pathContext: RailPathContext | null;
@@ -38,6 +39,7 @@ let activePathGeneration = 0;
 let store: RailStore = {
   activeRailPanelId: readStoredPanelId(),
   railChromeExpanded: readStoredChromeExpanded(),
+  rightRailWidth: 44,
   panelExtraWidth: 0,
   pathContextTheaterId: null,
   pathContext: null,
@@ -89,6 +91,12 @@ export function setRailChromeExpanded(expanded: boolean): void {
 
 export function toggleRailChrome(): void {
   setRailChromeExpanded(!store.railChromeExpanded);
+}
+
+export function setRightRailWidth(width: number): void {
+  const next = Number.isFinite(width) ? Math.max(0, width) : 0;
+  if (store.rightRailWidth === next) return;
+  setStore({ ...store, rightRailWidth: next });
 }
 
 export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
@@ -166,6 +174,10 @@ export function useActiveRailPanelId(): string | null {
 
 export function useRailChromeExpanded(): boolean {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railChromeExpanded;
+}
+
+export function useRightRailWidth(): number {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).rightRailWidth;
 }
 
 export function useRailPanelExtraWidth(): number {
