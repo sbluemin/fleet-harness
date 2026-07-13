@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action fleet-desktop-pairing:">
+  <title>Connect to Runtime</title>
+  <link rel="stylesheet" href="pairing.css">
+</head>
+<body>
+  <main>
+    <h1>Connect to Runtime</h1>
+    <p>Enter a Fleet Console loopback address.</p>
+    <form action="fleet-desktop-pairing://submit/" method="get">
+      <label for="target">Fleet Console runtime address</label>
+      <input id="target" name="target" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="127.0.0.1:4310" pattern="127\.0\.0\.1:[1-9][0-9]{0,4}" maxlength="15" required autofocus>
+      <div class="actions">
+        <button type="submit">Connect</button>
+        <a href="fleet-desktop-pairing://cancel/">Cancel</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/desktop-protocol";
 
+import { verifyPairingOrigin } from "./runtime-pairing.js";
+
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
 export interface SidecarSupervisorOptions { readonly nodePath?: string; readonly cliPath?: string; readonly serviceRoot?: string; readonly serviceVersion: string; readonly resolveRuntime?: () => Promise<SidecarRuntime>; readonly env: NodeJS.ProcessEnv; readonly lockFile: string; readonly ownerId: string; readonly log: { info(message: string): void; error(message: string): void }; }
 interface LockPayload { readonly pid: number; readonly endpoint: string; readonly token: string; readonly version: string; readonly owner?: ConsoleOwnerMetadata; }
@@ -26,7 +28,17 @@ export class SidecarSupervisor {
     const current = await this.probe();
     if (current.kind === "healthy") {
       if (this.isOwned(current.stored.lock)) return current.url;
-      throw new Error("cli_daemon_requires_confirmation");
+      // A healthy canonical CLI Console is a peer runtime, not a lifecycle conflict.
+      // Identity discovery guards the exact Console handoff; this supervisor never
+      // claims it and stop() remains owner-only.
+      try {
+        const verified = await verifyPairingOrigin(new URL(current.url).origin);
+        return verified.consoleUrl;
+      } catch (error) {
+        // The process is healthy but cannot prove the frozen pairing identity.
+        // It remains a foreign process: do not claim or signal it.
+        throw new Error("console_pairing_identity_unavailable", { cause: error });
+      }
     }
     if (current.kind === "unhealthy") {
       if (this.isProcessAlive(current.stored.lock.pid)) {
@@ -69,7 +81,7 @@ export class SidecarSupervisor {
         sidecarReady = true;
         return ready.url;
       }
-      if (ready.kind === "healthy") throw this.failStartup(new Error("cli_daemon_requires_confirmation"));
+      if (ready.kind === "healthy") throw this.failStartup(new Error("console_lock_foreign_process_appeared"));
     }
     throw this.failStartup(new Error("sidecar_readiness_timeout"));
   }

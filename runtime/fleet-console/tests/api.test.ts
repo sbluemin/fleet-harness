@@ -28,6 +28,16 @@ describe("client api parsing", () => {
     await expect(applyConsoleUpdate()).resolves.toEqual({ status: "accepted" });
   });
 
+  it("preserves the managed installation relaunch requirement from the update API", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "managed_runtime_update_requires_relaunch" }), { status: 503 })) as typeof fetch;
+
+    await expect(applyConsoleUpdate()).rejects.toMatchObject({
+      name: "ApiError",
+      status: 503,
+      message: "managed_runtime_update_requires_relaunch",
+    });
+  });
+
   it("serializes locale before force and validates localization fallback", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       notes: [{ version: "1.0.0", date: null, sections: [], localizationFallback: false }],

@@ -8,6 +8,7 @@ export interface DesktopResourcePaths {
   readonly cliPath: string;
   readonly iconPath: string;
   readonly entryPagePath: string;
+  readonly pairingPagePath: string;
 }
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,14 @@ export function resolveDesktopResourcePaths(isPackaged: boolean, resourcesPath?:
   const serviceRoot = isPackaged ? path.join(runtimeRoot, "console", "latest") : runtimeRoot;
   const nodePath = isPackaged ? path.join(runtimeRoot, "node", process.platform === "win32" ? "node.exe" : "bin/node") : resolveDevelopmentNodePath();
   // 번들 main.mjs의 sourceDir은 dev/packaged(ASAR 내) 모두 dist다 — 자산은 copy-entry-assets가 dist로 나르므로 dist 앵커가 두 모드의 유일한 공통 계약이다.
-  return { nodePath, serviceRoot, cliPath: path.join(serviceRoot, "dist", "cli.mjs"), iconPath: path.join(sourceDir, "build", "icon.png"), entryPagePath: path.join(sourceDir, "assets", "entry", "index.html") };
+  return {
+    nodePath,
+    serviceRoot,
+    cliPath: path.join(serviceRoot, "dist", "cli.mjs"),
+    iconPath: path.join(sourceDir, "build", "icon.png"),
+    entryPagePath: path.join(sourceDir, "assets", "entry", "index.html"),
+    pairingPagePath: path.join(sourceDir, "assets", "pairing", "index.html"),
+  };
 }
 
 function resolveDevelopmentNodePath(): string {

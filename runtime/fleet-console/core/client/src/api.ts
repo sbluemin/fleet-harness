@@ -370,7 +370,7 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     !payload
     || typeof payload.workspaces !== "number"
     || typeof payload.version !== "string"
-    || (payload.channel !== "stable" && payload.channel !== "local" && payload.channel !== "desktop" && payload.channel !== "unknown")
+    || (payload.channel !== "stable" && payload.channel !== "local" && payload.channel !== "unknown")
     || typeof payload.updateAvailable !== "boolean"
     || typeof payload.port !== "number"
     || (payload.portMode !== "dynamic" && payload.portMode !== "static")

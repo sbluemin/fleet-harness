@@ -11,7 +11,7 @@ import { buildApiCatalog, type ApiCatalogEntry } from "../core/host/api-catalog.
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { createConsoleLock } from "../core/host/lock.js";
-import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+import { createConsoleServer, PAIRING_IDENTITY, PAIRING_IDENTITY_PATH, type ConsoleServer } from "../core/host/server.js";
 import type { SystemFontsService } from "../core/host/system-fonts.js";
 
 interface ServerFixture {
@@ -57,6 +57,19 @@ afterEach(async () => {
 });
 
 describe("api catalog", () => {
+  it("serves only the frozen, read-only loopback pairing identity", async () => {
+    const fixture = await startFixture();
+    const exact = await fetch(`${fixture.endpoint}${PAIRING_IDENTITY_PATH.slice(1)}`);
+    expect(exact.status).toBe(200);
+    expect(await exact.json()).toEqual(PAIRING_IDENTITY);
+    expect(exact.headers.get("access-control-allow-origin")).toBeNull();
+
+    const wrongMethod = await fetch(`${fixture.endpoint}${PAIRING_IDENTITY_PATH.slice(1)}`, { method: "POST" });
+    expect(wrongMethod.status).toBe(405);
+    await expect(wrongMethod.json()).resolves.toEqual({ error: "Method not allowed" });
+
+    await expect(requestWithHost(fixture.endpoint, PAIRING_IDENTITY_PATH, "localhost:1")).resolves.toEqual({ status: 403, body: { error: "host_mismatch" } });
+  });
   it("serializes only the public route catalog DTO", async () => {
     const fixture = await startFixture();
     const response = await fetch(`${fixture.endpoint}api/v1/settings/api-catalog`);

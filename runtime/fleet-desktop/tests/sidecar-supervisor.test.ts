@@ -19,11 +19,11 @@ describe("sidecar supervisor", () => {
     await expect(supervisor().startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
   });
 
-  it("compares the lock with the Console service version rather than the shell version", async () => {
+  it("treats a healthy version-mismatched Desktop lock as a foreign pairing target", async () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
+    vi.stubGlobal("fetch", healthyConsoleFetch());
     const instance = new SidecarSupervisor({ nodePath: "/sidecar/node", cliPath: "/sidecar/fleet-console/dist/cli.mjs", serviceRoot: "/sidecar/fleet-console", serviceVersion: "2.0.0", env: {}, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
-    await expect(instance.startOrAdopt()).rejects.toThrow("cli_daemon_requires_confirmation");
+    await expect(instance.startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
   });
 
   it("does not resolve a runtime while adopting a healthy owned sidecar", async () => {
@@ -35,11 +35,25 @@ describe("sidecar supervisor", () => {
     expect(resolveRuntime).not.toHaveBeenCalled();
   });
 
-  it("rejects a healthy CLI-owned daemon rather than signaling it", async () => {
+  it("identity-verifies and adopts a healthy CLI-owned daemon without signaling or owning it", async () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
+    vi.stubGlobal("fetch", healthyConsoleFetch());
     const kill = vi.spyOn(process, "kill");
-    await expect(supervisor().startOrAdopt()).rejects.toThrow("cli_daemon_requires_confirmation");
+    const instance = supervisor();
+    await expect(instance.startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+    await instance.stop();
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("reports an unverified healthy foreign Console without signaling or claiming it", async () => {
+    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => String(url).endsWith("/pairing-identity")
+      ? new Response("missing", { status: 404 })
+      : new Response("ok", { status: 200 })) as unknown as typeof fetch);
+    const kill = vi.spyOn(process, "kill");
+
+    await expect(supervisor().startOrAdopt()).rejects.toThrow("console_pairing_identity_unavailable");
+    await supervisor().stop();
     expect(kill).not.toHaveBeenCalled();
   });
 
@@ -148,3 +162,14 @@ describe("sidecar supervisor", () => {
     expect(kill).toHaveBeenCalledWith(4321, "SIGKILL");
   }, 10_000);
 });
+
+function healthyConsoleFetch(): typeof fetch {
+  return vi.fn(async (url: string | URL) => {
+    if (String(url).endsWith("/pairing-identity")) {
+      const response = new Response(JSON.stringify({ product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 }), { status: 200 });
+      Object.defineProperty(response, "url", { value: "http://127.0.0.1:4310/api/v1/pairing-identity" });
+      return response;
+    }
+    return new Response("ok", { status: 200 });
+  }) as unknown as typeof fetch;
+}

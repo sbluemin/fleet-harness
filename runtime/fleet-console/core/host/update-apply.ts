@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createGlobalPackageUpdater } from "@dotobokuri/core-agent";
 import type { GlobalPackageManagerCommand } from "@dotobokuri/core-agent";
 import { withHidden } from "@dotobokuri/core-process";
+import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
 
 export interface ConsoleUpdateApplyService {
   start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult>;
@@ -96,6 +97,10 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
   });
 
   async function start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult> {
+    // This is an installation-layout boundary, not Desktop provenance or a Console
+    // release channel. The managed runtime is updated only by Desktop's hardened
+    // entry-flow transaction until a recoverable same-window handoff exists.
+    if (isManagedRuntimePackageRoot(request.currentPackageRoot)) throw new Error("managed_runtime_update_requires_relaunch");
     const packageManager = await preflightInstall(request.currentPackageRoot);
     const stamp = `${now()}-${processPid}`;
     const workerPath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${WORKER_FILE_SUFFIX}`);
@@ -399,6 +404,15 @@ function sanitizeError(error) {
     .replaceAll(config.workerPath, "[path]");
 }
 `;
+}
+
+function isManagedRuntimePackageRoot(packageRoot: string): boolean {
+  if (path.basename(packageRoot) !== "latest" || path.basename(path.dirname(packageRoot)) !== "console") return false;
+  try {
+    return isDesktopResourceRootMarkerValid(fs.readFileSync(path.join(packageRoot, DESKTOP_RESOURCE_ROOT_MARKER), "utf8"));
+  } catch {
+    return false;
+  }
 }
 
 async function preflightPackageManager(packageRoot: string, env: NodeJS.ProcessEnv): Promise<ConsoleUpdatePackageManagerSpec> {

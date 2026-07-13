@@ -3,15 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, Menu, Notification, shell, Tray } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
-import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
+import { isConsoleConflict, isConsolePairingIdentityUnavailable, showConsoleConflictAndQuit, showConsolePairingIdentityUnavailableAndQuit } from "./console-conflict.js";
 import { createConsoleControls } from "./console-controls.js";
 import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
+import { createPairingNotifier } from "./pairing-notifications.js";
+import { createPairingModal } from "./pairing-modal.js";
+import { createRuntimePairing } from "./runtime-pairing.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { installApplicationMenu } from "./menu.js";
@@ -40,6 +43,9 @@ if (!gotLock) app.quit();
 else void boot().catch((error: unknown) => {
   if (isConsoleConflict(error)) {
     return showConsoleConflictAndQuit({ showMessageBox: (options) => dialog.showMessageBox(options), quit: () => app.quit() });
+  }
+  if (isConsolePairingIdentityUnavailable(error)) {
+    return showConsolePairingIdentityUnavailableAndQuit({ showMessageBox: (options) => dialog.showMessageBox(options), quit: () => app.quit() });
   }
   // 실제 원인(cause 체인·자식 프로세스 stderr 포함)을 로그 파일에 남긴다 — Finder/트레이 실행 시 stderr는
   // 어디에도 보이지 않으므로, 이 파일 로그가 개발 진단과 퍼블리싱된 앱의 사용자 이슈 수집의 SSoT다.
@@ -112,6 +118,11 @@ async function boot(): Promise<void> {
     });
     return launch.start() as Promise<BrowserWindow>;
   }, () => supervisor.stop());
+  const pairing = createRuntimePairing({
+    notifier: createPairingNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) }),
+    themeSynchronizer,
+    modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
+  });
   const updates = isPackaged
     ? createUpdateController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
@@ -131,6 +142,13 @@ async function boot(): Promise<void> {
     zoomOut: () => controls.zoomOut(),
     actualSize: () => controls.actualSize(),
     reloadConsole: () => controls.reloadConsole(),
+    connectRuntime: () => {
+      if (!controls.consoleReady()) return;
+      void lifecycle.show().then((activeWindow) => {
+        if (!policy || activeWindow.isDestroyed()) return;
+        return pairing.prompt(activeWindow, policy);
+      });
+    },
     consoleReady: () => controls.consoleReady(),
     updates,
   };

@@ -8,11 +8,13 @@ const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const readDesktopFile = (relativePath: string): string => fs.readFileSync(path.join(desktopRoot, relativePath), "utf8");
 
 describe("desktop shell runtime contract", () => {
-  it("keeps only entry assets and Node metadata in the packaged shell", () => {
+  it("keeps local entry and pairing assets with Node metadata in the packaged shell", () => {
     const verifier = readDesktopFile("scripts/verify-packaged-app.mjs");
     expect(verifier).toContain("Embedded sidecar directory is forbidden");
     expect(verifier).toContain('"dist/assets/entry/index.html"');
     expect(verifier).toContain('"dist/assets/entry/entry.css"');
+    expect(verifier).toContain('"dist/assets/pairing/index.html"');
+    expect(verifier).toContain('"dist/assets/pairing/pairing.css"');
     expect(verifier).toContain('"dist/build/node-runtime.json"');
     expect(verifier).toContain('"dist/cli.mjs"');
     expect(verifier).toContain('"node_modules/"');

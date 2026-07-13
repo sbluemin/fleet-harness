@@ -208,8 +208,6 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     const probeResult = await health.probe(current);
     const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
     if (probeResult.healthy && current) {
-      // CLI는 desktop 소유 데몬에 attach/open할 수 있지만, desktop lifecycle을 stale 판단으로 종료하지 않는다.
-      if (current.owner?.kind === "desktop") return current.endpoint;
       if (!isBuildStale) return current.endpoint;
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
@@ -283,7 +281,7 @@ export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string
 }
 
 export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
-  if (payload.owner?.kind === "desktop") throw new Error("Fleet Console is owned by the desktop app; quit it from the native menu.");
+  void payload;
 }
 
 export function isLockProcessAlive(pid: number): boolean {

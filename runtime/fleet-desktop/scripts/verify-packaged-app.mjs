@@ -61,7 +61,7 @@ async function applyRequiredFuses(outputDirectory, platform) {
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
       // 이 fuse를 끄면 렌더러가 asar 내부를 file://로 읽는 특권을 잃어, 셸이 자기 엔트리 HTML
-      // (dist/assets/entry/index.html, ASAR 내부)을 loadFile로 로드하지 못하고 ERR_FILE_NOT_FOUND로
+      // (dist/assets/entry/index.html 및 pairing/index.html, ASAR 내부)을 loadFile로 로드하지 못하고 ERR_FILE_NOT_FOUND로
       // 창이 뜨기 전에 죽는다. 이 셸은 신뢰 불가한 file:// 콘텐츠를 로드하는 경로가 없고(엔트리는
       // 스크립트 없는 CSP 잠금 로컬 페이지, 콘솔은 http loopback) 실질 보안 효과가 없으므로 켜둔다.
       [FuseV1Options.GrantFileProtocolExtraPrivileges]: true,
@@ -72,13 +72,16 @@ async function applyRequiredFuses(outputDirectory, platform) {
 
 async function assertShellOnlyAsar(asar) {
   const files = new Map(listPackage(asar, { isPack: false }).map((file) => [normalizeAsarContractPath(file), normalizeAsarEntryPath(file)]));
-  const required = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/build/node-runtime.json"];
+  const required = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/assets/pairing/index.html", "dist/assets/pairing/pairing.css", "dist/build/node-runtime.json"];
   for (const file of required) if (!files.has(file)) throw new Error(`Shell ASAR is missing ${file}`);
   const forbidden = [".fleet-console-resource-root", "dist/cli.mjs", "fleet-console/", "node-pty/", "node_modules/"];
   for (const file of files.keys()) if (forbidden.some((prefix) => file === prefix || file.includes(`/${prefix}`))) throw new Error(`Shell ASAR embeds forbidden runtime payload: ${file}`);
   const entryHtml = extractFile(asar, files.get("dist/assets/entry/index.html")).toString("utf8");
   if (!entryHtml.includes("default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'")) throw new Error("Entry CSP contract is missing");
   if (/<(script|button|a|form|input)\b|contenteditable|tabindex/i.test(entryHtml)) throw new Error("Entry HTML is not passive and scriptless");
+  const pairingHtml = extractFile(asar, files.get("dist/assets/pairing/index.html")).toString("utf8");
+  if (!pairingHtml.includes("default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action fleet-desktop-pairing:")) throw new Error("Pairing CSP contract is missing");
+  if (/<script\b|\bon\w+\s*=/i.test(pairingHtml)) throw new Error("Pairing HTML contains JavaScript");
 }
 
 async function findApplications(root, platform) {

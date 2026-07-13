@@ -6,7 +6,7 @@ import { listPackage } from "@electron/asar";
 import { describe, expect, it } from "vitest";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const requiredAsarFiles = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/build/node-runtime.json", "dist/build/icon.png"];
+const requiredAsarFiles = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/assets/pairing/index.html", "dist/assets/pairing/pairing.css", "dist/build/node-runtime.json", "dist/build/icon.png"];
 
 describe("shell-only packaged layout", () => {
   it("keeps runtime payload out of every available packaged resource directory", () => {
@@ -16,7 +16,7 @@ describe("shell-only packaged layout", () => {
     }
   });
 
-  it("packages the passive entry and Node manifest inside ASAR without Console payload", () => {
+  it("packages passive entry and pairing assets with the Node manifest inside ASAR without Console payload", () => {
     for (const resources of findResourceDirectories()) {
       const files = listPackage(path.join(resources, "app.asar"), { isPack: false }).map((file) => file.replace(/^\//, ""));
       for (const required of requiredAsarFiles) expect(files).toContain(required);

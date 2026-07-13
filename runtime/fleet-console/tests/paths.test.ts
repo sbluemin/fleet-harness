@@ -22,13 +22,6 @@ describe("createConsolePaths", () => {
     expect(local.dir).not.toBe(stable.dir);
   });
 
-  it("maps desktop to the canonical stable lock namespace", () => {
-    const stable = createConsolePaths({ channel: "stable", env: {}, uid: TEST_UID });
-    const desktop = createConsolePaths({ channel: "desktop", env: {}, uid: TEST_UID });
-
-    expect(desktop).toEqual(stable);
-  });
-
   it("honors FLEET_CONSOLE_DIR regardless of channel", () => {
     const overrideDir = path.join(os.tmpdir(), "fleet-console-override");
     const env = { FLEET_CONSOLE_DIR: overrideDir } as NodeJS.ProcessEnv;
@@ -55,12 +48,11 @@ describe("createConsoleDataPaths", () => {
     expect(data.capturesDir).toBe(path.join(fleetDataDir, "console", "captures"));
   });
 
-  it("maps desktop durable data to the stable Console namespace", () => {
+  it("uses stable durable data without a Desktop release channel", () => {
     const fleetDataDir = path.join(os.tmpdir(), "fleet-data-root");
     const stable = createConsoleDataPaths({ channel: "stable", env: {}, fleetDataDir });
-    const desktop = createConsoleDataPaths({ channel: "desktop", env: {}, fleetDataDir });
 
-    expect(desktop).toEqual(stable);
+    expect(createConsoleDataPaths({ env: {}, fleetDataDir })).toEqual(stable);
   });
 
   it("isolates local durable state into the project .fleet/console slot shared with the lock", () => {
