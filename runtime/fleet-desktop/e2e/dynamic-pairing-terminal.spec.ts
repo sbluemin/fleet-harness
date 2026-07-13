@@ -29,6 +29,7 @@ test.describe("dynamic runtime pairing", () => {
       app = await electron.launch({ args: [path.resolve(main)], env: { ...process.env, FLEET_CONSOLE_NODE_PATH: nodePath } });
       const window = await app.firstWindow();
       await expect(window).toHaveURL(/\/console\//);
+      expect(new URL(window.url()).origin).not.toBe(targetOrigin);
 
       const clicked = await app.evaluate(({ Menu, BrowserWindow }) => {
         const item = Menu.getApplicationMenu()?.items

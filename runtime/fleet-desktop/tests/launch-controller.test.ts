@@ -131,8 +131,8 @@ describe("launch controller", () => {
     const pushEntry = vi.fn(async () => undefined);
     const onFirstRunFailure = vi.fn(async () => true);
     const window = { webContents: { executeJavaScript: vi.fn(async () => undefined), navigationHistory: { clear: vi.fn() } }, show: vi.fn(), loadURL: vi.fn(async () => undefined) };
-    const controller = createLaunchController({ createWindow: vi.fn(async () => window), pushEntry, startOrAdopt: vi.fn(async () => { throw new Error("console_lock_foreign_process_appeared"); }), handoffOrigin: vi.fn(), onFirstRunFailure });
-    await expect(controller.start()).rejects.toThrow("console_lock_foreign_process_appeared");
+    const controller = createLaunchController({ createWindow: vi.fn(async () => window), pushEntry, startOrAdopt: vi.fn(async () => { throw new Error("cli_daemon_requires_confirmation"); }), handoffOrigin: vi.fn(), onFirstRunFailure });
+    await expect(controller.start()).rejects.toThrow("cli_daemon_requires_confirmation");
     expect(onFirstRunFailure).not.toHaveBeenCalled();
     expect(pushEntry).toHaveBeenCalledTimes(1);
   });
