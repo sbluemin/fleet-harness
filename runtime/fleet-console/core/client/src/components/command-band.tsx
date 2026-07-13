@@ -6,7 +6,7 @@ import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { putRailPathContext } from "../rail/path-context-api.js";
 import { PathContextDeck } from "../rail/path-context-deck.js";
-import { mutateRailPathContext, setRailPathContextDeckOpen, toggleRailChrome, useRailChromeExpanded, useRailPathContextStore } from "../rail/rail-store.js";
+import { mutateRailPathContext, setRailPathContextDeckOpen, toggleRailChrome, useRailChromeExpanded, useRailPathContextStore, useRightRailWidth } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -28,6 +28,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const registry = usePluginRegistry();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
+  const rightRailWidth = useRightRailWidth();
   const modLabel = resolveModLabel();
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
@@ -100,7 +101,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   };
 
   return (
-    <header className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}`} style={{ "--command-band-left-width": `${sideBar.width}px` } as CSSProperties}>
+    <header className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}`} style={{ "--command-band-left-width": `${sideBar.width}px`, "--command-band-right-width": `${rightRailWidth}px` } as CSSProperties}>
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>

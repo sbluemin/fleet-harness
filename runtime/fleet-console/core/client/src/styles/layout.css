@@ -21,7 +21,7 @@
 
 .command-band {
   display: grid;
-  grid-template-columns: var(--command-band-left-width, 280px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(var(--command-band-right-width, 44px), 1fr);
   flex: none;
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);
@@ -42,6 +42,7 @@
 }
 
 .command-band-left {
+  width: var(--command-band-left-width, 280px);
   gap: var(--space-1);
   padding-inline: var(--space-2);
   border-right: 1px solid var(--surface-rim);
@@ -94,6 +95,7 @@
 }
 
 .command-band-right {
+  justify-content: flex-end;
   gap: var(--space-1);
   padding-inline: var(--space-2);
   /* titlebar-area-width는 드래그 영역 폭이므로, 창 폭에서 x 좌표와 그 폭을 빼 창 컨트롤 예약 폭만 계산한다. */
