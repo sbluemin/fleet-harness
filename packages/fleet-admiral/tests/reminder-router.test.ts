@@ -4,8 +4,10 @@ import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 
 import {
   createCarrierResultReminderRouter,
+  createDelayedPtyWriter,
   formatCarrierResultReminderMessage,
   sanitizeCarrierResultReminder,
+  type PtyInputChunk,
   type PtyWriteSink,
 } from "../src/index.js";
 
@@ -178,6 +180,47 @@ describe("carrier result reminder router", () => {
 
       await vi.advanceTimersByTimeAsync(250);
       expect(writes).toEqual(["A", "\r", "B", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shares one delayed writer so reminder and rename on the same session serialize", async () => {
+    vi.useFakeTimers();
+    try {
+      const writes: string[] = [];
+      const writer = createDelayedPtyWriter();
+      const delayed = (text: string): PtyInputChunk[] => [{ data: text }, { data: "\r", submitDelayMs: 250 }];
+
+      // 서로 다른 소스(리마인더/rename)라도 같은 세션 키를 공유하면 순차 제출된다.
+      writer.enqueue("session-1", (data) => writes.push(data), delayed("reminder"));
+      writer.enqueue("session-1", (data) => writes.push(data), delayed("/rename X"));
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(writes).toEqual(["reminder"]);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(writes).toEqual(["reminder", "\r", "/rename X"]);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(writes).toEqual(["reminder", "\r", "/rename X", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not serialize delayed submits across different session keys", async () => {
+    vi.useFakeTimers();
+    try {
+      const writes: string[] = [];
+      const writer = createDelayedPtyWriter();
+      const delayed = (text: string): PtyInputChunk[] => [{ data: text }, { data: "\r", submitDelayMs: 250 }];
+
+      writer.enqueue("a", (data) => writes.push(data), delayed("A"));
+      writer.enqueue("b", (data) => writes.push(data), delayed("B"));
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(writes).toEqual(["A", "B"]);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(writes).toEqual(["A", "B", "\r", "\r"]);
     } finally {
       vi.useRealTimers();
     }

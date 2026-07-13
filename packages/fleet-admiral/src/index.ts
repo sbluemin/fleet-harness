@@ -60,7 +60,9 @@ export {
 // Carrier result reminder 주입 종단
 export {
   createCarrierResultReminderRouter,
+  createDelayedPtyWriter,
   formatCarrierResultReminderMessage,
   sanitizeCarrierResultReminder,
+  type DelayedPtyWriter,
   type PtyWriteSink,
 } from "./agent-runtime/reminder-router.js";
