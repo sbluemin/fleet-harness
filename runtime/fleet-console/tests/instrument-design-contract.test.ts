@@ -164,6 +164,37 @@ describe("Instrument core design contract", () => {
     expect(bodyChildrenBlock).toContain("flex: none;");
   });
 
+  it("bounds the Codex navigator host so long Wiki entry lists keep native scrolling", () => {
+    const components = source("styles/components.css");
+    const navigatorLayout = source("codex/styles/layout.css");
+    const railHostBlock = components.match(/\.codex-rail-host \{[^}]*\}/)?.[0] ?? "";
+    const splitRailHostBlock = components.match(/\.codex-rail-host\.is-split \{[^}]*\}/)?.[0] ?? "";
+    const navPaneBlock = components.match(/\.codex-nav-pane \{[^}]*\}/)?.[0] ?? "";
+    const hostBlock = components.match(/\.codex-rail-host > \.codex-host,\n\.codex-nav-pane > \.codex-host \{[^}]*\}/)?.[0] ?? "";
+    const navigatorBlock = navigatorLayout.match(/\.codex-navigator \{[^}]*\}/)?.[0] ?? "";
+    const navigatorScrollBlock = navigatorLayout.match(/\.codex-navigator-scroll \{[^}]*\}/)?.[0] ?? "";
+
+    expect(railHostBlock).toContain("height: 100%;");
+    expect(railHostBlock).toContain("min-height: 0;");
+    expect(splitRailHostBlock).toContain("display: grid;");
+    expect(splitRailHostBlock).toContain("grid-template-rows: minmax(0, 1fr);");
+    expect(splitRailHostBlock).toContain("height: 100%;");
+    expect(splitRailHostBlock).toContain("min-height: 0;");
+    expect(navPaneBlock).toContain("display: flex;");
+    expect(navPaneBlock).toContain("flex-direction: column;");
+    expect(navPaneBlock).toContain("min-height: 0;");
+    expect(navPaneBlock).toContain("overflow: hidden;");
+    expect(hostBlock).toContain("height: 100%;");
+    expect(hostBlock).toContain("min-height: 0;");
+    expect(navigatorBlock).toContain("display: flex;");
+    expect(navigatorBlock).toContain("flex-direction: column;");
+    expect(navigatorBlock).toContain("min-height: 0;");
+    expect(navigatorBlock).toContain("height: 100%;");
+    expect(navigatorScrollBlock).toContain("flex: 1;");
+    expect(navigatorScrollBlock).toContain("min-height: 0;");
+    expect(navigatorScrollBlock).toContain("overflow-y: auto;");
+  });
+
   it("locks Command Band coordinate invariance to tint-only state changes", () => {
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
