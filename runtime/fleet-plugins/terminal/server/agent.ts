@@ -104,6 +104,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
       return sessionId ? terminalRuntime.getMessagePolicy(sessionId) ?? {} : {};
     },
+    // 세션별 지연 제출 직렬화 키: 같은 터미널 세션으로 동시 도착한 리마인더가 뒤섞이지 않도록 한다.
+    resolveSessionKey: (event) => resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById) ?? undefined,
   });
   const unsubscribeRename = ctx.host.events.subscribe(OPERATION_RENAMED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRenamedEvent(payload)) return;

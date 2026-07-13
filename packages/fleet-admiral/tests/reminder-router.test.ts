@@ -148,6 +148,41 @@ describe("carrier result reminder router", () => {
     }
   });
 
+  it("serializes delayed ConPTY submits per session so concurrent reminders do not interleave", async () => {
+    vi.useFakeTimers();
+    try {
+      const writes: string[] = [];
+      const handlers: Array<(event: CarrierJobStreamEvent) => void> = [];
+      createCarrierResultReminderRouter({
+        platform: "win32",
+        streamRegister(handler) {
+          handlers.push(handler);
+          return () => undefined;
+        },
+        resolveSink: () => createArraySink(writes),
+        resolvePolicy: () => ({ bracketedPaste: true, conptyPasteBurst: true, lineTerminator: "\r", multilineStrategy: "paste-mode" }),
+        resolveSessionKey: () => "session-1",
+      });
+
+      // 같은 세션으로 두 리마인더가 지연 창 안에 연달아 도착.
+      handlers[0]?.(finalizedEvent("A"));
+      handlers[0]?.(finalizedEvent("B"));
+
+      // A의 텍스트만 먼저 기록되고, B는 A의 제출(CR)이 끝날 때까지 대기한다.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(writes).toEqual(["A"]);
+
+      // A의 CR이 flush된 뒤에야 B의 텍스트가 이어진다(인터리브 방지).
+      await vi.advanceTimersByTimeAsync(250);
+      expect(writes).toEqual(["A", "\r", "B"]);
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(writes).toEqual(["A", "\r", "B", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("quietly drops when no sink resolves", () => {
     const handlers: Array<(event: CarrierJobStreamEvent) => void> = [];
     createCarrierResultReminderRouter({
