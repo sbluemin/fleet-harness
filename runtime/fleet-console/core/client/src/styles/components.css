@@ -8129,6 +8129,12 @@ body[data-codex-reading="true"] .operations-side-bar {
   min-height: 0;
 }
 
+.codex-rail-host > .codex-host,
+.codex-nav-pane > .codex-host {
+  height: 100%;
+  min-height: 0;
+}
+
 .codex-rail-host.is-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 248px;
