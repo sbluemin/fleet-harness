@@ -99,7 +99,7 @@ async function collectContentsEntries(
 
 async function openDirectory(targetPath: string, opendir: typeof fs.promises.opendir): Promise<fs.Dir> {
   try {
-    return await opendir(targetPath);
+    return await opendir(targetPath, { bufferSize: DIRECTORY_ENTRY_CAP + 1 });
   } catch (error) {
     throw mapFsError(error);
   }
