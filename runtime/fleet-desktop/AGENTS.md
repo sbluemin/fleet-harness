@@ -15,11 +15,10 @@
 ## Constraints
 
 - The Console product remains the sole server, PTY, provider, plugin, durable-state, and React owner. Desktop production source imports the shared `@fleet-console/desktop-protocol` contract; never Console internals. Packaged integration tests remain anchored to the published `@dotobokuri/fleet-console/desktop-protocol` compatibility surface.
-- The main process hands the single window to `/console/` only after verifying Desktop ownership and protocol for one exact loopback origin; the browser URL remains token-free.
+- The main process hands the single window to `/console/` only after verifying a loopback Console identity; the browser URL remains token-free. Desktop provenance stays lifecycle compatibility data, never a Console feature mode.
 - Every renderer remains sandboxed and Node-free. Navigation is confined to the activated Console origin's `/console/` paths; popups and non-Console navigation remain denied.
-- The entry surface is view-only and one-way. Do not add preload, raw IPC, renderer input, a renderer fork, or a Desktop HTTP server; native dialogs are the input surface.
+- The entry surface is view-only and one-way. Do not add preload, raw IPC, a renderer fork, or a Desktop HTTP server. Runtime pairing input belongs only to Desktop's local sandboxed child modal: it contains no JavaScript and returns only its raw target through intercepted private-scheme navigation.
 - Packaged artifacts remain shell-only; managed Node and Console code is procured into the replaceable Desktop runtime namespace, while state, captures, and locks remain in the Console data namespace.
-- Managed Node procurement is staged, checksum-verified, and atomically promoted; installer and sidecar environments preserve their injection- and control-key sanitization.
-- Stop only a protocol-verified Desktop-owned Console. A live foreign Console is acknowledged and left untouched.
-- Never replace a running sidecar in place: updates found during an active app session trigger relaunch, and installation occurs only in the entry flow before handoff.
+- Managed Node and Console procurement is staged, checksum-verified, and atomically promoted; installer and sidecar environments preserve their injection- and control-key sanitization. In-session Console update application is only valid when it can preserve this contract and reconnect the owned window; otherwise Desktop relaunches into the entry-flow installer.
+- A healthy canonical foreign Console is identity-verified and displayed without lifecycle ownership; Desktop Quit never signals it. Unhealthy foreign locks remain non-destructive failures.
 - Credential-free local packaging and signed release packaging are separate trust levels. Release paths fail closed, and signing claims require native release evidence.

@@ -225,7 +225,7 @@ function GithubLinks({ menuItem = false, version }: { readonly menuItem?: boolea
   );
 }
 
-function resolveUpdateApplyCopy(applyState: UpdateApplyState, errorCode: string | null, latestVersion: string | null): UpdateApplyCopy {
+export function resolveUpdateApplyCopy(applyState: UpdateApplyState, errorCode: string | null, latestVersion: string | null): UpdateApplyCopy {
   const latest = latestVersion ? `Latest version ${latestVersion}` : "Update available";
   if (applyState === "applying") return { label: "Requesting", title: "Requesting the console update.", tone: "live", disabled: true };
   if (applyState === "accepted") return { label: "Updating", title: "The console will restart and open in a new window.", tone: "live", disabled: true };
@@ -237,13 +237,14 @@ function resolveUpdateApplyCopy(applyState: UpdateApplyState, errorCode: string 
 
 function resolveBlockedUpdateApplyCopy(errorCode: string | null): UpdateApplyCopy {
   if (errorCode === "local_channel") return { label: "Local", title: "Local development builds are not updated from the console.", tone: "blocked", disabled: true };
+  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: "Update and Restart", title: "This managed Console installation updates through Fleet Console Desktop. Use Desktop Update and Restart.", tone: "blocked", disabled: true };
   if (errorCode === "update_already_in_progress") return { label: "Busy", title: "Another update is already in progress.", tone: "blocked", disabled: true };
   if (errorCode === "update_not_available") return { label: "Current", title: "The server re-check found no update to apply.", tone: "blocked", disabled: true };
   return { label: "Blocked", title: "The console is not ready to start an update. Try again shortly.", tone: "error", disabled: false };
 }
 
 function isBlockedUpdateApplyError(code: string): boolean {
-  return code === "local_channel" || code === "update_already_in_progress" || code === "update_not_available";
+  return code === "local_channel" || code === "managed_runtime_update_requires_relaunch" || code === "update_already_in_progress" || code === "update_not_available";
 }
 
 function useGithubStars(): GithubStarsState {

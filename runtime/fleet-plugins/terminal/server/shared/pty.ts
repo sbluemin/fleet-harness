@@ -1,5 +1,7 @@
+import { chmodSync, lstatSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
+import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -71,11 +73,31 @@ export function resolveUseConptyDll(platform: NodeJS.Platform, env: NodeJS.Proce
 }
 
 function loadNodePty(): NodePtyModule {
-  return loadNodePtyRequire(fileURLToPath(import.meta.url))("node-pty") as NodePtyModule;
+  const nodePtyRequire = loadNodePtyRequire(fileURLToPath(import.meta.url));
+  ensureNodePtySpawnHelpersExecutable(path.dirname(nodePtyRequire.resolve("node-pty/package.json")));
+  return nodePtyRequire("node-pty") as NodePtyModule;
 }
 
 function loadNodePtyRequire(currentFile: string): NodeRequire {
   return resolveConsolePackageRequire(currentFile, require);
+}
+
+export function ensureNodePtySpawnHelpersExecutable(
+  packageRoot: string,
+  platform: NodeJS.Platform = process.platform,
+  architecture: string = process.arch,
+): void {
+  if (platform !== "darwin") return;
+  for (const directory of ["build/Release", "build/Debug", `prebuilds/darwin-${architecture}`]) {
+    const helper = path.join(packageRoot, directory, "spawn-helper");
+    try {
+      const stat = lstatSync(helper);
+      if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o111) === 0o111) continue;
+      chmodSync(helper, stat.mode | 0o111);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
 }
 
 function resolveUserShell(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {

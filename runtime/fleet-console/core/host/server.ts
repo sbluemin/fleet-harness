@@ -10,7 +10,7 @@ import {
 import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
+import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
@@ -112,7 +112,16 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
+export const PAIRING_IDENTITY = { product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 } as const;
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: PAIRING_IDENTITY_PATH,
+    summary: "Read the loopback runtime pairing identity.",
+    category: "Observer",
+    gate: "loopback",
+  },
   {
     method: "GET",
     path: "/api/v1/status",
@@ -259,6 +268,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const host = deps.host ?? DEFAULT_HOST;
   const port = deps.port ?? DEFAULT_PORT;
   const release = deps.release ?? readFleetConsoleRelease();
+  // Validate and retain v1 provenance solely for lock ownership emission. It must not
+  // influence channel, health, update, or CLI feature behavior.
   const desktop = readDesktopProtocolEnvironment();
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot);
   // 버전은 런타임에 package.json을 읽는 release.ts SSoT에서 해석한다(channel과 동일 경로).
@@ -566,6 +577,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
+    if (pathname === PAIRING_IDENTITY_PATH) {
+      handlePairingIdentity(req, res);
+      return;
+    }
     if (tryServeStaticConsole(req, res, pathname)) return;
     if (pathname === "/api/v1/health") {
       handleHealth(req, res);
@@ -613,6 +628,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     res.writeHead(404);
     res.end();
+  }
+
+  function handlePairingIdentity(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    // Discovery only: no process, path, owner, or durable-state data; no CORS/bearer change.
+    writeJson(res, 200, PAIRING_IDENTITY);
   }
 
   function handlePluginRuntimeRoute({ req, res, pathname }: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): boolean {
@@ -664,7 +688,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         endpoint: payload.endpoint,
         startedAt: payload.startedAt,
         version: payload.version,
-        ...(channel === "desktop" ? { channel } : {}),
         ...(payload.owner ? { owner: payload.owner } : {}),
         workspaceCount: operations.list().length,
       };
@@ -847,10 +870,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 400, { error: "invalid_update_apply_body" });
       return;
     }
-    if (channel === "desktop") {
-      writeJson(res, 403, { error: "desktop_update_managed" });
-      return;
-    }
     if (channel === "local") {
       writeJson(res, 403, { error: "local_channel" });
       return;
@@ -879,9 +898,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         lockFile: activeLockFile,
         targetVersion: freshStatus.latestVersion,
       });
-    } catch {
+    } catch (error) {
       updateApplyInFlight = false;
-      writeJson(res, 503, { error: "update_worker_unavailable" });
+      const updateError: ConsoleUpdateApplyError = error instanceof Error && error.message === "managed_runtime_update_requires_relaunch"
+        ? "managed_runtime_update_requires_relaunch"
+        : "update_worker_unavailable";
+      writeJson(res, 503, { error: updateError });
       return;
     }
     res.once("finish", () => {

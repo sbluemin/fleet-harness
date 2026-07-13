@@ -843,11 +843,13 @@ describe("console static and terminal ticket boundary", () => {
     await expect(response.json()).resolves.toEqual({ error: "local_channel" });
   });
 
-  it("routes desktop update requests to native update management before the npm worker", async () => {
-    const updateCheck = { getStatus: vi.fn(() => ({ updateAvailable: true, latestVersion: "1.2.3" })), refresh: vi.fn() };
+  it("accepts update apply for a Desktop-provenance runtime through its actual installation target", async () => {
+    const updateCheck = { getStatus: vi.fn(() => ({ updateAvailable: true, latestVersion: "1.2.3" })), refresh: vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" }) };
+    const updateApplyStart = vi.fn().mockResolvedValue({ accepted: true });
     const fixture = await startFixture({
-      release: { channel: "desktop", version: "1.0.0", packageRoot: "/pkg" },
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
       updateCheck,
+      updateApply: { start: updateApplyStart },
     });
     updateCheck.refresh.mockClear();
 
@@ -857,9 +859,10 @@ describe("console static and terminal ticket boundary", () => {
       body: JSON.stringify({}),
     });
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({ error: "desktop_update_managed" });
-    expect(updateCheck.refresh).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ status: "accepted" });
+    expect(updateCheck.refresh).toHaveBeenCalledOnce();
+    expect(updateApplyStart).toHaveBeenCalledOnce();
   });
 
   it("accepts update apply after fresh recheck and starts shutdown after the 202 response", async () => {
@@ -892,6 +895,26 @@ describe("console static and terminal ticket boundary", () => {
       lockFile: fixture.lockFile,
       targetVersion: "1.2.3",
     });
+  });
+
+  it("preserves the managed installation relaunch condition instead of reporting a generic worker failure", async () => {
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+      updateApply: { start: vi.fn(async () => { throw new Error("managed_runtime_update_requires_relaunch"); }) },
+      updateCheck: {
+        getStatus: () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+        refresh: vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" }),
+      },
+    });
+
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "managed_runtime_update_requires_relaunch" });
   });
 
   it("rejects concurrent update apply while the worker spawn is in flight", async () => {

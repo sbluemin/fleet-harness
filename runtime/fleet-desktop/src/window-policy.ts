@@ -7,6 +7,10 @@ export interface SecureWindowOptions {
 
 export interface WindowPolicy {
   activateConsoleOrigin(origin: string): void;
+  currentConsoleOrigin(): string | null;
+  stageConsoleOrigin(origin: string): void;
+  commitConsoleOrigin(): void;
+  cancelPendingConsoleOrigin(): void;
 }
 
 export const DESKTOP_WINDOW_TITLE = "Fleet Console";
@@ -35,18 +39,29 @@ export function applyWindowPolicy(contents: WebContents, openExternal: (url: str
 export function applyWindowPolicy(contents: WebContents, origin: string, openExternal: (url: string) => Promise<void>): WindowPolicy;
 export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: string | ((url: string) => Promise<void>), legacyOpenExternal?: (url: string) => Promise<void>): WindowPolicy {
   let consoleOrigin: string | undefined = typeof originOrOpenExternal === "string" ? originOrOpenExternal : undefined;
+  let pendingConsoleOrigin: string | undefined;
   const openExternal = typeof originOrOpenExternal === "function" ? originOrOpenExternal : legacyOpenExternal;
   if (!openExternal) throw new Error("window_policy_open_external_required");
-  contents.on("will-navigate", (event, url) => { if (!consoleOrigin || !isAllowedConsoleUrl(url, consoleOrigin)) event.preventDefault(); });
+  contents.on("will-navigate", (event, url) => {
+    if (!consoleOrigin || (!isAllowedConsoleUrl(url, consoleOrigin) && (!pendingConsoleOrigin || !isAllowedConsoleUrl(url, pendingConsoleOrigin)))) event.preventDefault();
+  });
   contents.setWindowOpenHandler(({ url }) => {
     if (consoleOrigin && isHttpsUrl(url)) void openExternal(url);
     return { action: "deny" };
   });
   contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, consoleOrigin ?? "")));
-  return { activateConsoleOrigin(origin: string): void {
-    if (!isLoopbackOrigin(origin)) throw new Error("window_policy_console_origin_not_loopback");
-    consoleOrigin = origin;
-  } };
+  const validateOrigin = (origin: string): void => { if (!isLoopbackOrigin(origin)) throw new Error("window_policy_console_origin_not_loopback"); };
+  return {
+    activateConsoleOrigin(origin: string): void { validateOrigin(origin); consoleOrigin = origin; pendingConsoleOrigin = undefined; },
+    currentConsoleOrigin(): string | null { return consoleOrigin ?? null; },
+    stageConsoleOrigin(origin: string): void { validateOrigin(origin); pendingConsoleOrigin = origin; },
+    commitConsoleOrigin(): void {
+      if (!pendingConsoleOrigin) throw new Error("window_policy_pending_console_origin_required");
+      consoleOrigin = pendingConsoleOrigin;
+      pendingConsoleOrigin = undefined;
+    },
+    cancelPendingConsoleOrigin(): void { pendingConsoleOrigin = undefined; },
+  };
 }
 
 export function isAllowedConsoleUrl(url: string, origin: string): boolean { try { const parsed = new URL(url); return parsed.origin === origin && parsed.pathname.startsWith("/console/"); } catch { return false; } }

@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { isDesktopDevelopmentEnvironment, readDesktopProtocolEnvironment } from "./desktop-protocol.js";
+import { readDesktopProtocolEnvironment } from "./desktop-protocol.js";
 
-export type FleetConsoleChannel = "stable" | "local" | "desktop";
+export type FleetConsoleChannel = "stable" | "local";
 
 export interface FleetConsoleRelease {
   readonly channel: FleetConsoleChannel;
@@ -13,17 +13,17 @@ export interface FleetConsoleRelease {
 
 export function readFleetConsoleRelease(env: NodeJS.ProcessEnv = process.env): FleetConsoleRelease {
   const desktop = readDesktopProtocolEnvironment(env);
-  if (desktop) return readReleaseAt(desktop.resourceRoot, isDesktopDevelopmentEnvironment(env) ? "local" : "desktop");
+  // Supervision metadata selects the actual package root but never a Console feature mode.
+  if (desktop) return readReleaseAt(desktop.resourceRoot, readPackageChannel(desktop.resourceRoot));
   const requireFromHere = createRequire(import.meta.url);
   const packageJsonPath = resolvePackageJsonPath(requireFromHere);
   const packageRoot = path.dirname(packageJsonPath);
-  const pkg = requireFromHere(packageJsonPath) as { private?: boolean };
-  // 미게시 워크스페이스 빌드는 package.json의 private:true로 식별해 local 채널로 분류한다.
-  // publish 스크립트가 게시 시 private를 제거하므로 게시본은 stable이 된다(fleet-cli release.ts와 대칭).
-  if (pkg.private === true) {
-    return readReleaseAt(packageRoot, "local", requireFromHere);
-  }
-  return readReleaseAt(packageRoot, "stable", requireFromHere);
+  return readReleaseAt(packageRoot, readPackageChannel(packageRoot, requireFromHere), requireFromHere);
+}
+
+function readPackageChannel(packageRoot: string, requireFromHere = createRequire(import.meta.url)): FleetConsoleChannel {
+  const pkg = requireFromHere(path.join(packageRoot, "package.json")) as { private?: boolean };
+  return pkg.private === true ? "local" : "stable";
 }
 
 function readReleaseAt(packageRoot: string, channel: FleetConsoleChannel, requireFromHere = createRequire(import.meta.url)): FleetConsoleRelease {

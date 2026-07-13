@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { SideBarBrandFoot } from "../core/client/src/components/side-bar-brand-foot.js";
+import { resolveUpdateApplyCopy, SideBarBrandFoot } from "../core/client/src/components/side-bar-brand-foot.js";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -44,6 +44,15 @@ function menuItems(): HTMLElement[] {
 }
 
 describe("SideBarBrandFoot System Menu", () => {
+  it("gives managed installation updates an actionable Desktop relaunch instruction instead of retry", () => {
+    expect(resolveUpdateApplyCopy("blocked", "managed_runtime_update_requires_relaunch", "1.2.3")).toEqual({
+      label: "Update and Restart",
+      title: "This managed Console installation updates through Fleet Console Desktop. Use Desktop Update and Restart.",
+      tone: "blocked",
+      disabled: true,
+    });
+  });
+
   it("focuses the first System Menu item on open and cycles with arrow keys", () => {
     mountFoot();
     const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-system-trigger")!;

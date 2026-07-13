@@ -62,9 +62,9 @@ The launcher ensures the local console server is running and opens `/console/` d
 
 Fleet Console Desktop is a thin Electron shell around this service, not a second Console implementation. Its packaged standard Node `22.23.1` sidecar runs this package's `dist/cli.mjs serve` outside Electron's asar and loads exactly `http://127.0.0.1:<verified-port>/console/`. The service remains the owner of HTTP/REST/SSE/WebSocket, PTY, provider policy, plugin runtime, durable JSON state, and the React UI.
 
-Published stable CLI/browser and desktop share one canonical stable lock and `~/.fleet/console` durable-state namespace (unless the existing `FLEET_CONSOLE_DIR` override is deliberately set). Health/lock owner and protocol checks allow compatible browser/CLI attachment to a desktop-owned service. CLI `stop` and `restart` refuse to kill a desktop owner; use native **Quit** instead. A healthy CLI-owned daemon is never killed silently: Desktop asks before switching it.
+Published stable CLI/browser and Desktop-supervised Console share one canonical stable lock and `~/.fleet/console` durable-state namespace (unless the existing `FLEET_CONSOLE_DIR` override is deliberately set). Owner metadata remains provenance/lifecycle compatibility data; it does not alter Console channel, health, update, or CLI-control behavior. Desktop can pair with an already running Console by its token-free loopback pairing identity.
 
-The stable browser/CLI channel retains npm-global updating. The `desktop` channel disables npm update checks and rejects `POST /api/v1/updates/apply` with `desktop_update_managed`; native Electron update UX consumes signed GitHub Release metadata.
+Updates apply in-session only to ordinary global packages through the npm-global worker. A managed `console/latest` runtime is updated by Desktop's hardened entry-flow installer on relaunch; `POST /api/v1/updates/apply` refuses unsupported install layouts rather than mutating a live managed runtime. The pairing identity endpoint is discovery, not authentication: the user's exact `127.0.0.1:port` choice is the trust decision.
 
 ## Development
 

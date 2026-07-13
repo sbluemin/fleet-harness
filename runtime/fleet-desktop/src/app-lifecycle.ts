@@ -1,6 +1,6 @@
 import type { App, BrowserWindow } from "electron";
 
-export interface DesktopLifecycle { attachWindow(window: BrowserWindow): void; start(): Promise<void>; show(): void; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
+export interface DesktopLifecycle { attachWindow(window: BrowserWindow): void; start(): Promise<void>; show(): Promise<BrowserWindow>; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
 
 export function createDesktopLifecycle(app: App, createWindow: () => Promise<BrowserWindow>, stopSidecar: () => Promise<void>): DesktopLifecycle {
   let window: BrowserWindow | null = null;
@@ -30,14 +30,14 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Bro
     }
     return windowCreation;
   };
-  const show = (): void => {
+  const show = async (): Promise<BrowserWindow> => {
     if (window && !window.isDestroyed()) {
       revealWindow(window);
-      return;
+      return window;
     }
-    void ensureWindow().then((activeWindow) => {
-      revealWindow(activeWindow);
-    });
+    const activeWindow = await ensureWindow();
+    revealWindow(activeWindow);
+    return activeWindow;
   };
   const prepareToQuit = (): Promise<void> => {
     if (!quitPreparation) {
@@ -53,8 +53,8 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Bro
     app.quit();
   };
   const start = async (): Promise<void> => {
-    app.on("activate", show);
-    app.on("second-instance", show);
+    app.on("activate", () => { void show(); });
+    app.on("second-instance", () => { void show(); });
     app.on("window-all-closed", () => {
       if (process.platform === "darwin" && !quitPreparation) return;
       app.quit();

@@ -10,6 +10,7 @@ export interface ApplicationMenuActions {
   readonly zoomOut: () => void;
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
+  readonly connectRuntime: () => void;
   readonly consoleReady: () => boolean;
   readonly updates: UpdateController;
 }
@@ -30,6 +31,7 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
       role: "appMenu",
       submenu: [
         { label: "Show", click: actions.show },
+        { label: "Connect to Runtime…", enabled: actions.consoleReady(), click: () => { if (actions.consoleReady()) actions.connectRuntime(); } },
         { type: "separator" },
         ...(actions.updates.enabled() ? [{ label: "Check for Updates", click: () => void actions.updates.check() }, ...(actions.updates.availableVersion() ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }] : [])] : []),
         { type: "separator" },

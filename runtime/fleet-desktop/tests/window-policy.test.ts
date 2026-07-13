@@ -37,6 +37,7 @@ describe("secure window policy", () => {
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: before }, "http://127.0.0.1:4310/console/");
     expect(before).toHaveBeenCalledOnce();
     policy.activateConsoleOrigin("http://127.0.0.1:4310");
+    expect(policy.currentConsoleOrigin()).toBe("http://127.0.0.1:4310");
     const allowed = vi.fn();
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: allowed }, "http://127.0.0.1:4310/console/");
     expect(allowed).not.toHaveBeenCalled();
@@ -44,6 +45,25 @@ describe("secure window policy", () => {
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: rejected }, "http://localhost:4310/console/");
     expect(rejected).toHaveBeenCalledOnce();
     expect(() => policy.activateConsoleOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_loopback");
+  });
+
+  it("allows a pending target only until a transactional pairing commits it", () => {
+    const listeners = new Map<string, (...args: never[]) => unknown>();
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionRequestHandler: vi.fn() } };
+    const policy = applyWindowPolicy(contents as never, "http://127.0.0.1:4000", async () => undefined);
+    policy.stageConsoleOrigin("http://127.0.0.1:4310");
+    const pendingAllowed = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: pendingAllowed }, "http://127.0.0.1:4310/console/");
+    expect(pendingAllowed).not.toHaveBeenCalled();
+    policy.cancelPendingConsoleOrigin();
+    const cancelled = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: cancelled }, "http://127.0.0.1:4310/console/");
+    expect(cancelled).toHaveBeenCalledOnce();
+    policy.stageConsoleOrigin("http://127.0.0.1:4310");
+    policy.commitConsoleOrigin();
+    const committed = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: committed }, "http://127.0.0.1:4310/console/");
+    expect(committed).not.toHaveBeenCalled();
   });
 
   it("blocks popups and navigation while brokering HTTPS links only", async () => {

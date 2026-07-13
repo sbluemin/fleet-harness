@@ -27,7 +27,7 @@ export interface ConsoleHealth {
   readonly endpoint: string;
   readonly startedAt: number;
   readonly version: string;
-  readonly channel?: "stable" | "local" | "desktop";
+  readonly channel?: "stable" | "local";
   readonly owner?: ConsoleOwnerMetadata;
   readonly workspaceCount: number;
 }
@@ -75,7 +75,7 @@ export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unk
 export interface ConsoleObserverStatus {
   readonly workspaces: number;
   readonly version: string;
-  readonly channel: "stable" | "local" | "desktop" | "unknown";
+  readonly channel: "stable" | "local" | "unknown";
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
   readonly port: number;
@@ -214,6 +214,16 @@ export interface ConsoleObserverWorkspacesResponse {
 export interface ConsoleUpdateApplyAcceptedResponse {
   readonly status: "accepted";
 }
+
+// An apply request can be refused by the current installation layout without
+// implying a Desktop release channel or Console feature mode.
+export type ConsoleUpdateApplyError =
+  | "console_not_ready"
+  | "local_channel"
+  | "managed_runtime_update_requires_relaunch"
+  | "update_already_in_progress"
+  | "update_not_available"
+  | "update_worker_unavailable";
 
 export interface ConsoleOperationGeometry {
   readonly x: number;

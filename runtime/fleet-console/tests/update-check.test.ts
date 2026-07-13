@@ -18,15 +18,15 @@ describe("console update check", () => {
     expect(lookupCount).toBe(0);
   });
 
-  it("never contacts npm for desktop builds", async () => {
+  it("checks normally when the package is Desktop-supervised", async () => {
     const fetchLatest = vi.fn(async () => "2.0.0");
     const service = createConsoleUpdateCheckService({
-      readRelease: () => ({ channel: "desktop", version: "1.0.0", packageRoot: "/console" }),
+      readRelease: () => ({ channel: "stable", version: "1.0.0", packageRoot: "/console" }),
       fetchLatest,
     });
 
-    await expect(service.refresh()).resolves.toEqual({ updateAvailable: false });
-    expect(fetchLatest).not.toHaveBeenCalled();
+    await expect(service.refresh()).resolves.toEqual({ updateAvailable: true, latestVersion: "2.0.0" });
+    expect(fetchLatest).toHaveBeenCalledOnce();
   });
 
   it("caches stable update results within the TTL", async () => {

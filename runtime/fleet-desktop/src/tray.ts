@@ -10,6 +10,7 @@ export interface TrayActions {
   readonly zoomOut: () => void;
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
+  readonly connectRuntime: () => void;
   readonly consoleReady: () => boolean;
   readonly updates: UpdateController;
 }
@@ -17,6 +18,7 @@ export interface TrayActions {
 export function configureTray(tray: Tray, MenuCtor: typeof Menu, actions: TrayActions): void {
   tray.setContextMenu(MenuCtor.buildFromTemplate([
     { label: "Show Fleet Console", click: actions.show },
+    { label: "Connect to Runtime…", enabled: actions.consoleReady(), click: () => { if (actions.consoleReady()) actions.connectRuntime(); } },
     { type: "separator" },
     consoleAction("Zoom In", "Ctrl+=", actions.zoomIn, actions),
     consoleAction("Zoom Out", "Ctrl+-", actions.zoomOut, actions),

@@ -36,11 +36,11 @@ afterEach(() => {
 });
 
 describe("fleet console CLI", () => {
-  it("refuses stop or restart control of a desktop-owned daemon", () => {
+  it("allows stop or restart control of a desktop-provenance daemon", () => {
     expect(() => assertCliCanControlDaemon({
       ...LOCK,
       owner: { kind: "desktop", id: "desktop-owner-1", protocolVersion: 1 },
-    })).toThrow("quit it from the native menu");
+    })).not.toThrow();
     expect(() => assertCliCanControlDaemon(LOCK)).not.toThrow();
   });
 
