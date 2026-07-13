@@ -259,22 +259,20 @@ export function OperationsCanvas({
           onClose={() => setContextMenu(null)}
         />
       ) : null}
-      {!formationView && !panelMaximized ? (
-        <CanvasMinimap
-          operations={visibleOperations}
-          pluginOperations={Object.fromEntries(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => [operation.id, {
-            theaterId: operation.theaterId,
-            geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
-          }]))}
-          viewport={canvas.viewport}
-          canvasSize={canvasSize}
-          onJump={(center) => setViewport({
-            x: canvasSize.width / 2 - center.x * canvas.viewport.zoom,
-            y: canvasSize.height / 2 - center.y * canvas.viewport.zoom,
-            zoom: canvas.viewport.zoom,
-          })}
-        />
-      ) : null}
+      <CanvasMinimap
+        operations={visibleOperations}
+        pluginOperations={Object.fromEntries(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => [operation.id, {
+          theaterId: operation.theaterId,
+          geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
+        }]))}
+        viewport={canvas.viewport}
+        canvasSize={canvasSize}
+        onJump={(center) => setViewport({
+          x: canvasSize.width / 2 - center.x * canvas.viewport.zoom,
+          y: canvasSize.height / 2 - center.y * canvas.viewport.zoom,
+          zoom: canvas.viewport.zoom,
+        })}
+      />
     </main>
   );
 }

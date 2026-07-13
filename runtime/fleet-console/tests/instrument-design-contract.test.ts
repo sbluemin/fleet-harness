@@ -39,7 +39,7 @@ describe("Instrument core design contract", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
   });
 
-  it("keeps minimap navigation while removing Map collapse controls", () => {
+  it("keeps minimap navigation and collapse controls while hiding Map in Formation and maximize", () => {
     const minimap = source("canvas/canvas-minimap.tsx");
     const canvas = source("canvas/canvas.tsx");
     const components = source("styles/components.css");
@@ -47,9 +47,17 @@ describe("Instrument core design contract", () => {
     expect(minimap).toContain(">Map<");
     expect(minimap).toContain("onPointerMove={onPointerMove}");
     expect(minimap).toContain("onJump({");
-    expect(minimap).not.toMatch(/localStorage|Collapsed|Open Map|Collapse Map|canvas-minimap-(?:fab|toggle)/);
-    expect(canvas).toContain("{!formationView && !panelMaximized ? (");
-    expect(components).not.toMatch(/canvas-minimap-(?:fab|toggle)/);
+    expect(minimap).toContain("fleet-console.map.radarCollapsed");
+    expect(minimap).toContain('aria-label="Open Map"');
+    expect(minimap).toContain('aria-label="Collapse Map"');
+    expect(minimap).toContain("canvas-minimap-fab");
+    expect(minimap).toContain("canvas-minimap-toggle");
+    expect(canvas).toContain("<CanvasMinimap");
+    expect(canvas).not.toContain("{!formationView && !panelMaximized ? (");
+    expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap,");
+    expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap-fab,");
+    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap,");
+    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab {");
     expect(contextMenu).toContain("Formation view");
     expect(contextMenu).not.toContain("onToggleRadar");
     expect(contextMenu).not.toContain("onTogglePerimeter");

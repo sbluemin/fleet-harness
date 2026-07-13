@@ -72,9 +72,8 @@ afterEach(() => {
   container = null;
 });
 
-describe("CanvasMinimap visibility", () => {
-  it("always renders the full minimap in the default canvas state", () => {
-    window.localStorage.setItem("fleet-console.map.radarCollapsed", "true");
+describe("CanvasMinimap collapse behavior", () => {
+  it("persists default-canvas collapse and expand preference", () => {
     act(() => root!.render(createElement(CanvasMinimap, {
       operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },
       pluginOperations: {},
@@ -83,8 +82,38 @@ describe("CanvasMinimap visibility", () => {
       onJump: () => {},
     })));
     expect(document.querySelector(".canvas-minimap")).not.toBeNull();
-    expect(document.querySelector('[aria-label="Open Map"]')).toBeNull();
-    expect(document.querySelector('[aria-label="Collapse Map"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Collapse Map"]')!.click());
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
+    expect(window.localStorage.getItem("fleet-console.map.radarCollapsed")).toBe("true");
+
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Open Map"]')!.click());
+    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+    expect(window.localStorage.getItem("fleet-console.map.radarCollapsed")).toBe("false");
+  });
+
+  it("does not mutate the saved preference in Formation and restores the pre-entry state", () => {
+    act(() => root!.render(createElement(CanvasMinimap, {
+      operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },
+      pluginOperations: {},
+      viewport: { x: 0, y: 0, zoom: 1 },
+      canvasSize: { width: 900, height: 600 },
+      onJump: () => {},
+    })));
+    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+
+    act(() => toggleFormationView());
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
+    expect(window.localStorage.getItem("fleet-console.map.radarCollapsed")).toBeNull();
+
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Open Map"]')!.click());
+    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+    expect(window.localStorage.getItem("fleet-console.map.radarCollapsed")).toBeNull();
+
+    act(() => clearFormationView());
+    expect(document.querySelector('[aria-label="Collapse Map"]')).not.toBeNull();
+    expect(window.localStorage.getItem("fleet-console.map.radarCollapsed")).toBeNull();
   });
 
   it("preserves the no-operations and invalid-viewport guards", () => {
@@ -107,21 +136,24 @@ describe("CanvasMinimap visibility", () => {
     expect(document.querySelector(".canvas-minimap")).toBeNull();
   });
 
-  it("mounts at the OperationsCanvas boundary only in the default state and restores after Formation or maximize", () => {
+  it("keeps the minimap mounted through Formation and maximize so the collapsed preference restores", () => {
+    window.localStorage.setItem("fleet-console.map.radarCollapsed", "true");
     renderOperationsCanvas();
-    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
 
     act(() => toggleFormationView());
-    expect(document.querySelector(".canvas-minimap")).toBeNull();
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-view")).toBe(true);
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
 
     act(() => clearFormationView());
-    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
 
     act(() => setMaximizedOperationId("operation"));
-    expect(document.querySelector(".canvas-minimap")).toBeNull();
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-panel-maximized")).toBe(true);
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
 
     act(() => clearMaximizedOperationId());
-    expect(document.querySelector(".canvas-minimap")).not.toBeNull();
+    expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
   });
 
   it("moves the canvas viewport when the mounted minimap receives pointer navigation", () => {
