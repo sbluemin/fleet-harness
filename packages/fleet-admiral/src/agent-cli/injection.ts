@@ -7,7 +7,7 @@ import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
-import { buildPosixShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
+import { buildHostShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
 import type {
@@ -269,7 +269,7 @@ function codexHooksConfig(hookExecs: CodexProfileHookExecs): string[] {
 function codexHookHandlersInline(execs: readonly FleetHookExec[]): string {
   const handlers = execs
     .map((exec) => {
-      const command = buildPosixShellCommand([exec.command, ...exec.args]);
+      const command = buildHostShellCommand([exec.command, ...exec.args]);
       return `{ type = "command", command = "${escapeTomlBasicString(command)}" }`;
     })
     .join(", ");
