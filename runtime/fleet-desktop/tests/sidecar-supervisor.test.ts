@@ -22,8 +22,13 @@ describe("sidecar supervisor", () => {
   it("treats a healthy version-mismatched Desktop lock as a foreign pairing target", async () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
     vi.stubGlobal("fetch", healthyConsoleFetch());
-    const instance = new SidecarSupervisor({ nodePath: "/sidecar/node", cliPath: "/sidecar/fleet-console/dist/cli.mjs", serviceRoot: "/sidecar/fleet-console", serviceVersion: "2.0.0", env: {}, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
+    const resolveRuntime = vi.fn(async () => ({ nodePath: "/runtime/node", cliPath: "/runtime/console/dist/cli.mjs", serviceRoot: "/runtime/console", serviceVersion: "1.23.0" }));
+    const kill = vi.spyOn(process, "kill");
+    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "2.0.0", env: {}, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
     await expect(instance.startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+    expect(resolveRuntime).toHaveBeenCalledOnce();
+    await instance.stop();
+    expect(kill).not.toHaveBeenCalled();
   });
 
   it("does not resolve a runtime while adopting a healthy owned sidecar", async () => {
@@ -37,10 +42,25 @@ describe("sidecar supervisor", () => {
 
   it("identity-verifies and adopts a healthy CLI-owned daemon without signaling or owning it", async () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
-    vi.stubGlobal("fetch", healthyConsoleFetch());
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      calls.push(String(url).endsWith("/pairing-identity") ? "identity" : "health");
+      if (String(url).endsWith("/pairing-identity")) {
+        const response = new Response(JSON.stringify({ product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 }), { status: 200 });
+        Object.defineProperty(response, "url", { value: "http://127.0.0.1:4310/api/v1/pairing-identity" });
+        return response;
+      }
+      return new Response("ok", { status: 200 });
+    }) as unknown as typeof fetch);
     const kill = vi.spyOn(process, "kill");
-    const instance = supervisor();
+    const resolveRuntime = vi.fn(async () => {
+      calls.push("resolve");
+      return { nodePath: "/runtime/node", cliPath: "/runtime/console/dist/cli.mjs", serviceRoot: "/runtime/console", serviceVersion: "1.23.0" };
+    });
+    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
     await expect(instance.startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+    expect(resolveRuntime).toHaveBeenCalledOnce();
+    expect(calls).toEqual(["health", "resolve", "identity"]);
     await instance.stop();
     expect(kill).not.toHaveBeenCalled();
   });
