@@ -5,6 +5,52 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-07-13
+
+### fleet-cli
+
+#### Fixed
+- [fleet-cli] Submit carrier-result reminders to the Codex TUI on Windows instead of leaving them unsent in the prompt.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Expose a stable loopback pairing identity for optional Desktop supervision without a separate Console feature mode.
+- [fleet-console] Add a Grid / Columns / Rows layout selector to Formation view; Columns splits panels into full-height vertical columns for ultrawide monitors, and the choice is remembered per machine.
+
+#### Changed
+- [fleet-console] Restore the minimap collapse controls while hiding Map surfaces during Formation and panel maximization.
+- [fleet-console] Show sidebar action controls only on hover or keyboard focus so Operation names have more room.
+- [fleet-console] Float the carrier stream dock as an overlay so expanding it no longer resizes the terminal.
+- [fleet-console] Enter Formation view from the layout buttons, move Reset view to an inline sidebar button, and unify the canvas right-click menu with the sidebar menu as a single Launch list.
+
+#### Fixed
+- [fleet-console] Restore mouse-wheel scrolling for long Codex Wiki entry lists in the right rail.
+- [fleet-console] Keep Command Band context progressively centered while resizing the Console and side chrome.
+
+#### Removed
+- [fleet-console] Remove the Alt+Shift+F shortcut that opened Formation view including minimized panels.
+- [fleet-console] Remove Cursor from interactive Operation launch controls and Console session capture.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] After Desktop completes its normal Console startup, connect to a running local Fleet Console from the macOS app menu or Windows and Linux tray using a Desktop-owned sandboxed prompt.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Improve File Explorer responsiveness when listing large directories by prefetching the bounded directory window.
+
+#### Fixed
+- [fleet-console] Restore macOS Terminal PTY startup when the node-pty helper is installed without execute permissions.
+- [fleet-console] Submit terminal carrier-result reminders to Codex reliably on Windows ConPTY.
+
+### fleet-core
+
+#### Removed
+- [fleet-admiral] Remove Cursor launch injection and plugin rendering from Fleet Admiral while retaining the Cursor backend for Carriers.
+
 ## [1.25.0] - 2026-07-12
 
 ### fleet-console

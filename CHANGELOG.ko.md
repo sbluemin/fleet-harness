@@ -5,6 +5,52 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-07-13
+
+### fleet-cli
+
+#### Fixed
+- [fleet-cli] Windows에서 carrier-result 리마인더가 프롬프트에 남지 않고 Codex TUI에 제출됩니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] 별도 Console 기능 모드 없이 선택적 Desktop 감독을 위한 안정적인 루프백 페어링 식별자를 제공합니다.
+- [fleet-console] Formation view에 Grid / Columns / Rows 레이아웃 선택기를 추가합니다. Columns는 울트라와이드 모니터용으로 패널을 풀하이트 세로 컬럼으로 나누며, 선택은 기기별로 기억됩니다.
+
+#### Changed
+- [fleet-console] 미니맵 접기 컨트롤을 복원하고 Formation 및 패널 최대화 중에는 Map 화면과 단축 아이콘을 숨깁니다.
+- [fleet-console] 사이드바 액션 컨트롤을 hover 또는 키보드 포커스에서만 표시해 Operation 이름 공간을 넓힙니다.
+- [fleet-console] 캐리어 스트림 도크를 오버레이로 띄워, 펼쳐도 터미널 크기가 바뀌지 않습니다.
+- [fleet-console] 레이아웃 버튼으로 Formation view에 진입하도록 바꾸고, Reset view를 사이드바 인라인 버튼으로 옮기며, 캔버스 우클릭 메뉴를 사이드바 메뉴와 동일한 Launch 목록으로 통일합니다.
+
+#### Fixed
+- [fleet-console] 우측 레일의 긴 Codex Wiki 엔트리 목록에서 마우스 휠 스크롤을 복원합니다.
+- [fleet-console] Console과 좌우 사이드 크롬의 크기를 조절할 때 Command Band 컨텍스트가 점진적으로 중앙 정렬되도록 유지합니다.
+
+#### Removed
+- [fleet-console] 최소화된 패널을 포함해 Formation view를 여는 Alt+Shift+F 단축키를 제거합니다.
+- [fleet-console] 대화형 Operation 실행 컨트롤과 Console 세션 캡처에서 Cursor를 제거합니다.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] Desktop이 정상 Console 시작을 완료한 뒤 Desktop 소유의 샌드박스 입력창을 사용해 macOS 앱 메뉴 또는 Windows와 Linux 트레이에서 실행 중인 로컬 Fleet Console에 연결합니다.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] 제한된 디렉터리 범위를 미리 가져와 대규모 디렉터리 목록을 표시할 때 File Explorer의 응답성을 개선합니다.
+
+#### Fixed
+- [fleet-console] node-pty helper가 실행 권한 없이 설치된 경우에도 macOS Terminal PTY 시작을 복구합니다.
+- [fleet-console] Windows ConPTY에서 터미널 carrier-result 리마인더가 Codex에 안정적으로 제출됩니다.
+
+### fleet-core
+
+#### Removed
+- [fleet-admiral] Carrier용 Cursor 백엔드는 유지하면서 Fleet Admiral의 Cursor 실행 주입과 플러그인 렌더링을 제거합니다.
+
 ## [1.25.0] - 2026-07-12
 
 ### fleet-console
