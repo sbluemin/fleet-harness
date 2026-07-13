@@ -9,10 +9,6 @@ const AGENT_CLI_INJECTION_CAPABILITIES: Record<AgentCliId, AgentCliInjectionCapa
     builderId: "codex-native",
     enabled: true,
   },
-  cursor: {
-    builderId: "cursor-native",
-    enabled: true,
-  },
 };
 
 export function getAgentCliInjectionCapability(

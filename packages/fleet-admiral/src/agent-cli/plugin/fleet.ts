@@ -1,10 +1,7 @@
 import path from "node:path";
 
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
-import { buildHostShellCommand } from "../builders/toml.js";
-import { renderCursorDoctrineHookAssets } from "../doctrine-hook.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
-import type { AgentCliMcpServerArg } from "../types.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
 
@@ -23,18 +20,8 @@ export function renderAssetPluginRoot(
   options: CreateAgentCliPluginOptions,
 ): void {
   renderEmbeddedSkillAssets(pluginRoot);
-  const doctrineHookExec = options.cliId === "cursor" && options.doctrine !== undefined
-    ? renderCursorDoctrineHookAssets(
-      pluginRoot,
-      options.doctrine,
-      options.installedPluginRoot ?? pluginRoot,
-    )
-    : undefined;
   if (options.cliId === "claude") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
-  }
-  if (options.cliId === "cursor") {
-    renderCursorPluginRoot(pluginRoot, options, doctrineHookExec);
   }
 }
 
@@ -83,64 +70,6 @@ function claudeCommandHook(hookExec: FleetHookExec): unknown {
     args: [...hookExec.args],
     command: hookExec.command,
     type: "command",
-  };
-}
-
-function renderCursorPluginRoot(
-  pluginRoot: string,
-  options: CreateAgentCliPluginOptions,
-  doctrineHookExec: FleetHookExec | undefined,
-): void {
-  if ((options.mcpServers ?? []).length > 0) {
-    writePrivateJson(path.join(pluginRoot, "mcp.json"), cursorMcpConfig(options.mcpServers ?? []), pluginRoot);
-  }
-  const hooks = cursorHooks(options, doctrineHookExec);
-  if (hooks !== undefined) {
-    writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), hooks, pluginRoot);
-  }
-}
-
-function cursorMcpConfig(servers: readonly AgentCliMcpServerArg[]): unknown {
-  return {
-    mcpServers: Object.fromEntries(
-      servers.map((server) => [server.name, {
-        type: "http",
-        url: server.endpointUrl,
-        headers: {
-          Authorization: `Bearer ${server.bearerToken}`,
-        },
-      }]),
-    ),
-  };
-}
-
-function cursorHooks(
-  options: CreateAgentCliPluginOptions,
-  doctrineHookExec: FleetHookExec | undefined,
-): unknown | undefined {
-  const sessionStartExecs = [doctrineHookExec, options.captureSessionHookExec]
-    .filter((exec): exec is FleetHookExec => exec !== undefined);
-  const beforeSubmitPromptExecs = [options.turnStartHookExec, options.autoNameHookExec]
-    .filter((exec): exec is FleetHookExec => exec !== undefined);
-  const stopExecs = [options.turnEndHookExec]
-    .filter((exec): exec is FleetHookExec => exec !== undefined);
-  if (sessionStartExecs.length === 0 && beforeSubmitPromptExecs.length === 0 && stopExecs.length === 0) return undefined;
-  return {
-    version: 1,
-    hooks: {
-      ...(sessionStartExecs.length > 0 ? {
-        sessionStart: sessionStartExecs.map((exec) => cursorCommandHook(exec)),
-      } : {}),
-      ...(beforeSubmitPromptExecs.length > 0 ? { beforeSubmitPrompt: beforeSubmitPromptExecs.map((exec) => cursorCommandHook(exec)) } : {}),
-      ...(stopExecs.length > 0 ? { stop: stopExecs.map((exec) => cursorCommandHook(exec)) } : {}),
-    },
-  };
-}
-
-function cursorCommandHook(hookExec: FleetHookExec, extraArgs: readonly string[] = []): unknown {
-  return {
-    type: "command",
-    command: buildHostShellCommand([hookExec.command, ...hookExec.args, ...extraArgs]),
   };
 }
 

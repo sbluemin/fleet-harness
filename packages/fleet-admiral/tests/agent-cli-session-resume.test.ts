@@ -115,68 +115,6 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(toml).not.toContain("args =");
   });
 
-  it("places Cursor resume before Fleet plugin and MCP approval flags", async () => {
-    const root = createTempRoot("fleet-admiral-cursor-resume-");
-    const profile = baseProfile("cursor", {
-      args: ["--model", "gpt-5"],
-      cwd: root,
-      env: { HOME: root },
-    });
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "cursor"]),
-      resumeSessionId: "cursor-session-789",
-    }));
-    const pluginRoot = path.join(root, "data", "marketplace", "plugins", "fleet");
-    const cursorManifest = JSON.parse(readFileSync(path.join(pluginRoot, ".cursor-plugin", "plugin.json"), "utf8")) as {
-      readonly name?: unknown;
-      readonly version?: unknown;
-    };
-    const doctrineFile = path.join(pluginRoot, "doctrine.md");
-    const doctrine = readFileSync(doctrineFile, "utf8");
-    const hooksJson = JSON.parse(readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8")) as {
-      readonly hooks?: {
-        readonly sessionStart?: readonly { readonly command?: string }[];
-      };
-    };
-    const mcpJson = JSON.parse(readFileSync(path.join(pluginRoot, "mcp.json"), "utf8")) as {
-      readonly mcpServers?: Record<string, { readonly headers?: { readonly Authorization?: string } }>;
-    };
-
-    expect(injected.args.slice(0, 4)).toEqual(["--model", "gpt-5", "--resume", "cursor-session-789"]);
-    expect(indexOfSequence(injected.args, ["--resume", "cursor-session-789"])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-dir"]));
-    expect(indexOfSequence(injected.args, ["--sandbox", "disabled"])).toBeGreaterThan(indexOfSequence(injected.args, ["--plugin-dir"]));
-    expect(injected.args).toContain("--force");
-    expect(injected.args).toContain("--approve-mcps");
-    expect(injected.args).not.toContain("--trust");
-    expect(cursorManifest.name).toBe("fleet");
-    expect(cursorManifest.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
-    expect(doctrine).toContain("Fleet Runtime Doctrine for Cursor Agent");
-    expect(doctrine).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
-    expect(hooksJson.hooks?.sessionStart).toHaveLength(2);
-    expect(hooksJson.hooks?.sessionStart?.[0]?.command).toContain("inject-doctrine.mjs");
-    expect(hooksJson.hooks?.sessionStart?.[0]?.command).not.toContain(".fleet-stage-");
-    expect(hooksJson.hooks?.sessionStart?.[1]?.command).toBe("'node' 'console.js' 'hook' 'capture-session' 'cursor'");
-    expect(hooksJson.hooks?.sessionStart?.[1]?.command).not.toContain("additional-context-file");
-    expect(mcpJson.mcpServers?.fleet?.headers?.Authorization).toBe("Bearer token-123");
-  });
-
-  it("omits Cursor MCP approval when no dedicated MCP servers are available", async () => {
-    const root = createTempRoot("fleet-admiral-cursor-no-mcp-");
-    const profile = baseProfile("cursor", {
-      args: [],
-      cwd: root,
-      env: { HOME: root },
-    });
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      dedicatedMcpSession: createDedicatedMcpSession({ servers: [], tokens: [] }),
-      resumeSessionId: "cursor-session-empty-mcp",
-    }));
-
-    expect(injected.args).toContain("--plugin-dir");
-    expect(injected.args).toContain("--force");
-    expect(injected.args).not.toContain("--approve-mcps");
-  });
-
   it("exports createSessionCaptureHookExec from the root only", () => {
     const exec = Admiral.createSessionCaptureHookExec({
       entryPath: "/tmp/fleet-console/src/cli.ts",

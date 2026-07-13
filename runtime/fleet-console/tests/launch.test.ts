@@ -172,39 +172,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "codex" }));
   });
 
-  it("passes Cursor selection and capture provider to fleet-admiral injection", async () => {
-    const runtime = createFakeRuntime(() => undefined);
-    const injectedOptions: InjectAgentCliProfileOptions[] = [];
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "cursor" as const, label: "Cursor", cwd, env: { ...env } }));
-    const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
-      injectedOptions.push(options);
-      return { ...profile, args: [...profile.args, "--plugin-dir", "/fleet/plugin"] };
-    });
-    const resolve = createDefaultTerminalLaunchResolver({
-      cwd: "/work",
-      entryPath: "/console/cli.ts",
-      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-      execPath: "/node",
-      tsxLoaderPath: "/loader/tsx.mjs",
-      agentRuntime: runtime as never,
-      injectProfile: injectProfile as never,
-      resolveProfile: resolveProfile as never,
-    });
-
-    const spec = await resolve("/work/project", { sessionId: "fleet-session-c", cliId: "cursor", resumeSessionId: "cursor-chat-a" });
-
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({
-      cliId: "cursor",
-      resumeSessionId: "cursor-chat-a",
-    }));
-    expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "cursor-chat-a" });
-    expect(injectedOptions[0]?.captureSessionHookExec).toEqual({
-      command: "/node",
-      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "cursor"],
-    });
-    expect(spec.args).toContain("/fleet/plugin");
-  });
-
   it("honors a FLEET_TERMINAL_CMD override verbatim as an explicit operator override", async () => {
     const resolveProfile = vi.fn();
     const resolve = createDefaultTerminalLaunchResolver({

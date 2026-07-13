@@ -5,7 +5,6 @@ import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/serv
 const METADATA = [
   { id: "claude", label: "Claude" },
   { id: "codex", label: "Codex" },
-  { id: "cursor", label: "Cursor" },
 ] as const;
 
 describe("combineAgentCliLaunchMetadata", () => {
@@ -23,7 +22,6 @@ describe("combineAgentCliLaunchMetadata", () => {
     expect(result).toEqual([
       { id: "claude", label: "Claude", available: true, signedIn: true },
       { id: "codex", label: "Codex", available: true, signedIn: true },
-      { id: "cursor", label: "Cursor", available: true, signedIn: true },
     ]);
   });
 
@@ -40,7 +38,6 @@ describe("combineAgentCliLaunchMetadata", () => {
 
     expect(result.find((cli) => cli.id === "claude")?.available).toBe(false);
     expect(result.find((cli) => cli.id === "codex")?.available).toBe(true);
-    expect(result.find((cli) => cli.id === "cursor")?.available).toBe(true);
   });
 
   it("탐지/auth 입력이 비면 available=false, signedIn=true로 둔다", () => {
@@ -58,6 +55,5 @@ describe("combineAgentCliLaunchMetadata", () => {
     expect(result.find((cli) => cli.id === "claude")?.signedIn).toBe(false);
     // authStatuses에 없는 CLI는 signedIn=true로 둔다.
     expect(result.find((cli) => cli.id === "codex")?.signedIn).toBe(true);
-    expect(result.find((cli) => cli.id === "cursor")?.signedIn).toBe(true);
   });
 });

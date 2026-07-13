@@ -1,8 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import process from "node:process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -156,66 +154,29 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
   });
 
-  it("renders Cursor doctrine hook, session hooks, and MCP config", async () => {
+  it("prunes legacy Cursor plugin artifacts without generating new ones", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-cursor-"));
     tempDirs.push(root);
     const dataDir = path.join(root, "data");
-    const cwd = path.join(root, "project");
-    mkdirSync(cwd, { recursive: true });
+    const marketplaceRoot = path.join(dataDir, "marketplace");
+    const legacyMarketplace = path.join(marketplaceRoot, ".cursor-plugin", "marketplace.json");
+    const legacyManifest = path.join(marketplaceRoot, "plugins", "fleet", ".cursor-plugin", "plugin.json");
+    mkdirSync(path.dirname(legacyMarketplace), { recursive: true });
+    mkdirSync(path.dirname(legacyManifest), { recursive: true });
+    writeFileSync(legacyMarketplace, "{}\n");
+    writeFileSync(legacyManifest, "{}\n");
 
     const plugin = await createAgentCliPlugin({
-      cliId: "cursor",
-      cwd,
+      cliId: "codex",
+      cwd: path.join(root, "project"),
       dataDir,
-      doctrine: "Fleet doctrine",
-      captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "cursor"] },
-      turnStartHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-start"] },
-      turnEndHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-end"] },
-      autoNameHookExec: { command: "node", args: ["cli.mjs", "hook", "auto-name"] },
-      mcpServers: [{ name: "fleet", endpointUrl: "http://127.0.0.1:48123/mcp", bearerToken: "token-123" }],
       withMarketplaceLock: async (_target, fn) => fn(),
     });
 
-    const manifest = JSON.parse(readFileSync(path.join(plugin.pluginRoot, ".cursor-plugin", "plugin.json"), "utf8")) as { readonly name?: unknown };
-    const doctrineFile = path.join(plugin.pluginRoot, "doctrine.md");
-    const doctrine = readFileSync(doctrineFile, "utf8");
-    const doctrineHookScript = path.join(plugin.pluginRoot, "hooks", "inject-doctrine.mjs");
-    const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
-      readonly version?: unknown;
-      readonly hooks?: Record<string, ReadonlyArray<{ readonly command?: string }>>;
-    };
-    const mcpJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "mcp.json"), "utf8")) as {
-      readonly mcpServers?: Record<string, { readonly headers?: { readonly Authorization?: string } }>;
-    };
-    const hookOutput = spawnSync(process.execPath, [doctrineHookScript], { encoding: "utf8" });
-
-    expect(manifest.name).toBe("fleet");
-    expect(doctrine).toContain("Fleet Runtime Doctrine for Cursor Agent");
-    expect(doctrine).toContain("sessionStart hook");
-    expect(doctrine).toContain("identity anchor for this session");
-    expect(doctrine).toContain("Do not merely summarize or acknowledge the embedded prompt");
-    expect(doctrine).toContain("<fleet-system-prompt>\nFleet doctrine\n</fleet-system-prompt>");
-    expect(existsSync(path.join(plugin.pluginRoot, "rules", "fleet-doctrine.mdc"))).toBe(false);
-    expect(existsSync(path.join(plugin.pluginRoot, "context", "fleet-system-prompt.txt"))).toBe(false);
-    expect(hookOutput.status).toBe(0);
-    expect(JSON.parse(hookOutput.stdout)).toEqual({
-      additional_context: doctrine,
-    });
-    expect(hooksJson.version).toBe(1);
-    expect(hooksJson.hooks?.sessionStart).toHaveLength(2);
-    expect(hooksJson.hooks?.sessionStart?.[0]?.command).toContain("inject-doctrine.mjs");
-    expect(hooksJson.hooks?.sessionStart?.[0]?.command).not.toContain(".fleet-stage-");
-    expect(hooksJson.hooks?.sessionStart?.[1]?.command).toBe("'node' 'cli.mjs' 'hook' 'capture-session' 'cursor'");
-    expect(JSON.stringify(hooksJson)).not.toContain("subagents-context");
-    expect(JSON.stringify(hooksJson)).not.toContain("additional-context-file");
-    expect(hooksJson.hooks?.beforeSubmitPrompt?.map((hook) => hook.command)).toEqual([
-      "'node' 'cli.mjs' 'hook' 'turn-start'",
-      "'node' 'cli.mjs' 'hook' 'auto-name'",
-    ]);
-    expect(hooksJson.hooks?.stop?.map((hook) => hook.command)).toEqual([
-      "'node' 'cli.mjs' 'hook' 'turn-end'",
-    ]);
-    expect(mcpJson.mcpServers?.fleet?.headers?.Authorization).toBe("Bearer token-123");
+    expect(existsSync(path.join(marketplaceRoot, ".cursor-plugin"))).toBe(false);
+    expect(existsSync(path.join(plugin.pluginRoot, ".cursor-plugin"))).toBe(false);
+    expect(existsSync(path.join(plugin.pluginRoot, "mcp.json"))).toBe(false);
+    expect(existsSync(path.join(plugin.pluginRoot, "doctrine.md"))).toBe(false);
   });
 
   it("prunes stale plugin directories left by removed bundles", async () => {
