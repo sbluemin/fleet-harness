@@ -2188,70 +2188,7 @@
   white-space: nowrap;
 }
 
-.canvas-context-menu-tabs {
-  display: flex;
-  gap: 2px;
-  margin: var(--space-3) var(--space-1) var(--space-1);
-  padding: 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
-}
-
-.canvas-context-menu-tab {
-  position: relative;
-  flex: 1;
-  padding: 7px 6px 8px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--ink-fog);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.canvas-context-menu-tab:hover {
-  color: var(--ink-spectral);
-}
-
-.canvas-context-menu-tab[aria-selected="true"] {
-  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass));
-  color: var(--ink-pearl);
-}
-
-.canvas-context-menu-tab[aria-selected="true"]::after {
-  content: "";
-  position: absolute;
-  right: 22%;
-  bottom: 2px;
-  left: 22%;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--brass);
-  box-shadow: 0 0 8px var(--brass-glow);
-}
-
-.canvas-context-menu-tab:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
-}
-
-.canvas-context-menu-panel {
-  padding-top: var(--space-1);
-}
-
-.canvas-context-menu-panel[hidden] {
-  display: none;
-}
-
-/* Operations / Map / Help 섹션 라벨 — 작전 통제면을 행위 카테고리로 나눈다(브래스="보는 곳"). */
+/* Launch 섹션 라벨. */
 .canvas-context-menu-section {
   margin: var(--space-2) 0 0;
   padding: var(--space-1) var(--space-2);
@@ -2277,93 +2214,6 @@
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.canvas-context-menu-switch {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink-spectral);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.canvas-context-menu-switch:hover,
-.canvas-context-menu-switch:focus-visible {
-  outline: none;
-  border-color: var(--surface-rim);
-  background: var(--surface-glass);
-  color: var(--ink-pearl);
-}
-
-.canvas-context-menu-switch-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  color: var(--ink-fog);
-}
-
-.canvas-context-menu-switch-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.canvas-context-menu-switch.is-on .canvas-context-menu-switch-icon {
-  color: var(--brass);
-}
-
-.canvas-context-menu-switch-label {
-  flex: 1;
-  font-size: 13px;
-}
-
-.canvas-context-menu-switch-track {
-  position: relative;
-  flex: none;
-  width: 34px;
-  height: 19px;
-  border: 1px solid var(--surface-rim);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--ink-mid) 80%, transparent);
-  transition:
-    background var(--duration-base) var(--ease-glide),
-    border-color var(--duration-base) var(--ease-glide);
-}
-
-.canvas-context-menu-switch-track::after {
-  content: "";
-  position: absolute;
-  top: 1.5px;
-  left: 1.5px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--ink-fog);
-  transition:
-    transform var(--duration-base) var(--ease-spring),
-    background var(--duration-base) var(--ease-glide);
-}
-
-.canvas-context-menu-switch.is-on .canvas-context-menu-switch-track {
-  border-color: var(--brass);
-  background: color-mix(in oklch, var(--brass) 60%, var(--brass-deep));
-}
-
-.canvas-context-menu-switch.is-on .canvas-context-menu-switch-track::after {
-  background: var(--ink-pearl);
-  transform: translateX(15px);
 }
 
 .canvas-context-menu-help {
@@ -2803,6 +2653,13 @@
 
 .side-bar-formation-group .side-bar-formation-seg + .side-bar-formation-seg {
   border-left: 1px solid var(--surface-rim);
+}
+
+.side-bar-formation-divider {
+  align-self: stretch;
+  flex: none;
+  width: 1px;
+  background: var(--surface-rim);
 }
 
 .side-bar-formation-toggle {
@@ -5991,13 +5848,6 @@
   .operation-search-overlay,
   .commissioning-card {
     animation: none;
-  }
-
-  .canvas-context-menu-switch-track,
-  .canvas-context-menu-switch-track::after,
-  .canvas-context-menu-tab,
-  .canvas-context-menu-switch {
-    transition: none;
   }
 
   .commissioning-primary-action.is-live::before {

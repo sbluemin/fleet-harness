@@ -44,10 +44,6 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const handleToggleFormation = useCallback(() => {
-    toggleFormationView();
-  }, []);
-
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
   }, [state.activeTheaterId]);
@@ -103,7 +99,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [formationView, handleToggleFormation, maximizedOperationId]);
+  }, [formationView, maximizedOperationId]);
 
   useEffect(() => {
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
@@ -359,8 +355,6 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleCanvasLaunchKind}
           onLaunchAtGeometry={handleLaunchAtGeometry}
-          onResetView={handleResetView}
-          onToggleFormation={handleToggleFormation}
           onClose={handleClose}
           onFocus={handleFocus}
           onRename={handleRename}

@@ -24,8 +24,6 @@ interface OperationsCanvasProps {
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => void;
   readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
-  readonly onResetView: () => void;
-  readonly onToggleFormation: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
@@ -61,8 +59,6 @@ export function OperationsCanvas({
   renderKindIcon,
   onLaunchKind,
   onLaunchAtGeometry,
-  onResetView,
-  onToggleFormation,
   onClose,
   onFocus,
   onRename,
@@ -116,11 +112,6 @@ export function OperationsCanvas({
     setContextMenu(null);
     if (!point) return;
     onLaunchKind(pluginId, kind, point);
-  };
-
-  const handleContextMenuResetView = () => {
-    setContextMenu(null);
-    onResetView();
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
@@ -251,12 +242,6 @@ export function OperationsCanvas({
           canLaunch={canLaunch && !formationView}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
-          onResetView={handleContextMenuResetView}
-          formationView={formationView}
-          onToggleFormation={() => {
-            onToggleFormation();
-            setContextMenu(null);
-          }}
           onClose={() => setContextMenu(null)}
         />
       ) : null}
