@@ -22,8 +22,15 @@ export interface AgentCliProfile {
 
 export interface CliMessagePolicy {
   readonly bracketedPaste?: boolean;
+  // true면 Windows(win32)에서 crossterm/ConPTY paste-burst 우회를 적용: bracketed paste 마커 없이 순수 텍스트를 보낸 뒤 제출 CR을 지연된 별도 write로 분리한다. Codex 계열 crossterm TUI 전용.
+  readonly conptyPasteBurst?: boolean;
   readonly lineTerminator?: string;
   readonly multilineStrategy?: "literal" | "paste-mode";
+}
+
+export interface PtyInputChunk {
+  readonly data: string;
+  readonly submitDelayMs?: number;
 }
 
 export interface AgentCliDefinition {

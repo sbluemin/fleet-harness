@@ -161,6 +161,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       };
     },
     resolvePolicy: () => missionControl.getActiveProfile()?.messagePolicy ?? {},
+    // 활성 child는 단일하므로 상수 키로 지연 제출을 직렬화한다(동시 도착 리마인더 뒤섞임 방지).
+    resolveSessionKey: () => (missionControl.getActiveProfile() === undefined ? undefined : "cli-active-child"),
   });
   ptyManager = createTuiPtyManager({
     fleetPty: missionBridge.ptyApi,

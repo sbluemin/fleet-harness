@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as Admiral from "../src/index.js";
+import { buildHostShellCommand, escapeTomlBasicString } from "../src/agent-cli/builders/toml.js";
 import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import { createAgentCliPlugin } from "../src/agent-cli/plugin/index.js";
 import type { AgentCliProfile, FleetHookExec } from "../src/agent-cli/types.js";
@@ -93,8 +94,12 @@ describe("agent CLI session resume and capture hooks", () => {
       cwd: root,
       env: { CODEX_HOME: codexHome, HOME: root },
     });
+    const captureSessionHookExec = hookExec("node", ["console.js", "hook", "capture-session", "codex"]);
+    const expectedCaptureCommand = escapeTomlBasicString(
+      buildHostShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
+    );
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "codex"]),
+      captureSessionHookExec,
       resumeSessionId: "codex-session-456",
     }));
     const profileName = injected.args[injected.args.indexOf("--profile") + 1];
@@ -111,7 +116,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
     expect(toml).toContain("[features]\nhooks = true");
     expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain('UserPromptSubmit = [{ hooks = [{ type = "command", command = "\'node\' \'console.js\' \'hook\' \'capture-session\' \'codex\'" }] }]');
+    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}" }] }]`);
     expect(toml).not.toContain("args =");
   });
 
@@ -188,6 +193,9 @@ describe("agent CLI session resume and capture hooks", () => {
       env: { CODEX_HOME: codexHome, HOME: root },
     });
     const captureSessionHookExec = hookExec("/opt/fleet node", ["console path.js", "hook", "capture-session", "codex"]);
+    const expectedCaptureCommand = escapeTomlBasicString(
+      buildHostShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
+    );
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
       captureSessionHookExec,
     }));
@@ -202,7 +210,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
     expect(toml).toContain("[features]\nhooks = true");
     expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain('UserPromptSubmit = [{ hooks = [{ type = "command", command = "\'/opt/fleet node\' \'console path.js\' \'hook\' \'capture-session\' \'codex\'" }] }]');
+    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}" }] }]`);
     expect(toml).not.toContain("args =");
     expect(pluginJson.hooks).toBeUndefined();
     expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);

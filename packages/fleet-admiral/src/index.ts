@@ -20,6 +20,7 @@ export {
   type CodexCommandResult,
   type CodexPluginRegistrationCommand,
   type FleetHookExec,
+  type PtyInputChunk,
 } from "./agent-cli/types.js";
 
 // Agent CLI 프로파일/레지스트리 해석기
@@ -59,7 +60,9 @@ export {
 // Carrier result reminder 주입 종단
 export {
   createCarrierResultReminderRouter,
+  createDelayedPtyWriter,
   formatCarrierResultReminderMessage,
   sanitizeCarrierResultReminder,
+  type DelayedPtyWriter,
   type PtyWriteSink,
 } from "./agent-runtime/reminder-router.js";

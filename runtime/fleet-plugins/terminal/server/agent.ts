@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import type { GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -94,8 +94,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (!sessionId) return;
     observability.appendTerminalRuntimeEvent(sessionId, withSignatureCli(event, runtime.carrierRuntime.registry));
   });
+  // carrier 리마인더와 rename 주입이 세션 단위로 함께 직렬화되도록 공유 writer를 사용한다.
+  const reminderWriter = createDelayedPtyWriter();
   const unsubscribeReminder = createCarrierResultReminderRouter({
     streamRegister: runtime.carrierRuntime.jobs.streaming.register,
+    writer: reminderWriter,
     resolveSink: (event) => {
       const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
       return sessionId ? { write: (data) => terminalRuntime.write(sessionId, data) } : undefined;
@@ -104,6 +107,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
       return sessionId ? terminalRuntime.getMessagePolicy(sessionId) ?? {} : {};
     },
+    // 세션별 지연 제출 직렬화 키: 같은 터미널 세션으로 동시 도착한 리마인더가 뒤섞이지 않도록 한다.
+    resolveSessionKey: (event) => resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById) ?? undefined,
   });
   const unsubscribeRename = ctx.host.events.subscribe(OPERATION_RENAMED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRenamedEvent(payload)) return;
@@ -480,9 +485,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const safeLabel = sanitizeCarrierResultReminder(label.replace(/[\r\n\t]+/g, " ")).trim();
     if (safeLabel.length === 0) return;
     const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
-    for (const chunk of formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`)) {
-      terminalRuntime.write(sessionId, chunk);
-    }
+    // 리마인더와 동일한 세션 키/writer로 직렬화해 rename+리마인더 인터리브를 막는다.
+    reminderWriter.enqueue(sessionId, (data) => terminalRuntime.write(sessionId, data), formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`));
   }
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {

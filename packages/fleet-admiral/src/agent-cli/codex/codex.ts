@@ -17,6 +17,7 @@ export const codexCli: AgentCliDefinition = {
       label: "Codex",
       messagePolicy: {
         bracketedPaste: true,
+        conptyPasteBurst: true,
         lineTerminator: "\r",
         multilineStrategy: "paste-mode",
       },

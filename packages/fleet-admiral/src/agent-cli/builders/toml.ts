@@ -55,6 +55,15 @@ export function buildPosixShellCommand(values: readonly string[]): string {
   return values.map(posixShellQuote).join(" ");
 }
 
+export function buildHostShellCommand(values: readonly string[], platform: NodeJS.Platform = process.platform): string {
+  if (platform === "win32") return values.map(windowsShellQuote).join(" ");
+  return buildPosixShellCommand(values);
+}
+
 function posixShellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function windowsShellQuote(value: string): string {
+  return `"${value.replaceAll("\"", "\"\"")}"`;
 }
