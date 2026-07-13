@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import type { GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -480,9 +480,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const safeLabel = sanitizeCarrierResultReminder(label.replace(/[\r\n\t]+/g, " ")).trim();
     if (safeLabel.length === 0) return;
     const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
-    for (const chunk of formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`)) {
-      terminalRuntime.write(sessionId, chunk);
-    }
+    writeChunksWithDelay((data) => terminalRuntime.write(sessionId, data), formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`));
   }
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {
@@ -591,6 +589,32 @@ function resolveCarrierEventOrigin(event: { readonly jobId: string; readonly typ
   const knownOrigin = jobOriginById.get(event.jobId);
   if (event.type === "job:finalized") queueMicrotask(() => jobOriginById.delete(event.jobId));
   return knownOrigin ?? null;
+}
+
+function writeChunksWithDelay(write: (data: string) => void, chunks: readonly PtyInputChunk[]): void {
+  let index = 0;
+
+  const writeNext = (): void => {
+    const chunk = chunks[index++];
+    if (!chunk) return;
+
+    const commit = () => {
+      try {
+        write(chunk.data);
+      } catch {
+        // Sessions may close before a deferred submit reaches the host PTY.
+      }
+      writeNext();
+    };
+
+    if (chunk.submitDelayMs === undefined) {
+      commit();
+    } else {
+      setTimeout(commit, chunk.submitDelayMs);
+    }
+  };
+
+  writeNext();
 }
 
 function readPayloadString(payload: Record<string, unknown>, key: string): string {

@@ -56,6 +56,18 @@ describe("agent CLI catalog", () => {
     });
   });
 
+  it("enables the Codex ConPTY paste-burst workaround", async () => {
+    const env = createEnvWithBins();
+    const codex = await resolveAgentCliProfile(env, "/tmp", { cliId: "codex" });
+
+    expect(codex.messagePolicy).toEqual({
+      bracketedPaste: true,
+      conptyPasteBurst: true,
+      lineTerminator: "\r",
+      multilineStrategy: "paste-mode",
+    });
+  });
+
   it("does not mutate process.env while creating profiles", async () => {
     const env = createEnvWithBins();
     const before = { ...process.env };

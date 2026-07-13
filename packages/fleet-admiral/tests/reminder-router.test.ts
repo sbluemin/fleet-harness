@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 
@@ -101,14 +101,51 @@ describe("carrier result reminder router", () => {
     expect(sanitizeCarrierResultReminder(`a\x1b[201~b\x9B201~c`)).toBe("abc");
   });
 
-  it("folds the submit terminator into a single atomic paste chunk", () => {
-    expect(formatCarrierResultReminderMessage({ bracketedPaste: true, lineTerminator: "\n" }, "hello")).toEqual([
-      "\x1b[200~hello\x1b[201~\n",
+  it("returns formatter chunks in write order", () => {
+    expect(formatCarrierResultReminderMessage({ bracketedPaste: true, lineTerminator: "\n" }, "hello", "darwin")).toEqual([
+      { data: "\x1b[200~hello\x1b[201~\n" },
     ]);
-    expect(formatCarrierResultReminderMessage({ multilineStrategy: "paste-mode" }, "a\nb")).toEqual([
-      "\x1b[200~a\nb\x1b[201~\r",
+    expect(formatCarrierResultReminderMessage({ multilineStrategy: "paste-mode" }, "a\nb", "darwin")).toEqual([
+      { data: "\x1b[200~a\nb\x1b[201~\r" },
     ]);
-    expect(formatCarrierResultReminderMessage({ lineTerminator: "\n" }, "hello")).toEqual(["hello\n"]);
+    expect(formatCarrierResultReminderMessage({ lineTerminator: "\n" }, "hello", "darwin")).toEqual([{ data: "hello\n" }]);
+  });
+
+  it("uses a delayed bare submit for ConPTY paste bursts on Windows", () => {
+    const policy = { bracketedPaste: true, conptyPasteBurst: true, lineTerminator: "\r", multilineStrategy: "paste-mode" as const };
+    const text = "line 1\nline 2";
+
+    expect(formatCarrierResultReminderMessage(policy, text, "win32")).toEqual([
+      { data: text },
+      { data: "\r", submitDelayMs: 250 },
+    ]);
+  });
+
+  it("writes the ConPTY submit after its delay without blocking finalized events", () => {
+    vi.useFakeTimers();
+    try {
+      const writes: string[] = [];
+      const handlers: Array<(event: CarrierJobStreamEvent) => void> = [];
+      createCarrierResultReminderRouter({
+        platform: "win32",
+        streamRegister(handler) {
+          handlers.push(handler);
+          return () => undefined;
+        },
+        resolveSink: () => createArraySink(writes),
+        resolvePolicy: () => ({ bracketedPaste: true, conptyPasteBurst: true, lineTerminator: "\r", multilineStrategy: "paste-mode" }),
+      });
+
+      handlers[0]?.(finalizedEvent("line 1\nline 2"));
+
+      expect(writes).toEqual(["line 1\nline 2"]);
+      vi.advanceTimersByTime(249);
+      expect(writes).toEqual(["line 1\nline 2"]);
+      vi.advanceTimersByTime(1);
+      expect(writes).toEqual(["line 1\nline 2", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("quietly drops when no sink resolves", () => {

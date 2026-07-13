@@ -20,6 +20,7 @@ export {
   type CodexCommandResult,
   type CodexPluginRegistrationCommand,
   type FleetHookExec,
+  type PtyInputChunk,
 } from "./agent-cli/types.js";
 
 // Agent CLI 프로파일/레지스트리 해석기
