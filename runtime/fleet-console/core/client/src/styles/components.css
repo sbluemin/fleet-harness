@@ -4025,20 +4025,20 @@
   min-height: 0;
 }
 
-/* agent-stream-host: 터미널(flex:1, 위) + 도크(flex:none, 하단)를 flex 컬럼으로 쌓는 호스트.
-   도크가 없으면 terminal-stage가 전체 높이를 회복한다. */
+/* agent-stream-host: 터미널과 StreamDock의 absolute offset parent.
+   도크는 terminal-stage 위에 떠 있으므로 상태 변화가 xterm 캔버스 높이를 바꾸지 않는다. */
 .agent-stream-host {
   display: flex;
   flex-direction: column;
+  position: relative;
   height: 100%;
   min-height: 0;
 }
 
-/* 도크 존재 시 terminal-stage가 남은 높이를 flex로 채우도록 보정.
-   .canvas-operation-terminal의 height:100% 규칙을 덮는다. */
+/* StreamDock과 무관하게 터미널 stage가 호스트 전체를 유지한다. */
 .agent-stream-host .terminal-stage {
-  flex: 1;
-  height: auto;
+  position: absolute;
+  inset: 0;
   min-height: 0;
 }
 
@@ -4819,19 +4819,32 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   StreamDock: 패널 하단 상주 접이식 스트림 도크.
-   agent-stream-host flex 컬럼 내 마지막 자식(flex:none).
+   StreamDock: terminal stage 위에 부유하는 패널 하단 접이식 스트림 도크.
+   펼침/접힘/마운트 변화는 terminal geometry에 참여하지 않는다.
    ══════════════════════════════════════════════════════════════ */
 .job-dock {
-  flex: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  /* 도크는 패널보다 높을 수 없다 — 최소 높이 패널에서 스트립이 잘려 접기/Details가
+     사라지지 않도록 상한을 두고, 스트립은 고정하고 body만 수축·스크롤한다. */
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-glass));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  /* 불투명 표면 도트린: backdrop blur 금지(instrument-design-contract). 오버레이 구분은
+     surface-glass-strong 불투명 배경 + floating shadow로만 확보한다. */
+  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-glass-strong));
+  box-shadow: var(--shadow-floating);
+  overflow: hidden;
 }
 
 /* 스트립: 기본 상태 단일 행 계기판 — 펄스닷 · 캐리어명 · 최신 라인 · meta · 그립 · Details */
 .job-dock-strip {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -4970,9 +4983,13 @@
   background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
-/* 바디 래퍼: follow-button 위치 기준(position: relative) */
+/* 바디 래퍼: follow-button 위치 기준(position: relative).
+   flex column + min-height:0으로 도크가 max-height:100%에 눌릴 때 body만 수축시킨다. */
 .job-dock-body-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-top: 1px solid var(--surface-rim);
 }
 
@@ -4980,8 +4997,11 @@
   display: none;
 }
 
-/* 바디: 스크롤 가능한 트랙 행 스택, 하단 고정 여백 제거 */
+/* 바디: 스크롤 가능한 트랙 행 스택, 하단 고정 여백 제거.
+   flex:1 1 auto + min-height:0으로 좁은 패널에서 200px 미만으로 수축하며 내부 스크롤한다. */
 .job-dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   max-height: 200px;
   padding: var(--space-1) var(--space-3) var(--space-2);
