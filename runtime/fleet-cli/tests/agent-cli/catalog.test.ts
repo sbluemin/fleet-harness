@@ -24,7 +24,6 @@ describe("agent CLI catalog", () => {
     expect(getAgentCliIds()).toEqual([
       "claude",
       "codex",
-      "cursor",
     ]);
   });
 
@@ -34,16 +33,13 @@ describe("agent CLI catalog", () => {
     await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "codex" })).resolves.toMatchObject({
       id: "codex",
     });
-    await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "cursor" })).resolves.toMatchObject({
-      id: "cursor",
-    });
     await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "codex" }, "/tmp")).resolves.toMatchObject({
       id: "codex",
     });
   });
 
   it("rejects inherited object keys as CLI IDs", () => {
-    for (const cliId of ["toString", "constructor", "__proto__"]) {
+    for (const cliId of ["cursor", "toString", "constructor", "__proto__"]) {
       expect(() => parseAgentCliId(cliId)).toThrow(`Unsupported agent CLI "${cliId}"`);
     }
   });
@@ -77,9 +73,6 @@ describe("agent CLI catalog", () => {
     expect(profile.args).toContain("--model");
     expect(profile.args).toContain("gpt-5.2");
 
-    const cursor = await resolveAgentCliProfile(env, "/tmp", { cliId: "cursor", model: "gpt-5" });
-    expect(cursor.args).toContain("--model");
-    expect(cursor.args).toContain("gpt-5");
   });
 
   it("omits model args when no model is provided", async () => {
@@ -99,17 +92,13 @@ describe("agent CLI catalog", () => {
       builderId: "codex-native",
       enabled: true,
     });
-    expect(getAgentCliInjectionCapability("cursor")).toEqual({
-      builderId: "cursor-native",
-      enabled: true,
-    });
   });
 });
 
 function createEnvWithBins(): NodeJS.ProcessEnv {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-cli-"));
   tempRoots.push(tempRoot);
-  for (const bin of ["claude", "codex", "cursor-agent"]) {
+  for (const bin of ["claude", "codex"]) {
     const binPath = path.join(tempRoot, bin);
     fs.writeFileSync(binPath, "");
     fs.chmodSync(binPath, 0o755);

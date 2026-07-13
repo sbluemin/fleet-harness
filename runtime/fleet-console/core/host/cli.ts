@@ -55,7 +55,7 @@ export interface ConsoleStopDeps {
 }
 
 export type ConsoleHookCommand =
-  | { readonly command: "capture-session"; readonly provider: string }
+  | { readonly command: "capture-session"; readonly provider: "claude" | "codex" }
   | { readonly command: "turn-start" }
   | { readonly command: "turn-end" }
   | { readonly command: "attention" }
@@ -112,7 +112,7 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
   if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
-  if (commandName === "capture-session" && rest.length === 1 && rest[0]) return { command: "capture-session", provider: rest[0] };
+  if (commandName === "capture-session" && rest.length === 1 && (rest[0] === "claude" || rest[0] === "codex")) return { command: "capture-session", provider: rest[0] };
   throw new Error("Unknown fleet-console hook command");
 }
 

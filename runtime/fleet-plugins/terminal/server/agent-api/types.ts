@@ -13,7 +13,7 @@ export type AgentAttentionReason =
 export type AgentLabelSource = "user" | "auto";
 
 export interface AgentProviderSession {
-  readonly provider: "claude" | "codex" | "cursor";
+  readonly provider: "claude" | "codex";
   readonly sessionId: string;
   readonly transcriptPath?: string;
   readonly source?: string;

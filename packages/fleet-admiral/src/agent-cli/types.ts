@@ -1,4 +1,4 @@
-export type AgentCliId = "claude" | "codex" | "cursor";
+export type AgentCliId = "claude" | "codex";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;
@@ -57,7 +57,7 @@ export interface AgentCliInjectionContext {
 
 export interface AgentCliInjectionCapabilityEnabled {
   readonly enabled: true;
-  readonly builderId: "claude-native" | "codex-native" | "cursor-native";
+  readonly builderId: "claude-native" | "codex-native";
 }
 
 export interface AgentCliInjectionCapabilityDisabled {

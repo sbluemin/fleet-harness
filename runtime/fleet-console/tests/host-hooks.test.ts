@@ -37,18 +37,6 @@ describe("console terminal host hooks", () => {
     });
   });
 
-  it("builds Cursor capture hook commands", () => {
-    const exec = buildConsoleCaptureHookCommand({
-      entryPath: "/app/fleet-console/dist/cli.mjs",
-      execPath: "/usr/local/bin/node",
-    }, "cursor");
-
-    expect(exec).toEqual({
-      command: "/usr/local/bin/node",
-      args: ["/app/fleet-console/dist/cli.mjs", "hook", "capture-session", "cursor"],
-    });
-  });
-
   it("builds attention hook commands for the input-waiting signal", () => {
     const exec = buildConsoleAttentionHookCommand({
       entryPath: "/app/fleet-console/dist/cli.mjs",
