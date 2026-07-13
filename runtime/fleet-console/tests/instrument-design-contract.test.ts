@@ -94,6 +94,37 @@ describe("Instrument core design contract", () => {
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
+  it("collapses sidebar chip actions out of layout until hover or focus-within", () => {
+    const components = source("styles/components.css");
+    const restingActions = components.match(/\.side-bar-chip-close,\n\.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";
+    const revealedActions = components.match(/\.side-bar-chip:hover \.side-bar-chip-close,[^]*?\.side-bar-chip:focus-within \.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";
+    const armedClose = components.match(/\.side-bar-chip \.side-bar-chip-close\.is-armed \{[^}]*\}/)?.[0] ?? "";
+
+    expect(restingActions).toContain("flex: 0 0 0;");
+    expect(restingActions).toContain("width: 0;");
+    expect(restingActions).toContain("height: 0;");
+    expect(restingActions).toContain("margin-left: calc(-1 * var(--space-2));");
+    expect(restingActions).toContain("overflow: hidden;");
+    expect(restingActions).toContain("opacity: 0;");
+    expect(restingActions).toContain("width var(--duration-base) var(--ease-spring)");
+    expect(restingActions).toContain("margin-left var(--duration-base) var(--ease-spring)");
+    expect(restingActions).toContain("opacity var(--duration-base) var(--ease-spring)");
+    expect(revealedActions).toContain("flex: none;");
+    expect(revealedActions).toContain("width: 20px;");
+    expect(revealedActions).toContain("height: 20px;");
+    expect(revealedActions).toContain("margin-left: 0;");
+    expect(revealedActions).toContain("opacity: 1;");
+    expect(revealedActions).toContain("pointer-events: auto;");
+    expect(armedClose).toContain("width: auto;");
+    expect(armedClose).toContain("margin-left: 0;");
+    expect(armedClose).toContain("border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);");
+    expect(armedClose).toContain("opacity: 1;");
+    expect(armedClose).toContain("pointer-events: auto;");
+    expect(components.indexOf(".side-bar-chip .side-bar-chip-close.is-armed")).toBeGreaterThan(components.indexOf(".side-bar-chip:hover .side-bar-chip-close"));
+    expect(components).toContain(".side-bar-chip-close,\n  .side-bar-chip-minimize {\n    transition-duration: 0.01ms;");
+    expect(components).toContain(".side-bar-chip .side-bar-chip-close.is-armed {\n    animation: none;");
+  });
+
   it("keeps Formation and maximize store contracts without the retired focus mode", () => {
     const store = source("canvas/canvas-store.ts");
     expect(store).toContain("toggleFormationView");

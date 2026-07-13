@@ -3235,41 +3235,29 @@
   50% { opacity: 1; }
 }
 
-.side-bar-chip-close {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  cursor: pointer;
-  color: var(--ink-fog);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
+.side-bar-chip-close,
 .side-bar-chip-minimize {
   display: grid;
   place-items: center;
-  flex: none;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 0;
+  width: 0;
+  height: 0;
   padding: 0;
-  border: 1px solid transparent;
+  margin-left: calc(-1 * var(--space-2));
+  overflow: hidden;
+  border: 0 solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: transparent;
   opacity: 0;
   pointer-events: none;
   transition:
+    width var(--duration-base) var(--ease-spring),
+    height var(--duration-base) var(--ease-spring),
+    padding var(--duration-base) var(--ease-spring),
+    margin-left var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
@@ -3278,8 +3266,15 @@
 .side-bar-chip:hover .side-bar-chip-close,
 .side-bar-chip:focus-within .side-bar-chip-close,
 .side-bar-chip:hover .side-bar-chip-minimize,
-.side-bar-chip:focus-within .side-bar-chip-minimize,
-.side-bar-chip-close.is-armed {
+.side-bar-chip:focus-within .side-bar-chip-minimize {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 0;
+  border: 1px solid var(--surface-rim);
+  color: var(--ink-fog);
+  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
   opacity: 1;
   pointer-events: auto;
 }
@@ -3304,20 +3299,26 @@
   height: 12px;
 }
 
-.side-bar-chip-close.is-armed {
+/* .side-bar-chip 프리픽스는 reveal 규칙과 같은 특이도를 유지해 포인터가 떠나도 ARM 폭을 보존한다. */
+.side-bar-chip .side-bar-chip-close.is-armed {
+  flex: none;
   background: color-mix(in oklch, var(--coral) 20%, transparent);
-  border-color: color-mix(in oklch, var(--coral) 50%, transparent);
+  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
   color: var(--coral);
   font-family: var(--font-body);
   font-size: 11px;
   font-weight: 700;
   width: auto;
+  height: 20px;
   padding: 0 6px;
+  margin-left: 0;
+  opacity: 1;
+  pointer-events: auto;
   animation: chip-close-arm 1.5s linear forwards;
 }
 
-.side-bar-chip-close.is-armed:hover,
-.side-bar-chip-close.is-armed:focus-visible {
+.side-bar-chip .side-bar-chip-close.is-armed:hover,
+.side-bar-chip .side-bar-chip-close.is-armed:focus-visible {
   background: color-mix(in oklch, var(--coral) 32%, transparent);
   outline: none;
 }
@@ -3329,7 +3330,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .side-bar-chip-close.is-armed {
+  .side-bar-chip-close,
+  .side-bar-chip-minimize {
+    transition-duration: 0.01ms;
+  }
+
+  .side-bar-chip .side-bar-chip-close.is-armed {
     animation: none;
   }
 
