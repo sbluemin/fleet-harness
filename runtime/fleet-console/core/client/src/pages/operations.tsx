@@ -44,10 +44,6 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const handleToggleFormation = useCallback(() => {
-    toggleFormationView();
-  }, []);
-
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
   }, [state.activeTheaterId]);
@@ -67,10 +63,10 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
       // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
-      if (event.code === "KeyF") {
+      if (event.code === "KeyF" && !event.shiftKey) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        toggleFormationView({ restoreMinimized: event.shiftKey });
+        toggleFormationView();
         return;
       }
       if (event.shiftKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
@@ -103,7 +99,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [formationView, handleToggleFormation, maximizedOperationId]);
+  }, [formationView, maximizedOperationId]);
 
   useEffect(() => {
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
@@ -359,8 +355,6 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleCanvasLaunchKind}
           onLaunchAtGeometry={handleLaunchAtGeometry}
-          onResetView={handleResetView}
-          onToggleFormation={handleToggleFormation}
           onClose={handleClose}
           onFocus={handleFocus}
           onRename={handleRename}

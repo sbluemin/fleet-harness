@@ -11,7 +11,7 @@ import { DirectoryBrowserModal } from "../components/directory-browser-modal.js"
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { setOperationOrder, toggleFormationView, toggleGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationView } from "../canvas/canvas-store.js";
+import { selectFormationLayout, setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
 import { sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -178,6 +178,7 @@ export function OperationsSideBar({
   const { width, collapsed } = sideBar;
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
+  const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const closeArmTimeoutRef = useRef<number | null>(null);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
@@ -507,8 +508,11 @@ export function OperationsSideBar({
       <div className="side-bar-theater-add-row">
         <button type="button" className="side-bar-theater-add-btn" onClick={openTheaterBrowser} disabled={addingTheater} aria-label="Add Theater" title={addingTheater ? "Adding Theater" : "Add Theater"}><PlusIcon /><span>Add Theater</span></button>
         <div className="side-bar-formation-group" role="group" aria-label="Formation view">
-          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView()} disabled={activeTheaterId === null} aria-pressed={formationView} aria-label="Formation view (open panels only)" title="Formation view (Alt+F)"><FormationIcon /></button>
-          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView({ restoreMinimized: true })} disabled={activeTheaterId === null} aria-pressed={formationView && minimizedSet.size === 0} aria-label="Formation view including minimized panels" title="Formation view incl. minimized (Alt+Shift+F)"><FormationFilledIcon /></button>
+          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => onResetView()} disabled={activeTheaterId === null} aria-label="Reset canvas view" title="Reset canvas view"><ResetViewIcon /></button>
+          <span className="side-bar-formation-divider" aria-hidden="true" />
+          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label="Formation view — Grid layout" title="Formation view — Grid layout"><FormationGridIcon /></button>
+          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label="Formation view — Columns layout" title="Formation view — Columns layout"><FormationColumnsIcon /></button>
+          <button type="button" className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label="Formation view — Rows layout" title="Formation view — Rows layout"><FormationRowsIcon /></button>
         </div>
       </div>
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
@@ -690,12 +694,10 @@ export function OperationsSideBar({
           anchor={newMenu.anchor}
           viewportBounds={newMenu.viewportBounds}
           placement="cursor"
-          mode="launch"
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
           onLaunchKind={(pluginId, kind) => { setNewMenu(null); onLaunchKind(pluginId, kind); }}
-          onResetView={onResetView}
           onClose={() => setNewMenu(null)}
         />,
         document.body,
@@ -749,12 +751,20 @@ export function OperationsSideBar({
   );
 }
 
-function FormationIcon() {
+function FormationGridIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
-function FormationFilledIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="currentColor" /></svg>;
+function ResetViewIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 7.2A4 4 0 1 1 4 9.2" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.4 4.6v2.8h2.8" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function FormationColumnsIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h3v11h-3zM6.5 2.5h3v11h-3zM10.5 2.5h3v11h-3z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function FormationRowsIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v3h-11zM2.5 6.5h11v3h-11zM2.5 10.5h11v3h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 interface GroupSection {

@@ -58,7 +58,11 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab {");
-    expect(contextMenu).toContain("Formation view");
+    expect(contextMenu).toContain('<p className="canvas-context-menu-section">Launch</p>');
+    expect(contextMenu).not.toContain("CanvasContextMenuMode");
+    expect(contextMenu).not.toContain("canvas-context-menu-tabs");
+    expect(contextMenu).not.toContain("Formation view");
+    expect(contextMenu).not.toContain("ResetGlyph");
     expect(contextMenu).not.toContain("onToggleRadar");
     expect(contextMenu).not.toContain("onTogglePerimeter");
   });
@@ -156,10 +160,15 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toContain("command-band-formation-toggle");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     expect(sidebar).toContain('<div className="side-bar-formation-group" role="group" aria-label="Formation view">');
-    expect(sidebar).toContain('className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView()}');
-    expect(sidebar).toContain('aria-pressed={formationView} aria-label="Formation view (open panels only)"');
-    expect(sidebar).toContain('className="side-bar-formation-toggle side-bar-formation-seg" onClick={() => toggleFormationView({ restoreMinimized: true })}');
-    expect(sidebar).toContain('aria-pressed={formationView && minimizedSet.size === 0} aria-label="Formation view including minimized panels"');
+    expect(sidebar).toContain('aria-label="Reset canvas view"');
+    expect(sidebar).toContain("<ResetViewIcon />");
+    expect(sidebar).toContain('className="side-bar-formation-divider"');
+    expect(sidebar).toContain('onClick={() => selectFormationLayout("grid")}');
+    expect(sidebar).toContain('onClick={() => selectFormationLayout("columns")}');
+    expect(sidebar).toContain('onClick={() => selectFormationLayout("rows")}');
+    expect(sidebar).toContain('aria-pressed={formationView && formationLayout === "grid"}');
+    expect(sidebar).not.toContain("restoreMinimized");
+    expect(sidebar).not.toContain("Formation view including minimized panels");
     expect(components).toContain(".side-bar-formation-group {");
     expect(components).toContain("border-left: 1px solid var(--surface-rim);");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
@@ -338,7 +347,7 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
-    expect(source("canvas/canvas-context-menu.tsx")).toContain('export type CanvasContextMenuMode = "full" | "launch";');
+    expect(source("canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
     expect(brandFoot).toContain('className="brand-foot-dropup-menu" role="menu"');
     expect(brandFoot).toContain("System Menu");
     expect(brandFoot).toContain("Keyboard Shortcuts");

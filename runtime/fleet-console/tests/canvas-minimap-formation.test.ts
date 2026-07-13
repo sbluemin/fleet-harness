@@ -234,8 +234,6 @@ function renderOperationsCanvas() {
     renderKindIcon: () => null,
     onLaunchKind: () => {},
     onLaunchAtGeometry: () => {},
-    onResetView: () => {},
-    onToggleFormation: () => {},
     onClose: () => {},
     onFocus: () => {},
     onRename: () => {},
