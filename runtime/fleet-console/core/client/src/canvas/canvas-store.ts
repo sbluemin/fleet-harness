@@ -44,9 +44,12 @@ export interface GridSlotGeometry {
   readonly height: number;
 }
 
+export type FormationLayout = "grid" | "columns" | "rows";
+
 type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
+const FORMATION_LAYOUT_STORAGE_KEY = "fleet-console.formation-layout";
 const SAVE_DELAY_MS = 400;
 const DEFAULT_OPERATION_WIDTH = 640;
 const DEFAULT_OPERATION_HEIGHT = 400;
@@ -69,6 +72,7 @@ const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, o
 const listeners = new Set<Listener>();
 const maximizedOperationListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
+const formationLayoutListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
 const formationViewsByTheater = new Map<string, true>();
 let activeTheaterId: string | null = null;
@@ -76,6 +80,7 @@ let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let maximizedOperationId: string | null = null;
 let formationView = false;
+let formationLayout = readStoredFormationLayout();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
@@ -102,6 +107,10 @@ export function getFormationView(): boolean {
   return formationView;
 }
 
+export function getFormationLayout(): FormationLayout {
+  return formationLayout;
+}
+
 // canvas 스토어가 현재 로드한 Theater id. maximizedOperationId·maximizedOperationIdsByTheater 등
 // 최대화 상태는 이 Theater 기준으로 동작하므로, 최대화 관련 가드는 store.activeTheaterId가 아니라 이 값을 기준으로 삼아야 한다.
 // (loadForTheater가 passive effect로 갱신되어 store.activeTheaterId보다 한 박자 늦을 수 있다.)
@@ -119,6 +128,10 @@ export function useMaximizedOperationId(): string | null {
 
 export function useFormationView(): boolean {
   return useSyncExternalStore(subscribeFormationView, getFormationView, getFormationView);
+}
+
+export function useFormationLayout(): FormationLayout {
+  return useSyncExternalStore(subscribeFormationLayout, getFormationLayout, getFormationLayout);
 }
 
 // 최소화 목록은 CanvasState의 일부라 메인 listeners/emit을 그대로 공유한다(별도 채널 불필요).
@@ -190,12 +203,43 @@ export function calculateGridSlots(
   minimumHeight = MIN_OPERATION_HEIGHT,
   gap = OPERATION_GRID_GAP,
   padding = OPERATION_GRID_PADDING,
+  layout: FormationLayout = "grid",
 ): readonly GridSlotGeometry[] {
   if (!Number.isFinite(count) || count <= 0) return [];
-  const columns = Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / columns);
   const innerWidth = Math.max(0, rect.width - padding * 2);
   const innerHeight = Math.max(0, rect.height - padding * 2);
+  if (layout === "columns") {
+    const availableWidth = Math.max(0, innerWidth - gap * (count - 1));
+    const naturalWidth = availableWidth / count;
+    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
+    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), availableWidth);
+    const naturalHeight = innerHeight;
+    const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
+    const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), innerHeight);
+    return Array.from({ length: count }, (_, index) => ({
+      x: rect.x + padding + index * (width + gap),
+      y: rect.y + padding,
+      width,
+      height,
+    }));
+  }
+  if (layout === "rows") {
+    const naturalWidth = innerWidth;
+    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
+    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), innerWidth);
+    const availableHeight = Math.max(0, innerHeight - gap * (count - 1));
+    const naturalHeight = availableHeight / count;
+    const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
+    const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), availableHeight);
+    return Array.from({ length: count }, (_, index) => ({
+      x: rect.x + padding,
+      y: rect.y + padding + index * (height + gap),
+      width,
+      height,
+    }));
+  }
+  const columns = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / columns);
   const availableHeight = Math.max(0, innerHeight - gap * (rows - 1));
   const naturalHeight = availableHeight / rows;
   const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
@@ -403,24 +447,31 @@ export function clearMaximizedOperationId(): void {
   emitMaximizedOperation();
 }
 
-export function toggleFormationView(options?: { readonly restoreMinimized?: boolean }): void {
+export function toggleFormationView(): void {
   if (!activeTheaterId) return;
   if (formationView) {
-    if (options?.restoreMinimized === true && state.minimized.length > 0) {
-      setState({ minimized: [] });
-      return;
-    }
     clearFormationView();
     return;
-  }
-  if (options?.restoreMinimized === true) {
-    // Only the include-minimized entry restores docked panels. Open-panel entry keeps them minimized — including the panels a maximize sent to the dock, which stay docked until an explicit restore.
-    setState({ minimized: [] });
   }
   clearMaximizedOperationId();
   formationViewsByTheater.set(activeTheaterId, true);
   formationView = true;
   emitFormationView();
+}
+
+export function selectFormationLayout(layout: FormationLayout): void {
+  if (!activeTheaterId) return;
+  if (formationView && formationLayout === layout) {
+    clearFormationView();
+    return;
+  }
+  setFormationLayout(layout);
+  if (!formationView) {
+    clearMaximizedOperationId();
+    formationViewsByTheater.set(activeTheaterId, true);
+    formationView = true;
+    emitFormationView();
+  }
 }
 
 export function clearFormationView(): void {
@@ -430,10 +481,23 @@ export function clearFormationView(): void {
   emitFormationView();
 }
 
+export function setFormationLayout(layout: FormationLayout): void {
+  formationLayout = layout;
+  writeStoredFormationLayout(layout);
+  emitFormationLayout();
+}
+
 export function subscribeFormationView(listener: Listener): () => void {
   formationViewListeners.add(listener);
   return () => {
     formationViewListeners.delete(listener);
+  };
+}
+
+export function subscribeFormationLayout(listener: Listener): () => void {
+  formationLayoutListeners.add(listener);
+  return () => {
+    formationLayoutListeners.delete(listener);
   };
 }
 
@@ -454,6 +518,10 @@ function getMaximizedOperationSnapshot(): string | null {
 
 function emitFormationView(): void {
   for (const listener of formationViewListeners) listener();
+}
+
+function emitFormationLayout(): void {
+  for (const listener of formationLayoutListeners) listener();
 }
 
 function getMinimizedSnapshot(): readonly string[] {
@@ -557,6 +625,25 @@ function writeStoredState(theaterId: string | null, value: CanvasState): void {
     window.localStorage.setItem(storageKey(theaterId), JSON.stringify(value));
   } catch {
     // 저장 실패는 캔버스 복구성만 낮추므로 런타임 흐름을 막지 않는다.
+  }
+}
+
+function readStoredFormationLayout(): FormationLayout {
+  if (typeof window === "undefined") return "grid";
+  try {
+    const stored = window.localStorage.getItem(FORMATION_LAYOUT_STORAGE_KEY);
+    return stored === "columns" || stored === "rows" || stored === "grid" ? stored : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
+function writeStoredFormationLayout(layout: FormationLayout): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(FORMATION_LAYOUT_STORAGE_KEY, layout);
+  } catch {
+    // 저장 실패는 Formation 레이아웃 복구성만 낮추므로 런타임 흐름을 막지 않는다.
   }
 }
 

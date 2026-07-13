@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -15,6 +15,7 @@ beforeEach(() => {
     setTimeout,
   });
   window.localStorage.clear();
+  setFormationLayout("grid");
   loadForTheater("theater-a");
   clearMaximizedOperationId();
   clearFormationView();
@@ -139,19 +140,6 @@ describe("canvas store", () => {
     expect(getSnapshot().minimized).toEqual(["op-a", "op-c"]);
   });
 
-  it("restores maximize-docked Operations when entering Formation with restoreMinimized", () => {
-    setOperationGeometry("op-a", { ...GEOMETRY });
-    setOperationGeometry("op-b", { ...GEOMETRY });
-    setOperationGeometry("op-c", { ...GEOMETRY });
-    setMaximizedOperationId("op-b");
-
-    toggleFormationView({ restoreMinimized: true });
-
-    expect(getFormationView()).toBe(true);
-    expect(getMaximizedOperationId()).toBeNull();
-    expect(getSnapshot().minimized).toEqual([]);
-  });
-
   it("keeps manually minimized Operations minimized when entering Formation", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
@@ -161,37 +149,6 @@ describe("canvas store", () => {
 
     expect(getFormationView()).toBe(true);
     expect(getSnapshot().minimized).toEqual(["op-b"]);
-  });
-
-  it("restores every minimized Operation when entering Formation with restoreMinimized", () => {
-    setOperationGeometry("op-a", { ...GEOMETRY });
-    setOperationGeometry("op-b", { ...GEOMETRY });
-    minimizeOperation("op-b");
-
-    toggleFormationView({ restoreMinimized: true });
-
-    expect(getFormationView()).toBe(true);
-    expect(getSnapshot().minimized).toEqual([]);
-  });
-
-  it("adds minimized Operations to active Formation when restoreMinimized is requested", () => {
-    setOperationGeometry("op-a", { ...GEOMETRY });
-    setOperationGeometry("op-b", { ...GEOMETRY });
-    minimizeOperation("op-b");
-    toggleFormationView();
-
-    toggleFormationView({ restoreMinimized: true });
-
-    expect(getFormationView()).toBe(true);
-    expect(getSnapshot().minimized).toEqual([]);
-  });
-
-  it("exits active Formation when restoreMinimized is requested with no minimized Operations", () => {
-    toggleFormationView();
-
-    toggleFormationView({ restoreMinimized: true });
-
-    expect(getFormationView()).toBe(false);
   });
 
   it("exits active Formation when toggled without options", () => {
@@ -260,6 +217,47 @@ describe("canvas store", () => {
     const [slot] = calculateGridSlots({ x: 0, y: 0, width: 300, height: 250 }, 1);
 
     expect(slot).toEqual({ x: 0, y: 0, width: 300, height: 250 });
+  });
+
+  it("calculates full-height columns with configured gap and padding", () => {
+    const slots = calculateGridSlots({ x: 10, y: 20, width: 1000, height: 800 }, 5, 320, 200, 10, 20, "columns");
+
+    expect(slots).toHaveLength(5);
+    expect(slots[0]).toEqual({ x: 30, y: 40, width: 184, height: 760 });
+    expect(slots[4]).toEqual({ x: 806, y: 40, width: 184, height: 760 });
+  });
+
+  it("calculates full-width rows with configured gap and padding", () => {
+    const slots = calculateGridSlots({ x: 10, y: 20, width: 1000, height: 800 }, 5, 320, 200, 10, 20, "rows");
+
+    expect(slots).toHaveLength(5);
+    expect(slots[0]).toEqual({ x: 30, y: 40, width: 960, height: 144 });
+    expect(slots[4]).toEqual({ x: 30, y: 656, width: 960, height: 144 });
+  });
+
+  it("defaults Formation layout to grid and persists the global selection", () => {
+    expect(getFormationLayout()).toBe("grid");
+
+    setFormationLayout("columns");
+    expect(getFormationLayout()).toBe("columns");
+    expect(window.localStorage.getItem("fleet-console.formation-layout")).toBe("columns");
+
+    loadForTheater("theater-b");
+    expect(getFormationLayout()).toBe("columns");
+  });
+
+  it("selects a Formation layout to enter, switch, and exit Formation", () => {
+    selectFormationLayout("columns");
+    expect(getFormationView()).toBe(true);
+    expect(getFormationLayout()).toBe("columns");
+
+    selectFormationLayout("rows");
+    expect(getFormationView()).toBe(true);
+    expect(getFormationLayout()).toBe("rows");
+
+    selectFormationLayout("rows");
+    expect(getFormationView()).toBe(false);
+    expect(getFormationLayout()).toBe("rows");
   });
 
   it("keeps Formation view independent per Theater without modifying saved geometry", () => {

@@ -8,7 +8,7 @@ import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../s
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
@@ -70,6 +70,7 @@ export function OperationsCanvas({
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const canvas = useCanvasState();
+  const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const maximizedOperationId = useMaximizedOperationId();
   const minimized = useMinimized();
@@ -151,7 +152,7 @@ export function OperationsCanvas({
     canvas.operationOrder,
     [],
   ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
-  const formationSlots = formationView ? calculateGridSlots({ x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }, formationOperationIds.length) : [];
+  const formationSlots = formationView ? calculateGridSlots({ x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }, formationOperationIds.length, undefined, undefined, undefined, undefined, formationLayout) : [];
   const formationSlotByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, formationSlots[index]!]));
   // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
   const effectiveZoom = panelMaximized || formationView ? 1 : canvas.viewport.zoom;
