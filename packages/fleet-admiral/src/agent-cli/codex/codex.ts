@@ -8,7 +8,13 @@ export const codexCli: AgentCliDefinition = {
   async createProfile(options: AgentCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
-      args: [...prefixArgs, ...buildResumeArgs(options.resumeSessionId), "--no-alt-screen", ...buildModelArgs(options.model)],
+      args: [
+        ...prefixArgs,
+        ...buildResumeArgs(options.resumeSessionId),
+        ...buildCodexPlatformArgs(process.platform),
+        "--no-alt-screen",
+        ...buildModelArgs(options.model),
+      ],
       bin,
       binPrefixArgs: prefixArgs,
       cwd: options.cwd,
@@ -27,6 +33,14 @@ export const codexCli: AgentCliDefinition = {
     };
   },
 };
+
+const WINDOWS_EDITOR_NEWLINE_OVERRIDE =
+  "tui.keymap.editor.insert_newline=['ctrl-j','ctrl-m','enter','shift-enter','alt-enter','ctrl-enter']";
+
+// ConPTY exposes LF from Fleet's Shift+Enter handler as Ctrl+Enter to Codex's Windows input reader.
+export function buildCodexPlatformArgs(platform: NodeJS.Platform): string[] {
+  return platform === "win32" ? ["-c", WINDOWS_EDITOR_NEWLINE_OVERRIDE] : [];
+}
 
 function buildResumeArgs(resumeSessionId: string | undefined): string[] {
   return resumeSessionId === undefined ? [] : ["resume", resumeSessionId];
