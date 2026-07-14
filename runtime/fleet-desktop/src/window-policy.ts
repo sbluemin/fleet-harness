@@ -46,7 +46,7 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
     if (!consoleOrigin || (!isAllowedConsoleUrl(url, consoleOrigin) && (!pendingConsoleOrigin || !isAllowedConsoleUrl(url, pendingConsoleOrigin)))) event.preventDefault();
   });
   contents.setWindowOpenHandler(({ url }) => {
-    if (consoleOrigin && isHttpsUrl(url)) void openExternal(url);
+    if (consoleOrigin && isHttpUrl(url)) void openExternal(url);
     return { action: "deny" };
   });
   contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, consoleOrigin ?? "")));
@@ -65,6 +65,6 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
 }
 
 export function isAllowedConsoleUrl(url: string, origin: string): boolean { try { const parsed = new URL(url); return parsed.origin === origin && parsed.pathname.startsWith("/console/"); } catch { return false; } }
-function isHttpsUrl(url: string): boolean { try { return new URL(url).protocol === "https:"; } catch { return false; } }
+function isHttpUrl(url: string): boolean { try { return ["http:", "https:"].includes(new URL(url).protocol); } catch { return false; } }
 function hasExactOrigin(url: string, origin: string): boolean { try { return new URL(url).origin === origin; } catch { return false; } }
 function isLoopbackOrigin(origin: string): boolean { try { const parsed = new URL(origin); return parsed.protocol === "http:" && (parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]"); } catch { return false; } }
