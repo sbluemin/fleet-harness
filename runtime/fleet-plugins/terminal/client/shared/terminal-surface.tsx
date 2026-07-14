@@ -12,6 +12,7 @@ import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-prefs-store.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
+import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
 export interface TerminalSurfaceProps {
@@ -183,7 +184,14 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       imeEventTarget.addEventListener("compositionstart", imeHandler.onCompositionStart);
       imeEventTarget.addEventListener("compositionend", imeHandler.onCompositionEnd);
       imeEventTarget.addEventListener("focusout", imeHandler.onCompositionCancel);
-      terminal.attachCustomKeyEventHandler(imeHandler.handleKeyEvent);
+      const windowsSelectionCopyHandler = createWindowsSelectionCopyHandler({
+        getPlatform: () => navigator.platform,
+        getSelection: () => terminal.getSelection(),
+        writeText: (text) => navigator.clipboard.writeText(text),
+      });
+      terminal.attachCustomKeyEventHandler((event) => (
+        windowsSelectionCopyHandler.handleKeyEvent(event) && imeHandler.handleKeyEvent(event)
+      ));
 
       const scrollFollow = createTerminalScrollFollow({
         getViewport: () => terminal.buffer.active,
