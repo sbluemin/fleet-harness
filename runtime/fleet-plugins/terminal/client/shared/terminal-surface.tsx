@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
+import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-prefs-store.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
@@ -164,6 +165,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       terminal.loadAddon(fitAddon);
       terminal.open(container);
       syncTerminalViewportBackground(container, terminalTheme);
+      const copyOnSelect = createTerminalCopyOnSelect({
+        terminal,
+        selectionTarget: container,
+        windowTarget: window,
+        clipboard: navigator.clipboard,
+      });
       terminal.loadAddon(new Unicode11Addon());
       terminal.unicode.activeVersion = "11";
 
@@ -252,6 +259,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         imeEventTarget.removeEventListener("focusout", imeHandler.onCompositionCancel);
         imeHandler.dispose();
         connection.dispose();
+        copyOnSelect.dispose();
         scrollGesture.dispose();
         outputScheduler.dispose();
         scrollFollow.dispose();
