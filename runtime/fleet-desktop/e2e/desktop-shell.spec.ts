@@ -59,4 +59,34 @@ test.describe("unpackaged desktop shell", () => {
       await app.close();
     }
   });
+
+  test("hands HTTP links to the external browser broker", async () => {
+    const main = process.env.FLEET_DESKTOP_E2E_MAIN;
+    const nodePath = process.env.FLEET_CONSOLE_NODE_PATH;
+    test.skip(!main || !nodePath, "FLEET_DESKTOP_E2E_MAIN and FLEET_CONSOLE_NODE_PATH are required.");
+    const app = await electron.launch({ args: [path.resolve(main)], env: { ...process.env, FLEET_CONSOLE_NODE_PATH: nodePath } });
+    try {
+      const window = await app.firstWindow();
+      await expect(window).toHaveURL(/\/console\//);
+      await app.evaluate(({ shell }) => {
+        const probe = globalThis as typeof globalThis & { __fleetOpenExternalUrls?: string[] };
+        probe.__fleetOpenExternalUrls = [];
+        shell.openExternal = async (url) => { probe.__fleetOpenExternalUrls?.push(url); };
+      });
+
+      await window.evaluate(() => {
+        window.open("http://127.0.0.1:4173/preview", "_blank");
+        window.open("https://fleet.example/docs", "_blank");
+        window.open("file:///tmp/secret", "_blank");
+      });
+
+      await expect.poll(() => app.evaluate(() => {
+        const probe = globalThis as typeof globalThis & { __fleetOpenExternalUrls?: string[] };
+        return probe.__fleetOpenExternalUrls ?? [];
+      })).toEqual(["http://127.0.0.1:4173/preview", "https://fleet.example/docs"]);
+      expect(new URL(window.url()).pathname).toMatch(/^\/console\//);
+    } finally {
+      await app.close();
+    }
+  });
 });

@@ -66,15 +66,19 @@ describe("secure window policy", () => {
     expect(committed).not.toHaveBeenCalled();
   });
 
-  it("blocks popups and navigation while brokering HTTPS links only", async () => {
+  it("blocks popups and navigation while brokering HTTP links only", async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
     const openExternal = vi.fn(async () => undefined);
     const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionRequestHandler: vi.fn() } };
     applyWindowPolicy(contents as never, "http://127.0.0.1:4310", openExternal);
     const handler = contents.setWindowOpenHandler.mock.calls[0]![0] as ({ url }: { url: string }) => { action: string };
     expect(handler({ url: "https://fleet.example/docs" })).toEqual({ action: "deny" });
+    expect(handler({ url: "http://127.0.0.1:4173/preview" })).toEqual({ action: "deny" });
     expect(handler({ url: "file:///tmp/secret" })).toEqual({ action: "deny" });
-    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledWith("https://fleet.example/docs"));
+    expect(handler({ url: "javascript:alert('unsafe')" })).toEqual({ action: "deny" });
+    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2));
+    expect(openExternal).toHaveBeenNthCalledWith(1, "https://fleet.example/docs");
+    expect(openExternal).toHaveBeenNthCalledWith(2, "http://127.0.0.1:4173/preview");
     const preventDefault = vi.fn();
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault }, "https://evil.example/");
     expect(preventDefault).toHaveBeenCalledOnce();
