@@ -151,17 +151,19 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       await waitForSymbolsNerdFontMono();
       if (disposed) return;
 
+      const terminalTheme = terminalThemeFor(activeTheme);
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
         fontFamily: terminalFontSettings.family,
         fontSize: terminalFontSettings.size * appliedZoom,
-        theme: terminalThemeFor(activeTheme),
+        theme: terminalTheme,
       });
       terminalRef.current = terminal;
       const fitAddon = new FitAddon();
       fitAddonRef.current = fitAddon;
       terminal.loadAddon(fitAddon);
       terminal.open(container);
+      syncTerminalViewportBackground(container, terminalTheme);
       terminal.loadAddon(new Unicode11Addon());
       terminal.unicode.activeVersion = "11";
 
@@ -342,8 +344,11 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
 
   useEffect(() => {
     const terminal = terminalRef.current;
-    if (!terminal) return;
-    terminal.options.theme = terminalThemeFor(activeTheme);
+    const container = containerRef.current;
+    if (!terminal || !container) return;
+    const terminalTheme = terminalThemeFor(activeTheme);
+    terminal.options.theme = terminalTheme;
+    syncTerminalViewportBackground(container, terminalTheme);
   }, [activeTheme, mountedTerminalEpoch]);
 
   useEffect(() => {
@@ -418,6 +423,17 @@ function terminalThemeFor(theme: "instrument" | "maritime" | "carbon"): ITheme {
   return INSTRUMENT_TERMINAL_THEME;
 }
 
+export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {
+  const viewport = container.querySelector<HTMLElement>(".xterm-viewport");
+  if (!viewport) return;
+  if (theme.background) {
+    // xterm 6은 테마 배경을 새 scroll host에만 적용하므로, 남는 viewport 영역도 같은 색으로 맞춘다.
+    viewport.style.backgroundColor = theme.background;
+  } else {
+    viewport.style.removeProperty("background-color");
+  }
+}
+
 function scrollTerminalToBottom(terminal: XtermTerminal | null): void {
   if (!terminal) return;
   terminal.scrollToBottom();
@@ -434,13 +450,14 @@ interface TerminalScrollGestureTracker {
   readonly dispose: () => void;
 }
 
-function createTerminalScrollGestureTracker(
+export function createTerminalScrollGestureTracker(
   container: HTMLElement,
   keyboardTarget: HTMLElement,
   recordUserViewportChange: () => void,
 ): TerminalScrollGestureTracker {
-  const viewport = container.querySelector<HTMLElement>(".xterm-viewport");
-  if (!viewport) return { dispose: () => undefined };
+  const scrollHost = container.querySelector<HTMLElement>(".xterm-scrollable-element")
+    ?? container.querySelector<HTMLElement>(".xterm-viewport");
+  if (!scrollHost) return { dispose: () => undefined };
 
   let pointerScrolling = false;
   let gestureFrame: number | null = null;
@@ -459,8 +476,8 @@ function createTerminalScrollGestureTracker(
   const onWheel = () => scheduleUserViewportRecord();
   const onTouchStart = () => { pointerScrolling = true; };
   const onPointerDown = (event: PointerEvent) => {
-    // Native scrollbar drags target the viewport itself; touch panning may target terminal content.
-    pointerScrolling = event.pointerType === "touch" || event.target === viewport;
+    // 구형 네이티브 스크롤바와 xterm 6 커스텀 스크롤바, 터치 패닝을 모두 사용자 제스처로 분류한다.
+    pointerScrolling = isTerminalScrollPointer(event, scrollHost);
   };
   const onViewportScroll = () => {
     if (pointerScrolling) scheduleUserViewportRecord();
@@ -474,32 +491,39 @@ function createTerminalScrollGestureTracker(
     if (isTerminalScrollbackKey(event)) scheduleUserViewportRecord();
   };
 
-  // Capture the gesture boundary before xterm's viewport handlers; the tracker records the
-  // resulting public viewport after xterm has synchronized it, never from raw onScroll timing.
-  viewport.addEventListener("wheel", onWheel, { capture: true, passive: true });
-  viewport.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
-  viewport.addEventListener("touchend", onPointerEnd);
-  viewport.addEventListener("touchcancel", onPointerEnd);
-  viewport.addEventListener("pointerdown", onPointerDown, true);
-  viewport.addEventListener("scroll", onViewportScroll);
+  // xterm 핸들러보다 먼저 제스처 경계를 포착하고, xterm 동기화 뒤의 public viewport를 기록한다.
+  scrollHost.addEventListener("wheel", onWheel, { capture: true, passive: true });
+  scrollHost.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+  scrollHost.addEventListener("touchend", onPointerEnd);
+  scrollHost.addEventListener("touchcancel", onPointerEnd);
+  scrollHost.addEventListener("pointerdown", onPointerDown, true);
+  scrollHost.addEventListener("scroll", onViewportScroll);
   window.addEventListener("pointerup", onPointerEnd);
   window.addEventListener("pointercancel", onPointerEnd);
   keyboardTarget.addEventListener("keydown", onKeyDown, true);
 
   return {
     dispose: () => {
-      viewport.removeEventListener("wheel", onWheel, true);
-      viewport.removeEventListener("touchstart", onTouchStart, true);
-      viewport.removeEventListener("touchend", onPointerEnd);
-      viewport.removeEventListener("touchcancel", onPointerEnd);
-      viewport.removeEventListener("pointerdown", onPointerDown, true);
-      viewport.removeEventListener("scroll", onViewportScroll);
+      scrollHost.removeEventListener("wheel", onWheel, true);
+      scrollHost.removeEventListener("touchstart", onTouchStart, true);
+      scrollHost.removeEventListener("touchend", onPointerEnd);
+      scrollHost.removeEventListener("touchcancel", onPointerEnd);
+      scrollHost.removeEventListener("pointerdown", onPointerDown, true);
+      scrollHost.removeEventListener("scroll", onViewportScroll);
       window.removeEventListener("pointerup", onPointerEnd);
       window.removeEventListener("pointercancel", onPointerEnd);
       keyboardTarget.removeEventListener("keydown", onKeyDown, true);
       if (gestureFrame !== null) window.cancelAnimationFrame(gestureFrame);
     },
   };
+}
+
+export function isTerminalScrollPointer(event: PointerEvent, scrollHost: HTMLElement): boolean {
+  if (event.pointerType === "touch" || event.target === scrollHost) return true;
+  return event.composedPath().some((target) => {
+    const classList = (target as { readonly classList?: { contains: (token: string) => boolean } }).classList;
+    return classList?.contains("scrollbar") === true;
+  });
 }
 
 function isTerminalScrollbackKey(event: KeyboardEvent): boolean {

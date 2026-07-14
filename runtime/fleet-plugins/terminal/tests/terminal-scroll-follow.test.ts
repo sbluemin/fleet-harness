@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  createTerminalScrollGestureTracker,
+  isTerminalScrollPointer,
+  syncTerminalViewportBackground,
+} from "../client/shared/terminal-surface.js";
 import {
   createTerminalScrollFollow,
   isTerminalViewportAtBottom,
@@ -7,6 +12,85 @@ import {
 } from "../client/shared/terminal-scroll-follow.js";
 
 describe("terminal scroll follow", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("tracks wheel, touch, and scrollbar gestures on xterm 6's scroll host", () => {
+    const xterm6ScrollHost = new EventTarget();
+    const xterm5Viewport = new EventTarget();
+    const keyboardTarget = new EventTarget();
+    const windowTarget = new EventTarget();
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    const records = vi.fn();
+    vi.stubGlobal("window", Object.assign(windowTarget, {
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        nextFrame += 1;
+        frames.set(nextFrame, callback);
+        return nextFrame;
+      },
+      cancelAnimationFrame: (handle: number) => frames.delete(handle),
+    }));
+    const container = {
+      querySelector: vi.fn((selector: string) => {
+        if (selector === ".xterm-scrollable-element") return xterm6ScrollHost;
+        if (selector === ".xterm-viewport") return xterm5Viewport;
+        return null;
+      }),
+    } as unknown as HTMLElement;
+
+    createTerminalScrollGestureTracker(container, keyboardTarget as unknown as HTMLElement, records);
+
+    xterm6ScrollHost.dispatchEvent(new Event("wheel"));
+    flushAnimationFrames(frames);
+    expect(records).toHaveBeenCalledTimes(1);
+
+    xterm6ScrollHost.dispatchEvent(new Event("touchstart"));
+    xterm6ScrollHost.dispatchEvent(new Event("scroll"));
+    xterm6ScrollHost.dispatchEvent(new Event("touchend"));
+    flushAnimationFrames(frames);
+    expect(records).toHaveBeenCalledTimes(2);
+
+    const pointerDown = new Event("pointerdown");
+    Object.defineProperty(pointerDown, "pointerType", { value: "mouse" });
+    xterm6ScrollHost.dispatchEvent(pointerDown);
+    xterm6ScrollHost.dispatchEvent(new Event("scroll"));
+    windowTarget.dispatchEvent(new Event("pointerup"));
+    flushAnimationFrames(frames);
+    expect(records).toHaveBeenCalledTimes(3);
+    expect(container.querySelector).toHaveBeenCalledWith(".xterm-scrollable-element");
+    expect(container.querySelector).not.toHaveBeenCalledWith(".xterm-viewport");
+  });
+
+  it("recognizes xterm 6's custom scrollbar descendants as pointer scrolling", () => {
+    const scrollHost = new EventTarget() as unknown as HTMLElement;
+    const scrollbar = {
+      classList: { contains: (token: string) => token === "scrollbar" },
+    } as unknown as EventTarget;
+    const event = {
+      pointerType: "mouse",
+      target: new EventTarget(),
+      composedPath: () => [scrollbar, scrollHost],
+    } as unknown as PointerEvent;
+
+    expect(isTerminalScrollPointer(event, scrollHost)).toBe(true);
+  });
+
+  it("fills xterm 6's unused viewport rows with the active terminal background", () => {
+    const removeProperty = vi.fn();
+    const viewport = { style: { backgroundColor: "", removeProperty } };
+    const container = {
+      querySelector: vi.fn(() => viewport),
+    } as unknown as HTMLElement;
+
+    syncTerminalViewportBackground(container, { background: "oklch(16.5% 0.016 245)" });
+    expect(viewport.style.backgroundColor).toBe("oklch(16.5% 0.016 245)");
+
+    syncTerminalViewportBackground(container, {});
+    expect(removeProperty).toHaveBeenCalledWith("background-color");
+  });
+
   it("recognizes the bottom in normal and alternate buffers through their public viewport positions", () => {
     expect(isTerminalViewportAtBottom({ baseY: 280, viewportY: 280 })).toBe(true);
     expect(isTerminalViewportAtBottom({ baseY: 280, viewportY: 278 })).toBe(false);
@@ -136,6 +220,14 @@ describe("terminal scroll follow", () => {
     expect(harness.scrolls).toBe(2);
   });
 });
+
+function flushAnimationFrames(frames: Map<number, FrameRequestCallback>): void {
+  while (frames.size > 0) {
+    const pending = [...frames.values()];
+    frames.clear();
+    for (const callback of pending) callback(0);
+  }
+}
 
 function createHarness(initialViewport: TerminalViewportPosition) {
   let frame: FrameRequestCallback | null = null;
