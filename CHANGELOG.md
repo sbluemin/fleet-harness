@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.26.1] - 2026-07-14
+
+### fleet-desktop
+
+#### Fixed
+- [fleet-console] Open terminal HTTP and HTTPS links in the external browser while blocking non-web schemes.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Upgrade Console terminal rendering to xterm 6 while preserving manual scrollback and themed viewport fill.
+
+#### Fixed
+- [fleet-console] Pass validated OSC 8 destinations in the initial browser request while preserving the navigation warning.
+- [fleet-console] Copy local terminal selections to the clipboard after mouse dragging.
+- [fleet-console] Copy selected terminal text on Windows with Ctrl+Shift+C without opening browser DevTools or interrupting the active CLI.
+
+### fleet-core
+
+#### Fixed
+- [fleet-admiral] Restore multiline input for Codex sessions on Windows.
+
 ## [1.26.0] - 2026-07-13
 
 ### fleet-cli

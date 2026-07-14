@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.26.1] - 2026-07-14
+
+### fleet-desktop
+
+#### Fixed
+- [fleet-console] 터미널의 HTTP 및 HTTPS 링크를 외부 브라우저에서 열고 웹이 아닌 스킴은 차단합니다.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Console 터미널 렌더링을 xterm 6으로 업그레이드하면서 수동 스크롤백과 테마 기반 viewport 채움을 유지합니다.
+
+#### Fixed
+- [fleet-console] 탐색 경고를 유지하면서 검증된 OSC 8 목적지를 최초 브라우저 요청에 전달합니다.
+- [fleet-console] 마우스 드래그 후 로컬 터미널 선택 내용을 클립보드에 복사합니다.
+- [fleet-console] Windows에서 선택한 터미널 텍스트를 브라우저 DevTools 실행이나 활성 CLI 중단 없이 Ctrl+Shift+C로 복사합니다.
+
+### fleet-core
+
+#### Fixed
+- [fleet-admiral] Windows의 Codex 세션에서 여러 줄 입력을 다시 사용할 수 있습니다.
+
 ## [1.26.0] - 2026-07-13
 
 ### fleet-cli
