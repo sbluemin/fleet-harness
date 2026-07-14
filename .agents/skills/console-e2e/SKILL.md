@@ -9,6 +9,8 @@ Test the Console as a browser product. Keep Electron and native-shell claims out
 
 ## Load the browser contract
 
+Record the test host OS/architecture before choosing an agent-browser binary. If the host is Windows ARM64, the native wrapper is unavailable, or the result depends on platform-specific input behavior, read [the platform automation reference](references/platform-automation.md) completely before running browser commands. Never silently substitute an unofficial binary or report an emulated automation client as native ARM64 evidence.
+
 Before browser commands, load the installed CLI workflow:
 
 ```bash

@@ -19,6 +19,8 @@ State the target OS and lane before testing. Never claim Windows/Linux native re
 
 ## Load Electron automation
 
+Record the automation client and target Electron OS/architecture separately. If the host is Windows ARM64, the native agent-browser wrapper is unavailable, or the claim is platform-specific, read [the platform automation reference](references/platform-automation.md) completely before launching Electron or connecting CDP. Never infer the Electron or packaged-artifact architecture from the agent-browser binary.
+
 ```bash
 ab() {
   if command -v agent-browser >/dev/null 2>&1; then agent-browser "$@";
