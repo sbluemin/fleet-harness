@@ -31,6 +31,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     registerSseChannel: () => () => {},
   },
   paths: {
+    fleetDataDir: "/tmp/fleet-console-test",
     capturesDir: "/tmp/fleet-console-test/captures",
     pluginDataDir: (pluginId) => `/tmp/fleet-console-test/plugins/${pluginId}`,
     canonicalizeTheaterPath: (cwd) => path.resolve(cwd),
@@ -451,6 +452,36 @@ describe("plugin host", () => {
     });
 
     await expect(overlapHost.boot()).rejects.toThrow("plugin_route_prefix_conflict");
+  });
+
+  it("allows only a plugin's own absolute API namespace", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-api-scope-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
+
+    const createHost = (register: (ctx: { registerRouter(path: string, handler: () => boolean): void }) => void) => createFleetPluginHost({
+      cwd: dir, homeDir: "/missing", bundleCacheDir: path.join(dir, "cache"), routes: new RouteRegistry(), upgrades: new UpgradeRegistry(), host: noopHostCapabilities,
+      importModule: async () => ({ register }),
+    });
+
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/carriers", () => true)).boot()).resolves.toBeUndefined();
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/other/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/settings/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/../other/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+  });
+
+  it("exposes the host-resolved Fleet data directory to plugins", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-fleet-data-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
+    let fleetDataDir: string | null = null;
+    const host = createFleetPluginHost({
+      cwd: dir, homeDir: "/missing", bundleCacheDir: path.join(dir, "cache"), routes: new RouteRegistry(), upgrades: new UpgradeRegistry(), host: noopHostCapabilities,
+      importModule: async () => ({ register: (ctx) => { fleetDataDir = ctx.host.paths.fleetDataDir; } }),
+    });
+
+    await host.boot();
+    expect(fleetDataDir).toBe("/tmp/fleet-console-test");
   });
 });
 

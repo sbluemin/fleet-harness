@@ -30,7 +30,6 @@ import {
   type ResolvedCarrierState,
 } from "@dotobokuri/fleet-carriers";
 
-import type { ApiCatalogEntry } from "./api-catalog.js";
 import type {
   CarrierSettingsCarrier,
   CarrierSettingsCliOption,
@@ -39,19 +38,13 @@ import type {
   CarrierSettingsOptions,
   CarrierSettingsState,
   CarrierSettingsTaskForceBackend,
-} from "./carrier-settings-types.js";
+} from "../shared/carrier-settings-types.js";
+
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
 interface CarrierSettingsRouteDeps {
   readonly registry: CarrierRegistry;
-  readonly isAuthorized: (req: http.IncomingMessage) => boolean;
-  readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
-  readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
-}
-
-interface CarrierSettingsRouteContext {
-  readonly req: http.IncomingMessage;
-  readonly res: http.ServerResponse;
-  readonly pathname: string;
 }
 
 interface ModelBody {
@@ -76,77 +69,31 @@ type JsonBodyResult<T> =
 
 const TASKFORCE_MIN_BACKENDS = 2;
 
-export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
-  {
-    method: "GET",
-    path: "/api/v1/settings/carriers",
-    summary: "Get the carrier settings status.",
-    category: "Settings",
-    gate: "loopback",
-  },
-  {
-    method: "GET",
-    path: "/api/v1/settings/carriers/options",
-    summary: "Get the carrier settings options.",
-    category: "Settings",
-    gate: "loopback",
-  },
-  {
-    method: "PATCH",
-    path: "/api/v1/settings/carriers/:id",
-    summary: "Update carrier settings fields (cli, model, displayName).",
-    category: "Settings",
-    gate: "origin-write",
-  },
-  {
-    method: "PUT",
-    path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
-    summary: "Set the Task Force backend model.",
-    category: "Settings",
-    gate: "origin-write",
-  },
-  {
-    method: "DELETE",
-    path: "/api/v1/settings/carriers/:id/taskforce/:cliType",
-    summary: "Unset the Task Force backend model.",
-    category: "Settings",
-    gate: "origin-write",
-  },
-  {
-    method: "DELETE",
-    path: "/api/v1/settings/carriers/:id/taskforce",
-    summary: "Reset the carrier Task Force settings.",
-    category: "Settings",
-    gate: "origin-write",
-  },
-];
-
-export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (context: CarrierSettingsRouteContext) => Promise<boolean> {
+export function registerCarrierSettingsRoutes(ctx: FleetPluginServerContext, deps: CarrierSettingsRouteDeps): void {
   const controller = createStatusOverlayController(deps.registry);
 
-  return async function handleCarrierSettingsRoute(context: CarrierSettingsRouteContext): Promise<boolean> {
-    const { req, res, pathname } = context;
-    if (pathname === "/api/v1/settings/carriers") {
+  registerRouter(ctx, `/api/v1/plugins/${ctx.pluginId}/carriers`, async ({ req, res, pathname }) => {
+    if (pathname === "/api/v1/plugins/terminal/carriers") {
       if (req.method !== "GET") {
-        deps.writeJson(res, 405, { error: "Method not allowed" });
+        ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
         return true;
       }
-      deps.writeJson(res, 200, buildCarrierSettingsState(deps.registry));
+      ctx.host.http.writeJson(res, 200, buildCarrierSettingsState(deps.registry));
       return true;
     }
-    if (pathname === "/api/v1/settings/carriers/options") {
+    if (pathname === "/api/v1/plugins/terminal/carriers/options") {
       if (req.method !== "GET") {
-        deps.writeJson(res, 405, { error: "Method not allowed" });
+        ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
         return true;
       }
-      deps.writeJson(res, 200, buildCarrierSettingsOptions());
+      ctx.host.http.writeJson(res, 200, buildCarrierSettingsOptions());
       return true;
     }
     const mutation = parseCarrierMutation(pathname);
     if (!mutation) return false;
-    await handleCarrierMutation(req, res, deps, controller, mutation);
+    await handleCarrierMutation(req, res, deps, ctx, controller, mutation);
     return true;
-  };
+  });
 }
 
 export function buildCarrierSettingsState(registry: CarrierRegistry): CarrierSettingsState {
@@ -173,56 +120,57 @@ async function handleCarrierMutation(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   deps: CarrierSettingsRouteDeps,
+  ctx: FleetPluginServerContext,
   controller: StatusOverlayController,
   mutation: ParsedCarrierMutation,
 ): Promise<void> {
   const method = req.method ?? "GET";
   if (!isExpectedCarrierMethod(mutation, method)) {
-    deps.writeJson(res, 405, { error: "Method not allowed" });
+    ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
     return;
   }
-  if (!deps.isAuthorized(req)) {
-    deps.writeJson(res, 401, { error: "unauthorized" });
+  if (!ctx.host.security.isTerminalAuthorized(req)) {
+    ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
     return;
   }
   if (!isJsonRequest(req)) {
-    deps.writeJson(res, 415, { error: "unsupported_media_type" });
+    ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
     return;
   }
   if (!getRegisteredCarrierConfig(deps.registry, mutation.carrierId)) {
-    deps.writeJson(res, 404, { error: "carrier_not_found" });
+    ctx.host.http.writeJson(res, 404, { error: "carrier_not_found" });
     return;
   }
   if (mutation.kind === "taskforce-backend" && !isCliType(mutation.cliType)) {
-    deps.writeJson(res, 400, { error: "invalid_cli_type" });
+    ctx.host.http.writeJson(res, 400, { error: "invalid_cli_type" });
     return;
   }
   try {
     if (mutation.kind === "patch") {
-      await mutateCarrierPatch(req, res, deps, controller, mutation.carrierId);
+      await mutateCarrierPatch(req, res, deps, ctx, controller, mutation.carrierId);
       return;
     }
     if (mutation.kind === "taskforce-backend") {
       if (method === "DELETE") {
-        const body = await readRequiredJsonBody<Record<string, never>>(req, res, deps);
+        const body = await readRequiredJsonBody<Record<string, never>>(req, res, ctx);
         if (!body.ok) return;
         resetTaskForceModelSelection(mutation.carrierId, mutation.cliType);
         refreshTaskForceConfiguredCarriers(deps.registry);
-        writeMutationState(res, deps);
+        writeMutationState(res, deps, ctx);
         return;
       }
-      const body = await readRequiredJsonBody<ModelBody>(req, res, deps);
+      const body = await readRequiredJsonBody<ModelBody>(req, res, ctx);
       if (!body.ok) return;
-      mutateTaskForceBackend(res, deps, mutation.carrierId, mutation.cliType as CliType, body.body);
+      mutateTaskForceBackend(res, deps, ctx, mutation.carrierId, mutation.cliType as CliType, body.body);
       return;
     }
-    const body = await readRequiredJsonBody<Record<string, never>>(req, res, deps);
+    const body = await readRequiredJsonBody<Record<string, never>>(req, res, ctx);
     if (!body.ok) return;
     resetCarrierTaskForceConfig(mutation.carrierId);
     refreshTaskForceConfiguredCarriers(deps.registry);
-    writeMutationState(res, deps);
+    writeMutationState(res, deps, ctx);
   } catch (error) {
-    deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_request" });
+    ctx.host.http.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_request" });
   }
 }
 
@@ -230,10 +178,11 @@ async function mutateCarrierPatch(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   deps: CarrierSettingsRouteDeps,
+  ctx: FleetPluginServerContext,
   controller: StatusOverlayController,
   carrierId: string,
 ): Promise<void> {
-  const bodyResult = await readRequiredJsonBody<PatchBody>(req, res, deps);
+  const bodyResult = await readRequiredJsonBody<PatchBody>(req, res, ctx);
   if (!bodyResult.ok) return;
   const body = bodyResult.body;
   const config = requireCarrierConfig(deps.registry, carrierId);
@@ -243,7 +192,7 @@ async function mutateCarrierPatch(
   let newCliType: CliType | undefined;
   if (body.cli !== undefined) {
     const parsed = readCliType(body.cli);
-    if (!parsed) { deps.writeJson(res, 400, { error: "invalid_cli_type" }); return; }
+    if (!parsed) { ctx.host.http.writeJson(res, 400, { error: "invalid_cli_type" }); return; }
     newCliType = parsed;
   }
   const effectiveCliType = newCliType ?? currentCliType;
@@ -251,14 +200,14 @@ async function mutateCarrierPatch(
   let modelSelection: AgentCliSelection | undefined;
   if (body.model !== undefined) {
     const parsed = readSelection(effectiveCliType, body.model as ModelBody);
-    if (!parsed) { deps.writeJson(res, 400, { error: "invalid_model_selection" }); return; }
+    if (!parsed) { ctx.host.http.writeJson(res, 400, { error: "invalid_model_selection" }); return; }
     modelSelection = parsed;
   }
 
   let normalizedDisplayName: string | undefined;
   if (body.displayName !== undefined) {
     const parsed = normalizeCarrierDisplayNameInput(body.displayName);
-    if (parsed === null) { deps.writeJson(res, 400, { error: "invalid_display_name" }); return; }
+    if (parsed === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_display_name" }); return; }
     normalizedDisplayName = parsed;
   }
 
@@ -277,40 +226,41 @@ async function mutateCarrierPatch(
     notifyStatusUpdate(deps.registry);
   }
 
-  writeMutationState(res, deps);
+  writeMutationState(res, deps, ctx);
 }
 
 function mutateTaskForceBackend(
   res: http.ServerResponse,
   deps: CarrierSettingsRouteDeps,
+  ctx: FleetPluginServerContext,
   carrierId: string,
   cliType: CliType,
   body: ModelBody,
 ): void {
   const selection = readSelection(cliType, body);
   if (!selection) {
-    deps.writeJson(res, 400, { error: "invalid_model_selection" });
+    ctx.host.http.writeJson(res, 400, { error: "invalid_model_selection" });
     return;
   }
   updateTaskForceBackendAtomically(carrierId, cliType, selection);
   refreshTaskForceConfiguredCarriers(deps.registry);
   notifyStatusUpdate(deps.registry);
-  writeMutationState(res, deps);
+  writeMutationState(res, deps, ctx);
 }
 
-function writeMutationState(res: http.ServerResponse, deps: CarrierSettingsRouteDeps): void {
+function writeMutationState(res: http.ServerResponse, deps: CarrierSettingsRouteDeps, ctx: FleetPluginServerContext): void {
   const response: CarrierSettingsMutationResult = { state: buildCarrierSettingsState(deps.registry) };
-  deps.writeJson(res, 200, response);
+  ctx.host.http.writeJson(res, 200, response);
 }
 
 async function readRequiredJsonBody<T>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  deps: CarrierSettingsRouteDeps,
+  ctx: FleetPluginServerContext,
 ): Promise<JsonBodyResult<T>> {
-  const body = await deps.readJsonBody<T>(req);
+  const body = await ctx.host.http.readJsonBody<T>(req);
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    deps.writeJson(res, 400, { error: "invalid_json" });
+    ctx.host.http.writeJson(res, 400, { error: "invalid_json" });
     return { ok: false };
   }
   return { ok: true, body };
@@ -484,14 +434,14 @@ function fallbackResolvedState(config: CarrierConfig): ResolvedCarrierState {
 
 function parseCarrierMutation(pathname: string): ParsedCarrierMutation | null {
   const parts = pathname.split("/").filter(Boolean);
-  // /api/v1/settings/carriers/:id/...
-  if (parts[0] !== "api" || parts[1] !== "v1" || parts[2] !== "settings" || parts[3] !== "carriers" || !parts[4]) return null;
-  const carrierId = safeDecodeURIComponent(parts[4]);
+  // /api/v1/plugins/terminal/carriers/:id/...
+  if (parts[0] !== "api" || parts[1] !== "v1" || parts[2] !== "plugins" || parts[3] !== "terminal" || parts[4] !== "carriers" || !parts[5]) return null;
+  const carrierId = safeDecodeURIComponent(parts[5]);
   if (!carrierId) return null;
-  if (parts.length === 5) return { kind: "patch", carrierId };
-  if (parts.length === 6 && parts[5] === "taskforce") return { kind: "taskforce-all", carrierId };
-  if (parts.length === 7 && parts[5] === "taskforce") {
-    const cliType = safeDecodeURIComponent(parts[6] ?? "");
+  if (parts.length === 6) return { kind: "patch", carrierId };
+  if (parts.length === 7 && parts[6] === "taskforce") return { kind: "taskforce-all", carrierId };
+  if (parts.length === 8 && parts[6] === "taskforce") {
+    const cliType = safeDecodeURIComponent(parts[7] ?? "");
     return cliType ? { kind: "taskforce-backend", carrierId, cliType } : null;
   }
   return null;

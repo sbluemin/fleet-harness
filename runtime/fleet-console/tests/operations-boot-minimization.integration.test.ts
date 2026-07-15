@@ -46,7 +46,6 @@ vi.mock("../core/client/src/components/toast.js", () => ({ Toast: () => null }))
 vi.mock("../core/client/src/components/whatsnew-modal.js", () => ({ WhatsNewModal: () => null }));
 vi.mock("../core/client/src/global-settings-store.js", () => ({ useGlobalSettingsStore: () => ({ state: null }) }));
 vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
-vi.mock("../core/client/src/pages/carrier-settings.js", () => ({ CarrierSettings: () => null }));
 vi.mock("../core/client/src/pages/global-settings.js", () => ({ GlobalSettings: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
 vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }) }));

@@ -1,4 +1,3 @@
-import { CARRIER_SETTINGS_API_CATALOG } from "./carrier-settings-routes.js";
 import { DESKTOP_THEME_API_CATALOG } from "./desktop-theme-routes.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "./global-settings-routes.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "./plugin-settings-routes.js";
@@ -19,7 +18,6 @@ const compareApiCatalogEntries = (left: ApiCatalogEntry, right: ApiCatalogEntry)
 export function buildApiCatalog(): ApiCatalogEntry[] {
   return [
     ...SERVER_API_CATALOG,
-    ...CARRIER_SETTINGS_API_CATALOG,
     ...DESKTOP_THEME_API_CATALOG,
     ...GLOBAL_SETTINGS_API_CATALOG,
     ...PLUGIN_SETTINGS_API_CATALOG,
