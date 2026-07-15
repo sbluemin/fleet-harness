@@ -12,11 +12,9 @@ Use this skill to route a user request into exactly one git worktree lifecycle m
 Replace each `<placeholder>` before running. The LLM must infer whether the request is create-mode or remove-mode from the user's extra text, then apply only that mode's inputs.
 
 - `<mode>` — `create` | `remove`. Required by interpretation. Route phrases like "make/create/new worktree" to `create`; route phrases like "remove/delete/cleanup current worktree" to `remove`.
-- `<worktree-name>` — Required for `create`. Use as the directory name under `.fleet/worktrees/` and as the default branch/session name. Sanitize by trimming whitespace, lowercasing only when the user did not provide a deliberate case-sensitive token, replacing spaces with `-`, and rejecting values containing `/`, `..`, leading `.`, shell metacharacters, or path separators. Allowed safe shape: `[A-Za-z0-9._-]+`.
+- `<worktree-name>` — Required for `create`. Use as the directory name under `.fleet/worktrees/` and as the default branch name. Sanitize by trimming whitespace, lowercasing only when the user did not provide a deliberate case-sensitive token, replacing spaces with `-`, and rejecting values containing `/`, `..`, leading `.`, shell metacharacters, or path separators. Allowed safe shape: `[A-Za-z0-9._-]+`.
 - `<new-branch>` — Optional for `create`. Default `<worktree-name>`. Apply the same safety rejection as `<worktree-name>`; branch names must not be `main` or `master`.
-- `<tmux-session-name>` — Optional for `create`. Default `<worktree-name>`. Apply the same safety rejection as `<worktree-name>`; this skill owns the tmux convention because the Fleet repository does not currently define one elsewhere.
 - `<base-branch>` — Optional for `create`. Default `canary`. Reject `main` and `master`. Non-standard bases require Nimitz judgment before proceeding.
-- `<session>` — Optional for `remove`. Default to the current worktree directory basename. Kill this tmux session only if it exists.
 - `<force>` — Optional for `remove`. Default `yes` (autonomous cleanup). The remove flow self-applies `git worktree remove --force` and `git branch -D` as needed — including a squash-merged branch that `-d` rejects as unmerged — after reporting any dirty/unpushed/unmerged state. It never pauses for confirmation; the only hard stops are the main checkout and protected branches.
 - `<delete-remote>` — Optional for `remove`. Default `no`. Delete the remote tracking branch (`git push origin --delete <branch>`) only when the user's request explicitly asks for remote cleanup.
 
@@ -48,7 +46,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - Confirm `.fleet/worktrees/` is inside the repository root.
 
 4. **Input validation**:
-   - Validate `<worktree-name>`, `<new-branch>`, and `<tmux-session-name>` using the sanitization rules from Inputs.
+   - Validate `<worktree-name>` and `<new-branch>` using the sanitization rules from Inputs.
    - Reject `<base-branch>` when it is `main` or `master`.
    - Unless Nimitz has approved a non-standard base, use `canary`.
 
@@ -61,21 +59,14 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - `git worktree add -b <new-branch> .fleet/worktrees/<worktree-name> origin/canary`
    - For a Nimitz-approved non-standard `<base-branch>`, replace `origin/canary` with `origin/<base-branch>`.
 
-7. **Create or report the tmux session**:
-   - Fleet has no repository-wide tmux convention documented elsewhere; this skill defines the convention as session name = `<tmux-session-name>`, cwd fixed with `-c <abs-worktree-path>`, and detached creation with `-d`.
-   - First check for a duplicate session: `tmux has-session -t <tmux-session-name>`.
-   - If the session exists, do not create another one. Report that the user can attach with `tmux attach -t <tmux-session-name>`.
-   - If the session does not exist: `tmux new-session -d -s <tmux-session-name> -c <abs-worktree-path>`.
-
-8. **Fix the active command context**:
+7. **Fix the active command context**:
    - Run `cd <abs-worktree-path>`.
    - Treat `<abs-worktree-path>` as the required cwd for all subsequent commands in the task.
    - Do not continue issuing repository commands from the parent checkout unless the user explicitly redirects.
 
-9. **Report in Korean**:
+8. **Report in Korean**:
    - Worktree path.
    - Branch name and base branch.
-   - tmux session name and whether it was created or already existed.
    - Confirmation that cwd is now fixed to the worktree absolute path.
    - Suggested next steps.
    - Note that dependency installation (`pnpm install`) is intentionally not part of this skill; the user runs it manually if needed.
@@ -95,7 +86,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - `git worktree list --porcelain`
    - Identify the main checkout from the porcelain list's primary/root worktree entry.
    - If `current_top` is the main checkout repository root, immediately refuse. Never remove the main checkout.
-   - Record `<path>` as `current_top`, `<worktree-name>` as `basename "$current_top"`, `<session>` as the provided session or `<worktree-name>`, and `<branch>` as the output of `git -C <path> branch --show-current`.
+   - Record `<path>` as `current_top`, `<worktree-name>` as `basename "$current_top"`, and `<branch>` as the output of `git -C <path> branch --show-current`.
 
 4. **Inspect local risk before removal**:
    - `git -C <path> status --short --branch`
@@ -105,32 +96,26 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 
 5. **Proceed autonomously**:
    - Do not stop to ask for confirmation. After the risk inspection (step 4), continue the removal autonomously.
-   - If the worktree is dirty or has unpushed commits, surface that state in the final report, then proceed with the force removal anyway — the only hard stops are the main checkout (step 3) and protected branches (step 9).
+   - If the worktree is dirty or has unpushed commits, surface that state in the final report, then proceed with the force removal anyway — the only hard stops are the main checkout (step 3) and protected branches (step 8).
 
 6. **Leave the worktree directory**:
    - Move out of the worktree before removal: `cd <parent-repo-root>`.
    - `<parent-repo-root>` is the main checkout path from `git worktree list --porcelain`.
 
-7. **Kill the matching tmux session only if present**:
-   - `tmux has-session -t <session>`
-   - If present: `tmux kill-session -t <session>`
-   - If absent, continue without error.
-
-8. **Remove and prune**:
+7. **Remove and prune**:
    - Remove the worktree, self-applying `--force` as needed: `git worktree remove --force <path>` (untracked build artifacts such as `node_modules` otherwise block a plain removal).
    - `git worktree prune`
 
-9. **Delete the branch**:
+8. **Delete the branch**:
    - Refuse to delete protected branches: if `<branch>` is `main`, `master`, or `canary`, skip deletion and report the protection. This is a hard safety stop, not an escalation.
    - Refuse if `<branch>` is empty or `HEAD` (detached).
    - Delete the local branch autonomously: try `git branch -d <branch>` first, and when git reports it is not fully merged (the normal case after a squash merge), run `git branch -D <branch>`. Report that the branch was force-deleted, but do not pause for authorization.
    - Remote tracking branch deletion: only when `<delete-remote>` is set, run `git push origin --delete <branch>`. Otherwise leave the remote branch in place (GitHub usually auto-deletes a merged PR head).
 
-10. **Report in Korean**:
+9. **Report in Korean**:
     - Removed worktree path.
     - Branch name.
     - Whether local changes or unpushed commits were present.
-    - Whether tmux session `<session>` was killed or absent.
     - Whether `--force` was used for the worktree removal.
     - Branch deletion result: deleted (safe), force-deleted, skipped (protected), skipped (unmerged, no force), or skipped (HEAD/detached).
     - Whether the remote tracking branch was deleted.
@@ -152,7 +137,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 ## Carrier Delegation Guidance
 
 - **Nimitz** — consult before proceeding with any non-standard `<base-branch>` request. This is especially important when the requested base changes branch policy or release flow.
-- **Stop and report** — when a worktree path, branch, or tmux session is already present or in use. Do not resolve collisions autonomously.
+- **Stop and report** — when a worktree path or branch is already present or in use. Do not resolve collisions autonomously.
 - Skip carrier delegation for clean create/remove operations that follow the standard `origin/canary` path and have no conflict or policy issue.
 - **Carrier edits inside the new worktree** — after `create`, when you delegate file edits to a carrier (`carrier_dispatch`), pass the **absolute worktree path** as the dispatch `cwd` argument so the carrier's CLI spawns inside this worktree and its repo-relative paths resolve here. If you omit `cwd`, the carrier's cwd defaults to the **main checkout** (not this worktree), so omitting it for worktree work risks editing the main checkout — always set `cwd` for worktree delegation. The carrier can run `build`/`typecheck` inside the worktree only if dependencies are installed there (`pnpm install`); otherwise the Admiral verifies inside the worktree. After each return run `git -C <main-checkout> status --short` to confirm the main checkout stayed clean, and treat the carrier's reported `workspaceChanges` (window-approx) as unreliable — trust the real `git status`.
 - **Gitignored files do not follow into a new worktree** — `git worktree add` checks out the committed tree plus a fresh working dir, so untracked/ignored files (e.g. a `.fleet/plans/*.md` plan under the `.fleet/*` gitignore rule) are **not** present in the new worktree. When a carrier (e.g. Ohio) must read such a file inside the worktree, copy it to the same path in the worktree after creation. Symptom: the carrier reports the plan_file missing; cause: the plan was uncommitted/ignored in the main checkout, so `worktree add` never carried it over.
