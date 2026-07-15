@@ -7,7 +7,7 @@ import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
-import { buildHostShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
+import { buildHostShellCommand, buildPowerShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
 import type {
@@ -270,7 +270,8 @@ function codexHookHandlersInline(execs: readonly FleetHookExec[]): string {
   const handlers = execs
     .map((exec) => {
       const command = buildHostShellCommand([exec.command, ...exec.args]);
-      return `{ type = "command", command = "${escapeTomlBasicString(command)}" }`;
+      const commandWindows = buildPowerShellCommand([exec.command, ...exec.args]);
+      return `{ type = "command", command = "${escapeTomlBasicString(command)}", command_windows = "${escapeTomlBasicString(commandWindows)}" }`;
     })
     .join(", ");
   return `[{ hooks = [${handlers}] }]`;

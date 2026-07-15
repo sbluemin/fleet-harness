@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as Admiral from "../src/index.js";
-import { buildHostShellCommand, escapeTomlBasicString } from "../src/agent-cli/builders/toml.js";
+import { buildHostShellCommand, buildPowerShellCommand, escapeTomlBasicString } from "../src/agent-cli/builders/toml.js";
 import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import { createAgentCliPlugin } from "../src/agent-cli/plugin/index.js";
 import type { AgentCliProfile, FleetHookExec } from "../src/agent-cli/types.js";
@@ -98,6 +99,9 @@ describe("agent CLI session resume and capture hooks", () => {
     const expectedCaptureCommand = escapeTomlBasicString(
       buildHostShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
     );
+    const expectedCaptureWindowsCommand = escapeTomlBasicString(
+      buildPowerShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
+    );
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
       captureSessionHookExec,
       resumeSessionId: "codex-session-456",
@@ -116,7 +120,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
     expect(toml).toContain("[features]\nhooks = true");
     expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}" }] }]`);
+    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}", command_windows = "${expectedCaptureWindowsCommand}" }] }]`);
     expect(toml).not.toContain("args =");
   });
 
@@ -196,6 +200,9 @@ describe("agent CLI session resume and capture hooks", () => {
     const expectedCaptureCommand = escapeTomlBasicString(
       buildHostShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
     );
+    const expectedCaptureWindowsCommand = escapeTomlBasicString(
+      buildPowerShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
+    );
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
       captureSessionHookExec,
     }));
@@ -210,10 +217,44 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
     expect(toml).toContain("[features]\nhooks = true");
     expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}" }] }]`);
+    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}", command_windows = "${expectedCaptureWindowsCommand}" }] }]`);
     expect(toml).not.toContain("args =");
     expect(pluginJson.hooks).toBeUndefined();
     expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
+  });
+
+  it.skipIf(process.platform !== "win32")("writes and executes a PowerShell-safe command_windows override for every Codex hook", async () => {
+    const root = createTempRoot("fleet-admiral-codex-windows-hooks-");
+    const codexHome = path.join(root, "codex-home");
+    const hookExecs = [
+      hookExec(process.execPath, ["-e", "process.exit(0)", "capture argument with spaces", "O'Brien"]),
+      hookExec(process.execPath, ["-e", "process.exit(0)", "turn start argument with spaces", "O'Brien"]),
+      hookExec(process.execPath, ["-e", "process.exit(0)", "auto name argument with spaces", "O'Brien"]),
+      hookExec(process.execPath, ["-e", "process.exit(0)", "turn end argument with spaces", "O'Brien"]),
+    ];
+    const profile = baseProfile("codex", {
+      args: ["--no-alt-screen"],
+      cwd: root,
+      env: { CODEX_HOME: codexHome, HOME: root },
+    });
+
+    await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      autoNameHookExec: hookExecs[2],
+      captureSessionHookExec: hookExecs[0],
+      turnEndHookExec: hookExecs[3],
+      turnStartHookExec: hookExecs[1],
+    }));
+    const toml = readFileSync(path.join(codexHome, "fleet.config.toml"), "utf8");
+    const commandWindows = readTomlBasicStringValues(toml, "command_windows");
+    const expectedCommandWindows = hookExecs.map((exec) => buildPowerShellCommand([exec.command, ...exec.args]));
+
+    expect(commandWindows).toEqual(expectedCommandWindows);
+    for (const command of commandWindows) {
+      expect(command.startsWith("& '")).toBe(true);
+      const result = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8" });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(0);
+    }
   });
 
   it("preserves Codex hook trust state while rewriting the fixed Fleet profile", async () => {
@@ -319,10 +360,13 @@ function baseInjectOptions(
   root: string,
   overrides: {
     readonly buildSystemPrompt?: (enableMetaphor: boolean) => string;
+    readonly autoNameHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
     readonly enableMetaphor?: boolean;
     readonly resumeSessionId?: string;
+    readonly turnEndHookExec?: FleetHookExec;
+    readonly turnStartHookExec?: FleetHookExec;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
@@ -330,9 +374,12 @@ function baseInjectOptions(
     codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
+    ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
+    ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),
+    ...(overrides.turnStartHookExec ? { turnStartHookExec: overrides.turnStartHookExec } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };
 }
@@ -369,4 +416,24 @@ function indexOfSequence(values: readonly string[], sequence: readonly string[])
     sequence.every((expected, sequenceIndex) => values[candidateIndex + sequenceIndex] === expected));
   expect(index).toBeGreaterThanOrEqual(0);
   return index;
+}
+
+function readTomlBasicStringValues(toml: string, key: string): string[] {
+  const matcher = new RegExp(`${key} = "((?:\\\\.|[^"\\\\])*)"`, "g");
+  return [...toml.matchAll(matcher)].map((match) => decodeTomlBasicString(match[1] ?? ""));
+}
+
+function decodeTomlBasicString(value: string): string {
+  return value.replace(/\\(?:[btnfr"\\]|u[0-9a-fA-F]{4})/g, (escape) => {
+    switch (escape) {
+      case "\\b": return "\b";
+      case "\\t": return "\t";
+      case "\\n": return "\n";
+      case "\\f": return "\f";
+      case "\\r": return "\r";
+      case "\\\"": return "\"";
+      case "\\\\": return "\\";
+      default: return String.fromCharCode(Number.parseInt(escape.slice(2), 16));
+    }
+  });
 }
