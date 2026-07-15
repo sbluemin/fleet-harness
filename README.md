@@ -71,7 +71,7 @@ Fleet Wiki keeps architecture decisions, product history, guides, and review que
 
 <img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier Settings" width="100%" />
 
-Choose each Carrier's CLI backend, model, reasoning effort, and Task Force composition from one visual roster. Eight built-in specialists cover strategy, planning, implementation, multi-wave execution, QA, reconnaissance, external intelligence, and documentation.
+Choose each Carrier's CLI backend, model, reasoning effort, and Task Force composition from the visual roster at Settings > Plugins > Terminal > Carriers. Eight built-in specialists cover strategy, planning, implementation, multi-wave execution, QA, reconnaissance, external intelligence, and documentation.
 
 > Fleet Console is a research preview.
 
