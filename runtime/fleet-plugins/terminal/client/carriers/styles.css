@@ -85,7 +85,7 @@
 
 .terminal-carriers-grid {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: var(--space-6);
   align-items: start;
 }

@@ -282,7 +282,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const infraServices = createInfraServices();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   const fleetDataDir = deps.dataDir ?? getFleetDataDir();
-  const durablePaths = createConsoleDataPaths({ fleetDataDir });
+  const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   const codex = createCodexGateway({
