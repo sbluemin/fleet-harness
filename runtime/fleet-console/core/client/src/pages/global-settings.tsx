@@ -169,12 +169,17 @@ export function GlobalSettings() {
   );
 }
 
+// 플러그인 render()를 경계 자손의 렌더 단계에서 호출해야 동기 throw가 PluginErrorBoundary에 잡힌다.
+function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNode }) {
+  return <>{render()}</>;
+}
+
 function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[]) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
     return pluginSection?.render ? (
       <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin settings failed to render.</div>}>
-        {pluginSection.render()}
+        <PluginSettingsSectionBody render={pluginSection.render} />
       </PluginErrorBoundary>
     ) : <p className="global-settings-help">Plugin settings unavailable.</p>;
   }
