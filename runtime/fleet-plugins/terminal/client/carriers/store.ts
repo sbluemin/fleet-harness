@@ -238,4 +238,3 @@ function setSnapshot(patch: Partial<CarrierSettingsStoreState>): void {
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-

@@ -55,4 +55,3 @@ export interface CarrierSettingsState {
 export interface CarrierSettingsMutationResult {
   readonly state: CarrierSettingsState;
 }
-

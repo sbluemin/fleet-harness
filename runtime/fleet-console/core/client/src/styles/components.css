@@ -1186,26 +1186,76 @@
   gap: var(--space-3);
 }
 
-.settings-disclosure-head,
-.settings-disclosure-actions {
+.settings-disclosure-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.settings-disclosure-actions {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
+  flex: none;
 }
 
 .settings-disclosure-toggle {
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  color: var(--ink-spectral);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 6px var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xs);
   background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
-.settings-disclosure-toggle:hover {
-  color: var(--ink-pearl);
+.settings-disclosure-toggle:hover:not(:disabled) {
   background: color-mix(in oklch, var(--brass) 8%, transparent);
+  color: var(--ink-pearl);
+}
+
+.settings-disclosure-toggle[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-bright);
+}
+
+.settings-disclosure-toggle:active:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--ink-pearl);
+  transform: translateY(1px);
+}
+
+.settings-disclosure-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.settings-disclosure-toggle::after {
+  content: "›";
+  font-size: 15px;
+  line-height: 0;
+  transform: rotate(90deg);
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
+.settings-disclosure-control.is-expanded .settings-disclosure-toggle::after {
+  transform: rotate(-90deg);
 }
 
 .status-dot,
