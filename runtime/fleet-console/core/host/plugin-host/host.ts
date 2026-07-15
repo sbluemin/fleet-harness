@@ -101,7 +101,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
       basePath: `/plugins/${plugin.manifest.id}`,
       wsBasePath: `/plugins/${plugin.manifest.id}/ws`,
       host: deps.host,
-      registerRouter: createScopedRouteRegistrar(deps.routes, `/plugins/${plugin.manifest.id}`),
+      registerRouter: createScopedRouteRegistrar(deps.routes, `/plugins/${plugin.manifest.id}`, `/api/v1/plugins/${plugin.manifest.id}`),
       registerWsHandler: createScopedUpgradeRegistrar(deps.upgrades, `/plugins/${plugin.manifest.id}/ws`),
     });
   }
@@ -251,9 +251,9 @@ function resolveRegister(mod: FleetPluginRouteModule): ((ctx: FleetPluginServerC
   return mod.default?.register ?? null;
 }
 
-function createScopedRouteRegistrar(routes: RouteRegistry, basePath: string): FleetPluginServerContext["registerRouter"] {
+function createScopedRouteRegistrar(routes: RouteRegistry, basePath: string, apiBasePath: string): FleetPluginServerContext["registerRouter"] {
   return (requestedPath: string, handler: RouteHandler) => {
-    const prefix = resolveScopedPrefix(basePath, requestedPath);
+    const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath);
     assertNoRouteOverlap(prefix, routes.list().map((route) => route.prefix));
     routes.register(prefix, handler);
   };
@@ -267,11 +267,14 @@ function createScopedUpgradeRegistrar(upgrades: UpgradeRegistry, basePath: strin
   };
 }
 
-function resolveScopedPrefix(basePath: string, requestedPath: string): string {
+function resolveScopedPrefix(basePath: string, requestedPath: string, apiBasePath?: string): string {
+  if (requestedPath.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("plugin_route_outside_scope");
   const normalizedBase = normalizePrefix(basePath);
   if (!requestedPath.startsWith("/")) return normalizePrefix(`${normalizedBase}/${requestedPath}`);
   const normalizedRequest = normalizePrefix(requestedPath);
   if (normalizedRequest === normalizedBase || normalizedRequest.startsWith(`${normalizedBase}/`)) return normalizedRequest;
+  const normalizedApiBase = apiBasePath ? normalizePrefix(apiBasePath) : null;
+  if (normalizedApiBase && (normalizedRequest === normalizedApiBase || normalizedRequest.startsWith(`${normalizedApiBase}/`))) return normalizedRequest;
   if (normalizedRequest === "/") return normalizedBase;
   throw new Error("plugin_route_outside_scope");
 }

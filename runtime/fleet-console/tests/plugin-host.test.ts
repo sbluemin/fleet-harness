@@ -452,6 +452,22 @@ describe("plugin host", () => {
 
     await expect(overlapHost.boot()).rejects.toThrow("plugin_route_prefix_conflict");
   });
+
+  it("allows only a plugin's own absolute API namespace", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-api-scope-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
+
+    const createHost = (register: (ctx: { registerRouter(path: string, handler: () => boolean): void }) => void) => createFleetPluginHost({
+      cwd: dir, homeDir: "/missing", bundleCacheDir: path.join(dir, "cache"), routes: new RouteRegistry(), upgrades: new UpgradeRegistry(), host: noopHostCapabilities,
+      importModule: async () => ({ register }),
+    });
+
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/carriers", () => true)).boot()).resolves.toBeUndefined();
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/other/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/settings/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/../other/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+  });
 });
 
 function writePlugin(root: string, id: string, manifest: Record<string, unknown> = {}, writeRoutes = true): void {
