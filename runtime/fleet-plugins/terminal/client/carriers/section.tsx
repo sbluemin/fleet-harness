@@ -93,7 +93,7 @@ function CarrierSettingsSection() {
   }
 
   return (
-    <main className="terminal-carriers-page">
+    <section className="terminal-carriers-page">
       <section className="terminal-carriers-hero" aria-labelledby="terminal-carriers-title">
         <div>
           <p className="bridge-kicker">Configure Carrier settings</p>
@@ -239,7 +239,7 @@ function CarrierSettingsSection() {
           </div>
         )}
       </section>
-    </main>
+    </section>
   );
 }
 
