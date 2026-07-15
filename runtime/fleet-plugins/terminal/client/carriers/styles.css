@@ -2,7 +2,12 @@
   display: grid;
   align-content: start;
   gap: var(--space-5);
-  width: min(1440px, calc(100vw - 48px));
+  /* Settings 콘텐츠 컬럼 안에 살므로 뷰포트(100vw)가 아닌 부모 폭을 따른다. */
+  width: 100%;
+  max-width: 1440px;
+  /* 반응형 스택은 뷰포트가 아닌 실컨테이너 폭 기준 — 폭이 부모 주도라 inline-size 컨테인먼트가 안전하다. */
+  container-type: inline-size;
+  container-name: carriers-page;
   /* 셸의 minmax(0,1fr) 행 안에서 페이지 자체가 스크롤 컨테이너가 된다. */
   min-height: 0;
   height: 100%;
@@ -330,6 +335,8 @@
 
 .terminal-carriers-body {
   display: grid;
+  /* 암시 열은 content-min으로 트랙을 뚫으므로 항상 수축 가능해야 한다. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 
@@ -407,7 +414,7 @@
 
 .terminal-carriers-tf-item {
   display: grid;
-  grid-template-columns: minmax(160px, 0.75fr) minmax(220px, 1.2fr) minmax(140px, 0.65fr) auto;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.2fr) minmax(0, 0.65fr) auto;
   align-items: end;
   gap: var(--space-3);
 }
@@ -699,7 +706,14 @@
   line-height: 1.5;
 }
 
-@media (max-width: 1120px) {
+@container carriers-page (max-width: 1120px) {
+  .terminal-carriers-runtime-grid,
+  .terminal-carriers-tf-item {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container carriers-page (max-width: 880px) {
   .terminal-carriers-grid {
     grid-template-columns: 1fr;
   }
@@ -712,18 +726,9 @@
   .terminal-carriers-row {
     flex: 1 1 190px;
   }
-
-  .terminal-carriers-runtime-grid,
-  .terminal-carriers-tf-item {
-    grid-template-columns: 1fr;
-  }
 }
 
-@media (max-width: 720px) {
-  .terminal-carriers-page {
-    width: min(100vw - 28px, 760px);
-  }
-
+@container carriers-page (max-width: 720px) {
   .terminal-carriers-hero,
   .terminal-carriers-detail-head,
   .terminal-carriers-toggle-row,
