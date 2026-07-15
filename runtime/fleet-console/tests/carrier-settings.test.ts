@@ -264,7 +264,7 @@ async function rawMutate(fixture: ServerFixture, pathname: string, method: strin
 }
 
 async function findClaudeCarrier(fixture: ServerFixture): Promise<CarrierSettingsCarrier> {
-  const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
+  const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
   return state.carriers.find((carrier) => carrier.cliType === "claude") ?? state.carriers[0]!;
 }
 
