@@ -60,10 +60,18 @@ export function buildHostShellCommand(values: readonly string[], platform: NodeJ
   return buildPosixShellCommand(values);
 }
 
+export function buildPowerShellCommand(values: readonly string[]): string {
+  return `& ${values.map(powerShellQuote).join(" ")}`;
+}
+
 function posixShellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function windowsShellQuote(value: string): string {
   return `"${value.replaceAll("\"", "\"\"")}"`;
+}
+
+function powerShellQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
