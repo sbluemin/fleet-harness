@@ -1,7 +1,7 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 import { createInfraServices } from "@dotobokuri/core-infra";
-import { createCarrierRegistry, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
+import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
@@ -23,6 +23,7 @@ export default definePlugin({
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
+    initStore(ctx.host.paths.fleetDataDir);
     const carrierRegistry = createCarrierRegistry();
     registerDefaultCarriers(carrierRegistry);
     const runtime = createTerminalRuntime(ctx);

@@ -71,8 +71,8 @@ afterEach(async () => {
 describe("carrier settings routes", () => {
   it("serves state and options without restricted browser fields", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/plugins/terminal/carriers/options`);
     const serialized = JSON.stringify({ state, options });
 
     expect(state.generation).toBeGreaterThanOrEqual(0);
@@ -85,11 +85,13 @@ describe("carrier settings routes", () => {
     expect(serialized).not.toContain("toolAllowlist");
     expect(serialized).not.toContain("allowedExecutorTools");
     expect(serialized).not.toContain(fixture.carrierStoreDir);
+    const legacy = await fetch(`${fixture.endpoint}api/v1/settings/carriers`);
+    expect(legacy.status).toBe(404);
   });
 
   it("serves provider defaults and model options from the validation registry", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/plugins/terminal/carriers/options`);
 
     for (const cliType of getCliTypes()) {
       const option = options.cliTypes.find((item) => item.id === cliType);
@@ -107,7 +109,7 @@ describe("carrier settings routes", () => {
 
   it("uses getEffort defaults for advertised effort options", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/plugins/terminal/carriers/options`);
 
     for (const cli of options.cliTypes) {
       for (const model of cli.models) {
@@ -127,15 +129,15 @@ describe("carrier settings routes", () => {
 
   it("rejects mutation requests without terminal origin and JSON content type", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
     const carrier = state.carriers[0]!;
 
-    const wrongOrigin = await fetch(`${fixture.endpoint}api/v1/settings/carriers/${carrier.carrierId}`, {
+    const wrongOrigin = await fetch(`${fixture.endpoint}api/v1/plugins/terminal/carriers/${carrier.carrierId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:1" },
       body: JSON.stringify({ displayName: "Blocked" }),
     });
-    const wrongType = await fetch(`${fixture.endpoint}api/v1/settings/carriers/${carrier.carrierId}`, {
+    const wrongType = await fetch(`${fixture.endpoint}api/v1/plugins/terminal/carriers/${carrier.carrierId}`, {
       method: "PATCH",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ displayName: "Blocked" }),
@@ -147,19 +149,19 @@ describe("carrier settings routes", () => {
 
   it("initializes the store and persists display name changes to carriers.json", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
     const carrier = state.carriers[0]!;
 
     const changed = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/settings/carriers/${carrier.carrierId}`,
+      `/api/v1/plugins/terminal/carriers/${carrier.carrierId}`,
       "PATCH",
       { displayName: "Console Carrier" },
     );
     const persisted = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "carriers.json"), "utf8")) as { readonly carriers?: Record<string, { readonly displayName?: string }> };
     const reset = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      `/api/v1/settings/carriers/${carrier.carrierId}`,
+      `/api/v1/plugins/terminal/carriers/${carrier.carrierId}`,
       "PATCH",
       { displayName: carrier.sourceDisplayName },
     );
@@ -171,10 +173,10 @@ describe("carrier settings routes", () => {
 
   it("validates model and effort combinations server-side", async () => {
     const fixture = await startFixture();
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
     const carrier = state.carriers[0]!;
 
-    const invalid = await rawMutate(fixture, `/api/v1/settings/carriers/${carrier.carrierId}`, "PATCH", { model: { model: "missing-model", effort: "max" } });
+    const invalid = await rawMutate(fixture, `/api/v1/plugins/terminal/carriers/${carrier.carrierId}`, "PATCH", { model: { model: "missing-model", effort: "max" } });
 
     expect(invalid.status).toBe(400);
   });
@@ -182,7 +184,7 @@ describe("carrier settings routes", () => {
   it("does not return 500 for malformed percent-encoded carrier ids", async () => {
     const fixture = await startFixture();
 
-    const response = await rawMutate(fixture, "/api/v1/settings/carriers/%ZZ", "PATCH", { displayName: "X" });
+    const response = await rawMutate(fixture, "/api/v1/plugins/terminal/carriers/%ZZ", "PATCH", { displayName: "X" });
 
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.status).toBeLessThan(500);
@@ -190,21 +192,21 @@ describe("carrier settings routes", () => {
 
   it("accepts every advertised model and effort selection in mutations", async () => {
     const fixture = await startFixture();
-    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/settings/carriers/options`);
-    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/settings/carriers`);
+    const options = await getJson<CarrierSettingsOptions>(`${fixture.endpoint}api/v1/plugins/terminal/carriers/options`);
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
     const carrier = state.carriers[0]!;
 
     for (const cli of options.cliTypes) {
       await mutate<{ readonly state: CarrierSettingsState }>(
         fixture,
-        `/api/v1/settings/carriers/${carrier.carrierId}`,
+        `/api/v1/plugins/terminal/carriers/${carrier.carrierId}`,
         "PATCH",
         { cli: cli.id },
       );
       for (const model of cli.models) {
         const response = await rawMutate(
           fixture,
-          `/api/v1/settings/carriers/${carrier.carrierId}`,
+          `/api/v1/plugins/terminal/carriers/${carrier.carrierId}`,
           "PATCH",
           { model: selectionFor(model) },
         );
