@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.26.2] - 2026-07-15
+
+### fleet-core
+
+#### Fixed
+- [fleet-admiral] Windows의 Fleet 관리 Codex 훅에 `command_windows` PowerShell 재정의를 사용합니다.
+
 ## [1.26.1] - 2026-07-14
 
 ### fleet-desktop

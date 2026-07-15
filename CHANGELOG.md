@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.26.2] - 2026-07-15
+
+### fleet-core
+
+#### Fixed
+- [fleet-admiral] Use `command_windows` PowerShell overrides for Fleet-managed Codex hooks on Windows.
+
 ## [1.26.1] - 2026-07-14
 
 ### fleet-desktop
