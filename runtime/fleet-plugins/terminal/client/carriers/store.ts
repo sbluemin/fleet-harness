@@ -6,12 +6,8 @@ import {
   fetchCarrierSettingsState,
   patchCarrier,
   setCarrierTaskForceBackend,
-} from "./carrier-settings-api.js";
-import type {
-  CarrierSettingsCarrier,
-  CarrierSettingsOptions,
-  CarrierSettingsState,
-} from "./types.js";
+} from "./api.js";
+import type { CarrierSettingsCarrier, CarrierSettingsOptions, CarrierSettingsState } from "../../shared/carrier-settings-types.js";
 
 interface CarrierSettingsDraft {
   readonly cliType: string;

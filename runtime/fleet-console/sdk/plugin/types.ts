@@ -182,6 +182,7 @@ export interface FleetPluginEventsHost {
 }
 
 export interface FleetPluginPathsHost {
+  readonly fleetDataDir: string;
   readonly capturesDir: string;
   pluginDataDir(pluginId: string): string;
   resolveTheaterPath(theaterId: string): string | null;

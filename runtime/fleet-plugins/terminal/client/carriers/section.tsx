@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 
 import {
   loadCarrierSettings,
@@ -8,8 +9,8 @@ import {
   updateCarrierSettingsDraft,
   updateCarrierSettingsTaskForceDraft,
   useCarrierSettingsStore,
-} from "../carrier-settings-store.js";
-import type { CarrierSettingsCarrier, CarrierSettingsCliOption, CarrierSettingsModelOption } from "../types.js";
+} from "./store.js";
+import type { CarrierSettingsCarrier, CarrierSettingsCliOption, CarrierSettingsModelOption } from "../../shared/carrier-settings-types.js";
 
 type CaptainColorStyle = CSSProperties & { "--cap-color": string };
 type SaveStatus = "idle" | "saving" | "saved";
@@ -35,7 +36,13 @@ const CAPTAIN_COLOR_TOKENS: Readonly<Record<string, string>> = {
   chronicle: "var(--captain-chronicle)",
 };
 
-export function CarrierSettings() {
+export const carrierSettingsSection = defineSettingsSection({
+  id: "carriers",
+  title: "Carriers",
+  render: () => <CarrierSettingsSection />,
+});
+
+function CarrierSettingsSection() {
   const settings = useCarrierSettingsStore();
   const activeCarrier = settings.state?.carriers.find((carrier) => carrier.carrierId === settings.activeCarrierId) ?? null;
   const activeCli = settings.options?.cliTypes.find((cli) => cli.id === settings.draft.cliType) ?? null;
@@ -86,38 +93,38 @@ export function CarrierSettings() {
   }
 
   return (
-    <main className="carrier-settings-page">
-      <section className="carrier-settings-hero" aria-labelledby="carrier-settings-title">
+    <section className="terminal-carriers-page">
+      <section className="terminal-carriers-hero" aria-labelledby="terminal-carriers-title">
         <div>
           <p className="bridge-kicker">Configure Carrier settings</p>
-          <h2 id="carrier-settings-title">Carrier Settings</h2>
+          <h2 id="terminal-carriers-title">Carrier Settings</h2>
         </div>
-        <div className="carrier-settings-hero-actions">
-          <div className={`carrier-settings-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
+        <div className="terminal-carriers-hero-actions">
+          <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
             {saveStatus === "saving" || isSavingAll ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
           </div>
           {activeCarrier ? (
-            <div className="carrier-settings-save-actions">
-              <button type="button" className={`carrier-settings-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={() => void handleSave()}>
+            <div className="terminal-carriers-save-actions">
+              <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={() => void handleSave()}>
                 Save
               </button>
-              <button type="button" className={`carrier-settings-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={handleDiscard}>
+              <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={handleDiscard}>
                 Discard
               </button>
             </div>
           ) : null}
-          <button type="button" className="carrier-settings-action-button carrier-settings-hero-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
+          <button type="button" className="terminal-carriers-action-button terminal-carriers-hero-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
             Refresh
           </button>
         </div>
       </section>
 
-      {settings.error ? <p className="carrier-settings-error" role="alert">{settings.error}</p> : null}
+      {settings.error ? <p className="terminal-carriers-error" role="alert">{settings.error}</p> : null}
 
-      <section className="carrier-settings-grid">
-        <div className="carrier-settings-list" aria-label="Carrier list">
-          {settings.loading && !settings.state ? <p className="carrier-settings-empty">Loading carrier settings.</p> : null}
-          {settings.state && settings.state.carriers.length === 0 ? <p className="carrier-settings-empty">No carriers registered.</p> : null}
+      <section className="terminal-carriers-grid">
+        <div className="terminal-carriers-list" aria-label="Carrier list">
+          {settings.loading && !settings.state ? <p className="terminal-carriers-empty">Loading carrier settings.</p> : null}
+          {settings.state && settings.state.carriers.length === 0 ? <p className="terminal-carriers-empty">No carriers registered.</p> : null}
           {settings.state?.carriers.map((carrier) => (
             <CarrierRow
               key={carrier.carrierId}
@@ -130,26 +137,26 @@ export function CarrierSettings() {
         </div>
 
         {activeCarrier && settings.options && activeCli ? (
-          <div key={activeCarrier.carrierId} className="carrier-settings-detail" style={getCaptainColorStyle(activeCarrier.carrierId)}>
-            <div className="carrier-settings-detail-head">
-              <div className="carrier-settings-detail-title-block">
-                <div className="carrier-settings-captain-id"><span>Captain</span> · {activeCarrier.carrierId.toUpperCase()}</div>
-                <div className={`carrier-settings-name-line ${editingDisplayName ? "is-editing" : ""}`}>
+          <div key={activeCarrier.carrierId} className="terminal-carriers-detail" style={getCaptainColorStyle(activeCarrier.carrierId)}>
+            <div className="terminal-carriers-detail-head">
+              <div className="terminal-carriers-detail-title-block">
+                <div className="terminal-carriers-captain-id"><span>Captain</span> · {activeCarrier.carrierId.toUpperCase()}</div>
+                <div className={`terminal-carriers-name-line ${editingDisplayName ? "is-editing" : ""}`}>
                   {editingDisplayName ? (
                     <>
                       <input
                         id="carrier-display-name"
-                        className="carrier-settings-input carrier-settings-name-input"
+                        className="terminal-carriers-input terminal-carriers-name-input"
                         value={settings.draft.displayName}
                         maxLength={DISPLAY_NAME_MAX_LENGTH}
                         onChange={(event) => updateCarrierSettingsDraft({ displayName: event.target.value })}
                       />
-                      <button type="button" className="carrier-settings-icon-button" aria-label="Save display name" disabled={isSavingAll} onClick={() => {
+                      <button type="button" className="terminal-carriers-icon-button" aria-label="Save display name" disabled={isSavingAll} onClick={() => {
                         setEditingDisplayName(false);
                       }}>
                         <CheckIcon />
                       </button>
-                      <button type="button" className="carrier-settings-icon-button" aria-label="Cancel display name edit" onClick={() => {
+                      <button type="button" className="terminal-carriers-icon-button" aria-label="Cancel display name edit" onClick={() => {
                         updateCarrierSettingsDraft({ displayName: activeCarrier.displayName });
                         setEditingDisplayName(false);
                       }}>
@@ -158,8 +165,8 @@ export function CarrierSettings() {
                     </>
                   ) : (
                     <>
-                      <h3 className="carrier-settings-captain-name">{activeCarrier.displayName}</h3>
-                      <button type="button" className="carrier-settings-icon-button" aria-label="Edit display name" onClick={() => {
+                      <h3 className="terminal-carriers-captain-name">{activeCarrier.displayName}</h3>
+                      <button type="button" className="terminal-carriers-icon-button" aria-label="Edit display name" onClick={() => {
                         updateCarrierSettingsDraft({ displayName: activeCarrier.displayName });
                         setEditingDisplayName(true);
                       }}>
@@ -168,29 +175,29 @@ export function CarrierSettings() {
                     </>
                   )}
                 </div>
-                <div className="carrier-settings-captain-role">{activeCarrier.role}</div>
+                <div className="terminal-carriers-captain-role">{activeCarrier.role}</div>
               </div>
-              <div className="carrier-settings-cli-badge">
+              <div className="terminal-carriers-cli-badge">
                 <span className="ind" aria-hidden="true" />
                 {activeCarrier.cliType}
               </div>
             </div>
 
-            <div className="carrier-settings-body">
-              <div className="carrier-settings-control-group">
-                <div className="carrier-settings-resp-title">Identity</div>
-                <div className="carrier-settings-mission">{activeCarrier.roleDescription}</div>
+            <div className="terminal-carriers-body">
+              <div className="terminal-carriers-control-group">
+                <div className="terminal-carriers-resp-title">Identity</div>
+                <div className="terminal-carriers-mission">{activeCarrier.roleDescription}</div>
               </div>
 
-              <div className="carrier-settings-control-group">
-                <div className="carrier-settings-resp-title">Runtime</div>
-                <div className="carrier-settings-runtime">
-                  <div className="carrier-settings-runtime-row carrier-settings-runtime-row--cli">
-                    <div className="carrier-settings-field carrier-settings-field--wide">
-                      <label className="carrier-settings-label" htmlFor="carrier-cli">CLI</label>
+              <div className="terminal-carriers-control-group">
+                <div className="terminal-carriers-resp-title">Runtime</div>
+                <div className="terminal-carriers-runtime">
+                  <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--cli">
+                    <div className="terminal-carriers-field terminal-carriers-field--wide">
+                      <label className="terminal-carriers-label" htmlFor="carrier-cli">CLI</label>
                       <select
                         id="carrier-cli"
-                        className="carrier-settings-select"
+                        className="terminal-carriers-select"
                         value={settings.draft.cliType}
                         onChange={(event) => handleCliDraftChange(event.target.value, settings.options?.cliTypes ?? [])}
                       >
@@ -198,7 +205,7 @@ export function CarrierSettings() {
                       </select>
                     </div>
                   </div>
-                  <div className="carrier-settings-runtime-row carrier-settings-runtime-row--model">
+                  <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--model">
                     <ModelSelect
                       id="carrier-model"
                       label="Model"
@@ -227,26 +234,26 @@ export function CarrierSettings() {
             </div>
           </div>
         ) : (
-          <div className="carrier-settings-detail">
-            <p className="carrier-settings-empty">Select a carrier.</p>
+          <div className="terminal-carriers-detail">
+            <p className="terminal-carriers-empty">Select a carrier.</p>
           </div>
         )}
       </section>
-    </main>
+    </section>
   );
 }
 
 function CarrierRow({ carrier, active, minBackends, onSelect }: { readonly carrier: CarrierSettingsCarrier; readonly active: boolean; readonly minBackends: number; readonly onSelect: () => void }) {
   const tfReady = carrier.taskForceBackendCount >= minBackends;
   return (
-    <button type="button" className={`carrier-settings-row ${active ? "is-active" : ""}`} style={getCaptainColorStyle(carrier.carrierId)} onClick={onSelect}>
-      <span className="carrier-settings-captain-dot" aria-hidden="true" />
-      <span className="carrier-settings-row-text">
-        <span className="carrier-settings-row-name">{carrier.displayName}</span>
-        <span className="carrier-settings-row-role">{carrier.role}</span>
+    <button type="button" className={`terminal-carriers-row ${active ? "is-active" : ""}`} style={getCaptainColorStyle(carrier.carrierId)} onClick={onSelect}>
+      <span className="terminal-carriers-captain-dot" aria-hidden="true" />
+      <span className="terminal-carriers-row-text">
+        <span className="terminal-carriers-row-name">{carrier.displayName}</span>
+        <span className="terminal-carriers-row-role">{carrier.role}</span>
       </span>
-      <span className="carrier-settings-row-live" aria-hidden="true">
-        <span className={`carrier-settings-live-dot ${tfReady ? "is-live" : ""}`} />
+      <span className="terminal-carriers-row-live" aria-hidden="true">
+        <span className={`terminal-carriers-live-dot ${tfReady ? "is-live" : ""}`} />
       </span>
     </button>
   );
@@ -254,9 +261,9 @@ function CarrierRow({ carrier, active, minBackends, onSelect }: { readonly carri
 
 function ModelSelect({ id, label, models, value, disabled = false, onChange }: { readonly id: string; readonly label: string; readonly models: readonly CarrierSettingsModelOption[]; readonly value: string; readonly disabled?: boolean; readonly onChange: (modelId: string) => void }) {
   return (
-    <div className="carrier-settings-field">
-      <label className="carrier-settings-label" htmlFor={id}>{label}</label>
-      <select id={id} className="carrier-settings-select" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+    <div className="terminal-carriers-field">
+      <label className="terminal-carriers-label" htmlFor={id}>{label}</label>
+      <select id={id} className="terminal-carriers-select" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
         {models.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
       </select>
     </div>
@@ -266,16 +273,16 @@ function ModelSelect({ id, label, models, value, disabled = false, onChange }: {
 function EffortSelect({ id, model, value, disabled = false, onChange }: { readonly id: string; readonly model: CarrierSettingsModelOption | null | undefined; readonly value: string; readonly disabled?: boolean; readonly onChange: (effort: string) => void }) {
   if (!model?.effort) {
     return (
-      <div className="carrier-settings-field">
-        <span className="carrier-settings-label">Effort</span>
-        <p className="carrier-settings-help">Not supported for this model.</p>
+      <div className="terminal-carriers-field">
+        <span className="terminal-carriers-label">Effort</span>
+        <p className="terminal-carriers-help">Not supported for this model.</p>
       </div>
     );
   }
   return (
-    <div className="carrier-settings-field">
-      <label className="carrier-settings-label" htmlFor={id}>Effort</label>
-      <select id={id} className="carrier-settings-select" value={value || model.effort.default} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+    <div className="terminal-carriers-field">
+      <label className="terminal-carriers-label" htmlFor={id}>Effort</label>
+      <select id={id} className="terminal-carriers-select" value={value || model.effort.default} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
         {model.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}
       </select>
     </div>
@@ -307,25 +314,25 @@ function TaskForcePanel({
   const availableCliOptions = cliOptions.filter((cli) => !rows.includes(cli.id));
   const selectedAddCliType = addCliType || availableCliOptions[0]?.id || "";
   return (
-    <div className={`carrier-settings-control-group carrier-settings-control-group--taskforce ${expanded ? "is-expanded" : ""}`}>
-      <div className="carrier-settings-section-head">
+    <div className={`terminal-carriers-control-group terminal-carriers-control-group--taskforce ${expanded ? "is-expanded" : ""}`}>
+      <div className="terminal-carriers-section-head">
         <div>
-          <p className="carrier-settings-resp-title">Task Force</p>
-          <p className="carrier-settings-help">
+          <p className="terminal-carriers-resp-title">Task Force</p>
+          <p className="terminal-carriers-help">
             {configuredCount > 0
               ? `${configuredCount} backend${configuredCount === 1 ? "" : "s"} configured${active ? " · active" : ` · needs ${minBackends}+ to activate`}.`
               : `Run this carrier across multiple CLI backends. Needs at least ${minBackends} to activate.`}
           </p>
         </div>
-        <div className="carrier-settings-tf-head-actions">
-          <button type="button" className="carrier-settings-tf-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+        <div className="terminal-carriers-tf-head-actions">
+          <button type="button" className="terminal-carriers-tf-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
             {expanded ? "Hide" : "Configure"}
           </button>
         </div>
       </div>
       {expanded ? (
-      <div className="carrier-settings-tf-list">
-        {rows.length === 0 ? <p className="carrier-settings-tf-empty">No Task Force backend drafted.</p> : null}
+      <div className="terminal-carriers-tf-list">
+        {rows.length === 0 ? <p className="terminal-carriers-tf-empty">No Task Force backend drafted.</p> : null}
         {rows.map((cliType) => {
           const cli = cliOptions.find((item) => item.id === cliType);
           if (!cli) return null;
@@ -333,28 +340,28 @@ function TaskForcePanel({
           const model = cli.models.find((item) => item.modelId === draft.model) ?? cli.models[0] ?? null;
           const active = carrier.taskforce.backends.some((backend) => backend.cliType === cli.id);
           return (
-            <div className={`carrier-settings-tf-item ${active ? "is-active" : ""}`} key={cli.id}>
-              <div className="carrier-settings-tf-title">
-                <span className={`carrier-settings-live-dot ${active ? "is-live" : ""}`} aria-hidden="true" />
+            <div className={`terminal-carriers-tf-item ${active ? "is-active" : ""}`} key={cli.id}>
+              <div className="terminal-carriers-tf-title">
+                <span className={`terminal-carriers-live-dot ${active ? "is-live" : ""}`} aria-hidden="true" />
                 <strong>{cli.displayName}</strong>
               </div>
               <ModelSelect id={`tf-${cli.id}-model`} label="Model" models={cli.models} value={draft.model} onChange={(modelId) => handleTaskForceModelDraftChange(cli, modelId)} />
               <EffortSelect id={`tf-${cli.id}-effort`} model={model} value={draft.effort} onChange={(effort) => updateCarrierSettingsTaskForceDraft(cli.id, { effort })} />
-              <div className="carrier-settings-tf-actions">
-                <button type="button" className="carrier-settings-ghost-button" disabled={savingActionId === "save-all"} onClick={() => onRowsChange(rows.filter((item) => item !== cli.id))}>
+              <div className="terminal-carriers-tf-actions">
+                <button type="button" className="terminal-carriers-ghost-button" disabled={savingActionId === "save-all"} onClick={() => onRowsChange(rows.filter((item) => item !== cli.id))}>
                   Remove
                 </button>
               </div>
             </div>
           );
         })}
-        <div className="carrier-settings-tf-add-row">
+        <div className="terminal-carriers-tf-add-row">
           {addOpen && availableCliOptions.length > 0 ? (
-            <select className="carrier-settings-select carrier-settings-tf-add-select" value={selectedAddCliType} onChange={(event) => setAddCliType(event.target.value)} aria-label="Task Force CLI to add">
+            <select className="terminal-carriers-select terminal-carriers-tf-add-select" value={selectedAddCliType} onChange={(event) => setAddCliType(event.target.value)} aria-label="Task Force CLI to add">
               {availableCliOptions.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
             </select>
           ) : null}
-          <button type="button" className="carrier-settings-ghost-button" disabled={availableCliOptions.length === 0 || savingActionId === "save-all"} onClick={() => {
+          <button type="button" className="terminal-carriers-ghost-button" disabled={availableCliOptions.length === 0 || savingActionId === "save-all"} onClick={() => {
             if (!addOpen) {
               setAddOpen(true);
               return;

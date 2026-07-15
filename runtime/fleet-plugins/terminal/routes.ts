@@ -1,8 +1,10 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 import { createInfraServices } from "@dotobokuri/core-infra";
+import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
 
 import { registerAgentRoutes } from "./server/agent.js";
+import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
 import { createTerminalRuntime } from "./server/shared/index.js";
@@ -21,6 +23,9 @@ export default definePlugin({
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
+    initStore(ctx.host.paths.fleetDataDir);
+    const carrierRegistry = createCarrierRegistry();
+    registerDefaultCarriers(carrierRegistry);
     const runtime = createTerminalRuntime(ctx);
     registerWsHandler(ctx, "/", runtime.handleUpgrade);
     ctx.host.lifecycle.registerCleanup(() => runtime.stop());
@@ -32,6 +37,7 @@ export default definePlugin({
     registerShellRoutes(ctx, runtime);
     registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
+    registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
       globalOptionsService: infraServices.globalOptionsService,
     });

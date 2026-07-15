@@ -3,15 +3,10 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
-import {
-  createCarrierRegistry,
-  registerDefaultCarriers,
-} from "@dotobokuri/fleet-carriers";
-import { createInfraServices } from "@dotobokuri/core-infra";
+import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./api-types.js";
-import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore, type ConsoleThemeId } from "./console-settings.js";
@@ -277,8 +272,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 폴백되는 죽은 경로였다. deps.version은 테스트 오버라이드용으로 유지한다.
   const version = deps.version ?? release.version;
   const channel = release.channel;
-  const carrierRegistry = createCarrierRegistry();
-  registerDefaultCarriers(carrierRegistry);
   const lock = createConsoleLock({ hostname: () => host });
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
@@ -288,6 +281,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const folderGrants = createFolderGrantStore();
   const infraServices = createInfraServices();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
+  // 플러그인 fleet 루트: 명시 dataDir → FLEET_CONSOLE_DIR 격리 슬롯 → fleet 전역(~/.fleet).
+  // carriers.json은 fleet-cli와 공유하는 전역 상태라 채널 분기는 적용하지 않되,
+  // 명시 격리 오버라이드만은 durable state와 함께 이동해야 실사용자 store 오염을 막는다.
+  const fleetDataDir = deps.dataDir ?? process.env.FLEET_CONSOLE_DIR ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
@@ -380,6 +377,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       registerSseChannel: () => () => undefined,
     },
     paths: {
+      fleetDataDir,
       capturesDir: durablePaths.capturesDir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
@@ -459,12 +457,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   };
   let consoleResourcesDisposed = false;
   let updateApplyInFlight = false;
-  const carrierSettingsRouter = createCarrierSettingsRouter({
-    registry: carrierRegistry,
-    isAuthorized: isTerminalAuthorized,
-    readJsonBody,
-    writeJson,
-  });
   const globalSettingsRouter = createGlobalSettingsRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
@@ -559,7 +551,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleObserverApiCatalog(req, res);
       return true;
     }
-    if (await carrierSettingsRouter(ctx)) return true;
     if (await pluginSettingsRouter(ctx)) return true;
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);

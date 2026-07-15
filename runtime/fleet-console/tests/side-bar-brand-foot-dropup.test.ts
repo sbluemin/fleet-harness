@@ -59,22 +59,20 @@ describe("SideBarBrandFoot System Menu", () => {
     act(() => trigger.click());
 
     const items = menuItems();
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(1);
     expect(document.activeElement).toBe(items[0]);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
-    expect(document.activeElement).toBe(items[1]);
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
     expect(document.activeElement).toBe(items[0]);
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" })); });
-    expect(document.activeElement).toBe(items[1]);
+    expect(document.activeElement).toBe(items[0]);
   });
 
   it("closes on Escape and returns focus to the trigger", () => {
     mountFoot();
     const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-system-trigger")!;
     act(() => trigger.click());
-    expect(menuItems()).toHaveLength(2);
+    expect(menuItems()).toHaveLength(1);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(menuItems()).toHaveLength(0);

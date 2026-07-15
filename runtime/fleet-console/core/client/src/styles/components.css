@@ -1181,485 +1181,31 @@
   }
 }
 
-.carrier-settings-page {
+.settings-disclosure-control {
   display: grid;
-  align-content: start;
-  gap: var(--space-5);
-  width: min(1440px, calc(100vw - 48px));
-  /* 셸의 minmax(0,1fr) 행 안에서 페이지 자체가 스크롤 컨테이너가 된다. */
-  min-height: 0;
-  height: 100%;
-  margin: 0 auto;
-  padding: var(--space-5) 0 var(--space-10);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  gap: var(--space-3);
 }
 
-.carrier-settings-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) 0 var(--space-2);
-}
-
-.carrier-settings-hero-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: none;
-}
-
-/* hero 액션 버튼 — GNB nav 버튼 어휘(idle/hover/active/pressed). 평소 muted, 변경(dirty) 시 brass 하이라이트. */
-.carrier-settings-action-button {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.carrier-settings-action-button:hover:not(:disabled) {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-}
-
-.carrier-settings-action-button:active:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  transform: translateY(1px);
-}
-
-/* 변경사항 있을 때(dirty) Save/Discard를 brass로 하이라이트 — GNB active와 동일 어휘. */
-.carrier-settings-action-button.is-dirty {
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-}
-
-.carrier-settings-action-button:disabled {
-  color: var(--ink-rim);
-  cursor: not-allowed;
-}
-
-/* 순서: SAVE, DISCARD, (조금 간격) REFRESH */
-.carrier-settings-hero-refresh {
-  margin-left: var(--space-4);
-}
-
-.carrier-settings-hero h2 {
-  margin: 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-body);
-  font-size: clamp(42px, 6vw, 72px);
-  font-weight: 300;
-  letter-spacing: -0.03em;
-  line-height: 0.95;
-}
-
-.carrier-settings-grid {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: var(--space-6);
-  align-items: start;
-}
-
-.carrier-settings-list {
-  position: sticky;
-  top: var(--space-2);
-  align-self: start;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  /* 함장 수가 뷰포트를 넘으면 리스트 자체가 스크롤한다. */
-  max-height: calc(100dvh - 132px);
-  overflow-y: auto;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  box-shadow: var(--shadow-soft);
-}
-
-.carrier-settings-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  min-width: 0;
-  padding: 14px 16px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    box-shadow var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.carrier-settings-row:nth-child(1) { animation-delay: 0ms; }
-.carrier-settings-row:nth-child(2) { animation-delay: 40ms; }
-.carrier-settings-row:nth-child(3) { animation-delay: 80ms; }
-.carrier-settings-row:nth-child(4) { animation-delay: 120ms; }
-.carrier-settings-row:nth-child(5) { animation-delay: 160ms; }
-.carrier-settings-row:nth-child(6) { animation-delay: 200ms; }
-.carrier-settings-row:nth-child(7) { animation-delay: 240ms; }
-.carrier-settings-row:nth-child(8) { animation-delay: 280ms; }
-
-.carrier-settings-row:hover {
-  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
-  transform: translateX(2px);
-}
-
-.carrier-settings-row.is-active {
-  border-color: color-mix(in oklch, var(--brass) 30%, transparent);
-  background: var(--surface-glass-strong);
-  box-shadow: var(--shadow-anchor);
-}
-
-.carrier-settings-captain-dot {
-  width: 10px;
-  height: 10px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--cap-color);
-  box-shadow: 0 0 10px var(--cap-color);
-}
-
-.carrier-settings-row-text {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.carrier-settings-row-name {
-  overflow: hidden;
-  color: var(--ink-spectral);
-  font-family: var(--font-body);
-  font-size: 20px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.carrier-settings-row:hover .carrier-settings-row-name,
-.carrier-settings-row.is-active .carrier-settings-row-name {
-  color: var(--ink-pearl);
-}
-
-.carrier-settings-row-role {
-  overflow: hidden;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.carrier-settings-row.is-active .carrier-settings-row-role {
-  color: var(--brass-bright);
-}
-
-.carrier-settings-row-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.carrier-settings-live-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--ink-rim);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink-fog) 18%, transparent);
-}
-
-.carrier-settings-live-dot.is-live,
-.carrier-settings-toggle.is-on::before {
-  background: var(--aurora);
-  box-shadow: 0 0 10px var(--aurora-glow);
-  animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-.carrier-settings-detail {
-  position: relative;
-  min-height: 420px;
-  overflow: hidden;
-  padding: 36px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  box-shadow: var(--shadow-soft);
-}
-
-.carrier-settings-detail::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  background: linear-gradient(180deg, var(--cap-color, var(--brass)), transparent 80%);
-}
-
-.carrier-settings-detail-head {
+.settings-disclosure-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin-bottom: 28px;
-}
-
-.carrier-settings-detail-title-block {
-  min-width: 0;
-  flex: 1;
-}
-
-.carrier-settings-captain-id {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--cap-color, var(--brass-bright));
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
-.carrier-settings-captain-id::after {
-  content: "";
-  height: 1px;
-  max-width: 40px;
-  flex: 1;
-  background: linear-gradient(90deg, var(--cap-color, var(--brass)), transparent);
-}
-
-.carrier-settings-captain-name {
-  margin: 0 0 8px;
-  color: var(--ink-pearl);
-  font-family: var(--font-body);
-  font-size: clamp(40px, 5.6vw, 64px);
-  font-weight: 300;
-  letter-spacing: -0.03em;
-  line-height: 1;
-}
-
-.carrier-settings-captain-role {
-  margin-bottom: 0;
-  color: var(--ink-spectral);
-  font-family: var(--font-body);
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-.carrier-settings-name-line {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.carrier-settings-name-line.is-editing {
-  max-width: min(100%, 640px);
-}
-
-.carrier-settings-cli-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--ink-mid) 70%, transparent);
-  color: var(--ink-spectral);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.carrier-settings-cli-badge .ind {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--cap-color);
-  box-shadow: 0 0 8px var(--cap-color);
-}
-
-.carrier-settings-body {
-  display: grid;
-  gap: 24px;
-}
-
-.carrier-settings-mission {
-  padding: 20px 24px;
-  border-left: 2px solid var(--cap-color);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
-  color: var(--ink-spectral);
-  font-family: var(--font-body);
-  font-style: italic;
-  font-size: 22px;
-  font-weight: 300;
-  letter-spacing: -0.005em;
-  line-height: 1.45;
-}
-
-.carrier-settings-control-group {
-  display: grid;
-  gap: 14px;
-}
-
-.carrier-settings-resp-title,
-.carrier-settings-label,
-.carrier-settings-help,
-.carrier-settings-empty,
-.carrier-settings-error {
-  font-family: var(--font-mono);
-}
-
-.carrier-settings-resp-title {
-  margin: 0;
-  color: var(--ink-fog);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.carrier-settings-label {
-  display: block;
-  margin: 0;
-  color: var(--ink-fog);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.carrier-settings-help,
-.carrier-settings-empty {
-  margin: 0;
-  color: var(--ink-fog);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.carrier-settings-inline,
-.carrier-settings-button-stack,
-.carrier-settings-tf-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.carrier-settings-field {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-
-.carrier-settings-field--wide {
-  flex: 1 1 auto;
-}
-
-.carrier-settings-tf-item {
-  display: grid;
-  grid-template-columns: minmax(160px, 0.75fr) minmax(220px, 1.2fr) minmax(140px, 0.65fr) auto;
-  align-items: end;
-  gap: var(--space-3);
-}
-
-/* Runtime 컨트롤 — CLI는 한 행, Model·Effort는 다음 행으로 분리해 폼 밀도를 낮춘다. */
-.carrier-settings-runtime {
-  display: grid;
   gap: var(--space-4);
 }
 
-.carrier-settings-runtime-row {
-  display: grid;
-  align-items: end;
+.settings-disclosure-actions {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
+  flex: none;
 }
 
-.carrier-settings-runtime-row--cli {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.carrier-settings-runtime-row--model {
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.85fr);
-}
-
-.carrier-settings-input,
-.carrier-settings-select {
-  width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
-  color: var(--ink-pearl);
-  font: 600 13px/1.2 var(--font-body);
-  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);
-}
-
-.carrier-settings-input {
-  padding: 0 13px;
-}
-
-.carrier-settings-name-input {
-  min-height: 54px;
-  color: var(--ink-pearl);
-  font-family: var(--font-body);
-  font-size: clamp(32px, 4.5vw, 52px);
-  font-weight: 300;
-  letter-spacing: -0.03em;
-}
-
-.carrier-settings-select {
-  padding: 0 11px;
-}
-
-.carrier-settings-input:focus,
-.carrier-settings-select:focus {
-  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
-}
-
-.carrier-settings-button,
-.carrier-settings-ghost-button,
-.carrier-settings-toggle,
-.carrier-settings-icon-button,
-.carrier-settings-tf-toggle {
+.settings-disclosure-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  gap: 9px;
+  min-height: 38px;
   padding: 6px var(--space-3);
   border: 0;
   border-radius: var(--radius-xs);
@@ -1671,112 +1217,36 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+  cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring),
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.carrier-settings-button:hover:not(:disabled),
-.carrier-settings-ghost-button:hover:not(:disabled),
-.carrier-settings-toggle:hover:not(:disabled),
-.carrier-settings-icon-button:hover:not(:disabled),
-.carrier-settings-tf-toggle:hover:not(:disabled) {
+.settings-disclosure-toggle:hover:not(:disabled) {
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--ink-pearl);
 }
 
-.carrier-settings-button.is-active,
-.carrier-settings-toggle.is-on,
-.carrier-settings-tf-toggle[aria-expanded="true"] {
+.settings-disclosure-toggle[aria-expanded="true"] {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass-bright);
 }
 
-.carrier-settings-button:active:not(:disabled),
-.carrier-settings-ghost-button:active:not(:disabled),
-.carrier-settings-toggle:active:not(:disabled),
-.carrier-settings-icon-button:active:not(:disabled),
-.carrier-settings-tf-toggle:active:not(:disabled) {
+.settings-disclosure-toggle:active:not(:disabled) {
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--ink-pearl);
   transform: translateY(1px);
 }
 
-.carrier-settings-button:disabled,
-.carrier-settings-ghost-button:disabled,
-.carrier-settings-toggle:disabled,
-.carrier-settings-icon-button:disabled,
-.carrier-settings-tf-toggle:disabled {
+.settings-disclosure-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.45;
   transform: none;
 }
 
-.carrier-settings-icon-button {
-  width: 34px;
-  min-width: 34px;
-  min-height: 34px;
-  padding: 0;
-}
-
-.carrier-settings-icon-button svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-}
-
-.carrier-settings-toggle {
-  gap: 8px;
-  min-width: 84px;
-}
-
-.carrier-settings-toggle::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink-rim);
-}
-
-.carrier-settings-toggle.is-on {
-  color: var(--aurora);
-}
-
-.carrier-settings-action-cell {
-  display: flex;
-  align-items: end;
-  height: 100%;
-}
-
-.carrier-settings-toggle-row,
-.carrier-settings-section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.carrier-settings-tf-head-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: none;
-}
-
-/* Task Force 펼침/접힘 토글 — GNB와 같은 brass 계열 하이라이트. */
-.carrier-settings-tf-toggle {
-  align-items: center;
-  gap: 9px;
-  min-height: 38px;
-  padding: 6px var(--space-3);
-}
-
-.carrier-settings-tf-toggle::after {
+.settings-disclosure-toggle::after {
   content: "›";
   font-size: 15px;
   line-height: 0;
@@ -1784,151 +1254,8 @@
   transition: transform var(--duration-base) var(--ease-spring);
 }
 
-.carrier-settings-control-group--taskforce.is-expanded .carrier-settings-tf-toggle::after {
+.settings-disclosure-control.is-expanded .settings-disclosure-toggle::after {
   transform: rotate(-90deg);
-}
-
-/* 컨트롤 그룹 사이 하이라인 구분 — 레퍼런스의 섹션 리듬을 살린 에디토리얼 분리. */
-.carrier-settings-control-group + .carrier-settings-control-group {
-  padding-top: var(--space-5);
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
-}
-
-.carrier-settings-tf-list {
-  display: grid;
-  gap: 8px;
-}
-
-.carrier-settings-tf-item {
-  padding: 12px 14px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
-  color: var(--ink-spectral);
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.carrier-settings-tf-item:hover {
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  color: var(--ink-pearl);
-  transform: translateX(3px);
-}
-
-.carrier-settings-tf-item.is-active {
-  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--aurora) 12%, transparent);
-}
-
-.carrier-settings-tf-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  align-self: center;
-}
-
-.carrier-settings-tf-title strong {
-  overflow: hidden;
-  color: var(--ink-spectral);
-  font-size: 14px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.carrier-settings-tf-add-row,
-.carrier-settings-save-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.carrier-settings-tf-add-select {
-  max-width: 260px;
-}
-
-.carrier-settings-tf-empty {
-  margin: 0;
-  padding: 10px 2px;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.carrier-settings-save-status {
-  min-width: 76px;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-align: right;
-}
-
-.carrier-settings-save-status.is-positive {
-  color: var(--positive);
-  text-shadow: 0 0 12px var(--positive-glow);
-}
-
-.carrier-settings-error {
-  margin: 0;
-  padding: var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--coral) 10%, transparent);
-  color: var(--coral);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-@media (max-width: 1120px) {
-  .carrier-settings-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .carrier-settings-list {
-    position: static;
-    flex-flow: row wrap;
-  }
-
-  .carrier-settings-row {
-    flex: 1 1 190px;
-  }
-
-  .carrier-settings-runtime-grid,
-  .carrier-settings-tf-item {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 720px) {
-  .carrier-settings-page {
-    width: min(100vw - 28px, 760px);
-  }
-
-  .carrier-settings-hero,
-  .carrier-settings-detail-head,
-  .carrier-settings-toggle-row,
-  .carrier-settings-section-head,
-  .carrier-settings-inline,
-  .carrier-settings-button-stack,
-  .carrier-settings-tf-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .carrier-settings-hero-actions {
-    flex-wrap: wrap;
-  }
-
-  .carrier-settings-save-status {
-    text-align: left;
-  }
-
-  .carrier-settings-detail {
-    padding: var(--space-6);
-  }
 }
 
 .status-dot,
