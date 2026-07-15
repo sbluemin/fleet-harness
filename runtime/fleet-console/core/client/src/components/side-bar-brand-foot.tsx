@@ -86,10 +86,6 @@ function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion
             <SettingsGlyph />
             <span>Settings</span>
           </button>
-          <button type="button" role="menuitem" onClick={() => go("/carrier-settings")}>
-            <CarriersGlyph />
-            <span>Carriers</span>
-          </button>
           {updateAvailable ? <><div className="brand-foot-menu-divider" role="separator" /><UpdateApplyControl latestVersion={latestVersion} /></> : null}
         </div>
       ) : null}
@@ -326,10 +322,6 @@ function BrandMarkIcon() {
       <circle cx="44.7" cy="19.3" r="5" fill="var(--aurora)" />
     </svg>
   );
-}
-
-function CarriersGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4.2" r="1.15" fill="currentColor" /><circle cx="4" cy="8" r="1.15" fill="currentColor" /><circle cx="4" cy="11.8" r="1.15" fill="currentColor" /><path d="M7.2 4.2h6M7.2 8h6M7.2 11.8h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function SettingsGlyph() {

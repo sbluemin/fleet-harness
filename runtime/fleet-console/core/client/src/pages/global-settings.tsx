@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
@@ -83,15 +84,29 @@ export function GlobalSettings() {
   const state = settings.state;
   const saving = settings.savingField !== null;
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
+  const location = useLocation();
+  const navigate = useNavigate();
   const registry = usePluginRegistry();
   const pluginSections = collectPluginSettingsSections(registry.plugins);
   const pluginGroups = groupPluginSettingsSections(pluginSections);
+  const selectSection = (sectionId: SettingsSectionId) => {
+    setActiveSectionId(sectionId);
+    navigate({ pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` });
+  };
 
   useEffect(() => {
     const controller = new AbortController();
     void loadGlobalSettings(controller.signal);
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(location.search).get("section");
+    const available = new Set<SettingsSectionId>([...CORE_SETTINGS_SECTIONS.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
+    const next = requested && available.has(requested as SettingsSectionId) ? requested as SettingsSectionId : "general";
+    setActiveSectionId(next);
+    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true });
+  }, [location.search, navigate, pluginSections]);
 
   return (
     <main className="global-settings-page">
@@ -116,7 +131,7 @@ export function GlobalSettings() {
               type="button"
               className={`global-settings-nav-item ${section.id === activeSectionId ? "is-active" : ""}`}
               aria-pressed={section.id === activeSectionId}
-              onClick={() => setActiveSectionId(section.id)}
+              onClick={() => selectSection(section.id)}
             >
               <span className="global-settings-nav-label">{section.label}</span>
               <span className="global-settings-nav-eyebrow">{section.eyebrow}</span>
@@ -134,7 +149,7 @@ export function GlobalSettings() {
                       type="button"
                       className={`global-settings-nav-item ${section.id === activeSectionId ? "is-active" : ""}`}
                       aria-pressed={section.id === activeSectionId}
-                      onClick={() => setActiveSectionId(section.id)}
+                      onClick={() => selectSection(section.id)}
                     >
                       <span className="global-settings-nav-label">{section.sectionTitle}</span>
                       <span className="global-settings-nav-eyebrow">{section.pluginLabel}</span>

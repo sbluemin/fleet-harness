@@ -12,7 +12,6 @@ import { installConsoleGlobalShortcuts } from "./global-shortcuts.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
-import { CarrierSettings } from "./pages/carrier-settings.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
@@ -112,7 +111,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
           <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} />} />
-          <Route path="/carrier-settings" element={<CarrierSettings />} />
+          <Route path="/carrier-settings" element={<Navigate to="/settings?section=terminal%3Acarriers" replace />} />
           <Route path="/settings" element={<GlobalSettings />} />
           <Route path="*" element={<Navigate to="/operations" replace />} />
         </Routes>

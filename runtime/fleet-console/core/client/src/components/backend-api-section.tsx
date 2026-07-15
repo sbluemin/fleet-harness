@@ -31,8 +31,8 @@ export function BackendApiSection() {
 
   return (
     <section className="global-settings-card backend-api-section" aria-label="Backend API catalog">
-      <div className={`backend-api-control carrier-settings-control-group--taskforce ${expanded ? "is-expanded" : ""}`}>
-        <div className="carrier-settings-section-head">
+      <div className={`backend-api-control settings-disclosure-control ${expanded ? "is-expanded" : ""}`}>
+        <div className="settings-disclosure-head">
           <div className="backend-api-head">
             <p className="global-settings-resp-title">Backend API</p>
             <p className="global-settings-help">
@@ -41,10 +41,10 @@ export function BackendApiSection() {
                 : "Backend introspection route list for this console."}
             </p>
           </div>
-          <div className="carrier-settings-tf-head-actions">
+          <div className="settings-disclosure-actions">
             <button
               type="button"
-              className="carrier-settings-tf-toggle"
+              className="settings-disclosure-toggle"
               aria-expanded={expanded}
               onClick={() => setExpanded((value) => !value)}
             >
