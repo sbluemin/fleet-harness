@@ -281,7 +281,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const folderGrants = createFolderGrantStore();
   const infraServices = createInfraServices();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
-  const fleetDataDir = deps.dataDir ?? getFleetDataDir();
+  // 플러그인 fleet 루트: 명시 dataDir → FLEET_CONSOLE_DIR 격리 슬롯 → fleet 전역(~/.fleet).
+  // carriers.json은 fleet-cli와 공유하는 전역 상태라 채널 분기는 적용하지 않되,
+  // 명시 격리 오버라이드만은 durable state와 함께 이동해야 실사용자 store 오염을 막는다.
+  const fleetDataDir = deps.dataDir ?? process.env.FLEET_CONSOLE_DIR ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });

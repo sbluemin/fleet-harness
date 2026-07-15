@@ -216,6 +216,38 @@ describe("carrier settings routes", () => {
     }
   });
 
+  it("relocates carrier persistence with FLEET_CONSOLE_DIR when dataDir is omitted", async () => {
+    // dataDir 미지정 + FLEET_CONSOLE_DIR 격리 슬롯 — 플러그인 fleet 루트가 실사용자 store로 폴백하면 안 된다.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-carrier-env-"));
+    tempDirs.push(dir);
+    const consoleDir = path.join(dir, "console-slot");
+    fs.mkdirSync(consoleDir, { recursive: true });
+    vi.stubEnv("FLEET_CONSOLE_DIR", consoleDir);
+    try {
+      const lockFile = path.join(dir, "console.lock");
+      const server = createConsoleServer({
+        port: 0,
+        version: "test",
+        agentRuntime: createFakeConsoleRuntime() as never,
+      });
+      servers.push(server);
+      const endpoint = await server.start({ dir, lockFile });
+      const lock = createConsoleLock().readLock(lockFile)!;
+      const fixture = { endpoint, lock } as ServerFixture;
+
+      const state = await getJson<CarrierSettingsState>(`${endpoint}api/v1/plugins/terminal/carriers`);
+      const carrier = state.carriers[0]!;
+      await mutate(fixture, `/api/v1/plugins/terminal/carriers/${carrier.carrierId}`, "PATCH", { displayName: "Env Isolated" });
+
+      const persisted = JSON.parse(fs.readFileSync(path.join(consoleDir, "carriers.json"), "utf8")) as {
+        readonly carriers?: Record<string, { readonly displayName?: string }>;
+      };
+      expect(persisted.carriers?.[carrier.carrierId]?.displayName).toBe("Env Isolated");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
 });
 
 async function startFixture(options: {
