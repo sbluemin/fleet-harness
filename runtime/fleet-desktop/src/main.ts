@@ -29,8 +29,8 @@ import { createRemoteLastTargetStore } from "./runtime/remote/last-target.js";
 import { connectManagedRemote } from "./runtime/remote/orchestrator.js";
 import { createOpenSshAdapter } from "./runtime/remote/ssh.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
-import { configureTray } from "./tray.js";
-import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "./update-controller.js";
+import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
+import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
 import { applyWindowPolicy, createSecureWindow } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -198,13 +198,11 @@ async function boot(): Promise<void> {
       });
     },
   });
-  if (process.platform !== "darwin") {
-    trayHolder.current = new Tray(desktopResources.iconPath);
-    trayHolder.current.on("click", actions.show);
-  }
+  trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
   refreshNativeUpdateActions = () => {
     installApplicationMenu(Menu, actions, process.platform, window ?? undefined);
-    if (trayHolder.current) configureTray(trayHolder.current, Menu, actions);
+    // macOS에서는 context menu가 좌클릭을 가로채므로, 클릭으로 창을 표시하는 트레이에 메뉴를 절대 붙이지 않는다.
+    if (shouldConfigureTray(process.platform) && trayHolder.current) configureTray(trayHolder.current, Menu, actions);
   };
   refreshNativeUpdateActions();
   await lifecycle.start();
@@ -268,13 +266,14 @@ async function showFirstRunFailure(): Promise<boolean> {
 }
 
 async function showUpdateDialog(window: BrowserWindow | null, version: string, markPrompted: () => void): Promise<{ response: number; checkboxChecked: boolean }> {
+  const activeWindow = resolveActiveWindow(window);
   const options = { type: "info" as const, title: "Update available", message: `Fleet Console ${version} is ready to install.`, detail: "Takes a few seconds and restarts the console — running operations restore as dormant panels.", buttons: ["Update and Restart", "Later"], defaultId: 0, cancelId: 1, checkboxLabel: "Skip this version" };
   const show = async (): Promise<{ response: number; checkboxChecked: boolean }> => {
     markPrompted();
-    return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+    return activeWindow ? dialog.showMessageBox(activeWindow, options) : dialog.showMessageBox(options);
   };
   // Windows 실기는 darwin에서 [Unverified]다. 숨은 트레이 창은 balloon 클릭 뒤에만 모달을 연다.
-  return process.platform === "win32" ? showWindowsHiddenUpdateDialog(window, trayHolder.current, version, show) : show();
+  return process.platform === "win32" ? showWindowsHiddenUpdateDialog(activeWindow, trayHolder.current, version, show) : show();
 }
 
 function logBootFailure(error: unknown): void {

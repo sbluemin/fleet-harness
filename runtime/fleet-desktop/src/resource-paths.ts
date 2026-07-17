@@ -7,6 +7,7 @@ export interface DesktopResourcePaths {
   readonly serviceRoot: string;
   readonly cliPath: string;
   readonly iconPath: string;
+  readonly trayTemplateIconPath: string;
   readonly entryPagePath: string;
   readonly pairingPagePath: string;
 }
@@ -23,6 +24,7 @@ export function resolveDesktopResourcePaths(isPackaged: boolean, resourcesPath?:
     serviceRoot,
     cliPath: path.join(serviceRoot, "dist", "cli.mjs"),
     iconPath: path.join(sourceDir, "build", "icon.png"),
+    trayTemplateIconPath: path.join(sourceDir, "build", "trayTemplate.png"),
     entryPagePath: path.join(sourceDir, "assets", "entry", "index.html"),
     pairingPagePath: path.join(sourceDir, "assets", "pairing", "index.html"),
   };

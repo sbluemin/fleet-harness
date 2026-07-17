@@ -1,5 +1,6 @@
 import type { Menu, Tray } from "electron";
 
+import type { DesktopResourcePaths } from "./resource-paths.js";
 import type { UpdateController } from "./update-controller.js";
 
 export interface TrayActions {
@@ -15,6 +16,20 @@ export interface TrayActions {
   readonly consoleReady: () => boolean;
   readonly isRemoteActive: () => boolean;
   readonly updates: UpdateController;
+}
+
+export interface TrayConstructor {
+  new (image: string): Tray;
+}
+
+export function createDesktopTray(platform: NodeJS.Platform, TrayCtor: TrayConstructor, resources: DesktopResourcePaths, actions: TrayActions): Tray {
+  const tray = new TrayCtor(platform === "darwin" ? resources.trayTemplateIconPath : resources.iconPath);
+  tray.on("click", actions.show);
+  return tray;
+}
+
+export function shouldConfigureTray(platform: NodeJS.Platform): boolean {
+  return platform !== "darwin";
 }
 
 export function configureTray(tray: Tray, MenuCtor: typeof Menu, actions: TrayActions): void {

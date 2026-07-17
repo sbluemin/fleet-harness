@@ -6,7 +6,7 @@ import { listPackage } from "@electron/asar";
 import { describe, expect, it } from "vitest";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const requiredAsarFiles = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/assets/pairing/index.html", "dist/assets/pairing/pairing.css", "dist/build/node-runtime.json", "dist/build/icon.png"];
+const requiredAsarFiles = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/assets/pairing/index.html", "dist/assets/pairing/pairing.css", "dist/build/node-runtime.json", "dist/build/icon.png", "dist/build/trayTemplate.png", "dist/build/trayTemplate@2x.png"];
 
 describe("shell-only packaged layout", () => {
   it("keeps runtime payload out of every available packaged resource directory", () => {

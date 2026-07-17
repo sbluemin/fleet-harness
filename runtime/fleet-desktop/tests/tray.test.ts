@@ -1,6 +1,40 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { configureTray } from "../src/tray.js";
+import { configureTray, createDesktopTray, shouldConfigureTray } from "../src/tray.js";
+
+describe("desktop tray creation", () => {
+  it("uses the template icon and only attaches the show click handler on macOS", () => {
+    const tray = { on: vi.fn() };
+    const TrayCtor = vi.fn(function () { return tray; });
+    const show = vi.fn();
+    const actions = { show } as unknown as Parameters<typeof createDesktopTray>[3];
+    const resources = { iconPath: "/build/icon.png", trayTemplateIconPath: "/build/trayTemplate.png" } as Parameters<typeof createDesktopTray>[2];
+
+    expect(createDesktopTray("darwin", TrayCtor as never, resources, actions)).toBe(tray);
+    expect(TrayCtor).toHaveBeenCalledWith("/build/trayTemplate.png");
+    expect(tray.on).toHaveBeenCalledWith("click", show);
+  });
+
+  it("keeps the color icon and click handler on Windows and Linux", () => {
+    for (const platform of ["win32", "linux"] as const) {
+      const tray = { on: vi.fn() };
+      const TrayCtor = vi.fn(function () { return tray; });
+      const show = vi.fn();
+      const actions = { show } as unknown as Parameters<typeof createDesktopTray>[3];
+      const resources = { iconPath: "/build/icon.png", trayTemplateIconPath: "/build/trayTemplate.png" } as Parameters<typeof createDesktopTray>[2];
+
+      createDesktopTray(platform, TrayCtor as never, resources, actions);
+      expect(TrayCtor).toHaveBeenCalledWith("/build/icon.png");
+      expect(tray.on).toHaveBeenCalledWith("click", show);
+    }
+  });
+
+  it("never configures a context menu on macOS", () => {
+    expect(shouldConfigureTray("darwin")).toBe(false);
+    expect(shouldConfigureTray("win32")).toBe(true);
+    expect(shouldConfigureTray("linux")).toBe(true);
+  });
+});
 
 describe("tray menu", () => {
   it("places gated Console actions directly below Show without moving update, diagnostics, or quit", () => {
