@@ -56,6 +56,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
+  const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
   const canAutoHide = useCallback(() => {
     const activeElement = document.activeElement;
@@ -135,6 +136,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     setEnvironment(null);
     setEnvironmentError(null);
     setCopiedValue(null);
+    setCopyFailedValue(null);
   }, [state.channel]);
 
   useEffect(() => {
@@ -147,7 +149,11 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   };
 
   const copyEnvironmentValue = (value: string) => {
-    void navigator.clipboard.writeText(value).then(() => setCopiedValue(value)).catch(() => setEnvironmentError("Unable to copy value."));
+    // 복사 실패는 해당 버튼의 인라인 상태로만 알린다 — environmentError는 fetch 실패 전용이며
+    // 세팅하면 팝오버 전체가 에러 화면으로 대체되어 진단 값 자체를 볼 수 없게 된다.
+    void navigator.clipboard.writeText(value)
+      .then(() => { setCopiedValue(value); setCopyFailedValue(null); })
+      .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
   };
 
   // 밴드 데크는 로컬 상태만 사용한다 — 공유 open 플래그를 세우면 path-aware 레일 패널의
@@ -233,7 +239,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
           <span className="command-band-local-dot" aria-hidden="true" />
           {desktopShell ? "Local · Desktop" : "Local"}
           </button>
-          {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
+          {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
           <PanelToggleIcon side="left" />
@@ -274,11 +280,12 @@ interface EnvironmentPopoverProps {
   readonly error: string | null;
   readonly loading: boolean;
   readonly copiedValue: string | null;
+  readonly copyFailedValue: string | null;
   readonly desktopShell: boolean;
   readonly onCopy: (value: string) => void;
 }
 
-function EnvironmentPopover({ environment, error, loading, copiedValue, desktopShell, onCopy }: EnvironmentPopoverProps) {
+function EnvironmentPopover({ environment, error, loading, copiedValue, copyFailedValue, desktopShell, onCopy }: EnvironmentPopoverProps) {
   if (loading) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">Loading environment details…</div>;
   if (error) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">{error}</div>;
   if (!environment) return null;
@@ -292,7 +299,7 @@ function EnvironmentPopover({ environment, error, loading, copiedValue, desktopS
   ];
   return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">
     <div className="command-band-environment-title">Environment</div>
-    {rows.map(([label, value]) => <div key={label} className="command-band-environment-row"><span>{label}</span><code>{value}</code><button type="button" onClick={() => onCopy(value)}>{copiedValue === value ? "Copied" : "Copy"}</button></div>)}
+    {rows.map(([label, value]) => <div key={label} className="command-band-environment-row"><span>{label}</span><code>{value}</code><button type="button" onClick={() => onCopy(value)}>{copiedValue === value ? "Copied" : copyFailedValue === value ? "Copy failed" : "Copy"}</button></div>)}
     <div className="command-band-environment-footer">Development and published channels keep separate data roots.</div>
   </div>;
 }
