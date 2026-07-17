@@ -2187,8 +2187,7 @@
 }
 
 .side-bar-theater-section,
-.side-bar-theater-groups,
-.side-bar-peek-chips {
+.side-bar-theater-groups {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -2205,15 +2204,6 @@
   border-top: 1px solid var(--surface-rim);
   border-bottom: 1px solid var(--surface-rim);
   background: transparent;
-}
-
-.side-bar-theater-section--peek {
-  opacity: 0.62;
-}
-
-.side-bar-theater-section--peek:hover,
-.side-bar-theater-section--peek:focus-within {
-  opacity: 0.9;
 }
 
 .side-bar-theater-header {
@@ -2323,49 +2313,10 @@
   outline: none;
 }
 
-.side-bar-theater-groups,
-.side-bar-peek-chips {
+.side-bar-theater-groups {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.side-bar-peek-chips .side-bar-chip {
-  pointer-events: auto;
-}
-
-/* peek 섹션의 그룹 라벨 — 활성 그룹 헤더의 축약형(비인터랙티브, 색 레일은 side-bar-group-section 공유).
-   과거 '유령 세로선' 보고의 진범은 그룹 레일이 아니라 컴포지팅 심(위 contain:paint로 격납)이었다. */
-.side-bar-peek-group-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 2px 6px 2px 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-fog);
-}
-
-.side-bar-peek-group-label span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side-bar-peek-group-count {
-  color: var(--ink-rim);
-}
-
-.side-bar-peek-more {
-  list-style: none;
-  padding: 2px 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-rim);
 }
 
 /* 베이스 .theater-menu의 left/right:0(구 GNB 240px 컨테이너 전제)을 해제 —
