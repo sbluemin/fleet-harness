@@ -63,6 +63,19 @@ describe("useGlanceHold", () => {
     expect(glanceHeld()).toBe(false);
   });
 
+  it("does not enter glance while a blocking dialog is open", () => {
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.appendChild(dialog);
+
+    dispatchAlt("keydown", "AltLeft");
+    expect(glanceHeld()).toBe(false);
+
+    dialog.remove();
+    dispatchAlt("keydown", "AltLeft");
+    expect(glanceHeld()).toBe(true);
+  });
+
   it("clears immediately on window blur", () => {
     dispatchAlt("keydown", "AltLeft");
     act(() => window.dispatchEvent(new Event("blur")));

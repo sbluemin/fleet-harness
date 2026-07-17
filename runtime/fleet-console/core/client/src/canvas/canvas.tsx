@@ -4,6 +4,7 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
+import { isBlockingDialogOpen } from "../blocking-dialog.js";
 import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -312,7 +313,8 @@ export function useGlanceHold(): boolean {
       setGlanceVisible(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isGlanceAltKey(event) || event.repeat || event.ctrlKey || event.metaKey) return;
+      // 콘솔 전역 단축키 관례(global-shortcuts)와 동일하게, 블로킹 다이얼로그 위에는 HUD를 띄우지 않는다.
+      if (!isGlanceAltKey(event) || event.repeat || event.ctrlKey || event.metaKey || isBlockingDialogOpen()) return;
       heldAltCodesRef.current.add(event.code);
       setGlanceVisible(true);
     };

@@ -411,6 +411,7 @@ describe("Instrument core design contract", () => {
     expect(canvas).toContain("export function useGlanceHold(): boolean");
     expect(canvas).toContain('event.code === "AltLeft" || event.code === "AltRight"');
     expect(canvas).toContain("event.ctrlKey || event.metaKey");
+    expect(canvas).toContain("isBlockingDialogOpen()");
     expect(canvas).toContain('glanceVisible ? "is-glance" : ""');
     expect(canvas).toContain('window.addEventListener("blur", clearGlance)');
     expect(canvas).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
