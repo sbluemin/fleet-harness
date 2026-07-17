@@ -223,6 +223,33 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
   });
 
+  it("keeps Codex capture, turn-start, auto-name, and turn-end hooks in order", async () => {
+    const root = createTempRoot("fleet-admiral-codex-all-hooks-");
+    const codexHome = path.join(root, "codex-home");
+    const hookExecs = [
+      hookExec("capture", ["session"]),
+      hookExec("turn-start", []),
+      hookExec("auto-name", []),
+      hookExec("turn-end", []),
+    ];
+    const profile = baseProfile("codex", {
+      args: [],
+      cwd: root,
+      env: { CODEX_HOME: codexHome, HOME: root },
+    });
+
+    await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      autoNameHookExec: hookExecs[2],
+      captureSessionHookExec: hookExecs[0],
+      turnEndHookExec: hookExecs[3],
+      turnStartHookExec: hookExecs[1],
+    }));
+
+    const toml = readFileSync(path.join(codexHome, "fleet.config.toml"), "utf8");
+    expect(readTomlBasicStringValues(toml, "command")).toEqual(hookExecs.map((exec) =>
+      buildHostShellCommand([exec.command, ...exec.args])));
+  });
+
   it.skipIf(process.platform !== "win32")("writes and executes a PowerShell-safe command_windows override for every Codex hook", async () => {
     const root = createTempRoot("fleet-admiral-codex-windows-hooks-");
     const codexHome = path.join(root, "codex-home");

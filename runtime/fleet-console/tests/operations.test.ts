@@ -46,6 +46,7 @@ describe("operations platform", () => {
         cwd: "/secret",
         canonicalCwd: "/secret",
         providerSession: { sessionId: "provider-secret" },
+        providerTitle: { source: "provider" },
         ticket: "ticket-secret",
         token: "token-secret",
         transcriptPath: "/secret/transcript.jsonl",
@@ -91,7 +92,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
-      getPluginSensitiveFields: (pluginId) => (pluginId === "terminal" ? ["pluginSecret"] : []),
+      getPluginSensitiveFields: (pluginId) => (pluginId === "terminal" ? ["pluginSecret", "providerTitle"] : []),
     });
 
     const list = await dispatch(router, "GET", "/api/v1/operations");
@@ -101,12 +102,13 @@ describe("operations platform", () => {
       type: "agent",
       pluginId: "terminal",
       title: "Created",
-      payload: { pluginSecret: "created-secret", visible: "created" },
+      payload: { pluginSecret: "created-secret", providerTitle: { source: "provider" }, visible: "created" },
     };
     const created = await dispatch(router, "POST", "/api/v1/operations");
     requestBody = {
       payload: {
         pluginSecret: "patched-secret",
+        providerTitle: { source: "provider" },
         visible: "patched",
       },
     };
@@ -119,6 +121,7 @@ describe("operations platform", () => {
     expect(serialized).not.toContain("a-secret");
     expect(serialized).not.toContain("created-secret");
     expect(serialized).not.toContain("patched-secret");
+    expect(serialized).not.toContain("providerTitle");
   });
 
   it("sets, preserves, and clears operation accent through PATCH", async () => {

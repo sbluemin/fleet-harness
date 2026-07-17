@@ -82,6 +82,24 @@ describe('CodexAppServerConnection lifecycle', () => {
     expect(readOutgoingMethods(child)).toEqual(['initialize', 'thread/start', 'thread/resume']);
   });
 
+  it('thread/read는 resume 없이 turns를 제외하고 요청한다', async () => {
+    await establishSession(connection, child);
+
+    const readPromise = connection.readThread('thread-read');
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'thread/read',
+      params: { threadId: 'thread-read', includeTurns: false },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(3, {
+      thread: { id: 'thread-read', name: 'Provider title', preview: 'ignored' },
+    })}\n`);
+
+    await expect(readPromise).resolves.toEqual({
+      thread: { id: 'thread-read', name: 'Provider title', preview: 'ignored' },
+    });
+    expect(readOutgoingMethods(child)).not.toContain('thread/resume');
+  });
+
   it('initialize → thread/start → turn/completed까지 연결 lifecycle을 처리한다', async () => {
     const promptComplete = vi.fn();
     connection.on('promptComplete', promptComplete);

@@ -12,7 +12,7 @@ import { createTerminalRuntime } from "./server/shared/index.js";
 import { registerShellRoutes } from "./server/shell.js";
 
 const TERMINAL_PLUGIN_ID = "terminal";
-const TERMINAL_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerSession", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
+const TERMINAL_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerSession", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const SHELL_LAUNCH_KIND = { id: "shell", type: "shell", title: "Shell" } as const satisfies OperationLaunchKind;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 

@@ -11,6 +11,7 @@ import type {
   AgentObservedWorkspace,
   AgentObserverTruncation,
   AgentProviderSession,
+  AgentProviderTitleMarker,
   AgentSessionAttentionEvent,
   AgentSessionStatus,
   AgentSessionUpdatedEvent,
@@ -52,6 +53,7 @@ interface PendingTerminalSessionState {
   readonly cwdLabel: string;
   label?: string;
   labelSource?: AgentLabelSource;
+  providerTitle?: AgentProviderTitleMarker;
   autoNamePromptSeen?: boolean;
   cliId?: string;
   cliLabel?: string;
@@ -68,6 +70,11 @@ interface PendingTerminalSessionState {
 type DormantOperationInput = AgentDurableOperation;
 
 interface AutoNameTerminalSessionResult {
+  readonly session: AgentTerminalSessionInfo;
+  readonly renamed: boolean;
+}
+
+interface ProviderIdentityTerminalSessionResult {
   readonly session: AgentTerminalSessionInfo;
   readonly renamed: boolean;
 }
@@ -233,6 +240,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       cwdLabel: path.basename(operation.cwd) || operation.cwd,
       label: operation.label,
       labelSource: operation.labelSource,
+      providerTitle: operation.providerTitle,
       cliId: operation.cliId,
       cliLabel: operation.cliLabel,
       createdAt: operation.createdAt,
@@ -256,6 +264,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       cwd: session.cwd,
       ...(session.label ? { label: session.label } : {}),
       ...(session.labelSource ? { labelSource: session.labelSource } : {}),
+      ...(session.providerTitle ? { providerTitle: session.providerTitle } : {}),
       ...(session.cliId ? { cliId: session.cliId } : {}),
       ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
       createdAt: session.createdAt,
@@ -310,21 +319,23 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       // 다음 프롬프트부터 자동 작명이 재활성화되게 한다.
       delete session.label;
       delete session.labelSource;
+      delete session.providerTitle;
     } else {
       session.label = label;
       session.labelSource = "user";
+      delete session.providerTitle;
     }
     return toTerminalSessionInfo(session);
   }
 
-  // 자동 작명: 사용자 수동 라벨(labelSource "user")이 없는 세션의 첫 유효 프롬프트에만 적용한다.
+  // 자동 작명: 사용자 수동 또는 provider 라벨이 없는 세션의 첫 유효 프롬프트에만 적용한다.
   // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다.
   // 처리 여부는 패널의 인메모리 상태에만 남기며 durable operation에는 포함하지 않는다.
   function autoNameTerminalSession(sessionId: string, label: string | null): AutoNameTerminalSessionResult | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     const effectiveSource: AgentLabelSource | undefined = session.labelSource ?? (session.label ? "user" : undefined);
-    if (effectiveSource === "user" || session.autoNamePromptSeen) {
+    if (effectiveSource === "user" || session.providerTitle || session.autoNamePromptSeen) {
       return { session: toTerminalSessionInfo(session), renamed: false };
     }
     const next = label?.trim().slice(0, 200) ?? "";
@@ -335,6 +346,27 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (next === session.label) return { session: toTerminalSessionInfo(session), renamed: false };
     session.label = next;
     session.labelSource = "auto";
+    return { session: toTerminalSessionInfo(session), renamed: true };
+  }
+
+  // Provider metadata may replace default, auto, or a prior provider title, but
+  // never a manual/legacy title. Its provenance remains durable server-only.
+  function applyTerminalSessionProviderIdentity(sessionId: string, rawLabel: string | null): ProviderIdentityTerminalSessionResult | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const label = rawLabel?.trim().slice(0, 200) ?? "";
+    if (label.length === 0) return { session: toTerminalSessionInfo(session), renamed: false };
+
+    const isLegacyOrUserTitle = session.labelSource === "user"
+      || (!session.labelSource && !session.providerTitle && Boolean(session.label));
+    if (isLegacyOrUserTitle) return { session: toTerminalSessionInfo(session), renamed: false };
+    if (session.label === label && session.providerTitle) {
+      return { session: toTerminalSessionInfo(session), renamed: false };
+    }
+
+    session.label = label;
+    delete session.labelSource;
+    session.providerTitle = { source: "provider" };
     return { session: toTerminalSessionInfo(session), renamed: true };
   }
 
@@ -395,6 +427,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     notifySessionUpdated,
     renameTerminalSession,
     autoNameTerminalSession,
+    applyTerminalSessionProviderIdentity,
     subscribe,
     subscribeAll,
     updateTerminalSessionProviderSession,

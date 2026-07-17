@@ -101,3 +101,64 @@ describe("agent observability DTO boundary", () => {
     expect(b?.id).toBe(2);
   });
 });
+
+describe("agent operation title precedence", () => {
+  function createStore() {
+    return createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+  }
+
+  function createSession(store: ReturnType<typeof createStore>, sessionId = "session-a") {
+    store.createPendingTerminalSession({ sessionId, cwd: "/workspace/project", createdAt: 1_000 });
+  }
+
+  it("applies default, auto, provider, refreshed provider, then user precedence", () => {
+    const store = createStore();
+    createSession(store);
+
+    expect(store.autoNameTerminalSession("session-a", "Prompt title")).toMatchObject({ renamed: true, session: { label: "Prompt title", labelSource: "auto" } });
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "Provider title")).toMatchObject({ renamed: true, session: { label: "Provider title" } });
+    expect(store.getDurableOperation("session-a")).toMatchObject({ providerTitle: { source: "provider" } });
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "Refreshed title")).toMatchObject({ renamed: true, session: { label: "Refreshed title" } });
+    expect(store.renameTerminalSession("session-a", "Manual title")).toMatchObject({ label: "Manual title", labelSource: "user" });
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "Ignored provider title")).toMatchObject({ renamed: false, session: { label: "Manual title", labelSource: "user" } });
+    expect(store.getDurableOperation("session-a")?.providerTitle).toBeUndefined();
+  });
+
+  it("protects conservatively interpreted legacy titles and refuses auto-name after provider identity", () => {
+    const store = createStore();
+    store.injectDormantOperation({ sessionId: "legacy", theaterId: "theater-a", cwd: "/workspace/project", label: "Legacy title", createdAt: 1_000 });
+    expect(store.applyTerminalSessionProviderIdentity("legacy", "Provider title")).toMatchObject({ renamed: false, session: { label: "Legacy title" } });
+
+    createSession(store);
+    store.applyTerminalSessionProviderIdentity("session-a", "Provider title");
+    expect(store.autoNameTerminalSession("session-a", "Prompt title")).toMatchObject({ renamed: false, session: { label: "Provider title" } });
+  });
+
+  it("clears user and provider provenance on empty rename, and ignores malformed or duplicate provider titles", () => {
+    const store = createStore();
+    createSession(store);
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "  Provider title  ")).toMatchObject({ renamed: true, session: { label: "Provider title" } });
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "Provider title")).toMatchObject({ renamed: false });
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "   ")).toMatchObject({ renamed: false });
+    expect(store.renameTerminalSession("session-a", "")).toMatchObject({ label: undefined, labelSource: undefined });
+    expect(store.getDurableOperation("session-a")?.providerTitle).toBeUndefined();
+
+    expect(store.applyTerminalSessionProviderIdentity("session-a", `  ${"x".repeat(201)}  `)?.session.label).toBe("x".repeat(200));
+  });
+
+  it("rehydrates provider provenance without exposing it in browser session DTOs", () => {
+    const store = createStore();
+    const session = store.injectDormantOperation({
+      sessionId: "session-a",
+      theaterId: "theater-a",
+      cwd: "/workspace/project",
+      label: "Provider title",
+      providerTitle: { source: "provider" },
+      createdAt: 1_000,
+    });
+
+    expect(store.applyTerminalSessionProviderIdentity("session-a", "Refreshed title")).toMatchObject({ renamed: true, session: { label: "Refreshed title" } });
+    expect(JSON.stringify(session)).not.toContain("providerTitle");
+    expect(store.getDurableOperation("session-a")).toMatchObject({ label: "Refreshed title", providerTitle: { source: "provider" } });
+  });
+});
