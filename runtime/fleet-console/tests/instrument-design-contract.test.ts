@@ -411,6 +411,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");
     expect(components).toContain(".canvas-operation-window-controls {");
     expect(components).toContain("max-width: 0;");
+    const windowControlsBlock = components.match(/\.canvas-operation-window-controls \{[^}]*\}/)?.[0] ?? "";
+    expect(windowControlsBlock).toContain("overflow-x: clip;");
+    expect(windowControlsBlock).toContain("overflow-y: visible;");
     expect(components).toContain(".operations-canvas.is-glance .canvas-operation-glance-hud {");
     // armed-close는 hover 전개 규칙(0-4-0)과 같은 특이도의 후순위여야 Close? 라벨이 잘리지 않는다.
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
