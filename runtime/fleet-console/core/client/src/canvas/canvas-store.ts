@@ -99,6 +99,11 @@ export function getSnapshot(): CanvasState {
   return state;
 }
 
+// 비활성 Theater의 사이드바는 현재 캔버스를 전환하지 않고, 해당 Theater에 저장된 표시 상태만 읽는다.
+export function getTheaterCanvasSnapshot(theaterId: string): CanvasState {
+  return activeTheaterId === theaterId ? state : readStoredState(theaterId);
+}
+
 export function getMaximizedOperationId(): string | null {
   return maximizedOperationId;
 }
@@ -157,6 +162,23 @@ export function toggleGroupCollapsed(groupId: string): void {
     ? state.collapsedGroups.filter((id) => id !== groupId)
     : [...state.collapsedGroups, groupId];
   setState({ collapsedGroups: collapsed });
+}
+
+// 비활성 Theater의 그룹 접힘은 해당 Theater 저장소에만 즉시 반영한다. 현재 캔버스 전환이나 다른
+// Theater의 저장 예약에는 관여하지 않아, 사이드바 표시 조작이 잘못된 캔버스를 바꾸지 않게 한다.
+export function toggleTheaterGroupCollapsed(theaterId: string, groupId: string): void {
+  if (activeTheaterId === theaterId) {
+    toggleGroupCollapsed(groupId);
+    return;
+  }
+  const theaterState = readStoredState(theaterId);
+  const collapsedGroups = theaterState.collapsedGroups.includes(groupId)
+    ? theaterState.collapsedGroups.filter((id) => id !== groupId)
+    : [...theaterState.collapsedGroups, groupId];
+  writeStoredState(theaterId, { ...theaterState, collapsedGroups });
+  // 현재 Theater 값은 바꾸지 않되 구독 컴포넌트가 비활성 Theater 스냅샷을 다시 읽게 한다.
+  state = { ...state };
+  emit();
 }
 
 export function useCollapsedGroups(): readonly string[] {

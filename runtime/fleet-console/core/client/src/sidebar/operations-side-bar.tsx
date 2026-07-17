@@ -11,7 +11,7 @@ import { DirectoryBrowserModal } from "../components/directory-browser-modal.js"
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { selectFormationLayout, setOperationOrder, toggleGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, selectFormationLayout, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
 import { sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -112,10 +112,12 @@ interface TheaterSectionHeaderProps {
   readonly onContextMenu: (anchor: DOMRect) => void;
 }
 
-interface TheaterPeekSectionProps {
+interface TheaterInactiveSectionProps {
   readonly theater: TheaterInfo;
   readonly entries: readonly SideBarEntry[];
   readonly groups: readonly OperationGroup[];
+  readonly collapsedGroups: ReadonlySet<string>;
+  readonly operationAccent: Readonly<Record<string, string>>;
   readonly operationCount: number;
   readonly collapsed: boolean;
   readonly onSelectTheater: (theaterId: string) => void;
@@ -139,8 +141,6 @@ const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
-const PEEK_CHIP_LIMIT = 4;
-
 export function OperationsSideBar({
   theaters,
   activeTheaterId,
@@ -523,11 +523,12 @@ export function OperationsSideBar({
           const theaterOperationCount = operations.filter((operation) => operation.theaterId === theater.id).length;
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
           if (!isActiveTheater) {
-            const peekEntries = buildTheaterEntries({
+            const theaterCanvas = getTheaterCanvasSnapshot(theater.id);
+            const inactiveEntries = buildTheaterEntries({
               theaterId: theater.id,
               operations,
-              operationOrder: canvas.operationOrder,
-              minimizedSet,
+              operationOrder: theaterCanvas.operationOrder,
+              minimizedSet: new Set(theaterCanvas.minimized),
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
               operationNotifications,
@@ -536,11 +537,13 @@ export function OperationsSideBar({
               renderKindIcon,
             });
             return (
-              <TheaterPeekSection
+              <TheaterInactiveSection
                 key={theater.id}
                 theater={theater}
-                entries={theaterCollapsed ? [] : peekEntries}
+                entries={theaterCollapsed ? [] : inactiveEntries}
                 groups={groups.filter((group) => group.theaterId === theater.id)}
+                collapsedGroups={new Set(theaterCanvas.collapsedGroups)}
+                operationAccent={theaterCanvas.operationAccent}
                 operationCount={theaterOperationCount}
                 collapsed={theaterCollapsed}
                 onSelectTheater={onSelectTheater}
@@ -908,10 +911,12 @@ function TheaterSectionHeader({
   );
 }
 
-function TheaterPeekSection({
+function TheaterInactiveSection({
   theater,
   entries,
   groups,
+  collapsedGroups,
+  operationAccent,
   operationCount,
   collapsed,
   onSelectTheater,
@@ -920,22 +925,11 @@ function TheaterPeekSection({
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
-}: TheaterPeekSectionProps) {
-  // peek에서도 활성 섹션과 같은 그룹 구조를 유지한다 — 총 칩 수만 PEEK_CHIP_LIMIT로 제한하고,
-  // 잘려나간 수는 "+N more"로 알린다(그룹 소속이 안 보이는 착시를 막는다).
+}: TheaterInactiveSectionProps) {
   const sections = groupOperations(entries, groups, []);
-  let remaining = PEEK_CHIP_LIMIT;
-  let truncated = 0;
-  const visibleSections: typeof sections = [];
-  for (const section of sections) {
-    if (section.entries.length === 0) continue;
-    const take = section.entries.slice(0, Math.max(0, remaining));
-    truncated += section.entries.length - take.length;
-    remaining -= take.length;
-    if (take.length > 0) visibleSections.push({ ...section, entries: take });
-  }
+  const hasCustomGroups = sections.some((section) => section.group !== null);
   return (
-    <li className="side-bar-theater-section side-bar-theater-section--peek" data-theater-id={theater.id}>
+    <li className="side-bar-theater-section" data-theater-id={theater.id}>
       <TheaterSectionHeader
         theater={theater}
         operationCount={operationCount}
@@ -947,50 +941,67 @@ function TheaterPeekSection({
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
       />
-      {visibleSections.length > 0 ? (
-        <ol className="side-bar-peek-chips" aria-label={`${theater.label} preview operations`}>
-          {visibleSections.map((section) => {
+      {!collapsed && sections.length > 0 ? (
+        <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
+          {sections.map((section) => {
+            const isCollapsed = section.groupId !== null && collapsedGroups.has(section.groupId);
             const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
             return (
               <li
                 key={section.groupId ?? "__ungrouped__"}
-                className={section.groupId ? "side-bar-group-section side-bar-group-section--peek" : "side-bar-ungrouped-section"}
+                className={section.groupId ? "side-bar-group-section" : "side-bar-ungrouped-section"}
                 style={grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined}
               >
                 {section.group ? (
-                  <div className="side-bar-peek-group-label" aria-label={`Group ${section.group.name}`}>
-                    <span>{section.group.name}</span>
-                    <span className="side-bar-peek-group-count">{section.entries.length}</span>
+                  <OperationsSideBarGroupHeader
+                    group={section.group}
+                    count={section.entries.length}
+                    collapsed={isCollapsed}
+                    dragging={false}
+                    dragOffsetY={0}
+                    dropTarget={false}
+                    onToggle={(groupId) => toggleTheaterGroupCollapsed(theater.id, groupId)}
+                    onContextMenu={() => {}}
+                    onPointerDragStart={() => {}}
+                  />
+                ) : hasCustomGroups && section.entries.length > 0 ? (
+                  <div className="side-bar-ungrouped-label" aria-label="Ungrouped operations">
+                    <span>Ungrouped</span>
                   </div>
                 ) : null}
-                <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : "Ungrouped"}>
-                  {section.entries.map((entry, index) => (
-                    <OperationsSideBarChip
-                      key={entry.operation.id}
-                      entry={entry}
-                      index={index}
-                      isCloseArmed={false}
-                      accentValue={null}
-                      dragging={false}
-                      dragOffsetY={0}
-                      dropTarget={false}
-                      preview
-                      onArmClose={() => {}}
-                      onDisarmClose={() => {}}
-                      onClose={() => {}}
-                      onMinimize={() => {}}
-                      onFocus={onFocus}
-                      onKeyboardMove={() => {}}
-                      onPointerDragStart={() => {}}
-                      onOpenAccent={() => {}}
-                      onRename={() => {}}
-                    />
-                  ))}
-                </ol>
+                {!isCollapsed ? (
+                  <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : "Ungrouped"}>
+                    {section.entries.map((entry, index) => {
+                      const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+                      const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+                      return (
+                        <OperationsSideBarChip
+                          key={entry.operation.id}
+                          entry={entry}
+                          index={index}
+                          isCloseArmed={false}
+                          accentValue={accentValue}
+                          dragging={false}
+                          dragOffsetY={0}
+                          dropTarget={false}
+                          preview
+                          onArmClose={() => {}}
+                          onDisarmClose={() => {}}
+                          onClose={() => {}}
+                          onMinimize={() => {}}
+                          onFocus={onFocus}
+                          onKeyboardMove={() => {}}
+                          onPointerDragStart={() => {}}
+                          onOpenAccent={() => {}}
+                          onRename={() => {}}
+                        />
+                      );
+                    })}
+                  </ol>
+                ) : null}
               </li>
             );
           })}
-          {truncated > 0 ? <li className="side-bar-peek-more">+{truncated} more</li> : null}
         </ol>
       ) : null}
     </li>
