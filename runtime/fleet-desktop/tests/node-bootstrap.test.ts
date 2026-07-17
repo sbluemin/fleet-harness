@@ -4,7 +4,7 @@ const execFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:child_process", () => ({ execFile: execFileMock }));
 
-import { bootstrapNodeRuntime, createNodeBootstrapDependencies, createPowerShellExtractionCommand, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
+import { bootstrapNodeRuntime, createNodeBootstrapDependencies, createPowerShellExtractionCommand, downloadVerifiedNodeArchive, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine } from "../src/runtime/node-bootstrap.js";
 
 const manifest = { version: "22.23.1", source: "https://node.invalid", targets: { "darwin-arm64": { archive: "node.tar.gz", sha256: "good" }, "win32-x64": { archive: "node.zip", sha256: "good" } } };
 
@@ -31,6 +31,13 @@ describe("Node runtime bootstrap", () => {
     injected.hash = () => "bad";
     await expect(bootstrapNodeRuntime({ destination: "/runtime/node", manifest, platform: "darwin", architecture: "arm64", dependencies: injected })).rejects.toThrow("node_runtime_checksum_mismatch");
     expect(injected.fileSystem.rm).toHaveBeenLastCalledWith("/runtime/node.staging");
+  });
+
+  it("exposes a reusable verified archive seam before an archive can be consumed", async () => {
+    const injected = dependencies();
+    const archive = await downloadVerifiedNodeArchive({ directory: "/temporary", manifest, target: manifest.targets["darwin-arm64"]!, dependencies: injected });
+    expect(archive).toEqual({ path: "/temporary/node.tar.gz", content: new Uint8Array([1]) });
+    expect(injected.download).toHaveBeenCalledWith("https://node.invalid/node.tar.gz", "/temporary/node.tar.gz");
   });
 
   it("uses the Windows node executable without executing it", async () => {

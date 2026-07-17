@@ -26,6 +26,38 @@ export interface NodeBootstrapDependencies {
 export interface NodeBootstrapResult { readonly nodePath: string; readonly version: string; }
 export interface BootstrapNodeRuntimeOptions { readonly destination: string; readonly manifest: NodeRuntimeManifest; readonly platform: NodeJS.Platform; readonly architecture: string; readonly dependencies?: NodeBootstrapDependencies; }
 
+/** A verified local archive.  The caller owns removal of `path`. */
+export interface VerifiedNodeArchive {
+  readonly path: string;
+  readonly content: Uint8Array;
+}
+
+export interface DownloadVerifiedNodeArchiveOptions {
+  readonly directory: string;
+  readonly manifest: Pick<NodeRuntimeManifest, "source">;
+  readonly target: NodeRuntimeTarget;
+  readonly dependencies?: Pick<NodeBootstrapDependencies, "download" | "fileSystem" | "hash">;
+}
+
+/**
+ * Shared procurement seam for local and managed-remote bootstrap.  Downloading
+ * is deliberately completed and hashed before its bytes can reach an extractor
+ * or an SSH upload stream.
+ */
+export async function downloadVerifiedNodeArchive(options: DownloadVerifiedNodeArchiveOptions): Promise<VerifiedNodeArchive> {
+  const dependencies = options.dependencies ?? createNodeBootstrapDependencies();
+  const archive = path.join(options.directory, options.target.archive);
+  await dependencies.fileSystem.mkdir(options.directory);
+  await dependencies.download(`${options.manifest.source}/${options.target.archive}`, archive);
+  const content = await dependencies.fileSystem.readFile(archive);
+  const digest = (dependencies.hash ?? sha256)(content);
+  if (digest !== options.target.sha256) {
+    await dependencies.fileSystem.rm(archive);
+    throw new Error("node_runtime_checksum_mismatch");
+  }
+  return { path: archive, content };
+}
+
 export async function bootstrapNodeRuntime(options: BootstrapNodeRuntimeOptions): Promise<NodeBootstrapResult> {
   const dependencies = options.dependencies ?? createNodeBootstrapDependencies();
   const targetKey = `${options.platform}-${options.architecture}`;
@@ -35,11 +67,8 @@ export async function bootstrapNodeRuntime(options: BootstrapNodeRuntimeOptions)
   try {
     await dependencies.fileSystem.rm(staging);
     await dependencies.fileSystem.mkdir(staging);
-    const archive = path.join(staging, target.archive);
-    await dependencies.download(`${options.manifest.source}/${target.archive}`, archive);
-    const downloaded = await dependencies.fileSystem.readFile(archive);
-    const digest = (dependencies.hash ?? sha256)(downloaded);
-    if (digest !== target.sha256) throw new Error("node_runtime_checksum_mismatch");
+    const downloaded = await downloadVerifiedNodeArchive({ directory: staging, manifest: options.manifest, target, dependencies });
+    const archive = downloaded.path;
     await dependencies.extract(archive, staging, options.platform);
     await dependencies.fileSystem.rm(archive);
     await dependencies.fileSystem.writeFile(path.join(staging, ".runtime-version"), `${options.manifest.version}\n`);

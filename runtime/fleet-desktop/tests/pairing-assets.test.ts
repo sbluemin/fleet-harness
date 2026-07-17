@@ -12,6 +12,10 @@ describe("Desktop pairing assets", () => {
     expect(pairingHtml).toContain("default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action fleet-desktop-pairing:");
     expect(pairingHtml).toContain('action="fleet-desktop-pairing://submit/"');
     expect(pairingHtml).toContain('href="fleet-desktop-pairing://cancel/"');
+    expect(pairingHtml).toContain('id="mode-loopback"');
+    expect(pairingHtml).toContain('id="mode-ssh"');
+    expect(pairingHtml).toContain('value="loopback"');
+    expect(pairingHtml).toContain('value="ssh"');
     expect(pairingHtml).not.toMatch(/<(script|iframe|webview)\b|\bon\w+\s*=/i);
   });
 });
