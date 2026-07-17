@@ -109,6 +109,11 @@ describe("OperationFrame identity rename", () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
+  it("marks the frame with is-top-edge so the nameplate insets under the canvas clip", () => {
+    renderFrame(vi.fn(), false, true);
+    expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
+  });
+
   it("keeps active identity in the name → beacon → controls order", () => {
     renderFrame(vi.fn(), true);
     const children = Array.from(document.querySelector(".canvas-operation-titlebar")!.children);
@@ -176,8 +181,9 @@ function renderInactiveFrame(onRename: (title: string) => void): HTMLButtonEleme
   return identityTrigger();
 }
 
-function renderFrame(onRename: (title: string) => void, active: boolean): void {
+function renderFrame(onRename: (title: string) => void, active: boolean, topEdge = false): void {
   act(() => root!.render(createElement(OperationFrame, {
+    topEdge,
     operation: {
       id: "operation-identity",
       theaterId: "theater-identity",

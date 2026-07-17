@@ -16,6 +16,7 @@ interface OperationFrameProps {
   readonly status?: OperationActivity;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
+  readonly topEdge?: boolean;
   readonly interactionDisabled?: boolean;
   readonly accentKey?: string | null;
   readonly children: ReactNode;
@@ -48,7 +49,7 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -75,6 +76,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     active ? "is-active" : "",
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
+    topEdge ? "is-top-edge" : "",
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
 

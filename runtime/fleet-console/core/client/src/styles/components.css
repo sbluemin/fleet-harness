@@ -1834,9 +1834,10 @@
   border-radius: calc(var(--radius-xl) - 2px);
 }
 
-/* Formation 슬롯은 y=0에서 시작해 캔버스 클립(overflow:hidden)이 보더 위 명판을 잘라낸다 —
-   최대화와 동일하게 명판을 패널 내부 인셋으로 전환한다. */
-.operations-canvas.is-formation-view .canvas-operation-titlebar {
+/* Formation 슬롯은 y=0에서 시작하고, 일반 맵 뷰에서도 뷰포트-상대 상단 밀착(is-top-edge) 패널은
+   캔버스 클립(overflow:hidden)이 보더 위 명판을 잘라낸다 — 최대화와 동일하게 내부 인셋으로 전환한다. */
+.operations-canvas.is-formation-view .canvas-operation-titlebar,
+.canvas-operation.is-top-edge .canvas-operation-titlebar {
   top: var(--space-2);
 }
 

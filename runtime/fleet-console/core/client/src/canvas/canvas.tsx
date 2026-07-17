@@ -52,6 +52,8 @@ interface PluginOperationRendererProps {
 const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
+/* components.css의 .canvas-operation-titlebar top(-1 * --space-3)과 짝을 이루는 상수. */
+const TITLEBAR_OUTSET_PX = 12;
 
 export function OperationsCanvas({
   state,
@@ -180,9 +182,14 @@ export function OperationsCanvas({
           const frameGeometry = operationMaximized
             ? maximizedGeometryFor(canvasSize, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
+          // 보더 위 명판(top: -space-3)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치면 내부 인셋으로 전환한다.
+          // 최대화/Formation은 전용 CSS 인셋 규칙이 이미 소유한다.
+          const topEdge = !operationMaximized && !formationSlot
+            && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
             geometry: frameGeometry,
+            topEdge,
             operationKindRegistry,
             status: state.operationStatus[operation.id],
             theme: state.activeTheme,
@@ -368,6 +375,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly minimized: boolean;
   readonly maximized: boolean;
   readonly formation: boolean;
+  readonly topEdge: boolean;
   readonly accentKey: string | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
@@ -394,6 +402,7 @@ function renderPluginOperation(operation: OperationNode, options: {
       status={options.status}
       minimized={options.minimized}
       maximized={options.maximized}
+      topEdge={options.topEdge}
       interactionDisabled={options.formation}
       accentKey={options.accentKey}
       onActivate={options.onActivate}
