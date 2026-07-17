@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-fullscreen.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-theme.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
@@ -80,6 +82,49 @@ afterEach(async () => {
 });
 
 describe("console terminal observability", () => {
+  it("owns an exact-origin ephemeral Desktop fullscreen snapshot and relays it through operations SSE", async () => {
+    const fixture = await startFixture();
+    const origin = new URL(fixture.endpoint).origin;
+    const url = new URL(DESKTOP_FULLSCREEN_PATH.slice(1), fixture.endpoint);
+
+    const missing = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: true }) });
+    expect(missing.status).toBe(401);
+    const foreign = await fetch(url, { method: "PUT", headers: { Origin: "http://127.0.0.1:9999", "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: true }) });
+    expect(foreign.status).toBe(401);
+    expect(await putWithHost(url, origin, "localhost:1", { fullscreen: true })).toBe(403);
+    const wrongMethod = await fetch(url, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: true }) });
+    expect(wrongMethod.status).toBe(405);
+    const invalidJson = await fetch(url, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: "{not-json" });
+    expect(invalidJson.status).toBe(400);
+    const malformed = await fetch(url, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: true, extra: false }) });
+    expect(malformed.status).toBe(400);
+
+    const put = await fetch(url, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: true }) });
+    expect(put.status).toBe(204);
+    const stream = await fetch(new URL("api/v1/operations/events", fixture.endpoint));
+    const reader = stream.body!.getReader();
+    const readFullscreen = createDesktopFullscreenSseReader(reader);
+    expect(await readFullscreen()).toEqual({ fullscreen: true });
+
+    const update = await fetch(url, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: false }) });
+    expect(update.status).toBe(204);
+    expect(await readFullscreen()).toEqual({ fullscreen: false });
+    const finalTrue = await fetch(url, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ fullscreen: true }) });
+    expect(finalTrue.status).toBe(204);
+    expect(await readFullscreen()).toEqual({ fullscreen: true });
+    await reader.cancel();
+
+    await fixture.server.stop();
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-desktop-fullscreen-restart-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+    const restartedStream = await fetch(`${restartedEndpoint}api/v1/operations/events`);
+    const restartedReader = restartedStream.body!.getReader();
+    expect(await createDesktopFullscreenSseReader(restartedReader)()).toEqual({ fullscreen: false });
+    await restartedReader.cancel();
+  }, 15_000);
   it("requires the exact Console Origin for Desktop theme snapshot and SSE routes", async () => {
     const fixture = await startFixture();
     const origin = new URL(fixture.endpoint).origin;
@@ -2588,4 +2633,45 @@ function makeWikiEntryMd(id: string): string {
     "---",
     "Test content",
   ].join("\n");
+}
+
+function createDesktopFullscreenSseReader(reader: ReadableStreamDefaultReader<Uint8Array>): () => Promise<{ readonly fullscreen: boolean }> {
+  const decoder = new TextDecoder();
+  let buffered = "";
+  return async () => {
+    while (true) {
+      const frames = buffered.split(/\r?\n\r?\n/u);
+      buffered = frames.pop() ?? "";
+      for (const frame of frames) {
+        const event = new RegExp(`event: ${DESKTOP_FULLSCREEN_EVENT}\\ndata: (\\{[^\\n]+\\})`).exec(frame);
+        if (event?.[1]) return JSON.parse(event[1]) as { readonly fullscreen: boolean };
+      }
+      const result = await readSseChunk(reader);
+      if (result.done) throw new Error("desktop_fullscreen_sse_closed");
+      buffered += decoder.decode(result.value, { stream: true });
+    }
+  };
+}
+
+async function readSseChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error("desktop_fullscreen_sse_timeout")), 1_000); }),
+    ]);
+  } finally {
+    if (timeout !== null) clearTimeout(timeout);
+  }
+}
+
+function putWithHost(url: URL, origin: string, host: string, body: unknown): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const request = http.request(url, { method: "PUT", headers: { Host: host, Origin: origin, "Content-Type": "application/json" } }, (response) => {
+      response.resume();
+      response.on("end", () => resolve(response.statusCode ?? 0));
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify(body));
+  });
 }

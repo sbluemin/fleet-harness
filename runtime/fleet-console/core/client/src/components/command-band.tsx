@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 
 import { fetchOperations, renameOperation } from "../api.js";
 import { commandBandRenameCommitTarget, railPathContextDeckOpenAfterCommandBandToggle, shouldCloseCommandBandContextDeck } from "./command-band-guards.js";
@@ -12,6 +12,7 @@ import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import { hydrateOperations, toggleOperationSearch } from "../store.js";
 import { useInlineRename } from "../use-inline-rename.js";
+import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
 interface NavigatorWithUserAgentData extends Navigator {
   readonly userAgentData?: {
@@ -42,8 +43,17 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const pathContext = useRailPathContextStore();
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const contextDeckRef = useRef<HTMLDivElement>(null);
+  const commandBandRef = useRef<HTMLElement>(null);
+  const edgeRevealRef = useRef<HTMLButtonElement>(null);
+  const pointerWithinRef = useRef({ edge: false, band: false });
   const renameTargetOperationIdRef = useRef<string | null>(null);
   const [contextDeckOpen, setContextDeckOpen] = useState(false);
+  const canAutoHide = useCallback(() => {
+    const activeElement = document.activeElement;
+    const focusWithin = activeElement instanceof Node && (commandBandRef.current?.contains(activeElement) || edgeRevealRef.current?.contains(activeElement));
+    return !focusWithin && !pointerWithinRef.current.edge && !pointerWithinRef.current.band;
+  }, []);
+  const fullscreen = useFullscreenCommandBand(canAutoHide);
   const rename = useInlineRename({
     currentTitle: activeOperation?.title ?? "",
     onCommit: (title) => {
@@ -100,8 +110,63 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     rename.begin();
   };
 
+  const hideAfterInteractionLeaves = () => {
+    if (canAutoHide()) fullscreen.hideAfterLeave();
+  };
+
+  const handleInteractionBlur = (event: FocusEvent<HTMLElement>) => {
+    const nextTarget = event.relatedTarget;
+    if ((!(nextTarget instanceof Node) || (!commandBandRef.current?.contains(nextTarget) && !edgeRevealRef.current?.contains(nextTarget))) && !pointerWithinRef.current.edge && !pointerWithinRef.current.band) {
+      fullscreen.hideAfterLeave();
+    }
+  };
+
+  const handleEdgePointerEnter = () => {
+    pointerWithinRef.current.edge = true;
+    fullscreen.reveal();
+  };
+
+  const handleEdgePointerLeave = () => {
+    pointerWithinRef.current.edge = false;
+    hideAfterInteractionLeaves();
+  };
+
+  const handleBandPointerEnter = () => {
+    pointerWithinRef.current.band = true;
+    fullscreen.reveal();
+  };
+
+  const handleBandPointerLeave = () => {
+    pointerWithinRef.current.band = false;
+    hideAfterInteractionLeaves();
+  };
+
+  const commandBandHidden = fullscreen.isFullscreen && !fullscreen.isVisible;
+
   return (
-    <header className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}`} style={{ "--command-band-left-width": `${sideBar.width}px`, "--command-band-right-width": `${rightRailWidth}px` } as CSSProperties}>
+    <>
+      <button
+        ref={edgeRevealRef}
+        type="button"
+        className={`command-band-edge-reveal${fullscreen.isFullscreen ? " is-fullscreen" : ""}`}
+        aria-label="Show command band"
+        onPointerEnter={handleEdgePointerEnter}
+        onPointerLeave={handleEdgePointerLeave}
+        onFocus={fullscreen.reveal}
+        onBlur={handleInteractionBlur}
+        onKeyDown={(event) => { if (event.key === "Tab") fullscreen.reveal(); }}
+      />
+      <header
+        ref={commandBandRef}
+        className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}`}
+        style={{ "--command-band-left-width": `${sideBar.width}px`, "--command-band-right-width": `${rightRailWidth}px` } as CSSProperties}
+        aria-hidden={commandBandHidden || undefined}
+        inert={commandBandHidden || undefined}
+        onPointerEnter={handleBandPointerEnter}
+        onPointerLeave={handleBandPointerLeave}
+        onFocus={fullscreen.reveal}
+        onBlur={handleInteractionBlur}
+      >
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
@@ -126,11 +191,15 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         </div></> : null}
       </div>
       <div className="command-band-right">
+        {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-pin" onClick={fullscreen.togglePin} aria-label="Pin command band" aria-pressed={fullscreen.isPinned} title={fullscreen.isPinned ? "Unpin command band" : "Pin command band"}>
+          <PinIcon />
+        </button> : null}
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={`${railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} (${railShortcut})`} title={`${railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} (${railShortcut})`}>
           <PanelToggleIcon side="right" />
         </button> : null}
       </div>
-    </header>
+      </header>
+    </>
   );
 }
 
@@ -151,6 +220,10 @@ function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {
       <path d={side === "left" ? "M6.4 3v10" : "M9.6 3v10"} stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
+}
+
+function PinIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5h6M6.2 2.5v3l2.1 2.1v1H7.1V13.5l.9 1M9.8 2.5v3L7.7 7.6v1h1.2V13.5L8 14.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function PathContextIcon() {

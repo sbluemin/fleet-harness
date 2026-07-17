@@ -55,6 +55,34 @@ describe("runtime pairing", () => {
     expect(notifier.show).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
   });
 
+  it("activates fullscreen publishing only after pairing commits, resets the prior origin, and republishes it on rollback", async () => {
+    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() };
+    const fullscreen = { activate: vi.fn(), reset: vi.fn(), resync: vi.fn(), stop: vi.fn() };
+    const pairing = createRuntimePairing({
+      notifier: { show: vi.fn() },
+      fullscreenSynchronizer: () => fullscreen,
+      themeSynchronizer: { stop: vi.fn(), start: vi.fn(async () => undefined) } as never,
+      modal: modalReturning(null),
+      fetch: async () => identityResponse(),
+    });
+
+    await pairing.switchTo("127.0.0.1:4310", runtimeWindow(vi.fn(async () => undefined)) as never, policy);
+    expect(fullscreen.activate).toHaveBeenCalledWith("http://127.0.0.1:4310");
+    expect(fullscreen.reset).toHaveBeenCalledWith("http://127.0.0.1:4000");
+
+    const rollbackFullscreen = { activate: vi.fn(), reset: vi.fn(), resync: vi.fn(), stop: vi.fn() };
+    const rollback = createRuntimePairing({
+      notifier: { show: vi.fn() },
+      fullscreenSynchronizer: () => rollbackFullscreen,
+      themeSynchronizer: { stop: vi.fn(), start: vi.fn().mockRejectedValueOnce(new Error("theme failed")).mockResolvedValueOnce(undefined) } as never,
+      modal: modalReturning(null),
+      fetch: async () => identityResponse(),
+    });
+    await rollback.switchTo("127.0.0.1:4310", runtimeWindow(vi.fn(async () => undefined)) as never, policy);
+    expect(rollbackFullscreen.activate).toHaveBeenCalledWith("http://127.0.0.1:4000");
+    expect(rollbackFullscreen.resync).toHaveBeenCalledOnce();
+  });
+
   it("serializes the Desktop modal prompt and sends its raw target through the existing verifier", async () => {
     let resolvePrompt: ((value: string | null) => void) | undefined;
     const modal = { prompt: vi.fn(() => new Promise<string | null>((resolve) => { resolvePrompt = resolve; })) };
