@@ -398,6 +398,10 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation-window-controls {");
     expect(components).toContain("max-width: 0;");
     expect(components).toContain(".operations-canvas.is-glance .canvas-operation-glance-hud {");
+    // armed-close는 hover 전개 규칙(0-4-0)과 같은 특이도의 후순위여야 Close? 라벨이 잘리지 않는다.
+    expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
+    // Formation 슬롯은 y=0 시작이라 보더 위 명판이 캔버스 클립에 잘린다 — 내부 인셋 전환 계약.
+    expect(components).toContain(".operations-canvas.is-formation-view .canvas-operation-titlebar {");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-beacon-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
