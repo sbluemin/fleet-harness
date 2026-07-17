@@ -94,4 +94,33 @@ describe("lintPlanMarkdown", () => {
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
   });
+
+  it("does not accept topology fields placed outside Execution Topology", () => {
+    const markdown = `${buildValidPlan()
+      .replace(
+        "- Execution mode: Parallel\n- Shared mutable resources: none",
+        "Topology prose without the required fields.",
+      )}\n# Appendix\n\n- Execution mode: Parallel\n- Shared mutable resources: none\n`;
+
+    const result = lintPlanMarkdown(markdown);
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(expect.arrayContaining([
+      "EXECUTION_MODE",
+      "SHARED_RESOURCES",
+    ]));
+  });
+
+  it("does not parse executable lanes placed outside Waves", () => {
+    const plan = buildValidPlan();
+    const laneStart = plan.indexOf("### Lane W1-A");
+    const manifestStart = plan.indexOf("# Dispatch Manifest");
+    const laneBlock = plan.slice(laneStart, manifestStart);
+    const markdown = `${plan.slice(0, laneStart)}${plan.slice(manifestStart)}\n# Appendix\n\n${laneBlock}`;
+
+    const result = lintPlanMarkdown(markdown);
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "MISSING_LANES" }));
+    expect(result.lanes).toEqual([]);
+    expect(result.tasks).toEqual([]);
+  });
 });

@@ -93,10 +93,10 @@ export function lintPlanMarkdown(markdown: string): PlanLintResult {
   const lines = normalizeMarkdown(markdown).split("\n");
   const diagnostics: PlanDiagnostic[] = [];
   const headingLines = validateRequiredHeadings(lines, diagnostics);
-  const lanes = parseLanes(lines, diagnostics);
+  const lanes = parseLanes(lines, headingLines, diagnostics);
   const tasks = parseTasks(lines, lanes, diagnostics);
-  validateTopology(lines, lanes, diagnostics);
-  validateManifest(lines, lanes, diagnostics);
+  validateTopology(sectionBodyLines(lines, headingLines, "# Execution Topology"), lanes, diagnostics);
+  validateManifest(sectionBodyLines(lines, headingLines, "# Dispatch Manifest"), lanes, diagnostics);
   validateOwnership(lines, lanes, diagnostics);
   validateLaneConcurrency(lanes, diagnostics);
   validateSectionBodies(lines, headingLines, diagnostics);
@@ -114,7 +114,7 @@ export function extractPlanExecutionStructure(markdown: string): PlanExecutionSt
   const diagnostics: PlanDiagnostic[] = [];
   const headingLines = validateRequiredHeadings(lines, diagnostics);
   return {
-    lanes: parseLanes(lines, diagnostics).map(toPlanExecutionLane),
+    lanes: parseLanes(lines, headingLines, diagnostics).map(toPlanExecutionLane),
     sections: parsePlanSections(lines, headingLines),
   };
 }
@@ -199,12 +199,17 @@ function validateTopology(
   }
 }
 
-function parseLanes(lines: readonly string[], diagnostics: PlanDiagnostic[]): MutableLane[] {
+function parseLanes(
+  lines: readonly string[],
+  headingLines: ReadonlyMap<string, number>,
+  diagnostics: PlanDiagnostic[],
+): MutableLane[] {
+  const wavesRange = sectionBodyRange(lines, headingLines, "# Waves");
   const waves = new Map<string, number>();
   const laneStarts: LaneStart[] = [];
   let currentWaveId: string | undefined;
 
-  for (let index = 0; index < lines.length; index++) {
+  for (let index = wavesRange.start; index < wavesRange.end; index++) {
     const waveMatch = WAVE_HEADING_PATTERN.exec(lines[index]!);
     if (waveMatch) {
       currentWaveId = `W${waveMatch[1]}`;
@@ -239,7 +244,7 @@ function parseLanes(lines: readonly string[], diagnostics: PlanDiagnostic[]): Mu
   }
 
   return laneStarts.map((lane, index) => {
-    const end = laneStarts[index + 1]?.start ?? findNextTopLevelHeading(lines, lane.start + 1);
+    const end = laneStarts[index + 1]?.start ?? wavesRange.end;
     const body = lines.slice(lane.start + 1, end);
     for (const field of REQUIRED_LANE_FIELDS) {
       const matches = body.filter((line) => line.startsWith(`- ${field}:`));
@@ -314,11 +319,7 @@ function parseTasks(lines: readonly string[], lanes: MutableLane[], diagnostics:
   return tasks;
 }
 
-function validateManifest(lines: readonly string[], lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
-  const manifestHeading = lines.indexOf("# Dispatch Manifest");
-  const manifestLines = manifestHeading < 0
-    ? []
-    : lines.slice(manifestHeading + 1, findNextTopLevelHeading(lines, manifestHeading + 1));
+function validateManifest(manifestLines: readonly string[], lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
   const manifestIds = new Set<string>();
   for (const line of manifestLines) {
     const match = MANIFEST_LANE_PATTERN.exec(line);
@@ -430,8 +431,17 @@ function sectionBodyLines(
   headingLines: ReadonlyMap<string, number>,
   heading: (typeof REQUIRED_HEADINGS)[number],
 ): readonly string[] {
+  const range = sectionBodyRange(lines, headingLines, heading);
+  return lines.slice(range.start, range.end);
+}
+
+function sectionBodyRange(
+  lines: readonly string[],
+  headingLines: ReadonlyMap<string, number>,
+  heading: (typeof REQUIRED_HEADINGS)[number],
+): { readonly end: number; readonly start: number } {
   const start = headingLines.get(heading);
-  if (start === undefined) return [];
+  if (start === undefined) return { end: lines.length, start: lines.length };
   const headingIndex = REQUIRED_HEADINGS.indexOf(heading);
   const laterStarts = REQUIRED_HEADINGS.slice(headingIndex + 1)
     .map((candidate) => headingLines.get(candidate))
@@ -439,7 +449,7 @@ function sectionBodyLines(
   const end = laterStarts.length > 0
     ? Math.min(...laterStarts)
     : findNextTopLevelHeading(lines, start + 1);
-  return lines.slice(start + 1, end);
+  return { end, start: start + 1 };
 }
 
 function findWriteSetOverlaps(left: readonly string[], right: readonly string[]): string[] {
