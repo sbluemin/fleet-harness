@@ -120,6 +120,33 @@ describe("runtime pairing", () => {
     expect(store.save).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["remote_platform_unsupported", "The remote machine runs an unsupported OS or CPU architecture."],
+    ["ssh_unavailable", "OpenSSH (ssh) was not found on this machine."],
+    ["ssh_failed", "Could not reach the remote host. Check the address and your SSH config and agent."],
+    ["pairing_target_unavailable", "Could not reach the remote host. Check the address and your SSH config and agent."],
+    ["ssh_timeout", "The SSH connection timed out."],
+    ["remote_console_owned_elsewhere", "Another Fleet Console Desktop is already using that remote runtime."],
+    ["remote_console_lock_conflict", "The remote runtime is in use by another process."],
+    ["remote_tunnel_port_conflict_exhausted", "Could not find a free local port for the tunnel after several attempts."],
+    ["remote_node_invalid", "The remote runtime failed its integrity check."],
+    ["remote_console_invalid", "The remote runtime failed its integrity check."],
+    ["remote_registry_unavailable", "Could not reach the package registry to install Fleet Console."],
+    ["pairing_target_unverified", "That address is not a compatible Fleet Console runtime."],
+  ])("shows a safe, actionable message for %s", async (code, body) => {
+    const notifier = { show: vi.fn() };
+    const pairing = createRuntimePairing({ notifier, themeSynchronizer: null, modal: modalReturning(null), connectRemote: async () => { throw Object.assign(new Error("redacted"), { code }); } });
+    await pairing.switchTo("ssh:devbox", runtimeWindow(async () => undefined) as never, { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() });
+    expect(notifier.show).toHaveBeenCalledWith({ title: "Fleet Console connection failed", body, type: "error" });
+  });
+
+  it("keeps unknown failure details out of the user-facing message", async () => {
+    const notifier = { show: vi.fn() };
+    const pairing = createRuntimePairing({ notifier, themeSynchronizer: null, modal: modalReturning(null), connectRemote: async () => { throw new Error("ssh /Users/alice/.ssh/config token=secret"); } });
+    await pairing.switchTo("ssh:devbox", runtimeWindow(async () => undefined) as never, { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() });
+    expect(notifier.show).toHaveBeenCalledWith({ title: "Fleet Console connection failed", body: "The connection failed. The previous Fleet Console runtime remains connected.", type: "error" });
+  });
+
   it("does not prompt a destroyed parent window", async () => {
     const modal = modalReturning("127.0.0.1:4310");
     const pairing = createRuntimePairing({ notifier: { show: vi.fn() }, themeSynchronizer: null, modal, fetch: vi.fn() });

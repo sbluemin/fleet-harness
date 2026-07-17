@@ -12,6 +12,15 @@ describe("pairing notifications", () => {
     expect(dialog.showMessageBox).not.toHaveBeenCalled();
   });
 
+  it("always shows errors in a dialog even when Electron Notification is supported", async () => {
+    const show = vi.fn();
+    class NotificationMock { static isSupported(): boolean { return true; } show = (): void => { show(); }; }
+    const dialog = { showMessageBox: vi.fn(async () => undefined) };
+    createPairingNotifier(NotificationMock, dialog).show({ type: "error", title: "Failed", body: "Still connected" });
+    await vi.waitFor(() => expect(dialog.showMessageBox).toHaveBeenCalledWith({ type: "error", title: "Failed", message: "Still connected", buttons: ["OK"] }));
+    expect(show).not.toHaveBeenCalled();
+  });
+
   it("shows a visible native dialog fallback when Electron Notification is unavailable", async () => {
     const dialog = { showMessageBox: vi.fn(async () => undefined) };
     createPairingNotifier({ isSupported: () => false } as never, dialog).show({ type: "error", title: "Failed", body: "Still connected" });

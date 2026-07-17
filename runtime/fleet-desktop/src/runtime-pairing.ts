@@ -201,12 +201,29 @@ function isPairingIdentity(value: unknown): value is PairingIdentity {
 }
 
 function notifyFailure(notifier: RuntimePairingNotifier | null, error: unknown): void {
-  const code = error instanceof Error ? error.message : "pairing_failed";
-  notifier?.show({ title: "Fleet Console connection failed", body: code === "pairing_target_unverified" ? "That address is not a compatible Fleet Console runtime." : "The previous Fleet Console runtime remains connected.", type: "error" });
+  notifier?.show({ title: "Fleet Console connection failed", body: failureMessage(failureCode(error)), type: "error" });
 }
 
 function logPairingFailure(dependencies: RuntimePairingDependencies, error: unknown): void {
-  const code = error instanceof Error ? error.message : "pairing_failed";
-  dependencies.logger?.error(`managed runtime pairing failed code=${redactedCode(code)}`);
+  dependencies.logger?.error(`managed runtime pairing failed code=${redactedCode(failureCode(error))}`);
+}
+function failureCode(error: unknown): string {
+  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code;
+  return error instanceof Error ? error.message : "pairing_failed";
+}
+function failureMessage(code: string): string {
+  switch (code) {
+    case "remote_platform_unsupported": return "The remote machine runs an unsupported OS or CPU architecture.";
+    case "ssh_unavailable": return "OpenSSH (ssh) was not found on this machine.";
+    case "ssh_failed": case "pairing_target_unavailable": return "Could not reach the remote host. Check the address and your SSH config and agent.";
+    case "ssh_timeout": return "The SSH connection timed out.";
+    case "remote_console_owned_elsewhere": return "Another Fleet Console Desktop is already using that remote runtime.";
+    case "remote_console_lock_conflict": return "The remote runtime is in use by another process.";
+    case "remote_tunnel_port_conflict_exhausted": return "Could not find a free local port for the tunnel after several attempts.";
+    case "remote_node_invalid": case "remote_console_invalid": return "The remote runtime failed its integrity check.";
+    case "remote_registry_unavailable": return "Could not reach the package registry to install Fleet Console.";
+    case "pairing_target_unverified": return "That address is not a compatible Fleet Console runtime.";
+    default: return "The connection failed. The previous Fleet Console runtime remains connected.";
+  }
 }
 function redactedCode(value: string): string { return /^[a-z0-9_]+$/u.test(value) ? value : "pairing_failed"; }

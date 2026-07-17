@@ -10,6 +10,13 @@ export interface PairingDialog {
 }
 
 export function createPairingNotifier(notification: ElectronNotificationFactory, dialog: PairingDialog): RuntimePairingNotifier {
-  if (notification.isSupported()) return { show: ({ title, body }) => new notification({ title, body }).show() };
-  return { show: ({ title, body, type }) => { void dialog.showMessageBox({ type, title, message: body, buttons: ["OK"] }); } };
+  return {
+    show: ({ title, body, type }) => {
+      if (type === "error" || !notification.isSupported()) {
+        void dialog.showMessageBox({ type, title, message: body, buttons: ["OK"] });
+        return;
+      }
+      new notification({ title, body }).show();
+    },
+  };
 }
