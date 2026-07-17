@@ -274,6 +274,9 @@ importers:
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../../packages/fleet-carriers
+      '@dotobokuri/fleet-plans':
+        specifier: workspace:*
+        version: link:../../packages/fleet-plans
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
