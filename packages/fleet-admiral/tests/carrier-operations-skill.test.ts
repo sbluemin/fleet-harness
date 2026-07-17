@@ -9,13 +9,13 @@ import {
 
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../src/agent-cli/assets.generated.js";
 
-// carrier-contracts 스킬은 로스터 contracts tier의 SSoT 사본이다.
+// carrier-operations 스킬은 로스터 contracts tier의 SSoT 사본이다.
 // personas의 request-block 계약이 바뀌면 이 테스트가 깨지고,
-// assets/skills/carrier-contracts/SKILL.md를 아래 기대 렌더로 재생성해야 한다.
-describe("carrier-contracts skill asset", () => {
+// assets/skills/carrier-operations/SKILL.md를 아래 기대 렌더로 재생성해야 한다.
+describe("carrier-operations skill asset", () => {
   function skillContent(): string {
     const asset = EMBEDDED_AGENT_CLI_SKILL_ASSETS.find(
-      (entry) => entry.relativePath === "carrier-contracts/SKILL.md",
+      (entry) => entry.relativePath === "carrier-operations/SKILL.md",
     );
     expect(asset).toBeDefined();
     return asset?.content ?? "";
@@ -24,8 +24,15 @@ describe("carrier-contracts skill asset", () => {
   it("is embedded in the agent CLI skill manifest", () => {
     const content = skillContent();
 
-    expect(content).toContain("name: carrier-contracts");
+    expect(content).toContain("name: carrier-operations");
     expect(content).toContain("skip reloading if already in context");
+  });
+
+  it("contains the dispatch composition rules", () => {
+    const content = skillContent();
+
+    expect(content).toContain("## Parallel Default");
+    expect(content).toContain("## Dispatch Failure Handling");
   });
 
   it("mirrors the live registry contracts tier verbatim", () => {
