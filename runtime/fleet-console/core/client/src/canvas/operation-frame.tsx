@@ -16,6 +16,7 @@ interface OperationFrameProps {
   readonly status?: OperationActivity;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
+  readonly topEdge?: boolean;
   readonly interactionDisabled?: boolean;
   readonly accentKey?: string | null;
   readonly children: ReactNode;
@@ -48,7 +49,7 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -75,6 +76,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     active ? "is-active" : "",
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
+    topEdge ? "is-top-edge" : "",
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
 
@@ -290,7 +292,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         onPointerCancel={endDrag}
         data-canvas-blocker
       >
-        {!active && rename.renaming ? (
+        {rename.renaming ? (
           <input
             ref={rename.inputRef}
             className="canvas-operation-identity-input"
@@ -301,7 +303,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
             onBlur={rename.handleBlur}
             onPointerDown={stopIdentityPointer}
           />
-        ) : !active ? (
+        ) : (
           <button
             ref={identityTriggerRef}
             type="button"
@@ -314,7 +316,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
           >
             {displayTitle}
           </button>
-        ) : null}
+        )}
         {onSetAccent ? (
           <button
             type="button"
@@ -330,18 +332,22 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         ) : (
           <span className={beaconStatusClass(status)} onPointerDown={activateBeacon} aria-hidden="true" />
         )}
-        <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={`Minimize operation ${displayTitle}`} title="Minimize operation">
-          <MinimizeIcon />
-        </button>
-        {onMaximize ? (
-          <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? `Restore operation ${displayTitle}` : `Maximize operation ${displayTitle}`} aria-pressed={maximized} title={maximized ? "Restore operation" : "Maximize operation"}>
-            {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
+        <div className="canvas-operation-window-controls">
+          <span className="canvas-operation-controls-divider" aria-hidden="true" />
+          <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={`Minimize operation ${displayTitle}`} title="Minimize operation">
+            <MinimizeIcon />
           </button>
-        ) : null}
-        <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? `Confirm close operation ${displayTitle}` : `Close operation ${displayTitle}`} title={isCloseArmed ? "Confirm close" : "Close operation"}>
-          {isCloseArmed ? "Close?" : <CloseIcon />}
-        </button>
+          {onMaximize ? (
+            <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? `Restore operation ${displayTitle}` : `Maximize operation ${displayTitle}`} aria-pressed={maximized} title={maximized ? "Restore operation" : "Maximize operation"}>
+              {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
+            </button>
+          ) : null}
+          <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? `Confirm close operation ${displayTitle}` : `Close operation ${displayTitle}`} title={isCloseArmed ? "Confirm close" : "Close operation"}>
+            {isCloseArmed ? "Close?" : <CloseIcon />}
+          </button>
+        </div>
       </div>
+      <div className="canvas-operation-glance-hud" aria-hidden="true">{displayTitle}</div>
       <div className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
         {children}
       </div>
