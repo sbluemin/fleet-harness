@@ -102,8 +102,8 @@ test.describe("unpackaged desktop shell", () => {
       app = await electron.launch({ args: [path.resolve(main)], env: { ...process.env, FLEET_CONSOLE_NODE_PATH: nodePath } });
       const appProcess = app.process();
       appProcess.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-      const exit = new Promise<number | null>((resolve, reject) => {
-        appProcess.once("exit", (code) => resolve(code));
+      const close = new Promise<number | null>((resolve, reject) => {
+        appProcess.once("close", (code) => resolve(code));
         appProcess.once("error", reject);
       });
       const window = await app.firstWindow();
@@ -116,7 +116,7 @@ test.describe("unpackaged desktop shell", () => {
         app.quit();
       });
 
-      await expect(exit).resolves.toBe(0);
+      await expect(close).resolves.toBe(0);
       exited = true;
       expect(stderr).not.toContain(uncaughtMarker);
     } finally {
