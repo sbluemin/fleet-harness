@@ -12,7 +12,7 @@ import {
   getJobSummary,
   registerCarrier,
   resetJobCancelRegistryForTest,
-  resetJobConcurrencyForTest,
+  resetJobTrackingForTest,
   resetStoreForTests,
   updateTaskForceModelSelection,
   type CarrierConfig,
@@ -95,7 +95,7 @@ afterEach(async () => {
   await runtime?.cleanup();
   runtime = null;
   vi.mocked(executeOneShot).mockReset();
-  resetJobConcurrencyForTest();
+  resetJobTrackingForTest();
   resetJobCancelRegistryForTest();
   resetStoreForTests();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });

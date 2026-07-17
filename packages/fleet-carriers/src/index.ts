@@ -144,7 +144,7 @@ export const jobs = {
   acquireJobPermit: jobLifecycle.acquireJobPermit,
   getActiveBackgroundJobCount: jobLifecycle.getActiveBackgroundJobCount,
   onActiveJobCountChange: jobLifecycle.onActiveJobCountChange,
-  resetJobConcurrencyForTest: jobLifecycle.resetJobConcurrencyForTest,
+  resetJobTrackingForTest: jobLifecycle.resetJobTrackingForTest,
   streaming: {
     register: dispatchFramework.registerStreamHandler,
     unregister: dispatchFramework.unregisterStreamHandler,

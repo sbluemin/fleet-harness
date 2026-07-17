@@ -305,10 +305,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         carrierIds: [carrierId],
         signal: ctx.signal,
       });
-      if (!launch.accepted) {
-        releaseDispatchLease(services?.dispatchContexts, claim.lease);
-        return launch.response;
-      }
 
       const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
       const handle = executeOneShot({

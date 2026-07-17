@@ -10,11 +10,10 @@ import {
 } from "../src/jobs/archive.js";
 import {
   acquireJobPermit,
-  configureDetachedJobCap,
   getActiveJob,
   listActiveJobs,
   rollbackRejectedDetachedJob,
-  resetJobConcurrencyForTest,
+  resetJobTrackingForTest,
 } from "../src/jobs/lifecycle.js";
 import {
   cancelJob,
@@ -51,7 +50,7 @@ import * as jobBarrel from "../src/index.js";
 beforeEach(() => {
   resetJobArchivesForTest();
   resetJobSummaryCacheForTest();
-  resetJobConcurrencyForTest();
+  resetJobTrackingForTest();
   resetJobCancelRegistryForTest();
 });
 
@@ -474,47 +473,22 @@ describe("summary LRU cache", () => {
   });
 });
 
-describe("concurrency guard", () => {
-  it("accepts multiple active jobs for the same carrier", () => {
-    const first = acquireJobPermit(buildRecord("sortie:1", ["genesis"]));
-    expect(first.accepted).toBe(true);
+describe("active job tracking", () => {
+  it("tracks active jobs without a global cap", () => {
+    const permits = Array.from({ length: 10 }, (_, index) =>
+      acquireJobPermit(buildRecord(`sortie:${index}`, ["genesis"])),
+    );
 
-    const second = acquireJobPermit(buildRecord("sortie:2", ["genesis"]));
-    expect(second.accepted).toBe(true);
+    expect(permits.every((permit) => permit.accepted)).toBe(true);
+    expect(listActiveJobs()).toHaveLength(10);
 
-    if (first.accepted) first.release({ status: "done", finishedAt: 2000 });
-    expect(listActiveJobs().map((job) => job.jobId)).toEqual(["sortie:2"]);
-
-    if (second.accepted) second.release({ status: "done", finishedAt: 2001 });
+    permits.forEach((permit, index) => permit.release({ status: "done", finishedAt: 2000 + index }));
     expect(listActiveJobs()).toEqual([]);
   });
 
-  it("rejects the sixth detached job by global cap", () => {
-    configureDetachedJobCap(5);
-    for (let i = 0; i < 5; i++) {
-      expect(acquireJobPermit(buildRecord(`sortie:${i}`, [`carrier-${i}`])).accepted).toBe(true);
-    }
-
-    expect(acquireJobPermit(buildRecord("sortie:6", ["carrier-6"]))).toEqual({
-      accepted: false,
-      error: "concurrency limit",
-    });
-  });
-
-  it("keeps the global cap as the only concurrency rejection path", () => {
-    configureDetachedJobCap(1);
-    expect(acquireJobPermit(buildRecord("sortie:1", ["genesis"])).accepted).toBe(true);
-
-    expect(acquireJobPermit(buildRecord("sortie:2", ["genesis"]))).toEqual({
-      accepted: false,
-      error: "concurrency limit",
-    });
-  });
-
-  it("releases carrier and global permits", () => {
+  it("releases active job tracking", () => {
     const permit = acquireJobPermit(buildRecord("sortie:1", ["genesis"]));
-    expect(permit.accepted).toBe(true);
-    if (permit.accepted) permit.release({ status: "done", finishedAt: 2000 });
+    permit.release({ status: "done", finishedAt: 2000 });
 
     expect(listActiveJobs()).toEqual([]);
     expect(acquireJobPermit(buildRecord("sortie:2", ["genesis"])).accepted).toBe(true);

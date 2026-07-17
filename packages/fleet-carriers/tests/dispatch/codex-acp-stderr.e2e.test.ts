@@ -18,7 +18,7 @@ import {
   registerCarrier,
   resetJobArchivesForTest,
   resetJobCancelRegistryForTest,
-  resetJobConcurrencyForTest,
+  resetJobTrackingForTest,
   resetJobSummaryCacheForTest,
   resetStoreForTests,
   type CarrierConfig,
@@ -50,14 +50,14 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
     });
     resetJobArchivesForTest();
     resetJobSummaryCacheForTest();
-    resetJobConcurrencyForTest();
+    resetJobTrackingForTest();
     resetJobCancelRegistryForTest();
   });
 
   afterEach(async () => {
     resetJobArchivesForTest();
     resetJobSummaryCacheForTest();
-    resetJobConcurrencyForTest();
+    resetJobTrackingForTest();
     resetJobCancelRegistryForTest();
     resetStoreForTests();
     if (tempDir) {
