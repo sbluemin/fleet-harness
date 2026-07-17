@@ -102,6 +102,30 @@ describe("runtime pairing", () => {
     expect(loadURL).toHaveBeenNthCalledWith(2, "http://127.0.0.1:4000/console/");
   });
 
+  it("restores the previous local Console route when SSH bootstrap fails", async () => {
+    const loadURL = vi.fn(async () => undefined);
+    const window = runtimeWindow(loadURL);
+    window.webContents.getURL = () => "http://127.0.0.1:4000/console/operations";
+    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() };
+    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), connectRemote: async () => { throw new Error("ssh failed"); } });
+
+    await pairing.switchTo("ssh:devbox", window as never, policy);
+
+    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:4000/console/operations");
+  });
+
+  it("falls back to the local Console base route when the prior URL is not a local Console route", async () => {
+    const loadURL = vi.fn(async () => undefined);
+    const window = runtimeWindow(loadURL);
+    window.webContents.getURL = () => "https://example.test/console/operations";
+    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() };
+    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), connectRemote: async () => { throw new Error("ssh failed"); } });
+
+    await pairing.switchTo("ssh:devbox", window as never, policy);
+
+    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:4000/console/");
+  });
+
   it("ignores concurrent switch requests while an SSH transition is in flight", async () => {
     const candidate = { target: { value: "devbox", user: null, host: "devbox" }, origin: "http://127.0.0.1:4310", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
     let resolveRemote: (() => void) | undefined;

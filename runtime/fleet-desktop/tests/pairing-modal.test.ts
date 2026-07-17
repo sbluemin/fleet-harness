@@ -66,22 +66,25 @@ describe("pairing modal", () => {
     expect(parent.webContents.setIgnoreMenuShortcuts.mock.calls).toEqual([[true], [false]]);
   });
 
-  it("prefills the remembered SSH host through a safely escaped temporary HTML file", async () => {
+  it("prefills the remembered SSH host through a safely escaped temporary page with its stylesheet", async () => {
     const parent = fakeParent();
     const modalWindow = fakeModalWindow();
     const fileSystem = fakeTemplateFileSystem();
-    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html", fileSystem, temporaryDirectory: "/tmp", randomId: () => "fixture" });
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html", fileSystem, temporaryDirectory: "/tmp" });
     const result = modal.prompt(parent as never, "ssh:user@devbox</script>&\";globalThis.pwned()");
 
-    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture.html"));
-    expect(fileSystem.writeFileSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture.html", expect.stringContaining('id="mode-ssh" name="pairing-mode" type="radio" checked'), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture/index.html"));
+    expect(fileSystem.mkdtempSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-");
+    expect(fileSystem.writeFileSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture/index.html", expect.stringContaining('id="mode-ssh" name="pairing-mode" type="radio" checked'), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    expect(fileSystem.copyFileSync).toHaveBeenCalledWith("/desktop/pairing/pairing.css", "/tmp/fleet-desktop-pairing-fixture/pairing.css");
+    expect(fileSystem.chmodSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture/pairing.css", 0o600);
     const html = fileSystem.writeFileSync.mock.calls[0]?.[1] ?? "";
     expect(html).toContain('id="ssh-host" name="host" type="text" required value="user@devbox&lt;/script&gt;&amp;&quot;;globalThis.pwned()"');
     expect(html).not.toMatch(/<(script|iframe|webview)\b|\bon\w+\s*=/i);
     const cancel = { preventDefault: vi.fn() };
     (modalWindow.webContents.listeners("will-navigate")[0] as (event: { preventDefault(): void }, url: string) => void)(cancel, "fleet-desktop-pairing://cancel/");
     await expect(result).resolves.toBeNull();
-    expect(fileSystem.unlinkSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture.html");
+    expect(fileSystem.rmSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture", { recursive: true, force: true });
   });
 
   it("loads the static template when no SSH target was remembered", async () => {
@@ -94,6 +97,8 @@ describe("pairing modal", () => {
     await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/desktop/pairing/index.html"));
     expect(fileSystem.readFileSync).not.toHaveBeenCalled();
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.mkdtempSync).not.toHaveBeenCalled();
+    expect(fileSystem.copyFileSync).not.toHaveBeenCalled();
     modalWindow.emit("closed");
     await expect(result).resolves.toBeNull();
   });
@@ -210,7 +215,10 @@ function fakeTemplateFileSystem() {
   return {
     readFileSync: vi.fn(() => `<!doctype html><input class="mode" id="mode-loopback" name="pairing-mode" type="radio" checked><input class="mode" id="mode-ssh" name="pairing-mode" type="radio"><form action="fleet-desktop-pairing://submit/"><input id="ssh-host" name="host" type="text" required></form>`),
     writeFileSync: vi.fn(),
-    unlinkSync: vi.fn(),
+    mkdtempSync: vi.fn(() => "/tmp/fleet-desktop-pairing-fixture"),
+    copyFileSync: vi.fn(),
+    chmodSync: vi.fn(),
+    rmSync: vi.fn(),
   };
 }
 

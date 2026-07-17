@@ -167,7 +167,7 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       if (remoteTarget && previousOrigin && previousOrigin !== localOrigin && !window.isDestroyed()) {
         await restorePreviousRemoteRuntime(window, policy, previousOrigin, previousUrl, dependencies);
       } else if (remoteTarget && localOrigin && !window.isDestroyed()) {
-        localRestored = await restoreLocalRuntime(window, policy, localOrigin, dependencies, () => {
+        localRestored = await restoreLocalRuntime(window, policy, localOrigin, previousUrl, dependencies, () => {
           const previousRemote = committedRemote;
           committedRemote = null;
           return disposeRemoteSession(previousRemote, dependencies);
@@ -231,11 +231,11 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
   return { prompt, switchTo, async dispose() { const remote = committedRemote; committedRemote = null; await remote?.dispose(); } };
 }
 
-async function restoreLocalRuntime(window: RuntimePairingWindow, policy: WindowPolicy, localOrigin: string, dependencies: RuntimePairingDependencies, disposePreviousRemote: () => Promise<void>): Promise<boolean> {
+async function restoreLocalRuntime(window: RuntimePairingWindow, policy: WindowPolicy, localOrigin: string, previousUrl: string, dependencies: RuntimePairingDependencies, disposePreviousRemote: () => Promise<void>): Promise<boolean> {
   try {
     const local = await verifyPairingOrigin(localOrigin, dependencies.fetch ?? globalThis.fetch, dependencies.timeoutMs ?? PAIRING_TIMEOUT_MS);
     policy.stageConsoleOrigin(local.origin);
-    await window.loadURL(local.consoleUrl);
+    await window.loadURL(previousLocalConsoleUrl(previousUrl, local.origin, local.consoleUrl));
     if (window.isDestroyed()) throw new Error("pairing_window_destroyed");
     policy.commitConsoleOrigin();
     dependencies.themeSynchronizer?.stop();
@@ -248,6 +248,15 @@ async function restoreLocalRuntime(window: RuntimePairingWindow, policy: WindowP
     policy.cancelPendingConsoleOrigin();
     dependencies.logger?.error(`managed runtime local restore failed code=${redactedCode(failureCode(restoreError))}`);
     return false;
+  }
+}
+
+function previousLocalConsoleUrl(previousUrl: string, localOrigin: string, fallbackUrl: string): string {
+  try {
+    const previous = new URL(previousUrl);
+    return previous.origin === localOrigin && previous.pathname.startsWith("/console/") ? previous.toString() : fallbackUrl;
+  } catch {
+    return fallbackUrl;
   }
 }
 

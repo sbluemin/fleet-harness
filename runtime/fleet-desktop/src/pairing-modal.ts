@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import type { BrowserWindow, BrowserWindowConstructorOptions, Event, WebContents } from "electron";
 
@@ -17,7 +16,6 @@ export interface PairingModalDependencies {
   readonly pairingPagePath: string;
   readonly fileSystem?: PairingTemplateFileSystem;
   readonly temporaryDirectory?: string;
-  readonly randomId?: () => string;
 }
 
 interface PairingModalWindow extends BrowserWindow {
@@ -27,14 +25,16 @@ interface PairingModalWindow extends BrowserWindow {
 interface PairingTemplateFileSystem {
   readFileSync(path: string, encoding: "utf8"): string;
   writeFileSync(path: string, data: string, options: { readonly encoding: "utf8"; readonly mode: number; readonly flag: "wx" }): void;
-  unlinkSync(path: string): void;
+  mkdtempSync(prefix: string): string;
+  copyFileSync(source: string, destination: string): void;
+  chmodSync(path: string, mode: number): void;
+  rmSync(path: string, options: { readonly recursive: true; readonly force: true }): void;
 }
 
 // 이 모달은 렌더러 코드 없이 폼 이동만 받아, 사용자 입력이 IPC나 실행 문자열을 통과하지 않게 한다.
 export function createPairingModal(dependencies: PairingModalDependencies): PairingModal {
   const fileSystem = dependencies.fileSystem ?? fs;
   const temporaryDirectory = dependencies.temporaryDirectory ?? os.tmpdir();
-  const randomId = dependencies.randomId ?? randomUUID;
   let active: { readonly window: PairingModalWindow; readonly result: Promise<string | null>; ready: boolean } | null = null;
 
   return {
@@ -50,6 +50,7 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
       let settled = false;
       let shortcutsIgnored = false;
       let cleanupContents = (): void => undefined;
+      let temporaryPageDirectory: string | null = null;
       let temporaryPagePath: string | null = null;
       const result = new Promise<string | null>((resolve) => { resolveResult = resolve; });
       const onParentClosed = (): void => finish(null);
@@ -61,8 +62,9 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         parent.removeListener("closed", onParentClosed);
         modal.removeListener("closed", onModalClosed);
         cleanupContents();
-        if (temporaryPagePath) {
-          try { fileSystem.unlinkSync(temporaryPagePath); } catch { /* Best-effort cleanup preserves modal completion. */ }
+        if (temporaryPageDirectory) {
+          try { fileSystem.rmSync(temporaryPageDirectory, { recursive: true, force: true }); } catch { /* Best-effort cleanup preserves modal completion. */ }
+          temporaryPageDirectory = null;
           temporaryPagePath = null;
         }
         if (shortcutsIgnored && !parent.isDestroyed()) {
@@ -100,7 +102,9 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         finish(null);
         return result;
       }
-      temporaryPagePath = createRememberedPairingPage(dependencies.pairingPagePath, rememberedTarget, fileSystem, temporaryDirectory, randomId);
+      const temporaryPage = createRememberedPairingPage(dependencies.pairingPagePath, rememberedTarget, fileSystem, temporaryDirectory);
+      temporaryPageDirectory = temporaryPage?.directory ?? null;
+      temporaryPagePath = temporaryPage?.path ?? null;
       void modal.loadFile(temporaryPagePath ?? dependencies.pairingPagePath).catch(() => finish(null));
       return result;
     },
@@ -111,15 +115,23 @@ function rememberedSshHost(target: string | null): string | null {
   return target?.startsWith("ssh:") && target.length > 4 ? target.slice(4) : null;
 }
 
-function createRememberedPairingPage(pairingPagePath: string, target: string | null, fileSystem: PairingTemplateFileSystem, temporaryDirectory: string, randomId: () => string): string | null {
+function createRememberedPairingPage(pairingPagePath: string, target: string | null, fileSystem: PairingTemplateFileSystem, temporaryDirectory: string): { readonly directory: string; readonly path: string } | null {
   const host = rememberedSshHost(target);
   if (!host) return null;
+  let directory: string | null = null;
   try {
+    directory = fileSystem.mkdtempSync(path.join(temporaryDirectory, "fleet-desktop-pairing-"));
     const html = withRememberedSshTarget(fileSystem.readFileSync(pairingPagePath, "utf8"), host);
-    const temporaryPath = path.join(temporaryDirectory, `fleet-desktop-pairing-${randomId()}.html`);
+    const temporaryPath = path.join(directory, "index.html");
     fileSystem.writeFileSync(temporaryPath, html, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    return temporaryPath;
+    const stylesheetPath = path.join(directory, "pairing.css");
+    fileSystem.copyFileSync(path.join(path.dirname(pairingPagePath), "pairing.css"), stylesheetPath);
+    fileSystem.chmodSync(stylesheetPath, 0o600);
+    return { directory, path: temporaryPath };
   } catch {
+    if (directory) {
+      try { fileSystem.rmSync(directory, { recursive: true, force: true }); } catch { /* Best-effort cleanup preserves static fallback. */ }
+    }
     return null;
   }
 }
