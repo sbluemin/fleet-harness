@@ -83,6 +83,7 @@ async function boot(): Promise<void> {
   });
   let window: BrowserWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
+  let localConsoleOrigin: string | null = null;
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
       applyTheme: (snapshot) => {
@@ -117,6 +118,7 @@ async function boot(): Promise<void> {
       },
       dev: !isPackaged,
       handoffOrigin: (origin) => {
+        localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
       },
@@ -130,28 +132,6 @@ async function boot(): Promise<void> {
     });
     return launch.start() as Promise<BrowserWindow>;
   }, async () => { await pairing?.dispose(); await supervisor.stop(); });
-  pairing = createRuntimePairing({
-    notifier: createPairingNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) }),
-    fullscreenSynchronizer: () => fullscreenSynchronizer,
-    themeSynchronizer,
-    modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
-    lastTargetStore: remoteLastTarget,
-    logger,
-    connectRemote: async (target) => {
-      const started = Date.now();
-      const ssh = await createOpenSshAdapter();
-      return connectManagedRemote(target.value, {
-        ssh,
-        manifest: remoteManifest,
-        registry,
-        ownerId: environment.ownerId,
-        protocolVersion: DESKTOP_PROTOCOL_VERSION,
-        desktopVersion: app.getVersion(),
-        consoleDirRel: ".fleet/console",
-        onPhase: (phase) => logger.info(`managed SSH phase=${phase} elapsedMs=${Date.now() - started}`),
-      });
-    },
-  });
   const updates = isPackaged
     ? createUpdateController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
@@ -178,9 +158,46 @@ async function boot(): Promise<void> {
         return pairing?.prompt(activeWindow, policy);
       });
     },
+    backToLocal: () => {
+      const localOrigin = localConsoleOrigin;
+      if (!localOrigin || !controls.consoleReady()) return;
+      void lifecycle.show().then((activeWindow) => {
+        if (!policy || activeWindow.isDestroyed()) return;
+        return pairing?.switchTo(localOrigin, activeWindow, policy);
+      });
+    },
     consoleReady: () => controls.consoleReady(),
+    isRemoteActive: () => localConsoleOrigin !== null && policy !== null && policy.currentConsoleOrigin() !== localConsoleOrigin,
     updates,
   };
+  pairing = createRuntimePairing({
+    notifier: createPairingNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) }),
+    fullscreenSynchronizer: () => fullscreenSynchronizer,
+    themeSynchronizer,
+    modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
+    entryPagePath: desktopResources.entryPagePath,
+    localOrigin: () => localConsoleOrigin,
+    lastTargetStore: remoteLastTarget,
+    logger,
+    onRuntimeChanged: () => refreshNativeUpdateActions?.(),
+    connectRemote: async (target, onPhase) => {
+      const started = Date.now();
+      const ssh = await createOpenSshAdapter();
+      return connectManagedRemote(target.value, {
+        ssh,
+        manifest: remoteManifest,
+        registry,
+        ownerId: environment.ownerId,
+        protocolVersion: DESKTOP_PROTOCOL_VERSION,
+        desktopVersion: app.getVersion(),
+        consoleDirRel: ".fleet/console",
+        onPhase: (phase) => {
+          logger.info(`managed SSH phase=${phase} elapsedMs=${Date.now() - started}`);
+          onPhase(phase);
+        },
+      });
+    },
+  });
   if (process.platform !== "darwin") {
     trayHolder.current = new Tray(desktopResources.iconPath);
     trayHolder.current.on("click", actions.show);

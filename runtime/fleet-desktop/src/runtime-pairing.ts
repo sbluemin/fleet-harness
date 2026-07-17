@@ -2,7 +2,10 @@ import type { BrowserWindow, WebContents } from "electron";
 
 import type { DesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import type { DesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
+import { pushEntrySnapshot, type EntryPageWebContents } from "./entry-page.js";
 import type { PairingModal } from "./pairing-modal.js";
+import { snapshotForRemotePhase, snapshotForRemoteReady } from "./remote-entry-snapshot.js";
+import type { RemoteRuntimePhase } from "./runtime/remote/contracts.js";
 import { parseSshTarget, type ValidatedSshTarget } from "./runtime/remote/target.js";
 import type { ManagedRemoteSession } from "./runtime/remote/orchestrator.js";
 import type { RemoteLastTargetStore } from "./runtime/remote/last-target.js";
@@ -20,6 +23,7 @@ export interface PairingIdentity {
 }
 
 export interface RuntimePairingWindow extends BrowserWindow {
+  loadFile(filePath: string): Promise<void>;
   readonly webContents: WebContents & { navigationHistory: { clear(): void } };
 }
 
@@ -33,10 +37,13 @@ export interface RuntimePairingDependencies {
   readonly fullscreenSynchronizer?: () => DesktopFullscreenSynchronizer | null;
   readonly themeSynchronizer: DesktopThemeSynchronizer | null;
   readonly modal: PairingModal;
+  readonly entryPagePath: string;
+  readonly localOrigin: () => string | null;
   readonly timeoutMs?: number;
-  readonly connectRemote?: (target: ValidatedSshTarget) => Promise<ManagedRemoteSession>;
+  readonly connectRemote?: (target: ValidatedSshTarget, onPhase: (phase: RemoteRuntimePhase) => void) => Promise<ManagedRemoteSession>;
   readonly lastTargetStore?: RemoteLastTargetStore;
   readonly logger?: { info(message: string): void; error(message: string): void };
+  readonly onRuntimeChanged?: () => void;
 }
 
 export interface RuntimePairing {
@@ -90,27 +97,69 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
   const timeoutMs = dependencies.timeoutMs ?? PAIRING_TIMEOUT_MS;
   let promptInFlight: Promise<void> | null = null;
   let committedRemote: ManagedRemoteSession | null = null;
+  let switchInFlight = false;
 
   const switchTo = async (input: string, window: RuntimePairingWindow, policy: WindowPolicy): Promise<void> => {
+    if (switchInFlight) {
+      dependencies.logger?.info("managed runtime pairing ignored code=transition_in_progress");
+      return;
+    }
+    switchInFlight = true;
+    try { await switchToInternal(input, window, policy); } finally { switchInFlight = false; }
+  };
+
+  const switchToInternal = async (input: string, window: RuntimePairingWindow, policy: WindowPolicy): Promise<void> => {
+    const previousUrl = window.webContents.getURL();
+    const previousOrigin = policy.currentConsoleOrigin();
     let target: { readonly origin: string; readonly consoleUrl: string };
     let candidate: ManagedRemoteSession | null = null;
+    let remoteTarget: ValidatedSshTarget | null = null;
+    let remotePhase: RemoteRuntimePhase = "validating_target";
+    let entryLoaded = false;
+    let entryPush = Promise.resolve();
+    const pushRemoteSnapshot = (snapshot: Parameters<typeof pushEntrySnapshot>[1]): void => {
+      entryPush = entryPush.then(async () => {
+        if (!window.isDestroyed()) await pushEntrySnapshot(window.webContents as EntryPageWebContents, snapshot);
+      }).catch((error: unknown) => {
+        dependencies.logger?.error(`managed runtime entry snapshot failed code=${redactedCode(failureCode(error))}`);
+      });
+    };
     try {
-      const parsed = parsePairingTarget(input);
+      const parsed = input === dependencies.localOrigin()
+        ? { kind: "loopback" as const, origin: input }
+        : parsePairingTarget(input);
       if (parsed.kind === "loopback") target = await verifyPairingOrigin(parsed.origin, fetchFor, timeoutMs);
       else {
         if (!dependencies.connectRemote) throw new Error("ssh_unavailable");
-        dependencies.notifier?.show({ title: "Connecting to Fleet Console", body: "Opening managed SSH runtime…", type: "info" });
-        candidate = await dependencies.connectRemote(parsed.target);
+        remoteTarget = parsed.target;
+        await window.loadFile(dependencies.entryPagePath);
+        entryLoaded = true;
+        await pushEntrySnapshot(window.webContents, snapshotForRemotePhase(remoteTarget, remotePhase));
+        candidate = await dependencies.connectRemote(remoteTarget, (phase) => {
+          remotePhase = phase;
+          pushRemoteSnapshot(snapshotForRemotePhase(remoteTarget!, phase));
+        });
         target = await verifyPairingOrigin(candidate.origin, fetchFor, timeoutMs);
+        pushRemoteSnapshot(snapshotForRemoteReady(remoteTarget));
+        await entryPush;
       }
     } catch (error) {
       await candidate?.rollback().catch(() => undefined);
+      const localOrigin = dependencies.localOrigin();
+      if (remoteTarget && entryLoaded && !window.isDestroyed()) {
+        pushRemoteSnapshot(snapshotForRemotePhase(remoteTarget, remotePhase, true));
+        await entryPush;
+      }
+      const localRestored = !remoteTarget || !localOrigin || window.isDestroyed() || await restoreLocalRuntime(window, policy, localOrigin, dependencies, () => {
+        const previousRemote = committedRemote;
+        committedRemote = null;
+        return disposeRemoteSession(previousRemote, dependencies);
+      });
       logPairingFailure(dependencies, error);
-      notifyFailure(dependencies.notifier, error);
+      if (remoteTarget && !localRestored) notifyLocalUnavailable(dependencies.notifier);
+      else notifyFailure(dependencies.notifier, error);
       return;
     }
-    const previousUrl = window.webContents.getURL();
-    const previousOrigin = policy.currentConsoleOrigin();
     let committed = false;
     policy.stageConsoleOrigin(target.origin);
     try {
@@ -127,7 +176,8 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       const previousRemote = committedRemote;
       committedRemote = candidate;
       if (candidate) dependencies.lastTargetStore?.save(`ssh:${candidate.target.value}`);
-      await previousRemote?.dispose().catch(() => undefined);
+      await disposeRemoteSession(previousRemote, dependencies);
+      dependencies.onRuntimeChanged?.();
       dependencies.notifier?.show({ title: "Fleet Console connected", body: `Connected to ${target.origin}.`, type: "info" });
     } catch (error) {
       policy.cancelPendingConsoleOrigin();
@@ -161,6 +211,30 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
     return promptInFlight;
   };
   return { prompt, switchTo, async dispose() { const remote = committedRemote; committedRemote = null; await remote?.dispose(); } };
+}
+
+async function restoreLocalRuntime(window: RuntimePairingWindow, policy: WindowPolicy, localOrigin: string, dependencies: RuntimePairingDependencies, disposePreviousRemote: () => Promise<void>): Promise<boolean> {
+  try {
+    const local = await verifyPairingOrigin(localOrigin, dependencies.fetch ?? globalThis.fetch, dependencies.timeoutMs ?? PAIRING_TIMEOUT_MS);
+    policy.stageConsoleOrigin(local.origin);
+    await window.loadURL(local.consoleUrl);
+    if (window.isDestroyed()) throw new Error("pairing_window_destroyed");
+    policy.commitConsoleOrigin();
+    dependencies.themeSynchronizer?.stop();
+    await dependencies.themeSynchronizer?.start(local.origin);
+    window.webContents.navigationHistory.clear();
+    await disposePreviousRemote();
+    dependencies.onRuntimeChanged?.();
+    return true;
+  } catch (restoreError) {
+    policy.cancelPendingConsoleOrigin();
+    dependencies.logger?.error(`managed runtime local restore failed code=${redactedCode(failureCode(restoreError))}`);
+    return false;
+  }
+}
+
+async function disposeRemoteSession(session: ManagedRemoteSession | null, dependencies: RuntimePairingDependencies): Promise<void> {
+  try { await session?.dispose(); } catch (error) { dependencies.logger?.error(`managed runtime dispose failed code=${redactedCode(failureCode(error))}`); }
 }
 
 async function readBoundedText(response: Response, limit: number): Promise<string> {
@@ -204,6 +278,10 @@ function notifyFailure(notifier: RuntimePairingNotifier | null, error: unknown):
   notifier?.show({ title: "Fleet Console connection failed", body: failureMessage(failureCode(error)), type: "error" });
 }
 
+function notifyLocalUnavailable(notifier: RuntimePairingNotifier | null): void {
+  notifier?.show({ title: "Fleet Console connection failed", body: "Local Fleet Console is unavailable. Restart Fleet Console.", type: "error" });
+}
+
 function logPairingFailure(dependencies: RuntimePairingDependencies, error: unknown): void {
   dependencies.logger?.error(`managed runtime pairing failed code=${redactedCode(failureCode(error))}`);
 }
@@ -223,7 +301,7 @@ function failureMessage(code: string): string {
     case "remote_node_invalid": case "remote_console_invalid": return "The remote runtime failed its integrity check.";
     case "remote_registry_unavailable": return "Could not reach the package registry to install Fleet Console.";
     case "pairing_target_unverified": return "That address is not a compatible Fleet Console runtime.";
-    default: return "The connection failed. The previous Fleet Console runtime remains connected.";
+    default: return "The connection failed. Local Fleet Console remains available.";
   }
 }
 function redactedCode(value: string): string { return /^[a-z0-9_]+$/u.test(value) ? value : "pairing_failed"; }
