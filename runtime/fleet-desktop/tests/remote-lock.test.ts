@@ -22,7 +22,7 @@ describe("remote lock inspection", () => {
     expect(ssh.run).not.toHaveBeenCalled();
   });
   it("classifies stale, same-owner, foreign desktop, and CLI locks without signaling", async () => {
-    await expect(inspectRemoteLock(adapter([true, false]), target, owner)).resolves.toEqual({ kind: "stale" });
+    await expect(inspectRemoteLock(adapter([true, false]), target, owner)).resolves.toMatchObject({ kind: "stale", lock: { pid: 42 } });
     await expect(inspectRemoteLock(adapter([true, true]), target, owner)).resolves.toMatchObject({ kind: "same_owner" });
     await expect(inspectRemoteLock(adapter([true, true], lock({ owner: { kind: "desktop", id: "other", protocolVersion: 1 } })), target, owner)).resolves.toMatchObject({ kind: "remote_console_owned_elsewhere" });
     await expect(inspectRemoteLock(adapter([true, true], lock({ owner: { kind: "cli", id: "cli", protocolVersion: 1 } })), target, owner)).resolves.toMatchObject({ kind: "remote_console_lock_conflict" });

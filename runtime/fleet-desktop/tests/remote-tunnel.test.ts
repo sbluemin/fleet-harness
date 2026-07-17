@@ -28,6 +28,30 @@ describe("same-port remote tunnels", () => {
     const child = process(); child.stderr.write("bind: Address already in use"); child.exit(255);
     await expect(openSamePortTunnel(adapter(async () => child), parseSshTarget("host"), 4310, undefined, { settle: async () => {} })).rejects.toBeInstanceOf(RemoteTunnelPortCollision);
   });
+  it("waits through the bounded settle window for a delayed bind failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const child = process();
+      const pending = openSamePortTunnel(adapter(async () => child), parseSshTarget("host"), 4310);
+      await vi.advanceTimersByTimeAsync(1);
+      child.stderr.write("bind: Address already in use");
+      child.exit(255);
+      await expect(pending).rejects.toBeInstanceOf(RemoteTunnelPortCollision);
+    } finally { vi.useRealTimers(); }
+  });
+  it("returns a healthy tunnel after the bounded settle window", async () => {
+    vi.useFakeTimers();
+    try {
+      const child = process();
+      const pending = openSamePortTunnel(adapter(async () => child), parseSshTarget("host"), 4310);
+      let settled = false;
+      void pending.then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(499);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toMatchObject({ port: 4310 });
+    } finally { vi.useRealTimers(); }
+  });
   it("rerolls exactly through attempt five then exhausts", async () => {
     const reroll = vi.fn(async (service: { port: number }) => ({ port: service.port + 1 }));
     await expect(openTunnelWithReroll({ port: 1 }, async () => { throw new RemoteTunnelPortCollision(); }, reroll)).rejects.toBeInstanceOf(RemoteTunnelPortConflictExhausted);

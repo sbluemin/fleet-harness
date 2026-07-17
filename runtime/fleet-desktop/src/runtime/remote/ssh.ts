@@ -43,7 +43,7 @@ export interface OpenSshAdapter {
 const SCRIPTS: Readonly<Record<RemoteOperation, string>> = {
   detect_platform: "set -eu; uname -s; uname -m",
   read_lock: "set -eu; cat \"$HOME/.fleet/console/console.lock\"",
-  remove_console_lock: "set -eu; rm -f \"$HOME/.fleet/console/console.lock\"",
+  remove_console_lock: "set -eu; f=\"$HOME/.fleet/console/console.lock\"; if [ -e \"$f\" ] && grep -q '\"pid\": '\"$1\"',' \"$f\" && ! kill -0 \"$1\" 2>/dev/null; then rm -f \"$f\"; fi",
   check_process: "set -eu; kill -0 \"$1\"",
   stop_console: "set -eu; kill \"$1\"",
   prepare_staging: "set -eu; umask 077; mkdir -p \"$HOME/$1\"",
@@ -136,8 +136,8 @@ function validateCommand(command: RemoteCommand): void {
   }
   if (stdin !== undefined) throw invalidCommand();
   switch (operation) {
-    case "detect_platform": case "read_lock": case "remove_console_lock": requireArgs(); return;
-    case "check_process": case "stop_console": requireArgs(positiveInteger); return;
+    case "detect_platform": case "read_lock": requireArgs(); return;
+    case "check_process": case "stop_console": case "remove_console_lock": requireArgs(positiveInteger); return;
     case "prepare_staging": case "remove_runtime_path": case "chmod_exec": case "normalize_console_prefix": requireArgs(runtimePath); return;
     case "extract_archive": requireArgs(runtimePath, runtimePath); return;
     case "probe_path": case "read_runtime_file": requireArgs(fleetPath); return;

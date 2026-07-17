@@ -3,6 +3,7 @@ import type { OpenSshAdapter, OpenSshProcess } from "./ssh.js";
 import type { ValidatedSshTarget } from "./target.js";
 
 export const MAX_TUNNEL_ATTEMPTS = 5;
+const SETTLE_MS = 500;
 
 export class RemoteTunnelPortCollision extends Error { constructor() { super("remote_tunnel_port_collision"); this.name = "RemoteTunnelPortCollision"; } }
 export class RemoteTunnelPortConflictExhausted extends Error { constructor() { super("remote_tunnel_port_conflict_exhausted"); this.name = "RemoteTunnelPortConflictExhausted"; } }
@@ -24,7 +25,7 @@ export async function openSamePortTunnel(adapter: OpenSshAdapter, target: Valida
   process.stderr.on("data", (chunk: unknown) => { if (Buffer.byteLength(stderr, "utf8") < 8 * 1024) stderr += String(chunk); });
   const bufferedStderr = process.stderr.read();
   if (bufferedStderr !== null) stderr += String(bufferedStderr);
-  await (options.settle ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 0))))();
+  await (options.settle ?? (() => Promise.race([process.exited.then(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, SETTLE_MS))])))();
   await Promise.resolve();
   if (exitedEarly) {
     if (isBindFailure(stderr)) throw new RemoteTunnelPortCollision();

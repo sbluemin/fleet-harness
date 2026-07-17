@@ -17,7 +17,8 @@ export interface RemoteConsoleLock {
 }
 
 export type RemoteLockClassification =
-  | { readonly kind: "absent" | "stale" }
+  | { readonly kind: "absent" }
+  | { readonly kind: "stale"; readonly lock: RemoteConsoleLock }
   | { readonly kind: "same_owner"; readonly lock: RemoteConsoleLock }
   | { readonly kind: "same_owner_version_mismatch"; readonly lock: RemoteConsoleLock }
   | { readonly kind: "remote_console_owned_elsewhere" | "remote_console_lock_conflict"; readonly lock?: RemoteConsoleLock };
@@ -46,7 +47,7 @@ export async function inspectRemoteLock(adapter: OpenSshAdapter, target: Validat
   let lock: RemoteConsoleLock;
   try { lock = parseRemoteConsoleLock(contents); } catch { return { kind: "remote_console_lock_conflict" }; }
   const alive = await adapter.probe(target, { operation: "check_process", args: [String(lock.pid)] });
-  if (!alive.ok) return { kind: "stale" };
+  if (!alive.ok) return { kind: "stale", lock };
   const isSameDesktop = lock.owner?.kind === "desktop" && lock.owner.id === expectedOwner.id && lock.owner.protocolVersion === DESKTOP_PROTOCOL_VERSION;
   if (options.versionAgnostic && isSameDesktop) return { kind: "same_owner", lock };
   if (expectedOwner.serviceVersion !== undefined && isCompatibleDesktopOwner(lock.owner, lock.version, { id: expectedOwner.id, version: expectedOwner.serviceVersion })) return { kind: "same_owner", lock };

@@ -91,7 +91,7 @@ describe("managed remote orchestrator", () => {
   it("provisions after a stale lock while the registry is offline", async () => {
     const order: string[] = [];
     const ssh = { run: vi.fn(async () => { order.push("remove"); return { stdout: "", stderr: "", exitCode: 0 }; }) };
-    seams.inspect.mockResolvedValue({ kind: "stale" });
+    seams.inspect.mockResolvedValue({ kind: "stale", lock });
     seams.provision.mockImplementation(async () => { order.push("provision"); return runtime(); });
     seams.start.mockResolvedValue(lock);
     seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
@@ -101,7 +101,7 @@ describe("managed remote orchestrator", () => {
     expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId }, { versionAgnostic: true });
     expect(seams.provision).toHaveBeenCalledOnce();
     expect(seams.start).toHaveBeenCalledOnce();
-    expect(ssh.run).toHaveBeenCalledWith(expect.anything(), { operation: "remove_console_lock", args: [] });
+    expect(ssh.run).toHaveBeenCalledWith(expect.anything(), { operation: "remove_console_lock", args: ["42"] });
     expect(order).toEqual(["remove", "provision"]);
   });
 

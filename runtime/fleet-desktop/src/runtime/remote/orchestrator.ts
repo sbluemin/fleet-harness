@@ -63,7 +63,7 @@ export async function connectManagedRemote(input: string, dependencies: ManagedR
     service = await startCandidateService(dependencies.ssh, target, launch);
     created = true;
   } else {
-    if (lock.kind === "stale") await dependencies.ssh.run(target, { operation: "remove_console_lock", args: [] });
+    if (lock.kind === "stale") await dependencies.ssh.run(target, { operation: "remove_console_lock", args: [String(lock.lock.pid)] });
     const runtime = await provisionRemoteRuntime(target, dependencies, emit);
     emit("starting_service");
     launch = launchFor(runtime.console.version, runtime.console.root, runtime.node.nodeBin, runtime.console.cli, dependencies);
