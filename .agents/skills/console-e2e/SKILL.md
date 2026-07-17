@@ -1,6 +1,6 @@
 ---
 name: console-e2e
-description: Drive a headed real-browser end-to-end test or diagnosis of the Fleet Console web UI with agent-browser. Use for Console SPA behavior such as blank screens, terminal rendering, Theater or Operation interactions, modal and keyboard boundaries, responsive layout, browser errors, HTTP requests, WebSockets, or final browser verification after a Console change. Do not use for Electron lifecycle, native menus or dialogs, Desktop security policy, packaging, or installed-app behavior; use desktop-e2e instead.
+description: Drive a headless real-browser end-to-end test or diagnosis of the Fleet Console web UI with agent-browser. Use for Console SPA behavior such as blank screens, terminal rendering, Theater or Operation interactions, modal and keyboard boundaries, responsive layout, browser errors, HTTP requests, WebSockets, or final browser verification after a Console change. Do not use for Electron lifecycle, native menus or dialogs, Desktop security policy, packaging, or installed-app behavior; use desktop-e2e instead.
 ---
 
 # Fleet Console browser E2E
@@ -22,7 +22,7 @@ ab skills get core --full
 ab skills get dogfood
 ```
 
-Use a unique session and headed mode for every browser command:
+Use a unique session. Agent-browser defaults to headless, and `--headed false` on the first `open` overrides user or project configuration:
 
 ```bash
 SESSION="${SESSION:-fleet-console-e2e-$(date +%s)}"
@@ -69,9 +69,11 @@ cat > "$INIT" <<'EOF'
 })();
 EOF
 
-ab --session "$SESSION" --headed open --init-script "$INIT" "http://127.0.0.1:<port>$ROUTE"
-ab --session "$SESSION" --headed wait --load domcontentloaded
+ab --session "$SESSION" --headed false open --init-script "$INIT" "http://127.0.0.1:<port>$ROUTE"
+ab --session "$SESSION" wait --load domcontentloaded
 ```
+
+**`--headed false` is ignored because a daemon is already running -> stop and report when headless proof is required; never claim the run was headless or use `close --all`/kill an unknown daemon -> sessions isolate browser state, not daemon launch mode.**
 
 ## Observe, act, observe
 
@@ -84,7 +86,7 @@ ab --session "$SESSION" --headed wait --load domcontentloaded
 For terminal failures, probe the render chain rather than guessing:
 
 ```bash
-cat <<'EOF' | ab --session "$SESSION" --headed eval --stdin
+cat <<'EOF' | ab --session "$SESSION" eval --stdin
 (() => {
   const q = s => document.querySelector(s);
   const canvas = q('.terminal-canvas');
@@ -116,12 +118,12 @@ Interpret evidence in this order: page errors/rejections, DOM presence and size,
 Clear browser diagnostics, reload or restart as required, then repeat the exact scenario and its inverse. Report observed values, not only pass/fail.
 
 ```bash
-ab --session "$SESSION" --headed errors --clear
-ab --session "$SESSION" --headed console --clear
-ab --session "$SESSION" --headed reload
-ab --session "$SESSION" --headed wait --load domcontentloaded
-ab --session "$SESSION" --headed screenshot /tmp/fleet-console-e2e.png
-ab --session "$SESSION" --headed close
+ab --session "$SESSION" errors --clear
+ab --session "$SESSION" console --clear
+ab --session "$SESSION" reload
+ab --session "$SESSION" wait --load domcontentloaded
+ab --session "$SESSION" screenshot /tmp/fleet-console-e2e.png
+ab --session "$SESSION" close
 FLEET_CONSOLE_DIR="$E2E_DIR" node runtime/fleet-console/dist/cli.mjs stop
 ```
 
