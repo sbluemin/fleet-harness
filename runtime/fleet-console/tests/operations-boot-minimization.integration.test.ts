@@ -14,6 +14,9 @@ const apiMocks = vi.hoisted(() => ({
   fetchOperations: vi.fn(),
   fetchGroups: vi.fn(),
 }));
+const keyboardShortcutMocks = vi.hoisted(() => ({
+  shouldHandleOperationsKeyboardShortcut: vi.fn(),
+}));
 
 vi.mock("../core/client/src/api.js", () => ({
   ...apiMocks,
@@ -40,7 +43,7 @@ vi.mock("../core/client/src/canvas/canvas.js", () => ({ OperationsCanvas: () => 
 vi.mock("../core/client/src/components/codex-reading-sheet.js", () => ({ CodexReadingSheet: () => null }));
 vi.mock("../core/client/src/components/command-band.js", () => ({ CommandBand: () => null }));
 vi.mock("../core/client/src/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
-vi.mock("../core/client/src/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: () => false }));
+vi.mock("../core/client/src/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
 vi.mock("../core/client/src/components/operation-search.js", () => ({ OperationSearch: () => null }));
 vi.mock("../core/client/src/components/toast.js", () => ({ Toast: () => null }));
 vi.mock("../core/client/src/components/whatsnew-modal.js", () => ({ WhatsNewModal: () => null }));
@@ -71,6 +74,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   apiMocks.fetchGroups.mockResolvedValue([]);
+  keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(false);
 });
 
 afterEach(() => {
@@ -155,6 +159,35 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual(["initial"]);
     expect(getSnapshot().operations).toHaveProperty("initial");
     expect(getSnapshot().operations).toHaveProperty("launched");
+  });
+
+  it("consumes Alt+Arrow without restoring a minimized panel", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+    await act(async () => {
+      operations.resolve([operation("initial")]);
+      theaters.resolve({ theaters: [theater()] });
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual(["initial"]);
+
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const event = new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, cancelable: true });
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getState().activeOperationId).toBeNull();
+    expect(getSnapshot().minimized).toEqual(["initial"]);
   });
 
   it("minimizes a second Theater's existing panels on first in-session view, surfacing only the selected panel", async () => {

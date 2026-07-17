@@ -80,9 +80,9 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
         canvas.collapsedGroups,
         canvas.minimized,
       );
-      if (order.length === 0) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (order.length === 0) return;
       const currentId = maximizedRef.current ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, event.key === "ArrowRight" ? 1 : -1);
       if (!nextId) return;
