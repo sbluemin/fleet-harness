@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, createElement } from "react";
-import type { Root } from "../../../fleet-console/node_modules/@types/react-dom/client.d.ts";
-// terminal은 react-dom을 런타임 의존성으로 노출하지 않으므로, 테스트만 Console의 설치본을 사용한다.
-// @ts-expect-error -- test-only relative runtime import has no package export declaration.
-import { createRoot } from "../../../fleet-console/node_modules/react-dom/client.js";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchCarrierSettingsState } from "../client/carriers/api.js";
