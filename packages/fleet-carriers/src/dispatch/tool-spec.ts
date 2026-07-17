@@ -165,7 +165,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
         ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
       `Some carriers require structured request blocks (e.g., <objective>, <context>).` +
-        ` The per-carrier request-block contract lives in the carrier-contracts skill —` +
+        ` The per-carrier request-block contract lives in the carrier-operations skill —` +
         ` load it before composing a dispatch (skip reloading if its content is already in context).` +
         ` Missing required tags cause hard-error rejection that echoes the carrier's block contract.`,
       `Every successful fresh dispatch returns context_id. To continue that real provider session later,` +
@@ -193,7 +193,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         }),
         request: Type.String({
           description:
-            `The task/prompt to send to the carrier. Required blocks per carrier -- see the carrier-contracts skill.` +
+            `The task/prompt to send to the carrier. Required blocks per carrier -- see the carrier-operations skill.` +
             ` Missing blocks cause hard-error rejection.`,
         }),
         cwd: Type.Optional(Type.String({
