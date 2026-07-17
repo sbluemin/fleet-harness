@@ -56,6 +56,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
+  const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
   const canAutoHide = useCallback(() => {
     const activeElement = document.activeElement;
     const focusWithin = activeElement instanceof Node && (commandBandRef.current?.contains(activeElement) || edgeRevealRef.current?.contains(activeElement));
@@ -235,9 +236,9 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         {state.channel === "local" ? <div className="command-band-environment">
           <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => setEnvironmentOpen((open) => !open)}>
           <span className="command-band-local-dot" aria-hidden="true" />
-          Local
+          {desktopShell ? "Local · Desktop" : "Local"}
           </button>
-          {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} onCopy={copyEnvironmentValue} /></div> : null}
+          {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
           <PanelToggleIcon side="left" />
@@ -278,10 +279,11 @@ interface EnvironmentPopoverProps {
   readonly error: string | null;
   readonly loading: boolean;
   readonly copiedValue: string | null;
+  readonly desktopShell: boolean;
   readonly onCopy: (value: string) => void;
 }
 
-function EnvironmentPopover({ environment, error, loading, copiedValue, onCopy }: EnvironmentPopoverProps) {
+function EnvironmentPopover({ environment, error, loading, copiedValue, desktopShell, onCopy }: EnvironmentPopoverProps) {
   if (loading) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">Loading environment details…</div>;
   if (error) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">{error}</div>;
   if (!environment) return null;
@@ -291,6 +293,7 @@ function EnvironmentPopover({ environment, error, loading, copiedValue, onCopy }
     ["Reachable on", `127.0.0.1:${environment.effectivePort}`],
     ["Data root", environment.dataDir],
     ["Runtime lock", environment.lockFile],
+    ...(desktopShell ? [["Desktop data", `${environment.dataDir}/desktop`] as [string, string]] : []),
   ];
   return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">
     <div className="command-band-environment-title">Environment</div>
