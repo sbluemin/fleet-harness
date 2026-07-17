@@ -3,7 +3,7 @@ import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, isDeskto
 import type { RegistryChecker } from "../registry-check.js";
 import { satisfiesNodeEngine } from "../node-bootstrap.js";
 import type { RemoteRuntimePhaseCallback } from "./contracts.js";
-import { REMOTE_RUNTIME_ROOT, RemoteProvisionError, remoteRuntimePath, type RemoteNodeRuntime } from "./node-runtime.js";
+import { REMOTE_RUNTIME_ROOT, RemoteProvisionError, remoteRuntimePath, type RemoteNodeRuntime, type RemotePlatform } from "./node-runtime.js";
 import type { OpenSshAdapter } from "./ssh.js";
 import type { ValidatedSshTarget } from "./target.js";
 
@@ -33,7 +33,7 @@ export async function checkRemoteConsoleUpdate(target: ValidatedSshTarget, node:
   return { installed, latest: registry.latest, unavailable: registry.unavailable === true };
 }
 
-export async function ensureRemoteConsole(target: ValidatedSshTarget, node: RemoteNodeRuntime, dependencies: RemoteConsoleDependencies, onPhase?: RemoteRuntimePhaseCallback): Promise<RemoteConsoleRuntime> {
+export async function ensureRemoteConsole(target: ValidatedSshTarget, node: RemoteNodeRuntime, platform: RemotePlatform, dependencies: RemoteConsoleDependencies, onPhase?: RemoteRuntimePhaseCallback): Promise<RemoteConsoleRuntime> {
   const update = await checkRemoteConsoleUpdate(target, node, dependencies);
   if (update.installed && !update.latest) return update.installed;
   if (!update.latest) throw new RemoteProvisionError("remote_registry_unavailable");
@@ -52,6 +52,9 @@ export async function ensureRemoteConsole(target: ValidatedSshTarget, node: Remo
     const marker = (await dependencies.ssh.run(target, { operation: "read_runtime_file", args: [markerPath] })).stdout;
     if (packageJson.version !== update.latest || !satisfiesNodeEngine(node.version, typeof packageJson.engines?.node === "string" ? packageJson.engines.node : null) || !isDesktopResourceRootMarkerValid(marker)) throw new RemoteProvisionError("remote_console_invalid");
     await dependencies.ssh.run(target, { operation: "promote_runtime_path", args: [staging, REMOTE_CONSOLE_LATEST] });
+    if (platform.system === "darwin") {
+      await dependencies.ssh.run(target, { operation: "chmod_exec", args: [remoteRuntimePath("console", "latest", "node_modules", "node-pty", "prebuilds", `darwin-${platform.architecture}`, "spawn-helper")] });
+    }
     return { root: REMOTE_CONSOLE_LATEST, version: update.latest, cli: remoteRuntimePath("console", "latest", "dist", "cli.mjs") };
   } catch (error) {
     await dependencies.ssh.run(target, { operation: "remove_runtime_path", args: [staging] }).catch(() => undefined);

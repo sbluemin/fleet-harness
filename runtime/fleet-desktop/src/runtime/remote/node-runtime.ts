@@ -17,6 +17,15 @@ export interface RemoteNodeRuntime {
   readonly version: string;
 }
 
+export type RemoteNodeTargetKey = "linux-x64" | "linux-arm64" | "darwin-x64" | "darwin-arm64";
+
+export interface RemotePlatform {
+  readonly targetKey: RemoteNodeTargetKey;
+  readonly archive: NodeRuntimeTarget;
+  readonly system: "linux" | "darwin";
+  readonly architecture: "x64" | "arm64";
+}
+
 export class RemoteProvisionError extends Error {
   constructor(readonly code: "remote_platform_unsupported" | "remote_node_invalid" | "remote_console_invalid" | "remote_registry_unavailable", options?: ErrorOptions) {
     super(code, options);
@@ -40,17 +49,18 @@ export function remoteRuntimePath(...parts: readonly string[]): string {
   return candidate;
 }
 
-export async function detectRemotePlatform(target: ValidatedSshTarget, manifest: NodeRuntimeManifest, ssh: Pick<OpenSshAdapter, "run">): Promise<{ readonly targetKey: "linux-x64" | "linux-arm64"; readonly archive: NodeRuntimeTarget }> {
+export async function detectRemotePlatform(target: ValidatedSshTarget, manifest: NodeRuntimeManifest, ssh: Pick<OpenSshAdapter, "run">): Promise<RemotePlatform> {
   const result = await ssh.run(target, { operation: "detect_platform", args: [] });
-  const [system, machine, ...extra] = result.stdout.trim().split(/\r?\n/u);
-  const normalizedSystem = system?.toLowerCase();
+  const [reportedSystem, machine, ...extra] = result.stdout.trim().split(/\r?\n/u);
+  const normalizedSystem = reportedSystem?.toLowerCase();
   const normalizedMachine = machine?.toLowerCase();
   const architecture = normalizedMachine === "x86_64" || normalizedMachine === "x64" ? "x64" : normalizedMachine === "aarch64" || normalizedMachine === "arm64" ? "arm64" : null;
-  if (extra.length !== 0 || normalizedSystem !== "linux" || !architecture) throw new RemoteProvisionError("remote_platform_unsupported");
-  const targetKey = `linux-${architecture}` as "linux-x64" | "linux-arm64";
+  const system = normalizedSystem === "linux" || normalizedSystem === "darwin" ? normalizedSystem : null;
+  if (extra.length !== 0 || !system || !architecture) throw new RemoteProvisionError("remote_platform_unsupported");
+  const targetKey = `${system}-${architecture}` as RemoteNodeTargetKey;
   const archive = manifest.targets[targetKey];
   if (!archive) throw new RemoteProvisionError("remote_platform_unsupported");
-  return { targetKey, archive };
+  return { targetKey, archive, system, architecture };
 }
 
 export async function readRemoteNodeRuntime(target: ValidatedSshTarget, manifest: NodeRuntimeManifest, ssh: RemoteNodeSsh): Promise<RemoteNodeRuntime | null> {
@@ -63,11 +73,11 @@ export async function readRemoteNodeRuntime(target: ValidatedSshTarget, manifest
   } catch { return null; }
 }
 
-export async function ensureRemoteNode(target: ValidatedSshTarget, manifest: NodeRuntimeManifest, dependencies: RemoteNodeDependencies, onPhase?: RemoteRuntimePhaseCallback): Promise<RemoteNodeRuntime> {
+export async function ensureRemoteNode(target: ValidatedSshTarget, manifest: NodeRuntimeManifest, dependencies: RemoteNodeDependencies, onPhase?: RemoteRuntimePhaseCallback, platform?: RemotePlatform): Promise<RemoteNodeRuntime> {
   const existing = await readRemoteNodeRuntime(target, manifest, dependencies.ssh);
   if (existing) return existing;
   onPhase?.("provisioning_node");
-  const platform = await detectRemotePlatform(target, manifest, dependencies.ssh);
+  const detectedPlatform = platform ?? await detectRemotePlatform(target, manifest, dependencies.ssh);
   const temporaryDirectory = dependencies.temporaryDirectory ?? (async () => mkdtemp(path.join(os.tmpdir(), "fleet-node-")));
   const removeTemporaryDirectory = dependencies.removeTemporaryDirectory ?? (async (directory) => { await rm(directory, { force: true, recursive: true }); });
   const downloadArchive = dependencies.downloadArchive ?? downloadVerifiedNodeArchive;
@@ -76,8 +86,8 @@ export async function ensureRemoteNode(target: ValidatedSshTarget, manifest: Nod
   const localDirectory = await temporaryDirectory();
   try {
     await mkdir(localDirectory, { recursive: true });
-    const archive = await downloadArchive({ directory: localDirectory, manifest, target: platform.archive });
-    const remoteArchive = remoteRuntimePath(`node.staging-${nonce}`, platform.archive.archive);
+    const archive = await downloadArchive({ directory: localDirectory, manifest, target: detectedPlatform.archive });
+    const remoteArchive = remoteRuntimePath(`node.staging-${nonce}`, detectedPlatform.archive.archive);
     await dependencies.ssh.run(target, { operation: "remove_runtime_path", args: [staging] });
     await dependencies.ssh.run(target, { operation: "prepare_staging", args: [staging] });
     await dependencies.ssh.run(target, { operation: "upload_file", args: [remoteArchive], stdin: archive.content });
