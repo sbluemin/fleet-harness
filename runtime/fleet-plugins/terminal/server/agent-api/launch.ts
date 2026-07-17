@@ -17,7 +17,7 @@ import {
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
 
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 
@@ -175,7 +175,7 @@ async function createAgentCliLaunchSpec(options: {
       sessionId: options.sessionId,
     });
     const sessionIdentityResolver = options.createSessionIdentityResolver({
-      provider: injectedProfile.id,
+      provider: toCaptureProvider(injectedProfile.id),
       command: injectedProfile.bin,
       commandPrefixArgs: injectedProfile.binPrefixArgs,
       cwd: injectedProfile.cwd,

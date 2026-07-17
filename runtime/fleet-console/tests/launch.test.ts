@@ -319,6 +319,24 @@ describe("createDefaultTerminalLaunchResolver", () => {
     }));
   });
 
+  it("maps a Claude-family CLI to the Claude provider identity resolver", async () => {
+    const createResolver = vi.fn(() => ({ resolve: async () => null }));
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: (async () => ({ ...baseProfile, id: "claude-kimi", label: "Kimi (Claude Code)" })) as never,
+      createSessionIdentityResolver: createResolver as never,
+    });
+
+    await resolve("/work", { sessionId: "session-a", cliId: "claude-kimi" });
+
+    expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "claude",
+    }));
+  });
+
   it("does not bind an identity resolver for an explicit shell override", async () => {
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
