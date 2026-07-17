@@ -28,7 +28,7 @@ export function getModelsRegistry(): ModelsRegistry {
  * 특정 CLI(프로바이더)의 모델 정보를 반환합니다.
  * 내부 데이터 보호를 위해 복사본을 반환합니다.
  *
- * @param cli - CLI 타입 (claude, codex, opencode-go, cursor)
+ * @param cli - CLI 타입 (claude, claude-kimi, codex, opencode-go, cursor)
  * @returns 프로바이더 모델 정보
  * @throws 존재하지 않는 프로바이더인 경우
  */

@@ -1,4 +1,8 @@
-export type AgentCliId = "claude" | "codex";
+export type AgentCliId = "claude" | "claude-kimi" | "codex";
+
+export interface AuthServiceLike {
+  getApiKey(providerId: string): Promise<string | undefined>;
+}
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;
@@ -40,6 +44,7 @@ export interface AgentCliDefinition {
 }
 
 export interface AgentCliProfileOptions {
+  readonly authService?: AuthServiceLike;
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;

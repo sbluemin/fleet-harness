@@ -16,12 +16,22 @@ export {
   type AgentCliMcpServerArg,
   type AgentCliProfile,
   type AgentCliProfileOptions,
+  type AuthServiceLike,
   type CliMessagePolicy,
   type CodexCommandResult,
   type CodexPluginRegistrationCommand,
   type FleetHookExec,
   type PtyInputChunk,
 } from "./agent-cli/types.js";
+
+export {
+  CLI_TO_AUTH_PROVIDER_ID,
+  KIMI_AUTH_PROVIDER_ID,
+  getAgentCliAuthStatuses,
+  resolveAgentCliAuthEnv,
+  validateAgentCliAuthKey,
+  type AgentCliAuthStatus,
+} from "./agent-cli/auth.js";
 
 // Agent CLI 프로파일/레지스트리 해석기
 export {

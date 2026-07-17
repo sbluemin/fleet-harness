@@ -22,6 +22,7 @@ export const UnifiedAgent = {
   createClient(cli: CliType): IUnifiedAgentClient {
     switch (cli) {
       case 'claude':
+      case 'claude-kimi':
         return new UnifiedClaudeAgentClient(cli);
       case 'codex':
         return new UnifiedCodexAgentClient();
@@ -46,7 +47,7 @@ export const UnifiedAgent = {
     const preferred = await new CliDetector().getPreferred();
     if (!preferred) {
       throw new Error(
-        '사용 가능한 CLI가 없습니다. claude, codex, opencode-go, cursor 중 하나를 설치해주세요.',
+        '사용 가능한 CLI가 없습니다. claude, claude-kimi, codex, opencode-go, cursor 중 하나를 설치해주세요.',
       );
     }
 

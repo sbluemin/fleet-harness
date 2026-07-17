@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { runApp } from "./app.js";
+import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
 import { runDesktopDev } from "./desktop-command.js";
 import { readFleetCliRelease } from "./release.js";
@@ -28,6 +30,14 @@ if (argv[0] === "update") {
     stdout: process.stdout,
     stderr: process.stderr,
   });
+  process.exit(status);
+}
+
+if (argv[0] === "auth") {
+  const status = await dispatchAuthCommand(argv, {
+    stdout: process.stdout,
+    stderr: process.stderr,
+  }, createInfraServices());
   process.exit(status);
 }
 

@@ -14,6 +14,20 @@ describe('ModelRegistry', () => {
     expect(modelIds).not.toContain('sonnet[1m]');
   });
 
+  it('Kimi via Claude Code는 전 요금제 기본 모델과 상위 요금제 모델을 노출한다', () => {
+    const provider = getProviderModels('claude-kimi');
+    const modelIds = provider.models.map((model) => model.modelId);
+
+    expect(provider.defaultModel).toBe('kimi-for-coding');
+    expect(modelIds).toEqual([
+      'kimi-for-coding',
+      'k3',
+      'k3[1m]',
+      'kimi-for-coding-highspeed',
+    ]);
+    expect(provider.models.every((model) => model.effort.supported && model.effort.default === 'max')).toBe(true);
+  });
+
   it('Codex 정적 모델 목록에 GPT-5.6 모델들과 기존 모델들을 포함한다', () => {
     const provider = getProviderModels('codex');
     const modelIds = provider.models.map((model) => model.modelId);

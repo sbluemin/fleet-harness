@@ -1,5 +1,6 @@
 export const PROVIDER_RGBS: Record<string, readonly [number, number, number]> = {
   claude: [255, 149, 0],
+  "claude-kimi": [180, 100, 255],
   codex: [169, 169, 169],
   "opencode-go": [0, 200, 160],
   cursor: [0, 122, 204],
@@ -7,6 +8,7 @@ export const PROVIDER_RGBS: Record<string, readonly [number, number, number]> = 
 
 const PROVIDER_BG_RGBS: Record<string, readonly [number, number, number]> = {
   claude: [40, 25, 8],
+  "claude-kimi": [20, 12, 40],
   codex: [35, 35, 35],
   "opencode-go": [8, 32, 28],
   cursor: [10, 25, 41],

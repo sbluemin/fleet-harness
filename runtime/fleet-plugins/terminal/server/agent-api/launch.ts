@@ -14,7 +14,7 @@ import {
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, getFleetDataDir, type GlobalOptionsService } from "@dotobokuri/core-infra";
+import { createInfraServices, getFleetDataDir, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
@@ -29,7 +29,7 @@ export interface TerminalLaunchResolverDeps {
   readonly entryPath?: string;
   readonly tsxLoaderPath?: string;
   readonly dataDir?: string;
-  readonly infraServices?: { readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices?: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
@@ -127,7 +127,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly hookEntry: ConsoleHookCommandEntry;
-  readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
@@ -141,6 +141,7 @@ async function createAgentCliLaunchSpec(options: {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
     const profile = await options.resolveProfile(options.env, options.cwd, {
+      authService: options.infraServices.authService,
       cliId: options.cliId,
       resumeSessionId: options.resumeSessionId,
     });

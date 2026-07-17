@@ -95,7 +95,7 @@ export async function injectAgentCliProfile(
   const doctrine = options.buildSystemPrompt(enableMetaphor);
   const tempCleanups: Array<() => void> = [];
   try {
-    const systemPromptFile = profile.id === "claude"
+    const systemPromptFile = isClaudeFamilyProfile(profile)
       ? writeSystemPromptFile(profile.id, doctrine, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const plugin = await createAgentCliPlugin({
@@ -181,6 +181,10 @@ export async function injectAgentCliProfile(
     options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
     throw error;
   }
+}
+
+function isClaudeFamilyProfile(profile: AgentCliProfile): boolean {
+  return profile.id === "claude" || profile.id === "claude-kimi";
 }
 
 function buildAgentCliMcpServerConfigs(

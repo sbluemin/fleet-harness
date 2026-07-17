@@ -34,6 +34,18 @@ describe("auth validation", () => {
     }));
   });
 
+  it("uses a provider-specific validation model when supplied", async () => {
+    const fetchMock = mockFetch(new Response("{}", { status: 200 }));
+
+    await validateAnthropicCompatibleApiKey({
+      ...baseRequest(),
+      model: "kimi-for-coding",
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({ model: "kimi-for-coding" });
+  });
+
   it("distinguishes 401 unauthorized", async () => {
     mockFetch(new Response("bad key", { status: 401 }));
 
