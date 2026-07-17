@@ -169,6 +169,10 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       >
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
+        {state.channel === "local" ? <button type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={false}>
+          <span className="command-band-local-dot" aria-hidden="true" />
+          Local
+        </button> : null}
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
           <PanelToggleIcon side="left" />
         </button> : null}

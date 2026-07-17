@@ -41,6 +41,7 @@ let whatsNewSeenVersionMemo: string | null = null;
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
+  channel: "unknown",
   // The SDK ConsoleTheme union matches ThemeId; the selected theme passes
   // through to the plugin context unchanged.
   activeTheme: DEFAULT_THEME,
@@ -112,6 +113,7 @@ export function setActiveUiFont(uiFont: UiFontSettings): void {
 
 export function applyObserverStatus(status: ObserverStatus): void {
   setState({
+    channel: status.channel,
     version: status.version,
     updateAvailable: status.updateAvailable,
     latestVersion: status.latestVersion ?? null,

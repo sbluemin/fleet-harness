@@ -160,6 +160,7 @@ export type CodexReaderRequest =
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
+  readonly channel: ObserverStatus["channel"];
   readonly activeTheme: ConsoleTheme;
   readonly version: string;
   readonly updateAvailable: boolean;

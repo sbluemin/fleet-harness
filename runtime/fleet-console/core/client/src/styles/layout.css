@@ -124,6 +124,39 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   letter-spacing: 0.01em;
 }
 
+.command-band-local-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--warn-glow) 72%, var(--surface-glass));
+  box-shadow: 0 0 12px var(--warn-glow);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-band-local-chip:hover,
+.command-band-local-chip:focus-visible {
+  border-color: var(--warn);
+  background: color-mix(in oklch, var(--warn-glow) 100%, var(--surface-glass));
+  outline: none;
+}
+
+.command-band-local-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 7px var(--warn-glow);
+}
+
 .command-band-center {
   justify-content: center;
   gap: var(--space-3);
