@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getMaximizedOperationId, getSnapshot, loadForTheater, restoreOperation, setMaximizedOperationId, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import { focusOperation, getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -16,6 +16,9 @@ const apiMocks = vi.hoisted(() => ({
 }));
 const keyboardShortcutMocks = vi.hoisted(() => ({
   shouldHandleOperationsKeyboardShortcut: vi.fn(),
+}));
+const sideBarMocks = vi.hoisted(() => ({
+  onFocus: null as null | ((operationId: string) => void),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -56,7 +59,12 @@ vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.f
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({ getSideBarState: () => ({ collapsed: false }), setSideBarCollapsed: vi.fn() }));
-vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({ OperationsSideBar: () => null }));
+vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
+  OperationsSideBar: ({ onFocus }: { readonly onFocus: (operationId: string) => void }) => {
+    sideBarMocks.onFocus = onFocus;
+    return null;
+  },
+}));
 vi.mock("../core/client/src/whatsnew-i18n.js", () => ({ resolveReleaseNotesLocale: () => "en" }));
 
 let root: Root | null = null;
@@ -68,6 +76,9 @@ beforeEach(() => {
   document.body.replaceChildren();
   window.localStorage.clear();
   window.history.replaceState({}, "", "/operations");
+  loadForTheater("theater-a");
+  clearMaximizedOperationId();
+  clearFormationView();
   loadForTheater(null);
   setState({ activeOperationId: null, activeTheaterId: null, groups: [], operations: [], operationsHydrated: false, theaters: [] });
   container = document.createElement("div");
@@ -75,10 +86,18 @@ beforeEach(() => {
   root = createRoot(container);
   apiMocks.fetchGroups.mockResolvedValue([]);
   keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(false);
+  sideBarMocks.onFocus = null;
 });
 
 afterEach(() => {
   act(() => root?.unmount());
+  loadForTheater("theater-a");
+  clearMaximizedOperationId();
+  clearFormationView();
+  loadForTheater("theater-b");
+  clearMaximizedOperationId();
+  clearFormationView();
+  loadForTheater(null);
   container?.remove();
   root = null;
   container = null;
@@ -190,7 +209,7 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual(["initial"]);
   });
 
-  it("advances the maximized Operation with Alt+Arrow", async () => {
+  it("advances the focus layer with Alt+Arrow while preserving Formation", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
     apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
@@ -206,10 +225,12 @@ describe("Operations boot minimization", () => {
       await Promise.resolve();
     });
     await act(async () => {
+      toggleFormationView();
       setMaximizedOperationId("first");
       await Promise.resolve();
     });
     expect(getMaximizedOperationId()).toBe("first");
+    expect(getFormationView()).toBe(true);
     expect(getSnapshot().minimized).toEqual(["second"]);
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
@@ -222,7 +243,107 @@ describe("Operations boot minimization", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(getState().activeOperationId).toBe("second");
     expect(getMaximizedOperationId()).toBe("second");
-    expect(getSnapshot().minimized).toEqual(["first"]);
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("switches pending focus through the active focus layer before Formation", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+    await act(async () => {
+      operations.resolve([operation("first"), operation("second")]);
+      theaters.resolve({ theaters: [theater()] });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      toggleFormationView();
+      setMaximizedOperationId("first");
+      focusOperation("second");
+      await Promise.resolve();
+    });
+
+    expect(getState().activeOperationId).toBe("second");
+    expect(getMaximizedOperationId()).toBe("second");
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("keeps a same-target sidebar selection in the focus layer without changing Map geometry", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+    await act(async () => {
+      operations.resolve([operation("first")]);
+      theaters.resolve({ theaters: [theater()] });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      setViewport({ x: 48, y: 72, zoom: 0.8 });
+      setMaximizedOperationId("first");
+    });
+    const viewport = getSnapshot().viewport;
+    const geometry = getSnapshot().operations.first;
+    expect(sideBarMocks.onFocus).not.toBeNull();
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("first");
+      await Promise.resolve();
+    });
+
+    expect(getMaximizedOperationId()).toBe("first");
+    expect(getSnapshot().viewport).toEqual(viewport);
+    expect(getSnapshot().operations.first).toEqual(geometry);
+  });
+
+  it("uses the destination Theater's live Formation state for pending focus", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+    await act(async () => {
+      operations.resolve([operation("a1", 1, "theater-a"), operation("b1", 1, "theater-b")]);
+      theaters.resolve({ theaters: [theater(), theater("theater-b", "Theater B")] });
+      await Promise.resolve();
+    });
+    const destinationViewport = { x: 144, y: 96, zoom: 0.7 };
+    let destinationGeometry: ReturnType<typeof getSnapshot>["operations"][string] | undefined;
+    await act(async () => {
+      loadForTheater("theater-b");
+      setOperationGeometry("b1", { x: 32, y: 64, width: 640, height: 400, zIndex: 3 });
+      setViewport(destinationViewport);
+      toggleFormationView();
+      destinationGeometry = getSnapshot().operations.b1;
+      loadForTheater("theater-a");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      focusOperation("b1");
+      await Promise.resolve();
+    });
+
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().viewport).toEqual(destinationViewport);
+    expect(getSnapshot().operations.b1).toEqual(destinationGeometry);
   });
 
   it("minimizes a second Theater's existing panels on first in-session view, surfacing only the selected panel", async () => {

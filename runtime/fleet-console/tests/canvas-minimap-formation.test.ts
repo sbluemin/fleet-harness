@@ -10,7 +10,13 @@ import { clearFormationView, clearMaximizedOperationId, getSnapshot, loadForThea
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
-  usePluginRegistry: () => ({ plugins: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }),
+  usePluginRegistry: () => ({
+    plugins: [],
+    operationKinds: [{ pluginId: "test-plugin", type: "shell", title: "Test", render: ({ operationId }: { readonly operationId: string }) => createElement("div", { "data-plugin-operation": operationId }) }],
+    settingsSections: [],
+    notificationKinds: [],
+    railPanels: [],
+  }),
 }));
 
 let root: Root | null = null;
@@ -51,7 +57,10 @@ beforeEach(() => {
   clearMaximizedOperationId();
   setState({
     viewport: { x: 0, y: 0, zoom: 1 },
-    operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },
+    operations: {
+      operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
+      peer: { x: 360, y: 40, width: 320, height: 200, zIndex: 2 },
+    },
   });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -156,6 +165,61 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
   });
 
+  it("keeps peer frames mounted with geometry but visually and interactively absent in the focus layer", () => {
+    renderOperationsCanvas();
+    const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
+    const peerIdentity = document.querySelector<HTMLButtonElement>('[aria-label="Rename operation Peer"]');
+    expect(peer).not.toBeNull();
+    expect(peerIdentity).not.toBeNull();
+    expect(peer?.hidden).toBe(false);
+    peerIdentity?.focus();
+    expect(document.activeElement).toBe(peerIdentity);
+
+    act(() => {
+      toggleFormationView();
+      setMaximizedOperationId("operation");
+    });
+
+    expect(document.querySelector('[aria-label="Operation Peer"]')).toBe(peer);
+    expect(peer?.hidden).toBe(false);
+    expect(getComputedStyle(peer!).visibility).toBe("hidden");
+    expect(getComputedStyle(peer!).pointerEvents).toBe("none");
+    expect(Number.parseFloat(getComputedStyle(peer!).width)).toBeGreaterThan(0);
+    expect(Number.parseFloat(getComputedStyle(peer!).height)).toBeGreaterThan(0);
+    expect(peer?.getAttribute("aria-hidden")).toBe("true");
+    expect(peer?.hasAttribute("inert")).toBe(true);
+    const focusedFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
+    expect(focusedFrame?.hidden).toBe(false);
+    expect(document.activeElement).toBe(focusedFrame);
+    expect(getSnapshot().minimized).toEqual([]);
+
+    act(() => clearMaximizedOperationId());
+
+    expect(peer?.hidden).toBe(false);
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("closes a hidden peer's portaled accent menu and transfers its menu focus", () => {
+    renderOperationsCanvas();
+    const peerAccent = document.querySelector<HTMLButtonElement>('[aria-label="Set accent for operation Peer"]');
+    expect(peerAccent).not.toBeNull();
+
+    act(() => peerAccent!.click());
+
+    const menuItem = document.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    expect(menuItem).not.toBeNull();
+    menuItem?.focus();
+    expect(document.activeElement).toBe(menuItem);
+
+    act(() => setMaximizedOperationId("operation"));
+
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.querySelector(".accent-popover-overlay")).toBeNull();
+    const focusedFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
+    expect(document.activeElement).toBe(focusedFrame);
+    expect(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')?.contains(document.activeElement)).toBe(false);
+  });
+
   it("moves the canvas viewport when the mounted minimap receives pointer navigation", () => {
     renderOperationsCanvas();
     const inner = document.querySelector<HTMLDivElement>(".canvas-minimap-inner");
@@ -186,6 +250,13 @@ const OPERATION: OperationNode = {
   ts: { createdAt: 0, updatedAt: 0 },
 };
 
+const PEER_OPERATION: OperationNode = {
+  ...OPERATION,
+  id: "peer",
+  title: "Peer",
+  geometry: { x: 360, y: 40, width: 320, height: 200, zIndex: 2 },
+};
+
 const CANVAS_STATE: ConsoleState = {
   connection: "connecting",
   connectionError: null,
@@ -198,7 +269,7 @@ const CANVAS_STATE: ConsoleState = {
   effectivePort: 0,
   portHonored: true,
   theaters: [],
-  operations: [OPERATION],
+  operations: [OPERATION, PEER_OPERATION],
   operationsHydrated: true,
   groups: [],
   activeTheaterId: "minimap-boundary",

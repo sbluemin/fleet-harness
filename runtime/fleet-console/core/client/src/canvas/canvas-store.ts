@@ -452,9 +452,10 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
 }
 
 export function setMaximizedOperationId(operationId: string): void {
-  clearFormationView();
   if (activeTheaterId) maximizedOperationIdsByTheater.set(activeTheaterId, operationId);
-  const minimized = minimizedForMaximizedOperation(operationId);
+  // 최대화는 underlay(Map 또는 Formation)를 바꾸지 않는 렌더 전용 포커스 레이어다.
+  // 대상만 실제 최소화 목록에서 꺼내 보이게 하고, peer의 실제 최소화 상태는 그대로 둔다.
+  const minimized = state.minimized.filter((sessionId) => sessionId !== operationId);
   const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
   const maximizedChanged = maximizedOperationId !== operationId;
   if (maximizedChanged) maximizedOperationId = operationId;
@@ -565,10 +566,6 @@ function saveMaximizedOperationForActiveTheater(): void {
   } else {
     maximizedOperationIdsByTheater.delete(activeTheaterId);
   }
-}
-
-function minimizedForMaximizedOperation(operationId: string): readonly string[] {
-  return Object.keys(state.operations).filter((sessionId) => sessionId !== operationId);
 }
 
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {

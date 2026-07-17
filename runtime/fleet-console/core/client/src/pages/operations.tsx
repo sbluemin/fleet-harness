@@ -86,14 +86,14 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const currentId = maximizedRef.current ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, event.key === "ArrowRight" ? 1 : -1);
       if (!nextId) return;
-      if (formationRef.current) {
-        restoreOperation(nextId);
-        setActiveOperation(nextId);
-        return;
-      }
       if (maximizedRef.current) {
         setActiveOperation(nextId);
         setMaximizedOperationId(nextId);
+        return;
+      }
+      if (formationRef.current) {
+        restoreOperation(nextId);
+        setActiveOperation(nextId);
         return;
       }
       focusOperation(nextId);
@@ -121,12 +121,6 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
   useEffect(() => {
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
-    if (formationView) {
-      restoreOperation(operationId);
-      setActiveOperation(operationId);
-      consumeOperationFocus();
-      return;
-    }
     // 최대화 뷰 유지: theater 전환 effect(loadForTheater, 위쪽 effect)가 먼저 실행되어
     // 도착 Theater의 최대화 상태를 복원한 뒤이므로, 여기서 getMaximizedOperationId()는 도착 Theater 기준값이다.
     // 최대화 중이면 최대화 대상만 목적지 op로 교체한다 — handleFocus·Alt+←/→와 동일 정책.
@@ -135,11 +129,17 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       consumeOperationFocus();
       return;
     }
+    if (getFormationView()) {
+      restoreOperation(operationId);
+      setActiveOperation(operationId);
+      consumeOperationFocus();
+      return;
+    }
     clearMaximizedOperationId();
     const viewportSize = viewportSizeFor(bodyRef.current);
     if (viewportSize) focusCanvasOperation(operationId, viewportSize);
     consumeOperationFocus();
-  }, [formationView, state.pendingOperationFocus]);
+  }, [state.pendingOperationFocus]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -177,17 +177,17 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       focusOperation(operationId);
       return;
     }
+    // 포커스 레이어가 활성화되어 있으면 같은 대상도 이 경로에서 끝낸다. 대상이 바뀔 때만 레이어를 전환한다.
+    // Alt+←/→ 순환(operations.tsx:73-76)과 동일 정책. getMaximizedOperationId()는 store 스냅샷에서 live로 읽으므로 [] deps 유지 가능.
+    const currentMaximized = getMaximizedOperationId();
+    if (currentMaximized !== null) {
+      setActiveOperation(operationId);
+      if (currentMaximized !== operationId) setMaximizedOperationId(operationId);
+      return;
+    }
     if (getFormationView()) {
       restoreOperation(operationId);
       setActiveOperation(operationId);
-      return;
-    }
-    // 최대화 중인 패널이 있고 클릭 대상이 다른 op면 최대화 패널을 전환하고 끝낸다.
-    // Alt+←/→ 순환(operations.tsx:73-76)과 동일 정책. getMaximizedOperationId()는 store 스냅샷에서 live로 읽으므로 [] deps 유지 가능.
-    const currentMaximized = getMaximizedOperationId();
-    if (currentMaximized !== null && currentMaximized !== operationId) {
-      setActiveOperation(operationId);
-      setMaximizedOperationId(operationId);
       return;
     }
     const snapshot = getCanvasSnapshot();
@@ -428,7 +428,7 @@ async function launchViaPlugin(
   if (!newOperationId) return;
   // 최대화 패널이 떠 있는 상태에서 새 Operation을 만들면 최대화를 유지하고 새 패널을 최대화 대상으로 승계한다.
   // focusOperation은 pendingOperationFocus 경로로 clearMaximizedOperationId를 부르므로(최대화 해제), 최대화 중에는 호출하지 않는다.
-  // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, setMaximizedOperationId가 나머지 패널을 최소화해 새 패널만 전면화한다.
+  // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, 새 패널로 렌더 전용 포커스 레이어를 승계한다.
   //
   // 단, 비동기 launch 동안 사용자가 다른 Theater로 전환했을 수 있다. getMaximizedOperationId/setMaximizedOperationId는
   // canvas 스토어가 로드한 Theater 기준으로 동작하므로, 그 로드된 Theater가 launch 시점 Theater와 같을 때만 승계해야 한다.
@@ -437,7 +437,7 @@ async function launchViaPlugin(
   // 갱신되어, A→B→A 왕복 시 store는 A인데 canvas는 아직 B인 desync 창이 생기기 때문이다.
   const stillOnLaunchTheater = getLoadedTheaterId() === theaterId;
   // fetchOperations 실패(.catch)로 hydrate가 누락되면 store에 newOperationId가 없다. 이때 승계하면
-  // setMaximizedOperationId가 기존 패널을 전부 최소화하지만 새 id는 캔버스에 없어 빈 화면이 박제된다.
+  // 존재하지 않는 포커스 대상을 가리켜 빈 화면이 박제된다.
   // hydrate된 경우에만 승계하고, 아니면 focusOperation(op 부재 시 안전하게 no-op)으로 기존 최대화 패널을 그대로 둔다.
   const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
   if (stillOnLaunchTheater && operationHydrated && getMaximizedOperationId() !== null) {
