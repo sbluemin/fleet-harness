@@ -165,7 +165,7 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
   });
 
-  it("keeps peer frames mounted but non-rendered and moves focus into the focus layer", () => {
+  it("keeps peer frames mounted with geometry but visually and interactively absent in the focus layer", () => {
     renderOperationsCanvas();
     const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
     const peerIdentity = document.querySelector<HTMLButtonElement>('[aria-label="Rename operation Peer"]');
@@ -181,8 +181,12 @@ describe("CanvasMinimap collapse behavior", () => {
     });
 
     expect(document.querySelector('[aria-label="Operation Peer"]')).toBe(peer);
-    expect(peer?.hidden).toBe(true);
-    expect(getComputedStyle(peer!).display).toBe("none");
+    expect(peer?.hidden).toBe(false);
+    expect(getComputedStyle(peer!).visibility).toBe("hidden");
+    expect(getComputedStyle(peer!).pointerEvents).toBe("none");
+    expect(Number.parseFloat(getComputedStyle(peer!).width)).toBeGreaterThan(0);
+    expect(Number.parseFloat(getComputedStyle(peer!).height)).toBeGreaterThan(0);
+    expect(peer?.getAttribute("aria-hidden")).toBe("true");
     expect(peer?.hasAttribute("inert")).toBe(true);
     const focusedFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
     expect(focusedFrame?.hidden).toBe(false);

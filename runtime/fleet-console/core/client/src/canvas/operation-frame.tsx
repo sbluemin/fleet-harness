@@ -273,7 +273,8 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     width: Math.round(geometry.width),
     height: Math.round(geometry.height),
     zIndex: geometry.zIndex,
-    ...(renderHidden ? { display: "none" } : {}),
+    // Focus Layer peer는 xterm ResizeObserver가 기존 컨테이너 크기를 계속 보게 레이아웃을 보존한다.
+    ...(renderHidden ? { visibility: "hidden", pointerEvents: "none" } : {}),
     ...(accentColor ? { "--user-accent": accentColor } : {}),
   } as CSSProperties;
 
@@ -286,8 +287,8 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       data-canvas-operation
       data-focus-layer-target={focusLayerTarget ? "true" : undefined}
       aria-label={`Operation ${displayTitle}`}
+      aria-hidden={renderHidden || undefined}
       tabIndex={focusLayerTarget ? -1 : undefined}
-      hidden={renderHidden || undefined}
       inert={minimized || renderHidden ? true : undefined}
     >
       {!maximized && !interactionDisabled ? (
