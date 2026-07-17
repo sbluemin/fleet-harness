@@ -4,7 +4,7 @@ import { createRuntimePairing, parsePairingTarget, verifyPairingTarget } from ".
 
 describe("runtime pairing", () => {
   it("accepts only a canonical literal loopback address and validates the frozen identity without redirects", async () => {
-    expect(parsePairingTarget("127.0.0.1:4310").origin).toBe("http://127.0.0.1:4310");
+    expect(parsePairingTarget("127.0.0.1:4310")).toEqual({ kind: "loopback", origin: "http://127.0.0.1:4310" });
     for (const input of ["localhost:4310", "127.0.0.1:04310", "127.0.0.1:0", "127.0.0.1:65536", "http://127.0.0.1:4310"]) {
       expect(() => parsePairingTarget(input)).toThrow("pairing_target_invalid");
     }
@@ -97,6 +97,27 @@ describe("runtime pairing", () => {
     resolvePrompt?.("127.0.0.1:4310");
     await Promise.all([first, second]);
     expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:4310/console/");
+  });
+
+  it("commits a verified SSH candidate before replacing the prior remote session and remembers only that commit", async () => {
+    const order: string[] = [];
+    const candidate = { target: { value: "devbox", user: null, host: "devbox" }, origin: "http://127.0.0.1:4310", commit: vi.fn(() => { order.push("candidate-commit"); }), rollback: vi.fn(async () => { order.push("candidate-rollback"); }), dispose: vi.fn(async () => { order.push("candidate-dispose"); }) };
+    const store = { load: vi.fn(() => null), save: vi.fn(() => order.push("save")) };
+    const pairing = createRuntimePairing({ notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), lastTargetStore: store, connectRemote: vi.fn(async () => candidate), fetch: async () => identityResponse() });
+    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(() => order.push("stage")), commitConsoleOrigin: vi.fn(() => order.push("policy-commit")), cancelPendingConsoleOrigin: vi.fn() };
+    await pairing.switchTo("ssh:devbox", runtimeWindow(async () => { order.push("load"); }) as never, policy);
+    await pairing.switchTo("127.0.0.1:4310", runtimeWindow(async () => { order.push("local-load"); }) as never, policy);
+    expect(order).toEqual(["stage", "load", "policy-commit", "candidate-commit", "save", "stage", "local-load", "policy-commit", "candidate-dispose"]);
+    expect(candidate.rollback).not.toHaveBeenCalled();
+  });
+
+  it("rolls back only the SSH candidate when pairing verification fails and does not persist it", async () => {
+    const candidate = { target: { value: "devbox", user: null, host: "devbox" }, origin: "http://127.0.0.1:4310", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
+    const store = { load: vi.fn(() => null), save: vi.fn() };
+    const pairing = createRuntimePairing({ notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), lastTargetStore: store, connectRemote: async () => candidate, fetch: async () => responseAtIdentity("{}") });
+    await pairing.switchTo("ssh:devbox", runtimeWindow(async () => undefined) as never, { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() });
+    expect(candidate.rollback).toHaveBeenCalledOnce();
+    expect(store.save).not.toHaveBeenCalled();
   });
 
   it("does not prompt a destroyed parent window", async () => {

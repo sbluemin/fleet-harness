@@ -53,12 +53,13 @@ export function parseRemoteConsoleLock(contents: string): RemoteConsoleLock {
   const value: unknown = JSON.parse(contents);
   if (!isRecord(value)) throw new Error("remote_lock_invalid");
   const { pid, host, port, endpoint, token, version, owner } = value;
-  if (!Number.isSafeInteger(pid) || pid <= 0 || typeof host !== "string" || host.length === 0 || typeof port !== "number" || !Number.isSafeInteger(port) || port < 1 || port > 65535 || typeof endpoint !== "string" || typeof token !== "string" || token.length === 0 || token.length > 4096 || /[\u0000-\u001f\u007f]/u.test(token) || typeof version !== "string" || version.length === 0 || version.length > 256 || (owner !== undefined && !isOwner(owner))) throw new Error("remote_lock_invalid");
+  if (!isPositiveSafeInteger(pid) || typeof host !== "string" || host.length === 0 || !isPositiveSafeInteger(port) || port > 65535 || typeof endpoint !== "string" || typeof token !== "string" || token.length === 0 || token.length > 4096 || /[\u0000-\u001f\u007f]/u.test(token) || typeof version !== "string" || version.length === 0 || version.length > 256 || (owner !== undefined && !isOwner(owner))) throw new Error("remote_lock_invalid");
   const parsed = new URL(endpoint);
   if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1" || Number(parsed.port) !== port || parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) throw new Error("remote_lock_invalid_endpoint");
   return { pid, host, port, endpoint, token, version, ...(owner === undefined ? {} : { owner }) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null; }
-function isOwner(value: unknown): value is ConsoleOwnerMetadata { return isRecord(value) && (value.kind === "desktop" || value.kind === "cli") && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 256 && Number.isSafeInteger(value.protocolVersion) && value.protocolVersion > 0; }
+function isPositiveSafeInteger(value: unknown): value is number { return typeof value === "number" && Number.isSafeInteger(value) && value > 0; }
+function isOwner(value: unknown): value is ConsoleOwnerMetadata { return isRecord(value) && (value.kind === "desktop" || value.kind === "cli") && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 256 && isPositiveSafeInteger(value.protocolVersion); }
 function isSshFailure(error: unknown): boolean { return error instanceof RemoteRuntimeError ? error.code === "ssh_failed" : isRecord(error) && error.code === "ssh_failed"; }

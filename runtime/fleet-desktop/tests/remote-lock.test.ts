@@ -2,13 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { inspectRemoteLock, parseRemoteConsoleLock } from "../src/runtime/remote/lock.js";
 import { parseSshTarget } from "../src/runtime/remote/target.js";
+import type { OpenSshAdapter } from "../src/runtime/remote/ssh.js";
 
 const target = parseSshTarget("host");
 const owner = { id: "9b77d0ec-a591-4a47-8d87-76b1074a0571", version: "0.3.1" };
 const lock = (extra = {}) => JSON.stringify({ pid: 42, host: "remote", port: 4310, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "0.3.1", owner: { kind: "desktop", id: owner.id, protocolVersion: 1 }, ...extra });
 
-function adapter(probeResults: readonly boolean[], contents = lock()) {
-  return { probe: vi.fn(async () => ({ ok: probeResults.shift?.() ?? true, exitCode: 0 })), run: vi.fn(async () => ({ stdout: contents, stderr: "", exitCode: 0 })) } as never;
+function adapter(probeResults: boolean[], contents = lock()) {
+  const probe = vi.fn<OpenSshAdapter["probe"]>(async () => ({ ok: probeResults.shift() ?? true, exitCode: 0 }));
+  const run = vi.fn<OpenSshAdapter["run"]>(async () => ({ stdout: contents, stderr: "", exitCode: 0 }));
+  const open = vi.fn<OpenSshAdapter["open"]>(async () => { throw new Error("not used"); });
+  return { executable: "ssh", probe, run, open };
 }
 
 describe("remote lock inspection", () => {
@@ -24,7 +28,10 @@ describe("remote lock inspection", () => {
     await expect(inspectRemoteLock(adapter([true, true], lock({ owner: { kind: "cli", id: "cli", protocolVersion: 1 } })), target, owner)).resolves.toMatchObject({ kind: "remote_console_lock_conflict" });
   });
   it("preserves a probe/read TOCTOU as conflict and bounds malformed locks", async () => {
-    const ssh = { probe: vi.fn(async () => ({ ok: true, exitCode: 0 })), run: vi.fn(async () => { throw Object.assign(new Error("ssh_failed"), { code: "ssh_failed" }); }) } as never;
+    const probe = vi.fn<OpenSshAdapter["probe"]>(async () => ({ ok: true, exitCode: 0 }));
+    const run = vi.fn<OpenSshAdapter["run"]>(async () => { throw Object.assign(new Error("ssh_failed"), { code: "ssh_failed" }); });
+    const open = vi.fn<OpenSshAdapter["open"]>(async () => { throw new Error("not used"); });
+    const ssh = { executable: "ssh", probe, run, open };
     await expect(inspectRemoteLock(ssh, target, owner)).resolves.toEqual({ kind: "remote_console_lock_conflict" });
     expect(() => parseRemoteConsoleLock("x".repeat(64 * 1024 + 1))).toThrow("remote_lock_too_large");
     expect(() => parseRemoteConsoleLock(lock({ endpoint: "http://localhost:4310/" }))).toThrow();

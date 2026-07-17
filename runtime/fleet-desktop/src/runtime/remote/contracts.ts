@@ -12,7 +12,7 @@ export type RemoteRuntimeFailureCode =
 
 /** User-facing code branches on `code`, never on stderr or Error.message. */
 export class RemoteRuntimeError extends Error {
-  constructor(readonly code: RemoteRuntimeFailureCode, message = code, options?: ErrorOptions) {
+  constructor(readonly code: RemoteRuntimeFailureCode, message: string = code, options?: ErrorOptions) {
     super(message, options);
     this.name = "RemoteRuntimeError";
   }
