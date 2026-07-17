@@ -30,6 +30,10 @@ describe("remote lock inspection", () => {
   it("keeps this Desktop's older Console distinct from another Desktop", async () => {
     await expect(inspectRemoteLock(adapter([true, true]), target, { ...owner, serviceVersion: "1.0.0" })).resolves.toMatchObject({ kind: "same_owner_version_mismatch" });
   });
+  it("reuses a live same-owner Desktop lock without a registry version only when explicitly requested", async () => {
+    await expect(inspectRemoteLock(adapter([true, true]), target, { id: owner.id }, { versionAgnostic: true })).resolves.toMatchObject({ kind: "same_owner" });
+    await expect(inspectRemoteLock(adapter([true, true], lock({ owner: { kind: "desktop", id: "other", protocolVersion: 1 } })), target, { id: owner.id }, { versionAgnostic: true })).resolves.toMatchObject({ kind: "remote_console_owned_elsewhere" });
+  });
   it("preserves a probe/read TOCTOU as conflict and bounds malformed locks", async () => {
     const probe = vi.fn<OpenSshAdapter["probe"]>(async () => ({ ok: true, exitCode: 0 }));
     const run = vi.fn<OpenSshAdapter["run"]>(async () => { throw Object.assign(new Error("ssh_failed"), { code: "ssh_failed" }); });

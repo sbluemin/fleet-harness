@@ -54,11 +54,57 @@ describe("managed remote orchestrator", () => {
     expect(seams.start).not.toHaveBeenCalled();
   });
 
+  it("reuses a live same-owner runtime while the registry is offline without stopping it", async () => {
+    seams.inspect.mockResolvedValue({ kind: "same_owner", lock });
+    seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
+    seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
+    const registry = { check: vi.fn(async () => ({ latest: null, shouldNotify: false, unavailable: true })) };
+    await connectManagedRemote("devbox", dependencies({ registry }));
+    expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId }, { versionAgnostic: true });
+    expect(seams.provision).not.toHaveBeenCalled();
+    expect(seams.start).not.toHaveBeenCalled();
+    expect(seams.stop).not.toHaveBeenCalled();
+  });
+
   it("refuses foreign desktop locks before any mutable operation", async () => {
     seams.inspect.mockResolvedValue({ kind: "remote_console_owned_elsewhere", lock });
     await expect(connectManagedRemote("devbox", dependencies())).rejects.toThrow("remote_console_owned_elsewhere");
     expect(seams.provision).not.toHaveBeenCalled();
     expect(seams.open).not.toHaveBeenCalled();
+  });
+
+  it("refuses a foreign Desktop lock while the registry is offline", async () => {
+    seams.inspect.mockResolvedValue({ kind: "remote_console_owned_elsewhere", lock });
+    const registry = { check: vi.fn(async () => ({ latest: null, shouldNotify: false, unavailable: true })) };
+    await expect(connectManagedRemote("devbox", dependencies({ registry }))).rejects.toThrow("remote_console_owned_elsewhere");
+    expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId }, { versionAgnostic: true });
+    expect(seams.provision).not.toHaveBeenCalled();
+    expect(seams.open).not.toHaveBeenCalled();
+  });
+
+  it("provisions after a stale lock while the registry is offline", async () => {
+    seams.inspect.mockResolvedValue({ kind: "stale" });
+    seams.provision.mockResolvedValue(runtime());
+    seams.start.mockResolvedValue(lock);
+    seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
+    seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
+    const registry = { check: vi.fn(async () => ({ latest: null, shouldNotify: false, unavailable: true })) };
+    await connectManagedRemote("devbox", dependencies({ registry }));
+    expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId }, { versionAgnostic: true });
+    expect(seams.provision).toHaveBeenCalledOnce();
+    expect(seams.start).toHaveBeenCalledOnce();
+  });
+
+  it("preserves online version-mismatch replacement behavior", async () => {
+    seams.inspect.mockResolvedValue({ kind: "same_owner_version_mismatch", lock });
+    seams.provision.mockResolvedValue(runtime());
+    seams.start.mockResolvedValue(lock);
+    seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
+    seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
+    await connectManagedRemote("devbox", dependencies({ registry: { check: async () => ({ latest: "0.3.1", shouldNotify: false }) } }));
+    expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId, serviceVersion: "0.3.1" }, undefined);
+    expect(seams.stop).toHaveBeenCalledWith(expect.anything(), expect.anything(), lock, { id: ownerId, serviceVersion: "0.3.1" });
+    expect(seams.provision).toHaveBeenCalledOnce();
   });
 
   it("uses the provisioned Console version for readiness ownership", async () => {

@@ -41,8 +41,9 @@ export async function connectManagedRemote(input: string, dependencies: ManagedR
   const target = parseSshTarget(input);
   emit("connecting");
   const earlyUpdate = await dependencies.registry.check("");
-  const expectedEarlyOwner = ownerFor(dependencies.ownerId, earlyUpdate.latest);
-  let lock = expectedEarlyOwner ? await inspectRemoteLock(dependencies.ssh, target, expectedEarlyOwner) : { kind: "absent" } as const;
+  const offline = earlyUpdate.latest === null;
+  const expectedEarlyOwner: RemoteLockOwner = offline ? { id: dependencies.ownerId } : ownerFor(dependencies.ownerId, earlyUpdate.latest)!;
+  let lock = await inspectRemoteLock(dependencies.ssh, target, expectedEarlyOwner, offline ? { versionAgnostic: true } : undefined);
   if (lock.kind === "remote_console_owned_elsewhere" || lock.kind === "remote_console_lock_conflict") throw new Error(lock.kind);
 
   let created = false;

@@ -24,12 +24,14 @@ export type RemoteLockClassification =
 
 export interface RemoteLockOwner {
   readonly id: string;
-  /** Installed Console service version, never FLEET_CONSOLE_DESKTOP_VERSION. */
-  readonly serviceVersion: string;
+  /** Installed Console service version, never FLEET_CONSOLE_DESKTOP_VERSION. Omitted only for an offline version-agnostic inspection. */
+  readonly serviceVersion?: string;
 }
 
+export interface RemoteLockInspectionOptions { readonly versionAgnostic?: boolean; }
+
 /** Inspect only: this never removes a lock or signals a remote pid. */
-export async function inspectRemoteLock(adapter: OpenSshAdapter, target: ValidatedSshTarget, expectedOwner: RemoteLockOwner): Promise<RemoteLockClassification> {
+export async function inspectRemoteLock(adapter: OpenSshAdapter, target: ValidatedSshTarget, expectedOwner: RemoteLockOwner, options: RemoteLockInspectionOptions = {}): Promise<RemoteLockClassification> {
   const exists = await adapter.probe(target, { operation: "probe_path", args: [".fleet/console/console.lock"] });
   if (!exists.ok) return { kind: "absent" };
   let contents: string;
@@ -45,8 +47,10 @@ export async function inspectRemoteLock(adapter: OpenSshAdapter, target: Validat
   try { lock = parseRemoteConsoleLock(contents); } catch { return { kind: "remote_console_lock_conflict" }; }
   const alive = await adapter.probe(target, { operation: "check_process", args: [String(lock.pid)] });
   if (!alive.ok) return { kind: "stale" };
-  if (isCompatibleDesktopOwner(lock.owner, lock.version, { id: expectedOwner.id, version: expectedOwner.serviceVersion })) return { kind: "same_owner", lock };
-  if (lock.owner?.kind === "desktop" && lock.owner.id === expectedOwner.id && lock.owner.protocolVersion === DESKTOP_PROTOCOL_VERSION) return { kind: "same_owner_version_mismatch", lock };
+  const isSameDesktop = lock.owner?.kind === "desktop" && lock.owner.id === expectedOwner.id && lock.owner.protocolVersion === DESKTOP_PROTOCOL_VERSION;
+  if (options.versionAgnostic && isSameDesktop) return { kind: "same_owner", lock };
+  if (expectedOwner.serviceVersion !== undefined && isCompatibleDesktopOwner(lock.owner, lock.version, { id: expectedOwner.id, version: expectedOwner.serviceVersion })) return { kind: "same_owner", lock };
+  if (isSameDesktop) return { kind: "same_owner_version_mismatch", lock };
   if (lock.owner?.kind === "desktop") return { kind: "remote_console_owned_elsewhere", lock };
   return { kind: "remote_console_lock_conflict", lock };
 }
