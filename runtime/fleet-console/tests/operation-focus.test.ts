@@ -69,4 +69,22 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(nextOperationId(order, "group-1-visible", -1)).toBe("ungrouped-visible");
   });
 
+  it("falls back to SideBar order when every visible operation is minimized", () => {
+    const order = focusCycleOperationIds(
+      [
+        makeOperation("grouped", "group", 1),
+        makeOperation("collapsed", "collapsed", 2),
+        makeOperation("ungrouped", null, 3),
+      ],
+      [makeGroup("group", 1), makeGroup("collapsed", 2)],
+      ["grouped", "collapsed", "ungrouped"],
+      ["collapsed"],
+      ["grouped", "collapsed", "ungrouped"],
+    );
+
+    expect(order).toEqual(["grouped", "ungrouped"]);
+    expect(nextOperationId(order, null, 1)).toBe("grouped");
+    expect(nextOperationId(order, null, -1)).toBe("ungrouped");
+  });
+
 });

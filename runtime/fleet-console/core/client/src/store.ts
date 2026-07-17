@@ -366,7 +366,8 @@ export function flattenGroupedOrder(
   ];
 }
 
-// Alt+←/→는 SideBar 가시 순서를 따르되, 캔버스에서 최소화된 Operation은 순환 대상에서 제외한다.
+// Alt+←/→는 비최소화 Operation을 우선 순환한다. 단, 부팅 직후처럼 모두 최소화되어 후보가 없으면
+// SideBar 가시 순서로 폴백해 탐색 방향 끝의 Operation을 다시 표면화할 수 있게 한다.
 export function focusCycleOperationIds(
   operations: readonly OperationNode[],
   groups: readonly OperationGroup[],
@@ -375,9 +376,9 @@ export function focusCycleOperationIds(
   minimized: readonly string[],
 ): readonly string[] {
   const minimizedIds = new Set(minimized);
-  return flattenGroupedOrder(operations, groups, operationOrder, collapsedGroups)
-    .filter((operation) => !minimizedIds.has(operation.id))
-    .map((operation) => operation.id);
+  const visibleOperations = flattenGroupedOrder(operations, groups, operationOrder, collapsedGroups);
+  const focusableOperations = visibleOperations.filter((operation) => !minimizedIds.has(operation.id));
+  return (focusableOperations.length > 0 ? focusableOperations : visibleOperations).map((operation) => operation.id);
 }
 
 export function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
