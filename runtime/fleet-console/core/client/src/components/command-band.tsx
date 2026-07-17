@@ -57,7 +57,20 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
+  // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
+  // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
+  const discardEnvironmentState = () => {
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(false);
+    setCopiedValue(null);
+    setCopyFailedValue(null);
+  };
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
+  // darwin Desktop은 traffic-light 인셋(88px)이 첫 트랙을 잠식해 전체 라벨이 사이드바 경계를 넘는다.
+  // Desktop 앱 안에서는 Desktop임이 자명하므로 칩은 "Local"로 축약하고, Desktop 구분은 팝오버의
+  // Desktop data 행이 유지한다(대원수 재가).
+  const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin" ? "Local" : "Local · Desktop";
   const canAutoHide = useCallback(() => {
     const activeElement = document.activeElement;
     const focusWithin = activeElement instanceof Node && (commandBandRef.current?.contains(activeElement) || edgeRevealRef.current?.contains(activeElement));
@@ -116,10 +129,12 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       const target = event.target;
       if (!(target instanceof Node) || environmentTriggerRef.current?.contains(target) || environmentPopoverRef.current?.contains(target)) return;
       setEnvironmentOpen(false);
+      discardEnvironmentState();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setEnvironmentOpen(false);
+      discardEnvironmentState();
       environmentTriggerRef.current?.focus();
     };
     document.addEventListener("pointerdown", closeOnPointer);
@@ -135,6 +150,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     setEnvironmentOpen(false);
     setEnvironment(null);
     setEnvironmentError(null);
+    setEnvironmentLoading(false);
     setCopiedValue(null);
     setCopyFailedValue(null);
   }, [state.channel]);
@@ -235,9 +251,9 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
         {state.channel === "local" ? <div className="command-band-environment">
-          <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => setEnvironmentOpen((open) => !open)}>
+          <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
           <span className="command-band-local-dot" aria-hidden="true" />
-          {desktopShell ? "Local · Desktop" : "Local"}
+          <span className="command-band-local-chip-label">{desktopShell ? desktopChipLabel : "Local"}</span>
           </button>
           {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}

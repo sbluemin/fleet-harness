@@ -149,6 +149,21 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   outline: none;
 }
 
+.command-band-local-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* macOS Desktop은 traffic-light 인셋(좌측 88px)이 첫 트랙 폭을 잠식하므로
+   local 칩을 컴팩트하게 줄여 사이드바 경계(280px) 침범을 막는다. */
+:root[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-local-chip {
+  gap: 4px;
+  padding-inline: 5px;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+
 .command-band-local-dot {
   width: 5px;
   height: 5px;

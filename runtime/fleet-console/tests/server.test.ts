@@ -97,7 +97,7 @@ describe("console terminal observability", () => {
       channel: "local",
       version: "test",
       effectivePort: fixture.lock.port,
-      dataDir: path.join(fixture.carrierStoreDir, "console-local"),
+      dataDir: path.join(fixture.carrierStoreDir, "console"),
       lockFile: fixture.lockFile,
     });
     expect((await fetch(url)).status).toBe(200);
