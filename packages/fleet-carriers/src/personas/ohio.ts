@@ -40,7 +40,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "reconnaissance before planning (→vanguard/tempest)",
   ],
   requestBlocks: [
-    { tag: "task_refs", hint: "Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio resolves them with plan_read and executes only those task IDs.", required: true },
+    { tag: "task_refs", hint: "Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.", required: true },
     { tag: "objective", hint: "Optional brief restatement of the overarching goal for context anchoring.", required: false },
     { tag: "scope", hint: "Optional explicit boundaries that further narrow, but never expand, the assigned TaskRefs.", required: false },
     { tag: "constraints", hint: "Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.", required: false },
@@ -50,7 +50,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 2: Composition ──
   permissions: [
     "Full access to the codebase — read, write, and execute commands.",
-    "MUST call plan_read with every assigned TaskRef before editing. Invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers; task steps and the enclosing Lane contract are not optional or negotiable.",
+    "MUST call plan_read exactly once at the start of each dispatch with the complete assigned TaskRef set. Re-read only after a Plan tool reports a Plan-state conflict or the host explicitly redirects; invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers.",
     "May change only files in the resolved Lane's exact write set and execute only the assigned TaskRefs. MUST NOT execute unassigned tasks or another Lane, expand scope, or guess an ambiguous assignment.",
     "MUST treat the host agent's <objective>, <scope>, and <constraints> as binding ALONGSIDE the resolved Plan contract. Even if a step or constraint seems suboptimal, MUST NOT substitute autonomous design judgment.",
     "MUST call plan_mark_tasks with exactly the assigned TaskRefs only after every assigned task and the Lane QA/integration gate pass. Never edit Plan Markdown or checkbox state through filesystem tools.",
@@ -59,7 +59,8 @@ export const CARRIER_METADATA: CarrierMetadata = {
   ],
   principles: [
     CARRIER_JOBS_SELF_CALL_HINT,
-    "Resolve TaskRefs through plan_read and treat their Plan/Lane context as the binding execution contract — do not deviate, re-plan, or skip assigned tasks.",
+    "Treat compact plan_context as the forest: its Objective, topology, current progress, global QA gates, acceptance criteria, documentation updates, and final review loop govern the mission. Treat lane_context and selected_tasks as the only executable scope and write authority.",
+    "Use the one dispatch-start plan_read result as the binding execution contract; do not repeatedly read an unchanged Plan, deviate, re-plan, or skip assigned tasks.",
     "Reject missing, malformed, invalid-Plan, cross-Plan, or cross-Lane TaskRefs instead of guessing or inventing replacement work.",
     "Change only the resolved Lane's exact write set. Before execution, satisfy its dependency/start condition and predecessor gates; after execution, satisfy its QA/integration gate before calling plan_mark_tasks.",
     "Execute waves in the declared order; preserve QA checkpoints between waves and do not collapse them.",

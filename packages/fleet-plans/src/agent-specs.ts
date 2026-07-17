@@ -1,6 +1,7 @@
 import type { AgentToolSpec, McpCallToolResult } from "@dotobokuri/core-agent";
 import { Type } from "typebox";
 
+import { buildPlanExecutionView } from "./execution-view.js";
 import { formatPlanRef, parseTaskRef } from "./references.js";
 import {
   markPlanTasksComplete,
@@ -52,8 +53,8 @@ function buildPlanReadSpec(deps: PlanToolSpecDeps): AgentToolSpec {
     id: "plan_read",
     tag: "plan_read",
     title: "Plan Read",
-    description: "Read and deterministically lint one workspace-scoped Fleet Plan, optionally resolving an assigned same-lane TaskRef set.",
-    promptSnippet: "Read PlanRef or TaskRefs through the Fleet Plan boundary; never reconstruct a data-dir file path.",
+    description: "Read and deterministically lint one workspace-scoped Fleet Plan. TaskRef selection returns a compact same-Lane execution view.",
+    promptSnippet: "Use plan_ref for the full Plan or task_refs for a compact execution view; both are allowed only when they identify the same Plan.",
     whenToUse: [
       "A structured Fleet Plan or assigned Ohio tasks must be inspected",
       "Plan validity, task identity, topology, or completion state is needed",
@@ -63,7 +64,8 @@ function buildPlanReadSpec(deps: PlanToolSpecDeps): AgentToolSpec {
       "Marking completed Ohio tasks — use plan_mark_tasks after the lane QA gate",
     ],
     usageGuidelines: [
-      "Provide exactly one plan_ref or a task_refs array, never both.",
+      "Provide at least one of plan_ref or task_refs. When both are present, they must identify the same Plan.",
+      "A plan_ref-only read returns the full Markdown; any task_refs read returns compact Plan-wide context, one Lane contract, and only the selected tasks.",
       "Treat valid=false as a blocking Plan contract failure; do not execute an invalid Plan.",
       "A task_refs read rejects cross-Plan or cross-Lane selections.",
     ],
@@ -77,19 +79,26 @@ function buildPlanReadSpec(deps: PlanToolSpecDeps): AgentToolSpec {
         const input = asRecord(args);
         const planRef = optionalString(input.plan_ref);
         const taskRefs = optionalStringArray(input.task_refs);
-        if ((planRef ? 1 : 0) + (taskRefs ? 1 : 0) !== 1) {
-          throw new Error("plan_read requires exactly one of plan_ref or task_refs");
+        if (!planRef && !taskRefs) {
+          throw new Error("plan_read requires at least one of plan_ref or task_refs");
         }
-        if (planRef) {
+        if (!taskRefs) {
+          if (!planRef) throw new Error("plan_read requires plan_ref when task_refs are absent");
           return toReadPayload(readPlanMarkdown(deps.dataDir, planRef));
         }
-        const references = taskRefs!.map(parseTaskRef);
+        const references = taskRefs.map(parseTaskRef);
         const first = references[0]!;
         if (references.some((reference) => reference.workspaceRef !== first.workspaceRef || reference.planId !== first.planId)) {
           throw new Error("All TaskRefs must belong to the same PlanRef");
         }
         const resolvedPlanRef = formatPlanRef(first.workspaceRef, first.planId);
+        if (planRef && planRef !== resolvedPlanRef) {
+          throw new Error(`plan_ref does not match task_refs PlanRef: ${planRef} !== ${resolvedPlanRef}`);
+        }
         const document = readPlanMarkdown(deps.dataDir, resolvedPlanRef);
+        if (!document.lint.valid) {
+          throw new Error(`Cannot resolve TaskRefs from invalid Plan: ${resolvedPlanRef}`);
+        }
         const byId = new Map(document.lint.tasks.map((task) => [task.id, task]));
         const assignedTasks = references.map((reference) => {
           const task = byId.get(reference.taskId);
@@ -101,9 +110,13 @@ function buildPlanReadSpec(deps: PlanToolSpecDeps): AgentToolSpec {
           throw new Error(`Assigned TaskRefs must belong to one Lane; found ${[...laneIds].join(", ")}`);
         }
         return {
-          ...toReadPayload(document),
-          assigned_lane: assignedTasks[0]!.laneId,
-          assigned_tasks: assignedTasks,
+          ok: true,
+          tool: "plan_read",
+          read_mode: "execution",
+          plan_ref: document.planRef,
+          valid: true,
+          diagnostics: document.lint.diagnostics,
+          ...buildPlanExecutionView(document, assignedTasks),
         };
       });
     },
@@ -238,6 +251,7 @@ function toReadPayload(document: PlanDocument) {
   return {
     ok: true,
     tool: "plan_read",
+    read_mode: "full",
     plan_ref: document.planRef,
     valid: document.lint.valid,
     diagnostics: document.lint.diagnostics,

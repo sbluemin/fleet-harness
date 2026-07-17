@@ -62,7 +62,7 @@ describe("carrier-operations skill asset", () => {
 
   it("exposes Kirov plan identity and Ohio TaskRef contracts", () => {
     expect(skillContent()).toContain("<plan_id> required: Required stable lowercase Plan identity.");
-    expect(skillContent()).toContain("<task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane.");
+    expect(skillContent()).toContain("<task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set");
     expect(skillContent()).not.toContain("<execution_scope");
   });
 });

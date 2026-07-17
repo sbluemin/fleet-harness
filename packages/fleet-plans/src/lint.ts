@@ -36,14 +36,57 @@ const TASK_PATTERN = /^\s+- \[([ xX])\] (W[1-9]\d*-[A-Z][A-Z0-9]*-T[1-9]\d*) —
 const MANIFEST_LANE_PATTERN = /^- Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — /;
 
 interface MutableLane {
+  dependencyStartConditions: string[];
   end: number;
+  eligibleConcurrentLaneIds: string[];
+  escalationTriggers: string[];
+  handoff: string[];
+  id: string;
+  integrationGate: string[];
+  name: string;
+  readDependencies: string[];
+  rollbackUnit: string[];
+  start: number;
+  taskIds: string[];
+  verificationStaticChecks: string[];
+  waveId: string;
+  writeSet: string[];
+}
+
+interface LaneStart {
   id: string;
   name: string;
   start: number;
-  taskIds: string[];
   waveId: string;
-  writeSet: string[];
-  concurrentLaneIds: string[];
+}
+
+export interface PlanExecutionLane {
+  readonly dependencyStartConditions: readonly string[];
+  readonly eligibleConcurrentLaneIds: readonly string[];
+  readonly escalationTriggers: readonly string[];
+  readonly handoff: readonly string[];
+  readonly id: string;
+  readonly integrationGate: readonly string[];
+  readonly name: string;
+  readonly readDependencies: readonly string[];
+  readonly rollbackUnit: readonly string[];
+  readonly verificationStaticChecks: readonly string[];
+  readonly waveId: string;
+  readonly writeSet: readonly string[];
+}
+
+export interface PlanExecutionSections {
+  readonly acceptanceCriteria: string;
+  readonly documentationUpdates: string;
+  readonly executionTopology: string;
+  readonly finalReviewLoop: string;
+  readonly objective: string;
+  readonly qaGates: string;
+}
+
+export interface PlanExecutionStructure {
+  readonly lanes: readonly PlanExecutionLane[];
+  readonly sections: PlanExecutionSections;
 }
 
 export function lintPlanMarkdown(markdown: string): PlanLintResult {
@@ -60,9 +103,19 @@ export function lintPlanMarkdown(markdown: string): PlanLintResult {
 
   return {
     diagnostics,
-    lanes: lanes.map(({ concurrentLaneIds: _concurrent, end: _end, start: _start, ...lane }) => lane),
+    lanes: lanes.map(toPlanLane),
     tasks,
     valid: diagnostics.every((diagnostic) => diagnostic.severity !== "error"),
+  };
+}
+
+export function extractPlanExecutionStructure(markdown: string): PlanExecutionStructure {
+  const lines = normalizeMarkdown(markdown).split("\n");
+  const diagnostics: PlanDiagnostic[] = [];
+  const headingLines = validateRequiredHeadings(lines, diagnostics);
+  return {
+    lanes: parseLanes(lines, diagnostics).map(toPlanExecutionLane),
+    sections: parsePlanSections(lines, headingLines),
   };
 }
 
@@ -113,11 +166,7 @@ function validateSectionBodies(
     const heading = REQUIRED_HEADINGS[index]!;
     const start = headingLines.get(heading);
     if (start === undefined) continue;
-    const laterStarts = REQUIRED_HEADINGS.slice(index + 1)
-      .map((candidate) => headingLines.get(candidate))
-      .filter((candidate): candidate is number => candidate !== undefined && candidate > start);
-    const end = laterStarts.length > 0 ? Math.min(...laterStarts) : lines.length;
-    const hasBody = lines.slice(start + 1, end)
+    const hasBody = sectionBodyLines(lines, headingLines, heading)
       .some((line) => line.trim().length > 0 && !line.trim().startsWith("<!--"));
     if (!hasBody) {
       addDiagnostic(diagnostics, "EMPTY_SECTION", `Required section is empty: ${heading}`, start);
@@ -141,7 +190,7 @@ function validateTopology(
     addDiagnostic(diagnostics, "SHARED_RESOURCES", "Execution Topology must declare exactly one non-empty shared mutable resources field");
   }
   const mode = modes.length === 1 ? modes[0]!.match[1] : undefined;
-  const concurrencyCount = lanes.reduce((count, lane) => count + lane.concurrentLaneIds.length, 0);
+  const concurrencyCount = lanes.reduce((count, lane) => count + lane.eligibleConcurrentLaneIds.length, 0);
   if (mode === "Sequential" && concurrencyCount > 0) {
     addDiagnostic(diagnostics, "SEQUENTIAL_CONCURRENCY", "Sequential execution cannot declare eligible concurrent lanes");
   }
@@ -152,7 +201,7 @@ function validateTopology(
 
 function parseLanes(lines: readonly string[], diagnostics: PlanDiagnostic[]): MutableLane[] {
   const waves = new Map<string, number>();
-  const laneStarts: Array<Omit<MutableLane, "end" | "taskIds" | "writeSet" | "concurrentLaneIds">> = [];
+  const laneStarts: LaneStart[] = [];
   let currentWaveId: string | undefined;
 
   for (let index = 0; index < lines.length; index++) {
@@ -204,11 +253,19 @@ function parseLanes(lines: readonly string[], diagnostics: PlanDiagnostic[]): Mu
     }
     return {
       ...lane,
-      concurrentLaneIds: parseFieldValues(body, "Eligible concurrent lanes")
+      dependencyStartConditions: parseFieldValues(body, "Dependency/start condition"),
+      eligibleConcurrentLaneIds: parseFieldValues(body, "Eligible concurrent lanes")
         .flatMap(splitCommaValues)
         .filter((value) => value.toLowerCase() !== "none"),
       end,
+      escalationTriggers: parseFieldValues(body, "Escalation triggers"),
+      handoff: parseFieldValues(body, "Handoff"),
+      integrationGate: parseFieldValues(body, "Integration gate"),
+      readDependencies: parseFieldValues(body, "Read dependencies")
+        .filter((value) => value !== "Not applicable"),
+      rollbackUnit: parseFieldValues(body, "Rollback unit"),
       taskIds: [],
+      verificationStaticChecks: parseFieldValues(body, "Verification/static checks"),
       writeSet: parseFieldValues(body, "Exact write set").filter((value) => value !== "Not applicable"),
     };
   });
@@ -294,13 +351,13 @@ function validateOwnership(lines: readonly string[], lanes: readonly MutableLane
 
 function validateLaneConcurrency(lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
   for (const lane of lanes) {
-    for (const concurrentId of lane.concurrentLaneIds) {
+    for (const concurrentId of lane.eligibleConcurrentLaneIds) {
       const peer = lanes.find((candidate) => candidate.id === concurrentId);
       if (!peer) {
         addDiagnostic(diagnostics, "UNKNOWN_CONCURRENT_LANE", `Lane ${lane.id} references unknown concurrent lane ${concurrentId}`);
         continue;
       }
-      if (!peer.concurrentLaneIds.includes(lane.id)) {
+      if (!peer.eligibleConcurrentLaneIds.includes(lane.id)) {
         addDiagnostic(diagnostics, "ASYMMETRIC_CONCURRENCY", `Concurrent lane declaration must be reciprocal: ${lane.id} and ${peer.id}`);
       }
       const overlaps = findWriteSetOverlaps(lane.writeSet, peer.writeSet);
@@ -313,6 +370,72 @@ function validateLaneConcurrency(lanes: readonly MutableLane[], diagnostics: Pla
       }
     }
   }
+}
+
+function toPlanLane(lane: MutableLane): PlanLane {
+  return {
+    id: lane.id,
+    name: lane.name,
+    taskIds: lane.taskIds,
+    waveId: lane.waveId,
+    writeSet: lane.writeSet,
+  };
+}
+
+function toPlanExecutionLane(lane: MutableLane): PlanExecutionLane {
+  return {
+    dependencyStartConditions: lane.dependencyStartConditions,
+    eligibleConcurrentLaneIds: lane.eligibleConcurrentLaneIds,
+    escalationTriggers: lane.escalationTriggers,
+    handoff: lane.handoff,
+    id: lane.id,
+    integrationGate: lane.integrationGate,
+    name: lane.name,
+    readDependencies: lane.readDependencies,
+    rollbackUnit: lane.rollbackUnit,
+    verificationStaticChecks: lane.verificationStaticChecks,
+    waveId: lane.waveId,
+    writeSet: lane.writeSet,
+  };
+}
+
+function parsePlanSections(
+  lines: readonly string[],
+  headingLines: ReadonlyMap<string, number>,
+): PlanExecutionSections {
+  return {
+    acceptanceCriteria: sectionBody(lines, headingLines, "# Acceptance Criteria"),
+    documentationUpdates: sectionBody(lines, headingLines, "# Documentation Updates"),
+    executionTopology: sectionBody(lines, headingLines, "# Execution Topology"),
+    finalReviewLoop: sectionBody(lines, headingLines, "# Final Review Loop"),
+    objective: sectionBody(lines, headingLines, "# Objective"),
+    qaGates: sectionBody(lines, headingLines, "# QA Gates"),
+  };
+}
+
+function sectionBody(
+  lines: readonly string[],
+  headingLines: ReadonlyMap<string, number>,
+  heading: (typeof REQUIRED_HEADINGS)[number],
+): string {
+  return sectionBodyLines(lines, headingLines, heading).join("\n").trim();
+}
+
+function sectionBodyLines(
+  lines: readonly string[],
+  headingLines: ReadonlyMap<string, number>,
+  heading: (typeof REQUIRED_HEADINGS)[number],
+): readonly string[] {
+  const start = headingLines.get(heading);
+  if (start === undefined) return [];
+  const headingIndex = REQUIRED_HEADINGS.indexOf(heading);
+  const laterStarts = REQUIRED_HEADINGS.slice(headingIndex + 1)
+    .map((candidate) => headingLines.get(candidate))
+    .filter((candidate): candidate is number => candidate !== undefined && candidate > start);
+  const end = laterStarts.length > 0
+    ? Math.min(...laterStarts)
+    : findNextTopLevelHeading(lines, start + 1);
+  return lines.slice(start + 1, end);
 }
 
 function findWriteSetOverlaps(left: readonly string[], right: readonly string[]): string[] {

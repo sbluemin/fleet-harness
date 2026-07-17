@@ -46,6 +46,8 @@ Put code here when it owns the host-agnostic one-shot executor/session/model run
 
 Put code here when it owns Fleet Plan schema validation, PlanRef/TaskRef identity, workspace-scoped Plan persistence, or the `plan_read`, `plan_write`, `plan_mark_tasks`, and `plan_verify` tool contracts. Generic cwd-to-workspace directory resolution remains in `packages/core-infra`.
 
+`plan_read` has two deterministic views. A `plan_ref`-only call returns the full linted Markdown for host or Kirov inspection. Any call with `task_refs` returns a compact execution view containing Plan-wide objective, topology, progress, global gates, and acceptance context; the selected Lane contract; and only the selected tasks. Supplying both inputs is valid only when they identify the same Plan. Ohio reads the complete assigned same-Lane TaskRef set once at dispatch start and re-reads only after a reported Plan-state conflict or explicit host redirection.
+
 ## 3. Import Rules
 
 - `fleet-cli` assembles concrete services through explicit leaf package calls.

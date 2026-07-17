@@ -199,12 +199,15 @@ describe("Kirov and Ohio TaskRef execution contract", () => {
   it("Ohio accepts exactly one Plan/Lane TaskRef group and marks it through the Plan tool", () => {
     expect(OHIO_METADATA.requestBlocks).toContainEqual({
       tag: "task_refs",
-      hint: "Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio resolves them with plan_read and executes only those task IDs.",
+      hint: "Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.",
       required: true,
     });
     expect(OHIO_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read", "plan_mark_tasks"]);
     expect(OHIO_METADATA.permissions).toContain(
-      "MUST call plan_read with every assigned TaskRef before editing. Invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers; task steps and the enclosing Lane contract are not optional or negotiable.",
+      "MUST call plan_read exactly once at the start of each dispatch with the complete assigned TaskRef set. Re-read only after a Plan tool reports a Plan-state conflict or the host explicitly redirects; invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers.",
+    );
+    expect(OHIO_METADATA.principles).toContain(
+      "Treat compact plan_context as the forest: its Objective, topology, current progress, global QA gates, acceptance criteria, documentation updates, and final review loop govern the mission. Treat lane_context and selected_tasks as the only executable scope and write authority.",
     );
     expect(OHIO_METADATA.permissions).toContain(
       "MUST call plan_mark_tasks with exactly the assigned TaskRefs only after every assigned task and the Lane QA/integration gate pass. Never edit Plan Markdown or checkbox state through filesystem tools.",
