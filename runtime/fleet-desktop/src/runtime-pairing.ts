@@ -150,13 +150,19 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
         pushRemoteSnapshot(snapshotForRemotePhase(remoteTarget, remotePhase, true));
         await entryPush;
       }
-      const localRestored = !remoteTarget || !localOrigin || window.isDestroyed() || await restoreLocalRuntime(window, policy, localOrigin, dependencies, () => {
-        const previousRemote = committedRemote;
-        committedRemote = null;
-        return disposeRemoteSession(previousRemote, dependencies);
-      });
+      const previousWasRemote = previousOrigin !== null && previousOrigin !== localOrigin;
+      let localRestored = true;
+      if (remoteTarget && previousOrigin && previousOrigin !== localOrigin && !window.isDestroyed()) {
+        await restorePreviousRemoteRuntime(window, policy, previousOrigin, previousUrl, dependencies);
+      } else if (remoteTarget && localOrigin && !window.isDestroyed()) {
+        localRestored = await restoreLocalRuntime(window, policy, localOrigin, dependencies, () => {
+          const previousRemote = committedRemote;
+          committedRemote = null;
+          return disposeRemoteSession(previousRemote, dependencies);
+        });
+      }
       logPairingFailure(dependencies, error);
-      if (remoteTarget && !localRestored) notifyLocalUnavailable(dependencies.notifier);
+      if (remoteTarget && !previousWasRemote && !localRestored) notifyLocalUnavailable(dependencies.notifier);
       else notifyFailure(dependencies.notifier, error);
       return;
     }
@@ -229,6 +235,18 @@ async function restoreLocalRuntime(window: RuntimePairingWindow, policy: WindowP
   } catch (restoreError) {
     policy.cancelPendingConsoleOrigin();
     dependencies.logger?.error(`managed runtime local restore failed code=${redactedCode(failureCode(restoreError))}`);
+    return false;
+  }
+}
+
+async function restorePreviousRemoteRuntime(window: RuntimePairingWindow, policy: WindowPolicy, previousOrigin: string, previousUrl: string, dependencies: RuntimePairingDependencies): Promise<boolean> {
+  try {
+    policy.activateConsoleOrigin(previousOrigin);
+    await window.loadURL(previousUrl);
+    if (window.isDestroyed()) throw new Error("pairing_window_destroyed");
+    return true;
+  } catch (restoreError) {
+    dependencies.logger?.error(`managed runtime remote restore failed code=${redactedCode(failureCode(restoreError))}`);
     return false;
   }
 }

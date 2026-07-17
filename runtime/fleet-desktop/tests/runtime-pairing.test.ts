@@ -149,22 +149,64 @@ describe("runtime pairing", () => {
     expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:4310/console/");
   });
 
-  it("commits a verified SSH candidate before replacing the prior remote session and remembers only that commit", async () => {
+  it("returns from a committed remote session to the local runtime and disposes that remote session", async () => {
     const order: string[] = [];
     const candidate = { target: { value: "devbox", user: null, host: "devbox" }, origin: "http://127.0.0.1:4310", commit: vi.fn(() => { order.push("candidate-commit"); }), rollback: vi.fn(async () => { order.push("candidate-rollback"); }), dispose: vi.fn(async () => { order.push("candidate-dispose"); }) };
     const store = { load: vi.fn(() => null), save: vi.fn(() => order.push("save")) };
-    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), lastTargetStore: store, connectRemote: vi.fn(async () => candidate), fetch: async () => identityResponse() });
-    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(() => order.push("stage")), commitConsoleOrigin: vi.fn(() => order.push("policy-commit")), cancelPendingConsoleOrigin: vi.fn() };
+    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), lastTargetStore: store, connectRemote: vi.fn(async () => candidate) });
+    let currentOrigin = "http://127.0.0.1:4000";
+    let pendingOrigin: string | null = null;
+    const policy = {
+      activateConsoleOrigin: vi.fn((origin: string) => { currentOrigin = origin; pendingOrigin = null; }),
+      currentConsoleOrigin: vi.fn(() => currentOrigin),
+      stageConsoleOrigin: vi.fn((origin: string) => { order.push("stage"); pendingOrigin = origin; }),
+      commitConsoleOrigin: vi.fn(() => { order.push("policy-commit"); currentOrigin = pendingOrigin!; pendingOrigin = null; }),
+      cancelPendingConsoleOrigin: vi.fn(),
+    };
     await pairing.switchTo("ssh:devbox", runtimeWindow(async () => { order.push("load"); }) as never, policy);
-    await pairing.switchTo("127.0.0.1:4310", runtimeWindow(async () => { order.push("local-load"); }) as never, policy);
+    await pairing.switchTo("http://127.0.0.1:4000", runtimeWindow(async () => { order.push("local-load"); }) as never, policy);
     expect(order).toEqual(["stage", "load", "policy-commit", "candidate-commit", "save", "stage", "local-load", "policy-commit", "candidate-dispose"]);
     expect(candidate.rollback).not.toHaveBeenCalled();
+    expect(policy.currentConsoleOrigin()).toBe("http://127.0.0.1:4000");
+  });
+
+  it("keeps a committed remote session when a later remote candidate fails", async () => {
+    const remoteA = { target: { value: "remote-a", user: null, host: "remote-a" }, origin: "http://127.0.0.1:4310", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
+    const candidateB = { target: { value: "remote-b", user: null, host: "remote-b" }, origin: "http://127.0.0.1:4320", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
+    let currentOrigin = "http://127.0.0.1:4000";
+    let pendingOrigin: string | null = null;
+    const policy = {
+      activateConsoleOrigin: vi.fn((origin: string) => { currentOrigin = origin; pendingOrigin = null; }),
+      currentConsoleOrigin: vi.fn(() => currentOrigin),
+      stageConsoleOrigin: vi.fn((origin: string) => { pendingOrigin = origin; }),
+      commitConsoleOrigin: vi.fn(() => { currentOrigin = pendingOrigin!; pendingOrigin = null; }),
+      cancelPendingConsoleOrigin: vi.fn(() => { pendingOrigin = null; }),
+    };
+    const connectRemote = vi.fn(async () => connectRemote.mock.calls.length === 1 ? remoteA : candidateB);
+    const fetch = async (input: unknown) => {
+      const url = String(input);
+      return url.includes(":4310/") ? identityResponseAt(url) : responseAtUrl("{}", url);
+    };
+    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), connectRemote, fetch });
+    await pairing.switchTo("ssh:remote-a", runtimeWindow(async () => undefined) as never, policy);
+    const remoteLoadURL = vi.fn(async () => undefined);
+    const remoteWindow = runtimeWindow(remoteLoadURL);
+    remoteWindow.loadFile.mockImplementation(async () => undefined);
+    remoteWindow.webContents.getURL = () => "http://127.0.0.1:4310/console/";
+
+    await pairing.switchTo("ssh:remote-b", remoteWindow as never, policy);
+
+    expect(candidateB.rollback).toHaveBeenCalledOnce();
+    expect(remoteA.dispose).not.toHaveBeenCalled();
+    expect(remoteLoadURL).toHaveBeenCalledWith("http://127.0.0.1:4310/console/");
+    expect(policy.activateConsoleOrigin).toHaveBeenCalledWith("http://127.0.0.1:4310");
+    expect(policy.currentConsoleOrigin()).toBe("http://127.0.0.1:4310");
   });
 
   it("shows remote bootstrap progress, then returns to the durable local runtime and reports the failure", async () => {
     const order: string[] = [];
     const notifier = { show: vi.fn(() => order.push("failure-dialog")) };
-    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4310"), stageConsoleOrigin: vi.fn(() => order.push("stage-local")), commitConsoleOrigin: vi.fn(() => order.push("commit-local")), cancelPendingConsoleOrigin: vi.fn() };
+    const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(() => order.push("stage-local")), commitConsoleOrigin: vi.fn(() => order.push("commit-local")), cancelPendingConsoleOrigin: vi.fn() };
     const window = runtimeWindow(async (url) => { order.push(`load:${url}`); });
     window.loadFile.mockImplementation(async () => { order.push("entry"); });
     window.webContents.executeJavaScript.mockImplementation(async () => { order.push("snapshot"); });
@@ -281,6 +323,12 @@ function identityResponse(): Response {
 
 function identityResponseAt(url: string): Response {
   const response = new Response(JSON.stringify({ product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 }), { status: 200 });
+  Object.defineProperty(response, "url", { value: url });
+  return response;
+}
+
+function responseAtUrl(body: string, url: string): Response {
+  const response = new Response(body, { status: 200 });
   Object.defineProperty(response, "url", { value: url });
   return response;
 }
