@@ -10,6 +10,7 @@ import {
   createWikiWorkspaceResolver,
   createWikiWorkspaceResolverForTest,
   classifyWikiWorkspaceNodeForTest,
+  shouldSyncDirectoryForTest,
   type WikiWorkspaceResolverDependencies,
 } from "../src/workspace-resolver.js";
 
@@ -69,9 +70,12 @@ describe("createWikiWorkspaceResolver", () => {
     await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
     await writeFile(path.join(workspace, "knowledge"), "already durable");
     await writeFile(path.join(workspace, "knowledge.migrated.json"), "not json");
+    const temporary = path.join(workspace, "knowledge.migrated.json.33333333-3333-4333-8333-333333333333.tmp");
+    await writeFile(temporary, "interrupted marker write");
     await symlink(path.join(cwd, "missing"), path.join(workspace, "knowledge.migrating-not-a-uuid"));
     expect(resolver.resolve(cwd)).toMatchObject({ root: path.join(workspace, "knowledge") });
     await expect(readFile(path.join(workspace, "knowledge"), "utf8")).resolves.toBe("already durable");
+    await expect(readFile(temporary, "utf8")).resolves.toBe("interrupted marker write");
   });
 
   it("recovers only a marker-referenced staged copy and never re-copies after marker recovery", async () => {
@@ -110,6 +114,34 @@ describe("createWikiWorkspaceResolver", () => {
     const marker = await fixture();
     await symlink(path.join(marker.cwd, "missing"), path.join(marker.workspace, "knowledge.migrated.json"));
     expect(() => marker.resolver.resolve(marker.cwd)).toThrow(/Unsafe/);
+  });
+
+  it("removes only exact regular marker-write residue before retrying the migration", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    const sourceFile = path.join(cwd, ".fleet", "knowledge", "wiki", "entry.md");
+    const temporary = path.join(workspace, "knowledge.migrated.json.44444444-4444-4444-8444-444444444444.tmp");
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await writeFile(sourceFile, "legacy\n");
+    await writeFile(temporary, "interrupted marker write");
+
+    const paths = resolver.resolve(cwd);
+    await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).resolves.toBe("legacy\n");
+    await expect(readFile(temporary, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(sourceFile, "utf8")).resolves.toBe("legacy\n");
+  });
+
+  it("fails closed for malformed or unsafe marker temp controls", async () => {
+    const malformed = await fixture();
+    await writeFile(path.join(malformed.workspace, "knowledge.migrated.json.not-a-uuid.tmp"), "not resolver-owned");
+    expect(() => malformed.resolver.resolve(malformed.cwd)).toThrow(/Unsafe/);
+
+    const symlinked = await fixture();
+    await symlink(path.join(symlinked.cwd, "missing"), path.join(symlinked.workspace, "knowledge.migrated.json.55555555-5555-4555-8555-555555555555.tmp"));
+    expect(() => symlinked.resolver.resolve(symlinked.cwd)).toThrow(/Unsafe/);
+
+    const directory = await fixture();
+    await mkdir(path.join(directory.workspace, "knowledge.migrated.json.66666666-6666-4666-8666-666666666666.tmp"));
+    expect(() => directory.resolver.resolve(directory.cwd)).toThrow(/Unsafe/);
   });
 
   it("fails closed when destination content appears after staging", async () => {
@@ -180,7 +212,7 @@ describe("createWikiWorkspaceResolver", () => {
     } finally { await closeServer(markerSocket); }
 
     const control = await fixture();
-    execFileSync("mkfifo", [path.join(control.workspace, "knowledge.migrated.json.interrupted")]);
+    execFileSync("mkfifo", [path.join(control.workspace, "knowledge.migrated.json.77777777-7777-4777-8777-777777777777.tmp")]);
     expect(() => control.resolver.resolve(control.cwd)).toThrow(/Unsafe/);
   });
 
@@ -188,6 +220,12 @@ describe("createWikiWorkspaceResolver", () => {
     const device = fs.lstatSync("/dev/null");
     expect(device.isCharacterDevice()).toBe(true);
     expect(classifyWikiWorkspaceNodeForTest(device)).toBe("unsafe");
+  });
+
+  it("skips directory fsync only on Windows", () => {
+    expect(shouldSyncDirectoryForTest("win32")).toBe(false);
+    expect(shouldSyncDirectoryForTest("darwin")).toBe(true);
+    expect(shouldSyncDirectoryForTest("linux")).toBe(true);
   });
 });
 

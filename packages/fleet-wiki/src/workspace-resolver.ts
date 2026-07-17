@@ -19,6 +19,7 @@ interface MigrationMarker { version: 1; outcome: "copied"; transactionId: string
 
 const STAGING_PREFIX = "knowledge.migrating-";
 const MARKER_NAME = "knowledge.migrated.json";
+const MARKER_TEMP_REGEXP = /^knowledge\.migrated\.json\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i;
 
 /** Host-injected canonical-workspace gate; fleet-wiki intentionally knows no host package. */
 export function createWikiWorkspaceResolver(deps: WikiWorkspaceResolverDependencies): WikiWorkspaceResolver {
@@ -161,7 +162,15 @@ function removePriorStaging(workspacePath: string, stagingEntries: readonly stri
 function inspectReservedControlState(workspacePath: string): string[] {
   const stagingEntries: string[] = [];
   for (const entry of fs.readdirSync(workspacePath, { withFileTypes: true })) {
-    if (entry.name.startsWith(`${MARKER_NAME}.`)) throw new Error("Unsafe Fleet Wiki migration marker control state");
+    if (entry.name.startsWith(`${MARKER_NAME}.`)) {
+      const residuePath = path.join(workspacePath, entry.name);
+      const residue = fs.lstatSync(residuePath);
+      if (MARKER_TEMP_REGEXP.test(entry.name) && residue.isFile() && !residue.isSymbolicLink()) {
+        fs.unlinkSync(residuePath);
+        continue;
+      }
+      throw new Error("Unsafe Fleet Wiki migration marker control state");
+    }
     if (!entry.name.startsWith(STAGING_PREFIX)) continue;
     if (!/^[0-9a-f-]{36}$/i.test(entry.name.slice(STAGING_PREFIX.length)) || entry.isSymbolicLink() || !entry.isDirectory()) throw new Error("Unsafe Fleet Wiki migration staging state");
     if (inspectTree(path.join(workspacePath, entry.name)) === "unsafe") throw new Error("Unsafe Fleet Wiki migration staging state");
@@ -177,4 +186,10 @@ function writeAtomic(target: string, contents: string): void {
   fs.renameSync(temporary, target);
 }
 function syncFile(target: string): void { const fd = fs.openSync(target, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
-function syncDirectory(target: string): void { const fd = fs.openSync(target, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
+function syncDirectory(target: string): void {
+  if (!shouldSyncDirectoryForTest(process.platform)) return;
+  const fd = fs.openSync(target, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+}
+
+/** Test-only direct-module seam for the platform-specific directory fsync policy; absent from the package-root barrel. */
+export function shouldSyncDirectoryForTest(platform: NodeJS.Platform): boolean { return platform !== "win32"; }
