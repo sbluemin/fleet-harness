@@ -93,51 +93,28 @@ function CarrierSettingsSection() {
   }
 
   return (
-    <section className="terminal-carriers-page">
-      <section className="terminal-carriers-hero" aria-labelledby="terminal-carriers-title">
-        <div>
-          <p className="bridge-kicker">Configure Carrier settings</p>
-          <h2 id="terminal-carriers-title">Carrier Settings</h2>
-        </div>
-        <div className="terminal-carriers-hero-actions">
-          <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
-            {saveStatus === "saving" || isSavingAll ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
-          </div>
-          {activeCarrier ? (
-            <div className="terminal-carriers-save-actions">
-              <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={() => void handleSave()}>
-                Save
-              </button>
-              <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={handleDiscard}>
-                Discard
-              </button>
-            </div>
-          ) : null}
-          <button type="button" className="terminal-carriers-action-button terminal-carriers-hero-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
-            Refresh
-          </button>
-        </div>
-      </section>
-
+    <>
       {settings.error ? <p className="terminal-carriers-error" role="alert">{settings.error}</p> : null}
 
-      <section className="terminal-carriers-grid">
-        <div className="terminal-carriers-list" aria-label="Carrier list">
-          {settings.loading && !settings.state ? <p className="terminal-carriers-empty">Loading carrier settings.</p> : null}
-          {settings.state && settings.state.carriers.length === 0 ? <p className="terminal-carriers-empty">No carriers registered.</p> : null}
-          {settings.state?.carriers.map((carrier) => (
-            <CarrierRow
-              key={carrier.carrierId}
-              carrier={carrier}
-              active={carrier.carrierId === settings.activeCarrierId}
-              minBackends={settings.options?.taskForceConstraints.minBackends ?? 2}
-              onSelect={() => selectCarrierSettingsCarrier(carrier.carrierId)}
-            />
-          ))}
-        </div>
+      <div className="terminal-carriers-strip" aria-label="Carrier list">
+        {settings.loading && !settings.state ? <p className="terminal-carriers-empty">Loading carrier settings.</p> : null}
+        {settings.state && settings.state.carriers.length === 0 ? <p className="terminal-carriers-empty">No carriers registered.</p> : null}
+        {settings.state?.carriers.map((carrier) => (
+          <CarrierChip
+            key={carrier.carrierId}
+            carrier={carrier}
+            active={carrier.carrierId === settings.activeCarrierId}
+            minBackends={settings.options?.taskForceConstraints.minBackends ?? 2}
+            onSelect={() => selectCarrierSettingsCarrier(carrier.carrierId)}
+          />
+        ))}
+        <button type="button" className="terminal-carriers-action-button terminal-carriers-strip-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
+          Refresh
+        </button>
+      </div>
 
-        {activeCarrier && settings.options && activeCli ? (
-          <div key={activeCarrier.carrierId} className="terminal-carriers-detail" style={getCaptainColorStyle(activeCarrier.carrierId)}>
+      {activeCarrier && settings.options && activeCli ? (
+        <section key={activeCarrier.carrierId} className="global-settings-card terminal-carriers-card" style={getCaptainColorStyle(activeCarrier.carrierId)}>
             <div className="terminal-carriers-detail-head">
               <div className="terminal-carriers-detail-title-block">
                 <div className="terminal-carriers-captain-id"><span>Captain</span> · {activeCarrier.carrierId.toUpperCase()}</div>
@@ -177,9 +154,22 @@ function CarrierSettingsSection() {
                 </div>
                 <div className="terminal-carriers-captain-role">{activeCarrier.role}</div>
               </div>
-              <div className="terminal-carriers-cli-badge">
-                <span className="ind" aria-hidden="true" />
-                {activeCarrier.cliType}
+              <div className="terminal-carriers-detail-actions">
+                <div className="terminal-carriers-cli-badge">
+                  <span className="ind" aria-hidden="true" />
+                  {activeCarrier.cliType}
+                </div>
+                <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
+                  {saveStatus === "saving" || isSavingAll ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
+                </div>
+                <div className="terminal-carriers-save-actions">
+                  <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={() => void handleSave()}>
+                    Save
+                  </button>
+                  <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={handleDiscard}>
+                    Discard
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -232,29 +222,23 @@ function CarrierSettingsSection() {
                 onRowsChange={setTaskForceRows}
               />
             </div>
-          </div>
-        ) : (
-          <div className="terminal-carriers-detail">
-            <p className="terminal-carriers-empty">Select a carrier.</p>
-          </div>
-        )}
-      </section>
-    </section>
+        </section>
+      ) : (
+        <section className="global-settings-card terminal-carriers-card">
+          <p className="terminal-carriers-empty">Select a carrier.</p>
+        </section>
+      )}
+    </>
   );
 }
 
-function CarrierRow({ carrier, active, minBackends, onSelect }: { readonly carrier: CarrierSettingsCarrier; readonly active: boolean; readonly minBackends: number; readonly onSelect: () => void }) {
+function CarrierChip({ carrier, active, minBackends, onSelect }: { readonly carrier: CarrierSettingsCarrier; readonly active: boolean; readonly minBackends: number; readonly onSelect: () => void }) {
   const tfReady = carrier.taskForceBackendCount >= minBackends;
   return (
-    <button type="button" className={`terminal-carriers-row ${active ? "is-active" : ""}`} style={getCaptainColorStyle(carrier.carrierId)} onClick={onSelect}>
+    <button type="button" className={`terminal-carriers-chip ${active ? "is-active" : ""}`} aria-pressed={active} style={getCaptainColorStyle(carrier.carrierId)} onClick={onSelect}>
       <span className="terminal-carriers-captain-dot" aria-hidden="true" />
-      <span className="terminal-carriers-row-text">
-        <span className="terminal-carriers-row-name">{carrier.displayName}</span>
-        <span className="terminal-carriers-row-role">{carrier.role}</span>
-      </span>
-      <span className="terminal-carriers-row-live" aria-hidden="true">
-        <span className={`terminal-carriers-live-dot ${tfReady ? "is-live" : ""}`} />
-      </span>
+      <span className="terminal-carriers-chip-name">{carrier.displayName}</span>
+      {tfReady ? <span className="terminal-carriers-live-dot is-live" aria-hidden="true" /> : null}
     </button>
   );
 }

@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchCarrierSettingsState } from "../client/carriers/api.js";
@@ -53,5 +55,19 @@ describe("Terminal Carrier Settings client", () => {
   it("exports the reserved Settings section identity", () => {
     expect(carrierSettingsSection.id).toBe("carriers");
     expect(carrierSettingsSection.title).toBe("Carriers");
+  });
+
+  it("defines the Option B chip strip and single-card markup contract", async () => {
+    const source = await readFile(resolve(process.cwd(), "client/carriers/section.tsx"), "utf8");
+
+    expect(source).toContain('className="terminal-carriers-strip"');
+    expect(source).toContain('className={`terminal-carriers-chip ${active ? "is-active" : ""}`} aria-pressed={active}');
+    expect(source).toContain('className="global-settings-card terminal-carriers-card"');
+    expect(source).toContain('key={activeCarrier.carrierId}');
+    expect(source).toContain('aria-label="Edit display name"');
+    expect(source).toContain('role="status" aria-live="polite"');
+    expect(source).not.toContain("terminal-carriers-page");
+    expect(source).not.toContain("terminal-carriers-grid");
+    expect(source).not.toContain("terminal-carriers-row");
   });
 });
