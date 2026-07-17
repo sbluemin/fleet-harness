@@ -3200,6 +3200,9 @@
   display: flex;
   align-items: center;
   flex: none;
+  /* 버튼 focus/hover 링이 outline 2px + offset 2px로 보더 밖 4px까지 나온다 —
+     gap이 그보다 좁으면 이웃 칩과 링이 겹쳐 외곽선이 이중으로 보인다. */
+  gap: var(--space-2);
   max-width: 0;
   overflow: hidden;
   opacity: 0;
@@ -3213,13 +3216,15 @@
   flex: none;
   width: 1px;
   height: var(--space-3);
-  margin: 0 var(--space-1) 0 var(--space-2);
+  /* 좌측만 보정: titlebar gap(space-1)과 합쳐 beacon–divider 간격을 버튼 간 gap(space-2)과 맞춘다. */
+  margin: 0 0 0 var(--space-1);
   background: var(--hairline-strong);
 }
 
 .canvas-operation:hover .canvas-operation-window-controls,
 .canvas-operation-titlebar:focus-within .canvas-operation-window-controls {
-  max-width: calc(var(--space-3) * 10);
+  /* gap(2×8px) + armed "Close?" 확장폭까지 수용해야 한다 — 120px에서는 armed 상태가 잘린다. */
+  max-width: calc(var(--space-3) * 12);
   opacity: 1;
   pointer-events: auto;
 }
