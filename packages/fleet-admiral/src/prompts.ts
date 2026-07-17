@@ -118,7 +118,7 @@ Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags ca
  *  1. `section="persona"` — Admiral 메타포 페르소나 (`enableMetaphor === true`일 때만 주입)
  *  2. `section="role"` — Fleet 역할·행동 규약 (항상 주입)
  *  3. `section="tone"` — Fleet 메타포 톤 (`enableMetaphor === true`일 때만 주입)
- *  4. `section="roster"` — 등록 캐리어 선택·라우팅 메타데이터 (request-block 계약은 carrier-contracts 스킬 소유)
+ *  4. `section="roster"` — 등록 캐리어 선택·라우팅 메타데이터 (계약·디스패치 운용 규칙은 carrier-operations 스킬 소유)
  *  5. `section="protocol-gate"` — intent/mode gate for on-demand protocol skills
  *  6. `section="standing-orders" type="<id>"` — 각 Standing Order를 type 속성으로 분리한 개별 블록 (상시 적용)
  *
@@ -150,14 +150,14 @@ function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, enableMetaphor
   }
 
   // ── 2. 캐리어 로스터 — 선택·라우팅 계층(routing tier)만 상시 주입 ──
-  // request-block 계약(contracts tier)은 온디맨드 carrier-contracts 스킬이 소유한다.
+  // 계약·디스패치 운용 규칙은 온디맨드 carrier-operations 스킬이 소유한다.
   const carrierRuntime = deps.carrierRuntime;
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
   if (carrierIds.length > 0) {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, {
       heading: "# Available Carriers",
       preambleLines: [
-        `Entries below cover carrier selection and routing only. Each carrier's request-block contract lives in the ${"`"}carrier-contracts${"`"} skill — load it before composing your first carrier_dispatch of the session, and skip reloading if its content is already in context.`,
+        `Entries below cover carrier selection and routing only. Each carrier's request-block contract and dispatch operations rules live in the ${"`"}carrier-operations${"`"} skill — load it before composing your first carrier_dispatch of the session, and skip reloading if its content is already in context.`,
       ],
       tier: "routing",
     })}\n</fleet>`);

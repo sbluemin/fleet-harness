@@ -1,13 +1,26 @@
 ---
-name: carrier-contracts
-description: Per-carrier request-block contracts for composing carrier_dispatch requests. Load before the first dispatch of the session; skip reloading if already in context.
+name: carrier-operations
+description: Per-carrier request-block contracts and dispatch composition rules for carrier_dispatch requests. Load before the first dispatch of the session; skip reloading if already in context.
 ---
 
-# Carrier Request-Block Contracts
+# Carrier Operations
 
-This skill owns only the request composition contract. Carrier selection and routing stay in `<fleet section="roster">`; dispatch mechanics (label, brevity, polling, result lookup) stay in the live `carrier_dispatch` tool description. Missing required blocks cause hard-error rejection that echoes the violated carrier's contract.
+This skill owns dispatch composition: request-block contracts, parallel and sequential rules, and dispatch failure handling. Carrier selection and routing stay in `<fleet section="roster">`; invocation mechanics (label, brevity, polling, result lookup) stay in the live `carrier_dispatch` tool description. Missing required blocks cause hard-error rejection that echoes the violated carrier's contract.
 
 All carriers accept an optional `<prior_jobs>` block: Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.
+
+## Parallel Default
+
+When the same phase or step calls multiple Carriers, invoke them in parallel — one tool call per carrier, same response. Sequence only when:
+- a later Carrier's work depends on an earlier Carrier's output,
+- carriers share a mutable resource (same files, generated artifacts, lock files, singleton test environment), or
+- a recon Carrier must complete before a specialist Carrier can be selected.
+
+Never split a parallel launch into sequential calls.
+
+## Dispatch Failure Handling
+
+If the intended Carrier is unavailable or carrier_dispatch rejects the requested Carrier: report to the user, await instructions. Never silently substitute. A missing-required-block rejection is self-correcting — recompose the request per the echoed contract and re-dispatch instead of escalating.
 
 ## Contracts by carrier
 - **nimitz** (Nimitz · Strategic Command & Judgment) — wrap request content in these blocks (? = optional):
