@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { nextOperationId } from "../core/client/src/store.js";
+import { focusCycleOperationIds, nextOperationId } from "../core/client/src/store.js";
+import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
+
+function makeOperation(id: string, groupId: string | null = null, createdAt = 1): OperationNode {
+  return {
+    id,
+    theaterId: "theater",
+    type: "shell",
+    pluginId: "terminal",
+    title: id,
+    payload: {},
+    geometry: null,
+    groupId,
+    ts: { createdAt, updatedAt: createdAt },
+  };
+}
+
+function makeGroup(id: string, order: number): OperationGroup {
+  return { id, name: id, color: "blue", order, theaterId: "theater", createdAt: order };
+}
 
 describe("nextOperationId — Alt+←/→ focus cycle", () => {
   const order = ["a", "b", "c"];
@@ -27,5 +46,40 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(nextOperationId(["solo"], "solo", 1)).toBe("solo");
     expect(nextOperationId(["solo"], "solo", -1)).toBe("solo");
     expect(nextOperationId([], "a", 1)).toBeNull();
+  });
+
+  it("excludes minimized panels while preserving grouped and collapsed SideBar order", () => {
+    const order = focusCycleOperationIds(
+      [
+        makeOperation("group-2-visible", "group-2", 1),
+        makeOperation("group-1-minimized", "group-1", 2),
+        makeOperation("group-1-visible", "group-1", 3),
+        makeOperation("collapsed-visible", "collapsed", 4),
+        makeOperation("ungrouped-minimized", null, 5),
+        makeOperation("ungrouped-visible", null, 6),
+      ],
+      [makeGroup("group-1", 1), makeGroup("group-2", 2), makeGroup("collapsed", 3)],
+      ["group-2-visible", "group-1-minimized", "group-1-visible", "collapsed-visible", "ungrouped-minimized", "ungrouped-visible"],
+      ["collapsed"],
+      ["group-1-minimized", "ungrouped-minimized"],
+    );
+
+    expect(order).toEqual(["group-1-visible", "group-2-visible", "ungrouped-visible"]);
+    expect(nextOperationId(order, "group-1-visible", 1)).toBe("group-2-visible");
+    expect(nextOperationId(order, "group-1-visible", -1)).toBe("ungrouped-visible");
+  });
+
+  it("keeps the maximized panel as the only Alt+Arrow target", () => {
+    const order = focusCycleOperationIds(
+      [makeOperation("maximized"), makeOperation("minimized-a"), makeOperation("minimized-b")],
+      [],
+      ["maximized", "minimized-a", "minimized-b"],
+      [],
+      ["minimized-a", "minimized-b"],
+    );
+
+    expect(order).toEqual(["maximized"]);
+    expect(nextOperationId(order, "maximized", 1)).toBe("maximized");
+    expect(nextOperationId(order, "maximized", -1)).toBe("maximized");
   });
 });

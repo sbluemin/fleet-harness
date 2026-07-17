@@ -14,7 +14,7 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, flattenGroupedOrder, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -73,12 +73,13 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
       const snapshot = stateRef.current;
       const canvas = getCanvasSnapshot();
-      const order = flattenGroupedOrder(
+      const order = focusCycleOperationIds(
         snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId),
         snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
         canvas.operationOrder,
         canvas.collapsedGroups,
-      ).map((operation) => operation.id);
+        canvas.minimized,
+      );
       if (order.length === 0) return;
       event.preventDefault();
       event.stopImmediatePropagation();
