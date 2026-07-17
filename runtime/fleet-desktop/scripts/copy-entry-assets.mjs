@@ -8,6 +8,8 @@ const entryDestination = join(distDirectory, "assets", "entry");
 const pairingDestination = join(distDirectory, "assets", "pairing");
 const nodeManifestDestination = join(distDirectory, "build", "node-runtime.json");
 const iconDestination = join(distDirectory, "build", "icon.png");
+const trayTemplateIconDestination = join(distDirectory, "build", "trayTemplate.png");
+const trayTemplateIcon2xDestination = join(distDirectory, "build", "trayTemplate@2x.png");
 
 await rm(entryDestination, { force: true, recursive: true });
 await rm(pairingDestination, { force: true, recursive: true });
@@ -17,3 +19,5 @@ await cp(join(desktopDirectory, "assets", "pairing"), pairingDestination, { recu
 await cp(join(desktopDirectory, "build", "node-runtime.json"), nodeManifestDestination);
 // 창/트레이 아이콘도 dist 앵커로 동반한다 — packaged에서 resources/ 밖 경로는 존재하지 않는다.
 await cp(join(desktopDirectory, "build", "icon.png"), iconDestination);
+await cp(join(desktopDirectory, "build", "trayTemplate.png"), trayTemplateIconDestination);
+await cp(join(desktopDirectory, "build", "trayTemplate@2x.png"), trayTemplateIcon2xDestination);

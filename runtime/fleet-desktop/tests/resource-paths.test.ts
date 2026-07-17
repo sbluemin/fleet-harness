@@ -18,6 +18,7 @@ describe("desktop resource paths", () => {
     expect(paths.cliPath).toBe(path.join(paths.serviceRoot, "dist", "cli.mjs"));
     // 자산은 dist 앵커(모듈 디렉터리 기준) — copy-entry-assets가 dist/assets·dist/build로 나르고, packaged에선 ASAR 내 dist가 모듈 위치다.
     expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/icon\.png$/);
+    expect(posix(paths.trayTemplateIconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/trayTemplate\.png$/);
     expect(posix(paths.entryPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/entry\/index\.html$/);
     expect(posix(paths.pairingPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/pairing\/index\.html$/);
     expect(paths.nodePath).not.toContain("app.asar");
@@ -33,6 +34,7 @@ describe("desktop resource paths", () => {
       expect(posix(paths.serviceRoot)).toMatch(/runtime\/fleet-console$/);
       expect(posix(paths.cliPath)).toMatch(/runtime\/fleet-console\/dist\/cli\.mjs$/);
       expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/icon\.png$/);
+      expect(posix(paths.trayTemplateIconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/trayTemplate\.png$/);
       expect(posix(paths.pairingPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/pairing\/index\.html$/);
     } finally {
       if (previous === undefined) delete process.env.FLEET_CONSOLE_NODE_PATH;

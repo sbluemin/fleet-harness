@@ -29,7 +29,7 @@ import { createRemoteLastTargetStore } from "./runtime/remote/last-target.js";
 import { connectManagedRemote } from "./runtime/remote/orchestrator.js";
 import { createOpenSshAdapter } from "./runtime/remote/ssh.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
-import { configureTray } from "./tray.js";
+import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "./update-controller.js";
 import { applyWindowPolicy, createSecureWindow } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
@@ -198,13 +198,11 @@ async function boot(): Promise<void> {
       });
     },
   });
-  if (process.platform !== "darwin") {
-    trayHolder.current = new Tray(desktopResources.iconPath);
-    trayHolder.current.on("click", actions.show);
-  }
+  trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
   refreshNativeUpdateActions = () => {
     installApplicationMenu(Menu, actions, process.platform, window ?? undefined);
-    if (trayHolder.current) configureTray(trayHolder.current, Menu, actions);
+    // macOS에서는 context menu가 좌클릭을 가로채므로, 클릭으로 창을 표시하는 트레이에 메뉴를 절대 붙이지 않는다.
+    if (shouldConfigureTray(process.platform) && trayHolder.current) configureTray(trayHolder.current, Menu, actions);
   };
   refreshNativeUpdateActions();
   await lifecycle.start();
