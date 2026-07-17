@@ -1797,7 +1797,7 @@
   grid-template-rows: minmax(0, 1fr);
   min-width: 320px;
   min-height: 200px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   background: var(--ink-mid);
@@ -1826,7 +1826,12 @@
 }
 
 .canvas-operation.is-maximized .canvas-operation-titlebar {
+  top: var(--space-2);
   cursor: default;
+}
+
+.canvas-operation.is-maximized .canvas-operation-terminal {
+  border-radius: calc(var(--radius-xl) - 2px);
 }
 
 /* 포커스는 단일 location accent로만 표시한다. */
@@ -2735,60 +2740,40 @@
 
 .canvas-operation-titlebar {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  z-index: 6;
+  top: calc(-1 * var(--space-3));
+  right: var(--space-3);
+  z-index: 7;
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: var(--space-1);
   width: fit-content;
-  min-width: 24px;
-  max-width: calc(100% - (var(--space-2) * 2));
+  max-width: calc(100% - (var(--space-3) * 2));
   min-height: 24px;
-  padding: 0;
-  border: 0 solid transparent;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: transparent;
-  box-shadow: none;
+  padding: 3px var(--space-2) 3px var(--space-2);
+  border: 1px solid var(--ink-rim);
+  border-radius: 999px;
+  overflow: visible;
+  background: var(--ink-mid);
+  box-shadow: var(--shadow-soft);
   cursor: grab;
   touch-action: none;
   transition:
-    gap var(--duration-base) var(--ease-spring),
     border-color var(--duration-base) var(--ease-spring),
-    background var(--duration-base) var(--ease-spring),
-    box-shadow var(--duration-base) var(--ease-spring);
+    background var(--duration-base) var(--ease-spring);
 }
 
 .canvas-operation-titlebar:active {
   cursor: grabbing;
 }
 
-/* inactive panel의 identity는 beacon 바로 왼쪽에 놓인다. hover/focus에서 controls는 기존처럼
-   beacon의 오른쪽으로 전개되며, active panel은 identity를 렌더하지 않고 기존 chrome만 유지한다. */
-.canvas-operation:hover .canvas-operation-titlebar,
-.canvas-operation-titlebar:focus-within {
-  /* 필은 우앵커다. rest identity는 중립 ink만 사용하고, status 색은 beacon에만 남긴다. */
-  gap: var(--space-2);
-  min-height: 24px;
-  padding: 0;
-  border-color: color-mix(in oklch, var(--surface-rim) 86%, transparent);
-  overflow: visible;
-  background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-glass));
-  box-shadow: 0 8px 18px -12px color-mix(in oklch, var(--ink-deep) 88%, transparent);
-}
-
-.canvas-operation:not(.is-active) .canvas-operation-titlebar {
-  gap: var(--space-1);
-  overflow: visible;
-  background: color-mix(in oklch, var(--ink-deep) 76%, transparent);
-  box-shadow: 0 6px 16px -14px color-mix(in oklch, var(--ink-abyss) 92%, transparent);
+.canvas-operation.is-active .canvas-operation-titlebar {
+  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));
+  background: color-mix(in oklch, var(--brass) 7%, var(--ink-mid));
 }
 
 .canvas-operation-identity-name,
 .canvas-operation-identity-input {
   min-width: 0;
-  max-width: calc(100% - 24px);
   font-family: var(--font-body);
   font-size: calc(var(--font-body-size) * 0.86);
   font-weight: 650;
@@ -2798,10 +2783,10 @@
 .canvas-operation-identity-name {
   flex: 0 1 auto;
   overflow: hidden;
-  padding: 4px 3px 4px 7px;
+  padding: 3px 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: color-mix(in oklch, var(--ink-pearl) 72%, transparent);
+  color: var(--ink-spectral);
   background: transparent;
   cursor: text;
   text-overflow: ellipsis;
@@ -2809,7 +2794,11 @@
 }
 
 .canvas-operation-identity-name:hover {
-  color: var(--ink-pearl);
+  color: var(--text-primary);
+}
+
+.canvas-operation.is-active .canvas-operation-identity-name {
+  color: var(--text-primary);
 }
 
 .canvas-operation-identity-name:focus-visible {
@@ -2823,8 +2812,8 @@
   padding: 3px 6px;
   border: 1px solid color-mix(in oklch, var(--brass) 68%, transparent);
   border-radius: var(--radius-sm);
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--ink-abyss) 88%, transparent);
+  color: var(--text-primary);
+  background: var(--ink-deep);
   outline: none;
 }
 
@@ -3097,6 +3086,34 @@
   line-height: 1;
 }
 
+.canvas-operation-window-controls {
+  display: flex;
+  align-items: center;
+  flex: none;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    max-width var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-spring);
+}
+
+.canvas-operation-controls-divider {
+  flex: none;
+  width: 1px;
+  height: var(--space-3);
+  margin: 0 var(--space-1) 0 var(--space-2);
+  background: var(--hairline-strong);
+}
+
+.canvas-operation:hover .canvas-operation-window-controls,
+.canvas-operation-titlebar:focus-within .canvas-operation-window-controls {
+  max-width: calc(var(--space-3) * 10);
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .canvas-operation-icon-button {
   display: grid;
   place-items: center;
@@ -3143,8 +3160,8 @@
   height: 15px;
 }
 
-.canvas-operation:hover .canvas-operation-icon-button,
-.canvas-operation-titlebar:focus-within .canvas-operation-icon-button {
+.canvas-operation:hover .canvas-operation-window-controls .canvas-operation-icon-button,
+.canvas-operation-titlebar:focus-within .canvas-operation-window-controls .canvas-operation-icon-button {
   flex: none;
   width: 24px;
   height: 24px;
@@ -3156,7 +3173,7 @@
   pointer-events: auto;
 }
 
-/* .canvas-operation 프리픽스 필수 — hover 전개 규칙(.canvas-operation:hover .canvas-operation-icon-button, 0-3-0)이
+/* .canvas-operation 프리픽스 필수 — hover 전개 규칙(.canvas-operation:hover .canvas-operation-window-controls .canvas-operation-icon-button, 0-4-0)이
    width/padding을 24px로 되누르지 않도록 armed를 같은 특이도의 후순위로 둔다. */
 .canvas-operation .canvas-operation-icon-button.is-armed-close {
   flex: none;
@@ -3181,11 +3198,12 @@
   outline: none;
 }
 
-/* inactive rest는 name → beacon → collapsed controls 순서다. hover/focus controls는 beacon 오른쪽으로
-   전개되어 기존 product placement를 유지하며, beacon 이동은 이 명시적 상호작용에서 허용된다. */
+/* 명판은 name → beacon → collapsed controls 순서다. hover/focus에서 컨트롤은 beacon 오른쪽으로
+   전개되며, status 색은 beacon 도트만 소유한다. */
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
+  .canvas-operation-window-controls,
   .canvas-operation-icon-button {
     transition-duration: 0.01ms;
   }
@@ -3195,11 +3213,46 @@
   }
 }
 
+.canvas-operation-glance-hud {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  z-index: 8;
+  max-width: 88%;
+  padding: var(--space-2) calc(var(--space-3) + var(--space-1));
+  overflow: hidden;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
+  font-family: var(--font-body);
+  font-size: calc(var(--font-body-size) * 0.97);
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 160ms var(--ease-spring);
+}
+
+.operations-canvas.is-glance .canvas-operation-glance-hud {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-operation-glance-hud {
+    transition-duration: 0.01ms;
+  }
+}
+
 .canvas-operation-terminal {
   position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  border-radius: calc(var(--radius-lg) - 1px);
   background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-pillar));
 }
 

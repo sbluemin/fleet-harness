@@ -74,7 +74,40 @@ export function OperationsCanvas({
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [glanceVisible, setGlanceVisible] = useState(false);
+  const heldAltCodesRef = useRef(new Set<string>());
   const disabled = !state.activeTheaterId || state.addingTheater;
+
+  useEffect(() => {
+    const clearGlance = () => {
+      heldAltCodesRef.current.clear();
+      setGlanceVisible(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isGlanceAltKey(event) || event.repeat) return;
+      heldAltCodesRef.current.add(event.code);
+      setGlanceVisible(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!isGlanceAltKey(event)) return;
+      heldAltCodesRef.current.delete(event.code);
+      setGlanceVisible(heldAltCodesRef.current.size > 0);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") clearGlance();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearGlance);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearGlance);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -151,7 +184,7 @@ export function OperationsCanvas({
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${formationView ? "is-formation-view" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${formationView ? "is-formation-view" : ""}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
@@ -299,6 +332,10 @@ function maximizedGeometryFor(canvasSize: { readonly width: number; readonly hei
 
 function maxOperationZIndex(operations: Record<string, OperationGeometry>): number {
   return Object.values(operations).reduce((max, geometry) => Math.max(max, geometry.zIndex), 0);
+}
+
+function isGlanceAltKey(event: KeyboardEvent): boolean {
+  return event.code === "AltLeft" || event.code === "AltRight";
 }
 
 function resolveDefaultLaunchTarget(catalog: readonly OperationCatalogPlugin[]): { readonly pluginId: string; readonly kind: OperationLaunchKind } | null {
