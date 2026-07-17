@@ -20,7 +20,7 @@ Never split a parallel launch into sequential calls.
 
 ## Dispatch Failure Handling
 
-If the intended Carrier is unavailable or the dispatch is rejected: report to the user, await instructions. Never silently substitute.
+If the intended Carrier is unavailable or carrier_dispatch rejects the requested Carrier: report to the user, await instructions. Never silently substitute. A missing-required-block rejection is self-correcting — recompose the request per the echoed contract and re-dispatch instead of escalating.
 
 ## Contracts by carrier
 - **nimitz** (Nimitz · Strategic Command & Judgment) — wrap request content in these blocks (? = optional):

@@ -36,7 +36,8 @@ describe("carrier-operations skill asset", () => {
     expect(content).toContain("a recon Carrier must complete before a specialist Carrier can be selected");
     expect(content).toContain("Never split a parallel launch into sequential calls.");
     expect(content).toContain("## Dispatch Failure Handling");
-    expect(content).toContain("If the intended Carrier is unavailable or the dispatch is rejected: report to the user, await instructions. Never silently substitute.");
+    expect(content).toContain("If the intended Carrier is unavailable or carrier_dispatch rejects the requested Carrier: report to the user, await instructions. Never silently substitute.");
+    expect(content).toContain("A missing-required-block rejection is self-correcting — recompose the request per the echoed contract and re-dispatch instead of escalating.");
   });
 
   it("mirrors the live registry contracts tier verbatim", () => {
