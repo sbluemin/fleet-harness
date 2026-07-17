@@ -208,6 +208,20 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain(".command-band-context-separator {");
     expect(layout).toContain(".command-band-theater-cluster {");
     expect(layout).not.toContain("--command-band-carrier");
+    expect(commandBand).toContain("useFullscreenCommandBand");
+    expect(commandBand).toContain('className={`command-band-edge-reveal${fullscreen.isFullscreen ? " is-fullscreen" : ""}`}');
+    expect(commandBand).toContain('aria-label="Show command band"');
+    expect(commandBand).toContain('aria-pressed={fullscreen.isPinned}');
+    expect(commandBand).toContain("inert={commandBandHidden || undefined}");
+    expect(commandBand).toContain("onKeyDown={(event) => { if (event.key === \"Tab\") fullscreen.reveal(); }}");
+    expect(layout).toContain(".command-band.is-fullscreen {");
+    expect(layout).toContain("position: fixed;");
+    expect(layout).toContain("transform: translateY(-100%);");
+    expect(layout).toContain("transition: transform var(--duration-base) var(--ease-glide);");
+    expect(layout).toContain(".command-band-edge-reveal.is-fullscreen {");
+    expect(layout).toContain("height: 8px;");
+    expect(layout).toContain('html[data-desktop-shell="true"] .command-band-edge-reveal {');
+    expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen,');
   });
 
   it("keeps long What's new content inside the scrollable body without shrinking controls", () => {

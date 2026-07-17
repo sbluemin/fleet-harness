@@ -1,6 +1,7 @@
 import type { BrowserWindow, WebContents } from "electron";
 
 import type { DesktopThemeSynchronizer } from "./desktop-theme-sync.js";
+import type { DesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
 import type { PairingModal } from "./pairing-modal.js";
 import type { WindowPolicy } from "./window-policy.js";
 
@@ -26,6 +27,7 @@ export interface RuntimePairingNotifier {
 export interface RuntimePairingDependencies {
   readonly fetch?: typeof fetch;
   readonly notifier: RuntimePairingNotifier | null;
+  readonly fullscreenSynchronizer?: () => DesktopFullscreenSynchronizer | null;
   readonly themeSynchronizer: DesktopThemeSynchronizer | null;
   readonly modal: PairingModal;
   readonly timeoutMs?: number;
@@ -93,6 +95,8 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       committed = true;
       dependencies.themeSynchronizer?.stop();
       await dependencies.themeSynchronizer?.start(target.origin);
+      dependencies.fullscreenSynchronizer?.()?.activate(target.origin);
+      if (previousOrigin && previousOrigin !== target.origin) dependencies.fullscreenSynchronizer?.()?.reset(previousOrigin);
       window.webContents.navigationHistory.clear();
       dependencies.notifier?.show({ title: "Fleet Console connected", body: `Connected to ${target.origin}.`, type: "info" });
     } catch (error) {
@@ -103,7 +107,9 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       }
       if (committed && previousOrigin) {
         try { await dependencies.themeSynchronizer?.start(previousOrigin); } catch { /* rollback feedback must not hide the original failure */ }
+        dependencies.fullscreenSynchronizer?.()?.activate(previousOrigin);
       }
+      dependencies.fullscreenSynchronizer?.()?.resync();
       notifyFailure(dependencies.notifier, error);
     }
   };

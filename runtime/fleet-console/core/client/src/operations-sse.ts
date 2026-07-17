@@ -1,4 +1,5 @@
 import { fetchObserverStatus, fetchOperations } from "./api.js";
+import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyObserverStatus, applyOperationUpdate, getState, hydrateOperations } from "./store.js";
 import type { OperationNode } from "./types.js";
 
@@ -30,6 +31,15 @@ export function connectOperationsSse(): void {
     refreshObserverStatus();
   });
 
+  source.addEventListener("desktop:fullscreen", (e) => {
+    const msg = e as MessageEvent<string>;
+    try {
+      applyDesktopFullscreenSnapshot(JSON.parse(msg.data));
+    } catch {
+      resetDesktopFullscreenSnapshot();
+    }
+  });
+
   source.onopen = () => {
     reconnectDelayMs = 1_000;
     refreshObserverStatus();
@@ -37,6 +47,7 @@ export function connectOperationsSse(): void {
 
   source.onerror = () => {
     source.close();
+    resetDesktopFullscreenSnapshot();
     reconnectHandle = setTimeout(() => {
       reconnectHandle = null;
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);

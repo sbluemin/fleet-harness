@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   applyObserverStatus: vi.fn(),
+  applyDesktopFullscreenSnapshot: vi.fn(),
   applyOperationUpdate: vi.fn(),
   fetchObserverStatus: vi.fn(),
   fetchOperations: vi.fn(),
   getState: vi.fn(),
   hydrateOperations: vi.fn(),
+  resetDesktopFullscreenSnapshot: vi.fn(),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -21,6 +23,11 @@ vi.mock("../core/client/src/store.js", () => ({
   hydrateOperations: mocks.hydrateOperations,
 }));
 
+vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
+  applyDesktopFullscreenSnapshot: mocks.applyDesktopFullscreenSnapshot,
+  resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
+}));
+
 import { connectOperationsSse } from "../core/client/src/operations-sse.js";
 
 class TestEventSource {
@@ -28,13 +35,13 @@ class TestEventSource {
 
   onerror: (() => void) | null = null;
   onopen: (() => void) | null = null;
-  private readonly listeners = new Map<string, (() => void)[]>();
+  private readonly listeners = new Map<string, ((event: Event) => void)[]>();
 
   constructor(_url: string) {
     TestEventSource.instances.push(this);
   }
 
-  addEventListener(type: string, listener: () => void): void {
+  addEventListener(type: string, listener: (event: Event) => void): void {
     const registered = this.listeners.get(type) ?? [];
     registered.push(listener);
     this.listeners.set(type, registered);
@@ -42,8 +49,8 @@ class TestEventSource {
 
   close(): void {}
 
-  emit(type: string): void {
-    for (const listener of this.listeners.get(type) ?? []) listener();
+  emit(type: string, data?: string): void {
+    for (const listener of this.listeners.get(type) ?? []) listener({ data } as MessageEvent<string>);
   }
 
   open(): void {
@@ -55,11 +62,13 @@ describe("operations SSE update availability", () => {
   afterEach(() => {
     TestEventSource.instances = [];
     mocks.applyObserverStatus.mockReset();
+    mocks.applyDesktopFullscreenSnapshot.mockReset();
     mocks.applyOperationUpdate.mockReset();
     mocks.fetchObserverStatus.mockReset();
     mocks.fetchOperations.mockReset();
     mocks.getState.mockReset();
     mocks.hydrateOperations.mockReset();
+    mocks.resetDesktopFullscreenSnapshot.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -111,5 +120,21 @@ describe("operations SSE update availability", () => {
 
     await vi.waitFor(() => expect(mocks.fetchObserverStatus).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenLastCalledWith(currentStatus));
+  });
+
+  it("strictly applies Desktop fullscreen frames and resets malformed frames or SSE loss", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+
+    connectOperationsSse();
+    TestEventSource.instances[0]?.emit("desktop:fullscreen", JSON.stringify({ fullscreen: true }));
+    expect(mocks.applyDesktopFullscreenSnapshot).toHaveBeenCalledWith({ fullscreen: true });
+
+    TestEventSource.instances[0]?.emit("desktop:fullscreen", "{not-json");
+    expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledOnce();
+    TestEventSource.instances[0]?.onerror?.();
+    expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });
