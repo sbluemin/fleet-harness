@@ -1,9 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { assertWithinRoot, safeLstat } from "@dotobokuri/core-infra/fs-store";
+import { findWorkspaceDirectory } from "@dotobokuri/core-infra/workspace-dir";
+
 import { parsePlan, type PlanExecutionMode, type PlanWave } from "./plan-parse.js";
 
-export type PlanStoreErrorCode = "path_outside_theater" | "not_found" | "too_large";
+export type PlanStoreErrorCode = "unsafe_path" | "not_found" | "too_large";
 
 export interface PlanListItem {
   readonly name: string;
@@ -28,16 +31,16 @@ export interface PlanReadResult {
 }
 
 interface PlansRoot {
-  readonly realContextPath: string;
-  readonly realPlansPath: string;
+  readonly plansPath: string;
+  readonly workspacePath: string;
 }
 
 interface PlanFile {
-  readonly realPath: string;
+  readonly path: string;
   readonly stat: fs.Stats;
 }
 
-const PLANS_DIRECTORY_SEGMENTS = [".fleet", "plans"] as const;
+const PLANS_DIRECTORY_NAME = "plans";
 const MARKDOWN_EXTENSION = ".md";
 const PLAN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
 const LIST_READ_CONCURRENCY = 16;
@@ -53,13 +56,13 @@ export class PlanStoreError extends Error {
   }
 }
 
-export async function listPlansForTheater(theaterPath: string): Promise<readonly PlanListItem[]> {
-  const plansRoot = await resolvePlansRoot(theaterPath, true);
+export async function listPlansForWorkspace(dataDir: string, cwd: string): Promise<readonly PlanListItem[]> {
+  const plansRoot = resolvePlansRoot(dataDir, cwd, true);
   if (plansRoot === null) return [];
 
   let entries: fs.Dirent[];
   try {
-    entries = await fs.promises.readdir(plansRoot.realPlansPath, { withFileTypes: true });
+    entries = await fs.promises.readdir(plansRoot.plansPath, { withFileTypes: true });
   } catch (error) {
     throw toPlanStoreError(error);
   }
@@ -83,8 +86,8 @@ export function isValidPlanName(name: string): boolean {
   return PLAN_NAME_PATTERN.test(name) && !name.includes("..");
 }
 
-export async function readPlanForTheater(theaterPath: string, name: string): Promise<PlanReadResult> {
-  const plansRoot = await resolvePlansRoot(theaterPath, false);
+export async function readPlanForWorkspace(dataDir: string, cwd: string, name: string): Promise<PlanReadResult> {
+  const plansRoot = resolvePlansRoot(dataDir, cwd, false);
   if (plansRoot === null) throw new PlanStoreError("not_found");
 
   const file = await resolvePlanFile(plansRoot, name);
@@ -92,7 +95,7 @@ export async function readPlanForTheater(theaterPath: string, name: string): Pro
 
   let content: string;
   try {
-    content = await fs.promises.readFile(file.realPath, "utf8");
+    content = await fs.promises.readFile(file.path, "utf8");
   } catch (error) {
     throw toPlanStoreError(error);
   }
@@ -125,7 +128,7 @@ async function toPlanListItem(plansRoot: PlansRoot, name: string): Promise<PlanL
       sizeBytes: file.stat.size,
     };
   }
-  const content = await fs.promises.readFile(file.realPath, "utf8").catch((error: unknown) => {
+  const content = await fs.promises.readFile(file.path, "utf8").catch((error: unknown) => {
     throw toPlanStoreError(error);
   });
   const parsed = parsePlan(content);
@@ -142,59 +145,41 @@ async function toPlanListItem(plansRoot: PlansRoot, name: string): Promise<PlanL
   };
 }
 
-async function resolvePlansRoot(contextPath: string, allowMissing: boolean): Promise<PlansRoot | null> {
-  const nominalContextPath = path.resolve(contextPath);
-  const plansPath = path.resolve(nominalContextPath, ...PLANS_DIRECTORY_SEGMENTS);
-  if (!isWithinRoot(plansPath, nominalContextPath)) throw new PlanStoreError("path_outside_theater");
-
-  let realContextPath: string;
-  let realPlansPath: string;
+function resolvePlansRoot(dataDir: string, cwd: string, allowMissing: boolean): PlansRoot | null {
+  let workspace;
   try {
-    [realContextPath, realPlansPath] = await Promise.all([
-      fs.promises.realpath(nominalContextPath),
-      fs.promises.realpath(plansPath),
-    ]);
-  } catch (error) {
-    if (allowMissing && isNotFoundError(error)) return null;
-    throw toPlanStoreError(error);
+    workspace = findWorkspaceDirectory(dataDir, cwd);
+  } catch {
+    throw new PlanStoreError("unsafe_path");
   }
-  if (!isWithinRoot(realPlansPath, realContextPath)) throw new PlanStoreError("path_outside_theater");
-
-  return { realContextPath, realPlansPath };
+  if (!workspace) {
+    if (allowMissing) return null;
+    throw new PlanStoreError("not_found");
+  }
+  const plansPath = path.join(workspace.path, PLANS_DIRECTORY_NAME);
+  assertWithinRoot(workspace.path, plansPath);
+  const stat = safeLstat(plansPath);
+  if (!stat) {
+    if (allowMissing) return null;
+    throw new PlanStoreError("not_found");
+  }
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new PlanStoreError("unsafe_path");
+  return { plansPath, workspacePath: workspace.path };
 }
 
 async function resolvePlanFile(plansRoot: PlansRoot, name: string): Promise<PlanFile> {
-  const candidatePath = path.resolve(plansRoot.realPlansPath, name);
-  if (!isWithinRoot(candidatePath, plansRoot.realPlansPath)) throw new PlanStoreError("path_outside_theater");
-
-  let realPath: string;
   try {
-    realPath = await fs.promises.realpath(candidatePath);
+    const candidatePath = path.resolve(plansRoot.plansPath, name);
+    assertWithinRoot(plansRoot.plansPath, candidatePath);
+    assertWithinRoot(plansRoot.workspacePath, candidatePath);
+    const stat = safeLstat(candidatePath);
+    if (stat?.isSymbolicLink()) throw new PlanStoreError("unsafe_path");
+    if (!stat?.isFile()) throw new PlanStoreError("not_found");
+    return { path: candidatePath, stat };
   } catch (error) {
-    throw toPlanStoreError(error);
+    if (error instanceof PlanStoreError) throw error;
+    throw new PlanStoreError("unsafe_path");
   }
-  if (!isWithinRoot(realPath, plansRoot.realPlansPath) || !isWithinRoot(realPath, plansRoot.realContextPath)) {
-    throw new PlanStoreError("path_outside_theater");
-  }
-
-  let stat: fs.Stats;
-  try {
-    stat = await fs.promises.stat(realPath);
-  } catch (error) {
-    throw toPlanStoreError(error);
-  }
-  if (!stat.isFile()) throw new PlanStoreError("not_found");
-
-  return { realPath, stat };
-}
-
-function isWithinRoot(resolvedPath: string, rootPath: string): boolean {
-  const normalizedRoot = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep;
-  return resolvedPath === rootPath || resolvedPath.startsWith(normalizedRoot);
-}
-
-function isNotFoundError(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 function toPlanStoreError(error: unknown): PlanStoreError {

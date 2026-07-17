@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import type { AuthService, GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -68,6 +69,7 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
 }
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
+  const planTools = getPlanToolSpecs({ dataDir: ctx.host.paths.fleetDataDir });
   const runtime = createFleetAgentRuntimeLifecycle({
     authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
@@ -77,6 +79,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     },
     workspaceChangeScanner: createWorkspaceChangeScanner(),
     wikiToolSpecs: getWikiToolSpecs(),
+    extraAgentTools: [planTools.read, planTools.verify],
+    extraExecutorTools: [
+      { spec: planTools.write, options: { allowedScopes: [] } },
+      { spec: planTools.markTasks, options: { allowedScopes: [] } },
+    ],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,

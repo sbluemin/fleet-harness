@@ -9,6 +9,7 @@ Host-agnostic gateways for durable Fleet infrastructure I/O.
 | `src/auth/` | Credential storage and Anthropic-compatible validation |
 | `src/data-dir/` | Fleet data-root resolution, migration, and global settings |
 | `src/fs-store/` | Atomic, locked, permission-safe filesystem primitives |
+| `src/workspace-dir/` | cwd-keyed durable workspace directory resolution and identity |
 | `tests/` | Infrastructure and security contracts |
 
 ## Constraints

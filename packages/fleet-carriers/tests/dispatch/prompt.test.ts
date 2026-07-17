@@ -8,7 +8,7 @@ const META: CarrierMetadata = {
   outputFormat: "",
   permissions: [],
   requestBlocks: [
-    { tag: "plan_file", required: true, hint: "Repo-relative plan path." },
+    { tag: "task_refs", required: true, hint: "Assigned TaskRefs." },
     { tag: "objective", required: false, hint: "Optional goal restatement." },
   ],
   summary: "Executes plan-driven waves",
@@ -19,7 +19,7 @@ const META: CarrierMetadata = {
 
 describe("validateRequiredRequestBlocks", () => {
   it("accepts requests containing all required blocks", () => {
-    const result = validateRequiredRequestBlocks(META, "<plan_file>.fleet/plans/x.md</plan_file>", "ohio");
+    const result = validateRequiredRequestBlocks(META, "<task_refs>workspace:plan#W1-A-T1</task_refs>", "ohio");
 
     expect(result.ok).toBe(true);
   });
@@ -29,35 +29,35 @@ describe("validateRequiredRequestBlocks", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.missing).toEqual(["plan_file"]);
+    expect(result.missing).toEqual(["task_refs"]);
     expect(result.error).toContain('Missing required request block(s) for carrier "ohio"');
     // 자기회복 폴백: 계약을 미리 로드하지 않았어도 에러만으로 재작성 가능해야 한다.
-    expect(result.error).toContain("<plan_file> required: Repo-relative plan path.");
+    expect(result.error).toContain("<task_refs> required: Assigned TaskRefs.");
     expect(result.error).toContain("<objective?> optional: Optional goal restatement.");
   });
 
   it("rejects required blocks with an empty body", () => {
-    const result = validateRequiredRequestBlocks(META, "<plan_file>   </plan_file>", "ohio");
+    const result = validateRequiredRequestBlocks(META, "<task_refs>   </task_refs>", "ohio");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain("(empty body)");
   });
 
-  it("rejects a Kirov dispatch without its required plan_file", () => {
+  it("rejects a Kirov dispatch without its required plan_id", () => {
     const result = validateRequiredRequestBlocks(KIROV_METADATA, "<goal>Plan the migration</goal>", "kirov");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.missing).toEqual(["plan_file"]);
-    expect(result.error).toContain("<plan_file> required:");
+    expect(result.missing).toEqual(["plan_id"]);
+    expect(result.error).toContain("<plan_id> required:");
   });
 });
 
 describe("formatRequestBlocksGuide", () => {
   it("renders required and optional block signatures with hints", () => {
     expect(formatRequestBlocksGuide(META)).toEqual([
-      "  - <plan_file> required: Repo-relative plan path.",
+      "  - <task_refs> required: Assigned TaskRefs.",
       "  - <objective?> optional: Optional goal restatement.",
     ]);
   });

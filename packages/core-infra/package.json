@@ -47,6 +47,11 @@
       "types": "./dist/fs-store/index.d.ts",
       "import": "./dist/fs-store.js",
       "require": "./dist/fs-store.cjs"
+    },
+    "./workspace-dir": {
+      "types": "./dist/workspace-dir/index.d.ts",
+      "import": "./dist/workspace-dir.js",
+      "require": "./dist/workspace-dir.cjs"
     }
   },
   "typesVersions": {
@@ -62,6 +67,9 @@
       ],
       "fs-store": [
         "dist/fs-store/index.d.ts"
+      ],
+      "workspace-dir": [
+        "dist/workspace-dir/index.d.ts"
       ]
     }
   },
