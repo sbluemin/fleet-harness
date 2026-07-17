@@ -77,14 +77,27 @@ describe("useGlanceHold", () => {
     visibilityState.mockRestore();
   });
 
-  it("removes listeners on unmount", () => {
+  it("removes every listener it registered on unmount", () => {
     act(() => root!.unmount());
     root = null;
 
-    expect(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltLeft", bubbles: true }));
-      window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltLeft", bubbles: true }));
-    }).not.toThrow();
+    const windowAdd = vi.spyOn(window, "addEventListener");
+    const windowRemove = vi.spyOn(window, "removeEventListener");
+    const documentAdd = vi.spyOn(document, "addEventListener");
+    const documentRemove = vi.spyOn(document, "removeEventListener");
+
+    const probeRoot = createRoot(container!);
+    act(() => probeRoot.render(createElement(GlanceProbe)));
+    const added = [
+      ...windowAdd.mock.calls.map(([type, handler]) => [windowRemove, type, handler] as const),
+      ...documentAdd.mock.calls.map(([type, handler]) => [documentRemove, type, handler] as const),
+    ];
+    act(() => probeRoot.unmount());
+
+    expect(added.map(([, type]) => type).sort()).toEqual(["blur", "keydown", "keyup", "visibilitychange"]);
+    for (const [removeSpy, type, handler] of added) {
+      expect(removeSpy.mock.calls.some(([removedType, removedHandler]) => removedType === type && removedHandler === handler)).toBe(true);
+    }
   });
 });
 
