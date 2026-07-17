@@ -26,6 +26,7 @@
     "@dotobokuri/fleet-carriers": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
+    "@dotobokuri/fleet-plans": "workspace:*",
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "@xterm/addon-fit": "^0.11.0",

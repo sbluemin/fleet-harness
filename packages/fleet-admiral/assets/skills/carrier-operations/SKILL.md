@@ -30,7 +30,7 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <artifacts?> optional: Relevant code snippets, file paths, error logs to examine.
 - **kirov** (Kirov · Operational Planning) — wrap request content in these blocks (? = optional):
   - <goal> required: What the user wants to build, fix, or achieve — specific feature, PRD, behavior, and any stated constraints.
-  - <plan_file> required: Required exact repo-relative .fleet/plans/{name}.md path Kirov must create or update. Do not choose a different filename.
+  - <plan_id> required: Required stable lowercase Plan identity. Kirov passes this logical id to plan_write and returns the resulting PlanRef; never accept or invent a filesystem path.
   - <context?> optional: Relevant codebase context — files, modules, patterns, prior host-agent direction, or implementation realities the planner should respect.
   - <constraints?> optional: Business rules, tech stack requirements, scope boundaries, fixed decisions, or explicit exclusions the plan must respect.
   - <intent_type?> optional: If known: Refactoring | Build from Scratch | Mid-sized | Collaborative | Architecture Follow-through | Research-to-Plan.
@@ -40,10 +40,9 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <constraints?> optional: Hard technical constraints, compatibility requirements, or non-negotiables.
   - <references?> optional: Prior Nimitz recommendations, Kirov plans, existing patterns to follow, or design decisions already made.
 - **ohio** (Ohio · Multi-Wave Execution) — wrap request content in these blocks (? = optional):
-  - <plan_file> required: Required repo-relative path to a Markdown plan file under .fleet/plans/*.md only. Ohio reads this file and follows it as the authoritative execution plan.
-  - <execution_scope?> optional: Optional: for legacy plans without Execution Topology or plans marked Execution mode: Sequential, omitted or `all` executes the full plan sequentially. For Execution mode: Parallel, provide one exact Wave/Lane ID declared by the Dispatch Manifest; omitted or `all` is rejected. Never combine a full-plan invocation with scoped-lane Ohio invocation(s).
+  - <task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.
   - <objective?> optional: Optional brief restatement of the overarching goal for context anchoring.
-  - <scope?> optional: Optional explicit scope boundaries if narrower than the plan_file's full coverage.
+  - <scope?> optional: Optional explicit boundaries that further narrow, but never expand, the assigned TaskRefs.
   - <constraints?> optional: Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.
 - **sentinel** (Sentinel · QA & Security Lead) — wrap request content in these blocks (? = optional):
   - <target> required: Which files, modules, PRs, endpoints, or recent changes to inspect.

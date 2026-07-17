@@ -60,7 +60,9 @@ describe("carrier-operations skill asset", () => {
     expect(skillContent()).toContain(`All carriers accept an optional \`<prior_jobs>\` block: ${PRIOR_JOBS_REQUEST_HINT}`);
   });
 
-  it("exposes Ohio's exact execution_scope contract", () => {
-    expect(skillContent()).toContain("<execution_scope?> optional: Optional: for legacy plans without Execution Topology or plans marked Execution mode: Sequential, omitted or `all` executes the full plan sequentially. For Execution mode: Parallel, provide one exact Wave/Lane ID declared by the Dispatch Manifest; omitted or `all` is rejected. Never combine a full-plan invocation with scoped-lane Ohio invocation(s).");
+  it("exposes Kirov plan identity and Ohio TaskRef contracts", () => {
+    expect(skillContent()).toContain("<plan_id> required: Required stable lowercase Plan identity.");
+    expect(skillContent()).toContain("<task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set");
+    expect(skillContent()).not.toContain("<execution_scope");
   });
 });

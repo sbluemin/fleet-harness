@@ -42,7 +42,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "focus_areas", hint: "Specific directories, files, symbols, or code patterns to prioritize.", required: false },
     { tag: "constraints", hint: "Time constraints, specific branches/tags, or areas to exclude.", required: false },
   ],
-  allowedExecutorTools: ["carrier_jobs"],
+  allowedExecutorTools: ["carrier_jobs", "plan_read"],
   allowedBuiltinExternalMcpServers: ["grep_app"],
 
   // ── Tier 2: Composition ──

@@ -7,6 +7,7 @@ import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { createInfraServices, type InfraServices } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 
 import { reconcileRuntimeState } from "./reconciliation.js";
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
@@ -60,6 +61,7 @@ export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}
 async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
 	const dataDir = deps.dataDir ?? getFleetDataDir();
 	const infraServices = createInfraServices();
+	const planTools = getPlanToolSpecs({ dataDir });
 	const agentRuntime = createFleetAgentRuntimeLifecycle({
 		...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
 		authService: infraServices.authService,
@@ -69,6 +71,11 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		},
 		workspaceChangeScanner: createWorkspaceChangeScanner(),
 		wikiToolSpecs: getWikiToolSpecs(),
+		extraAgentTools: [planTools.read, planTools.verify],
+		extraExecutorTools: [
+			{ spec: planTools.write, options: { allowedScopes: [] } },
+			{ spec: planTools.markTasks, options: { allowedScopes: [] } },
+		],
 	});
 	reconcileRuntimeState(agentRuntime.carrierRuntime);
 

@@ -24,7 +24,7 @@ const TOOL_ID_PATTERN = /^[a-z0-9_]+$/;
 const GLOBAL_EXECUTOR_SCOPE = "*";
 
 export function createMcpToolRegistry(): McpToolRegistry {
-  const doctrineOrder: string[] = [];
+  const agentToolOrder: string[] = [];
   const primaryToolSpecs = new Map<string, AgentToolSpec>();
   const executorToolScopes = new Map<string, Set<string>>([
     [GLOBAL_EXECUTOR_SCOPE, new Set()],
@@ -47,20 +47,22 @@ export function createMcpToolRegistry(): McpToolRegistry {
     }
   }
 
+  function registerToolSpec(spec: AgentToolSpec): void {
+    assertToolId(spec.id, "id");
+    assertToolId(spec.tag, "tag");
+    assertUniqueTag(spec);
+    primaryToolSpecs.set(spec.id, spec);
+  }
+
   return {
     registerAgentTool(spec) {
-      assertToolId(spec.id, "id");
-      assertToolId(spec.tag, "tag");
-      assertUniqueTag(spec);
-
-      if (!primaryToolSpecs.has(spec.id)) {
-        doctrineOrder.push(spec.id);
+      registerToolSpec(spec);
+      if (!agentToolOrder.includes(spec.id)) {
+        agentToolOrder.push(spec.id);
       }
-
-      primaryToolSpecs.set(spec.id, spec);
     },
     registerExecutorTool(spec, opts) {
-      this.registerAgentTool(spec);
+      registerToolSpec(spec);
       const scopes = opts?.allowedScopes != null
         ? opts.allowedScopes
         : [GLOBAL_EXECUTOR_SCOPE];
@@ -69,7 +71,7 @@ export function createMcpToolRegistry(): McpToolRegistry {
       }
     },
     getAllAgentTools() {
-      return doctrineOrder
+      return agentToolOrder
         .map((id) => primaryToolSpecs.get(id))
         .filter((s): s is AgentToolSpec => s != null);
     },

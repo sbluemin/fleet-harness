@@ -38,6 +38,7 @@ export interface FleetAgentRuntimeLifecycleDeps {
 	readonly authService?: AuthService;
 	readonly globalOptionsService?: GlobalOptionsService;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
+	readonly extraAgentTools?: readonly AgentToolSpec[];
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
 	readonly wikiToolSpecs?: readonly AgentToolSpec[];
 	readonly reservedExternalMcpServerIds?: readonly string[];
@@ -190,14 +191,17 @@ function registerFleetAgentRuntimeTools(
 	for (const spec of deps.wikiToolSpecs ?? []) {
 		registerWikiToolSpec(mcpRegistry, spec);
 	}
+	for (const spec of deps.extraAgentTools ?? []) {
+		mcpRegistry.registerAgentTool(spec);
+	}
 	for (const registration of deps.extraExecutorTools ?? []) {
 		mcpRegistry.registerExecutorTool(registration.spec, registration.options);
 	}
 }
 
 function registerWikiToolSpec(mcpRegistry: McpToolRegistry, spec: AgentToolSpec): void {
+	mcpRegistry.registerAgentTool(spec);
 	if (spec.id === "wiki_patch_queue") {
-		mcpRegistry.registerExecutorTool(spec, { allowedScopes: [] });
 		return;
 	}
 	if (CHRONICLE_WIKI_TOOL_IDS.has(spec.id)) {

@@ -48,7 +48,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "constraints", hint: "Hard technical constraints, compatibility requirements, or non-negotiables.", required: false },
     { tag: "references", hint: "Prior Nimitz recommendations, Kirov plans, existing patterns to follow, or design decisions already made.", required: false },
   ],
-  allowedExecutorTools: ["carrier_jobs"],
+  allowedExecutorTools: ["carrier_jobs", "plan_read"],
 
   // ── Tier 2: Composition ──
   permissions: [

@@ -38,6 +38,10 @@ const EXPECTED_CARRIER_TOOL_IDS = [
   "carrier_dispatch",
   "carrier_jobs",
 ] as const;
+const EXPECTED_HOST_PLAN_TOOL_IDS = [
+  "plan_read",
+  "plan_verify",
+] as const;
 const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
   "wiki_drydock",
   "wiki_ingest",
@@ -85,7 +89,14 @@ describe("fleet-cli agent CLI MCP registration", () => {
     for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
       expect(fleetToolNames.has(toolId)).toBe(true);
     }
-    expect(fleetToolNames.size).toBe(EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length);
+    for (const toolId of EXPECTED_HOST_PLAN_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(true);
+    }
+    expect(fleetToolNames.size).toBe(
+      EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length + EXPECTED_HOST_PLAN_TOOL_IDS.length,
+    );
+    expect(fleetToolNames.has("plan_write")).toBe(false);
+    expect(fleetToolNames.has("plan_mark_tasks")).toBe(false);
     expect(fleetToolNames.has("mcp__fleet__wiki_query")).toBe(false);
     expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
     expect(fleetToolNames.has("mcp__wiki__wiki_query")).toBe(false);
@@ -96,6 +107,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
     const chronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "chronicle").map((tool) => tool.id));
     const nonChronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
+    const kirovTools = new Set(executorPort.getExecutorMcpTools("fleet", "kirov").map((tool) => tool.id));
+    const ohioTools = new Set(executorPort.getExecutorMcpTools("fleet", "ohio").map((tool) => tool.id));
 
     for (const toolId of CHRONICLE_ONLY_WIKI_TOOL_IDS) {
       expect(chronicleTools.has(toolId)).toBe(true);
@@ -108,6 +121,19 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(nonChronicleTools.has("wiki_read")).toBe(true);
     expect(nonChronicleTools.has("wiki_resolve")).toBe(true);
     expect(nonChronicleTools.has("carrier_jobs")).toBe(true);
+    expect(nonChronicleTools.has("plan_read")).toBe(true);
+    expect(nonChronicleTools.has("plan_write")).toBe(false);
+    expect(nonChronicleTools.has("plan_mark_tasks")).toBe(false);
+    expect(nonChronicleTools.has("plan_verify")).toBe(false);
+    expect(chronicleTools.has("plan_read")).toBe(true);
+    expect(kirovTools.has("plan_read")).toBe(true);
+    expect(kirovTools.has("plan_write")).toBe(true);
+    expect(kirovTools.has("plan_mark_tasks")).toBe(false);
+    expect(kirovTools.has("plan_verify")).toBe(false);
+    expect(ohioTools.has("plan_read")).toBe(true);
+    expect(ohioTools.has("plan_mark_tasks")).toBe(true);
+    expect(ohioTools.has("plan_write")).toBe(false);
+    expect(ohioTools.has("plan_verify")).toBe(false);
 
     const systemPrompt = createSystemPromptBuilder({
       carrierRuntime: runtime.carrierRuntime,
@@ -115,7 +141,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     const roughTokens = Math.ceil(systemPrompt.length / 4);
 
     expect(systemPrompt).toContain('<fleet section="role">');
-    expect(systemPrompt).toContain('<fleet section="persona">');
+    expect(systemPrompt).not.toContain('<fleet section="persona">');
     expect(systemPrompt).toContain('<fleet section="roster">');
     expect(systemPrompt).toContain('<fleet section="protocol-gate">');
     expect(systemPrompt).not.toContain('<fleet section="protocol">');

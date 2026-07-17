@@ -42,7 +42,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "hints", hint: "Known symbols, keywords, file patterns, or prior findings to narrow the scan.", required: false },
     { tag: "depth", hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'.", required: false },
   ],
-  allowedExecutorTools: ["carrier_jobs"],
+  allowedExecutorTools: ["carrier_jobs", "plan_read"],
 
   // ── Tier 2: Composition ──
   permissions: [

@@ -65,7 +65,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   allowedExecutorTools: [
     "wiki_briefing", "wiki_drydock", "wiki_ingest",
     "wiki_orient", "wiki_query", "wiki_read", "wiki_resolve",
-    "carrier_jobs",
+    "carrier_jobs", "plan_read",
   ],
 
   // ── Tier 2: Composition ──
