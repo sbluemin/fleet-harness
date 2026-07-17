@@ -32,7 +32,11 @@ describe("carrier-operations skill asset", () => {
     const content = skillContent();
 
     expect(content).toContain("## Parallel Default");
+    expect(content).toContain("invoke them in parallel — one tool call per carrier, same response");
+    expect(content).toContain("a recon Carrier must complete before a specialist Carrier can be selected");
+    expect(content).toContain("Never split a parallel launch into sequential calls.");
     expect(content).toContain("## Dispatch Failure Handling");
+    expect(content).toContain("If the intended Carrier is unavailable or the dispatch is rejected: report to the user, await instructions. Never silently substitute.");
   });
 
   it("mirrors the live registry contracts tier verbatim", () => {

@@ -20,7 +20,7 @@ Never split a parallel launch into sequential calls.
 
 ## Dispatch Failure Handling
 
-If the intended Carrier is unavailable: report to the user, await instructions. Never silently substitute.
+If the intended Carrier is unavailable or the dispatch is rejected: report to the user, await instructions. Never silently substitute.
 
 ## Contracts by carrier
 - **nimitz** (Nimitz · Strategic Command & Judgment) — wrap request content in these blocks (? = optional):

@@ -25,5 +25,5 @@ Match fleet size to task complexity: single carrier / small fleet / full fleet. 
 Resolve technical trade-offs first; never delegate unresolved decisions to a planning carrier.
 
 ### Delegation Discipline
-Delegate roster Carrier work only through carrier_dispatch; never substitute a generic agent tool or quiet local execution path. If carrier_dispatch is not exposed or rejects the requested Carrier, inspect the Fleet MCP surface first; if it remains unavailable, report that limitation to the user and await instructions. Do not fall back to direct work when delegation is appropriate.`,
+Delegate roster Carrier work only through carrier_dispatch; never substitute a generic agent tool or quiet local execution path. If carrier_dispatch is not exposed, inspect the Fleet MCP surface first; if it remains unavailable or rejects the requested Carrier, report that limitation to the user and await instructions. Do not fall back to direct work when delegation is appropriate.`,
 };
