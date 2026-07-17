@@ -216,6 +216,18 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-environment-row button:focus-visible { border-color: var(--warn); outline: none; }
 .command-band-environment-footer { margin-top: var(--space-2); color: var(--ink-fog); font-size: 10px; }
 
+/* 좁은 뷰에서는 칩 앵커(x≈80~160) + 520px 폭이 우측을 벗어나 Copy 버튼이 잘린다 —
+   앵커 대신 viewport gutter에 고정해 전체 행이 항상 화면 안에 남게 한다. */
+@media (max-width: 640px) {
+  .command-band-environment-popover {
+    position: fixed;
+    top: 52px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
+
 .command-band-center {
   justify-content: center;
   gap: var(--space-3);
