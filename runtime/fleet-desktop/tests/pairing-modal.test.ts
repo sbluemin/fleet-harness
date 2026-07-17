@@ -66,6 +66,36 @@ describe("pairing modal", () => {
     expect(parent.webContents.setIgnoreMenuShortcuts.mock.calls).toEqual([[true], [false]]);
   });
 
+  it("prefills the remembered SSH host through a safely escaped main-process script", async () => {
+    const parent = fakeParent();
+    const modalWindow = fakeModalWindow();
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html" });
+    const result = modal.prompt(parent as never, "ssh:user@devbox</script>&\";globalThis.pwned()");
+
+    await vi.waitFor(() => expect(modalWindow.webContents.executeJavaScript).toHaveBeenCalledOnce());
+    expect(modalWindow.webContents.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('getElementById("mode-ssh")'));
+    const script = modalWindow.webContents.executeJavaScript.mock.calls[0]?.[0] ?? "";
+    expect(script).toContain("mode.checked = true;");
+    expect(script).toContain('input.value = "user@devbox\\u003c/script\\u003e\\u0026\\";globalThis.pwned()"');
+    expect(script).not.toContain("</script>");
+    expect(script).not.toContain('input.value = "user@devbox\\u003c/script\\u003e\\u0026";globalThis.pwned()');
+    const cancel = { preventDefault: vi.fn() };
+    (modalWindow.webContents.listeners("will-navigate")[0] as (event: { preventDefault(): void }, url: string) => void)(cancel, "fleet-desktop-pairing://cancel/");
+    await expect(result).resolves.toBeNull();
+  });
+
+  it("does not inject a prefill when no SSH target was remembered", async () => {
+    const parent = fakeParent();
+    const modalWindow = fakeModalWindow();
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html" });
+    const result = modal.prompt(parent as never);
+
+    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledOnce());
+    expect(modalWindow.webContents.executeJavaScript).not.toHaveBeenCalled();
+    modalWindow.emit("closed");
+    await expect(result).resolves.toBeNull();
+  });
+
   it("resolves close and parent destruction as null exactly once", async () => {
     const closedParent = fakeParent();
     const closedWindow = fakeModalWindow();
@@ -155,6 +185,7 @@ function fakeModalWindow() {
     webContents: EventEmitter & {
       setWindowOpenHandler: ReturnType<typeof vi.fn>;
       setIgnoreMenuShortcuts: ReturnType<typeof vi.fn>;
+      executeJavaScript: ReturnType<typeof vi.fn>;
       session: EventEmitter & { setPermissionRequestHandler: ReturnType<typeof vi.fn> };
     };
   };
@@ -168,6 +199,7 @@ function fakeModalWindow() {
   const contents = new EventEmitter() as typeof modal.webContents;
   contents.setWindowOpenHandler = vi.fn();
   contents.setIgnoreMenuShortcuts = vi.fn();
+  contents.executeJavaScript = vi.fn(async () => undefined);
   contents.session = new EventEmitter() as typeof contents.session;
   contents.session.setPermissionRequestHandler = vi.fn();
   modal.webContents = contents;

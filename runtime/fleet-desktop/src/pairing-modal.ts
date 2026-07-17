@@ -78,13 +78,31 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         finish(null);
         return result;
       }
-      // The query is main-process-owned template context. The local, script-free page
-      // does not consume it as code; W3 passes the remembered value back on reopen.
-      const query = rememberedTarget ? { rememberedSshTarget: rememberedTarget } : undefined;
-      void modal.loadFile(dependencies.pairingPagePath, query ? { query } : undefined).catch(() => finish(null));
+      void modal.loadFile(dependencies.pairingPagePath)
+        .then(async () => {
+          const host = rememberedSshHost(rememberedTarget);
+          if (!host || settled || modal.isDestroyed()) return;
+          await modal.webContents.executeJavaScript(createRememberedSshPrefillScript(host)).catch(() => undefined);
+        })
+        .catch(() => finish(null));
       return result;
     },
   };
+}
+
+function rememberedSshHost(target: string | null): string | null {
+  return target?.startsWith("ssh:") && target.length > 4 ? target.slice(4) : null;
+}
+
+function createRememberedSshPrefillScript(host: string): string {
+  const value = JSON.stringify(host).replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character);
+  return String.raw`(() => {
+  const mode = document.getElementById("mode-ssh");
+  const input = document.getElementById("ssh-host");
+  if (!(mode instanceof HTMLInputElement) || !(input instanceof HTMLInputElement)) return;
+  mode.checked = true;
+  input.value = ${value};
+})();`;
 }
 
 export function createPairingModalOptions(parent: BrowserWindow): BrowserWindowConstructorOptions {
