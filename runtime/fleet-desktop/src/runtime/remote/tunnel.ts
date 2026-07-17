@@ -18,7 +18,7 @@ export interface TunnelOptions { readonly settle?: () => Promise<void>; }
  */
 export async function openSamePortTunnel(adapter: OpenSshAdapter, target: ValidatedSshTarget, port: number, cancellation?: RemoteCancellation, options: TunnelOptions = {}): Promise<RemoteTunnel> {
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("remote_tunnel_invalid_port");
-  const process = await adapter.open(target, ["-N", "-T", "-o", "ExitOnForwardFailure=yes", "-L", `${port}:127.0.0.1:${port}`], cancellation);
+  const process = await adapter.open(target, ["-N", "-T", "-o", "ExitOnForwardFailure=yes", "-L", `127.0.0.1:${port}:127.0.0.1:${port}`], cancellation);
   let stderr = "";
   let exitedEarly = false;
   void process.exited.then(() => { exitedEarly = true; });

@@ -66,32 +66,34 @@ describe("pairing modal", () => {
     expect(parent.webContents.setIgnoreMenuShortcuts.mock.calls).toEqual([[true], [false]]);
   });
 
-  it("prefills the remembered SSH host through a safely escaped main-process script", async () => {
+  it("prefills the remembered SSH host through a safely escaped temporary HTML file", async () => {
     const parent = fakeParent();
     const modalWindow = fakeModalWindow();
-    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html" });
+    const fileSystem = fakeTemplateFileSystem();
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html", fileSystem, temporaryDirectory: "/tmp", randomId: () => "fixture" });
     const result = modal.prompt(parent as never, "ssh:user@devbox</script>&\";globalThis.pwned()");
 
-    await vi.waitFor(() => expect(modalWindow.webContents.executeJavaScript).toHaveBeenCalledOnce());
-    expect(modalWindow.webContents.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining('getElementById("mode-ssh")'));
-    const script = modalWindow.webContents.executeJavaScript.mock.calls[0]?.[0] ?? "";
-    expect(script).toContain("mode.checked = true;");
-    expect(script).toContain('input.value = "user@devbox\\u003c/script\\u003e\\u0026\\";globalThis.pwned()"');
-    expect(script).not.toContain("</script>");
-    expect(script).not.toContain('input.value = "user@devbox\\u003c/script\\u003e\\u0026";globalThis.pwned()');
+    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture.html"));
+    expect(fileSystem.writeFileSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture.html", expect.stringContaining('id="mode-ssh" name="pairing-mode" type="radio" checked'), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    const html = fileSystem.writeFileSync.mock.calls[0]?.[1] ?? "";
+    expect(html).toContain('id="ssh-host" name="host" type="text" required value="user@devbox&lt;/script&gt;&amp;&quot;;globalThis.pwned()"');
+    expect(html).not.toMatch(/<(script|iframe|webview)\b|\bon\w+\s*=/i);
     const cancel = { preventDefault: vi.fn() };
     (modalWindow.webContents.listeners("will-navigate")[0] as (event: { preventDefault(): void }, url: string) => void)(cancel, "fleet-desktop-pairing://cancel/");
     await expect(result).resolves.toBeNull();
+    expect(fileSystem.unlinkSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture.html");
   });
 
-  it("does not inject a prefill when no SSH target was remembered", async () => {
+  it("loads the static template when no SSH target was remembered", async () => {
     const parent = fakeParent();
     const modalWindow = fakeModalWindow();
-    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html" });
+    const fileSystem = fakeTemplateFileSystem();
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html", fileSystem });
     const result = modal.prompt(parent as never);
 
-    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledOnce());
-    expect(modalWindow.webContents.executeJavaScript).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/desktop/pairing/index.html"));
+    expect(fileSystem.readFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     modalWindow.emit("closed");
     await expect(result).resolves.toBeNull();
   });
@@ -185,7 +187,6 @@ function fakeModalWindow() {
     webContents: EventEmitter & {
       setWindowOpenHandler: ReturnType<typeof vi.fn>;
       setIgnoreMenuShortcuts: ReturnType<typeof vi.fn>;
-      executeJavaScript: ReturnType<typeof vi.fn>;
       session: EventEmitter & { setPermissionRequestHandler: ReturnType<typeof vi.fn> };
     };
   };
@@ -199,11 +200,18 @@ function fakeModalWindow() {
   const contents = new EventEmitter() as typeof modal.webContents;
   contents.setWindowOpenHandler = vi.fn();
   contents.setIgnoreMenuShortcuts = vi.fn();
-  contents.executeJavaScript = vi.fn(async () => undefined);
   contents.session = new EventEmitter() as typeof contents.session;
   contents.session.setPermissionRequestHandler = vi.fn();
   modal.webContents = contents;
   return modal;
+}
+
+function fakeTemplateFileSystem() {
+  return {
+    readFileSync: vi.fn(() => `<!doctype html><input class="mode" id="mode-loopback" name="pairing-mode" type="radio" checked><input class="mode" id="mode-ssh" name="pairing-mode" type="radio"><form action="fleet-desktop-pairing://submit/"><input id="ssh-host" name="host" type="text" required></form>`),
+    writeFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+  };
 }
 
 function browserWindowConstructor(window: ReturnType<typeof fakeModalWindow>) {

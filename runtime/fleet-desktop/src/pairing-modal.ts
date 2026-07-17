@@ -1,3 +1,8 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+
 import type { BrowserWindow, BrowserWindowConstructorOptions, Event, WebContents } from "electron";
 
 export const PAIRING_SCHEME = "fleet-desktop-pairing:";
@@ -10,14 +15,26 @@ export interface PairingModal {
 export interface PairingModalDependencies {
   readonly BrowserWindow: typeof BrowserWindow;
   readonly pairingPagePath: string;
+  readonly fileSystem?: PairingTemplateFileSystem;
+  readonly temporaryDirectory?: string;
+  readonly randomId?: () => string;
 }
 
 interface PairingModalWindow extends BrowserWindow {
   readonly webContents: WebContents;
 }
 
+interface PairingTemplateFileSystem {
+  readFileSync(path: string, encoding: "utf8"): string;
+  writeFileSync(path: string, data: string, options: { readonly encoding: "utf8"; readonly mode: number; readonly flag: "wx" }): void;
+  unlinkSync(path: string): void;
+}
+
 // 이 모달은 렌더러 코드 없이 폼 이동만 받아, 사용자 입력이 IPC나 실행 문자열을 통과하지 않게 한다.
 export function createPairingModal(dependencies: PairingModalDependencies): PairingModal {
+  const fileSystem = dependencies.fileSystem ?? fs;
+  const temporaryDirectory = dependencies.temporaryDirectory ?? os.tmpdir();
+  const randomId = dependencies.randomId ?? randomUUID;
   let active: { readonly window: PairingModalWindow; readonly result: Promise<string | null>; ready: boolean } | null = null;
 
   return {
@@ -33,6 +50,7 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
       let settled = false;
       let shortcutsIgnored = false;
       let cleanupContents = (): void => undefined;
+      let temporaryPagePath: string | null = null;
       const result = new Promise<string | null>((resolve) => { resolveResult = resolve; });
       const onParentClosed = (): void => finish(null);
       const onModalClosed = (): void => finish(null, false);
@@ -43,6 +61,10 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         parent.removeListener("closed", onParentClosed);
         modal.removeListener("closed", onModalClosed);
         cleanupContents();
+        if (temporaryPagePath) {
+          try { fileSystem.unlinkSync(temporaryPagePath); } catch { /* Best-effort cleanup preserves modal completion. */ }
+          temporaryPagePath = null;
+        }
         if (shortcutsIgnored && !parent.isDestroyed()) {
           try { parent.webContents.setIgnoreMenuShortcuts(false); } catch { /* 부모 종료 중에는 복원이 불가능할 수 있다. */ }
         }
@@ -78,13 +100,8 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         finish(null);
         return result;
       }
-      void modal.loadFile(dependencies.pairingPagePath)
-        .then(async () => {
-          const host = rememberedSshHost(rememberedTarget);
-          if (!host || settled || modal.isDestroyed()) return;
-          await modal.webContents.executeJavaScript(createRememberedSshPrefillScript(host)).catch(() => undefined);
-        })
-        .catch(() => finish(null));
+      temporaryPagePath = createRememberedPairingPage(dependencies.pairingPagePath, rememberedTarget, fileSystem, temporaryDirectory, randomId);
+      void modal.loadFile(temporaryPagePath ?? dependencies.pairingPagePath).catch(() => finish(null));
       return result;
     },
   };
@@ -94,15 +111,32 @@ function rememberedSshHost(target: string | null): string | null {
   return target?.startsWith("ssh:") && target.length > 4 ? target.slice(4) : null;
 }
 
-function createRememberedSshPrefillScript(host: string): string {
-  const value = JSON.stringify(host).replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character);
-  return String.raw`(() => {
-  const mode = document.getElementById("mode-ssh");
-  const input = document.getElementById("ssh-host");
-  if (!(mode instanceof HTMLInputElement) || !(input instanceof HTMLInputElement)) return;
-  mode.checked = true;
-  input.value = ${value};
-})();`;
+function createRememberedPairingPage(pairingPagePath: string, target: string | null, fileSystem: PairingTemplateFileSystem, temporaryDirectory: string, randomId: () => string): string | null {
+  const host = rememberedSshHost(target);
+  if (!host) return null;
+  try {
+    const html = withRememberedSshTarget(fileSystem.readFileSync(pairingPagePath, "utf8"), host);
+    const temporaryPath = path.join(temporaryDirectory, `fleet-desktop-pairing-${randomId()}.html`);
+    fileSystem.writeFileSync(temporaryPath, html, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    return temporaryPath;
+  } catch {
+    return null;
+  }
+}
+
+function withRememberedSshTarget(html: string, host: string): string {
+  return addAttribute(addAttribute(html, "mode-ssh", "checked"), "ssh-host", `value="${escapeHtmlAttribute(host)}"`);
+}
+
+function addAttribute(html: string, id: string, attribute: string): string {
+  const expression = new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`, "u");
+  const match = html.match(expression);
+  if (!match) throw new Error("pairing_template_marker_missing");
+  return html.replace(expression, `${match[0]!.slice(0, -1)} ${attribute}>`);
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", "\"": "&quot;" })[character] ?? character);
 }
 
 export function createPairingModalOptions(parent: BrowserWindow): BrowserWindowConstructorOptions {

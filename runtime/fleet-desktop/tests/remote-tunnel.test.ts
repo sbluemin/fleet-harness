@@ -18,10 +18,10 @@ function adapter(open: OpenSshAdapter["open"]): OpenSshAdapter {
 }
 
 describe("same-port remote tunnels", () => {
-  it("uses an identical local/remote q and ExitOnForwardFailure", async () => {
+  it("uses an explicit loopback bind with an identical local/remote q and ExitOnForwardFailure", async () => {
     const child = process(); const open = vi.fn<OpenSshAdapter["open"]>(async () => child); const ssh = adapter(open);
     const tunnel = await openSamePortTunnel(ssh, parseSshTarget("host"), 4310, undefined, { settle: async () => {} });
-    expect(open).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining(["-N", "-T", "-o", "ExitOnForwardFailure=yes", "-L", "4310:127.0.0.1:4310"]), undefined);
+    expect(open).toHaveBeenCalledWith(expect.anything(), ["-N", "-T", "-o", "ExitOnForwardFailure=yes", "-L", "127.0.0.1:4310:127.0.0.1:4310"], undefined);
     child.exit(); await tunnel.dispose();
   });
   it("maps an OpenSSH local bind failure to the collision path", async () => {
