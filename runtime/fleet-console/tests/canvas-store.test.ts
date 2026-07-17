@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -60,26 +60,52 @@ describe("canvas store", () => {
     expect(getMaximizedOperationId()).toBe("op-a");
   });
 
-  it("minimizes non-maximized Operations when a panel is maximized", () => {
+  it("keeps the actual minimized list and Formation under a render-only focus layer", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
     setOperationGeometry("op-c", { ...GEOMETRY });
+    minimizeOperation("op-a");
+    const viewport = { x: 48, y: 72, zoom: 0.8 };
+    const operations = getSnapshot().operations;
+    setState({ viewport });
+    toggleFormationView();
 
     setMaximizedOperationId("op-b");
 
     expect(getMaximizedOperationId()).toBe("op-b");
-    expect(getSnapshot().minimized).toEqual(["op-a", "op-c"]);
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
+    expect(getSnapshot().viewport).toEqual(viewport);
+    expect(getSnapshot().operations).toEqual(operations);
+
+    clearMaximizedOperationId();
+
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
   });
 
-  it("restores a minimized Operation when it becomes maximized", () => {
+  it("removes only the focused Operation from the actual minimized list", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-a");
     minimizeOperation("op-b");
 
     setMaximizedOperationId("op-b");
 
     expect(getMaximizedOperationId()).toBe("op-b");
     expect(getSnapshot().minimized).toEqual(["op-a"]);
+  });
+
+  it("minimizes only the focused Operation and clears its focus layer", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-a");
+    setMaximizedOperationId("op-b");
+
+    minimizeOperation("op-b");
+
+    expect(getMaximizedOperationId()).toBeNull();
+    expect(getSnapshot().minimized).toEqual(["op-a", "op-b"]);
   });
 
   it("minimizes boot panels without changing their stored geometry", () => {
@@ -162,17 +188,17 @@ describe("canvas store", () => {
     expect(getSnapshot().collapsedGroups).toEqual(["group-a"]);
   });
 
-  it("keeps maximize-docked Operations minimized when entering open-panel Formation", () => {
+  it("keeps Formation and actual minimized Operations when focusing a panel", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setOperationGeometry("op-b", { ...GEOMETRY });
     setOperationGeometry("op-c", { ...GEOMETRY });
+    minimizeOperation("op-a");
+    toggleFormationView();
     setMaximizedOperationId("op-b");
 
-    toggleFormationView();
-
     expect(getFormationView()).toBe(true);
-    expect(getMaximizedOperationId()).toBeNull();
-    expect(getSnapshot().minimized).toEqual(["op-a", "op-c"]);
+    expect(getMaximizedOperationId()).toBe("op-b");
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
   });
 
   it("keeps manually minimized Operations minimized when entering Formation", () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
@@ -16,6 +16,8 @@ interface OperationFrameProps {
   readonly status?: OperationActivity;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
+  readonly renderHidden?: boolean;
+  readonly focusLayerTarget?: boolean;
   readonly topEdge?: boolean;
   readonly interactionDisabled?: boolean;
   readonly accentKey?: string | null;
@@ -28,6 +30,7 @@ interface OperationFrameProps {
   readonly onSetAccent?: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
+  readonly onRenderHiddenFocus?: () => void;
 }
 
 interface DragState {
@@ -49,7 +52,7 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -90,6 +93,16 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     const frame = window.requestAnimationFrame(() => identityTriggerRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [rename.renaming]);
+
+  // focus layer가 현재 포커스를 담은 peer를 숨길 때는 body로 흘려보내지 않고 새 전면 frame(없으면 Canvas)으로 옮긴다.
+  useLayoutEffect(() => {
+    if (!renderHidden || typeof document === "undefined") return;
+    // AccentPopover는 document.body에 포털되지만 frame이 소유한다. 열린 peer는 포커스 위치와 무관하게
+    // 먼저 닫고, 메뉴 내부에 있던 포커스도 전면 frame/Canvas로 명시적으로 넘긴다.
+    const hadAccentPopover = accentAnchor !== null;
+    if (hadAccentPopover) setAccentAnchor(null);
+    if (hadAccentPopover || operationRef.current?.contains(document.activeElement)) onRenderHiddenFocus?.();
+  }, [accentAnchor, renderHidden, onRenderHiddenFocus]);
 
   const clearCloseArmTimer = () => {
     if (closeArmTimeoutRef.current === null) return;
@@ -260,6 +273,8 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     width: Math.round(geometry.width),
     height: Math.round(geometry.height),
     zIndex: geometry.zIndex,
+    // Focus Layer peer는 xterm ResizeObserver가 기존 컨테이너 크기를 계속 보게 레이아웃을 보존한다.
+    ...(renderHidden ? { visibility: "hidden", pointerEvents: "none" } : {}),
     ...(accentColor ? { "--user-accent": accentColor } : {}),
   } as CSSProperties;
 
@@ -270,8 +285,11 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       style={frameStyle}
       onPointerDown={onActivate}
       data-canvas-operation
+      data-focus-layer-target={focusLayerTarget ? "true" : undefined}
       aria-label={`Operation ${displayTitle}`}
-      inert={minimized ? true : undefined}
+      aria-hidden={renderHidden || undefined}
+      tabIndex={focusLayerTarget ? -1 : undefined}
+      inert={minimized || renderHidden ? true : undefined}
     >
       {!maximized && !interactionDisabled ? (
         <div
