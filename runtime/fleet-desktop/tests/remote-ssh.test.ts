@@ -53,6 +53,23 @@ describe("OpenSSH transport", () => {
     expect(program).toContain(["fleet-remote", ...commandArgs.map(shellQuote)].join(" "));
   });
 
+  it("hydrates start_console PATH from a validated remote login shell without changing the SSH argv boundary", async () => {
+    const process = fakeProcess(); const spawn = vi.fn(() => process);
+    const adapter = await createOpenSshAdapter({ locate: async () => "ssh", spawn });
+    const pending = adapter.run(parseSshTarget("dev@host"), { operation: "start_console", args: [runtime, ".fleet/desktop/runtime/node/bin/node", ".fleet/desktop/runtime/console/latest/dist/cli.mjs", owner, "1", "0.3.1", ".fleet/console"] });
+    process.exit(); await pending;
+    const args = calls(spawn)[0]![1];
+    const boundary = args.indexOf("--");
+    const program = args.at(-1)!;
+    expect(args.slice(boundary + 1)).toEqual(["dev@host", program]);
+    expect(program).toContain('loginsh="${SHELL:-/bin/sh}"');
+    expect(program).toContain('loginpath=$("$loginsh" -ilc');
+    expect(program).toContain('case "$loginpath" in ""|:*|*:|*[[:cntrl:]]*) loginpath_valid=0');
+    expect(program).toContain('case "$loginpath_entry" in /*) ;; *) loginpath_valid=0 ;; esac');
+    expect(program).toContain('PATH="$loginpath:$PATH"; export PATH; fi; cd "$HOME/$1"');
+    expect(program).toContain('FLEET_CONSOLE_RESOURCE_ROOT="$HOME/$1" nohup "$HOME/$2" "$HOME/$3" serve >/dev/null 2>&1 & printf %s "$!"');
+  });
+
   it("interprets predicate exit 0/1 while treating 255 as an SSH transport failure", async () => {
     for (const [operation, commandArgs, exitCode, expected, scriptFragment] of [
       ["check_process", ["42"], 0, { ok: true, exitCode: 0 }, "kill -0 \"$1\""],
