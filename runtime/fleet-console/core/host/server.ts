@@ -10,6 +10,8 @@ import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResp
 import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore, type ConsoleThemeId } from "./console-settings.js";
+import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-fullscreen.js";
+import { createDesktopFullscreenRouter } from "./desktop-fullscreen-routes.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-theme.js";
 import { createDesktopThemeRouter } from "./desktop-theme-routes.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
@@ -303,6 +305,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const operationSseSubscribers = new Set<http.ServerResponse>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
+  let desktopFullscreen = false;
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
   }) ?? null;
@@ -482,6 +485,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
+  const desktopFullscreenRouter = createDesktopFullscreenRouter({
+    getFullscreen: () => desktopFullscreen,
+    isAuthorized: isExactConsoleOrigin,
+    readJsonBody,
+    setFullscreen: (fullscreen) => {
+      desktopFullscreen = fullscreen;
+      broadcastDesktopFullscreenChanged();
+    },
+    writeJson,
+    writeNoContent,
+  });
   const pluginSettingsRouter = createPluginSettingsRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
@@ -534,6 +548,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         "Connection": "keep-alive",
       }));
       res.write(":connected\n\n");
+      res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
       operationSseSubscribers.add(res);
       res.on("close", () => {
         operationSseSubscribers.delete(res);
@@ -555,7 +570,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
   });
-  routeRegistry.register("/api/v1/desktop", desktopThemeRouter);
+  routeRegistry.register("/api/v1/desktop", async (context) => {
+    if (await desktopFullscreenRouter(context)) return true;
+    return desktopThemeRouter(context);
+  });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -1072,6 +1090,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  function broadcastDesktopFullscreenChanged(): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen));
+    for (const res of operationSseSubscribers) res.write(data);
+  }
+
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
     if (desktopThemeSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme));
@@ -1364,6 +1388,11 @@ async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
 function writeJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json" }));
   res.end(JSON.stringify(body));
+}
+
+function writeNoContent(res: http.ServerResponse): void {
+  res.writeHead(204, withSecurityHeaders({}));
+  res.end();
 }
 
 function writeJavaScript(res: http.ServerResponse, status: number, body: string): void {

@@ -17,6 +17,7 @@ import { createPairingModal } from "./pairing-modal.js";
 import { createRuntimePairing } from "./runtime-pairing.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
+import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
@@ -84,6 +85,7 @@ async function boot(): Promise<void> {
       },
     })
     : null;
+  let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   let refreshNativeUpdateActions: (() => void) | null = null;
   const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
@@ -92,7 +94,12 @@ async function boot(): Promise<void> {
       createWindow: async () => {
         const createdWindow = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
         window = createdWindow;
-        createdWindow.once("closed", () => themeSynchronizer?.stop());
+        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow);
+        createdWindow.once("closed", () => {
+          themeSynchronizer?.stop();
+          fullscreenSynchronizer?.stop();
+          fullscreenSynchronizer = null;
+        });
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
@@ -107,6 +114,7 @@ async function boot(): Promise<void> {
         controls.handoffStarted();
       },
       synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
+      synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => controls.onConsoleLoaded(),
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
@@ -117,6 +125,7 @@ async function boot(): Promise<void> {
   }, () => supervisor.stop());
   const pairing = createRuntimePairing({
     notifier: createPairingNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) }),
+    fullscreenSynchronizer: () => fullscreenSynchronizer,
     themeSynchronizer,
     modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
   });
