@@ -66,6 +66,18 @@ describe("OperationFrame identity rename", () => {
     expect(onRename).toHaveBeenCalledTimes(completion === "Escape" ? 0 : 1);
   });
 
+  it("commits active-panel rename and returns focus to its identity trigger", () => {
+    const onRename = vi.fn();
+    renderFrame(onRename, true);
+    beginRename(identityTrigger());
+    const input = identityInput()!;
+
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(identityTrigger());
+  });
+
   it("places inactive identity before its beacon and preserves the full-title tooltip", () => {
     renderFrame(vi.fn(), false);
     const titlebar = document.querySelector(".canvas-operation-titlebar")!;
@@ -73,18 +85,44 @@ describe("OperationFrame identity rename", () => {
 
     expect(children[0]?.className).toBe("canvas-operation-identity-name");
     expect(children[1]?.className).toBe("canvas-operation-beacon-button");
-    expect(children.slice(2)).toHaveLength(3);
+    expect(children[2]?.className).toBe("canvas-operation-window-controls");
+    expect(document.querySelectorAll(".canvas-operation-window-controls .canvas-operation-icon-button")).toHaveLength(3);
     expect(identityTrigger().title).toBe("A deliberately long Operation title — Double-click, Enter, or F2 to rename");
   });
 
-  it("does not render the identity title or input for the active panel", () => {
+  it.each(["double-click", "Enter", "F2"])("renders active identity and begins rename with %s", (action) => {
+    const onRename = vi.fn();
+    renderFrame(onRename, true);
+    const trigger = identityTrigger();
+
+    act(() => {
+      if (action === "double-click") {
+        trigger.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true }));
+        trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+        return;
+      }
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { key: action, bubbles: true, cancelable: true }));
+    });
+
+    expect(identityInput()).not.toBeNull();
+    expect(document.activeElement).toBe(identityInput());
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("marks the frame with is-top-edge so the nameplate insets under the canvas clip", () => {
+    renderFrame(vi.fn(), false, true);
+    expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
+  });
+
+  it("keeps active identity in the name → beacon → controls order", () => {
     renderFrame(vi.fn(), true);
     const children = Array.from(document.querySelector(".canvas-operation-titlebar")!.children);
 
     expect(identityInput()).toBeNull();
-    expect(document.querySelector(".canvas-operation-identity-name")).toBeNull();
-    expect(children[0]?.className).toBe("canvas-operation-beacon-button");
-    expect(children.slice(1)).toHaveLength(3);
+    expect(identityTrigger()).not.toBeNull();
+    expect(children[0]?.className).toBe("canvas-operation-identity-name");
+    expect(children[1]?.className).toBe("canvas-operation-beacon-button");
+    expect(children[2]?.className).toBe("canvas-operation-window-controls");
   });
 
   it.each(["double-click", "Enter", "F2"])("keeps inactive identity mounted when %s begins rename", (action) => {
@@ -143,8 +181,9 @@ function renderInactiveFrame(onRename: (title: string) => void): HTMLButtonEleme
   return identityTrigger();
 }
 
-function renderFrame(onRename: (title: string) => void, active: boolean): void {
+function renderFrame(onRename: (title: string) => void, active: boolean, topEdge = false): void {
   act(() => root!.render(createElement(OperationFrame, {
+    topEdge,
     operation: {
       id: "operation-identity",
       theaterId: "theater-identity",
