@@ -180,7 +180,7 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().operations).toHaveProperty("launched");
   });
 
-  it("consumes Alt+Arrow without restoring a minimized panel", async () => {
+  it("restores the only minimized panel with Alt+Arrow", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
     apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
@@ -205,8 +205,8 @@ describe("Operations boot minimization", () => {
     });
 
     expect(event.defaultPrevented).toBe(true);
-    expect(getState().activeOperationId).toBeNull();
-    expect(getSnapshot().minimized).toEqual(["initial"]);
+    expect(getState().activeOperationId).toBe("initial");
+    expect(getSnapshot().minimized).toEqual([]);
   });
 
   it("advances the focus layer with Alt+Arrow while preserving Formation", async () => {
