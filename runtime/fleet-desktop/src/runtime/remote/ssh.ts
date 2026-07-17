@@ -161,9 +161,22 @@ function version(value: string): boolean { return VERSION.test(value); }
 function invalidCommand(): never { throw new RemoteRuntimeError("remote_command_invalid"); }
 
 function writeStdin(child: OpenSshProcess, command: RemoteCommand): void {
+  const onDestinationError = () => child.terminate();
+  child.stdin.on("error", onDestinationError);
+  void child.exited.finally(() => child.stdin.removeListener("error", onDestinationError));
   if (!command.stdin) { child.stdin.end(); return; }
   if (command.stdin instanceof Uint8Array) { child.stdin.end(command.stdin); return; }
-  command.stdin.pipe(child.stdin);
+  const source = command.stdin;
+  const onSourceError = () => {
+    source.unpipe(child.stdin);
+    child.terminate();
+  };
+  source.once("error", onSourceError);
+  void child.exited.finally(() => {
+    source.unpipe(child.stdin);
+    source.removeListener("error", onSourceError);
+  });
+  source.pipe(child.stdin);
 }
 
 function bindCancellation(child: OpenSshProcess, cancellation?: RemoteCancellation): void {

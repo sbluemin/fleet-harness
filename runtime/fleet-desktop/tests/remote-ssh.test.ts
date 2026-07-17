@@ -161,6 +161,30 @@ describe("OpenSSH transport", () => {
     expect(process.terminate).toHaveBeenCalled();
   });
 
+  it("absorbs upload stdin write errors and reports the SSH process failure", async () => {
+    const process = fakeProcess(); const spawn = vi.fn(() => process);
+    const adapter = await createOpenSshAdapter({ locate: async () => "ssh", spawn });
+    const pending = adapter.run(parseSshTarget("host"), { operation: "upload_file", args: [runtime], stdin: new Uint8Array([1, 2]) });
+    expect(process.stdin.listenerCount("error")).toBeGreaterThan(0);
+    expect(() => process.stdin.emit("error", new Error("EPIPE"))).not.toThrow();
+    expect(process.terminate).toHaveBeenCalled();
+    process.exit(255);
+    await expect(pending).rejects.toThrow("ssh_failed");
+    expect(process.stdin.listenerCount("error")).toBe(0);
+  });
+
+  it("stops an errored upload stream without leaking its error", async () => {
+    const process = fakeProcess(); const source = new PassThrough(); const spawn = vi.fn(() => process);
+    const adapter = await createOpenSshAdapter({ locate: async () => "ssh", spawn });
+    const pending = adapter.run(parseSshTarget("host"), { operation: "upload_file", args: [runtime], stdin: source });
+    expect(source.listenerCount("error")).toBeGreaterThan(0);
+    expect(() => source.emit("error", new Error("archive read failed"))).not.toThrow();
+    expect(process.terminate).toHaveBeenCalled();
+    process.exit(255);
+    await expect(pending).rejects.toThrow("ssh_failed");
+    expect(source.listenerCount("error")).toBe(0);
+  });
+
   it("waits for child close so stdout written after exit is collected", async () => {
     const events = new EventEmitter();
     const stdout = new PassThrough(); const stderr = new PassThrough(); const stdin = new PassThrough();
