@@ -2,9 +2,9 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
-import type { GlobalOptionsService } from "@dotobokuri/core-infra";
+import type { AuthService, GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -36,6 +36,7 @@ type OperationRenamedEvent = {
   readonly previousTitle: string;
 };
 interface AgentRouteDeps {
+  readonly authService: AuthService;
   readonly globalOptionsService: GlobalOptionsService;
 }
 
@@ -68,6 +69,7 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const runtime = createFleetAgentRuntimeLifecycle({
+    authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
     globalOptionsService: deps.globalOptionsService,
     onMcpServerStartError: (error) => {
@@ -431,7 +433,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
     const detected = await detector.detect();
-    return combineAgentCliLaunchMetadata(metadata, detected, []);
+    const authStatuses = await getAgentCliAuthStatuses(deps.authService);
+    return combineAgentCliLaunchMetadata(metadata, detected, authStatuses);
   }
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {

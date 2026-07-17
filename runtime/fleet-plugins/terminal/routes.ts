@@ -7,6 +7,7 @@ import { registerAgentRoutes } from "./server/agent.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
+import { registerTerminalModelAuthRoutes } from "./server/model-auth-routes.js";
 import { createTerminalRuntime } from "./server/shared/index.js";
 import { registerShellRoutes } from "./server/shell.js";
 
@@ -37,8 +38,10 @@ export default definePlugin({
     registerShellRoutes(ctx, runtime);
     registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
+    registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
+      authService: infraServices.authService,
       globalOptionsService: infraServices.globalOptionsService,
     });
     registerLaunchCatalog(ctx, async () => [...await agentLaunchKinds(), SHELL_LAUNCH_KIND]);

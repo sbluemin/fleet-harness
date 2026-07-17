@@ -928,6 +928,9 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("▸ Claude");
 
     controller.ptyHost.write("\x1b[B");
+    expect(renderPlain(controller)).toContain("▸ Kimi (Claude Code)");
+
+    controller.ptyHost.write("\x1b[B");
     expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("j");
@@ -953,6 +956,7 @@ describe("Mission Control controller", () => {
     expect(config.initialCliId).toBe("codex");
     expect(config.cliOptions).toEqual(expect.arrayContaining([
       { id: "claude", label: "Claude" },
+      { id: "claude-kimi", label: "Kimi (Claude Code)" },
       { id: "codex", label: "Codex" },
     ]));
 

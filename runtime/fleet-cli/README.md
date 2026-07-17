@@ -26,7 +26,7 @@ After installation, run `fleet` from any directory.
 
 ## Session Plugins
 
-Dedicated Claude and Codex sessions receive Fleet context through generated plugin assets rendered under `~/.fleet/marketplace/plugins/fleet`.
+Dedicated Claude, Kimi-via-Claude, and Codex sessions receive Fleet context through generated plugin assets rendered under `~/.fleet/marketplace/plugins/fleet`. Register Kimi credentials with `fleet auth login claude-kimi` before selecting that profile.
 The Fleet system prompt is injected at CLI launch time via temporary prompt files for Claude and a dedicated Codex profile, while provider-shared skill files are generated inside the plugin bundle from packaged assets. Built-in skills include Fleet Wiki usage plus the four protocol-mode skills used by the Admiral protocol gate: `protocol-baseline`, `protocol-midline`, `protocol-redline`, and `protocol-frontline`.
 The carrier and wiki MCP servers are not rendered into the plugin bundle; they are injected at spawn time as launch arguments (`--mcp-config` for Claude and `-c mcp_servers.*` for Codex).
 

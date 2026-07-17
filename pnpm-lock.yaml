@@ -104,6 +104,9 @@ importers:
       '@dotobokuri/core-infra':
         specifier: workspace:*
         version: link:../core-infra
+      '@dotobokuri/core-unified-agent':
+        specifier: workspace:*
+        version: link:../core-unified-agent
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../fleet-carriers

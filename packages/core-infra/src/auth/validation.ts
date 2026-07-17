@@ -25,7 +25,7 @@ export async function validateAnthropicCompatibleApiKey(
         "x-api-key": request.apiKey,
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: request.model ?? "claude-3-5-haiku-20241022",
         max_tokens: 1,
         messages: [
           {

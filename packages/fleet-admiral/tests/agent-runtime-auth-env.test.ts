@@ -18,6 +18,20 @@ describe("createAuthEnvResolver", () => {
 		await expect(resolver("claude")).resolves.toEqual({});
 	});
 
+	it("Kimi carrier에는 Fleet 저장 키와 공식 endpoint env를 주입한다", async () => {
+		const resolver = createAuthEnvResolver(undefined, {
+			deleteApiKey: async () => false,
+			getApiKey: async () => "kimi-secret",
+			listProviderIds: async () => [],
+			setApiKey: async () => {},
+		});
+
+		await expect(resolver("claude-kimi")).resolves.toMatchObject({
+			ANTHROPIC_API_KEY: "kimi-secret",
+			ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/",
+		});
+	});
+
 	it("globalOptionsService가 없으면 아무것도 주입하지 않는다", async () => {
 		const resolver = createAuthEnvResolver(undefined);
 		await expect(resolver("codex")).resolves.toEqual({});

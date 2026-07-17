@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSpawnConfig, getYoloModeId } from '../../src/config/CliConfigs.js';
+import { CLI_BACKENDS, createSpawnConfig, getYoloModeId, isClaudeFamily } from '../../src/config/CliConfigs.js';
 
 describe('CliConfigs', () => {
   describe('createSpawnConfig', () => {
@@ -13,6 +13,19 @@ describe('CliConfigs', () => {
       expect(config.args).toContain('--package=@agentclientprotocol/claude-agent-acp@0.33.1');
       expect(config.args).toContain('claude-agent-acp');
       expect(config.useNpx).toBe(true);
+    });
+
+    it('Kimi는 Claude ACP 브리지와 공식 Kimi endpoint 환경을 사용한다', () => {
+      const config = createSpawnConfig('claude-kimi', { cwd: '/tmp/workspace' });
+
+      expect(config.args).toContain('--package=@agentclientprotocol/claude-agent-acp@0.33.1');
+      expect(config.args).toContain('claude-agent-acp');
+      expect(CLI_BACKENDS['claude-kimi'].defaultEnv).toMatchObject({
+        ANTHROPIC_BASE_URL: 'https://api.kimi.com/coding/',
+        ANTHROPIC_MODEL: 'kimi-for-coding',
+        CLAUDE_CODE_SUBAGENT_MODEL: 'kimi-for-coding',
+      });
+      expect(isClaudeFamily('claude-kimi')).toBe(true);
     });
 
     it('Codex는 ACP 브리지를 npx로 spawn한다', () => {
@@ -93,6 +106,7 @@ describe('CliConfigs', () => {
   describe('getYoloModeId', () => {
     it('CLI별 ACP YOLO 모드 ID를 반환한다', () => {
       expect(getYoloModeId('claude')).toBe('bypassPermissions');
+      expect(getYoloModeId('claude-kimi')).toBe('bypassPermissions');
       expect(getYoloModeId('codex')).toBe('yolo');
     });
   });

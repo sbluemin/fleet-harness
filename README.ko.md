@@ -107,9 +107,12 @@ Fleet Console Desktop은 Fleet Console 위의 선택적 얇은 네이티브 셸�
 | CLI | 제공자 | 프로토콜 | 대표 강점 |
 |---|---|---|---|
 | **Claude Code** | Anthropic | ACP | 심층 추론과 아키텍처 판단 |
+| **Kimi via Claude Code** | Moonshot AI | ACP | Claude Code 도구를 사용하는 Kimi 코딩 모델 |
 | **Codex CLI** | OpenAI | ACP | 빠른 구현과 반복 실행 |
 | **OpenCode Go** | OpenCode | ACP | 폭넓은 오픈 모델 접근 |
 | **Cursor Agent** | Cursor | ACP | 다중 모델 라우팅 |
+
+Kimi는 설치된 `claude` 바이너리와 Moonshot의 공식 Anthropic 호환 엔드포인트를 사용합니다. Kimi 세션을 시작하거나 Carrier에 `claude-kimi`를 선택하기 전에 `fleet auth login claude-kimi` 또는 Fleet Console → Settings → Agent CLI에서 API 키를 등록하세요.
 
 Fleet은 이를 명확한 지휘 체계로 표현합니다. 사용자는 **Admiral of the Navy(대원수)**, 워크스페이스 호스트는 **Admiral(제독)**, 각 전문 **Carrier**는 Captain 페르소나가 지휘합니다. 이 메타포는 장식이 아니라 소유권, 위임, 검증을 명확하게 만드는 운용 언어입니다.
 

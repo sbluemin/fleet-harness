@@ -13,7 +13,7 @@ import {
 	type RegisterExecutorToolOptions,
 	type AuthEnvResolver,
 } from "@dotobokuri/core-agent";
-import type { GlobalOptionsService } from "@dotobokuri/core-infra";
+import type { AuthService, GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import {
 	createCarrierRuntime,
@@ -26,6 +26,7 @@ import {
 	getExecutorMcpTools,
 	registerAgentToolDefaults,
 } from "../tools.js";
+import { resolveAgentCliAuthEnv } from "../agent-cli/auth.js";
 
 export interface FleetAgentRuntimeToolRegistration {
 	readonly spec: AgentToolSpec;
@@ -34,6 +35,7 @@ export interface FleetAgentRuntimeToolRegistration {
 
 export interface FleetAgentRuntimeLifecycleDeps {
 	readonly dataDir?: string;
+	readonly authService?: AuthService;
 	readonly globalOptionsService?: GlobalOptionsService;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
@@ -122,8 +124,12 @@ export function createFleetAgentRuntimeLifecycle(
 
 export function createAuthEnvResolver(
 	globalOptionsService: GlobalOptionsService | undefined,
+	authService?: AuthService,
 ): AuthEnvResolver {
 	return async (cli): Promise<Record<string, string>> => {
+		if (cli === "claude-kimi") {
+			return resolveAgentCliAuthEnv(cli, authService);
+		}
 		if (cli !== "codex" || !globalOptionsService) return {};
 		try {
 			const mode = globalOptionsService.load().codexLaunchMode;
@@ -177,7 +183,7 @@ function registerFleetAgentRuntimeTools(
 	deps: FleetAgentRuntimeLifecycleDeps,
 ): void {
 	registerAgentToolDefaults(mcpRegistry, carrierRuntime, {
-		authEnvResolver: createAuthEnvResolver(deps.globalOptionsService),
+		authEnvResolver: createAuthEnvResolver(deps.globalOptionsService, deps.authService),
 		reservedExternalMcpServerIds: buildReservedExternalMcpServerIds(deps.reservedExternalMcpServerIds),
 		workspaceChangeScanner: deps.workspaceChangeScanner,
 	});
