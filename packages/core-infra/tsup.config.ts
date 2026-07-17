@@ -7,6 +7,7 @@ export default defineConfig({
     "data-dir": "src/data-dir/index.ts",
     "data-dir/settings": "src/data-dir/settings/index.ts",
     "fs-store": "src/fs-store/index.ts",
+    "workspace-dir": "src/workspace-dir/index.ts",
   },
   format: ["esm", "cjs"],
   dts: false,

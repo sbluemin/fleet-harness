@@ -161,7 +161,7 @@ function PlansList({ selectedName, state, onRetry, onSelect }: PlansListProps) {
   if (state.plans.length === 0) {
     return (
       <div className="plans-list-pane">
-        <EmptyState detail="Execution plans in .fleet/plans/ appear here.">No plans yet.</EmptyState>
+        <EmptyState detail="Workspace-scoped Fleet Plans appear here.">No plans yet.</EmptyState>
       </div>
     );
   }

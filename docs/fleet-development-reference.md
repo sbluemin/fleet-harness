@@ -10,6 +10,7 @@ Fleet development follows a hard one-way dependency graph:
 - `packages/fleet-carriers` — carrier runtime, personas, jobs (including detached jobs), and carrier state.
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
+- `packages/fleet-plans` — workspace-scoped Fleet Plan storage, deterministic Markdown validation, and PlanRef/TaskRef Agent tools.
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
 - `runtime/fleet-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
 - `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
@@ -40,6 +41,10 @@ Put code here only when it concerns Electron main-process lifecycle, one native 
 ### 2.5 `packages/core-agent`
 
 Put code here when it owns the host-agnostic one-shot executor/session/model runtime engine (fresh provider client per call, readiness/session discovery, and explicit resume), builtin external MCP catalog, generic in-process MCP server primitives, or shared register data contracts.
+
+### 2.6 `packages/fleet-plans`
+
+Put code here when it owns Fleet Plan schema validation, PlanRef/TaskRef identity, workspace-scoped Plan persistence, or the `plan_read`, `plan_write`, `plan_mark_tasks`, and `plan_verify` tool contracts. Generic cwd-to-workspace directory resolution remains in `packages/core-infra`.
 
 ## 3. Import Rules
 

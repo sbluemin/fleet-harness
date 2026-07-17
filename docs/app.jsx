@@ -154,12 +154,12 @@ const CAPTAINS = [
     role: { ko: "Operational Planning Bridge", en: "Operational Planning Bridge" },
     cli: "Claude Code",
     color: "#e8a854",
-    mission: { ko: "전략을 작전 명령서로 옮긴다. .fleet/plans/*.md — 모든 다단 작전의 단일 진실원.", en: "Translates strategy into operation orders. .fleet/plans/*.md — the single source of truth for every multi-stage op." },
+    mission: { ko: "전략을 검증 가능한 Fleet Plan으로 옮긴다. PlanRef와 TaskRef가 모든 다단 작전의 단일 진실원이다.", en: "Translates strategy into validated Fleet Plans. PlanRefs and TaskRefs are the single source of truth for every multi-stage op." },
     duties: [
-      { ko: "작전 계획서(.fleet/plans/*.md) 작성·갱신", en: "Authors and maintains operation plans (.fleet/plans/*.md)." },
+      { ko: "plan_write로 Fleet Plan 작성·갱신", en: "Authors and maintains Fleet Plans through plan_write." },
       { ko: "Wave 분해 · 의존성 그래프 정의", en: "Wave decomposition and dependency graph definition." },
       { ko: "Acceptance criteria · 검증 게이트 명시", en: "Specifies acceptance criteria and verification gates." },
-      { ko: "Ohio 등 실행 함장에 plan_file 전달", en: "Hands the plan_file to executors like Ohio." },
+      { ko: "Lane별 TaskRef를 Ohio 실행 요청으로 전달", en: "Hands Lane-scoped TaskRefs to Ohio for execution." },
     ],
   },
   {
@@ -182,7 +182,7 @@ const CAPTAINS = [
     color: "#a78bfa",
     mission: { ko: "Kirov의 명령서를 받아 파(Wave) 단위로 발사한다. 다단 작전의 실집행 잠수함.", en: "Receives Kirov's orders and fires by wave. The submarine that actually executes multi-stage ops." },
     duties: [
-      { ko: "plan_file 수신 → wave별 순차 실행", en: "Receives plan_file and runs each wave in sequence." },
+      { ko: "동일 Lane TaskRef 수신 → 지정 태스크만 실행", en: "Receives same-Lane TaskRefs and executes only the assigned tasks." },
       { ko: "각 wave 후 빌드·테스트·검증 게이트", en: "Build / test / verification gate after every wave." },
       { ko: "롤백 가능 단위로 커밋·체크포인트 유지", en: "Keeps commits and checkpoints at rollback-safe granularity." },
       { ko: "장기 다단 마이그레이션의 1차 실집행자", en: "Primary executor for long, multi-stage migrations." },
@@ -323,7 +323,7 @@ const DIFFS = [
     n: "04",
     name: "Architectural Discipline",
     kr: { ko: "아키텍처 규율", en: "Architectural Discipline" },
-    body: { ko: "빌드 게이트는 협상 불가. SSOT(.fleet/plans/*.md, AGENTS.md, ADR)는 강제 동기화. 각 wave는 그 자체로 컴파일·테스트를 통과해야 다음으로 진행한다.", en: "Build gates are non-negotiable. SSOT (.fleet/plans/*.md, AGENTS.md, ADRs) stays force-synced. Each wave must compile and test on its own to advance." },
+    body: { ko: "빌드 게이트는 협상 불가. SSOT(Fleet Plan, AGENTS.md, ADR)는 강제 동기화. 각 wave는 그 자체로 컴파일·테스트를 통과해야 다음으로 진행한다.", en: "Build gates are non-negotiable. SSOT (Fleet Plans, AGENTS.md, ADRs) stays force-synced. Each wave must compile and test on its own to advance." },
   },
 ];
 

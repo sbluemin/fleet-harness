@@ -248,7 +248,7 @@ describe("carrier roster rendering", () => {
     expect(roster).toContain("Use for:");
     expect(roster).toContain("NOT for:");
     expect(roster).not.toContain("Request blocks");
-    expect(roster).not.toContain("<plan_file>");
+    expect(roster).not.toContain("<task_refs>");
   });
 
   it("renders the contracts tier with request blocks only", () => {
@@ -257,7 +257,7 @@ describe("carrier roster rendering", () => {
 
     const roster = buildCarrierRoster(registry, ["ohio"], { tier: "contracts" });
 
-    expect(roster).toContain("<plan_file> required:");
+    expect(roster).toContain("<task_refs> required:");
     expect(roster).toContain("<objective?> optional:");
     expect(roster).not.toContain("Use for:");
     expect(roster).not.toContain("NOT for:");
@@ -281,7 +281,7 @@ describe("carrier roster rendering", () => {
 
     expect(roster).toContain("Use for:");
     expect(roster).toContain("Request blocks — wrap content in these (? = optional):");
-    expect(roster).toContain("<plan_file> required:");
+    expect(roster).toContain("<task_refs> required:");
   });
 });
 
@@ -944,7 +944,7 @@ function createConfigWithBlocks(id: string, displayName: string): CarrierConfig 
       outputFormat: "",
       permissions: [],
       requestBlocks: [
-        { tag: "plan_file", required: true, hint: "Repo-relative plan path." },
+        { tag: "task_refs", required: true, hint: "Assigned TaskRefs." },
         { tag: "objective", required: false, hint: "Optional goal restatement." },
       ],
       summary: "Executes plan-driven waves",

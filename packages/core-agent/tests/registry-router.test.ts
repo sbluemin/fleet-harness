@@ -63,6 +63,23 @@ describe("executor MCP whitelist", () => {
     expect(otherIds).toEqual(["metadata_tool"]);
   });
 
+  it("executor-only 도구를 host agent 도구 목록에 노출하지 않는다", () => {
+    registerScopedTools();
+
+    expect(whitelistRegistry.getAllAgentTools()).toEqual([]);
+    expect(whitelistRegistry.getExecutorMcpToolsForScope("scope_a").map((tool) => tool.id))
+      .toEqual(SCOPED_EXECUTOR_TOOL_IDS);
+  });
+
+  it("같은 spec을 host와 executor에 명시적으로 공유할 수 있다", () => {
+    const shared = makeToolSpec("shared_read", () => "ok");
+    whitelistRegistry.registerAgentTool(shared);
+    whitelistRegistry.registerExecutorTool(shared);
+
+    expect(whitelistRegistry.getAllAgentTools().map((tool) => tool.id)).toEqual(["shared_read"]);
+    expect(whitelistRegistry.getExecutorMcpToolsForScope().map((tool) => tool.id)).toEqual(["shared_read"]);
+  });
+
   it("registerExecutorTool(spec)는 옵션 없이 global scope에 도구를 등록한다", () => {
     whitelistRegistry.registerExecutorTool(makeToolSpec("global_tool", () => "global-ok"));
 

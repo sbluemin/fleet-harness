@@ -44,7 +44,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "constraints", hint: "Hard constraints, deadlines, compatibility requirements.", required: false },
     { tag: "artifacts", hint: "Relevant code snippets, file paths, error logs to examine.", required: false },
   ],
-  allowedExecutorTools: ["carrier_jobs"],
+  allowedExecutorTools: ["carrier_jobs", "plan_read"],
 
   // ── Tier 2: Composition ──
   permissions: [

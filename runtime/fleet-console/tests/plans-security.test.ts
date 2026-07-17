@@ -6,6 +6,8 @@ import type http from "node:http";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { ensureWorkspaceDirectory } from "@dotobokuri/core-infra/workspace-dir";
+
 import { createPlansRouter } from "../core/host/plans/routes.js";
 
 interface JsonResponse {
@@ -19,10 +21,12 @@ interface PlansTestContext {
 
 let tmpDir: string;
 let theaterPath: string;
+let fleetDataDir: string;
 
 beforeAll(async () => {
   tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "plans-sec-"));
   theaterPath = path.join(tmpDir, "theater");
+  fleetDataDir = path.join(tmpDir, "fleet-data");
   await fs.promises.mkdir(theaterPath);
 });
 
@@ -42,7 +46,7 @@ describe("Plans handlers — security", () => {
   });
 
   it("skips an escaping symlink in the list while keeping conforming plans", async () => {
-    const plansPath = path.join(theaterPath, ".fleet", "plans");
+    const plansPath = workspacePlansPath(theaterPath);
     const outsidePath = path.join(tmpDir, "outside.md");
     await fs.promises.mkdir(plansPath, { recursive: true });
     await fs.promises.writeFile(outsidePath, "# Outside");
@@ -58,16 +62,16 @@ describe("Plans handlers — security", () => {
     expect(response.body.plans.map((plan) => plan.name)).toEqual(["good.md"]);
   });
 
-  it("returns 403 when reading a plan symlink that resolves outside its Theater", async () => {
+  it("returns 403 when reading a symlinked workspace Plan", async () => {
     const { ctx, responses } = createContext({ theaterId: "theater", relPath: null, name: "escape.md" }, () => theaterPath);
 
     await handlePlansRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
 
-    expect(responses).toEqual([{ status: 403, body: { error: "path_outside_theater" } }]);
+    expect(responses).toEqual([{ status: 403, body: { error: "unsafe_path" } }]);
   });
 
   it("lists an oversized plan without parsing its body", async () => {
-    const plansPath = path.join(theaterPath, ".fleet", "plans");
+    const plansPath = workspacePlansPath(theaterPath);
     const oversizedPath = path.join(plansPath, "huge.md");
     const handle = await fs.promises.open(oversizedPath, "w");
     await handle.truncate(2 * 1024 * 1024 + 1);
@@ -83,7 +87,7 @@ describe("Plans handlers — security", () => {
   });
 
   it("excludes plan names that cannot be read through the API", async () => {
-    const plansPath = path.join(theaterPath, ".fleet", "plans");
+    const plansPath = workspacePlansPath(theaterPath);
     await fs.promises.writeFile(path.join(plansPath, ".hidden.md"), "# Hidden");
     await fs.promises.writeFile(path.join(plansPath, "road map.md"), "# Road map");
 
@@ -97,7 +101,7 @@ describe("Plans handlers — security", () => {
   });
 
   it("returns document-wide task totals when reading a plan", async () => {
-    const plansPath = path.join(theaterPath, ".fleet", "plans");
+    const plansPath = workspacePlansPath(theaterPath);
     await fs.promises.writeFile(path.join(plansPath, "totals.md"), `
 # Totals
 - [x] preparation
@@ -118,8 +122,8 @@ describe("Plans handlers — security", () => {
 
   it("isolates root and nested context plan roots for list and read", async () => {
     const nestedPath = path.join(theaterPath, "worktrees", "feature");
-    const nestedPlansPath = path.join(nestedPath, ".fleet", "plans");
-    await fs.promises.mkdir(nestedPlansPath, { recursive: true });
+    await fs.promises.mkdir(nestedPath, { recursive: true });
+    const nestedPlansPath = workspacePlansPath(nestedPath);
     await fs.promises.writeFile(path.join(nestedPlansPath, "nested.md"), "# Nested Plan");
 
     const rootList = createContext({ theaterId: "theater", relPath: null }, () => theaterPath);
@@ -166,22 +170,22 @@ describe("Plans handlers — security", () => {
 
     const plansEscapeContext = path.join(theaterPath, "plans-escape-context");
     await fs.promises.mkdir(plansEscapeContext);
-    await fs.promises.mkdir(path.join(plansEscapeContext, ".fleet"));
-    await fs.promises.symlink(outsidePlansPath, path.join(plansEscapeContext, ".fleet", "plans"));
+    const plansEscapeWorkspace = ensureWorkspaceDirectory(fleetDataDir, plansEscapeContext);
+    await fs.promises.symlink(outsidePlansPath, path.join(plansEscapeWorkspace.path, "plans"));
     const plansEscape = createContext({ theaterId: "theater", relPath: "plans-escape-context" }, () => theaterPath);
     await handlePlansList({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, plansEscape.ctx);
-    expect(plansEscape.responses).toEqual([{ status: 403, body: { error: "path_outside_theater" } }]);
+    expect(plansEscape.responses).toEqual([{ status: 403, body: { error: "unsafe_path" } }]);
 
     const fileEscapeContext = path.join(theaterPath, "file-escape-context");
-    const fileEscapePlansPath = path.join(fileEscapeContext, ".fleet", "plans");
-    await fs.promises.mkdir(fileEscapePlansPath, { recursive: true });
+    await fs.promises.mkdir(fileEscapeContext, { recursive: true });
+    const fileEscapePlansPath = workspacePlansPath(fileEscapeContext);
     await fs.promises.symlink(path.join(outsidePlansPath, "outside.md"), path.join(fileEscapePlansPath, "escape.md"));
     const fileEscape = createContext({ theaterId: "theater", relPath: "file-escape-context", name: "escape.md" }, () => theaterPath);
     await handlePlansRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, fileEscape.ctx);
-    expect(fileEscape.responses).toEqual([{ status: 403, body: { error: "path_outside_theater" } }]);
+    expect(fileEscape.responses).toEqual([{ status: 403, body: { error: "unsafe_path" } }]);
   });
 
-  it("returns an empty list when .fleet/plans does not exist", async () => {
+  it("returns an empty list when the workspace Plan directory does not exist", async () => {
     const emptyTheaterPath = path.join(tmpDir, "empty-theater");
     await fs.promises.mkdir(emptyTheaterPath);
     const { ctx, responses } = createContext({ theaterId: "empty", relPath: null }, () => emptyTheaterPath);
@@ -199,6 +203,7 @@ function createContext(
   const responses: JsonResponse[] = [];
   const ctx: PlansTestContext = {
     router: createPlansRouter({
+      dataDir: fleetDataDir,
       isAuthorized: () => true,
       readJsonBody: vi.fn().mockResolvedValue(body),
       resolveTheaterPath: (theaterId) => resolveTheaterPath(theaterId) ?? null,
@@ -209,6 +214,13 @@ function createContext(
   };
 
   return { ctx, responses };
+}
+
+function workspacePlansPath(cwd: string): string {
+  const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
+  const plansPath = path.join(workspace.path, "plans");
+  fs.mkdirSync(plansPath, { recursive: true });
+  return plansPath;
 }
 
 async function handlePlansList(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {

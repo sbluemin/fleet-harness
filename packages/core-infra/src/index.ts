@@ -14,6 +14,7 @@ export interface InfraServicesDeps {
 export * from "./auth/index.js";
 export * from "./data-dir/index.js";
 export * from "./fs-store/index.js";
+export * from "./workspace-dir/index.js";
 export * from "./data-dir/settings/index.js";
 
 export function createInfraServices(deps: InfraServicesDeps = {}): InfraServices {

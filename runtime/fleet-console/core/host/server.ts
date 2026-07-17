@@ -493,6 +493,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
   });
   const plansRouter = createPlansRouter({
+    dataDir: fleetDataDir,
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,

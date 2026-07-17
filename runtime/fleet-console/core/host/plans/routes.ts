@@ -1,9 +1,10 @@
 import type http from "node:http";
 
-import { PlanStoreError, isValidPlanName, listPlansForTheater, readPlanForTheater } from "./plan-store.js";
+import { PlanStoreError, isValidPlanName, listPlansForWorkspace, readPlanForWorkspace } from "./plan-store.js";
 import { TheaterPathContextError, isSafeRelativePath, resolveTheaterPathContext } from "../theater-path-context.js";
 
 export interface PlansRouteDeps {
+  readonly dataDir: string;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly resolveTheaterPath: (theaterId: string) => string | null;
@@ -61,7 +62,7 @@ async function handlePlansList(req: http.IncomingMessage, res: http.ServerRespon
   }
   try {
     const context = await resolveTheaterPathContext(theaterPath, body.relPath);
-    deps.writeJson(res, 200, { plans: await listPlansForTheater(context.realPath) });
+    deps.writeJson(res, 200, { plans: await listPlansForWorkspace(deps.dataDir, context.realPath) });
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }
@@ -92,7 +93,7 @@ async function handlePlansRead(req: http.IncomingMessage, res: http.ServerRespon
   }
   try {
     const context = await resolveTheaterPathContext(theaterPath, body.relPath);
-    deps.writeJson(res, 200, await readPlanForTheater(context.realPath, body.name));
+    deps.writeJson(res, 200, await readPlanForWorkspace(deps.dataDir, context.realPath, body.name));
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }
@@ -113,6 +114,6 @@ function writePlanStoreError(res: http.ServerResponse, deps: PlansRouteDeps, err
     return;
   }
   if (!(error instanceof PlanStoreError)) throw error;
-  const httpStatus = error.code === "path_outside_theater" ? 403 : error.code === "too_large" ? 413 : 404;
+  const httpStatus = error.code === "unsafe_path" ? 403 : error.code === "too_large" ? 413 : 404;
   deps.writeJson(res, httpStatus, { error: error.code });
 }
