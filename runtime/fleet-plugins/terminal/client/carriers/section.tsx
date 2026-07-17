@@ -96,7 +96,7 @@ function CarrierSettingsSection() {
     <>
       {settings.error ? <p className="terminal-carriers-error" role="alert">{settings.error}</p> : null}
 
-      <div className="terminal-carriers-strip" aria-label="Carrier list">
+      <div className="terminal-carriers-strip" role="group" aria-label="Carrier list">
         {settings.loading && !settings.state ? <p className="terminal-carriers-empty">Loading carrier settings.</p> : null}
         {settings.state && settings.state.carriers.length === 0 ? <p className="terminal-carriers-empty">No carriers registered.</p> : null}
         {settings.state?.carriers.map((carrier) => (
@@ -124,6 +124,7 @@ function CarrierSettingsSection() {
                       <input
                         id="carrier-display-name"
                         className="terminal-carriers-input terminal-carriers-name-input"
+                        aria-label="Display name"
                         value={settings.draft.displayName}
                         maxLength={DISPLAY_NAME_MAX_LENGTH}
                         onChange={(event) => updateCarrierSettingsDraft({ displayName: event.target.value })}

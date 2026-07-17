@@ -111,8 +111,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink-fog) 18%, transparent);
 }
 
-.terminal-carriers-live-dot.is-live,
-.terminal-carriers-toggle.is-on::before {
+.terminal-carriers-live-dot.is-live {
   background: var(--aurora);
   box-shadow: 0 0 10px var(--aurora-glow);
   animation: aurora-pulse 1.8s ease-in-out infinite;
@@ -295,8 +294,6 @@
   line-height: 1.55;
 }
 
-.terminal-carriers-inline,
-.terminal-carriers-button-stack,
 .terminal-carriers-tf-actions {
   display: flex;
   align-items: center;
@@ -376,9 +373,7 @@
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-.terminal-carriers-button,
 .terminal-carriers-ghost-button,
-.terminal-carriers-toggle,
 .terminal-carriers-icon-button,
 .terminal-carriers-tf-toggle {
   display: inline-flex;
@@ -402,25 +397,19 @@
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.terminal-carriers-button:hover:not(:disabled),
 .terminal-carriers-ghost-button:hover:not(:disabled),
-.terminal-carriers-toggle:hover:not(:disabled),
 .terminal-carriers-icon-button:hover:not(:disabled),
 .terminal-carriers-tf-toggle:hover:not(:disabled) {
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--ink-pearl);
 }
 
-.terminal-carriers-button.is-active,
-.terminal-carriers-toggle.is-on,
 .terminal-carriers-tf-toggle[aria-expanded="true"] {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass-bright);
 }
 
-.terminal-carriers-button:active:not(:disabled),
 .terminal-carriers-ghost-button:active:not(:disabled),
-.terminal-carriers-toggle:active:not(:disabled),
 .terminal-carriers-icon-button:active:not(:disabled),
 .terminal-carriers-tf-toggle:active:not(:disabled) {
   background: color-mix(in oklch, var(--brass) 16%, transparent);
@@ -428,9 +417,7 @@
   transform: translateY(1px);
 }
 
-.terminal-carriers-button:disabled,
 .terminal-carriers-ghost-button:disabled,
-.terminal-carriers-toggle:disabled,
 .terminal-carriers-icon-button:disabled,
 .terminal-carriers-tf-toggle:disabled {
   cursor: not-allowed;
@@ -455,30 +442,6 @@
   stroke-width: 1.7;
 }
 
-.terminal-carriers-toggle {
-  gap: 8px;
-  min-width: 84px;
-}
-
-.terminal-carriers-toggle::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink-rim);
-}
-
-.terminal-carriers-toggle.is-on {
-  color: var(--aurora);
-}
-
-.terminal-carriers-action-cell {
-  display: flex;
-  align-items: end;
-  height: 100%;
-}
-
-.terminal-carriers-toggle-row,
 .terminal-carriers-section-head {
   display: flex;
   align-items: flex-start;
@@ -619,8 +582,6 @@
 @container carriers-card (max-width: 560px) {
   .terminal-carriers-detail-head,
   .terminal-carriers-section-head,
-  .terminal-carriers-inline,
-  .terminal-carriers-button-stack,
   .terminal-carriers-tf-actions {
     align-items: stretch;
     flex-direction: column;
