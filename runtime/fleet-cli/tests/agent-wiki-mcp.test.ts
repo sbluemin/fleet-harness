@@ -13,6 +13,8 @@ import {
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
 } from "@dotobokuri/core-agent";
+import { ensureWorkspaceDirectory } from "@dotobokuri/core-infra";
+import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -92,6 +94,11 @@ describe("fleet-cli agent CLI MCP registration", () => {
     for (const toolId of EXPECTED_HOST_PLAN_TOOL_IDS) {
       expect(fleetToolNames.has(toolId)).toBe(true);
     }
+    expect(
+      runtime.mcpRegistry[0]!.getAllAgentTools()
+        .filter((spec) => EXPECTED_WIKI_TOOL_IDS.includes(spec.id as typeof EXPECTED_WIKI_TOOL_IDS[number]))
+        .map((spec) => ({ id: spec.id, parameters: spec.parameters })),
+    ).toEqual(getWikiToolSpecs().map((spec) => ({ id: spec.id, parameters: spec.parameters })));
     expect(fleetToolNames.size).toBe(
       EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length + EXPECTED_HOST_PLAN_TOOL_IDS.length,
     );
@@ -148,6 +155,34 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(systemPrompt).toContain('<fleet section="standing-orders"');
     expect(systemPrompt).not.toContain('<fleet section="tool-guide"');
     expect(roughTokens).toBeLessThanOrEqual(8_500);
+  });
+
+  it("migrates root legacy Wiki knowledge into the runtime data directory on first tool use", async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-wiki-data-"));
+    const invocationCwd = mkdtempSync(path.join(os.tmpdir(), "fleet-wiki-project-"));
+    try {
+      mkdirSync(path.join(invocationCwd, ".fleet", "knowledge", "wiki"), { recursive: true });
+      writeFileSync(
+        path.join(invocationCwd, ".fleet", "knowledge", "wiki", "legacy.md"),
+        "---\nid: legacy\ntitle: Legacy\n---\nDurable legacy knowledge.\n",
+        { encoding: "utf8" },
+      );
+      lifecycle = createFleetRuntimeLifecycle({ dataDir });
+      const runtime = await lifecycle.start();
+
+      const result = await runtime.mcpRegistry[0]!.invoke("wiki_orient", {}, { cwd: invocationCwd });
+      const workspace = ensureWorkspaceDirectory(dataDir, invocationCwd);
+      const destinationEntry = path.join(workspace.path, "knowledge", "wiki", "legacy.md");
+
+      expect(result.isError).toBe(false);
+      expect(readFileSync(destinationEntry, "utf8")).toContain("Durable legacy knowledge.");
+      expect(existsSync(path.join(workspace.path, "knowledge.migrated.json"))).toBe(true);
+      expect(readFileSync(path.join(invocationCwd, ".fleet", "knowledge", "wiki", "legacy.md"), "utf8"))
+        .toContain("Durable legacy knowledge.");
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(invocationCwd, { recursive: true, force: true });
+    }
   });
 
   it("injects rendered plugin paths, child env, Claude agents, and cleanup", async () => {

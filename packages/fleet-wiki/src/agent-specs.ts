@@ -13,6 +13,8 @@ import { buildPatchQueueToolConfig } from "./tools/patch-queue.js";
 import { buildQueryToolConfig } from "./tools/query.js";
 import { buildReadToolConfig } from "./tools/read.js";
 import { buildResolveToolConfig } from "./tools/resolve.js";
+import type { MemoryPaths } from "./types.js";
+import type { WikiWorkspaceResolver } from "./workspace-resolver.js";
 
 interface WikiAgentToolConfig {
   readonly name: string;
@@ -26,7 +28,7 @@ interface WikiAgentToolConfig {
     params: Record<string, unknown>,
     signal: AbortSignal | undefined,
     onUpdate: unknown,
-    ctx: { cwd: string },
+    ctx: { cwd: string; paths?: MemoryPaths },
   ): Promise<{ content: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> }>;
 }
 
@@ -54,22 +56,15 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
 // Functions
 // ═══════════════════════════════════════
 
-export function getWikiToolSpecs(): AgentToolSpec[] {
+export function getWikiToolSpecs(resolver?: WikiWorkspaceResolver): AgentToolSpec[] {
   return [
-    buildWikiBriefingSpec(),
-    buildWikiDryDockSpec(),
-    buildWikiIngestSpec(),
-    buildWikiOrientSpec(),
-    buildWikiPatchEditSpec(),
-    buildWikiPatchQueueSpec(),
-    buildWikiCompileSourceSpec(),
-    buildWikiQuerySpec(),
-    buildWikiReadSpec(),
-    buildWikiResolveSpec(),
+    buildWikiBriefingSpec(resolver), buildWikiDryDockSpec(resolver), buildWikiIngestSpec(resolver),
+    buildWikiOrientSpec(resolver), buildWikiPatchEditSpec(resolver), buildWikiPatchQueueSpec(resolver),
+    buildWikiCompileSourceSpec(resolver), buildWikiQuerySpec(resolver), buildWikiReadSpec(resolver), buildWikiResolveSpec(resolver),
   ];
 }
 
-function buildWikiBriefingSpec(): AgentToolSpec {
+function buildWikiBriefingSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildBriefingToolConfig(), {
     whenToUse: [
       "Discover wiki entries by topic, tag, or keyword before deciding which to read in full",
@@ -79,10 +74,10 @@ function buildWikiBriefingSpec(): AgentToolSpec {
       "Full entry body content is needed — use wiki_read instead",
       "Compact context-pack synthesis across multiple entries is needed — use wiki_resolve instead",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiDryDockSpec(): AgentToolSpec {
+function buildWikiDryDockSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildDryDockToolConfig(), {
     whenToUse: [
       "Audit wiki repository health: frontmatter, broken links, queue conflicts, and semantic issues",
@@ -91,10 +86,10 @@ function buildWikiDryDockSpec(): AgentToolSpec {
     whenNotToUse: [
       "Goal is content retrieval or search — drydock performs diagnostics only, no content is returned",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiIngestSpec(): AgentToolSpec {
+function buildWikiIngestSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildIngestToolConfig(), {
     whenToUse: [
       "Stage durable Fleet Wiki knowledge as an approval-gated pending patch with captured raw source",
@@ -104,10 +99,10 @@ function buildWikiIngestSpec(): AgentToolSpec {
       "Only reading or searching existing wiki context is needed — use wiki_briefing, wiki_read, or wiki_resolve",
       "The user has not approved staging wiki changes for this task",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiOrientSpec(): AgentToolSpec {
+function buildWikiOrientSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildOrientToolConfig(), {
     whenToUse: [
       "Start a wiki-aware task by checking schema, index, recent log, queue count, and drydock status",
@@ -117,10 +112,10 @@ function buildWikiOrientSpec(): AgentToolSpec {
       "A specific entry ID is already known and full content is needed — use wiki_read instead",
       "Only staging a patch is needed and current wiki context is already understood — use wiki_ingest instead",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiPatchEditSpec(): AgentToolSpec {
+function buildWikiPatchEditSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildPatchEditToolConfig(), {
     whenToUse: [
       "A pending Fleet Wiki patch needs a small exact body or metadata correction before approval",
@@ -130,10 +125,10 @@ function buildWikiPatchEditSpec(): AgentToolSpec {
       "The patch has already been approved or rejected",
       "The desired change requires approving wiki content — use wiki_patch_queue for approval",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiPatchQueueSpec(): AgentToolSpec {
+function buildWikiPatchQueueSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildPatchQueueToolConfig(), {
     whenToUse: [
       "Pending Fleet Wiki patches need human approval or rejection",
@@ -143,10 +138,10 @@ function buildWikiPatchQueueSpec(): AgentToolSpec {
       "New wiki content needs to be staged — use wiki_ingest instead",
       "Existing approved wiki content needs to be read — use wiki_read instead",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiCompileSourceSpec(): AgentToolSpec {
+function buildWikiCompileSourceSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildCompileSourceToolConfig(), {
     whenToUse: [
       "A single source needs to be split into multiple proposed wiki page patches",
@@ -156,10 +151,10 @@ function buildWikiCompileSourceSpec(): AgentToolSpec {
       "Only one wiki entry needs to be staged — use wiki_ingest instead",
       "Pending patches need approval or rejection — use wiki_patch_queue instead",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiQuerySpec(): AgentToolSpec {
+function buildWikiQuerySpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildQueryToolConfig(), {
     whenToUse: [
       "Answer a wiki-grounded question with evidence context and citations",
@@ -169,10 +164,10 @@ function buildWikiQuerySpec(): AgentToolSpec {
       "The task requires final approval of pending patches — use the host-side approval flow instead",
       "Only a ranked list of candidate entries is needed — use wiki_briefing instead",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiReadSpec(): AgentToolSpec {
+function buildWikiReadSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildReadToolConfig(), {
     whenToUse: [
       "Fetch full body, link graph, or raw source for one or more specific wiki entry IDs",
@@ -182,10 +177,10 @@ function buildWikiReadSpec(): AgentToolSpec {
       "Entry IDs are unknown — run wiki_briefing first to discover matching entries",
       "Compact multi-entry context pack is needed — use wiki_resolve instead",
     ],
-  });
+  }, resolver);
 }
 
-function buildWikiResolveSpec(): AgentToolSpec {
+function buildWikiResolveSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   return buildWikiToolSpec(buildResolveToolConfig(), {
     whenToUse: [
       "Compact context pack needed combining briefing and read results for a query topic",
@@ -195,12 +190,13 @@ function buildWikiResolveSpec(): AgentToolSpec {
       "Full entry body with link graph or raw source is needed — use wiki_read instead",
       "Only a ranked hit list without content is needed — use wiki_briefing instead",
     ],
-  });
+  }, resolver);
 }
 
 function buildWikiToolSpec(
   config: WikiAgentToolConfig,
   usage: Pick<AgentToolSpec, "whenToUse" | "whenNotToUse">,
+  resolver?: WikiWorkspaceResolver,
 ): AgentToolSpec {
   return {
     id: config.name,
@@ -218,7 +214,7 @@ function buildWikiToolSpec(
         args as Record<string, unknown>,
         ctx.signal,
         undefined,
-        { cwd: ctx.cwd },
+        { cwd: ctx.cwd, paths: resolver ? await resolver.resolve(ctx.cwd) : undefined },
       );
       return { content, isError: false };
     },

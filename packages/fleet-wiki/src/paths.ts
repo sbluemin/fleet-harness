@@ -17,7 +17,11 @@ import { ensureWorkspaceDoctrine, ensureWorkspaceSchema } from "./schema.js";
 import type { MemoryPaths } from "./types.js";
 
 export function resolveMemoryPaths(cwd: string): MemoryPaths {
-  const root = path.join(cwd, KNOWLEDGE_ROOT_DIRNAME);
+  return createMemoryPaths(path.join(cwd, KNOWLEDGE_ROOT_DIRNAME));
+}
+
+/** Build paths for an already-selected knowledge root. */
+export function createMemoryPaths(root: string): MemoryPaths {
   return {
     root,
     rawDir: path.join(root, RAW_DIRNAME),
@@ -28,6 +32,11 @@ export function resolveMemoryPaths(cwd: string): MemoryPaths {
     conflictsDir: path.join(root, CONFLICTS_DIRNAME),
     indexFile: path.join(root, INDEX_FILENAME),
   };
+}
+
+/** Retains direct-library callers while registered tools receive injected paths. */
+export function resolveToolMemoryPaths(ctx: { cwd: string; paths?: MemoryPaths }): MemoryPaths {
+  return ctx.paths ?? resolveMemoryPaths(ctx.cwd);
 }
 
 export async function ensureMemoryRoot(paths: MemoryPaths): Promise<void> {

@@ -4,7 +4,7 @@ import { createConflict } from "../conflicts.js";
 import { mergeRawSourceRefs, normalizeComparableText } from "../internal-utils.js";
 import { appendLog } from "../log.js";
 import { enqueuePatch } from "../patch.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, validateTemplateCompliance } from "../schema.js";
 import {
   WIKI_INGEST_DESCRIPTION,
@@ -97,10 +97,10 @@ export function buildIngestToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
       const now = new Date().toISOString();
-      const paths = resolveMemoryPaths(ctx.cwd);
+      const paths = resolveToolMemoryPaths(ctx);
       const input = parseIngestParams(params);
       const plan = await planIngest(input, paths, now);
       const result = await stageIngestPlan(plan, paths);

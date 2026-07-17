@@ -1,153 +1,97 @@
-import { mkdtemp, mkdir, realpath, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { createMemoryPaths } from "@dotobokuri/fleet-wiki";
+import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCodexWorkspaceContextRouter } from "../core/host/codex/context-routes.js";
 import { createCodexGateway } from "../core/host/codex/gateway.js";
-import { TheaterPathContextError } from "../core/host/theater-path-context.js";
 import { workspaceHash } from "../core/host/theater.js";
-
-// ─── constants ─────────────────────────────────────────────────────────────
 
 const WORKSPACE_ID = "0123456789ab";
 
-// ─── helpers ───────────────────────────────────────────────────────────────
-
-async function createKnowledgeRoot(dir: string): Promise<void> {
-  await mkdir(path.join(dir, ".fleet", "knowledge", "wiki"), { recursive: true });
-}
-
-function createGateway() {
-  return createCodexGateway({
-    cwd: process.cwd(),
-    host: "127.0.0.1",
-    version: "0.0.0",
-    getPort: () => 0,
-  });
-}
-
-// ─── tests ─────────────────────────────────────────────────────────────────
-
-describe("Codex workspace path-context resolution", () => {
+describe("Codex Theater-root workspace resolution", () => {
   let tmpDir = "";
   let theaterRoot = "";
+  let resolve: ReturnType<typeof vi.fn<(cwd: string) => MemoryPaths>>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "fleet-codex-context-"));
     theaterRoot = path.join(tmpDir, "theater");
     await mkdir(theaterRoot);
+    resolve = vi.fn((cwd: string) => createMemoryPaths(path.join(cwd, "fleet-data", "knowledge")));
   });
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("does not fall back to a Theater-root wiki when the selected directory has none", async () => {
-    const selectedDir = path.join(theaterRoot, "without-wiki");
-    await Promise.all([createKnowledgeRoot(theaterRoot), mkdir(selectedDir)]);
+  function createGateway() {
+    const wikiWorkspaceResolver: WikiWorkspaceResolver = { resolve };
+    return createCodexGateway({
+      cwd: theaterRoot,
+      host: "127.0.0.1",
+      version: "0.0.0",
+      getPort: () => 0,
+      wikiWorkspaceResolver,
+    });
+  }
 
-    const result = await createGateway().resolveWorkspaceForPath("theater", theaterRoot, "without-wiki");
-
-    expect(result).toEqual({ hasWiki: false, id: null });
-  });
-
-  it("registers a selected wiki workspace idempotently using its canonical realpath hash", async () => {
-    const selectedDir = path.join(theaterRoot, "workspace");
-    await createKnowledgeRoot(selectedDir);
+  it("registers the canonical Theater root and resolves it through the injected gate", async () => {
     const gateway = createGateway();
+    const result = await gateway.resolveWorkspaceForTheater("theater", theaterRoot);
 
-    const [first, second] = await Promise.all([
-      gateway.resolveWorkspaceForPath("theater", theaterRoot, "workspace"),
-      gateway.resolveWorkspaceForPath("theater", theaterRoot, "workspace"),
-    ]);
-
-    expect(first).toEqual({ hasWiki: true, id: workspaceHash(await realpath(selectedDir)) });
-    expect(second).toEqual(first);
+    expect(result).toEqual({ hasWiki: true, id: workspaceHash(await realpath(theaterRoot)) });
+    expect(resolve).toHaveBeenCalledWith(await realpath(theaterRoot));
     expect(gateway.listWorkspaceRegistrations()).toHaveLength(1);
   });
 
-  it("rejects absolute paths, traversal, and symlink escapes before workspace registration", async () => {
-    const outsideDir = path.join(tmpDir, "outside");
-    await mkdir(outsideDir);
-    await symlink(outsideDir, path.join(theaterRoot, "escape"));
+  it("does not create storage while registration metadata is restored", async () => {
     const gateway = createGateway();
+    await gateway.registerWorkspace(theaterRoot, "2026-07-17T00:00:00.000Z", "theater");
 
-    await expect(gateway.resolveWorkspaceForPath("theater", theaterRoot, "/tmp")).rejects.toMatchObject({ code: "invalid_path" });
-    await expect(gateway.resolveWorkspaceForPath("theater", theaterRoot, "../outside")).rejects.toMatchObject({ code: "invalid_path" });
-    await expect(gateway.resolveWorkspaceForPath("theater", theaterRoot, "escape")).rejects.toMatchObject({ code: "forbidden" });
-    expect(gateway.listWorkspaceRegistrations()).toHaveLength(0);
+    expect(resolve).not.toHaveBeenCalled();
   });
 
-  it("unregisters nested workspaces when their owner Theater is forgotten", async () => {
-    const selectedDir = path.join(theaterRoot, "workspace");
-    await createKnowledgeRoot(selectedDir);
+  it("forgets only the registered Theater-root workspace", async () => {
     const gateway = createGateway();
-    const resolved = await gateway.resolveWorkspaceForPath("theater-a", theaterRoot, "workspace");
+    const resolved = await gateway.resolveWorkspaceForTheater("theater-a", theaterRoot);
 
     gateway.unregisterTheaterWorkspaces("theater-a");
 
     expect(resolved.id).not.toBeNull();
     expect(gateway.getWorkspace(resolved.id!)).toBeNull();
   });
-
-  it("keeps a nested workspace while another Theater still owns it", async () => {
-    const selectedDir = path.join(theaterRoot, "workspace");
-    await createKnowledgeRoot(selectedDir);
-    const gateway = createGateway();
-    const first = await gateway.resolveWorkspaceForPath("theater-a", theaterRoot, "workspace");
-    const second = await gateway.resolveWorkspaceForPath("theater-b", theaterRoot, "workspace");
-
-    gateway.unregisterTheaterWorkspaces("theater-a");
-
-    expect(first).toEqual(second);
-    expect(first.id).not.toBeNull();
-    expect(gateway.getWorkspace(first.id!)).not.toBeNull();
-    gateway.unregisterTheaterWorkspaces("theater-b");
-    expect(gateway.getWorkspace(first.id!)).toBeNull();
-  });
 });
 
-describe("Codex workspace path-context route", () => {
-  it("returns only the workspace id and hasWiki after resolving the Theater context", async () => {
+describe("Codex Theater-root workspace route", () => {
+  function routerFor(body: unknown, resolveWorkspace = vi.fn().mockResolvedValue({ hasWiki: true, id: WORKSPACE_ID })) {
     const writeJson = vi.fn();
-    const resolveWorkspace = vi.fn().mockResolvedValue({ hasWiki: true, id: WORKSPACE_ID });
     const router = createCodexWorkspaceContextRouter({
       getTheater: () => ({ id: "theater", path: "/tmp/theater", realpath: "/tmp/theater", label: "theater", registeredAt: "1", lastOpenedAt: "1", pathContext: null }),
       isAuthorized: () => true,
-      readJsonBody: async <T>() => ({ relPath: "workspace" } as T),
+      readJsonBody: async <T>() => body as T,
       resolveWorkspace,
       writeJson,
     });
+    return { router, resolveWorkspace, writeJson };
+  }
 
-    await router({
-      req: { method: "POST" } as never,
-      res: {} as never,
-      pathname: "/api/v1/theaters/theater/codex-workspace",
-    });
+  it("accepts exactly an empty object and returns a path-free DTO", async () => {
+    const { router, resolveWorkspace, writeJson } = routerFor({});
+    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/theaters/theater/codex-workspace" });
 
-    expect(resolveWorkspace).toHaveBeenCalledWith("theater", "/tmp/theater", "workspace");
+    expect(resolveWorkspace).toHaveBeenCalledWith("theater", "/tmp/theater");
     expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 200, { hasWiki: true, id: WORKSPACE_ID });
   });
 
-  it("maps common resolver containment failures without exposing a path", async () => {
-    const writeJson = vi.fn();
-    const router = createCodexWorkspaceContextRouter({
-      getTheater: () => ({ id: "theater", path: "/tmp/theater", realpath: "/tmp/theater", label: "theater", registeredAt: "1", lastOpenedAt: "1", pathContext: null }),
-      isAuthorized: () => true,
-      readJsonBody: async <T>() => ({ relPath: "escape" } as T),
-      resolveWorkspace: async () => { throw new TheaterPathContextError("forbidden"); },
-      writeJson,
-    });
+  it.each([null, [], { relPath: null }, { relPath: "nested" }, { unknown: true }])("rejects non-empty or non-object request bodies", async (body) => {
+    const { router, resolveWorkspace, writeJson } = routerFor(body);
+    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/theaters/theater/codex-workspace" });
 
-    await router({
-      req: { method: "POST" } as never,
-      res: {} as never,
-      pathname: "/api/v1/theaters/theater/codex-workspace",
-    });
-
-    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 403, { error: "forbidden" });
-    expect(JSON.stringify(writeJson.mock.calls)).not.toContain("/tmp/theater");
+    expect(resolveWorkspace).not.toHaveBeenCalled();
+    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 400, { error: "invalid_request" });
   });
 });

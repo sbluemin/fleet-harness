@@ -4,7 +4,7 @@ import { FLEET_WIKI_BOUNDARY_GUIDELINES, wrapWikiEntryBoundary } from "../bounda
 import { runDryDock } from "../drydock.js";
 import { formatLogEntry, parseLog } from "../log.js";
 import { listQueue } from "../patch.js";
-import { getIndexMarkdownFile, resolveMemoryPaths } from "../paths.js";
+import { getIndexMarkdownFile, resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_ORIENT_DESCRIPTION,
   WIKI_ORIENT_GUIDELINES,
@@ -59,10 +59,10 @@ export function buildOrientToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
       const input = normalizeInput(params);
-      const paths = resolveMemoryPaths(ctx.cwd);
+      const paths = resolveToolMemoryPaths(ctx);
       await ensureWorkspaceSchema(paths);
 
       const pendingQueueCount = await loadPendingQueueCount(paths);

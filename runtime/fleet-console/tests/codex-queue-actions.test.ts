@@ -2,6 +2,7 @@ import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 
+import { resolveWorkspaceDirectory } from "@dotobokuri/core-infra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { startCodexTestServer } from "./codex-test-server.js";
@@ -11,6 +12,7 @@ let server: CodexTestServer | null = null;
 let baseUrl = "";
 let serverPort = 0;
 let tempDir = "";
+let fleetDataDir = "";
 
 const PENDING_PATCH_ID = "2026-05-04T10-00-00-000Z-aabbccdd";
 const ARCHIVE_PATCH_ID = "2026-05-04T09-00-00-000Z-11223344";
@@ -42,6 +44,7 @@ describe("queue POST actions", () => {
       patchIds: [PENDING_PATCH_ID],
     }), "utf8");
     const lockPath = path.join(tempDir, "server.lock");
+    fleetDataDir = path.join(path.dirname(lockPath), "fleet-data");
     server = await startCodexTestServer({ cwd: tempDir, lockPath, port: 0, host: "127.0.0.1" });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
     serverPort = lock.port;
@@ -95,7 +98,7 @@ describe("queue POST actions", () => {
     expect(data.ok).toBe(true);
     expect(data.meta.status).toBe("accepted");
     // patch should now be in archive
-    const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
+    const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
     await expect(access(archivePath)).resolves.not.toThrow();
   });
 
@@ -157,7 +160,7 @@ describe("queue POST actions", () => {
     const data = await response.json() as { ok: boolean; meta: { status: string } };
     expect(data.ok).toBe(true);
     expect(data.meta.status).toBe("rejected");
-    const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
+    const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
     await expect(access(archivePath)).resolves.not.toThrow();
   });
 
@@ -215,7 +218,7 @@ describe("queue POST actions", () => {
     expect(statuses[0]).toBe(200);
     expect(statuses[1]).toBe(409);
     // archive에 정확히 한 개만 이동
-    const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
+    const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
     await expect(access(archivePath)).resolves.not.toThrow();
   });
 
@@ -227,6 +230,11 @@ describe("queue POST actions", () => {
     expect(data.patchSet?.members[0]?.id).toBe(PENDING_PATCH_ID);
   });
 });
+
+function durableArchiveMetaPath(patchId: string): string {
+  const workspace = resolveWorkspaceDirectory(fleetDataDir, tempDir);
+  return path.join(workspace.path, "knowledge", "archive", patchId, "meta.json");
+}
 
 async function writeEntry(wikiDir: string, id: string, title: string, body: string): Promise<void> {
   await writeFile(

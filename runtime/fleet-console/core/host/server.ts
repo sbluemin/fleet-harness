@@ -3,7 +3,8 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
-import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
+import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
+import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./api-types.js";
@@ -290,11 +291,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
+  const wikiWorkspaceResolver = createWikiWorkspaceResolver({
+    ensureWorkspace: (cwd) => {
+      const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
+      return { cwd: workspace.cwd, path: workspace.path };
+    },
+    withMigrationLock: (workspace, operation) => withDirectoryLock({
+      lockDir: path.join(workspace.path, "knowledge.migration.lock"),
+    }, operation),
+  });
   const codex = createCodexGateway({
     cwd: deps.codexCwd ?? process.cwd(),
     host,
     version,
     getPort: () => lockHandle?.payload.port ?? port,
+    wikiWorkspaceResolver,
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
@@ -525,7 +536,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     getTheater: (theaterId) => theaters.get(theaterId),
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
-    resolveWorkspace: (theaterId, theaterRoot, relPath) => codex.resolveWorkspaceForPath(theaterId, theaterRoot, relPath),
+    resolveWorkspace: (theaterId, theaterRoot) => codex.resolveWorkspaceForTheater(theaterId, theaterRoot),
     writeJson,
   });
   const operationsRouter = createOperationsRouter({
@@ -782,17 +793,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     const theater = await theaters.register(cwd);
-    let hasWiki = false;
-    try {
-      await codex.registerWorkspace(theater.realpath, undefined, theater.id);
-      hasWiki = true;
-    } catch (error) {
-      if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
-        console.warn(`[fleet-console] Codex workspace registration skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    await codex.registerWorkspace(theater.realpath, undefined, theater.id);
     persistDurableState();
-    writeJson(res, 200, toTheaterInfo(theater, hasWiki));
+    writeJson(res, 200, toTheaterInfo(theater, true));
   }
 
   async function handleObserverTheaterItem(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
@@ -976,7 +979,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function listTheaterInfos(): readonly ConsoleTheaterInfo[] {
-    return theaters.list().map((theater) => toTheaterInfo(theater, codex.getWorkspace(theater.id) !== null));
+    return theaters.list().map((theater) => toTheaterInfo(theater, true));
   }
 
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
@@ -1057,10 +1060,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operations.replace([]);
       operations.replaceGroups([]);
     }
-    // Codex WorkspaceRegistry는 인메모리라 재시작 시 비워진다. hasWiki 판정이 이 레지스트리에
-    // 의존하므로(getWorkspace !== null), 복원된 Theater를 재등록하지 않으면 위키가 있는 Theater도
-    // hasWiki=false가 되어 Console 재실행마다 Codex(Wiki)가 마운트되지 않는다. POST 추가 경로와
-    // 대칭으로 복원 Theater의 워크스페이스를 best-effort 재등록한다.
+    // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
     await restoreCodexWorkspaces();
   }
 
@@ -1091,14 +1091,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 심볼릭 타깃이 바뀐 경우 theater.id와 다른 workspaceHash로 등록되어 hasWiki 판정이 깨진다.
     const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
     for (const theater of ordered) {
-      try {
-        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
-      } catch (error) {
-        // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
-        if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
-          console.warn(`[fleet-console] Codex workspace restore skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
+      await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
     }
   }
 

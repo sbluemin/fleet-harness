@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { dedupeStrings, truncateSummary } from "../internal-utils.js";
 import { enqueuePatch } from "../patch.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_QUERY_DESCRIPTION,
   WIKI_QUERY_GUIDELINES,
@@ -81,9 +81,9 @@ export function buildQueryToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
-      const paths = resolveMemoryPaths(ctx.cwd);
+      const paths = resolveToolMemoryPaths(ctx);
       const input = normalizeQueryInput(params as unknown as WikiQueryInput);
       const resolvePayload = await resolveWikiContext({
         query: input.question,

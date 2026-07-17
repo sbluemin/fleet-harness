@@ -5,8 +5,8 @@ import process from "node:process";
 import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
-import type { AuthService, GlobalOptionsService } from "@dotobokuri/core-infra";
-import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { ensureWorkspaceDirectory, withDirectoryLock, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
+import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -70,6 +70,7 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const planTools = getPlanToolSpecs({ dataDir: ctx.host.paths.fleetDataDir });
+  const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const runtime = createFleetAgentRuntimeLifecycle({
     authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
@@ -78,7 +79,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       console.error("[fleet-console] Failed to start MCP server", error);
     },
     workspaceChangeScanner: createWorkspaceChangeScanner(),
-    wikiToolSpecs: getWikiToolSpecs(),
+    wikiToolSpecs,
     extraAgentTools: [planTools.read, planTools.verify],
     extraExecutorTools: [
       { spec: planTools.write, options: { allowedScopes: [] } },
@@ -594,6 +595,17 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
     return true;
   }
+}
+
+export function createTerminalWikiToolSpecs(fleetDataDir: string) {
+  const resolver = createWikiWorkspaceResolver({
+    ensureWorkspace: (cwd) => ensureWorkspaceDirectory(fleetDataDir, cwd),
+    withMigrationLock: (workspace, operation) => withDirectoryLock(
+      { lockDir: path.join(workspace.path, "knowledge.migration.lock") },
+      operation,
+    ),
+  });
+  return getWikiToolSpecs(resolver);
 }
 
 function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: ProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {

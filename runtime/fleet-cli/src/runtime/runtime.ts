@@ -1,12 +1,14 @@
+import path from "node:path";
+
 import type { ExecutorSessionManager, McpToolRegistry } from "@dotobokuri/core-agent";
 import {
 	createFleetAgentRuntimeLifecycle,
 	type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
-import { createInfraServices, type InfraServices } from "@dotobokuri/core-infra";
+import { createInfraServices, ensureWorkspaceDirectory, withDirectoryLock, type InfraServices } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
-import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 
 import { reconcileRuntimeState } from "./reconciliation.js";
@@ -62,6 +64,13 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const dataDir = deps.dataDir ?? getFleetDataDir();
 	const infraServices = createInfraServices();
 	const planTools = getPlanToolSpecs({ dataDir });
+	const wikiWorkspaceResolver = createWikiWorkspaceResolver({
+		ensureWorkspace: (cwd) => ensureWorkspaceDirectory(dataDir, cwd),
+		withMigrationLock: (workspace, operation) => withDirectoryLock(
+			{ lockDir: path.join(workspace.path, "knowledge.migration.lock") },
+			operation,
+		),
+	});
 	const agentRuntime = createFleetAgentRuntimeLifecycle({
 		...(deps.dataDir ? { dataDir: deps.dataDir } : {}),
 		authService: infraServices.authService,
@@ -70,7 +79,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			console.error("[fleet-cli] Failed to start MCP server", error);
 		},
 		workspaceChangeScanner: createWorkspaceChangeScanner(),
-		wikiToolSpecs: getWikiToolSpecs(),
+		wikiToolSpecs: getWikiToolSpecs(wikiWorkspaceResolver),
 		extraAgentTools: [planTools.read, planTools.verify],
 		extraExecutorTools: [
 			{ spec: planTools.write, options: { allowedScopes: [] } },

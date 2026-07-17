@@ -1,8 +1,9 @@
-import { existsSync, readdirSync, statSync, type Dirent } from "node:fs";
+import { lstatSync, readdirSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 
+import { findWorkspaceDirectory } from "@dotobokuri/core-infra";
 import { DEFAULT_CARRIER_COUNT } from "@dotobokuri/fleet-carriers";
-import { resolveMemoryPaths } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths } from "@dotobokuri/fleet-wiki";
 
 export interface MissionControlCounts {
   readonly carriers: number;
@@ -11,6 +12,7 @@ export interface MissionControlCounts {
 }
 
 export interface DiscoverMissionControlCountsOptions {
+  readonly dataDir: string;
   readonly invocationCwd: string;
 }
 
@@ -18,7 +20,10 @@ const WIKI_INDEX_FILENAME = "index.md";
 const QUEUE_PATCH_FILENAME = "patch.md";
 
 export function discoverMissionControlCounts(options: DiscoverMissionControlCountsOptions): MissionControlCounts {
-  const paths = resolveMemoryPaths(options.invocationCwd);
+  const workspace = findExistingWorkspace(options);
+  if (!workspace) return emptyCounts();
+  const paths = createMemoryPaths(join(workspace.path, "knowledge"));
+  if (!isSafeDirectory(paths.root)) return emptyCounts();
   return {
     carriers: DEFAULT_CARRIER_COUNT,
     queuedPatches: countQueuedPatches(paths.queueDir),
@@ -26,7 +31,20 @@ export function discoverMissionControlCounts(options: DiscoverMissionControlCoun
   };
 }
 
+function findExistingWorkspace(options: DiscoverMissionControlCountsOptions) {
+  try {
+    return findWorkspaceDirectory(options.dataDir, options.invocationCwd);
+  } catch {
+    return null;
+  }
+}
+
+function emptyCounts(): MissionControlCounts {
+  return { carriers: DEFAULT_CARRIER_COUNT, queuedPatches: 0, wikiEntries: 0 };
+}
+
 function countQueuedPatches(queueDir: string): number {
+  if (!isSafeDirectory(queueDir)) return 0;
   let entries: Dirent[];
   try {
     entries = readdirSync(queueDir, { withFileTypes: true });
@@ -39,7 +57,7 @@ function countQueuedPatches(queueDir: string): number {
       continue;
     }
     const patchPath = join(queueDir, entry.name, QUEUE_PATCH_FILENAME);
-    if (existsSync(patchPath) && statSync(patchPath).isFile()) {
+    if (isSafeFile(patchPath)) {
       count += 1;
     }
   }
@@ -47,6 +65,7 @@ function countQueuedPatches(queueDir: string): number {
 }
 
 function countMarkdownFilesRecursively(dir: string, isWikiRoot: boolean): number {
+  if (!isSafeDirectory(dir)) return 0;
   let count = 0;
   let entries: Dirent[];
   try {
@@ -69,4 +88,22 @@ function countMarkdownFilesRecursively(dir: string, isWikiRoot: boolean): number
     count += 1;
   }
   return count;
+}
+
+function isSafeDirectory(target: string): boolean {
+  try {
+    const stat = lstatSync(target);
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function isSafeFile(target: string): boolean {
+  try {
+    const stat = lstatSync(target);
+    return stat.isFile() && !stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
 }

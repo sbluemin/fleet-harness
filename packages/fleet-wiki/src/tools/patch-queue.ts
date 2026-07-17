@@ -1,6 +1,6 @@
 import { listConflicts } from "../conflicts.js";
 import { approvePatch, approvePatchSet, listQueue, rejectPatch, resolveQueueSelection, showQueue } from "../patch.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_PATCH_QUEUE_DESCRIPTION,
   WIKI_PATCH_QUEUE_GUIDELINES,
@@ -21,9 +21,9 @@ export function buildPatchQueueToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
-      const paths = resolveMemoryPaths(ctx.cwd);
+      const paths = resolveToolMemoryPaths(ctx);
       const action = String(params.action ?? "list");
 
       if (action === "list") {

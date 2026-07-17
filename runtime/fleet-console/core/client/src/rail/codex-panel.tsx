@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { RailPanelDescriptor, RailPathContext } from "@fleet-console/sdk/rail";
+import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import { useConsoleState } from "../hooks/use-store.js";
 import {
@@ -28,13 +28,13 @@ export const codexPanel: RailPanelDescriptor = {
   id: "codex",
   title: "Codex",
   icon: () => <CodexIcon />,
-  pathAware: true,
-  render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} pathContext={ctx.pathContext} />,
+  pathAware: false,
+  render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} />,
 };
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string | null; readonly pathContext: RailPathContext }) {
+function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   const state = useConsoleState();
   const navRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
@@ -47,7 +47,7 @@ function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string
   const expanded = state.codexReaderExpanded;
   const activeTheater = state.theaters.find((t) => t.id === state.activeTheaterId) ?? null;
   const hasTheaters = state.theaters.length > 0;
-  const contextKey = `${theaterId ?? ""}\u0000${pathContext.relPath ?? ""}`;
+  const contextKey = theaterId ?? "";
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
 
@@ -61,7 +61,7 @@ function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string
       }`
     : null;
 
-  // 컨텍스트 변경 시 이전 reader가 새 workspace에서 잠시 보이지 않도록 먼저 닫는다.
+  // Theater 변경 시 이전 reader가 새 workspace에서 잠시 보이지 않도록 먼저 닫는다.
   useEffect(() => {
     latestContextKeyRef.current = contextKey;
     closeCodexReader();
@@ -69,16 +69,16 @@ function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string
       setWorkspace({ contextKey, hasWiki: false, id: null });
       return;
     }
-    void resolveCodexWorkspace(theaterId, pathContext.relPath).then((result) => {
+    void resolveCodexWorkspace(theaterId).then((result) => {
       if (latestContextKeyRef.current !== contextKey) return;
       setWorkspace({ contextKey, ...result });
     }).catch(() => {
       if (latestContextKeyRef.current !== contextKey) return;
       setWorkspace({ contextKey, hasWiki: false, id: null });
     });
-  }, [contextKey, pathContext.relPath, theaterId]);
+  }, [contextKey, theaterId]);
 
-  // 위키 없음이 확정된 경우에만 singleton을 정리한다. 다음 context를 해석하는 동안에는
+  // 위키 없음이 확정된 경우에만 singleton을 정리한다. 다음 Theater를 해석하는 동안에는
   // destroy+remount하지 않고, 기존 host를 새 navigator 컨테이너로 relocate한다.
   useEffect(() => {
     if (workspace?.contextKey === contextKey && !workspace.hasWiki) teardownCodex();
@@ -102,7 +102,7 @@ function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string
     };
   }, [shouldMountCodex, workspaceId, hasReader]);
 
-  // context 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾼다.
+  // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾼다.
   useEffect(() => {
     if (shouldMountCodex && workspaceId) {
       setNavigatorTheater(workspaceId);
@@ -136,7 +136,7 @@ function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string
   }, [hasReader]);
 
   if (!shouldMountCodex) {
-    return <CodexEmpty activeTheater={activeTheater} contextLabel={pathContext.label} hasTheaters={hasTheaters} />;
+    return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
   }
 
   if (!hasReader) {
@@ -175,11 +175,9 @@ function CodexRailPanel({ theaterId, pathContext }: { readonly theaterId: string
 
 function CodexEmpty({
   activeTheater,
-  contextLabel,
   hasTheaters,
 }: {
   readonly activeTheater: { readonly label: string } | null;
-  readonly contextLabel: string;
   readonly hasTheaters: boolean;
 }) {
   if (!hasTheaters) {
@@ -194,17 +192,17 @@ function CodexEmpty({
   return (
     <section className="codex-empty-state">
       <p className="codex-empty-eyebrow">Codex unavailable</p>
-      <h1>{contextLabel || activeTheater?.label || "This context"}</h1>
-      <p>This selected context does not have Fleet Wiki data mounted.</p>
+      <h1>{activeTheater?.label || "This Theater"}</h1>
+      <p>Fleet Wiki data could not be loaded for this Theater.</p>
     </section>
   );
 }
 
-async function resolveCodexWorkspace(theaterId: string, relPath: string | null): Promise<Omit<CodexWorkspaceState, "contextKey">> {
+async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorkspaceState, "contextKey">> {
   const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/codex-workspace`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ relPath }),
+    body: JSON.stringify({}),
   });
   if (!response.ok) throw new Error("codex_workspace_unavailable");
   return assertCodexWorkspace(await response.json());

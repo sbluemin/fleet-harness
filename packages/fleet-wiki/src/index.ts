@@ -1,4 +1,10 @@
 export { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "./agent-specs.js";
+export { createWikiWorkspaceResolver } from "./workspace-resolver.js";
+export type {
+  WikiWorkspace,
+  WikiWorkspaceResolver,
+  WikiWorkspaceResolverDependencies,
+} from "./workspace-resolver.js";
 
 export * from "./boundaries.js";
 export * from "./briefing.js";

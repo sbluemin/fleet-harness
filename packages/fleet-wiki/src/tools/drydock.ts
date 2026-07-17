@@ -1,5 +1,5 @@
 import { runDryDock } from "../drydock.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_DRYDOCK_DESCRIPTION,
   WIKI_DRYDOCK_GUIDELINES,
@@ -20,9 +20,9 @@ export function buildDryDockToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
-      const report = await runDryDock(resolveMemoryPaths(ctx.cwd), { fix: params.fix === true });
+      const report = await runDryDock(resolveToolMemoryPaths(ctx), { fix: params.fix === true });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
         details: {},

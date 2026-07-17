@@ -7,7 +7,7 @@ import { extractWikiLinks } from "../links.js";
 import { appendLog } from "../log.js";
 import { buildPatchSetId, writePatchSet } from "../patch-set.js";
 import { enqueuePatch } from "../patch.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_COMPILE_SOURCE_DESCRIPTION,
   WIKI_COMPILE_SOURCE_GUIDELINES,
@@ -107,10 +107,10 @@ export function buildCompileSourceToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
       const now = new Date().toISOString();
-      const paths = resolveMemoryPaths(ctx.cwd);
+      const paths = resolveToolMemoryPaths(ctx);
       const input = normalizeCompileSourceInput(params as WikiCompileSourceInput);
       const output = input.mode === "stage"
         ? await stageSourceCompile(input, paths, now)
