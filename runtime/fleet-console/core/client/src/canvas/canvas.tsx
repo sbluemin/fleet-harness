@@ -74,40 +74,8 @@ export function OperationsCanvas({
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [glanceVisible, setGlanceVisible] = useState(false);
-  const heldAltCodesRef = useRef(new Set<string>());
+  const glanceVisible = useGlanceHold();
   const disabled = !state.activeTheaterId || state.addingTheater;
-
-  useEffect(() => {
-    const clearGlance = () => {
-      heldAltCodesRef.current.clear();
-      setGlanceVisible(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isGlanceAltKey(event) || event.repeat) return;
-      heldAltCodesRef.current.add(event.code);
-      setGlanceVisible(true);
-    };
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (!isGlanceAltKey(event)) return;
-      heldAltCodesRef.current.delete(event.code);
-      setGlanceVisible(heldAltCodesRef.current.size > 0);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") clearGlance();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", clearGlance);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", clearGlance);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -332,6 +300,44 @@ function maximizedGeometryFor(canvasSize: { readonly width: number; readonly hei
 
 function maxOperationZIndex(operations: Record<string, OperationGeometry>): number {
   return Object.values(operations).reduce((max, geometry) => Math.max(max, geometry.zIndex), 0);
+}
+
+export function useGlanceHold(): boolean {
+  const [glanceVisible, setGlanceVisible] = useState(false);
+  const heldAltCodesRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    const clearGlance = () => {
+      heldAltCodesRef.current.clear();
+      setGlanceVisible(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isGlanceAltKey(event) || event.repeat || event.ctrlKey || event.metaKey) return;
+      heldAltCodesRef.current.add(event.code);
+      setGlanceVisible(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!isGlanceAltKey(event)) return;
+      heldAltCodesRef.current.delete(event.code);
+      setGlanceVisible(heldAltCodesRef.current.size > 0);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") clearGlance();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearGlance);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearGlance);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  return glanceVisible;
 }
 
 function isGlanceAltKey(event: KeyboardEvent): boolean {
