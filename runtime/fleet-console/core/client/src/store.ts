@@ -366,6 +366,20 @@ export function flattenGroupedOrder(
   ];
 }
 
+// Alt+←/→는 SideBar 가시 순서를 따르되, 캔버스에서 최소화된 Operation은 순환 대상에서 제외한다.
+export function focusCycleOperationIds(
+  operations: readonly OperationNode[],
+  groups: readonly OperationGroup[],
+  operationOrder: readonly string[],
+  collapsedGroups: readonly string[],
+  minimized: readonly string[],
+): readonly string[] {
+  const minimizedIds = new Set(minimized);
+  return flattenGroupedOrder(operations, groups, operationOrder, collapsedGroups)
+    .filter((operation) => !minimizedIds.has(operation.id))
+    .map((operation) => operation.id);
+}
+
 export function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
   return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 }
