@@ -170,6 +170,32 @@ describe("runtime pairing", () => {
     expect(policy.currentConsoleOrigin()).toBe("http://127.0.0.1:4000");
   });
 
+  it("skips a same-target SSH reconnect without reopening the entry page or tunnel", async () => {
+    const remoteA = { target: { value: "remote-a", user: null, host: "remote-a" }, origin: "http://127.0.0.1:4310", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
+    let currentOrigin = "http://127.0.0.1:4000";
+    let pendingOrigin: string | null = null;
+    const policy = {
+      activateConsoleOrigin: vi.fn((origin: string) => { currentOrigin = origin; pendingOrigin = null; }),
+      currentConsoleOrigin: vi.fn(() => currentOrigin),
+      stageConsoleOrigin: vi.fn((origin: string) => { pendingOrigin = origin; }),
+      commitConsoleOrigin: vi.fn(() => { currentOrigin = pendingOrigin!; pendingOrigin = null; }),
+      cancelPendingConsoleOrigin: vi.fn(),
+    };
+    const connectRemote = vi.fn(async () => remoteA);
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier: { show: vi.fn() }, themeSynchronizer: null, modal: modalReturning(null), connectRemote, logger });
+    await pairing.switchTo("ssh:remote-a", runtimeWindow(async () => undefined) as never, policy);
+    const sameTargetWindow = runtimeWindow(vi.fn(async () => undefined));
+
+    await pairing.switchTo("ssh:remote-a", sameTargetWindow as never, policy);
+
+    expect(connectRemote).toHaveBeenCalledOnce();
+    expect(sameTargetWindow.loadFile).not.toHaveBeenCalled();
+    expect(sameTargetWindow.loadURL).not.toHaveBeenCalled();
+    expect(remoteA.dispose).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith("managed runtime pairing skipped code=already_connected");
+  });
+
   it("keeps a committed remote session when a later remote candidate fails", async () => {
     const remoteA = { target: { value: "remote-a", user: null, host: "remote-a" }, origin: "http://127.0.0.1:4310", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
     const candidateB = { target: { value: "remote-b", user: null, host: "remote-b" }, origin: "http://127.0.0.1:4320", commit: vi.fn(), rollback: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
@@ -196,6 +222,7 @@ describe("runtime pairing", () => {
 
     await pairing.switchTo("ssh:remote-b", remoteWindow as never, policy);
 
+    expect(connectRemote).toHaveBeenCalledTimes(2);
     expect(candidateB.rollback).toHaveBeenCalledOnce();
     expect(remoteA.dispose).not.toHaveBeenCalled();
     expect(remoteLoadURL).toHaveBeenCalledWith("http://127.0.0.1:4310/console/");

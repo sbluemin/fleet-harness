@@ -130,6 +130,10 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
         : parsePairingTarget(input);
       if (parsed.kind === "loopback") target = await verifyPairingOrigin(parsed.origin, fetchFor, timeoutMs);
       else {
+        if (committedRemote?.target.value === parsed.target.value) {
+          dependencies.logger?.info("managed runtime pairing skipped code=already_connected");
+          return;
+        }
         if (!dependencies.connectRemote) throw new Error("ssh_unavailable");
         remoteTarget = parsed.target;
         await window.loadFile(dependencies.entryPagePath);
