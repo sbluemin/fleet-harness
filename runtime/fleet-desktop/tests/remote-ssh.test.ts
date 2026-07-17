@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -76,8 +76,34 @@ describe("OpenSSH transport", () => {
     expect(program).toContain('loginpath=$("$loginsh" -ilc');
     expect(program).toContain('case "$loginpath" in ""|:*|*:|*[[:cntrl:]]*) loginpath_valid=0');
     expect(program).toContain('case "$loginpath_entry" in /*) ;; *) loginpath_valid=0 ;; esac');
-    expect(program).toContain('PATH="$loginpath:$PATH"; export PATH; fi; cd "$HOME/$1"');
+    expect(program).toContain('PATH="$loginpath:$PATH"; export PATH; fi; unset NODE_OPTIONS');
     expect(program).toContain('FLEET_CONSOLE_RESOURCE_ROOT="$HOME/$1" nohup "$HOME/$2" "$HOME/$3" serve >/dev/null 2>&1 & printf %s "$!"');
+  });
+
+  it("sanitizes inherited Node and Desktop control environment before remote Node execution", async () => {
+    const install = await remoteProgram("install_console", [".fleet/desktop/runtime/node/bin/node", ".fleet/desktop/runtime/node/lib/npm.js", runtime, "@dotobokuri/fleet-console@latest"]);
+    const start = await remoteProgram("start_console", [runtime, ".fleet/desktop/runtime/node/bin/node", ".fleet/desktop/runtime/console/latest/dist/cli.mjs", owner, "1", "0.3.1", ".fleet/console"]);
+    const unset = "unset NODE_OPTIONS FLEET_CONSOLE_OWNER_ID FLEET_CONSOLE_OWNER_KIND FLEET_CONSOLE_PROTOCOL_VERSION FLEET_CONSOLE_RESOURCE_ROOT FLEET_CONSOLE_DIR FLEET_CONSOLE_DESKTOP_VERSION FLEET_CONSOLE_DESKTOP_DEVELOPMENT";
+    for (const program of [install, start]) {
+      expect(program).toContain(unset);
+      expect(program).toContain("for v in $(env | sed -n");
+    }
+    expect(install.indexOf(unset)).toBeLessThan(install.indexOf('"$HOME/$1" "$HOME/$2" install'));
+    expect(start.indexOf(unset)).toBeLessThan(start.indexOf('FLEET_CONSOLE_OWNER_KIND=desktop'));
+  });
+
+  it("reconciles an interrupted promotion backup before continuing the promotion", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "fleet-remote-promote-"));
+    const latest = ".fleet/desktop/runtime/node";
+    const backup = path.join(home, `${latest}.old`);
+    try {
+      await mkdir(backup, { recursive: true });
+      await writeFile(path.join(backup, "marker"), "recoverable");
+      const program = await remoteProgram("promote_runtime_path", [".fleet/desktop/runtime/node.staging", latest]);
+      expect(program).toContain('if [ ! -e "$HOME/$2" ] && [ -e "$HOME/$2.old" ]; then mv "$HOME/$2.old" "$HOME/$2"; fi;');
+      await expect(execFileAsync("/bin/sh", ["-c", program], { env: { ...process.env, HOME: home } })).rejects.toBeDefined();
+      await expect(readFile(path.join(backup, "marker"), "utf8")).resolves.toBe("recoverable");
+    } finally { await rm(home, { force: true, recursive: true }); }
   });
 
   it("interprets predicate exit 0/1 while treating 255 as an SSH transport failure", async () => {
@@ -168,12 +194,16 @@ describe("OpenSSH transport", () => {
 });
 
 async function runRemoveConsoleLock(pid: string, home: string): Promise<void> {
+  const program = await remoteProgram("remove_console_lock", [pid]);
+  await execFileAsync("/bin/sh", ["-c", program], { env: { ...process.env, HOME: home } });
+}
+
+async function remoteProgram(operation: string, args: readonly string[]): Promise<string> {
   const child = fakeProcess(); const spawn = vi.fn(() => child);
   const adapter = await createOpenSshAdapter({ locate: async () => "ssh", spawn });
-  const pending = adapter.run(parseSshTarget("host"), { operation: "remove_console_lock", args: [pid] });
+  const pending = adapter.run(parseSshTarget("host"), { operation, args } as never);
   child.exit(); await pending;
-  const program = calls(spawn)[0]![1].at(-1)!;
-  await execFileAsync("/bin/sh", ["-c", program], { env: { ...process.env, HOME: home } });
+  return calls(spawn)[0]![1].at(-1)!;
 }
 
 function calls(spawn: ReturnType<typeof vi.fn>): readonly [string, string[]][] { return spawn.mock.calls as unknown as readonly [string, string[]][]; }

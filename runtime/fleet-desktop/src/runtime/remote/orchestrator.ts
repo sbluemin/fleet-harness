@@ -54,10 +54,10 @@ export async function connectManagedRemote(input: string, dependencies: ManagedR
     // registry observation is still made so its normal policy state remains current.
     service = lock.lock;
   } else if (lock.kind === "same_owner_version_mismatch") {
-    // This Desktop owns the old service, but the registry says it is not the
-    // latest desired Console. Stop only after re-checking that exact lock version.
-    await stopOwnedRemoteService(dependencies.ssh, target, lock.lock, ownerFor(dependencies.ownerId, lock.lock.version)!);
+    // Preserve the live same-owner service until the replacement runtime has
+    // been fully provisioned; a failed download or install leaves it usable.
     const runtime = await provisionRemoteRuntime(target, dependencies, emit);
+    await stopOwnedRemoteService(dependencies.ssh, target, lock.lock, ownerFor(dependencies.ownerId, lock.lock.version)!);
     launch = launchFor(runtime.console.version, runtime.console.root, runtime.node.nodeBin, runtime.console.cli, dependencies);
     emit("starting_service");
     service = await startCandidateService(dependencies.ssh, target, launch);

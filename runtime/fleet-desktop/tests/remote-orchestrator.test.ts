@@ -106,15 +106,27 @@ describe("managed remote orchestrator", () => {
   });
 
   it("preserves online version-mismatch replacement behavior", async () => {
+    const order: string[] = [];
     seams.inspect.mockResolvedValue({ kind: "same_owner_version_mismatch", lock });
-    seams.provision.mockResolvedValue(runtime());
-    seams.start.mockResolvedValue(lock);
+    seams.provision.mockImplementation(async () => { order.push("provision"); return runtime(); });
+    seams.stop.mockImplementation(async () => { order.push("stop"); });
+    seams.start.mockImplementation(async () => { order.push("start"); return lock; });
     seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
     seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
     await connectManagedRemote("devbox", dependencies({ registry: { check: async () => ({ latest: "0.3.1", shouldNotify: false }) } }));
     expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId, serviceVersion: "0.3.1" }, undefined);
     expect(seams.stop).toHaveBeenCalledWith(expect.anything(), expect.anything(), lock, { id: ownerId, serviceVersion: "0.3.1" });
     expect(seams.provision).toHaveBeenCalledOnce();
+    expect(order).toEqual(["provision", "stop", "start"]);
+  });
+
+  it("keeps the version-mismatched service running when replacement provisioning fails", async () => {
+    seams.inspect.mockResolvedValue({ kind: "same_owner_version_mismatch", lock });
+    seams.provision.mockRejectedValue(new Error("remote_registry_unavailable"));
+    await expect(connectManagedRemote("devbox", dependencies())).rejects.toThrow("remote_registry_unavailable");
+    expect(seams.stop).not.toHaveBeenCalled();
+    expect(seams.start).not.toHaveBeenCalled();
+    expect(seams.open).not.toHaveBeenCalled();
   });
 
   it("uses the provisioned Console version for readiness ownership", async () => {
