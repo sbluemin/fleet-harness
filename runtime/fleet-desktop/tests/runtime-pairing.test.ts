@@ -59,6 +59,7 @@ describe("runtime pairing", () => {
     const policy = { activateConsoleOrigin: vi.fn(), currentConsoleOrigin: vi.fn(() => "http://127.0.0.1:4000"), stageConsoleOrigin: vi.fn(), commitConsoleOrigin: vi.fn(), cancelPendingConsoleOrigin: vi.fn() };
     const fullscreen = { activate: vi.fn(), reset: vi.fn(), resync: vi.fn(), stop: vi.fn() };
     const pairing = createRuntimePairing({
+      ...pairingDefaults(),
       notifier: { show: vi.fn() },
       fullscreenSynchronizer: () => fullscreen,
       themeSynchronizer: { stop: vi.fn(), start: vi.fn(async () => undefined) } as never,
@@ -72,6 +73,7 @@ describe("runtime pairing", () => {
 
     const rollbackFullscreen = { activate: vi.fn(), reset: vi.fn(), resync: vi.fn(), stop: vi.fn() };
     const rollback = createRuntimePairing({
+      ...pairingDefaults(),
       notifier: { show: vi.fn() },
       fullscreenSynchronizer: () => rollbackFullscreen,
       themeSynchronizer: { stop: vi.fn(), start: vi.fn().mockRejectedValueOnce(new Error("theme failed")).mockResolvedValueOnce(undefined) } as never,
