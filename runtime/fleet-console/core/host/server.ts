@@ -6,7 +6,7 @@ import path from "node:path";
 import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./api-types.js";
+import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./api-types.js";
 import { createCodexWorkspaceContextRouter } from "./codex/context-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore, type ConsoleThemeId } from "./console-settings.js";
@@ -607,6 +607,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleStatus(req, res);
       return;
     }
+    if (pathname === "/api/v1/environment") {
+      handleEnvironmentDiagnostics(req, res);
+      return;
+    }
     if (pathname === "/api/v1/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
@@ -841,6 +845,34 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     writeJson(res, 200, { version, routes: buildApiCatalog() });
+  }
+
+  function handleEnvironmentDiagnostics(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (channel !== "local") {
+      writeJson(res, 404, { error: "not_found" });
+      return;
+    }
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isAllowedTerminalOrigin(req, lockHandle?.payload.port ?? port)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (!activeLockFile) {
+      writeJson(res, 503, { error: "console_not_ready" });
+      return;
+    }
+    const payload: ConsoleEnvironmentDiagnostics = {
+      channel: "local",
+      version,
+      effectivePort: portState.effectivePort,
+      dataDir: durablePaths.dir,
+      lockFile: activeLockFile,
+    };
+    res.setHeader("Cache-Control", "no-store");
+    writeJson(res, 200, payload);
   }
 
   async function handleObserverReleaseNotes(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

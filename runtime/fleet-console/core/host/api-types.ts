@@ -86,6 +86,14 @@ export interface ConsoleObserverStatus {
   readonly wikiServerStatus: ConsoleObserverWikiServerStatus;
 }
 
+export interface ConsoleEnvironmentDiagnostics {
+  readonly channel: "local";
+  readonly version: string;
+  readonly effectivePort: number;
+  readonly dataDir: string;
+  readonly lockFile: string;
+}
+
 export interface ConsoleObserverTheatersResponse {
   readonly theaters: readonly ConsoleTheaterInfo[];
   readonly agentClis?: readonly ConsoleAgentCliMetadata[];
