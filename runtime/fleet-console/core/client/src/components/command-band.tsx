@@ -146,11 +146,6 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     contextTriggerRef.current?.focus();
   };
 
-  const closeEnvironment = () => {
-    setEnvironmentOpen(false);
-    environmentTriggerRef.current?.focus();
-  };
-
   const copyEnvironmentValue = (value: string) => {
     void navigator.clipboard.writeText(value).then(() => setCopiedValue(value)).catch(() => setEnvironmentError("Unable to copy value."));
   };
