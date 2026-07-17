@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -125,6 +125,41 @@ describe("canvas store", () => {
     loadForTheater("theater-b");
     expect(getSnapshot().minimized).toEqual([]);
     expect(getSnapshot().operations["op-b"]).toMatchObject({ x: 96, y: 144 });
+  });
+
+  it("reads and toggles collapsed groups for an inactive Theater without changing the loaded canvas", () => {
+    window.localStorage.setItem("fleet-console.canvas.theater-b", JSON.stringify({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      operations: { "op-b": GEOMETRY },
+      operationOrder: ["op-b"],
+      operationAccent: { "op-b": "rose" },
+      minimized: ["op-b"],
+      collapsedGroups: ["group-b"],
+    }));
+
+    setOperationOrder(["op-a"]);
+    expect(getTheaterCanvasSnapshot("theater-b")).toMatchObject({
+      operationOrder: ["op-b"],
+      operationAccent: { "op-b": "rose" },
+      minimized: ["op-b"],
+      collapsedGroups: ["group-b"],
+    });
+
+    toggleTheaterGroupCollapsed("theater-b", "group-b");
+
+    expect(getSnapshot().operationOrder).toEqual(["op-a"]);
+    expect(getTheaterCanvasSnapshot("theater-b").collapsedGroups).toEqual([]);
+  });
+
+  it("restores each Theater's collapsed groups across A → B → A", () => {
+    toggleTheaterGroupCollapsed("theater-a", "group-a");
+
+    loadForTheater("theater-b");
+    toggleTheaterGroupCollapsed("theater-b", "group-b");
+    expect(getSnapshot().collapsedGroups).toEqual(["group-b"]);
+
+    loadForTheater("theater-a");
+    expect(getSnapshot().collapsedGroups).toEqual(["group-a"]);
   });
 
   it("keeps maximize-docked Operations minimized when entering open-panel Formation", () => {
