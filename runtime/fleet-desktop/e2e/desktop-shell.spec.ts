@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { _electron as electron, test, expect } from "playwright/test";
+import { _electron as electron, test, expect, type ElectronApplication } from "playwright/test";
 
 const enabled = process.env.FLEET_DESKTOP_E2E === "1";
 
@@ -87,6 +87,40 @@ test.describe("unpackaged desktop shell", () => {
       expect(new URL(window.url()).pathname).toMatch(/^\/console\//);
     } finally {
       await app.close();
+    }
+  });
+
+  test("quits through the product lifecycle without uncaught main-process exceptions", async () => {
+    const main = process.env.FLEET_DESKTOP_E2E_MAIN;
+    const nodePath = process.env.FLEET_CONSOLE_NODE_PATH;
+    test.skip(!main || !nodePath, "FLEET_DESKTOP_E2E_MAIN and FLEET_CONSOLE_NODE_PATH are required.");
+    let app: ElectronApplication | undefined;
+    let exited = false;
+    const uncaughtMarker = "[fleet-desktop-e2e] uncaughtException:";
+    let stderr = "";
+    try {
+      app = await electron.launch({ args: [path.resolve(main)], env: { ...process.env, FLEET_CONSOLE_NODE_PATH: nodePath } });
+      const appProcess = app.process();
+      appProcess.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+      const close = new Promise<number | null>((resolve, reject) => {
+        appProcess.once("close", (code) => resolve(code));
+        appProcess.once("error", reject);
+      });
+      const window = await app.firstWindow();
+      await expect(window).toHaveURL(/\/console\//);
+
+      await app.evaluate(({ app }) => {
+        process.once("uncaughtException", (error) => {
+          process.stderr.write(`[fleet-desktop-e2e] uncaughtException: ${error.stack ?? error.message}\n`);
+        });
+        app.quit();
+      });
+
+      await expect(close).resolves.toBe(0);
+      exited = true;
+      expect(stderr).not.toContain(uncaughtMarker);
+    } finally {
+      if (app && !exited) await app.close();
     }
   });
 });
