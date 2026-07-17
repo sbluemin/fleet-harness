@@ -4,7 +4,7 @@ export const PAIRING_SCHEME = "fleet-desktop-pairing:";
 const PAIRING_PARTITION = "fleet-desktop-pairing";
 
 export interface PairingModal {
-  prompt(parent: BrowserWindow): Promise<string | null>;
+  prompt(parent: BrowserWindow, rememberedTarget?: string | null): Promise<string | null>;
 }
 
 export interface PairingModalDependencies {
@@ -21,7 +21,7 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
   let active: { readonly window: PairingModalWindow; readonly result: Promise<string | null>; ready: boolean } | null = null;
 
   return {
-    prompt(parent): Promise<string | null> {
+    prompt(parent, rememberedTarget = null): Promise<string | null> {
       if (active && !active.window.isDestroyed()) {
         if (active.ready) active.window.show();
         active.window.focus();
@@ -78,7 +78,10 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         finish(null);
         return result;
       }
-      void modal.loadFile(dependencies.pairingPagePath).catch(() => finish(null));
+      // The query is main-process-owned template context. The local, script-free page
+      // does not consume it as code; W3 passes the remembered value back on reopen.
+      const query = rememberedTarget ? { rememberedSshTarget: rememberedTarget } : undefined;
+      void modal.loadFile(dependencies.pairingPagePath, query ? { query } : undefined).catch(() => finish(null));
       return result;
     },
   };
@@ -89,8 +92,8 @@ export function createPairingModalOptions(parent: BrowserWindow): BrowserWindowC
     parent,
     modal: true,
     show: false,
-    width: 420,
-    height: 250,
+    width: 460,
+    height: 330,
     useContentSize: true,
     resizable: false,
     minimizable: false,
@@ -111,14 +114,26 @@ export function createPairingModalOptions(parent: BrowserWindow): BrowserWindowC
 export function parsePairingNavigation(value: string): string | null | undefined {
   if (/[\t\n\r ]/u.test(value)) return undefined;
   if (value === "fleet-desktop-pairing://cancel/") return null;
-  const rawSubmit = /^fleet-desktop-pairing:\/\/submit\/\?target=([^&#]*)$/u.exec(value);
-  if (!rawSubmit) return undefined;
   try {
     const url = new URL(value);
     if (url.protocol !== PAIRING_SCHEME || url.username || url.password || url.port || url.hash) return undefined;
-    const match = /^\?target=([^&]*)$/u.exec(url.search);
-    if (!match || url.hostname !== "submit" || url.pathname !== "/") return undefined;
-    return url.searchParams.get("target");
+    if (url.hostname !== "submit" || url.pathname !== "/") return undefined;
+    const rawSearch = value.slice("fleet-desktop-pairing://submit/".length);
+    const loopback = /^\?target=([^&#]*)$/u.exec(rawSearch) ?? /^\?mode=loopback&target=([^&#]*)$/u.exec(rawSearch);
+    if (loopback) return decodeRawTarget(loopback[1]!);
+    const ssh = /^\?mode=ssh&host=([^&#]*)$/u.exec(rawSearch);
+    if (!ssh) return undefined;
+    const host = decodeRawTarget(ssh[1]!);
+    return host === undefined ? undefined : `ssh:${host}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeRawTarget(raw: string): string | undefined {
+  try {
+    const value = decodeURIComponent(raw);
+    return /[\u0000-\u001f\u007f\s]/u.test(value) ? undefined : value;
   } catch {
     return undefined;
   }

@@ -11,8 +11,8 @@ describe("pairing modal", () => {
       parent,
       modal: true,
       show: false,
-      width: 420,
-      height: 250,
+      width: 460,
+      height: 330,
       useContentSize: true,
       resizable: false,
       minimizable: false,
@@ -42,7 +42,7 @@ describe("pairing modal", () => {
     expect(duplicate.preventDefault).toHaveBeenCalledOnce();
     expect(modalWindow.destroy).not.toHaveBeenCalled();
     const submit = { preventDefault: vi.fn() };
-    navigate(submit, "fleet-desktop-pairing://submit/?target=127.0.0.1%3A4310");
+    navigate(submit, "fleet-desktop-pairing://submit/?mode=loopback&target=127.0.0.1%3A4310");
     await expect(result).resolves.toBe("127.0.0.1:4310");
     expect(submit.preventDefault).toHaveBeenCalledOnce();
     expect(modalWindow.destroy).toHaveBeenCalledOnce();
@@ -113,8 +113,14 @@ describe("pairing navigation parser", () => {
   it("rejects credentials, ports, hashes, extra paths, and unknown parameters", () => {
     expect(parsePairingNavigation("fleet-desktop-pairing://cancel/")).toBeNull();
     expect(parsePairingNavigation("fleet-desktop-pairing://submit/?target=127.0.0.1%3A4310")).toBe("127.0.0.1:4310");
+    expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=loopback&target=127.0.0.1%3A4310")).toBe("127.0.0.1:4310");
+    expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=ssh&host=user%40devbox")).toBe("ssh:user@devbox");
     for (const value of [
       "fleet-desktop-pairing://submit/?target=one&other=two",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=devbox&other=two",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=dev%20box",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=%ZZ",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=devbox%0Aevil",
       "fleet-desktop-pairing://submit/?target=one&",
       "fleet-desktop-pairing://submit/?tar%67et=one",
       "fleet-desktop-pairing://submit/path?target=one",
