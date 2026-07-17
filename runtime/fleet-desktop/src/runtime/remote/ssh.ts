@@ -54,8 +54,15 @@ const SCRIPTS: Readonly<Record<RemoteOperation, string>> = {
   promote_runtime_path: "set -eu; rm -rf \"$HOME/$2.old\"; if [ -e \"$HOME/$2\" ]; then mv \"$HOME/$2\" \"$HOME/$2.old\"; fi; mv \"$HOME/$1\" \"$HOME/$2\"; rm -rf \"$HOME/$2.old\"",
   chmod_exec: "set -eu; chmod 0755 \"$HOME/$1\"",
   normalize_console_prefix: "set -eu; root=\"$HOME/$1\"; held=\"$root.package\"; rm -rf \"$held\"; mv \"$root/node_modules/@dotobokuri/fleet-console\" \"$held\"; for entry in \"$held\"/* \"$held\"/.[!.]* \"$held\"/..?*; do [ -e \"$entry\" ] || continue; mv \"$entry\" \"$root/\"; done; rm -rf \"$held\"",
-  install_console: "set -eu; \"$HOME/$1\" \"$HOME/$2\" install --prefix \"$HOME/$3\" --no-audit --no-fund --loglevel=error \"$4\"",
-  start_console: "set -eu; cd \"$HOME/$1\"; FLEET_CONSOLE_OWNER_KIND=desktop FLEET_CONSOLE_OWNER_ID=\"$4\" FLEET_CONSOLE_PROTOCOL_VERSION=\"$5\" FLEET_CONSOLE_DESKTOP_VERSION=\"$6\" FLEET_CONSOLE_DIR=\"$HOME/$7\" nohup \"$HOME/$2\" \"$HOME/$3\" serve >/dev/null 2>&1 & printf %s \"$!\"",
+  // node-pty's npm lifecycle runs `sh -c "node …"`, and npm does not add the running node's dir to
+  // the child PATH, so prepend the bundled node bin (mirrors the local installer). Isolate the user's
+  // account config with two distinct empty npmrc files (npm refuses to load one path as both user and
+  // global) and pin the registry so a remote ~/.npmrc cannot redirect or break the install.
+  install_console: "set -eu; nodebin=$(dirname \"$HOME/$1\"); prefix=\"$HOME/$3\"; mkdir -p \"$prefix\"; : > \"$prefix/.npmrc\"; : > \"$prefix/.npmrc-global\"; PATH=\"$nodebin:$PATH\" npm_config_userconfig=\"$prefix/.npmrc\" npm_config_globalconfig=\"$prefix/.npmrc-global\" npm_config_registry=https://registry.npmjs.org/ \"$HOME/$1\" \"$HOME/$2\" install --prefix \"$prefix\" --no-audit --no-fund --loglevel=error \"$4\"; rm -f \"$prefix/.npmrc\" \"$prefix/.npmrc-global\"",
+  // The Console verifies the full desktop-protocol env before it will serve: owner id/kind/version,
+  // the canonical FLEET_CONSOLE_DIR, and FLEET_CONSOLE_RESOURCE_ROOT pointing at the service root
+  // (mirrors local environment.ts). The service root doubles as the resource root the marker lives in.
+  start_console: "set -eu; cd \"$HOME/$1\"; FLEET_CONSOLE_OWNER_KIND=desktop FLEET_CONSOLE_OWNER_ID=\"$4\" FLEET_CONSOLE_PROTOCOL_VERSION=\"$5\" FLEET_CONSOLE_DESKTOP_VERSION=\"$6\" FLEET_CONSOLE_DIR=\"$HOME/$7\" FLEET_CONSOLE_RESOURCE_ROOT=\"$HOME/$1\" nohup \"$HOME/$2\" \"$HOME/$3\" serve >/dev/null 2>&1 & printf %s \"$!\"",
 };
 
 export async function createOpenSshAdapter(options: OpenSshAdapterOptions = {}): Promise<OpenSshAdapter> {
@@ -96,11 +103,23 @@ function startCommand(executable: string, base: readonly string[], spawnFor: Ope
   const script = SCRIPTS[command.operation];
   if (!script) throw invalidCommand();
   throwIfAborted(cancellation);
-  // Target is the sole user-derived argv item and remains directly after OpenSSH's -- boundary.
-  const child = spawnFor(executable, [...base, "--", target.value, "sh", "-c", script, "fleet-remote", ...command.args], { stdio: "pipe", windowsHide: true });
+  // OpenSSH joins every post-target argv with spaces and hands the result to the remote login
+  // shell, which re-parses it. Splitting `sh -c <script> arg…` into separate local argv items is
+  // therefore lost across the wire, so build one already-quoted remote program string instead.
+  // Target stays the sole user-derived argv item, directly after OpenSSH's -- boundary.
+  const remoteProgram = buildRemoteProgram(script, command.args);
+  const child = spawnFor(executable, [...base, "--", target.value, remoteProgram], { stdio: "pipe", windowsHide: true });
   bindCancellation(child, cancellation);
   writeStdin(child, command);
   return child;
+}
+
+/** POSIX single-quote: wrap in '…' and escape embedded quotes as '\'' so the remote shell sees a literal. */
+function shSingleQuote(value: string): string { return `'${value.replace(/'/gu, "'\\''")}'`; }
+
+/** Compose the remote program the login shell will re-parse: sh -c '<script>' fleet-remote '<arg>'… */
+function buildRemoteProgram(script: string, args: readonly string[]): string {
+  return ["sh", "-c", shSingleQuote(script), "fleet-remote", ...args.map(shSingleQuote)].join(" ");
 }
 
 function validateCommand(command: RemoteCommand): void {

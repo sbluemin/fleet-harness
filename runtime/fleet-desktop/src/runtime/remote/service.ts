@@ -10,6 +10,8 @@ export interface RemoteServiceLaunch {
   readonly ownerId: string;
   readonly protocolVersion: number;
   readonly desktopVersion: string;
+  /** Installed Console service version used only for lock ownership matching. */
+  readonly serviceVersion: string;
   readonly consoleDirRel: string;
 }
 export interface RemoteServiceOptions { readonly wait?: (ms: number) => Promise<void>; readonly readinessAttempts?: number; }
@@ -22,7 +24,7 @@ export async function startRemoteService(adapter: OpenSshAdapter, target: Valida
   const attempts = options.readinessAttempts ?? 10;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     await wait(Math.min(100 * (attempt + 1), 500));
-    const inspected = await inspectRemoteLock(adapter, target, { id: launch.ownerId, version: launch.desktopVersion });
+    const inspected = await inspectRemoteLock(adapter, target, { id: launch.ownerId, serviceVersion: launch.serviceVersion });
     if (inspected.kind === "same_owner") return inspected.lock;
     if (inspected.kind === "remote_console_owned_elsewhere" || inspected.kind === "remote_console_lock_conflict") throw new Error(inspected.kind);
   }

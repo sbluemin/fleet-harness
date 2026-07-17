@@ -23,7 +23,7 @@ describe("OpenSSH transport", () => {
     const pending = adapter.run(parseSshTarget("dev@host"), { operation: "detect_platform", args: [] });
     process.exit(); await pending;
     const args = calls(spawn)[0]![1];
-    expect(args).toEqual(expect.arrayContaining(["-T", "-F", "/tmp/test-config", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", "dev@host", "sh", "-c", "set -eu; uname -s; uname -m", "fleet-remote"]));
+    expect(args).toEqual(expect.arrayContaining(["-T", "-F", "/tmp/test-config", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", "dev@host", "sh -c 'set -eu; uname -s; uname -m' fleet-remote"]));
     expect(args[args.indexOf("--") + 1]).toBe("dev@host");
   });
 
@@ -38,7 +38,7 @@ describe("OpenSSH transport", () => {
     ["promote_runtime_path", [runtime, ".fleet/desktop/runtime/node"], "mv \"$HOME/$1\" \"$HOME/$2\""],
     ["chmod_exec", [runtime], "chmod 0755 \"$HOME/$1\""],
     ["normalize_console_prefix", [runtime], "mv \"$root/node_modules/@dotobokuri/fleet-console\" \"$held\""],
-    ["install_console", [".fleet/desktop/runtime/node/bin/node", ".fleet/desktop/runtime/node/lib/npm.js", runtime, "@dotobokuri/fleet-console@latest"], "install --prefix \"$HOME/$3\""],
+    ["install_console", [".fleet/desktop/runtime/node/bin/node", ".fleet/desktop/runtime/node/lib/npm.js", runtime, "@dotobokuri/fleet-console@latest"], "install --prefix \"$prefix\""],
     ["start_console", [runtime, ".fleet/desktop/runtime/node/bin/node", ".fleet/desktop/runtime/console/latest/dist/cli.mjs", owner, "1", "0.3.1", ".fleet/console"], "FLEET_CONSOLE_DIR=\"$HOME/$7\""],
   ] as const)("uses a fixed set -eu script and exact argv for %s", async (operation, commandArgs, fragment) => {
     const process = fakeProcess(); const spawn = vi.fn(() => process);
@@ -47,11 +47,10 @@ describe("OpenSSH transport", () => {
     const pending = adapter.run(parseSshTarget("host"), command);
     process.exit(); await pending;
     const args = calls(spawn)[0]![1];
-    const script = args[args.indexOf("-c") + 1]!;
-    expect(script).toMatch(/^set -eu;/u);
-    expect(script).toContain(fragment);
-    if (commandArgs.length === 0) expect(args.at(-1)).toBe("fleet-remote");
-    else expect(args.slice(-commandArgs.length)).toEqual(commandArgs);
+    const program = args.at(-1)!;
+    expect(program).toMatch(/^sh -c 'set -eu;/u);
+    expect(program).toContain(fragment);
+    expect(program).toContain(["fleet-remote", ...commandArgs.map(shellQuote)].join(" "));
   });
 
   it("interprets predicate exit 0/1 while treating 255 as an SSH transport failure", async () => {
@@ -105,3 +104,4 @@ describe("OpenSSH transport", () => {
 });
 
 function calls(spawn: ReturnType<typeof vi.fn>): readonly [string, string[]][] { return spawn.mock.calls as unknown as readonly [string, string[]][]; }
+function shellQuote(value: string): string { return `'${value.replace(/'/gu, "'\\''")}'`; }

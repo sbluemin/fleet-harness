@@ -1,4 +1,4 @@
-import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/desktop-protocol";
+import { DESKTOP_PROTOCOL_VERSION, isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/desktop-protocol";
 
 import { RemoteRuntimeError } from "./contracts.js";
 import type { OpenSshAdapter } from "./ssh.js";
@@ -19,11 +19,13 @@ export interface RemoteConsoleLock {
 export type RemoteLockClassification =
   | { readonly kind: "absent" | "stale" }
   | { readonly kind: "same_owner"; readonly lock: RemoteConsoleLock }
+  | { readonly kind: "same_owner_version_mismatch"; readonly lock: RemoteConsoleLock }
   | { readonly kind: "remote_console_owned_elsewhere" | "remote_console_lock_conflict"; readonly lock?: RemoteConsoleLock };
 
 export interface RemoteLockOwner {
   readonly id: string;
-  readonly version: string;
+  /** Installed Console service version, never FLEET_CONSOLE_DESKTOP_VERSION. */
+  readonly serviceVersion: string;
 }
 
 /** Inspect only: this never removes a lock or signals a remote pid. */
@@ -43,7 +45,8 @@ export async function inspectRemoteLock(adapter: OpenSshAdapter, target: Validat
   try { lock = parseRemoteConsoleLock(contents); } catch { return { kind: "remote_console_lock_conflict" }; }
   const alive = await adapter.probe(target, { operation: "check_process", args: [String(lock.pid)] });
   if (!alive.ok) return { kind: "stale" };
-  if (isCompatibleDesktopOwner(lock.owner, lock.version, expectedOwner)) return { kind: "same_owner", lock };
+  if (isCompatibleDesktopOwner(lock.owner, lock.version, { id: expectedOwner.id, version: expectedOwner.serviceVersion })) return { kind: "same_owner", lock };
+  if (lock.owner?.kind === "desktop" && lock.owner.id === expectedOwner.id && lock.owner.protocolVersion === DESKTOP_PROTOCOL_VERSION) return { kind: "same_owner_version_mismatch", lock };
   if (lock.owner?.kind === "desktop") return { kind: "remote_console_owned_elsewhere", lock };
   return { kind: "remote_console_lock_conflict", lock };
 }

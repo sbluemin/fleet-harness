@@ -5,7 +5,7 @@ import { parseSshTarget } from "../src/runtime/remote/target.js";
 import type { OpenSshAdapter } from "../src/runtime/remote/ssh.js";
 
 const target = parseSshTarget("host");
-const owner = { id: "9b77d0ec-a591-4a47-8d87-76b1074a0571", version: "0.3.1" };
+const owner = { id: "9b77d0ec-a591-4a47-8d87-76b1074a0571", serviceVersion: "0.3.1" };
 const lock = (extra = {}) => JSON.stringify({ pid: 42, host: "remote", port: 4310, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "0.3.1", owner: { kind: "desktop", id: owner.id, protocolVersion: 1 }, ...extra });
 
 function adapter(probeResults: boolean[], contents = lock()) {
@@ -26,6 +26,9 @@ describe("remote lock inspection", () => {
     await expect(inspectRemoteLock(adapter([true, true]), target, owner)).resolves.toMatchObject({ kind: "same_owner" });
     await expect(inspectRemoteLock(adapter([true, true], lock({ owner: { kind: "desktop", id: "other", protocolVersion: 1 } })), target, owner)).resolves.toMatchObject({ kind: "remote_console_owned_elsewhere" });
     await expect(inspectRemoteLock(adapter([true, true], lock({ owner: { kind: "cli", id: "cli", protocolVersion: 1 } })), target, owner)).resolves.toMatchObject({ kind: "remote_console_lock_conflict" });
+  });
+  it("keeps this Desktop's older Console distinct from another Desktop", async () => {
+    await expect(inspectRemoteLock(adapter([true, true]), target, { ...owner, serviceVersion: "1.0.0" })).resolves.toMatchObject({ kind: "same_owner_version_mismatch" });
   });
   it("preserves a probe/read TOCTOU as conflict and bounds malformed locks", async () => {
     const probe = vi.fn<OpenSshAdapter["probe"]>(async () => ({ ok: true, exitCode: 0 }));

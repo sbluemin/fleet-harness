@@ -144,7 +144,7 @@ async function boot(): Promise<void> {
         ssh,
         manifest: remoteManifest,
         registry,
-        owner: { id: environment.ownerId, version: app.getVersion() },
+        ownerId: environment.ownerId,
         protocolVersion: DESKTOP_PROTOCOL_VERSION,
         desktopVersion: app.getVersion(),
         consoleDirRel: ".fleet/console",
