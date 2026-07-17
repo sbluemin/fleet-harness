@@ -164,7 +164,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   z-index: 45;
   top: calc(100% + 8px);
   left: 0;
-  width: min(430px, calc(100vw - 24px));
+  width: min(520px, calc(100vw - 24px));
   padding: var(--space-3);
   border: 1px solid color-mix(in oklch, var(--warn) 35%, var(--surface-rim));
   border-radius: var(--radius-md);
@@ -188,13 +188,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr) auto;
   gap: var(--space-2);
-  align-items: center;
+  align-items: start;
   padding-block: 5px;
   border-top: 1px solid var(--surface-rim);
 }
 
 .command-band-environment-row span { color: var(--ink-fog); }
-.command-band-environment-row code { overflow: hidden; color: var(--ink-pearl); font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+/* 경로 값은 진단 목적상 전문이 보여야 한다 — 말줄임 대신 줄바꿈으로 전체를 노출한다. */
+.command-band-environment-row code { color: var(--ink-pearl); font-family: var(--font-mono); overflow-wrap: anywhere; word-break: break-all; }
 .command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--warn); font: inherit; cursor: pointer; }
 .command-band-environment-row button:hover,
 .command-band-environment-row button:focus-visible { border-color: var(--warn); outline: none; }
