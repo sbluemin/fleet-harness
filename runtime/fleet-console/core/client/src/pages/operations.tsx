@@ -96,6 +96,9 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
         setActiveOperation(nextId);
         return;
       }
+      // 모두 최소화된 부팅 상태의 폴백 대상은 store 포커스보다 먼저 복원한다. 그렇지 않으면 Canvas의
+      // "최소화된 active id 제거" effect가 pending focus 복원보다 앞서 실행되어 활성 표시를 지운다.
+      if (canvas.minimized.includes(nextId)) restoreOperation(nextId);
       focusOperation(nextId);
     };
     window.addEventListener("keydown", handler, true);
