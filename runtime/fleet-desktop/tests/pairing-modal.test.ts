@@ -11,8 +11,8 @@ describe("pairing modal", () => {
       parent,
       modal: true,
       show: false,
-      width: 420,
-      height: 250,
+      width: 460,
+      height: 330,
       useContentSize: true,
       resizable: false,
       minimizable: false,
@@ -42,7 +42,7 @@ describe("pairing modal", () => {
     expect(duplicate.preventDefault).toHaveBeenCalledOnce();
     expect(modalWindow.destroy).not.toHaveBeenCalled();
     const submit = { preventDefault: vi.fn() };
-    navigate(submit, "fleet-desktop-pairing://submit/?target=127.0.0.1%3A4310");
+    navigate(submit, "fleet-desktop-pairing://submit/?mode=loopback&target=127.0.0.1%3A4310");
     await expect(result).resolves.toBe("127.0.0.1:4310");
     expect(submit.preventDefault).toHaveBeenCalledOnce();
     expect(modalWindow.destroy).toHaveBeenCalledOnce();
@@ -64,6 +64,43 @@ describe("pairing modal", () => {
     input({ preventDefault: vi.fn() }, { type: "keyDown", key: "Escape" });
     await expect(Promise.all([first, second])).resolves.toEqual([null, null]);
     expect(parent.webContents.setIgnoreMenuShortcuts.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("prefills the remembered SSH host through a safely escaped temporary page with its stylesheet", async () => {
+    const parent = fakeParent();
+    const modalWindow = fakeModalWindow();
+    const fileSystem = fakeTemplateFileSystem();
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html", fileSystem, temporaryDirectory: "/tmp" });
+    const result = modal.prompt(parent as never, "ssh:user@devbox</script>&\";globalThis.pwned()");
+
+    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture/index.html"));
+    expect(fileSystem.mkdtempSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-");
+    expect(fileSystem.writeFileSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture/index.html", expect.stringContaining('id="mode-ssh" name="pairing-mode" type="radio" checked'), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    expect(fileSystem.copyFileSync).toHaveBeenCalledWith("/desktop/pairing/pairing.css", "/tmp/fleet-desktop-pairing-fixture/pairing.css");
+    expect(fileSystem.chmodSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture/pairing.css", 0o600);
+    const html = fileSystem.writeFileSync.mock.calls[0]?.[1] ?? "";
+    expect(html).toContain('id="ssh-host" name="host" type="text" required value="user@devbox&lt;/script&gt;&amp;&quot;;globalThis.pwned()"');
+    expect(html).not.toMatch(/<(script|iframe|webview)\b|\bon\w+\s*=/i);
+    const cancel = { preventDefault: vi.fn() };
+    (modalWindow.webContents.listeners("will-navigate")[0] as (event: { preventDefault(): void }, url: string) => void)(cancel, "fleet-desktop-pairing://cancel/");
+    await expect(result).resolves.toBeNull();
+    expect(fileSystem.rmSync).toHaveBeenCalledWith("/tmp/fleet-desktop-pairing-fixture", { recursive: true, force: true });
+  });
+
+  it("loads the static template when no SSH target was remembered", async () => {
+    const parent = fakeParent();
+    const modalWindow = fakeModalWindow();
+    const fileSystem = fakeTemplateFileSystem();
+    const modal = createPairingModal({ BrowserWindow: browserWindowConstructor(modalWindow) as never, pairingPagePath: "/desktop/pairing/index.html", fileSystem });
+    const result = modal.prompt(parent as never);
+
+    await vi.waitFor(() => expect(modalWindow.loadFile).toHaveBeenCalledWith("/desktop/pairing/index.html"));
+    expect(fileSystem.readFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.mkdtempSync).not.toHaveBeenCalled();
+    expect(fileSystem.copyFileSync).not.toHaveBeenCalled();
+    modalWindow.emit("closed");
+    await expect(result).resolves.toBeNull();
   });
 
   it("resolves close and parent destruction as null exactly once", async () => {
@@ -113,8 +150,14 @@ describe("pairing navigation parser", () => {
   it("rejects credentials, ports, hashes, extra paths, and unknown parameters", () => {
     expect(parsePairingNavigation("fleet-desktop-pairing://cancel/")).toBeNull();
     expect(parsePairingNavigation("fleet-desktop-pairing://submit/?target=127.0.0.1%3A4310")).toBe("127.0.0.1:4310");
+    expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=loopback&target=127.0.0.1%3A4310")).toBe("127.0.0.1:4310");
+    expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=ssh&host=user%40devbox")).toBe("ssh:user@devbox");
     for (const value of [
       "fleet-desktop-pairing://submit/?target=one&other=two",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=devbox&other=two",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=dev%20box",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=%ZZ",
+      "fleet-desktop-pairing://submit/?mode=ssh&host=devbox%0Aevil",
       "fleet-desktop-pairing://submit/?target=one&",
       "fleet-desktop-pairing://submit/?tar%67et=one",
       "fleet-desktop-pairing://submit/path?target=one",
@@ -166,6 +209,17 @@ function fakeModalWindow() {
   contents.session.setPermissionRequestHandler = vi.fn();
   modal.webContents = contents;
   return modal;
+}
+
+function fakeTemplateFileSystem() {
+  return {
+    readFileSync: vi.fn(() => `<!doctype html><input class="mode" id="mode-loopback" name="pairing-mode" type="radio" checked><input class="mode" id="mode-ssh" name="pairing-mode" type="radio"><form action="fleet-desktop-pairing://submit/"><input id="ssh-host" name="host" type="text" required></form>`),
+    writeFileSync: vi.fn(),
+    mkdtempSync: vi.fn(() => "/tmp/fleet-desktop-pairing-fixture"),
+    copyFileSync: vi.fn(),
+    chmodSync: vi.fn(),
+    rmSync: vi.fn(),
+  };
 }
 
 function browserWindowConstructor(window: ReturnType<typeof fakeModalWindow>) {
