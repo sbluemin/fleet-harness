@@ -25,10 +25,12 @@ describe("managed remote orchestrator", () => {
     seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
     const fetch = vi.fn(async () => { order.push("pairing"); return pairingIdentityResponse(); });
     const phases: string[] = [];
-    const session = await connectManagedRemote("devbox", dependencies({ fetch, onPhase: (phase: string) => phases.push(phase) }));
+    const ssh = { run: vi.fn() };
+    const session = await connectManagedRemote("devbox", dependencies({ ssh, fetch, onPhase: (phase: string) => phases.push(phase) }));
     expect(order).toEqual(["lock", "provision", "serve", "tunnel", "pairing"]);
     expect(phases).toContain("verifying_pairing");
     expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4310/api/v1/pairing-identity", { signal: undefined });
+    expect(ssh.run).not.toHaveBeenCalled();
     expect(session.origin).toBe("http://127.0.0.1:4310");
   });
 
@@ -48,10 +50,12 @@ describe("managed remote orchestrator", () => {
     seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
     seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
     const registry = { check: vi.fn(async () => ({ latest: "0.3.1", shouldNotify: true })) };
-    await connectManagedRemote("devbox", dependencies({ registry }));
+    const ssh = { run: vi.fn() };
+    await connectManagedRemote("devbox", dependencies({ registry, ssh }));
     expect(registry.check).toHaveBeenCalledWith("");
     expect(seams.provision).not.toHaveBeenCalled();
     expect(seams.start).not.toHaveBeenCalled();
+    expect(ssh.run).not.toHaveBeenCalled();
   });
 
   it("reuses a live same-owner runtime while the registry is offline without stopping it", async () => {
@@ -68,9 +72,11 @@ describe("managed remote orchestrator", () => {
 
   it("refuses foreign desktop locks before any mutable operation", async () => {
     seams.inspect.mockResolvedValue({ kind: "remote_console_owned_elsewhere", lock });
-    await expect(connectManagedRemote("devbox", dependencies())).rejects.toThrow("remote_console_owned_elsewhere");
+    const ssh = { run: vi.fn() };
+    await expect(connectManagedRemote("devbox", dependencies({ ssh }))).rejects.toThrow("remote_console_owned_elsewhere");
     expect(seams.provision).not.toHaveBeenCalled();
     expect(seams.open).not.toHaveBeenCalled();
+    expect(ssh.run).not.toHaveBeenCalled();
   });
 
   it("refuses a foreign Desktop lock while the registry is offline", async () => {
@@ -83,16 +89,20 @@ describe("managed remote orchestrator", () => {
   });
 
   it("provisions after a stale lock while the registry is offline", async () => {
+    const order: string[] = [];
+    const ssh = { run: vi.fn(async () => { order.push("remove"); return { stdout: "", stderr: "", exitCode: 0 }; }) };
     seams.inspect.mockResolvedValue({ kind: "stale" });
-    seams.provision.mockResolvedValue(runtime());
+    seams.provision.mockImplementation(async () => { order.push("provision"); return runtime(); });
     seams.start.mockResolvedValue(lock);
     seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
     seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
     const registry = { check: vi.fn(async () => ({ latest: null, shouldNotify: false, unavailable: true })) };
-    await connectManagedRemote("devbox", dependencies({ registry }));
+    await connectManagedRemote("devbox", dependencies({ registry, ssh }));
     expect(seams.inspect).toHaveBeenCalledWith(expect.anything(), expect.anything(), { id: ownerId }, { versionAgnostic: true });
     expect(seams.provision).toHaveBeenCalledOnce();
     expect(seams.start).toHaveBeenCalledOnce();
+    expect(ssh.run).toHaveBeenCalledWith(expect.anything(), { operation: "remove_console_lock", args: [] });
+    expect(order).toEqual(["remove", "provision"]);
   });
 
   it("preserves online version-mismatch replacement behavior", async () => {

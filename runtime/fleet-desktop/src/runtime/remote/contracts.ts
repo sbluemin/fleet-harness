@@ -47,6 +47,7 @@ export interface RemoteCommandResult {
 export type RemoteOperation =
   | "detect_platform"
   | "read_lock"
+  | "remove_console_lock"
   | "check_process"
   | "prepare_staging"
   | "upload_file"

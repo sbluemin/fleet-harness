@@ -6,6 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createOpenSshAdapter } from "../src/runtime/remote/ssh.js";
 import { parseSshTarget } from "../src/runtime/remote/target.js";
 
+const childProcess = vi.hoisted(() => ({ spawn: vi.fn() }));
+vi.mock("node:child_process", async (importOriginal) => ({ ...(await importOriginal<typeof import("node:child_process")>()), spawn: childProcess.spawn }));
+
 function fakeProcess() {
   const events = new EventEmitter();
   const stdout = new PassThrough(); const stderr = new PassThrough(); const stdin = new PassThrough();
@@ -29,6 +32,7 @@ describe("OpenSSH transport", () => {
 
   it.each([
     ["read_lock", [], "cat \"$HOME/.fleet/console/console.lock\""],
+    ["remove_console_lock", [], "rm -f \"$HOME/.fleet/console/console.lock\""],
     ["stop_console", ["42"], "kill \"$1\""],
     ["prepare_staging", [runtime], "mkdir -p \"$HOME/$1\""],
     ["upload_file", [runtime], "cat > \"$HOME/$1\""],
@@ -101,7 +105,7 @@ describe("OpenSSH transport", () => {
     const invalid = [
       { operation: "probe_path", args: ["../.fleet/x"] }, { operation: "probe_path", args: ["/.fleet/x"] }, { operation: "probe_path", args: ["~/.fleet/x"] }, { operation: "probe_path", args: [".fleet/-option"] },
       { operation: "check_process", args: ["0"] }, { operation: "check_process", args: ["1.5"] }, { operation: "check_process", args: ["9007199254740992"] },
-      { operation: "install_console", args: [runtime, runtime, runtime, "@dotobokuri/fleet-console@next"] }, { operation: "read_lock", args: ["unexpected"] }, { operation: "read_lock", args: [], stdin: new Uint8Array([1]) }, { operation: "upload_file", args: [runtime] },
+      { operation: "install_console", args: [runtime, runtime, runtime, "@dotobokuri/fleet-console@next"] }, { operation: "read_lock", args: ["unexpected"] }, { operation: "remove_console_lock", args: ["unexpected"] }, { operation: "read_lock", args: [], stdin: new Uint8Array([1]) }, { operation: "upload_file", args: [runtime] },
     ] as const;
     for (const command of invalid) await expect(adapter.run(parseSshTarget("host"), command as never)).rejects.toThrow("remote_command_invalid");
     expect(spawn).not.toHaveBeenCalled();
@@ -117,6 +121,23 @@ describe("OpenSSH transport", () => {
     process.stdout.write("too much"); process.exit();
     await expect(pending).rejects.toThrow("remote_command_output_too_large");
     expect(process.terminate).toHaveBeenCalled();
+  });
+
+  it("waits for child close so stdout written after exit is collected", async () => {
+    const events = new EventEmitter();
+    const stdout = new PassThrough(); const stderr = new PassThrough(); const stdin = new PassThrough();
+    const process = { pid: 1, stdout, stderr, stdin, kill: vi.fn(), exit: (code = 0) => events.emit("exit", code, null), close: (code = 0) => events.emit("close", code, null), once: events.once.bind(events) };
+    childProcess.spawn.mockReturnValueOnce(process as never);
+    const adapter = await createOpenSshAdapter({ locate: async () => "ssh" });
+    const pending = adapter.run(parseSshTarget("host"), { operation: "detect_platform", args: [] });
+    let completed = false;
+    void pending.then(() => { completed = true; });
+    process.exit();
+    stdout.write("Darwin\narm64\n");
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    stdout.end(); stderr.end(); process.close();
+    await expect(pending).resolves.toMatchObject({ stdout: "Darwin\narm64\n", exitCode: 0 });
   });
 });
 
