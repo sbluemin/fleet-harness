@@ -66,6 +66,14 @@ export interface ObserverStatus {
   readonly wikiServerStatus: "available" | "unavailable" | "unknown";
 }
 
+export interface ConsoleEnvironmentDiagnostics {
+  readonly channel: "local";
+  readonly version: string;
+  readonly effectivePort: number;
+  readonly dataDir: string;
+  readonly lockFile: string;
+}
+
 export type ConsoleUpdateApplyError =
   | "console_not_ready"
   | "local_channel"
@@ -160,6 +168,7 @@ export type CodexReaderRequest =
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
+  readonly channel: ObserverStatus["channel"];
   readonly activeTheme: ConsoleTheme;
   readonly version: string;
   readonly updateAvailable: boolean;

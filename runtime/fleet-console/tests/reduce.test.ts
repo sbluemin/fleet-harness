@@ -38,6 +38,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
   return {
     connection: "live",
     connectionError: null,
+    channel: "unknown",
     activeTheme: "maritime",
     version: "1.8.0",
     updateAvailable: false,

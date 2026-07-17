@@ -24,6 +24,7 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
   return {
     connection: "connecting",
     connectionError: null,
+    channel: "unknown",
     activeTheme: "maritime",
     version: "1.8.0",
     updateAvailable: false,

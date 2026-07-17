@@ -124,6 +124,110 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   letter-spacing: 0.01em;
 }
 
+.command-band-local-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--warn-glow) 72%, var(--surface-glass));
+  box-shadow: 0 0 12px var(--warn-glow);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-band-local-chip:hover,
+.command-band-local-chip:focus-visible {
+  border-color: var(--warn);
+  background: color-mix(in oklch, var(--warn-glow) 100%, var(--surface-glass));
+  outline: none;
+}
+
+.command-band-local-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* macOS Desktop은 traffic-light 인셋(좌측 88px)이 첫 트랙 폭을 잠식하므로
+   local 칩을 컴팩트하게 줄여 사이드바 경계(280px) 침범을 막는다. */
+:root[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-local-chip {
+  gap: 4px;
+  padding-inline: 5px;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+
+.command-band-local-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 7px var(--warn-glow);
+}
+
+.command-band-environment { position: relative; }
+
+.command-band-environment-popover {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(520px, calc(100vw - 24px));
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--warn) 35%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: var(--surface-band);
+  box-shadow: 0 12px 30px color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  color: var(--ink-pearl);
+  font-size: 11px;
+}
+
+.command-band-environment-title {
+  margin-bottom: var(--space-2);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-band-environment-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+  padding-block: 5px;
+  border-top: 1px solid var(--surface-rim);
+}
+
+.command-band-environment-row span { color: var(--ink-fog); }
+/* 경로 값은 진단 목적상 전문이 보여야 한다 — 말줄임 대신 줄바꿈으로 전체를 노출한다. */
+.command-band-environment-row code { color: var(--ink-pearl); font-family: var(--font-mono); overflow-wrap: anywhere; word-break: break-all; }
+.command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--warn); font: inherit; cursor: pointer; }
+.command-band-environment-row button:hover,
+.command-band-environment-row button:focus-visible { border-color: var(--warn); outline: none; }
+.command-band-environment-footer { margin-top: var(--space-2); color: var(--ink-fog); font-size: 10px; }
+
+/* 좁은 뷰에서는 칩 앵커(x≈80~160) + 520px 폭이 우측을 벗어나 Copy 버튼이 잘린다 —
+   앵커 대신 viewport gutter에 고정해 전체 행이 항상 화면 안에 남게 한다. */
+@media (max-width: 640px) {
+  .command-band-environment-popover {
+    position: fixed;
+    top: 52px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
+
 .command-band-center {
   justify-content: center;
   gap: var(--space-3);

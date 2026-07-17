@@ -1,4 +1,4 @@
-import type { ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -109,6 +109,12 @@ export async function fetchObserverStatus(theaterId: string | null, signal?: Abo
   const response = await fetch(`/api/v1/status${suffix}`, { signal });
   await assertOk(response);
   return assertObserverStatus(await response.json(), response.status);
+}
+
+export async function fetchConsoleEnvironment(signal?: AbortSignal): Promise<ConsoleEnvironmentDiagnostics> {
+  const response = await fetch("/api/v1/environment", { cache: "no-store", signal });
+  await assertOk(response);
+  return assertConsoleEnvironmentDiagnostics(await response.json(), response.status);
 }
 
 export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}): Promise<ReleaseNotesResponse> {
@@ -394,6 +400,22 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     portHonored: payload.portHonored,
     wikiServerStatus: payload.wikiServerStatus,
   };
+}
+
+function assertConsoleEnvironmentDiagnostics(value: unknown, status: number): ConsoleEnvironmentDiagnostics {
+  const payload = value as Partial<ConsoleEnvironmentDiagnostics>;
+  if (
+    !payload
+    || payload.channel !== "local"
+    || typeof payload.version !== "string"
+    || typeof payload.effectivePort !== "number"
+    || typeof payload.dataDir !== "string"
+    || typeof payload.lockFile !== "string"
+    || Object.keys(payload).length !== 5
+  ) {
+    throw new ApiError(status, "Invalid environment response");
+  }
+  return payload as ConsoleEnvironmentDiagnostics;
 }
 
 function assertConsoleUpdateApplyAccepted(value: unknown, status: number): ConsoleUpdateApplyAcceptedResponse {

@@ -82,6 +82,32 @@ afterEach(async () => {
 });
 
 describe("console terminal observability", () => {
+  it("serves local environment diagnostics only through the loopback Host and allowed Origin", async () => {
+    const fixture = await startFixture({ release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } });
+    const url = new URL("api/v1/environment", fixture.endpoint);
+    const origin = new URL(fixture.endpoint).origin;
+
+    expect(await requestWithHost(url, origin, "localhost:1", "GET")).toBe(403);
+    const foreign = await fetch(url, { headers: { Origin: "http://127.0.0.1:9999" } });
+    expect(foreign.status).toBe(401);
+    const exact = await fetch(url, { headers: { Origin: origin } });
+    expect(exact.status).toBe(200);
+    expect(exact.headers.get("cache-control")).toBe("no-store");
+    await expect(exact.json()).resolves.toEqual({
+      channel: "local",
+      version: "test",
+      effectivePort: fixture.lock.port,
+      dataDir: path.join(fixture.carrierStoreDir, "console"),
+      lockFile: fixture.lockFile,
+    });
+    expect((await fetch(url)).status).toBe(200);
+  });
+
+  it("does not expose environment diagnostics from stable Console", async () => {
+    const fixture = await startFixture({ release: { channel: "stable", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } });
+    expect((await fetch(`${fixture.endpoint}api/v1/environment`)).status).toBe(404);
+  });
+
   it("owns an exact-origin ephemeral Desktop fullscreen snapshot and relays it through operations SSE", async () => {
     const fixture = await startFixture();
     const origin = new URL(fixture.endpoint).origin;
@@ -2666,12 +2692,16 @@ async function readSseChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Pr
 }
 
 function putWithHost(url: URL, origin: string, host: string, body: unknown): Promise<number> {
+  return requestWithHost(url, origin, host, "PUT", body);
+}
+
+function requestWithHost(url: URL, origin: string, host: string, method: string, body?: unknown): Promise<number> {
   return new Promise((resolve, reject) => {
-    const request = http.request(url, { method: "PUT", headers: { Host: host, Origin: origin, "Content-Type": "application/json" } }, (response) => {
+    const request = http.request(url, { method, headers: { Host: host, Origin: origin, "Content-Type": "application/json" } }, (response) => {
       response.resume();
       response.on("end", () => resolve(response.statusCode ?? 0));
     });
     request.on("error", reject);
-    request.end(JSON.stringify(body));
+    request.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 
-import { fetchOperations, renameOperation } from "../api.js";
+import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { commandBandRenameCommitTarget, railPathContextDeckOpenAfterCommandBandToggle, shouldCloseCommandBandContextDeck } from "./command-band-guards.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -11,6 +11,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import { hydrateOperations, toggleOperationSearch } from "../store.js";
+import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
@@ -43,11 +44,33 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const pathContext = useRailPathContextStore();
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const contextDeckRef = useRef<HTMLDivElement>(null);
+  const environmentTriggerRef = useRef<HTMLButtonElement>(null);
+  const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
   const edgeRevealRef = useRef<HTMLButtonElement>(null);
   const pointerWithinRef = useRef({ edge: false, band: false });
   const renameTargetOperationIdRef = useRef<string | null>(null);
   const [contextDeckOpen, setContextDeckOpen] = useState(false);
+  const [environmentOpen, setEnvironmentOpen] = useState(false);
+  const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
+  const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
+  // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
+  // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
+  const discardEnvironmentState = () => {
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(false);
+    setCopiedValue(null);
+    setCopyFailedValue(null);
+  };
+  const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
+  // darwin Desktop은 traffic-light 인셋(88px)이 첫 트랙을 잠식해 전체 라벨이 사이드바 경계를 넘는다.
+  // Desktop 앱 안에서는 Desktop임이 자명하므로 칩은 "Local"로 축약하고, Desktop 구분은 팝오버의
+  // Desktop data 행이 유지한다(대원수 재가).
+  const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin" ? "Local" : "Local · Desktop";
   const canAutoHide = useCallback(() => {
     const activeElement = document.activeElement;
     const focusWithin = activeElement instanceof Node && (commandBandRef.current?.contains(activeElement) || edgeRevealRef.current?.contains(activeElement));
@@ -83,12 +106,70 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   }, [contextDeckOpen]);
 
   useEffect(() => {
+    if (!environmentOpen) return;
+    const controller = new AbortController();
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(true);
+    fetchConsoleEnvironment(controller.signal)
+      .then(setEnvironment)
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setEnvironmentError(error instanceof Error ? error.message : "Unable to load environment details.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEnvironmentLoading(false);
+      });
+    return () => controller.abort();
+  }, [environmentOpen]);
+
+  useEffect(() => {
+    if (!environmentOpen) return;
+    const closeOnPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || environmentTriggerRef.current?.contains(target) || environmentPopoverRef.current?.contains(target)) return;
+      setEnvironmentOpen(false);
+      discardEnvironmentState();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setEnvironmentOpen(false);
+      discardEnvironmentState();
+      environmentTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnPointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [environmentOpen]);
+
+  useEffect(() => {
+    if (state.channel === "local") return;
+    setEnvironmentOpen(false);
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(false);
+    setCopiedValue(null);
+    setCopyFailedValue(null);
+  }, [state.channel]);
+
+  useEffect(() => {
     if (shouldCloseCommandBandContextDeck(contextDeckOpen, pathContext.isPathContextDeckOpen)) setContextDeckOpen(false);
   }, [contextDeckOpen, pathContext.isPathContextDeckOpen]);
 
   const closeContextDeck = () => {
     setContextDeckOpen(false);
     contextTriggerRef.current?.focus();
+  };
+
+  const copyEnvironmentValue = (value: string) => {
+    // 복사 실패는 해당 버튼의 인라인 상태로만 알린다 — environmentError는 fetch 실패 전용이며
+    // 세팅하면 팝오버 전체가 에러 화면으로 대체되어 진단 값 자체를 볼 수 없게 된다.
+    void navigator.clipboard.writeText(value)
+      .then(() => { setCopiedValue(value); setCopyFailedValue(null); })
+      .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
   };
 
   // 밴드 데크는 로컬 상태만 사용한다 — 공유 open 플래그를 세우면 path-aware 레일 패널의
@@ -169,6 +250,13 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       >
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
+        {state.channel === "local" ? <div className="command-band-environment">
+          <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
+          <span className="command-band-local-dot" aria-hidden="true" />
+          <span className="command-band-local-chip-label">{desktopShell ? desktopChipLabel : "Local"}</span>
+          </button>
+          {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
+        </div> : null}
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
           <PanelToggleIcon side="left" />
         </button> : null}
@@ -201,6 +289,35 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       </header>
     </>
   );
+}
+
+interface EnvironmentPopoverProps {
+  readonly environment: ConsoleEnvironmentDiagnostics | null;
+  readonly error: string | null;
+  readonly loading: boolean;
+  readonly copiedValue: string | null;
+  readonly copyFailedValue: string | null;
+  readonly desktopShell: boolean;
+  readonly onCopy: (value: string) => void;
+}
+
+function EnvironmentPopover({ environment, error, loading, copiedValue, copyFailedValue, desktopShell, onCopy }: EnvironmentPopoverProps) {
+  if (loading) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">Loading environment details…</div>;
+  if (error) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">{error}</div>;
+  if (!environment) return null;
+  const rows: readonly [string, string][] = [
+    ["Channel", environment.channel],
+    ["Version", environment.version],
+    ["Reachable on", `127.0.0.1:${environment.effectivePort}`],
+    ["Data root", environment.dataDir],
+    ["Runtime lock", environment.lockFile],
+    ...(desktopShell ? [["Desktop data", `${environment.dataDir}/desktop`] as [string, string]] : []),
+  ];
+  return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">
+    <div className="command-band-environment-title">Environment</div>
+    {rows.map(([label, value]) => <div key={label} className="command-band-environment-row"><span>{label}</span><code>{value}</code><button type="button" onClick={() => onCopy(value)}>{copiedValue === value ? "Copied" : copyFailedValue === value ? "Copy failed" : "Copy"}</button></div>)}
+    <div className="command-band-environment-footer">Development and published channels keep separate data roots.</div>
+  </div>;
 }
 
 function resolveModLabel(): string {
