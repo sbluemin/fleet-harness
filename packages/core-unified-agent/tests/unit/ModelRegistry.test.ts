@@ -17,6 +17,9 @@ describe('ModelRegistry', () => {
   it('Kimi via Claude Code는 전 요금제 기본 모델과 상위 요금제 모델을 노출한다', () => {
     const provider = getProviderModels('claude-kimi');
     const modelIds = provider.models.map((model) => model.modelId);
+    const efforts = Object.fromEntries(
+      provider.models.map((model) => [model.modelId, model.effort]),
+    );
 
     expect(provider.defaultModel).toBe('kimi-for-coding');
     expect(modelIds).toEqual([
@@ -25,7 +28,10 @@ describe('ModelRegistry', () => {
       'k3[1m]',
       'kimi-for-coding-highspeed',
     ]);
-    expect(provider.models.every((model) => model.effort.supported && model.effort.default === 'max')).toBe(true);
+    expect(efforts['kimi-for-coding']).toEqual({ supported: false });
+    expect(efforts['kimi-for-coding-highspeed']).toEqual({ supported: false });
+    expect(efforts.k3).toEqual({ supported: true, levels: ['max'], default: 'max' });
+    expect(efforts['k3[1m]']).toEqual({ supported: true, levels: ['max'], default: 'max' });
   });
 
   it('Codex 정적 모델 목록에 GPT-5.6 모델들과 기존 모델들을 포함한다', () => {

@@ -19,10 +19,10 @@
       "name": "Kimi via Claude Code",
       "defaultModel": "kimi-for-coding",
       "models": [
-        { "modelId": "kimi-for-coding", "name": "Kimi for Coding", "description": "Available on every Kimi Code membership tier (262K context)", "effort": { "supported": true, "levels": ["max"], "default": "max" } },
+        { "modelId": "kimi-for-coding", "name": "Kimi for Coding", "description": "Available on every Kimi Code membership tier (262K context)", "effort": { "supported": false } },
         { "modelId": "k3", "name": "Kimi K3", "description": "Available on Moderato and higher tiers (262K context)", "effort": { "supported": true, "levels": ["max"], "default": "max" } },
         { "modelId": "k3[1m]", "name": "Kimi K3 [1M]", "description": "Available on Allegretto and higher tiers (1M context)", "effort": { "supported": true, "levels": ["max"], "default": "max" } },
-        { "modelId": "kimi-for-coding-highspeed", "name": "Kimi for Coding Highspeed", "description": "Available on Allegretto and higher tiers (262K context)", "effort": { "supported": true, "levels": ["max"], "default": "max" } }
+        { "modelId": "kimi-for-coding-highspeed", "name": "Kimi for Coding Highspeed", "description": "Available on Allegretto and higher tiers (262K context)", "effort": { "supported": false } }
       ],
       "modelsMapping": {
         "haiku": "kimi-for-coding",
