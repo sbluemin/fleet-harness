@@ -163,6 +163,7 @@ export function OperationsCanvas({
       onWheel={interaction.onWheel}
       onContextMenu={handleContextMenu}
       ref={canvasRef}
+      tabIndex={-1}
     >
       <CanvasGrid viewport={canvas.viewport} />
       <div
@@ -178,6 +179,8 @@ export function OperationsCanvas({
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;
+          // focus layer는 peer를 실제 최소화하지 않고, mount를 보존한 채 렌더만 감춘다.
+          const focusLayerHidden = panelMaximized !== null && !operationMaximized;
           const formationSlot = formationSlotByOperationId.get(operation.id);
           const frameGeometry = operationMaximized
             ? maximizedGeometryFor(canvasSize, topPanelZIndex)
@@ -197,6 +200,15 @@ export function OperationsCanvas({
             minimized: minimizedSet.has(operation.id),
             maximized: operationMaximized,
             formation: formationView,
+            focusLayerHidden,
+            onRenderHiddenFocus: () => {
+              const focusTarget = canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']");
+              if (focusTarget) {
+                focusTarget.focus();
+                return;
+              }
+              canvasRef.current?.focus();
+            },
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             onActivate: () => {
               setActiveOperation(operation.id);
@@ -375,6 +387,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly minimized: boolean;
   readonly maximized: boolean;
   readonly formation: boolean;
+  readonly focusLayerHidden: boolean;
+  readonly onRenderHiddenFocus: () => void;
   readonly topEdge: boolean;
   readonly accentKey: string | null;
   readonly onActivate: () => void;
@@ -403,7 +417,9 @@ function renderPluginOperation(operation: OperationNode, options: {
       minimized={options.minimized}
       maximized={options.maximized}
       topEdge={options.topEdge}
-      interactionDisabled={options.formation}
+      renderHidden={options.focusLayerHidden}
+      focusLayerTarget={options.maximized}
+      interactionDisabled={options.formation || options.focusLayerHidden}
       accentKey={options.accentKey}
       onActivate={options.onActivate}
       onClose={options.onClose}
@@ -413,6 +429,7 @@ function renderPluginOperation(operation: OperationNode, options: {
       onSetAccent={options.onSetAccent}
       onGeometryChange={options.onGeometryChange}
       onGeometryCommit={options.onGeometryCommit}
+      onRenderHiddenFocus={options.onRenderHiddenFocus}
     >
       <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
         <PluginOperationRenderer
