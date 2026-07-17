@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createTerminalSessionManager } from "../../fleet-plugins/terminal/server/shared/session-manager.js";
 import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
@@ -133,6 +133,40 @@ describe("terminal session manager", () => {
         resumeSessionId: "provider-session-a",
       },
     }]);
+  });
+
+  it("retains and invokes only the opaque launch-bound identity resolver", async () => {
+    const resolve = vi.fn(async (providerSessionId: string) => `identity:${providerSessionId}`);
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({
+        bin: "mock", args: [], cwd: cwd ?? "/", env: {},
+        sessionIdentityResolver: { resolve },
+      }),
+      startShell: () => createMockPty(),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    await expect(manager.resolveSessionIdentity("session-a", "provider-a")).resolves.toBe("identity:provider-a");
+    await expect(manager.resolveSessionIdentity("missing", "provider-a")).resolves.toBeNull();
+    expect(resolve).toHaveBeenCalledWith("provider-a");
+  });
+
+  it("drops an identity result that completes after session teardown", async () => {
+    const deferred = createDeferred<string | null>();
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({
+        bin: "mock", args: [], cwd: cwd ?? "/", env: {},
+        sessionIdentityResolver: { resolve: () => deferred.promise },
+      }),
+      startShell: () => createMockPty(),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    const title = manager.resolveSessionIdentity("session-a", "provider-a");
+    manager.terminate("session-a");
+    deferred.resolve("late title");
+
+    await expect(title).resolves.toBeNull();
   });
 
   it("stops a session that finishes launching while server shutdown is waiting", async () => {

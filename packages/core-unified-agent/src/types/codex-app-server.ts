@@ -60,6 +60,20 @@ export interface CodexThreadResumeResponse {
   thread: CodexThreadInfo;
 }
 
+export interface CodexThreadReadParams {
+  threadId: string;
+  includeTurns: boolean;
+}
+
+/** Metadata returned by the stable `thread/read` method. */
+export interface CodexThreadReadResponse {
+  thread: CodexThreadInfo & {
+    name?: string | null;
+    /** Deliberately distinct from name: it is not an identity fallback. */
+    preview?: string | null;
+  };
+}
+
 export interface CodexThreadArchiveParams {
   threadId: string;
 }
@@ -334,6 +348,7 @@ export const CODEX_METHODS = {
   INITIALIZE: 'initialize',
   THREAD_START: 'thread/start',
   THREAD_RESUME: 'thread/resume',
+  THREAD_READ: 'thread/read',
   THREAD_ARCHIVE: 'thread/archive',
   TURN_START: 'turn/start',
   TURN_INTERRUPT: 'turn/interrupt',

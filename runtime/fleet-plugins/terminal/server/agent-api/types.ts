@@ -12,6 +12,12 @@ export type AgentAttentionReason =
 
 export type AgentLabelSource = "user" | "auto";
 
+// Provider-derived titles are durable server state. Keep this separate from
+// AgentLabelSource because that union is projected into browser session DTOs.
+export interface AgentProviderTitleMarker {
+  readonly source: "provider";
+}
+
 export interface AgentProviderSession {
   readonly provider: "claude" | "codex";
   readonly sessionId: string;
@@ -26,6 +32,7 @@ export interface AgentDurableOperation {
   readonly cwd: string;
   readonly label?: string;
   readonly labelSource?: AgentLabelSource;
+  readonly providerTitle?: AgentProviderTitleMarker;
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly createdAt: number;

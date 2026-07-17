@@ -21,7 +21,7 @@ import { captureSession, readProviderSessionCapture, unlinkProviderSessionCaptur
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
-import type { AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
+import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -82,6 +82,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   });
   const detector = createDefaultAgentCliDetector();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
+  const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
@@ -124,7 +125,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
         // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
         // 이 patch는 store.patch(HTTP 미경유)라 operation:renamed를 재발행하지 않아 구독 루프를 만들지 않는다.
-        ctx.host.operations.patch(payload.operationId, { title: updated.label ?? updated.cwdLabel, payload: toOperationPayload(cwd, updated, providerSession) });
+        ctx.host.operations.patch(payload.operationId, { title: updated.label ?? updated.cwdLabel, payload: toOperationPayload(operation.payload, cwd, updated, providerSession) });
       }
     }
     injectRenameCommand(payload.operationId, payload.title);
@@ -275,7 +276,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       type: AGENT_OPERATION_TYPE,
       pluginId: ctx.pluginId,
       title: session.label ?? path.basename(cwd),
-      payload: toOperationPayload(cwd, session),
+      payload: toOperationPayload(undefined, cwd, session),
       createdAt: session.createdAt,
     });
     try {
@@ -294,7 +295,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
       observability.notifySessionUpdated(created);
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(cwd, created) });
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch {
       pendingRuntimeSessions.delete(sessionId);
@@ -338,7 +339,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(cwd, resumed, providerSession) });
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(node.payload, cwd, resumed, providerSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
       pendingRuntimeSessions.delete(sessionId);
@@ -365,6 +366,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     observability.notifySessionUpdated(updated);
     ctx.host.http.writeJson(res, 200, { ok: true });
+    if (turnState === "ended") scheduleIdentityRefresh(sessionId);
     return true;
   }
 
@@ -456,7 +458,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       if (dormant) {
         observability.notifySessionUpdated(dormant);
         const exitCwd = readPayloadString(ctx.host.operations.get(operationId)?.payload ?? {}, "cwd") ?? "";
-        ctx.host.operations.patch(operationId, { payload: toOperationPayload(exitCwd, dormant, providerSession) });
+        ctx.host.operations.patch(operationId, { payload: toOperationPayload(ctx.host.operations.get(operationId)?.payload, exitCwd, dormant, providerSession, observability.getDurableOperation(operationId)?.providerTitle) });
       }
     } else {
       observability.removeTerminalSession(operationId);
@@ -479,6 +481,49 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     await runtime.cleanup();
   }
 
+  function scheduleIdentityRefresh(sessionId: string): void {
+    const state = identityRefreshes.get(sessionId);
+    if (state?.running) {
+      state.queued = true;
+      return;
+    }
+    const operation = ctx.host.operations.get(sessionId);
+    const providerSessionId = readProviderSession(operation?.payload)?.sessionId;
+    if (!providerSessionId) {
+      identityRefreshes.delete(sessionId);
+      return;
+    }
+    const next = state ?? { running: false, queued: false };
+    next.running = true;
+    identityRefreshes.set(sessionId, next);
+    void terminalRuntime.resolveSessionIdentity(sessionId, providerSessionId)
+      .then((title) => {
+        const current = ctx.host.operations.get(sessionId);
+        if (!title || !current || readProviderSession(current.payload)?.sessionId !== providerSessionId) return;
+        const applied = observability.applyTerminalSessionProviderIdentity(sessionId, title);
+        if (!applied?.renamed) return;
+        observability.notifySessionUpdated(applied.session);
+        const operation = ctx.host.operations.get(sessionId);
+        if (!operation || readProviderSession(operation.payload)?.sessionId !== providerSessionId) return;
+        const cwd = readPayloadString(operation.payload, "cwd") || applied.session.cwdLabel;
+        const providerSession = readProviderSession(operation.payload);
+        ctx.host.operations.patch(sessionId, {
+          title: applied.session.label ?? applied.session.cwdLabel,
+          payload: toOperationPayload(operation.payload, cwd, applied.session, providerSession, observability.getDurableOperation(sessionId)?.providerTitle),
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        next.running = false;
+        if (next.queued) {
+          next.queued = false;
+          scheduleIdentityRefresh(sessionId);
+        } else {
+          identityRefreshes.delete(sessionId);
+        }
+      });
+  }
+
   function injectRenameCommand(sessionId: string, label: string | undefined): void {
     if (!label) return;
     const renameCommand = terminalRuntime.getRenameCommand(sessionId);
@@ -492,11 +537,16 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {
     const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "";
+    const providerTitle = readProviderTitle(operation.payload);
     return observability.injectDormantOperation({
       sessionId: operation.id,
       theaterId: operation.theaterId,
       cwd,
-      ...(readPayloadString(operation.payload, "labelSource") ? { label: operation.title, labelSource: readPayloadString(operation.payload, "labelSource") as AgentLabelSource } : {}),
+      ...(providerTitle
+        ? { label: operation.title, providerTitle }
+        : readPayloadString(operation.payload, "labelSource")
+          ? { label: operation.title, labelSource: readPayloadString(operation.payload, "labelSource") as AgentLabelSource }
+          : {}),
       ...(readPayloadString(operation.payload, "cliId") ? { cliId: readPayloadString(operation.payload, "cliId")! } : {}),
       ...(readPayloadString(operation.payload, "cliLabel") ? { cliLabel: readPayloadString(operation.payload, "cliLabel")! } : {}),
       createdAt: operation.ts.createdAt,
@@ -511,7 +561,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       if (!providerSession || observability.getTerminalSessionInfo(operation.id)) continue;
       const dormant = injectOperation(operation);
       const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
-      ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, ...toOperationPayload(cwd, dormant, providerSession) } });
+      ctx.host.operations.patch(operation.id, { payload: toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle) });
     }
   }
 
@@ -536,14 +586,20 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 }
 
-function toOperationPayload(cwd: string, session: AgentTerminalSessionInfo, providerSession?: ProviderSession): Record<string, unknown> {
+function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: ProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
+  const payload = { ...(existing ?? {}) };
+  for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle"]) {
+    delete payload[key];
+  }
   return {
+    ...payload,
     cwd,
     ...(session.cliId ? { cliId: session.cliId } : {}),
     ...(session.cliId ? { launchKindId: session.cliId } : {}),
     ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
     ...(providerSession ? { providerSession } : {}),
     ...(session.labelSource ? { labelSource: session.labelSource } : {}),
+    ...(providerTitle ? { providerTitle } : {}),
   };
 }
 
@@ -585,6 +641,14 @@ function readProviderSession(value: Record<string, unknown> | undefined): Provid
     ...(typeof candidate.transcriptPath === "string" ? { transcriptPath: candidate.transcriptPath } : {}),
     ...(typeof candidate.source === "string" ? { source: candidate.source } : {}),
   };
+}
+
+function readProviderTitle(value: Record<string, unknown> | undefined): AgentProviderTitleMarker | undefined {
+  const marker = value?.providerTitle;
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) return undefined;
+  const candidate = marker as Record<string, unknown>;
+  if (candidate.source !== "provider" || Object.keys(candidate).length !== 1) return undefined;
+  return { source: "provider" };
 }
 
 function resolveCarrierEventOrigin(event: { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById: Map<string, string>): string | null {
