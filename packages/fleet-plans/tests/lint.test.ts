@@ -123,4 +123,44 @@ describe("lintPlanMarkdown", () => {
     expect(result.lanes).toEqual([]);
     expect(result.tasks).toEqual([]);
   });
+
+  it("exports TaskRefs only from each lane Implementation summary", () => {
+    const markdown = buildValidPlan().replace(
+      `- Implementation summary:
+  - [ ] W1-A-T1 — Implement cwd sanitization
+  - [ ] W1-A-T2 — Persist cwd identity
+  - [ ] W1-A-T3 — Add cross-platform tests
+- Verification/static checks:
+  - pnpm --filter @dotobokuri/core-infra test`,
+      `- Implementation summary: Implement the workspace directory lane
+- Verification/static checks:
+  - [ ] W1-A-T1 — Implement cwd sanitization
+  - [ ] W1-A-T2 — Persist cwd identity
+  - [ ] W1-A-T3 — Add cross-platform tests
+  - pnpm --filter @dotobokuri/core-infra test`,
+    );
+
+    const result = lintPlanMarkdown(markdown);
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "TASK_COUNT" }));
+    expect(result.tasks.map((task) => task.id)).not.toEqual(expect.arrayContaining([
+      "W1-A-T1",
+      "W1-A-T2",
+      "W1-A-T3",
+    ]));
+  });
+
+  it("requires exact lane tokens in File Ownership", () => {
+    for (const decoy of ["W1-AA", "W1-A-T1"]) {
+      const result = lintPlanMarkdown(buildValidPlan().replace(
+        "- W1-A owns packages/core-infra/src/workspace-dir/**",
+        `- ${decoy} owns packages/core-infra/src/workspace-dir/**`,
+      ));
+
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        code: "OWNERSHIP_MISSING_LANE",
+        message: "File Ownership is missing lane W1-A",
+      }));
+    }
+  });
 });

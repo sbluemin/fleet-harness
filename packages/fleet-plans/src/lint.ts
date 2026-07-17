@@ -34,6 +34,7 @@ const WAVE_HEADING_PATTERN = /^## Wave ([1-9]\d*) — (.+)$/;
 const LANE_HEADING_PATTERN = /^### Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — (.+)$/;
 const TASK_PATTERN = /^\s+- \[([ xX])\] (W[1-9]\d*-[A-Z][A-Z0-9]*-T[1-9]\d*) — (.+)$/;
 const MANIFEST_LANE_PATTERN = /^- Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — /;
+const OWNERSHIP_LANE_PATTERN = /^- (W[1-9]\d*-[A-Z][A-Z0-9]*)(?=\s|$)/;
 
 interface MutableLane {
   dependencyStartConditions: string[];
@@ -97,7 +98,7 @@ export function lintPlanMarkdown(markdown: string): PlanLintResult {
   const tasks = parseTasks(lines, lanes, diagnostics);
   validateTopology(sectionBodyLines(lines, headingLines, "# Execution Topology"), lanes, diagnostics);
   validateManifest(sectionBodyLines(lines, headingLines, "# Dispatch Manifest"), lanes, diagnostics);
-  validateOwnership(lines, lanes, diagnostics);
+  validateOwnership(sectionBodyLines(lines, headingLines, "# File Ownership"), lanes, diagnostics);
   validateLaneConcurrency(lanes, diagnostics);
   validateSectionBodies(lines, headingLines, diagnostics);
 
@@ -280,7 +281,8 @@ function parseTasks(lines: readonly string[], lanes: MutableLane[], diagnostics:
   const tasks: PlanTask[] = [];
   const ids = new Set<string>();
   for (const lane of lanes) {
-    for (let index = lane.start + 1; index < lane.end; index++) {
+    const implementationRange = fieldBodyRange(lines, lane.start + 1, lane.end, "Implementation summary");
+    for (let index = implementationRange.start; index < implementationRange.end; index++) {
       const match = TASK_PATTERN.exec(lines[index]!);
       if (!match) continue;
       const id = match[2]!;
@@ -342,13 +344,13 @@ function validateManifest(manifestLines: readonly string[], lanes: readonly Muta
   }
 }
 
-function validateOwnership(lines: readonly string[], lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
-  const ownershipHeading = lines.indexOf("# File Ownership");
-  const topologyHeading = lines.indexOf("# Execution Topology");
-  if (ownershipHeading < 0 || topologyHeading < 0) return;
-  const ownership = lines.slice(ownershipHeading + 1, topologyHeading).join("\n");
+function validateOwnership(ownershipLines: readonly string[], lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
+  const ownershipIds = new Set(ownershipLines.flatMap((line) => {
+    const match = OWNERSHIP_LANE_PATTERN.exec(line);
+    return match ? [match[1]!] : [];
+  }));
   for (const lane of lanes) {
-    if (!ownership.includes(lane.id)) {
+    if (!ownershipIds.has(lane.id)) {
       addDiagnostic(diagnostics, "OWNERSHIP_MISSING_LANE", `File Ownership is missing lane ${lane.id}`);
     }
   }
@@ -491,6 +493,29 @@ function parseFieldValues(lines: readonly string[], field: string): string[] {
     if (child) values.push(child[1]!.trim());
   }
   return values;
+}
+
+function fieldBodyRange(
+  lines: readonly string[],
+  start: number,
+  end: number,
+  field: string,
+): { readonly end: number; readonly start: number } {
+  let fieldIndex = -1;
+  for (let index = start; index < end; index++) {
+    if (lines[index]!.startsWith(`- ${field}:`)) {
+      fieldIndex = index;
+      break;
+    }
+  }
+  if (fieldIndex < 0) return { end, start: end };
+  for (let index = fieldIndex + 1; index < end; index++) {
+    const line = lines[index]!;
+    if (/^- [A-Za-z]/.test(line) || line.startsWith("#")) {
+      return { end: index, start: fieldIndex + 1 };
+    }
+  }
+  return { end, start: fieldIndex + 1 };
 }
 
 function splitCommaValues(value: string): string[] {
