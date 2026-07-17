@@ -36,6 +36,7 @@ export function createDesktopFullscreenSynchronizer(
   const requestTimeoutMs = deps.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
   const schedule = deps.setTimeout ?? globalThis.setTimeout;
   const cancelSchedule = deps.clearTimeout ?? globalThis.clearTimeout;
+  const webContents = window.webContents;
   let nativeFullscreen = window.isFullScreen();
   let activeOrigin: string | null = null;
   let unsupported = false;
@@ -143,7 +144,7 @@ export function createDesktopFullscreenSynchronizer(
 
   window.on("enter-full-screen", updateNativeFullscreen);
   window.on("leave-full-screen", updateNativeFullscreen);
-  window.webContents.on("did-finish-load", resync);
+  webContents.on("did-finish-load", resync);
 
   return {
     activate(origin: string): void {
@@ -159,12 +160,13 @@ export function createDesktopFullscreenSynchronizer(
     },
     resync,
     stop(): void {
+      if (stopped) return;
       stopped = true;
       activeOrigin = null;
       abortAllRequests();
       window.removeListener("enter-full-screen", updateNativeFullscreen);
       window.removeListener("leave-full-screen", updateNativeFullscreen);
-      window.webContents.removeListener("did-finish-load", resync);
+      webContents.removeListener("did-finish-load", resync);
     },
   };
 }

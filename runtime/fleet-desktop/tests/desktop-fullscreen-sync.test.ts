@@ -160,6 +160,17 @@ describe("Desktop fullscreen synchronizer", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("stops idempotently after BrowserWindow destruction without reading webContents again", () => {
+    const window = createWindow(false);
+    const synchronizer = createDesktopFullscreenSynchronizer(window as never, { fetch: vi.fn() });
+
+    window.destroy();
+    expect(() => {
+      synchronizer.stop();
+      synchronizer.stop();
+    }).not.toThrow();
+  });
+
   it("does not infer maximize because only native fullscreen listeners are attached", () => {
     const window = createWindow(false);
     const synchronizer = createDesktopFullscreenSynchronizer(window as never, { fetch: vi.fn() });
@@ -170,8 +181,13 @@ describe("Desktop fullscreen synchronizer", () => {
 
 function createWindow(initialFullscreen: boolean) {
   let fullscreen = initialFullscreen;
+  let destroyed = false;
   const windowListeners = new Map<string, () => void>();
   const contentsListeners = new Map<string, () => void>();
+  const webContents = {
+    on(event: string, listener: () => void) { contentsListeners.set(event, listener); },
+    removeListener(event: string) { contentsListeners.delete(event); },
+  };
   return {
     windowEvents: [] as string[],
     isFullScreen: () => fullscreen,
@@ -184,14 +200,15 @@ function createWindow(initialFullscreen: boolean) {
       windowListeners.delete(event);
       return this;
     },
-    webContents: {
-      on(event: string, listener: () => void) { contentsListeners.set(event, listener); },
-      removeListener(event: string) { contentsListeners.delete(event); },
+    get webContents() {
+      if (destroyed) throw new TypeError("Object has been destroyed");
+      return webContents;
     },
     emit(event: "enter-full-screen" | "leave-full-screen", next: boolean) {
       fullscreen = next;
       windowListeners.get(event)?.();
     },
     finishLoad() { contentsListeners.get("did-finish-load")?.(); },
+    destroy() { destroyed = true; },
   };
 }
