@@ -1,6 +1,6 @@
 import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "../boundaries.js";
 import { briefingQuery } from "../briefing.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_BRIEFING_DESCRIPTION,
   WIKI_BRIEFING_GUIDELINES,
@@ -21,9 +21,9 @@ export function buildBriefingToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
-      const hits = await briefingQuery(resolveMemoryPaths(ctx.cwd), {
+      const hits = await briefingQuery(resolveToolMemoryPaths(ctx), {
         topic: typeof params.topic === "string" ? params.topic : undefined,
         tags: Array.isArray(params.tags) ? params.tags.map(String) : undefined,
         limit: typeof params.limit === "number" ? params.limit : undefined,

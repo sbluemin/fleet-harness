@@ -3,7 +3,7 @@ import path from "node:path";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "../constants.js";
 import { appendLog } from "../log.js";
 import { assertSafeQueueId, parsePatch, rewriteQueuedPatch, serializePatch } from "../patch.js";
-import { resolveMemoryPaths } from "../paths.js";
+import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_PATCH_EDIT_DESCRIPTION,
   WIKI_PATCH_EDIT_GUIDELINES,
@@ -80,9 +80,9 @@ export function buildPatchEditToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string },
+      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
     ) {
-      const paths = resolveMemoryPaths(ctx.cwd);
+      const paths = resolveToolMemoryPaths(ctx);
       const input = parsePatchEditParams(params);
       const result = await editQueuedPatch(input, paths);
       return {

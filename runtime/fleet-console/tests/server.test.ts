@@ -1109,17 +1109,15 @@ describe("console static and terminal ticket boundary", () => {
     expect(remaining.theaters.find((entry) => entry.id === theater.id)).toBeUndefined();
   });
 
-  it("unregisters an on-demand nested Codex workspace when its Theater is forgotten", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-forget-nested-"));
-    const nestedDir = path.join(dir, "nested");
+  it("opens an empty Theater-root Codex workspace on demand and forgets it", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-forget-root-"));
     tempDirs.push(dir);
-    createWikiRoot(nestedDir);
     const fixture = await startFixture();
     const theater = await createTheater(fixture, dir);
     const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/codex-workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ relPath: "nested" }),
+      body: JSON.stringify({}),
     });
     const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
     expect(workspace).toMatchObject({ hasWiki: true });
@@ -1134,7 +1132,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(afterForget.status).toBe(404);
   });
 
-  it("keeps a nested Codex workspace while another Theater owns the same directory", async () => {
+  it("keeps a separately registered nested Theater after its parent is forgotten", async () => {
     const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-shared-parent-"));
     const nestedDir = path.join(parentDir, "nested");
     tempDirs.push(parentDir);
@@ -1142,10 +1140,10 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture();
     const parentTheater = await createTheater(fixture, parentDir);
     const nestedTheater = await createTheater(fixture, nestedDir);
-    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(parentTheater.id)}/codex-workspace`, {
+    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(nestedTheater.id)}/codex-workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ relPath: "nested" }),
+      body: JSON.stringify({}),
     });
     const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
     expect(workspace).toMatchObject({ hasWiki: true, id: nestedTheater.id });
@@ -1962,7 +1960,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(payload).toMatchObject({
       id: workspaceHash(fs.realpathSync.native(dir)),
       label: path.basename(dir),
-      hasWiki: false,
+      hasWiki: true,
       activeAdmiralCount: 0,
     });
     expect(typeof payload.createdAt).toBe("string");

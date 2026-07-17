@@ -1,6 +1,5 @@
 import type http from "node:http";
 
-import { TheaterPathContextError } from "../theater-path-context.js";
 import type { TheaterRegistration } from "../theaters.js";
 import type { CodexWorkspaceResolution } from "./gateway.js";
 
@@ -10,7 +9,7 @@ export interface CodexWorkspaceContextRouteDeps {
   readonly getTheater: (theaterId: string) => TheaterRegistration | null;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
-  readonly resolveWorkspace: (theaterId: string, theaterRoot: string, relPath: string | null) => Promise<CodexWorkspaceResolution>;
+  readonly resolveWorkspace: (theaterId: string, theaterRoot: string) => Promise<CodexWorkspaceResolution>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
 }
 
@@ -18,10 +17,6 @@ export interface CodexWorkspaceContextRouteContext {
   readonly req: http.IncomingMessage;
   readonly res: http.ServerResponse;
   readonly pathname: string;
-}
-
-interface ResolveWorkspaceBody {
-  readonly relPath?: unknown;
 }
 
 // ─── functions ─────────────────────────────────────────────────────────────
@@ -45,29 +40,23 @@ export function createCodexWorkspaceContextRouter(
       deps.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const body = await deps.readJsonBody<ResolveWorkspaceBody>(req);
+    const body = await deps.readJsonBody<unknown>(req);
     if (!isResolveWorkspaceBody(body)) {
       deps.writeJson(res, 400, { error: "invalid_request" });
       return true;
     }
     try {
-      deps.writeJson(res, 200, await deps.resolveWorkspace(theater.id, theater.realpath, body.relPath));
+      deps.writeJson(res, 200, await deps.resolveWorkspace(theater.id, theater.realpath));
     } catch (error) {
-      writePathError(res, deps, error);
+      deps.writeJson(res, 500, { error: "internal_error" });
     }
     return true;
   };
 }
 
-function isResolveWorkspaceBody(value: ResolveWorkspaceBody | null): value is ResolveWorkspaceBody & { readonly relPath: string | null } {
+function isResolveWorkspaceBody(value: unknown): value is Record<string, never> {
   return typeof value === "object"
     && value !== null
-    && Object.keys(value).length === 1
-    && (value.relPath === null || typeof value.relPath === "string");
-}
-
-function writePathError(res: http.ServerResponse, deps: CodexWorkspaceContextRouteDeps, error: unknown): void {
-  if (!(error instanceof TheaterPathContextError)) throw error;
-  const status = error.code === "not_found" ? 404 : error.code === "forbidden" ? 403 : 400;
-  deps.writeJson(res, status, { error: error.code });
+    && !Array.isArray(value)
+    && Object.keys(value).length === 0;
 }

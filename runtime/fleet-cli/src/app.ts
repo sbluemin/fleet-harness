@@ -125,7 +125,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
         withMarketplaceLock: withFleetMarketplaceLock,
       }),
-    loadedCounts: discoverMissionControlCounts({ invocationCwd }),
+    loadedCounts: discoverMissionControlCounts({ dataDir: runtime.dataDir, invocationCwd }),
     onExitFleet: () => stop(),
     onRenderRequest: () => {
       ptyManager?.requestResize("programmatic");

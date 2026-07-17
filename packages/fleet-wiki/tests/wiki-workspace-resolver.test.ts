@@ -1,0 +1,205 @@
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import * as fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  createWikiWorkspaceResolver,
+  createWikiWorkspaceResolverForTest,
+  classifyWikiWorkspaceNodeForTest,
+  type WikiWorkspaceResolverDependencies,
+} from "../src/workspace-resolver.js";
+
+const roots: string[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
+
+interface TestHooks {
+  beforeMigrationCommit?(): void;
+  beforeCopyFile?(source: string, destination: string): void;
+}
+
+async function fixture(hooks?: TestHooks) {
+  const root = await mkdtemp(process.platform === "darwin" ? "/tmp/fwr-" : path.join(os.tmpdir(), "fleet-wiki-resolver-"));
+  roots.push(root);
+  const cwd = path.join(root, "theater");
+  const workspace = path.join(root, "data", "workspaces", "theater");
+  await mkdir(cwd, { recursive: true });
+  await mkdir(workspace, { recursive: true });
+  const dependencies: WikiWorkspaceResolverDependencies = {
+    ensureWorkspace: () => ({ cwd, path: workspace }),
+    withMigrationLock: (_workspace, operation) => operation(),
+  };
+  return { cwd, workspace, resolver: hooks
+    ? createWikiWorkspaceResolverForTest(dependencies, hooks)
+    : createWikiWorkspaceResolver(dependencies) };
+}
+
+describe("createWikiWorkspaceResolver", () => {
+  it("copies root legacy content once through durable sibling storage without changing the source", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    const sourceFile = path.join(cwd, ".fleet", "knowledge", "wiki", "entry.md");
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await writeFile(sourceFile, "legacy\n");
+    const paths = await resolver.resolve(cwd);
+    expect(paths.root).toBe(path.join(workspace, "knowledge"));
+    await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).resolves.toBe("legacy\n");
+    await expect(readFile(sourceFile, "utf8")).resolves.toBe("legacy\n");
+    expect(JSON.parse(await readFile(path.join(workspace, "knowledge.migrated.json"), "utf8")).outcome).toBe("copied");
+    await rm(paths.root, { recursive: true });
+    await resolver.resolve(cwd);
+    await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("leaves a destination regular file entirely untouched and does not create a marker", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    await writeFile(path.join(cwd, ".fleet", "knowledge", "legacy.md"), "legacy");
+    await mkdir(path.join(workspace, "knowledge", "schema"), { recursive: true });
+    await writeFile(path.join(workspace, "knowledge", "schema", "wiki-schema.md"), "destination");
+    await resolver.resolve(cwd);
+    await expect(readFile(path.join(workspace, "knowledge", "schema", "wiki-schema.md"), "utf8")).resolves.toBe("destination");
+    await expect(readFile(path.join(workspace, "knowledge.migrated.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("makes destination content a total no-op before malformed marker or staging control inspection", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    await writeFile(path.join(workspace, "knowledge"), "already durable");
+    await writeFile(path.join(workspace, "knowledge.migrated.json"), "not json");
+    await symlink(path.join(cwd, "missing"), path.join(workspace, "knowledge.migrating-not-a-uuid"));
+    expect(resolver.resolve(cwd)).toMatchObject({ root: path.join(workspace, "knowledge") });
+    await expect(readFile(path.join(workspace, "knowledge"), "utf8")).resolves.toBe("already durable");
+  });
+
+  it("recovers only a marker-referenced staged copy and never re-copies after marker recovery", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    const transactionId = "11111111-1111-4111-8111-111111111111";
+    const stagingFile = path.join(workspace, `knowledge.migrating-${transactionId}`, "wiki", "entry.md");
+    await mkdir(path.dirname(stagingFile), { recursive: true });
+    await writeFile(stagingFile, "staged");
+    await writeFile(path.join(workspace, "knowledge.migrated.json"), JSON.stringify({ version: 1, outcome: "copied", transactionId, completedAt: "2026-07-17T00:00:00.000Z" }));
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    await writeFile(path.join(cwd, ".fleet", "knowledge", "legacy.md"), "must not copy");
+    const paths = resolver.resolve(cwd);
+    await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).resolves.toBe("staged");
+    await expect(readFile(path.join(paths.root, "legacy.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rebuilds valid pre-marker staging but fails closed for unsafe source, marker, and staging state", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    const stale = path.join(workspace, "knowledge.migrating-22222222-2222-4222-8222-222222222222");
+    await mkdir(stale, { recursive: true });
+    await writeFile(path.join(stale, "old.md"), "old");
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    await writeFile(path.join(cwd, ".fleet", "knowledge", "fresh.md"), "fresh");
+    const paths = resolver.resolve(cwd);
+    await expect(readFile(path.join(paths.root, "fresh.md"), "utf8")).resolves.toBe("fresh");
+
+    const unsafe = await fixture();
+    await mkdir(path.join(unsafe.cwd, ".fleet", "knowledge"), { recursive: true });
+    await symlink(path.join(unsafe.cwd, "missing"), path.join(unsafe.cwd, ".fleet", "knowledge", "link"));
+    expect(() => unsafe.resolver.resolve(unsafe.cwd)).toThrow(/Unsafe/);
+
+    const malformed = await fixture();
+    await mkdir(path.join(malformed.workspace, "knowledge.migrating-bad"), { recursive: true });
+    expect(() => malformed.resolver.resolve(malformed.cwd)).toThrow(/Unsafe/);
+
+    const marker = await fixture();
+    await symlink(path.join(marker.cwd, "missing"), path.join(marker.workspace, "knowledge.migrated.json"));
+    expect(() => marker.resolver.resolve(marker.cwd)).toThrow(/Unsafe/);
+  });
+
+  it("fails closed when destination content appears after staging", async () => {
+    let workspace = "";
+    const state = await fixture({ beforeMigrationCommit: () => {
+      fs.mkdirSync(path.join(workspace, "knowledge"), { recursive: true });
+      fs.writeFileSync(path.join(workspace, "knowledge", "racer.md"), "racer");
+    } });
+    workspace = state.workspace;
+    await mkdir(path.join(state.cwd, ".fleet", "knowledge"), { recursive: true });
+    await writeFile(path.join(state.cwd, ".fleet", "knowledge", "legacy.md"), "legacy");
+    expect(() => state.resolver.resolve(state.cwd)).toThrow(/race/i);
+    await expect(readFile(path.join(workspace, "knowledge", "racer.md"), "utf8")).resolves.toBe("racer");
+  });
+
+  it("allows empty source and destination without artifacts, while unsafe nodes fail closed", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    expect(resolver.resolve(cwd)).toMatchObject({ root: path.join(workspace, "knowledge") });
+    await expect(readFile(path.join(workspace, "knowledge.migrated.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await mkdir(path.join(workspace, "knowledge"), { recursive: true });
+    await symlink(path.join(cwd, "missing"), path.join(workspace, "knowledge", "unsafe"));
+    expect(() => resolver.resolve(cwd)).toThrow(/Unsafe/);
+  });
+
+  it("leaves no marker or destination after a copy failure, then safely retries from rebuilt staging", async () => {
+    const failed = await fixture({ beforeCopyFile: () => { throw new Error("copy failed"); } });
+    const sourceFile = path.join(failed.cwd, ".fleet", "knowledge", "nested", "entry.md");
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await writeFile(sourceFile, "source bytes\n");
+    expect(() => failed.resolver.resolve(failed.cwd)).toThrow(/copy failed/);
+    await expect(readFile(sourceFile, "utf8")).resolves.toBe("source bytes\n");
+    await expect(readFile(path.join(failed.workspace, "knowledge", "nested", "entry.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(path.join(failed.workspace, "knowledge.migrated.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(fs.readdirSync(failed.workspace).some((name) => name.startsWith("knowledge.migrating-"))).toBe(true);
+
+    const retry = createWikiWorkspaceResolver({
+      ensureWorkspace: () => ({ cwd: failed.cwd, path: failed.workspace }),
+      withMigrationLock: (_workspace, operation) => operation(),
+    });
+    const paths = retry.resolve(failed.cwd);
+    await expect(readFile(path.join(paths.root, "nested", "entry.md"), "utf8")).resolves.toBe("source bytes\n");
+    expect(JSON.parse(await readFile(path.join(failed.workspace, "knowledge.migrated.json"), "utf8")).outcome).toBe("copied");
+  });
+
+  it.skipIf(process.platform === "win32")("fails closed for FIFO and Unix socket nodes in every migration position", async () => {
+    const source = await fixture();
+    const sourceFifo = path.join(source.cwd, ".fleet", "knowledge");
+    await mkdir(path.dirname(sourceFifo), { recursive: true });
+    execFileSync("mkfifo", [sourceFifo]);
+    expect(() => source.resolver.resolve(source.cwd)).toThrow(/Unsafe/);
+
+    const destination = await fixture();
+    const destinationSocket = await listenUnixSocket(path.join(destination.workspace, "knowledge"));
+    try {
+      expect(fs.lstatSync(path.join(destination.workspace, "knowledge")).isSocket()).toBe(true);
+      expect(classifyWikiWorkspaceNodeForTest(fs.lstatSync(path.join(destination.workspace, "knowledge")))).toBe("unsafe");
+      expect(() => destination.resolver.resolve(destination.cwd)).toThrow(/Unsafe/);
+    } finally { await closeServer(destinationSocket); }
+
+    const staging = await fixture();
+    execFileSync("mkfifo", [path.join(staging.workspace, "knowledge.migrating-33333333-3333-4333-8333-333333333333")]);
+    expect(() => staging.resolver.resolve(staging.cwd)).toThrow(/Unsafe/);
+
+    const marker = await fixture();
+    const markerSocket = await listenUnixSocket(path.join(marker.workspace, "knowledge.migrated.json"));
+    try {
+      expect(() => marker.resolver.resolve(marker.cwd)).toThrow(/Unsafe/);
+    } finally { await closeServer(markerSocket); }
+
+    const control = await fixture();
+    execFileSync("mkfifo", [path.join(control.workspace, "knowledge.migrated.json.interrupted")]);
+    expect(() => control.resolver.resolve(control.cwd)).toThrow(/Unsafe/);
+  });
+
+  it.skipIf(process.platform === "win32" || !fs.existsSync("/dev/null"))("classifies an existing character device as unsafe without privileges", () => {
+    const device = fs.lstatSync("/dev/null");
+    expect(device.isCharacterDevice()).toBe(true);
+    expect(classifyWikiWorkspaceNodeForTest(device)).toBe("unsafe");
+  });
+});
+
+async function listenUnixSocket(socketPath: string): Promise<net.Server> {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, () => resolve());
+  });
+  return server;
+}
+
+async function closeServer(server: net.Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+}

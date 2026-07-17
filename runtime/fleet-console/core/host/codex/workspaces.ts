@@ -1,8 +1,4 @@
-import { stat } from "node:fs/promises";
 import path from "node:path";
-
-import { resolveMemoryPaths as resolveFleetWikiMemoryPaths } from "@dotobokuri/fleet-wiki";
-import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 
 import type { WorkspaceMetadata } from "./api-types.js";
 import { canonicalizeTheaterPath, workspaceHash } from "../theater.js";
@@ -12,7 +8,6 @@ export interface WorkspaceRegistration {
   cwd: string;
   realpath: string;
   label: string;
-  paths: MemoryPaths;
   registeredAt: string;
   lastOpenedAt: string;
 }
@@ -24,10 +19,6 @@ export class WorkspaceRegistry {
   async register(cwdInput: string, lastOpenedAt?: string): Promise<WorkspaceRegistration> {
     const cwd = path.resolve(cwdInput);
     const real = await canonicalizeTheaterPath(cwd);
-    const paths = resolveFleetWikiMemoryPaths(real);
-    if (!(await directoryExists(paths.root))) {
-      throw new Error("knowledge_root_missing");
-    }
     const id = workspaceHash(real);
     const now = new Date().toISOString();
     const existing = this.#items.get(id);
@@ -39,7 +30,6 @@ export class WorkspaceRegistry {
       cwd,
       realpath: real,
       label: path.basename(cwd),
-      paths,
       registeredAt: existing?.registeredAt ?? now,
       // 복원 경로는 durable lastOpenedAt을 그대로 보존해 재시작 후에도 워크스페이스 최근성
       // 순서(MRU·listRegistrations 동순위 처리)가 durable 상태와 일치하게 한다. 일반 등록은 now.
@@ -86,12 +76,4 @@ export function toMetadata(item: WorkspaceRegistration): WorkspaceMetadata {
     lastOpenedAt: item.lastOpenedAt,
     urlPath: `/console/codex/w/${encodeURIComponent(item.id)}/`,
   };
-}
-
-async function directoryExists(dirPath: string): Promise<boolean> {
-  try {
-    return (await stat(dirPath)).isDirectory();
-  } catch {
-    return false;
-  }
 }

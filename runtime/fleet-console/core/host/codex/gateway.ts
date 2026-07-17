@@ -3,18 +3,20 @@ import os from "node:os";
 import type { NetworkInterfaceInfo } from "node:os";
 import net from "node:net";
 
+import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+
 import { handleApiRequest } from "./routes.js";
 import type { AllowedAccessSets } from "./types.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "../security-headers.js";
-import { resolveTheaterPathContext } from "../theater-path-context.js";
 
 interface CodexGatewayDeps {
   readonly cwd: string;
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
+  readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
 }
 
 interface ParsedHostHeader {
@@ -36,7 +38,7 @@ export interface CodexGateway {
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
   listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
   registerWorkspace(cwd: string, lastOpenedAt?: string, ownerTheaterId?: string): Promise<WorkspaceRegistration>;
-  resolveWorkspaceForPath(theaterId: string, theaterRoot: string, relPath: string | null): Promise<CodexWorkspaceResolution>;
+  resolveWorkspaceForTheater(theaterId: string, theaterRoot: string): Promise<CodexWorkspaceResolution>;
   unregisterTheaterWorkspaces(theaterId: string): void;
 }
 
@@ -99,10 +101,17 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     const workspace = selected.workspace ?? await ensureInitialWorkspace();
     const originalUrl = request.url;
     if (selected.rewrittenUrl) request.url = selected.rewrittenUrl;
+    let paths: MemoryPaths;
+    try {
+      paths = deps.wikiWorkspaceResolver.resolve(workspace.realpath);
+    } catch {
+      sendJson(response, 500, { error: "internal_error" });
+      return true;
+    }
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,
-      knowledgeRoot: workspace.paths.root,
-      paths: workspace.paths,
+      knowledgeRoot: paths.root,
+      paths,
       host: deps.host,
       port,
       workspaceId: workspace.id,
@@ -134,21 +143,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     return workspace;
   }
 
-  async function resolveWorkspaceForPath(
+  async function resolveWorkspaceForTheater(
     theaterId: string,
     theaterRoot: string,
-    relPath: string | null,
   ): Promise<CodexWorkspaceResolution> {
-    const pathContext = await resolveTheaterPathContext(theaterRoot, relPath);
-    try {
-      const workspace = await registerWorkspace(pathContext.realPath, undefined, theaterId);
-      return { hasWiki: true, id: workspace.id };
-    } catch (error) {
-      if (error instanceof Error && error.message === "knowledge_root_missing") {
-        return { hasWiki: false, id: null };
-      }
-      throw error;
-    }
+    const workspace = await registerWorkspace(theaterRoot, undefined, theaterId);
+    deps.wikiWorkspaceResolver.resolve(workspace.realpath);
+    return { hasWiki: true, id: workspace.id };
   }
 
   function unregisterWorkspace(id: string): boolean {
@@ -176,7 +177,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     handle,
     listWorkspaceRegistrations: () => workspaces.listRegistrations(),
     registerWorkspace,
-    resolveWorkspaceForPath,
+    resolveWorkspaceForTheater,
     unregisterTheaterWorkspaces,
   };
 }
