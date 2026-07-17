@@ -7,6 +7,7 @@ export type RemoteRuntimeFailureCode =
   | "ssh_failed"
   | "ssh_cancelled"
   | "ssh_timeout"
+  | "remote_pairing_not_ready"
   | "remote_command_invalid"
   | "remote_command_output_too_large";
 

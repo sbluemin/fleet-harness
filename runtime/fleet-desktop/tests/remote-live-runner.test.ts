@@ -31,6 +31,7 @@ describe("remote live runner", () => {
     expect(checkpoints).toEqual(["architecture_detected", "node_installed_or_valid", "console_latest_installed_or_valid", "owned_lock_ready", "same_port_tunnel_ready", "pairing_identity_200", "foreign_owner_refused", "cleanup_complete"]);
     expect(connect).toHaveBeenCalledTimes(2);
     expect(connect.mock.calls[1]?.[1].ownerId).not.toBe(connect.mock.calls[0]?.[1].ownerId);
+    expect(connect.mock.calls[0]?.[1].fetch).toBeDefined();
     expect(dispose).toHaveBeenCalledOnce();
   });
 

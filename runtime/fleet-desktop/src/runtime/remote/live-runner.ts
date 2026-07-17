@@ -10,7 +10,7 @@ import { createRegistryChecker, type RegistryChecker } from "../registry-check.j
 import { readRemoteConsoleRuntime } from "./console-runtime.js";
 import { inspectRemoteLock } from "./lock.js";
 import { detectRemotePlatform, readRemoteNodeRuntime } from "./node-runtime.js";
-import { connectManagedRemote, type ManagedRemoteSession } from "./orchestrator.js";
+import { connectManagedRemote, type ManagedRemoteSession, type PairingIdentityFetcher } from "./orchestrator.js";
 import { createOpenSshAdapter, type OpenSshAdapter } from "./ssh.js";
 import { parseSshTarget } from "./target.js";
 
@@ -39,7 +39,7 @@ export interface RemoteLiveRunnerDependencies {
   readManifest(file: string): Promise<NodeRuntimeManifest>;
   createRegistry(statePath: string): RegistryChecker;
   connect(target: string, dependencies: Parameters<typeof connectManagedRemote>[1]): Promise<ManagedRemoteSession>;
-  fetch(input: string): Promise<{ readonly status: number; json(): Promise<unknown> }>;
+  fetch: PairingIdentityFetcher;
   randomUuid(): string;
   temporaryDirectory(): string;
 }
@@ -74,7 +74,8 @@ export async function runRemoteLiveTest(options: RemoteLiveRunnerOptions = {}): 
 
     session = await dependencies.connect(targetInput, {
       ssh, manifest, registry, ownerId: ownerA.id, protocolVersion: DESKTOP_PROTOCOL_VERSION,
-      desktopVersion: "remote-live-test", consoleDirRel: ".fleet/console",
+      desktopVersion: "remote-live-test", consoleDirRel: ".fleet/console", fetch: dependencies.fetch,
+      cancellation: options.signal ? { signal: options.signal } : undefined,
     });
     if (!await readRemoteNodeRuntime(target, manifest, ssh)) throw new Error("remote_live_node_not_valid");
     checkpoint(emit, "node_installed_or_valid");
@@ -93,7 +94,8 @@ export async function runRemoteLiveTest(options: RemoteLiveRunnerOptions = {}): 
     const ownerB = { id: dependencies.randomUuid() };
     await expectForeignOwnerRefusal(() => dependencies.connect(targetInput, {
       ssh, manifest, registry, ownerId: ownerB.id, protocolVersion: DESKTOP_PROTOCOL_VERSION,
-      desktopVersion: "remote-live-test", consoleDirRel: ".fleet/console",
+      desktopVersion: "remote-live-test", consoleDirRel: ".fleet/console", fetch: dependencies.fetch,
+      cancellation: options.signal ? { signal: options.signal } : undefined,
     }));
     checkpoint(emit, "foreign_owner_refused");
     session.commit();
@@ -155,7 +157,7 @@ const defaultDependencies: RemoteLiveRunnerDependencies = {
   readManifest: async (file) => JSON.parse(await readFile(file, "utf8")) as NodeRuntimeManifest,
   createRegistry: (statePath) => createRegistryChecker({ packageName: "@dotobokuri/fleet-console", statePath }),
   connect: connectManagedRemote,
-  fetch: async (input) => fetch(input),
+  fetch: async (input, init) => fetch(input, init),
   randomUuid: randomUUID,
   temporaryDirectory: os.tmpdir,
 };

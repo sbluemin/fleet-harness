@@ -1,12 +1,18 @@
 import type { NodeRuntimeManifest } from "../node-bootstrap.js";
 import type { RegistryChecker } from "../registry-check.js";
-import type { RemoteRuntimePhaseCallback } from "./contracts.js";
+import { RemoteRuntimeError, type RemoteCancellation, type RemoteRuntimePhaseCallback } from "./contracts.js";
 import { inspectRemoteLock, type RemoteConsoleLock, type RemoteLockOwner } from "./lock.js";
 import { provisionRemoteRuntime, type ProvisionRemoteRuntimeDependencies } from "./provisioner.js";
 import { startRemoteService, stopOwnedRemoteService, type RemoteServiceLaunch } from "./service.js";
 import type { OpenSshAdapter } from "./ssh.js";
 import { openSamePortTunnel, openTunnelWithReroll, type RemoteTunnel } from "./tunnel.js";
 import { parseSshTarget, type ValidatedSshTarget } from "./target.js";
+
+const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
+const PAIRING_RETRY_MS = 200;
+const PAIRING_READY_TIMEOUT_MS = 20_000;
+
+export type PairingIdentityFetcher = (input: string, init?: { readonly signal?: AbortSignal }) => Promise<{ readonly status: number; json(): Promise<unknown> }>;
 
 export interface ManagedRemoteSession {
   readonly target: ValidatedSshTarget;
@@ -24,6 +30,8 @@ export interface ManagedRemoteDependencies extends ProvisionRemoteRuntimeDepende
   readonly desktopVersion: string;
   readonly consoleDirRel: string;
   readonly onPhase?: RemoteRuntimePhaseCallback;
+  readonly fetch?: PairingIdentityFetcher;
+  readonly cancellation?: RemoteCancellation;
 }
 
 /** Electron-free composition of the managed SSH candidate. */
@@ -86,7 +94,15 @@ export async function connectManagedRemote(input: string, dependencies: ManagedR
     throw error;
   }
   activeService = opened.service;
-  return candidateSession(target, opened.tunnel, activeService, dependencies, created);
+  const candidate = candidateSession(target, opened.tunnel, activeService, dependencies, created);
+  emit("verifying_pairing");
+  try {
+    await waitForPairingReadiness(candidate.origin, dependencies.fetch ?? ((input, init) => globalThis.fetch(input, init)), dependencies.cancellation);
+    return candidate;
+  } catch (error) {
+    await candidate.rollback().catch(() => undefined);
+    throw error;
+  }
 }
 
 function candidateSession(target: ValidatedSshTarget, tunnel: RemoteTunnel, service: RemoteConsoleLock, dependencies: ManagedRemoteDependencies, ownsService: boolean): ManagedRemoteSession {
@@ -115,4 +131,51 @@ async function startCandidateService(adapter: OpenSshAdapter, target: ValidatedS
     if (lock?.kind === "same_owner") await stopOwnedRemoteService(adapter, target, lock.lock, owner).catch(() => undefined);
     throw error;
   }
+}
+
+async function waitForPairingReadiness(origin: string, fetcher: PairingIdentityFetcher, cancellation: RemoteCancellation | undefined): Promise<void> {
+  const deadline = Date.now() + PAIRING_READY_TIMEOUT_MS;
+  while (true) {
+    throwIfAborted(cancellation);
+    try {
+      const response = await awaitWithCancellation(fetcher(`${origin}${PAIRING_IDENTITY_PATH}`, { signal: cancellation?.signal }), cancellation);
+      if (response.status === 200 && isPairingIdentity(await response.json())) return;
+    } catch {
+      throwIfAborted(cancellation);
+    }
+    if (Date.now() >= deadline) throw new RemoteRuntimeError("remote_pairing_not_ready");
+    await waitForRetry(Math.min(PAIRING_RETRY_MS, deadline - Date.now()), cancellation);
+  }
+}
+
+function isPairingIdentity(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return Object.keys(entry).length === 3 && entry.product === "fleet-console" && entry.schemaVersion === 1 && entry.pairingProtocolVersion === 1;
+}
+
+async function awaitWithCancellation<T>(value: Promise<T>, cancellation: RemoteCancellation | undefined): Promise<T> {
+  if (!cancellation) return value;
+  if (cancellation.signal.aborted) throw new RemoteRuntimeError("ssh_cancelled");
+  return new Promise<T>((resolve, reject) => {
+    const finish = (): void => { cancellation.signal.removeEventListener("abort", abort); };
+    const abort = (): void => { finish(); reject(new RemoteRuntimeError("ssh_cancelled")); };
+    cancellation.signal.addEventListener("abort", abort, { once: true });
+    void value.then((result) => { finish(); resolve(result); }, (error: unknown) => { finish(); reject(error); });
+  });
+}
+
+async function waitForRetry(milliseconds: number, cancellation: RemoteCancellation | undefined): Promise<void> {
+  if (!cancellation) { await new Promise<void>((resolve) => setTimeout(resolve, milliseconds)); return; }
+  if (cancellation.signal.aborted) throw new RemoteRuntimeError("ssh_cancelled");
+  await new Promise<void>((resolve, reject) => {
+    const complete = (): void => { cancellation.signal.removeEventListener("abort", abort); resolve(); };
+    const abort = (): void => { clearTimeout(timer); cancellation.signal.removeEventListener("abort", abort); reject(new RemoteRuntimeError("ssh_cancelled")); };
+    const timer = setTimeout(complete, milliseconds);
+    cancellation.signal.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function throwIfAborted(cancellation: RemoteCancellation | undefined): void {
+  if (cancellation?.signal.aborted) throw new RemoteRuntimeError("ssh_cancelled");
 }

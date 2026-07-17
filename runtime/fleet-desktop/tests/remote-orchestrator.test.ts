@@ -23,9 +23,24 @@ describe("managed remote orchestrator", () => {
     seams.start.mockImplementation(async () => { order.push("serve"); return lock; });
     seams.open.mockImplementation(async () => { order.push("tunnel"); return { port: 4310, dispose: vi.fn(), rollback: vi.fn() }; });
     seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
-    const session = await connectManagedRemote("devbox", dependencies());
-    expect(order).toEqual(["lock", "provision", "serve", "tunnel"]);
+    const fetch = vi.fn(async () => { order.push("pairing"); return pairingIdentityResponse(); });
+    const phases: string[] = [];
+    const session = await connectManagedRemote("devbox", dependencies({ fetch, onPhase: (phase: string) => phases.push(phase) }));
+    expect(order).toEqual(["lock", "provision", "serve", "tunnel", "pairing"]);
+    expect(phases).toContain("verifying_pairing");
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4310/api/v1/pairing-identity", { signal: undefined });
     expect(session.origin).toBe("http://127.0.0.1:4310");
+  });
+
+  it("retries a tunnel identity request until the local forwarding is ready", async () => {
+    seams.inspect.mockResolvedValue({ kind: "absent" });
+    seams.provision.mockResolvedValue(runtime());
+    seams.start.mockResolvedValue(lock);
+    seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
+    seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
+    const fetch = vi.fn().mockRejectedValueOnce(new Error("ECONNREFUSED")).mockResolvedValueOnce(pairingIdentityResponse());
+    await expect(connectManagedRemote("devbox", dependencies({ fetch }))).resolves.toMatchObject({ origin: "http://127.0.0.1:4310" });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("reuses a same-owner runtime after registry observation without provisioning or restart", async () => {
@@ -64,12 +79,39 @@ describe("managed remote orchestrator", () => {
     await expect(connectManagedRemote("devbox", dependencies())).rejects.toThrow("remote_console_readiness_timeout");
     expect(seams.stop).toHaveBeenCalledWith(expect.anything(), expect.anything(), lock, { id: ownerId, serviceVersion: "0.3.1" });
   });
+
+  it("cleans the tunnel and owned service when pairing readiness is cancelled", async () => {
+    const controller = new AbortController();
+    const dispose = vi.fn(async () => undefined);
+    seams.inspect.mockResolvedValue({ kind: "absent" });
+    seams.provision.mockResolvedValue(runtime());
+    seams.start.mockResolvedValue(lock);
+    seams.open.mockResolvedValue({ port: 4310, dispose, rollback: vi.fn() });
+    seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
+    seams.stop.mockResolvedValue(undefined);
+    const fetch = vi.fn(() => new Promise<never>(() => undefined));
+    const pending = connectManagedRemote("devbox", dependencies({ cancellation: { signal: controller.signal }, fetch }));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "ssh_cancelled" });
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(seams.stop).toHaveBeenCalledWith(expect.anything(), expect.anything(), lock, { id: ownerId, serviceVersion: "0.3.1" });
+  });
 });
+
+function runtime() {
+  return { node: { nodeBin: ".fleet/desktop/runtime/node/bin/node", version: "22.23.1" }, console: { root: ".fleet/desktop/runtime/console/latest", version: "0.3.1", cli: ".fleet/desktop/runtime/console/latest/dist/cli.mjs" } };
+}
+
+function pairingIdentityResponse() {
+  return { status: 200, json: async () => ({ product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 }) };
+}
 
 function dependencies(overrides: Record<string, unknown> = {}) {
   return {
     ssh: {}, manifest: { version: "22.23.1", source: "", targets: {} }, registry: { check: async () => ({ latest: "0.3.1", shouldNotify: false }) }, ownerId,
     protocolVersion: 1, desktopVersion: "0.3.1", consoleDirRel: ".fleet/console",
+    fetch: async () => pairingIdentityResponse(),
     ...overrides,
   } as never;
 }
