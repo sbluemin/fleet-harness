@@ -12,7 +12,7 @@ export interface DockTail {
 }
 
 const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"]);
-const BACKEND_CLIS = new Set(["claude", "codex", "opencode-go", "cursor"]);
+const BACKEND_CLIS = new Set(["claude", "claude-kimi", "codex", "opencode-go", "cursor"]);
 
 export function formatElapsedDuration(elapsedMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
@@ -40,10 +40,10 @@ export function estimateJobTokens(job: JobView): number {
   }, 0);
 }
 
-export function resolveJobSignature(job: JobView): "claude" | "codex" | "opencode-go" | "cursor" | "taskforce" | undefined {
+export function resolveJobSignature(job: JobView): "claude" | "claude-kimi" | "codex" | "opencode-go" | "cursor" | "taskforce" | undefined {
   if (job.kind === "taskforce") return "taskforce";
   const cli = job.signatureCli;
-  return cli && BACKEND_CLIS.has(cli) ? cli as "claude" | "codex" | "opencode-go" | "cursor" : undefined;
+  return cli && BACKEND_CLIS.has(cli) ? cli as "claude" | "claude-kimi" | "codex" | "opencode-go" | "cursor" : undefined;
 }
 
 export function resolveCarrierCaptain(carrierId: string | undefined): string | undefined {

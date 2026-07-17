@@ -53,9 +53,9 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
   private firstPromptPending: string | null = null;
   private currentEffort: string | null = null;
   private detector = new CliDetector();
-  private readonly cliType: CliType & 'claude';
+  private readonly cliType: Extract<CliType, 'claude' | 'claude-kimi'>;
 
-  constructor(cliType: CliType & 'claude' = 'claude') {
+  constructor(cliType: Extract<CliType, 'claude' | 'claude-kimi'> = 'claude') {
     super();
     this.cliType = cliType;
   }
@@ -114,11 +114,19 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
 
     // 사용자 설정(options.env) > modelsMapping 기본값(mappingEnv) > 백엔드 기본값(defaultEnv) > process.env
     const cleanEnv = cleanEnvironment(process.env, { ...defaultEnv, ...mappingEnv, ...options.env });
+    if (this.cliType === 'claude-kimi') {
+      // Kimi uses ANTHROPIC_API_KEY; do not leak an inherited Anthropic bearer token to its endpoint.
+      delete cleanEnv.ANTHROPIC_AUTH_TOKEN;
+    }
 
     // Anthropic 호환 커스텀 백엔드는 별도 API 토큰이 필요합니다.
-    if (defaultEnv.ANTHROPIC_BASE_URL && !cleanEnv.ANTHROPIC_AUTH_TOKEN) {
+    if (
+      defaultEnv.ANTHROPIC_BASE_URL
+      && !cleanEnv.ANTHROPIC_API_KEY
+      && !cleanEnv.ANTHROPIC_AUTH_TOKEN
+    ) {
       throw new Error(
-        `[${this.cliType}] ANTHROPIC_AUTH_TOKEN 환경변수가 설정되지 않았습니다. ${getProviderModels(this.cliType).name} API 키를 환경변수로 설정해주세요.`,
+        `[${this.cliType}] ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다. ${getProviderModels(this.cliType).name} API 키를 설정해주세요.`,
       );
     }
 

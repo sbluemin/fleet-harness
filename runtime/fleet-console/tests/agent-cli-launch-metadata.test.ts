@@ -4,6 +4,7 @@ import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/serv
 
 const METADATA = [
   { id: "claude", label: "Claude" },
+  { id: "claude-kimi", label: "Kimi (Claude Code)" },
   { id: "codex", label: "Codex" },
 ] as const;
 
@@ -21,6 +22,7 @@ describe("combineAgentCliLaunchMetadata", () => {
 
     expect(result).toEqual([
       { id: "claude", label: "Claude", available: true, signedIn: true },
+      { id: "claude-kimi", label: "Kimi (Claude Code)", available: true, signedIn: true },
       { id: "codex", label: "Codex", available: true, signedIn: true },
     ]);
   });
@@ -55,5 +57,17 @@ describe("combineAgentCliLaunchMetadata", () => {
     expect(result.find((cli) => cli.id === "claude")?.signedIn).toBe(false);
     // authStatuses에 없는 CLI는 signedIn=true로 둔다.
     expect(result.find((cli) => cli.id === "codex")?.signedIn).toBe(true);
+  });
+
+  it("Kimi는 Claude 바이너리 설치 상태를 공유하고 별도 sign-in 상태를 적용한다", () => {
+    const result = combineAgentCliLaunchMetadata(
+      METADATA,
+      [{ id: "claude", available: true }],
+      [{ cli: "claude-kimi", signedIn: false }],
+    );
+    expect(result.find((cli) => cli.id === "claude-kimi")).toMatchObject({
+      available: true,
+      signedIn: false,
+    });
   });
 });

@@ -23,6 +23,7 @@ export interface AuthValidationRequest {
   providerId: string;
   apiKey: string;
   baseUrl: string;
+  model?: string;
   timeoutMs?: number;
 }
 

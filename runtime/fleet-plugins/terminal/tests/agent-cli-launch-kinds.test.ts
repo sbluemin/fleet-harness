@@ -7,6 +7,7 @@ describe("buildAgentCliLaunchKinds", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude", label: "Claude", available: true, signedIn: true },
+        { id: "claude-kimi", label: "Kimi (Claude Code)", available: true, signedIn: true },
         { id: "codex", label: "Codex", available: true, signedIn: true },
       ],
       "agent",
@@ -14,6 +15,7 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       { id: "claude", type: "agent", title: "Claude" },
+      { id: "claude-kimi", type: "agent", title: "Kimi (Claude Code)" },
       { id: "codex", type: "agent", title: "Codex" },
     ]);
   });
@@ -22,6 +24,7 @@ describe("buildAgentCliLaunchKinds", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude", label: "Claude", available: false, signedIn: true },
+        { id: "claude-kimi", label: "Kimi (Claude Code)", available: true, signedIn: false },
         { id: "codex", label: "Codex", available: true, signedIn: false },
       ],
       "agent",
@@ -29,6 +32,7 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       { id: "claude", type: "agent", title: "Claude", disabled: true, disabledReason: "Not installed" },
+      { id: "claude-kimi", type: "agent", title: "Kimi (Claude Code)", disabled: true, disabledReason: "Sign in required" },
       { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Sign in required" },
     ]);
   });

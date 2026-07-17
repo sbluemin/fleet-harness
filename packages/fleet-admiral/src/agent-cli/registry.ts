@@ -1,8 +1,10 @@
 import { claudeCli } from "./claude/claude.js";
+import { claudeKimiCli } from "./claude/claude-kimi.js";
 import { codexCli } from "./codex/codex.js";
-import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
+import type { AgentCliDefinition, AgentCliId, AgentCliProfile, AuthServiceLike } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
+  readonly authService?: AuthServiceLike;
   readonly cliId?: string;
   readonly model?: string;
   readonly resumeSessionId?: string;
@@ -16,6 +18,7 @@ export interface AgentCliMetadata {
 const DEFAULT_CLI_ID: AgentCliId = "claude";
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   claude: claudeCli,
+  "claude-kimi": claudeKimiCli,
   codex: codexCli,
 };
 
@@ -26,6 +29,7 @@ export async function resolveAgentCliProfile(
 ): Promise<AgentCliProfile> {
   const id = resolveAgentCliId(env, options);
   return DEFINITIONS[id].createProfile({
+    authService: options.authService,
     cwd,
     env,
     model: options.model,

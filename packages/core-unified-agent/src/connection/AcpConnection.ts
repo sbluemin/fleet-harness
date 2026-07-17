@@ -382,7 +382,7 @@ export class AcpConnection extends BaseConnection {
 
   /** Claude 계열 브릿지인지 여부를 단일 판별 지점으로 유지합니다. */
   private isClaudeBackend(): boolean {
-    return this.cliType === 'claude';
+    return this.cliType === 'claude' || this.cliType === 'claude-kimi';
   }
 
   /** Claude bridge 전용 strict-MCP와 effort `_meta`를 조립합니다. */
