@@ -29,7 +29,7 @@ describe("managed remote orchestrator", () => {
     const session = await connectManagedRemote("devbox", dependencies({ ssh, fetch, onPhase: (phase: string) => phases.push(phase) }));
     expect(order).toEqual(["lock", "provision", "serve", "tunnel", "pairing"]);
     expect(phases).toContain("verifying_pairing");
-    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4310/api/v1/pairing-identity", { signal: undefined });
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4310/api/v1/pairing-identity", { signal: expect.anything() });
     expect(ssh.run).not.toHaveBeenCalled();
     expect(session.origin).toBe("http://127.0.0.1:4310");
   });
@@ -43,6 +43,34 @@ describe("managed remote orchestrator", () => {
     const fetch = vi.fn().mockRejectedValueOnce(new Error("ECONNREFUSED")).mockResolvedValueOnce(pairingIdentityResponse());
     await expect(connectManagedRemote("devbox", dependencies({ fetch }))).resolves.toMatchObject({ origin: "http://127.0.0.1:4310" });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds hung identity attempts and reaches the overall readiness deadline", async () => {
+    seams.inspect.mockResolvedValue({ kind: "absent" });
+    seams.provision.mockResolvedValue(runtime());
+    seams.start.mockResolvedValue(lock);
+    seams.open.mockResolvedValue({ port: 4310, dispose: vi.fn(), rollback: vi.fn() });
+    seams.reroll.mockImplementation(async (initial, open) => ({ service: initial, tunnel: await open(initial.port) }));
+    let now = 0;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      queueMicrotask(() => controller.abort());
+      return controller.signal;
+    });
+    const fetch = vi.fn((_input: string, init?: { readonly signal?: AbortSignal }) => new Promise<never>((_resolve, reject) => {
+      const abort = (): void => { now += 7_000; reject(init?.signal?.reason); };
+      if (init?.signal?.aborted) abort();
+      else init?.signal?.addEventListener("abort", abort, { once: true });
+    }));
+    try {
+      await expect(connectManagedRemote("devbox", dependencies({ fetch }))).rejects.toMatchObject({ code: "remote_pairing_not_ready" });
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(timeout).toHaveBeenCalledTimes(3);
+    } finally {
+      timeout.mockRestore();
+      clock.mockRestore();
+    }
   });
 
   it("reuses a same-owner runtime after registry observation without provisioning or restart", async () => {

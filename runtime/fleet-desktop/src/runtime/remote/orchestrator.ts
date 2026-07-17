@@ -11,6 +11,7 @@ import { parseSshTarget, type ValidatedSshTarget } from "./target.js";
 const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 const PAIRING_RETRY_MS = 200;
 const PAIRING_READY_TIMEOUT_MS = 20_000;
+const PAIRING_ATTEMPT_TIMEOUT_MS = 3_000;
 
 export type PairingIdentityFetcher = (input: string, init?: { readonly signal?: AbortSignal }) => Promise<{ readonly status: number; json(): Promise<unknown> }>;
 
@@ -139,8 +140,11 @@ async function waitForPairingReadiness(origin: string, fetcher: PairingIdentityF
   const deadline = Date.now() + PAIRING_READY_TIMEOUT_MS;
   while (true) {
     throwIfAborted(cancellation);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new RemoteRuntimeError("remote_pairing_not_ready");
     try {
-      const response = await awaitWithCancellation(fetcher(`${origin}${PAIRING_IDENTITY_PATH}`, { signal: cancellation?.signal }), cancellation);
+      const signal = pairingAttemptSignal(remaining, cancellation);
+      const response = await awaitWithCancellation(fetcher(`${origin}${PAIRING_IDENTITY_PATH}`, { signal }), cancellation);
       if (response.status === 200 && isPairingIdentity(await response.json())) return;
     } catch {
       throwIfAborted(cancellation);
@@ -148,6 +152,11 @@ async function waitForPairingReadiness(origin: string, fetcher: PairingIdentityF
     if (Date.now() >= deadline) throw new RemoteRuntimeError("remote_pairing_not_ready");
     await waitForRetry(Math.min(PAIRING_RETRY_MS, deadline - Date.now()), cancellation);
   }
+}
+
+function pairingAttemptSignal(remaining: number, cancellation: RemoteCancellation | undefined): AbortSignal {
+  const timeout = AbortSignal.timeout(Math.max(1, Math.min(PAIRING_ATTEMPT_TIMEOUT_MS, remaining)));
+  return cancellation ? AbortSignal.any([cancellation.signal, timeout]) : timeout;
 }
 
 function isPairingIdentity(value: unknown): boolean {

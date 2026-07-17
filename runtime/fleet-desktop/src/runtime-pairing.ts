@@ -14,6 +14,7 @@ import type { WindowPolicy } from "./window-policy.js";
 export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 export const PAIRING_PROTOCOL_VERSION = 1;
 const PAIRING_TIMEOUT_MS = 3_000;
+const SAME_TARGET_LIVENESS_TIMEOUT_MS = 1_000;
 const MAX_PAIRING_IDENTITY_BYTES = 8 * 1024;
 
 export interface PairingIdentity {
@@ -131,8 +132,15 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       if (parsed.kind === "loopback") target = await verifyPairingOrigin(parsed.origin, fetchFor, timeoutMs);
       else {
         if (committedRemote?.target.value === parsed.target.value) {
-          dependencies.logger?.info("managed runtime pairing skipped code=already_connected");
-          return;
+          try {
+            await verifyPairingOrigin(committedRemote.origin, fetchFor, Math.min(timeoutMs, SAME_TARGET_LIVENESS_TIMEOUT_MS));
+            dependencies.logger?.info("managed runtime pairing skipped code=already_connected");
+            return;
+          } catch {
+            const staleRemote = committedRemote;
+            committedRemote = null;
+            await disposeRemoteSession(staleRemote, dependencies);
+          }
         }
         if (!dependencies.connectRemote) throw new Error("ssh_unavailable");
         remoteTarget = parsed.target;
