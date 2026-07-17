@@ -88,6 +88,12 @@ describe("OpenSSH transport", () => {
       expect(program).toContain(unset);
       expect(program).toContain("for v in $(env | sed -n");
     }
+    const npmConfigUnset = "grep -iE";
+    expect(install).toContain(npmConfigUnset);
+    expect(install).toContain("^npm_config_");
+    expect(install).toContain("cut -d= -f1");
+    expect(install.indexOf(npmConfigUnset)).toBeLessThan(install.indexOf('npm_config_userconfig="$prefix/.npmrc"'));
+    expect(install).toContain('npm_config_userconfig="$prefix/.npmrc" npm_config_globalconfig="$prefix/.npmrc-global" npm_config_registry=https://registry.npmjs.org/');
     expect(install.indexOf(unset)).toBeLessThan(install.indexOf('"$HOME/$1" "$HOME/$2" install'));
     expect(start.indexOf(unset)).toBeLessThan(start.indexOf('FLEET_CONSOLE_OWNER_KIND=desktop'));
   });
