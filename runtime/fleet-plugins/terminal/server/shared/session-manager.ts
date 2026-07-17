@@ -1,6 +1,7 @@
 import { closeSync, fstatSync, readdirSync } from "node:fs";
 
 import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
+import type { SessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 
 import { startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext } from "./terminal-types.js";
@@ -24,6 +25,7 @@ interface TerminalSession {
   readonly cleanup?: () => void | Promise<void>;
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
+  readonly sessionIdentityResolver?: SessionIdentityResolver;
   activeSocket: TerminalSocket | null;
   cols: number;
   rows: number;
@@ -104,6 +106,20 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     return sessions.get(sessionId)?.renameCommand;
   }
 
+  async function resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null> {
+    const session = sessions.get(sessionId);
+    const resolver = session?.sessionIdentityResolver;
+    if (!resolver) return null;
+    try {
+      const title = await resolver.resolve(providerSessionId);
+      // A detached reader may complete after PTY teardown. Do not let it revive
+      // or mutate a removed/replaced Terminal session.
+      return sessions.get(sessionId) === session ? title : null;
+    } catch {
+      return null;
+    }
+  }
+
   function writeToSession(sessionId: string, data: string): boolean {
     const session = sessions.get(sessionId);
     if (!session || typeof session.pty.write !== "function") return false;
@@ -174,6 +190,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       cleanup: launch.cleanup,
       messagePolicy: launch.messagePolicy,
       renameCommand: launch.renameCommand,
+      sessionIdentityResolver: launch.sessionIdentityResolver,
       activeSocket: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
@@ -279,7 +296,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, resolveSessionIdentity, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

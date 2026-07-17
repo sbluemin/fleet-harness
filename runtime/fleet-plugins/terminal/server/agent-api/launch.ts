@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
   createSystemPromptBuilder,
   injectAgentCliProfile,
@@ -34,6 +35,7 @@ export interface TerminalLaunchResolverDeps {
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
+  readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
 }
 
 export interface ConsoleRuntimeSessionInfo {
@@ -65,6 +67,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
   const agentRuntime = deps.agentRuntime;
   const injectProfile = deps.injectProfile ?? injectAgentCliProfile;
   const resolveProfile = deps.resolveProfile ?? resolveAgentCliProfile;
+  const resolveSessionIdentityResolver = deps.createSessionIdentityResolver ?? createSessionIdentityResolver;
   const hookEntry: ConsoleHookCommandEntry = { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
 
   return async (selectedCwd, context) => {
@@ -95,6 +98,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
       cliId: context?.cliId,
+      createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
       sessionId,
     });
@@ -123,6 +127,7 @@ function hasHookEntryExtension(entryPath: string): boolean {
 async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly cliId?: string;
+  readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
@@ -169,11 +174,18 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
+    const sessionIdentityResolver = options.createSessionIdentityResolver({
+      provider: injectedProfile.id,
+      command: injectedProfile.bin,
+      commandPrefixArgs: injectedProfile.binPrefixArgs,
+      cwd: injectedProfile.cwd,
+      env: injectedProfile.env,
+    });
     return toLaunchSpec(injectedProfile, createOnceCleanup(async () => {
       for (const cleanup of [...cleanupStack].reverse()) {
         await cleanup();
       }
-    }));
+    }), sessionIdentityResolver);
   } catch (error) {
     for (const cleanup of [...cleanupStack].reverse()) {
       try {
@@ -186,7 +198,7 @@ async function createAgentCliLaunchSpec(options: {
   }
 }
 
-function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>): TerminalLaunchSpec {
+function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, sessionIdentityResolver: TerminalLaunchSpec["sessionIdentityResolver"]): TerminalLaunchSpec {
   return {
     args: [...profile.args],
     bin: profile.bin,
@@ -195,6 +207,7 @@ function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>): T
     env: { ...profile.env },
     messagePolicy: profile.messagePolicy,
     renameCommand: profile.renameCommand,
+    sessionIdentityResolver,
     terminalName: profile.terminalName,
   };
 }

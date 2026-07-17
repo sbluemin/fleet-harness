@@ -129,7 +129,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     ]);
   });
 
-  it("wires capture, turn-start, and auto-name hooks onto Claude UserPromptSubmit in order", async () => {
+  it("wires capture and turn-start, but not auto-name, onto Claude UserPromptSubmit in order", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-uphooks-"));
     tempDirs.push(root);
     const dataDir = path.join(root, "data");
@@ -151,7 +151,8 @@ describe("agent CLI plugin marketplace rendering", () => {
       readonly hooks: Record<string, ReadonlyArray<{ readonly hooks: ReadonlyArray<{ readonly args: readonly string[] }> }>>;
     };
     const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks.map((hook) => hook.args[2]);
-    expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
+    expect(userPromptSubmit).toEqual(["capture-session", "turn-start"]);
+    expect(hooksJson.hooks.Stop?.[0]?.hooks.map((hook) => hook.args[2])).toEqual(["turn-end"]);
   });
 
   it("prunes legacy Cursor plugin artifacts without generating new ones", async () => {

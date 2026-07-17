@@ -296,6 +296,38 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(runtimeCleanup).not.toHaveBeenCalled();
   });
+
+  it("binds one opaque provider identity resolver during Agent CLI launch", async () => {
+    const createResolver = vi.fn(() => ({ resolve: async () => null }));
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: (async () => ({ ...baseProfile, id: "codex", bin: "/custom/codex-wrapper", binPrefixArgs: ["--wrapper-prefix"] })) as never,
+      createSessionIdentityResolver: createResolver as never,
+    });
+
+    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude" });
+
+    expect(spec.sessionIdentityResolver).toMatchObject({ resolve: expect.any(Function) });
+    expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "codex",
+      command: "/custom/codex-wrapper",
+      commandPrefixArgs: ["--wrapper-prefix"],
+      cwd: "/work",
+    }));
+  });
+
+  it("does not bind an identity resolver for an explicit shell override", async () => {
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { FLEET_TERMINAL_CMD: "bash -l" } as NodeJS.ProcessEnv,
+    });
+
+    const spec = await resolve("/work");
+    expect(spec.sessionIdentityResolver).toBeUndefined();
+  });
 });
 
 describe("resolveUseConptyDll", () => {

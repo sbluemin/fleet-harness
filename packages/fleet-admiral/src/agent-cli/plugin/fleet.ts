@@ -26,8 +26,9 @@ export function renderAssetPluginRoot(
 }
 
 function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
-  // UserPromptSubmit: 세션 캡처 + 턴 시작 + 자동 작명 신호를 같은 이벤트에 함께 건다(배열 순서대로 실행).
-  const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
+  // UserPromptSubmit: 세션 캡처 + 턴 시작 신호를 같은 이벤트에 건다(배열 순서대로 실행).
+  // 자동 작명은 Codex 고정 프로필 전용이며 Claude plugin hooks에는 렌더하지 않는다.
+  const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   // Stop: 턴 종료 신호.
   const stopExecs = [options.turnEndHookExec]

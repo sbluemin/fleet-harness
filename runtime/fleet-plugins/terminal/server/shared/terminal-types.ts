@@ -1,4 +1,5 @@
 import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
+import type { SessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 
 export interface TerminalLaunchSpec {
   readonly bin: string;
@@ -8,6 +9,8 @@ export interface TerminalLaunchSpec {
   readonly env: NodeJS.ProcessEnv;
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
+  /** Spawn-time selected opaque provider identity reader; never browser-visible. */
+  readonly sessionIdentityResolver?: SessionIdentityResolver;
   readonly terminalName?: string;
 }
 
@@ -69,6 +72,7 @@ export interface TerminalSessionManager {
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
+  resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;
   stop(): Promise<void>;
   writeToSession(sessionId: string, data: string): boolean;

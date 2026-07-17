@@ -50,6 +50,11 @@ export type {
 // === 연결 모듈 ===
 export { BaseConnection, type BaseConnectionOptions } from './connection/BaseConnection.js';
 export { AcpConnection, createIdleTimeoutRace, type AcpConnectionOptions, type AcpConnectionEventMap } from './connection/AcpConnection.js';
+export {
+  createSessionIdentityResolver,
+  type SessionIdentityResolver,
+  type SessionIdentityResolverOptions,
+} from './client/SessionIdentityResolver.js';
 
 // === CLI 감지 ===
 export { CliDetector } from './detector/CliDetector.js';

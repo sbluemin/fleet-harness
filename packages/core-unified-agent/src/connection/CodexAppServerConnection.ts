@@ -32,6 +32,8 @@ import type {
   CodexReasoningSummaryTextDeltaNotification,
   CodexReasoningTextDeltaNotification,
   CodexThreadArchiveResponse,
+  CodexThreadReadParams,
+  CodexThreadReadResponse,
   CodexThreadResumeResponse,
   CodexThreadStartResponse,
   CodexTurnCompletedNotification,
@@ -310,6 +312,17 @@ export class CodexAppServerConnection extends BaseConnection {
     this.turnId = null;
     this.setState('ready');
     return response;
+  }
+
+  /** Reads existing thread metadata without resuming it or loading its turns. */
+  async readThread(threadId: string): Promise<CodexThreadReadResponse> {
+    return this.sendRequest<CodexThreadReadResponse>(
+      CODEX_METHODS.THREAD_READ,
+      {
+        threadId,
+        includeTurns: false,
+      } satisfies CodexThreadReadParams,
+    );
   }
 
   async sendMessage(

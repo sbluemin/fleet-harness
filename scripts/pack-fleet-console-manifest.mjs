@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_PATH = path.resolve(__dirname, "../runtime/fleet-console/package.json");
 const BACKUP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.json.prepack-backup");
 const TEMP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.json.prepack-tmp");
-const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list"];
+const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list", "@anthropic-ai/claude-agent-sdk"];
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const action = process.argv[2];
