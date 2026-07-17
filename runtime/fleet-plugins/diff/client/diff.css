@@ -850,7 +850,7 @@
   grid-row: 1;
   grid-column: 1;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   border-right: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
 }
