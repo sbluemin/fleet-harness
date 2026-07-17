@@ -315,9 +315,13 @@ function parseTasks(lines: readonly string[], lanes: MutableLane[], diagnostics:
 }
 
 function validateManifest(lines: readonly string[], lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
+  const manifestHeading = lines.indexOf("# Dispatch Manifest");
+  const manifestLines = manifestHeading < 0
+    ? []
+    : lines.slice(manifestHeading + 1, findNextTopLevelHeading(lines, manifestHeading + 1));
   const manifestIds = new Set<string>();
-  for (let index = 0; index < lines.length; index++) {
-    const match = MANIFEST_LANE_PATTERN.exec(lines[index]!);
+  for (const line of manifestLines) {
+    const match = MANIFEST_LANE_PATTERN.exec(line);
     if (!match) continue;
     manifestIds.add(match[1]!);
   }
@@ -332,7 +336,7 @@ function validateManifest(lines: readonly string[], lanes: readonly MutableLane[
     }
   }
   const policy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
-  if (lines.filter((line) => line === policy).length !== 1) {
+  if (manifestLines.filter((line) => line === policy).length !== 1) {
     addDiagnostic(diagnostics, "FULL_PLAN_POLICY", `Dispatch Manifest must contain exactly: ${policy}`);
   }
 }

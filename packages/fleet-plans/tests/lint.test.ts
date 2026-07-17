@@ -67,4 +67,31 @@ describe("lintPlanMarkdown", () => {
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "PARALLEL_WITHOUT_CONCURRENCY" }));
   });
+
+  it("does not let lane references outside Dispatch Manifest mask missing entries", () => {
+    const markdown = buildValidPlan()
+      .replace(
+        "- W1-B owns packages/fleet-plans/**",
+        "- W1-B owns packages/fleet-plans/**\n- Lane W1-B — decoy outside the manifest",
+      )
+      .replace("- Lane W1-B — exact write set, dependencies, gate, handoff, and rollback from W1-B\n", "");
+
+    const result = lintPlanMarkdown(markdown);
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: "MANIFEST_MISSING_LANE",
+      message: "Dispatch Manifest is missing lane W1-B",
+    }));
+  });
+
+  it("requires the full-plan dispatch policy inside Dispatch Manifest", () => {
+    const policy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const markdown = buildValidPlan()
+      .replace(`${policy}\n`, "")
+      .replace("# Documentation Updates", `${policy}\n\n# Documentation Updates`);
+
+    const result = lintPlanMarkdown(markdown);
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
 });
