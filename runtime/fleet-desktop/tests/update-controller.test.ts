@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createNoopUpdateController, createUpdateController, showWindowsHiddenUpdateDialog } from "../src/update-controller.js";
+import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "../src/update-controller.js";
 
 function controller(result = { latest: "1.2.4", shouldNotify: true }, dialog = { response: 1, checkboxChecked: false }) {
   const registry = { check: vi.fn(async () => result), skip: vi.fn(async () => undefined), startPolling: vi.fn() };
@@ -12,6 +12,14 @@ function controller(result = { latest: "1.2.4", shouldNotify: true }, dialog = {
 }
 
 describe("registry update controller", () => {
+  it("drops a destroyed update-dialog parent window", () => {
+    const destroyedWindow = { isDestroyed: () => true };
+    const activeWindow = { isDestroyed: () => false };
+
+    expect(resolveActiveWindow(destroyedWindow)).toBeNull();
+    expect(resolveActiveWindow(activeWindow)).toBe(activeWindow);
+  });
+
   it("shows the native prompt once, keeps a Later update available for menu and tray", async () => {
     const { updates } = controller();
     await updates.check();

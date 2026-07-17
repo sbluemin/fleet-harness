@@ -24,6 +24,14 @@ export interface WindowsUpdateWindow {
   show(): void;
 }
 
+export interface DestroyableWindow {
+  isDestroyed(): boolean;
+}
+
+export function resolveActiveWindow<T extends DestroyableWindow>(window: T | null): T | null {
+  return window && !window.isDestroyed() ? window : null;
+}
+
 export interface WindowsUpdateTray {
   displayBalloon(options: { readonly title: string; readonly content: string }): void;
   once(event: "balloon-click", callback: () => void): void;

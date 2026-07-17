@@ -72,7 +72,7 @@ async function applyRequiredFuses(outputDirectory, platform) {
 
 async function assertShellOnlyAsar(asar) {
   const files = new Map(listPackage(asar, { isPack: false }).map((file) => [normalizeAsarContractPath(file), normalizeAsarEntryPath(file)]));
-  const required = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/assets/pairing/index.html", "dist/assets/pairing/pairing.css", "dist/build/node-runtime.json"];
+  const required = ["dist/assets/entry/index.html", "dist/assets/entry/entry.css", "dist/assets/pairing/index.html", "dist/assets/pairing/pairing.css", "dist/build/node-runtime.json", "dist/build/trayTemplate.png", "dist/build/trayTemplate@2x.png"];
   for (const file of required) if (!files.has(file)) throw new Error(`Shell ASAR is missing ${file}`);
   const forbidden = [".fleet-console-resource-root", "dist/cli.mjs", "fleet-console/", "node-pty/", "node_modules/"];
   for (const file of files.keys()) if (forbidden.some((prefix) => file === prefix || file.includes(`/${prefix}`))) throw new Error(`Shell ASAR embeds forbidden runtime payload: ${file}`);
