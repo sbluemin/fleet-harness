@@ -78,7 +78,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
         snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
         canvas.operationOrder,
         canvas.collapsedGroups,
-        canvas.minimized,
+        maximizedRef.current === null ? canvas.minimized : [],
       );
       event.preventDefault();
       event.stopImmediatePropagation();

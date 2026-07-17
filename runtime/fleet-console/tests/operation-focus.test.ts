@@ -69,17 +69,4 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(nextOperationId(order, "group-1-visible", -1)).toBe("ungrouped-visible");
   });
 
-  it("keeps the maximized panel as the only Alt+Arrow target", () => {
-    const order = focusCycleOperationIds(
-      [makeOperation("maximized"), makeOperation("minimized-a"), makeOperation("minimized-b")],
-      [],
-      ["maximized", "minimized-a", "minimized-b"],
-      [],
-      ["minimized-a", "minimized-b"],
-    );
-
-    expect(order).toEqual(["maximized"]);
-    expect(nextOperationId(order, "maximized", 1)).toBe("maximized");
-    expect(nextOperationId(order, "maximized", -1)).toBe("maximized");
-  });
 });

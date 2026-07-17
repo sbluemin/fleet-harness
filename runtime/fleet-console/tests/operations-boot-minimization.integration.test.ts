@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getSnapshot, loadForTheater, restoreOperation, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { getMaximizedOperationId, getSnapshot, loadForTheater, restoreOperation, setMaximizedOperationId, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 import { focusOperation, getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -188,6 +188,41 @@ describe("Operations boot minimization", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(getState().activeOperationId).toBeNull();
     expect(getSnapshot().minimized).toEqual(["initial"]);
+  });
+
+  it("advances the maximized Operation with Alt+Arrow", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+    await act(async () => {
+      operations.resolve([operation("first"), operation("second")]);
+      theaters.resolve({ theaters: [theater()] });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      setMaximizedOperationId("first");
+      await Promise.resolve();
+    });
+    expect(getMaximizedOperationId()).toBe("first");
+    expect(getSnapshot().minimized).toEqual(["second"]);
+
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getState().activeOperationId).toBe("second");
+    expect(getMaximizedOperationId()).toBe("second");
+    expect(getSnapshot().minimized).toEqual(["first"]);
   });
 
   it("minimizes a second Theater's existing panels on first in-session view, surfacing only the selected panel", async () => {
