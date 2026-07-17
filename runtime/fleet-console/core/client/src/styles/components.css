@@ -3204,7 +3204,8 @@
      gap이 그보다 좁으면 이웃 칩과 링이 겹쳐 외곽선이 이중으로 보인다. */
   gap: var(--space-2);
   max-width: 0;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   opacity: 0;
   pointer-events: none;
   transition:
