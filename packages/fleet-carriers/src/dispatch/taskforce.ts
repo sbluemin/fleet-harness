@@ -165,10 +165,6 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     carrierIds: [carrierId],
     signal: ctx.signal,
   });
-  if (!launch.accepted) {
-    releaseDispatchLease(services?.dispatchContexts, claim.lease);
-    return launch.response;
-  }
 
   const state = initTaskForceState(carrierId, requestKey, activeBackends);
 

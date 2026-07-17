@@ -4,10 +4,8 @@ import { createJobArchive, finalizeJobArchive } from "./archive.js";
 import { detachJobArchive } from "./archive.js";
 import { putJobSummary } from "./summary-cache.js";
 
-interface GuardState {
+interface JobTrackingState {
   activeJobs: Map<string, CarrierJobRecord>;
-  activeCarrierJobs: Map<string, Set<string>>;
-  maxDetachedJobs: number;
   activeJobCountCallbacks: Array<(count: number) => void>;
 }
 
@@ -20,12 +18,7 @@ export interface JobPermitAccepted {
   release: (finished?: Partial<Pick<CarrierJobRecord, "status" | "error" | "finishedAt">>) => void;
 }
 
-export interface JobPermitRejected {
-  accepted: false;
-  error: "concurrency limit";
-}
-
-export type JobPermit = JobPermitAccepted | JobPermitRejected;
+export type JobPermit = JobPermitAccepted;
 
 export interface JobCancelRegistry {
   registerJobAbortController(jobId: string, controller: AbortController): void;
@@ -47,12 +40,7 @@ export interface DetachedJobAccepted {
   signal: AbortSignal;
 }
 
-export interface DetachedJobRejected {
-  accepted: false;
-  response: ReturnType<typeof launchResponseResult>;
-}
-
-export type DetachedJobLaunch = DetachedJobAccepted | DetachedJobRejected;
+export type DetachedJobLaunch = DetachedJobAccepted;
 
 export interface StartDetachedJobOptions {
   jobKind: CarrierJobKind;
@@ -78,27 +66,16 @@ export interface RollbackRejectedDetachedJobOptions {
   abort?: () => void | Promise<void>;
 }
 
-const DEFAULT_MAX_DETACHED_JOBS = 5;
-const guardState: GuardState = {
+const jobTrackingState: JobTrackingState = {
   activeJobs: new Map(),
-  activeCarrierJobs: new Map(),
-  maxDetachedJobs: DEFAULT_MAX_DETACHED_JOBS,
   activeJobCountCallbacks: [],
 };
 
 const defaultJobCancelRegistry = createJobCancelRegistry();
 
-export function acquireJobPermit(record: CarrierJobRecord): JobPermit {
-  const state = getGuardState();
-  if (state.activeJobs.size >= state.maxDetachedJobs) {
-    return { accepted: false, error: "concurrency limit" };
-  }
+export function acquireJobPermit(record: CarrierJobRecord): JobPermitAccepted {
+  const state = getJobTrackingState();
   state.activeJobs.set(record.jobId, record);
-  for (const carrierId of record.carriers) {
-    const activeSet = state.activeCarrierJobs.get(carrierId) ?? new Set<string>();
-    activeSet.add(record.jobId);
-    state.activeCarrierJobs.set(carrierId, activeSet);
-  }
   notifyActiveJobCountChange(state);
   return {
     accepted: true,
@@ -110,17 +87,9 @@ export function releaseJobPermit(
   jobId: string,
   finished: Partial<Pick<CarrierJobRecord, "status" | "error" | "finishedAt">> = {},
 ): void {
-  const state = getGuardState();
+  const state = getJobTrackingState();
   const record = state.activeJobs.get(jobId);
   if (!record) return;
-  for (const carrierId of record.carriers) {
-    const activeSet = state.activeCarrierJobs.get(carrierId);
-    if (!activeSet) continue;
-    activeSet.delete(jobId);
-    if (activeSet.size === 0) {
-      state.activeCarrierJobs.delete(carrierId);
-    }
-  }
   record.status = finished.status ?? record.status;
   record.error = finished.error ?? record.error;
   record.finishedAt = finished.finishedAt ?? Date.now();
@@ -129,19 +98,19 @@ export function releaseJobPermit(
 }
 
 export function getActiveJob(jobId: string): CarrierJobRecord | null {
-  return getGuardState().activeJobs.get(jobId) ?? null;
+  return getJobTrackingState().activeJobs.get(jobId) ?? null;
 }
 
 export function listActiveJobs(): CarrierJobRecord[] {
-  return [...getGuardState().activeJobs.values()].sort((a, b) => b.startedAt - a.startedAt);
+  return [...getJobTrackingState().activeJobs.values()].sort((a, b) => b.startedAt - a.startedAt);
 }
 
 export function getActiveBackgroundJobCount(): number {
-  return getGuardState().activeJobs.size;
+  return getJobTrackingState().activeJobs.size;
 }
 
 export function onActiveJobCountChange(callback: (count: number) => void): () => void {
-  const state = getGuardState();
+  const state = getJobTrackingState();
   state.activeJobCountCallbacks.push(callback);
   return () => {
     const index = state.activeJobCountCallbacks.indexOf(callback);
@@ -149,15 +118,9 @@ export function onActiveJobCountChange(callback: (count: number) => void): () =>
   };
 }
 
-export function configureDetachedJobCap(maxDetachedJobs: number): void {
-  getGuardState().maxDetachedJobs = maxDetachedJobs;
-}
-
-export function resetJobConcurrencyForTest(): void {
-  const state = getGuardState();
+export function resetJobTrackingForTest(): void {
+  const state = getJobTrackingState();
   state.activeJobs.clear();
-  state.activeCarrierJobs.clear();
-  state.maxDetachedJobs = DEFAULT_MAX_DETACHED_JOBS;
   state.activeJobCountCallbacks = [];
 }
 
@@ -270,11 +233,6 @@ export function startDetachedJob(options: StartDetachedJobOptions): DetachedJobL
     startedAt: options.startedAt,
     carriers: options.carrierIds,
   });
-  if (!permit.accepted) {
-    const response = launchResponseResult({ job_id: jobId, accepted: false, error: permit.error });
-    return { accepted: false, response };
-  }
-
   createJobArchive(jobId, options.startedAt);
   const jobController = new AbortController();
   registerJobAbortController(jobId, jobController);
@@ -302,13 +260,13 @@ export async function rollbackRejectedDetachedJob(options: RollbackRejectedDetac
   }
 }
 
-function notifyActiveJobCountChange(state: GuardState): void {
+function notifyActiveJobCountChange(state: JobTrackingState): void {
   const count = state.activeJobs.size;
   for (const callback of state.activeJobCountCallbacks) {
     try { callback(count); } catch { /* ignore listener failures */ }
   }
 }
 
-function getGuardState(): GuardState {
-  return guardState;
+function getJobTrackingState(): JobTrackingState {
+  return jobTrackingState;
 }
