@@ -108,9 +108,6 @@ function CarrierSettingsSection() {
             onSelect={() => selectCarrierSettingsCarrier(carrier.carrierId)}
           />
         ))}
-        <button type="button" className="terminal-carriers-action-button terminal-carriers-strip-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
-          Refresh
-        </button>
       </div>
 
       {activeCarrier && settings.options && activeCli ? (
@@ -156,10 +153,6 @@ function CarrierSettingsSection() {
                 <div className="terminal-carriers-captain-role">{activeCarrier.role}</div>
               </div>
               <div className="terminal-carriers-detail-actions">
-                <div className="terminal-carriers-cli-badge">
-                  <span className="ind" aria-hidden="true" />
-                  {activeCarrier.cliType}
-                </div>
                 <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
                   {saveStatus === "saving" || isSavingAll ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
                 </div>
@@ -169,6 +162,9 @@ function CarrierSettingsSection() {
                   </button>
                   <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={handleDiscard}>
                     Discard
+                  </button>
+                  <button type="button" className="terminal-carriers-action-button terminal-carriers-detail-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
+                    Refresh
                   </button>
                 </div>
               </div>
@@ -227,6 +223,10 @@ function CarrierSettingsSection() {
       ) : (
         <section className="global-settings-card terminal-carriers-card">
           <p className="terminal-carriers-empty">Select a carrier.</p>
+          {/* 선택된 함장이 없어도 로스터 재조회 경로는 남겨 둔다. */}
+          <button type="button" className="terminal-carriers-action-button" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
+            Refresh
+          </button>
         </section>
       )}
     </>
