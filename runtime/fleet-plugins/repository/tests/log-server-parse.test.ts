@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../server/git-executor.js";
-import { annotateHeadReachability, handleRepositoryLog, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
+import { annotateHeadReachability, handleRepositoryLog, isCanonicalRepositoryRef, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -16,11 +16,11 @@ async function initGitRepo(dir: string): Promise<void> {
   await runGit(["config", "user.name", "Test"], { cwd: dir });
 }
 
-function makeLogContext(theaterPath: string, writes: { status: number; payload: unknown }[]): FleetPluginServerContext {
+function makeLogContext(theaterPath: string, writes: { status: number; payload: unknown }[], body: unknown = { theaterId: "theater" }): FleetPluginServerContext {
   return {
     host: {
       http: {
-        readJsonBody: async () => ({ theaterId: "theater" }),
+        readJsonBody: async () => body,
         writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
       },
       security: { isTerminalAuthorized: () => true },
@@ -142,6 +142,37 @@ describe("handleRepositoryLog", () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("accepts canonical local refs with underscore and non-ASCII names", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+    await fs.writeFile(path.join(repoDir, "entry.txt"), "history");
+    await runGit(["add", "entry.txt"], { cwd: repoDir });
+    await runGit(["commit", "-m", "history"], { cwd: repoDir });
+    await runGit(["branch", "_valid"], { cwd: repoDir });
+    await runGit(["branch", "기능"], { cwd: repoDir });
+
+    for (const ref of ["refs/heads/_valid", "refs/heads/기능"]) {
+      const writes: { status: number; payload: unknown }[] = [];
+      await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes, { theaterId: "theater", ref }));
+      expect(writes[0]?.status).toBe(200);
+    }
+  });
+
+  it("rejects invalid dot-dot and empty ref components as invalid_ref", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+
+    expect(isCanonicalRepositoryRef("refs/heads/a..b")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/a//b")).toBe(false);
+    for (const ref of ["refs/heads/a..b", "refs/heads/a//b"]) {
+      const writes: { status: number; payload: unknown }[] = [];
+      await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes, { theaterId: "theater", ref }));
+      expect(writes).toEqual([{ status: 400, payload: { error: "invalid_ref" } }]);
+    }
   });
 
   it("bare 저장소에서 current 경로 없이 history와 경로 없는 checkout payload를 반환한다", async () => {

@@ -19,12 +19,16 @@ interface ParsedWorktree {
 
 // porcelain HEAD 라인에서 파싱된 값만 rev 인자로 허용하는 방어 검증
 const WORKTREE_SHA_RE = /^[0-9a-f]{40}$/;
-const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\/[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\//;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isCanonicalRepositoryRef(ref: string): boolean {
+  return CANONICAL_REF_RE.test(ref) && !ref.startsWith("-") && !ref.includes("..") && !ref.includes("//");
 }
 
 export function parseLogOutput(stdout: string): LogCommitEntry[] {
@@ -182,13 +186,13 @@ export async function handleRepositoryLog(
   const { gitCwd } = cwdResult;
 
   const requestedRef = body.ref;
-  if (requestedRef !== undefined && (typeof requestedRef !== "string" || requestedRef.startsWith("-") || !CANONICAL_REF_RE.test(requestedRef))) {
+  if (requestedRef !== undefined && (typeof requestedRef !== "string" || !isCanonicalRepositoryRef(requestedRef))) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_ref" }); return;
   }
 
   try {
     const resolvedRef = typeof requestedRef === "string"
-      ? (await runGit(["rev-parse", "--verify", `${requestedRef}^{commit}`], { cwd: gitCwd })).stdout.trim()
+      ? (await runGit(["rev-parse", "--verify", "--end-of-options", `${requestedRef}^{commit}`], { cwd: gitCwd })).stdout.trim()
       : null;
     const [worktrees, currentWorktreePath, headRevList] = await Promise.all([
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
@@ -213,6 +217,10 @@ export async function handleRepositoryLog(
     ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
+      if (requestedRef !== undefined && error.code === "non_zero_exit") {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_ref" });
+        return;
+      }
       if (error.code === "no_git_repo") {
         ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
         return;

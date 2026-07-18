@@ -1,23 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
-import type { RailPanelContext } from "@fleet-console/sdk/rail";
-
-import type { DiffFileEntry, DiffListResult } from "../server/types.js";
+import type { DiffFileEntry } from "../server/types.js";
 import { DiffTreeView } from "./repository-tree.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
-type LoadState =
+export type ChangedFilesState =
   | { readonly kind: "loading" }
   | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[] }
   | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
   | { readonly kind: "error"; readonly message: string };
 
 interface ChangedFilesProps {
-  readonly ctx: RailPanelContext;
+  readonly state: ChangedFilesState;
+  readonly onRetry: () => void;
   readonly viewMode: "list" | "tree";
   readonly selectedPath: string | null;
-  readonly subPath: string;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly filterText: string;
 }
@@ -57,46 +55,8 @@ function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect, filterText }: ChangedFilesProps) {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [refreshToken, setRefreshToken] = useState(0);
+export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText }: ChangedFilesProps) {
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
-
-  useEffect(() => {
-    if (!ctx.theaterId) {
-      setState({ kind: "error", message: "no_theater" });
-      return;
-    }
-    let cancelled = false;
-    setState({ kind: "loading" });
-
-    fetch("/plugins/repository/changed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, subPath }),
-    }).then(async (res) => {
-      if (!res.ok) {
-        const payload = await res.json() as { error?: string };
-        const code = payload.error ?? "git_failed";
-        if (!cancelled) {
-          if (code === "no_git_repo" || code === "git_unavailable") {
-            setState({ kind: "notice", reason: code });
-          } else {
-            setState({ kind: "error", message: code });
-          }
-        }
-        return;
-      }
-      const data = await res.json() as DiffListResult;
-      if (!cancelled) setState({ kind: "ok", files: data.files });
-    }).catch((err: unknown) => {
-      if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
-    });
-
-    return () => { cancelled = true; };
-  }, [ctx.theaterId, subPath, refreshToken]);
-
-  const handleRetry = useCallback(() => setRefreshToken((t) => t + 1), []);
 
   const handleToggleChanges = useCallback(() => {
     setChangesCollapsed((v) => {
@@ -125,7 +85,7 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect, f
       <div className="repository-sections-notice">
         <strong className="repository-notice-title">{title}</strong>
         <span className="repository-notice-body">{body}</span>
-        <button type="button" className="repository-refresh-btn" onClick={handleRetry}>Retry</button>
+        <button type="button" className="repository-refresh-btn" onClick={onRetry}>Retry</button>
       </div>
     );
   }
@@ -134,7 +94,7 @@ export function ChangedFiles({ ctx, viewMode, selectedPath, subPath, onSelect, f
     return (
       <div className="repository-sections-error">
         <span>{state.message}</span>
-        <button type="button" className="repository-refresh-btn" onClick={handleRetry}>Retry</button>
+        <button type="button" className="repository-refresh-btn" onClick={onRetry}>Retry</button>
       </div>
     );
   }
