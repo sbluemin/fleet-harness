@@ -7,7 +7,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import "@fleet-console/markdown/styles.css";
 import { fetchPlanRead, fetchPlansList, type PlanListItem, type PlanReadResult } from "../api.js";
 import "./plans.css";
-import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
+import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planLaneHeadingMatches, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
 import { subscribeToPlanChanges } from "./plans-events.js";
 
 interface PlansListProps {
@@ -346,7 +346,9 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
   const jumpToHeading = useCallback((level: "h2" | "h3", heading: string) => {
     const root = markdownRootRef.current;
     if (!root) return;
-    const target = [...root.querySelectorAll(level)].find((element) => normalizePlanHeading(element.textContent ?? "") === normalizePlanHeading(heading));
+    const target = [...root.querySelectorAll(level)].find((element) => level === "h3"
+      ? planLaneHeadingMatches(element.textContent ?? "", heading)
+      : normalizePlanHeading(element.textContent ?? "") === normalizePlanHeading(heading));
     if (!target) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });

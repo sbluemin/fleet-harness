@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled, normalizePlanHeading, planListSignature } from "../core/client/src/rail/plans-helpers.js";
+import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled, normalizePlanHeading, planLaneHeadingMatches, planListSignature } from "../core/client/src/rail/plans-helpers.js";
 
 const NOW = Date.UTC(2026, 6, 10, 0, 0, 0);
 
@@ -83,5 +83,12 @@ describe("Plans live-view helpers", () => {
     expect(planListSignature(plans[0]!)).not.toBe(planListSignature({ ...plans[0]!, tasksDone: 2 }));
     expect(normalizePlanHeading("  Wave 1\n  Build  ")).toBe("Wave 1 Build");
     expect(normalizePlanHeading("Lane W1-A")).toBe("Lane W1-A");
+  });
+
+  it("matches rendered lane headings whose Lane prefix the parser strips", () => {
+    expect(planLaneHeadingMatches("Lane W1-A \u2014 Build", "W1-A \u2014 Build")).toBe(true);
+    expect(planLaneHeadingMatches("lane  W1-A \u2014 Build", "W1-A \u2014 Build")).toBe(true);
+    expect(planLaneHeadingMatches("Lane W1-A \u2014 Build", "Lane W1-A \u2014 Build")).toBe(true);
+    expect(planLaneHeadingMatches("Lane W1-B \u2014 Build", "W1-A \u2014 Build")).toBe(false);
   });
 });

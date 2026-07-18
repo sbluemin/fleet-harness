@@ -82,7 +82,7 @@ describe("Plans watcher registry", () => {
       watcher.listen(listener);
       return watcher;
     });
-    const registry = createPlansWatcherRegistry(factory);
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => true);
     const first = vi.fn();
     const second = vi.fn();
     const unsubscribeFirst = registry.subscribe("/safe/plans", first, vi.fn());
@@ -112,7 +112,7 @@ describe("Plans watcher registry", () => {
       watcher.listen(listener);
       return watcher;
     });
-    const registry = createPlansWatcherRegistry(factory);
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => true);
     const onChange = vi.fn();
     const onClose = vi.fn();
     const unsubscribe = registry.subscribe("/safe/plans", onChange, onClose);
@@ -137,6 +137,28 @@ describe("Plans watcher registry", () => {
     registry.subscribe("/safe/plans", vi.fn(), onClose);
 
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("closes the subscription instead of signaling when the watched directory disappears", () => {
+    vi.useFakeTimers();
+    const watcher = new FakeWatcher();
+    const factory = vi.fn((_path: string, _options: { readonly recursive: boolean }, listener: Parameters<PlansWatcherFactory>[2]) => {
+      watcher.listen(listener);
+      return watcher;
+    });
+    let exists = true;
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => exists);
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    registry.subscribe("/safe/plans", onChange, onClose);
+
+    exists = false;
+    watcher.change();
+    vi.advanceTimersByTime(PLANS_WATCH_DEBOUNCE_MS);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(watcher.close).toHaveBeenCalledOnce();
   });
 });
 

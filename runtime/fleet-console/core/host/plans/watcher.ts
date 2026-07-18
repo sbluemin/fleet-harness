@@ -32,6 +32,7 @@ export const PLANS_WATCH_DEBOUNCE_MS = 200;
 export function createPlansWatcherRegistry(
   watcherFactory: PlansWatcherFactory = (watchPath, options, listener) => fs.watch(watchPath, options, listener),
   debounceMs = PLANS_WATCH_DEBOUNCE_MS,
+  directoryExists: (watchPath: string) => boolean = (watchPath) => fs.existsSync(watchPath),
 ): PlansWatcherRegistry {
   const entries = new Map<string, WatchEntry>();
 
@@ -65,6 +66,13 @@ export function createPlansWatcherRegistry(
     try {
       const watcher = watcherFactory(watchPath, { recursive: false }, () => {
         if (entry.closed) return;
+        // 감시 대상 디렉터리 자체가 삭제되면 fs.watch는 죽은 inode에 붙은 채 이후 이벤트를
+        // 놓친다 — 구독을 종료 전파해 SSE를 닫고, 클라이언트 재연결 경로가 재생성된
+        // 디렉터리로 새 워처를 붙이게 한다.
+        if (!directoryExists(watchPath)) {
+          closeEntry(watchPath, entry, true);
+          return;
+        }
         if (entry.timer) clearTimeout(entry.timer);
         entry.timer = setTimeout(() => {
           entry.timer = null;
