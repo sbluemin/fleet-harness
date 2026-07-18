@@ -80,7 +80,7 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.captureMissing, "Analysis capture is unavailable.");
     return true;
   }
-  const transcriptPath = capture.transcriptPath ? await resolveTranscriptPath(capture.transcriptPath) : null;
+  const transcriptPath = capture.transcriptPath ? await resolveTranscriptPath(capture.transcriptPath, operation.ts.createdAt) : null;
   if (!transcriptPath) {
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.transcriptMissing, "Analysis transcript is unavailable.");
     return true;
@@ -139,10 +139,13 @@ async function handleStop(ctx: FleetPluginServerContext, req: http.IncomingMessa
 
 // Claude Code는 SessionStart 훅 시점의 세션 ID로 캡처를 남기지만, 실제 대화 트랜스크립트는
 // 다른 세션 ID 파일로 기록될 수 있다. 캡처 경로가 비어 있으면 같은 프로젝트 디렉터리에서
-// 가장 최근에 갱신된 트랜스크립트(현재 활성 세션)로 폴백한다.
-async function resolveTranscriptPath(capturePath: string): Promise<string | null> {
+// 이 Operation이 만들어진 이후에 생성된(birthtime) 트랜스크립트 중 최신본으로 폴백한다 —
+// 같은 프로젝트에서 동시 진행 중인 다른 세션(예: 별개 CLI 세션)의 파일을 집지 않기 위한 경계다.
+// birthtime을 못 주는 파일시스템(0 이하)은 후보에 포함해 기존 최신-mtime 동작으로 강등한다.
+async function resolveTranscriptPath(capturePath: string, operationCreatedAt: number): Promise<string | null> {
   if (await fileExists(capturePath)) return capturePath;
   const dir = path.dirname(capturePath);
+  const bornCutoff = operationCreatedAt - 60_000;
   try {
     const entries = await fs.readdir(dir);
     let latest: { readonly file: string; readonly mtimeMs: number } | null = null;
@@ -150,7 +153,9 @@ async function resolveTranscriptPath(capturePath: string): Promise<string | null
       if (!entry.endsWith(".jsonl")) continue;
       const candidate = path.join(dir, entry);
       const stat = await fs.stat(candidate).catch(() => null);
-      if (stat?.isFile() && (!latest || stat.mtimeMs > latest.mtimeMs)) latest = { file: candidate, mtimeMs: stat.mtimeMs };
+      if (!stat?.isFile()) continue;
+      if (stat.birthtimeMs > 0 && stat.birthtimeMs < bornCutoff) continue;
+      if (!latest || stat.mtimeMs > latest.mtimeMs) latest = { file: candidate, mtimeMs: stat.mtimeMs };
     }
     return latest?.file ?? null;
   } catch {
