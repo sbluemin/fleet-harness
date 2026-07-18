@@ -21,7 +21,7 @@
 
 .command-band {
   display: grid;
-  grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(var(--command-band-right-width, 44px), 1fr);
+  grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);
   flex: none;
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);

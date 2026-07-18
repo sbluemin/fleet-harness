@@ -172,9 +172,7 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".side-bar-formation-group {");
     expect(components).toContain("border-left: 1px solid var(--surface-rim);");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
-    expect(commandBand).toContain("useRightRailWidth");
-    expect(commandBand).toContain('"--command-band-right-width": `${rightRailWidth}px`');
-    expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(var(--command-band-right-width, 44px), 1fr);");
+    expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
     expect(layout).toContain("width: var(--command-band-left-width, 280px);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
@@ -183,9 +181,12 @@ describe("Instrument core design contract", () => {
     expect(commandBandRightBlocks.some((block) => block.includes("justify-content: flex-end;"))).toBe(true);
     const rightRail = source("rail/right-rail.tsx");
     const railStore = source("rail/rail-store.ts");
-    expect(rightRail).toContain("new ResizeObserver(publishWidth)");
-    expect(rightRail).toContain("setRightRailWidth(root.getBoundingClientRect().width)");
-    expect(railStore).toContain("export function useRightRailWidth(): number");
+    for (const legacyRightRailCoupling of ["rightRailWidth", "setRightRailWidth", "useRightRailWidth", "--command-band-right-width"]) {
+      expect(commandBand).not.toContain(legacyRightRailCoupling);
+      expect(rightRail).not.toContain(legacyRightRailCoupling);
+      expect(railStore).not.toContain(legacyRightRailCoupling);
+    }
+    expect(rightRail).not.toContain("ResizeObserver");
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
     // 브랜드 홈(a)·rename(input)까지 no-drag — button만 겨냥하면 데스크톱 드래그 영역이 클릭을 삼킨다.
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band button,');
