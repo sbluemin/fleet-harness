@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import net from "node:net";
@@ -54,6 +54,29 @@ describe("createWikiWorkspaceResolver", () => {
     await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("preserves contained relative file symlinks without dereferencing or changing the source", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    const source = path.join(cwd, ".fleet", "knowledge");
+    await mkdir(path.join(source, "schema"), { recursive: true });
+    await writeFile(path.join(source, "AGENTS.md"), "root doctrine\n");
+    await writeFile(path.join(source, "schema", "AGENTS.md"), "schema doctrine\n");
+    await symlink("AGENTS.md", path.join(source, "CLAUDE.md"));
+    await symlink("AGENTS.md", path.join(source, "schema", "CLAUDE.md"));
+
+    const paths = resolver.resolve(cwd);
+    for (const relative of ["CLAUDE.md", path.join("schema", "CLAUDE.md")]) {
+      const sourceLink = path.join(source, relative);
+      const destinationLink = path.join(paths.root, relative);
+      expect((await lstat(destinationLink)).isSymbolicLink()).toBe(true);
+      await expect(readlink(destinationLink)).resolves.toBe("AGENTS.md");
+      expect((await lstat(sourceLink)).isSymbolicLink()).toBe(true);
+      await expect(readlink(sourceLink)).resolves.toBe("AGENTS.md");
+    }
+    await expect(readFile(path.join(paths.root, "CLAUDE.md"), "utf8")).resolves.toBe("root doctrine\n");
+    await expect(readFile(path.join(paths.schemaDir, "CLAUDE.md"), "utf8")).resolves.toBe("schema doctrine\n");
+    expect(resolver.resolve(cwd)).toMatchObject({ root: paths.root });
+  });
+
   it("leaves a destination regular file entirely untouched and does not create a marker", async () => {
     const { cwd, workspace, resolver } = await fixture();
     await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
@@ -84,11 +107,15 @@ describe("createWikiWorkspaceResolver", () => {
     const stagingFile = path.join(workspace, `knowledge.migrating-${transactionId}`, "wiki", "entry.md");
     await mkdir(path.dirname(stagingFile), { recursive: true });
     await writeFile(stagingFile, "staged");
+    await writeFile(path.join(workspace, `knowledge.migrating-${transactionId}`, "AGENTS.md"), "staged doctrine");
+    await symlink("AGENTS.md", path.join(workspace, `knowledge.migrating-${transactionId}`, "CLAUDE.md"));
     await writeFile(path.join(workspace, "knowledge.migrated.json"), JSON.stringify({ version: 1, outcome: "copied", transactionId, completedAt: "2026-07-17T00:00:00.000Z" }));
     await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
     await writeFile(path.join(cwd, ".fleet", "knowledge", "legacy.md"), "must not copy");
     const paths = resolver.resolve(cwd);
     await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).resolves.toBe("staged");
+    expect((await lstat(path.join(paths.root, "CLAUDE.md"))).isSymbolicLink()).toBe(true);
+    await expect(readlink(path.join(paths.root, "CLAUDE.md"))).resolves.toBe("AGENTS.md");
     await expect(readFile(path.join(paths.root, "legacy.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -164,6 +191,41 @@ describe("createWikiWorkspaceResolver", () => {
     await mkdir(path.join(workspace, "knowledge"), { recursive: true });
     await symlink(path.join(cwd, "missing"), path.join(workspace, "knowledge", "unsafe"));
     expect(() => resolver.resolve(cwd)).toThrow(/Unsafe/);
+  });
+
+  it("rejects absolute, escaping, dangling, and directory symlinks before creating migration artifacts", async () => {
+    const absolute = await fixture();
+    const absoluteSource = path.join(absolute.cwd, ".fleet", "knowledge");
+    await mkdir(absoluteSource, { recursive: true });
+    await writeFile(path.join(absoluteSource, "target.md"), "target");
+    await symlink(path.join(absoluteSource, "target.md"), path.join(absoluteSource, "absolute.md"));
+    expect(() => absolute.resolver.resolve(absolute.cwd)).toThrow(/Unsafe/);
+
+    const escaping = await fixture();
+    const escapingSource = path.join(escaping.cwd, ".fleet", "knowledge");
+    const outside = path.join(escaping.cwd, "outside.md");
+    await mkdir(escapingSource, { recursive: true });
+    await writeFile(outside, "outside");
+    await symlink(path.relative(escapingSource, outside), path.join(escapingSource, "escaping.md"));
+    expect(() => escaping.resolver.resolve(escaping.cwd)).toThrow(/Unsafe/);
+
+    const dangling = await fixture();
+    const danglingSource = path.join(dangling.cwd, ".fleet", "knowledge");
+    await mkdir(danglingSource, { recursive: true });
+    await symlink("missing.md", path.join(danglingSource, "dangling.md"));
+    expect(() => dangling.resolver.resolve(dangling.cwd)).toThrow(/Unsafe/);
+
+    const directory = await fixture();
+    const directorySource = path.join(directory.cwd, ".fleet", "knowledge");
+    await mkdir(path.join(directorySource, "docs"), { recursive: true });
+    await writeFile(path.join(directorySource, "docs", "entry.md"), "entry");
+    await symlink("docs", path.join(directorySource, "docs-link"));
+    expect(() => directory.resolver.resolve(directory.cwd)).toThrow(/Unsafe/);
+
+    for (const state of [absolute, escaping, dangling, directory]) {
+      await expect(readFile(path.join(state.workspace, "knowledge.migrated.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(fs.readdirSync(state.workspace).some((name) => name.startsWith("knowledge.migrating-"))).toBe(false);
+    }
   });
 
   it("leaves no marker or destination after a copy failure, then safely retries from rebuilt staging", async () => {

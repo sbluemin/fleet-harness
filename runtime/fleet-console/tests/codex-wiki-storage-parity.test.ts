@@ -1,4 +1,4 @@
-import { access, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +29,8 @@ describe("Console and injected Wiki tools share Theater-root storage", () => {
     const nestedSource = path.join(fixture.theaterA, "nested", ".fleet", "knowledge");
     await writeEntry(source, ROOT_ENTRY, "Root Console entry", "migrated root body");
     await writeEntry(nestedSource, NESTED_DECOY, "Nested decoy", "must never migrate");
+    await writeFile(path.join(source, "AGENTS.md"), "Fleet Wiki doctrine\n");
+    await symlink("AGENTS.md", path.join(source, "CLAUDE.md"));
     const sourceBytes = await snapshot(source);
 
     const theater = await registerTheater(fixture.endpoint, fixture.theaterA);
@@ -56,6 +58,9 @@ describe("Console and injected Wiki tools share Theater-root storage", () => {
 
     const destination = path.join(workspace.path, "knowledge");
     expect(await readFile(path.join(destination, "wiki", `${ROOT_ENTRY}.md`), "utf8")).toContain("migrated root body");
+    expect((await lstat(path.join(destination, "CLAUDE.md"))).isSymbolicLink()).toBe(true);
+    await expect(readlink(path.join(destination, "CLAUDE.md"))).resolves.toBe("AGENTS.md");
+    await expect(readlink(path.join(source, "CLAUDE.md"))).resolves.toBe("AGENTS.md");
     await expect(access(path.join(destination, "wiki", `${NESTED_DECOY}.md`))).rejects.toMatchObject({ code: "ENOENT" });
     expect(await snapshot(source)).toEqual(sourceBytes);
     expect(JSON.parse(await readFile(path.join(workspace.path, "knowledge.migrated.json"), "utf8"))).toMatchObject({ version: 1, outcome: "copied" });
