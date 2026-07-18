@@ -3213,6 +3213,10 @@
     opacity var(--duration-base) var(--ease-spring);
 }
 
+.canvas-operation-window-controls > .canvas-operation-icon-button:last-child {
+  margin-inline-end: var(--space-1);
+}
+
 .canvas-operation-controls-divider {
   flex: none;
   width: 1px;
