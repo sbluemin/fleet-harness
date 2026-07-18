@@ -8,6 +8,7 @@ import type { AnalystArtifact, SessionToolOptions } from "./types.js";
 
 const exec = promisify(execFile);
 const MAX_ARTIFACT_BYTES = 50 * 1024;
+const MAX_ARTIFACTS = 20;
 
 interface ToolMetadata {
   readonly id: string;
@@ -137,6 +138,7 @@ export class AnalystTools {
     if (Buffer.byteLength(html, "utf8") > MAX_ARTIFACT_BYTES) throw new Error("Artifact exceeds 50 KiB");
     const artifact = { id: crypto.randomUUID(), title, html, createdAt: new Date().toISOString() };
     this.artifacts.unshift(artifact);
+    if (this.artifacts.length > MAX_ARTIFACTS) this.artifacts.splice(MAX_ARTIFACTS);
     this.options.onEvent?.({ type: "artifact", artifact });
     return { artifact: { id: artifact.id, title, createdAt: artifact.createdAt } };
   }

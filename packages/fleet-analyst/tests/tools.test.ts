@@ -70,4 +70,20 @@ describe("AnalystTools", () => {
 
     expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ html }) })]);
   });
+
+  it("keeps only the 20 newest in-memory artifacts", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    await writeFile(file, "");
+    const tools = new AnalystTools({ capturePath: file, cwd: process.cwd() });
+    const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
+
+    for (let index = 0; index < 21; index += 1) {
+      await publish.execute({ title: `Artifact ${index}`, html: `<p>${index}</p>` }, {} as never);
+    }
+
+    const artifacts = (tools as unknown as { artifacts: { title: string }[] }).artifacts;
+    expect(artifacts).toHaveLength(20);
+    expect(artifacts[0]?.title).toBe("Artifact 20");
+    expect(artifacts.at(-1)?.title).toBe("Artifact 1");
+  });
 });

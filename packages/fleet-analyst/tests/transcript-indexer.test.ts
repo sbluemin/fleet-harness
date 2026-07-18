@@ -113,8 +113,52 @@ describe("TranscriptIndexer", () => {
     expect(indexer.all.length).toBeGreaterThan(0);
     expect(indexer.all.at(-1)?.summary).toBe("tail-event");
     expect(indexer.outline()).toMatchObject({
+      truncated: true,
       gaps: [{ startOffset: 0, endOffset: expect.any(Number), skippedBytes: expect.any(Number) }],
     });
+  });
+
+  it("redacts sensitive transcript forms while preserving prose and repository-relative paths", async () => {
+    const indexer = new TranscriptIndexer(await copyFixture("redaction-cases.jsonl"));
+    await indexer.refresh();
+
+    const exposed = indexer.all.map((event) => event.summary).join("\n");
+    for (const secret of [
+      "hunter-two", "legacy-pass", "db-pass", "service-secret-value", "access-token-value",
+      "cloud-credential-value", "private-key-value", "provider-session-value", "dXNlcjpwYXNzd29yZA==",
+      "private-key-material", "eyJhbGciOiJIUzI1NiJ9", "cookie-secret", "set-cookie-secret",
+      "ses_providerSecret42", "sess-providerSecret43", "/etc/ssh/sshd_config",
+    ]) expect(exposed).not.toContain(secret);
+    expect(exposed).toContain("packages/fleet-analyst/src/session.ts");
+    expect(exposed).toContain("The session analysis is ordinary prose.");
+    expect(exposed).toContain("[REDACTED_PEM_KEY]");
+    expect(exposed).toContain("[REDACTED_JWT]");
+    expect(exposed).toContain("…/ssh/sshd_config");
+  });
+
+  it("caps cumulative events at 20,000, evicts the oldest, and records truncation", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    const records = Array.from({ length: 20_001 }, (_, index) => JSON.stringify({ type: "assistant", message: { content: `event-${index}` } }));
+    await writeFile(file, `${records.join("\n")}\n`);
+    const indexer = new TranscriptIndexer(file);
+
+    await indexer.refresh();
+
+    expect(indexer.all).toHaveLength(20_000);
+    expect(indexer.all[0]).toMatchObject({ ref: "e2", summary: "event-1" });
+    expect(indexer.all.at(-1)).toMatchObject({ ref: "e20001", summary: "event-20000" });
+    expect(indexer.outline()).toMatchObject({ truncated: true, gaps: [expect.any(Object)] });
+  });
+
+  it("caps cumulative gap records at 200", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    const records = Array.from({ length: 20_201 }, (_, index) => JSON.stringify({ type: "assistant", message: { content: `event-${index}` } }));
+    await writeFile(file, `${records.join("\n")}\n`);
+    const indexer = new TranscriptIndexer(file);
+
+    await indexer.refresh();
+
+    expect(indexer.outline().gaps).toHaveLength(200);
   });
 });
 

@@ -6,6 +6,8 @@ import type { SessionOutline, TranscriptEvent, TranscriptIndexerOptions, Transcr
 const DEFAULT_MAX_READ = 4 * 1024 * 1024;
 const DEFAULT_MAX_REFRESH = 32 * 1024 * 1024;
 const CONTINUITY_BYTES = 4 * 1024;
+const MAX_EVENTS = 20_000;
+const MAX_GAPS = 200;
 
 interface TranscriptGap {
   readonly startOffset: number;
@@ -23,6 +25,7 @@ export class TranscriptIndexer {
   private remainder = Buffer.alloc(0);
   private continuitySentinel: Buffer | null = null;
   private refreshFlight: Promise<readonly TranscriptEvent[]> | null = null;
+  private nextEventNumber = 1;
 
   constructor(private readonly capturePath: string, options: TranscriptIndexerOptions = {}) {
     this.maxReadBytes = positiveInteger(options.maxReadBytes, DEFAULT_MAX_READ);
@@ -36,6 +39,7 @@ export class TranscriptIndexer {
       eventCount: this.events.length,
       fileTouchCount: new Set(this.events.map((event) => event.targetPath).filter(Boolean)).size,
       stages: [...new Set(this.events.map((event) => event.stage).filter((stage): stage is string => !!stage))],
+      truncated: this.gaps.length > 0,
     };
     return this.gaps.length > 0 ? { ...outline, gaps: this.gaps.map((gap) => ({ ...gap })) } : outline;
   }
@@ -63,7 +67,7 @@ export class TranscriptIndexer {
       const unreadBytes = Math.max(0, stat.size - this.offset);
       if (unreadBytes > this.maxRefreshBytes) {
         const nextOffset = Math.max(0, stat.size - this.maxReadBytes);
-        this.gaps.push({ startOffset: this.offset, endOffset: nextOffset, skippedBytes: nextOffset - this.offset });
+        this.addGap({ startOffset: this.offset, endOffset: nextOffset, skippedBytes: nextOffset - this.offset });
         this.offset = nextOffset;
         this.remainder = Buffer.alloc(0);
         discardPartialLine = this.offset > 0;
@@ -107,13 +111,27 @@ export class TranscriptIndexer {
     this.remainder = Buffer.alloc(0);
     this.events.length = 0;
     this.gaps.length = 0;
+    this.nextEventNumber = 1;
   }
 
   private addLine(line: string, offset: number): void {
     if (!line.trim()) return;
     let value: Record<string, unknown>;
     try { value = JSON.parse(line) as Record<string, unknown>; } catch { return; }
-    for (const event of normalize(value, this.events.length + 1, offset)) this.events.push(event);
+    const normalized = normalize(value, this.nextEventNumber, offset);
+    this.nextEventNumber += normalized.length;
+    this.events.push(...normalized);
+    const overflow = this.events.length - MAX_EVENTS;
+    if (overflow <= 0) return;
+    const evicted = this.events.splice(0, overflow);
+    const startOffset = evicted[0]?.offset ?? offset;
+    const endOffset = this.events[0]?.offset ?? (evicted.at(-1)?.offset ?? offset);
+    this.addGap({ startOffset, endOffset, skippedBytes: Math.max(0, endOffset - startOffset) });
+  }
+
+  private addGap(gap: TranscriptGap): void {
+    this.gaps.push(gap);
+    if (this.gaps.length > MAX_GAPS) this.gaps.splice(0, this.gaps.length - MAX_GAPS);
   }
 }
 
@@ -183,16 +201,21 @@ function safePath(value: string | undefined): string | undefined {
 
 function truncate(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 
-function redactTranscriptString(value: string): string {
+export function redactTranscriptString(value: string): string {
   return value
+    .replace(/-----BEGIN [^-\r\n]*KEY-----[\s\S]*?-----END [^-\r\n]*KEY-----/gi, "[REDACTED_PEM_KEY]")
     .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]*mcp[^\s"'<>]*/gi, "[MCP_URL]")
+    .replace(/\bAuthorization\s*[:=]\s*Basic\s+[A-Za-z0-9+/]+={0,2}/gi, "Authorization: [REDACTED]")
     .replace(/\bAuthorization\s*[:=]\s*(?:Bearer\s+)?[^\s,;"'<>]+/gi, "Authorization: [REDACTED]")
+    .replace(/\b(Set-Cookie|Cookie)\s*:\s*[^\r\n]+/gi, "$1: [REDACTED]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]")
     .replace(/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|npm_[A-Za-z0-9]{8,}|xox[A-Za-z]-[A-Za-z0-9-]{8,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,})\b/g, "[REDACTED]")
-    .replace(/\b(api[_-]?key|access[_-]?token|client[_-]?secret|secret)\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{8,}["']?/gi, "$1=[REDACTED]")
+    .replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g, "[REDACTED_JWT]")
+    .replace(/\b(?:ses_[A-Za-z0-9_-]{4,}|sess-[A-Za-z0-9_-]{4,})\b/g, "[SESSION_ID]")
+    .replace(/\b([A-Za-z_][A-Za-z0-9_-]*(?:password|passwd|pwd|secret|token|credential|private[_-]?key|session(?:[_-]?(?:id|key|token))?))(\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi, "$1$2[REDACTED]")
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[SESSION_ID]")
     .replace(/\b[A-Za-z]:\\(?:[^\\\s"'<>|]+\\)+[^\\\s"'<>|]+/g, match => shortenAbsolutePath(match))
-    .replace(/\/(?:Users|home|private|var|tmp|opt|Volumes)\/(?:[^/\s"'<>]+\/)+[^/\s"'<>]+/g, match => shortenAbsolutePath(match));
+    .replace(/\/(?:Users|home|private|var|tmp|opt|Volumes|etc)\/(?:[^/\s"'<>]+\/)*[^/\s"'<>]+/g, match => shortenAbsolutePath(match));
 }
 
 function isWindowsAbsolute(value: string): boolean { return /^[A-Za-z]:\\/.test(value); }

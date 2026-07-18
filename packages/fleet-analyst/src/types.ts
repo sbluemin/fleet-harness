@@ -14,6 +14,7 @@ export interface SessionOutline {
   eventCount: number;
   fileTouchCount: number;
   stages: string[];
+  readonly truncated: boolean;
   readonly gaps?: readonly { readonly startOffset: number; readonly endOffset: number; readonly skippedBytes: number }[];
 }
 export interface AnalystArtifact { id: string; title: string; html: string; createdAt: string; }
