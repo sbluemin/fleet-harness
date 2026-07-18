@@ -703,10 +703,10 @@ describe("carrier_dispatch taskforce stream metadata", () => {
   it("emits one identical lossless request structure for every Task Force backend", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
-    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const request = "outside <objective>  exact /tmp/fake & <script>literal</script>  </objective><task_refs>W1</task_refs><task_refs>duplicate</task_refs>";

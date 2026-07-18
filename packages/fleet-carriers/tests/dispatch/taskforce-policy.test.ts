@@ -78,6 +78,7 @@ describe("Task Force capability policy", () => {
       registry,
       carrierId: "custom",
       request: "test",
+      parsedRequest: { blocks: [], additional: "test" },
       label: "guard",
       startedAt: Date.now(),
       toolName: "carrier_dispatch",

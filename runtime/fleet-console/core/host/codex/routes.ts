@@ -16,6 +16,7 @@ import {
 } from "@dotobokuri/fleet-wiki";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
 import type { MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
+import type { CoworkService } from "@dotobokuri/fleet-wiki/cowork";
 
 import type {
   ConflictDetailResponse,
@@ -36,7 +37,6 @@ import type {
 } from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { handleCoworkRequest } from "./cowork/routes.js";
-import type { CoworkService } from "./cowork/service.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,7 +95,8 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
   const url = new URL(request.url, "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/")) return false;
 
-  if (await handleCoworkRequest(request, response, context)) return true;
+  const coworkService = context.coworkService;
+  if (coworkService && await handleCoworkRequest(request, response, { ...context, coworkService })) return true;
 
   if (request.method === "POST") {
     try {
