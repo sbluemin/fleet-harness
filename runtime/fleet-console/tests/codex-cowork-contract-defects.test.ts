@@ -24,6 +24,22 @@ describe("Cowork contract defects", () => {
     expect((await service.get("workspace", session.id))?.state).toBe("applied");
   });
 
+  it("dispose releases live provider clients and returns running sessions to idle", async () => {
+    const connector = new FakeConnector();
+    const { service } = await fixture(connector);
+    const session = await service.create("workspace", "entry");
+    await service.prompt("workspace", session.id, "go");
+    expect((await service.get("workspace", session.id))?.state).toBe("running");
+
+    await service.dispose();
+
+    expect((await service.get("workspace", session.id))?.state).toBe("idle");
+    // 해체 이후 도착한 스테일 완료는 무시된다(새 실행을 오염시키지 않는다).
+    connector.client.emit("promptComplete");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect((await service.get("workspace", session.id))?.state).toBe("idle");
+  });
+
   it("accumulates fake connector chunks, emits SSE-safe events, and persists provider identity only in its session file", async () => {
     const connector = new FakeConnector();
     const { service, store } = await fixture(connector);

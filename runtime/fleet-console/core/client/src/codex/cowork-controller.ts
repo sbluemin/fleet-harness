@@ -6,6 +6,7 @@ import {
 } from "./api.js";
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
 import { diffDraftLines } from "./cowork-diff.js";
+import type { DraftLine } from "./cowork-diff.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
 
@@ -55,6 +56,17 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let promptText = "";
   let error = "";
   let lastBodyKey = "published";
+  let lastDockHtml: string | null = null;
+  let diffMemo: { base: string; draft: string; lines: readonly DraftLine[] } | null = null;
+
+  // SSE 이벤트마다 LCS를 다시 돌리지 않도록 draft 쌍 기준으로 메모한다.
+  const draftLines = (): readonly DraftLine[] => {
+    if (!session) return [];
+    if (!diffMemo || diffMemo.base !== session.baseDraft || diffMemo.draft !== session.draft) {
+      diffMemo = { base: session.baseDraft, draft: session.draft, lines: diffDraftLines(session.baseDraft, session.draft) };
+    }
+    return diffMemo.lines;
+  };
 
   const publishedHtml = options.body.innerHTML;
   const anchor = document.createElement("div");
@@ -74,7 +86,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     lastBodyKey = key;
     if (!engaged) { options.body.innerHTML = publishedHtml; return; }
     options.body.innerHTML = diffVisible
-      ? `<div class="cowork-diff" aria-label="Draft changes">${renderDiff(session!.baseDraft, session!.draft)}</div>`
+      ? `<div class="cowork-diff" aria-label="Draft changes">${renderDiffLines(draftLines())}</div>`
       : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id) }).html;
   };
 
@@ -99,12 +111,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (disposed) return;
     const engaged = !!session && session.state !== "closed" && session.state !== "applied";
     dockZone.classList.toggle("is-open", engaged);
-    if (!engaged) { dockZone.innerHTML = ""; return; }
+    if (!engaged) { dockZone.innerHTML = ""; lastDockHtml = null; return; }
     const running = session!.state === "running";
-    const changed = diffDraftLines(session!.baseDraft, session!.draft).filter(line => line.changed).length;
+    const changed = draftLines().filter(line => line.changed).length;
     const summary = summaryVisible ? [...activities].reverse().find(a => a.role === "assistant")?.text ?? "" : "";
     const ticker = [...activities].reverse().find(a => a.role === "tool")?.text ?? "AI is editing…";
-    dockZone.innerHTML = `
+    setDockHtml(`
       ${summary ? `<div class="cowork-summary" role="status"><span aria-hidden="true">✦</span><p>${escapeHtml(summary)}</p><button type="button" class="cowork-x" data-cowork-action="dismiss-summary" aria-label="Dismiss summary">×</button></div>` : ""}
       ${panelOpen ? renderPanel() : ""}
       ${configOpen ? renderConfig() : ""}
@@ -117,7 +129,30 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
              <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="Agent settings">${escapeHtml(settings.cli || "agent")}</button>
              <button type="button" class="cowork-send" data-cowork-action="send" aria-label="Send to AI">↑</button>`}
       </div>
-      ${error ? `<p class="cowork-error" role="alert">${escapeHtml(error)}</p>` : ""}`;
+      ${error ? `<p class="cowork-error" role="alert">${escapeHtml(error)}</p>` : ""}`);
+  };
+
+  // 스트리밍 중 동일 마크업 재구축은 등장 애니메이션 재시작(깜빡임)을 유발하므로,
+  // 실제 변경이 있을 때만 교체하고 포커스 중이던 입력은 복원한다.
+  const setDockHtml = (html: string) => {
+    if (html === lastDockHtml) return;
+    lastDockHtml = html;
+    const active = document.activeElement;
+    const focusKey = active instanceof HTMLInputElement && active.name === "prompt" && dockZone.contains(active)
+      ? "prompt"
+      : active instanceof HTMLTextAreaElement && active.dataset.coworkComment && dockZone.contains(active)
+        ? `comment:${active.dataset.coworkComment}`
+        : null;
+    dockZone.innerHTML = html;
+    if (focusKey === "prompt") {
+      const input = dockZone.querySelector<HTMLInputElement>(".cowork-dock-input");
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    } else if (focusKey?.startsWith("comment:")) {
+      const textarea = dockZone.querySelector<HTMLTextAreaElement>(`[data-cowork-comment="${CSS.escape(focusKey.slice(8))}"]`);
+      textarea?.focus();
+      textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
   };
 
   const renderPanel = () => `
@@ -160,7 +195,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const engage = async (next: CoworkSessionDto) => {
     session = next;
-    annotations = next.annotations.map(annotationFromDto);
+    // 지연 생성 경로에서는 서버에 아직 저장되지 않은 로컬 카드(첫 코멘트)를 보존해야 한다.
+    const restored = next.annotations.map(annotationFromDto);
+    const known = new Set(restored.map(card => card.id));
+    annotations = [...restored, ...annotations.filter(card => !known.has(card.id))];
     if (next.cli || next.model || next.effort) {
       settings = { cli: next.cli ?? settings.cli, model: next.model ?? settings.model, effort: next.effort ?? settings.effort };
       saveSettings(settings);
@@ -260,21 +298,32 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     }
   }
 
+  // Discard는 초안만 버린다 — 도크(작업 흐름)는 유지해야 하므로 곧바로 새 세션을 연다.
   async function discard(): Promise<void> {
     if (!session) return;
+    const closing = session.id;
     try {
-      await mutate(() => closeCowork(options.theaterId, session!.id));
-    } catch { return; }
+      error = "";
+      await closeCowork(options.theaterId, closing);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : "Cowork request failed.";
+      renderDock();
+      return;
+    }
     unsubscribe?.();
     unsubscribe = null;
-    session = null;
     lastEventId = 0;
     annotations = [];
     activities = [];
     confirmAction = null;
     summaryVisible = false;
     diffVisible = false;
-    redraw();
+    try {
+      await engage(await createCoworkSession(options.theaterId, options.entryId, settings));
+    } catch {
+      session = null;
+      redraw();
+    }
   }
 
   async function mutate(run: () => Promise<CoworkSessionDto>): Promise<void> {
@@ -293,8 +342,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   // ── 이벤트 ──────────────────────────────────────────────────────────────────
 
-  const onMouseUp = () => {
+  const onMouseUp = (event: MouseEvent) => {
     if (composerOpen || session?.state === "running") return;
+    // 필/컴포저 위에서의 mouseup은 앵커를 재구축하면 안 된다 — click 이벤트가
+    // 도달하기 전에 대상 요소가 교체되어 버튼이 무반응이 된다.
+    if (event.target instanceof Node && anchor.contains(event.target)) return;
     const range = window.getSelection();
     const quote = range?.toString().trim() ?? "";
     if (!quote || !range || range.rangeCount === 0 || !options.body.contains(range.anchorNode)) return;
@@ -310,6 +362,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const onMouseDown = (event: MouseEvent) => {
     if (!(event.target instanceof Element)) return;
+    // 필 클릭 시 브라우저의 선택 해제를 막아 하이라이트를 유지한다.
+    if (event.target.closest(".cowork-pill")) { event.preventDefault(); return; }
     if (!anchor.contains(event.target) && selection) { selection = null; composerOpen = false; renderAnchor(); }
   };
 
@@ -417,7 +471,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 function select(label: string, name: string, values: readonly string[], current: string): string {
   return `<label class="cowork-selector"><span>${label}</span><select name="${name}" ${values.length ? "" : "disabled"}>${values.map(value => `<option value="${escapeAttribute(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>`;
 }
-function renderDiff(base: string, draft: string): string { return diffDraftLines(base, draft).map((line, index) => `<div class="cowork-diff-line${line.changed ? " is-changed" : ""}"><span>${index + 1}</span><code>${escapeHtml(line.text)}</code></div>`).join(""); }
+function renderDiffLines(lines: readonly DraftLine[]): string { return lines.map((line, index) => `<div class="cowork-diff-line${line.changed ? " is-changed" : ""}"><span>${index + 1}</span><code>${escapeHtml(line.text)}</code></div>`).join(""); }
 function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, text: `[${card.quote}]\n${card.comment.trim() || "Please revise this passage."}` }; }
 function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard {
   const divider = dto.text.indexOf("]\n");

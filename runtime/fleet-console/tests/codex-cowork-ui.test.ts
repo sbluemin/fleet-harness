@@ -40,6 +40,57 @@ describe("Cowork inline copilot", () => {
     expect(html).toContain("Safe");
   });
 
+  it("degrades to a linear diff instead of allocating a huge LCS matrix", () => {
+    const before = Array.from({ length: 3000 }, (_, i) => `line ${i}`).join("\n");
+    const after = Array.from({ length: 3000 }, (_, i) => (i === 1500 ? "edited" : `line ${i}`)).join("\n");
+    const lines = diffDraftLines(before, after);
+    expect(lines).toHaveLength(3000);
+    expect(lines.filter(line => line.changed)).toHaveLength(1);
+  });
+
+  it("keeps the first drag-selected comment through lazy session creation", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let postedAnnotations: unknown[] | null = null;
+    const fresh = sessionDto({ id: "cowork-lazy", draft: BASE_DRAFT, revision: 0, annotations: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.endsWith("/annotations")) { postedAnnotations = (JSON.parse(String(init?.body)) as { annotations: unknown[] }).annotations; return new Response(JSON.stringify(fresh)); }
+      if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
+      return new Response(JSON.stringify(fresh));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const textNode = body.querySelector("p")!.firstChild!;
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "Published body.",
+      rangeCount: 1,
+      anchorNode: textNode,
+      getRangeAt: () => ({ getBoundingClientRect: () => ({ top: 0, left: 0, bottom: 0, width: 0 }) }),
+    } as unknown as Selection);
+
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    article.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="comment"]')!.click();
+    const composer = article.querySelector<HTMLTextAreaElement>(".cowork-composer-input")!;
+    composer.value = "Make it clearer";
+    article.querySelector<HTMLElement>('[data-cowork-action="add-comment"]')!.click();
+
+    // 지연 생성된 세션의 빈 annotations가 로컬 첫 카드를 덮어쓰면 안 된다.
+    await vi.waitFor(() => expect(postedAnnotations).not.toBeNull());
+    expect(postedAnnotations).toHaveLength(1);
+    expect(JSON.stringify(postedAnnotations)).toContain("Make it clearer");
+    expect(article.querySelector(".cowork-chip")?.textContent).toContain("1");
+
+    controller.destroy();
+    article.remove();
+  });
+
   it("stays dormant without creating a session when the entry has no active draft", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -86,6 +137,38 @@ describe("Cowork inline copilot", () => {
     expect(article.querySelector(".cowork-panel")?.textContent).toContain("Make this more precise.");
     // 변경 라인이 있으므로 리뷰 캡슐(Apply)이 떠 있다.
     expect(article.querySelector(".cowork-review")?.textContent).toContain("changed line");
+
+    controller.destroy();
+    article.remove();
+  });
+
+  it("keeps the dock alive after discarding: reopens a fresh session on the published entry", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fresh = sessionDto({ id: "cowork-2", draft: BASE_DRAFT, revision: 0, annotations: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.endsWith("/close")) return new Response(JSON.stringify(sessionDto({ state: "closed" })));
+      if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-review")).not.toBeNull());
+
+    article.querySelector<HTMLElement>('[data-cowork-action="discard-arm"]')?.click();
+    article.querySelector<HTMLElement>('[data-cowork-action="discard-confirm"]')?.click();
+    await vi.waitFor(() => expect(body.textContent).toContain("Original text."));
+
+    // 초안은 버려졌지만 도크는 새 세션으로 살아 있다.
+    expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true);
+    expect(article.querySelector(".cowork-review")).toBeNull();
+    expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/cowork/sessions"))).toBe(true);
 
     controller.destroy();
     article.remove();

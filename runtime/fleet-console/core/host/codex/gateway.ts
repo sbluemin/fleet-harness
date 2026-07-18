@@ -166,6 +166,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       initialWorkspace = null;
       initialWorkspaceId = null;
     }
+    // Cowork 캐시도 함께 해제 — 라우트가 사라진 뒤 라이브 provider 클라이언트가
+    // 취소 불가능한 상태로 잔존하면 안 된다.
+    const coworkService = coworkServices.get(id);
+    if (coworkService) {
+      coworkServices.delete(id);
+      void coworkService.dispose().catch(() => undefined);
+    }
     return workspaces.remove(id);
   }
 

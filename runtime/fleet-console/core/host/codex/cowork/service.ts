@@ -11,7 +11,7 @@ import type { CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
 
 export interface CoworkConnector { connect(options: UnifiedClientOptions): Promise<IUnifiedAgentClient>; }
 
-interface LiveResources { client: IUnifiedAgentClient; cleanup: () => void; }
+interface LiveResources { workspaceId: string; client: IUnifiedAgentClient; cleanup: () => void; }
 
 const COWORK_SYSTEM_PROMPT = [
   "You are the Codex Cowork editing agent inside Fleet Console, editing exactly one Fleet Wiki entry draft.",
@@ -65,7 +65,7 @@ export class CoworkService {
       const providerCwd = this.store.sessionDir(workspaceId, id);
       const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli as UnifiedClientOptions["cli"], model: session.model, effort: session.effort, sessionId: session.providerSessionId, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
       this.releaseLive(id);
-      this.live.set(id, { client, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
+      this.live.set(id, { workspaceId, client, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
       client.on("permissionRequest", (params, resolve) => {
         const verdict = evaluatePermission(params, runtime.allowedToolIds);
         if (!verdict.permitted) void this.emit(workspaceId, id, "tool", `permission denied: ${verdict.tool.slice(0, 80)}`, false);
@@ -125,6 +125,15 @@ export class CoworkService {
       const message = e instanceof Error ? e.message : "unknown";
       console.error(`[cowork] apply failed (session ${id}):`, message);
       throw new Error(message.includes("stale base") ? "cowork_apply_stale" : "cowork_apply_failed");
+    }
+  }
+
+  /** Theater forget 등 워크스페이스 해제 시 라이브 클라이언트를 전부 회수하고 실행 중 세션을 idle로 되돌린다. */
+  async dispose(): Promise<void> {
+    for (const [id, resources] of [...this.live]) {
+      this.releaseLive(id);
+      await this.flushAssistantTurn(resources.workspaceId, id);
+      try { await this.store.update(resources.workspaceId, id, s => s.state === "running" ? { ...s, state: "idle" } : s); } catch { /* 세션 파일이 이미 없으면 무시 */ }
     }
   }
 

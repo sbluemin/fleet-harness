@@ -2373,6 +2373,7 @@ kbd {
   font-size: var(--font-size-label-sm);
   font-weight: 600;
   padding: var(--space-1) var(--space-3);
+  user-select: none;
   animation: cowork-pop var(--duration-fast) var(--ease-spring);
 }
 .cowork-pill span { color: var(--brass-bright); }
@@ -2429,7 +2430,7 @@ kbd {
   margin-top: var(--space-6);
   pointer-events: none;
 }
-.cowork-dock-zone.is-open { display: flex; }
+.cowork-dock-zone.is-open { display: flex; animation: cowork-rise var(--duration-base) var(--ease-spring); }
 .cowork-dock-zone > * { pointer-events: auto; }
 
 .cowork-bar {
@@ -2444,7 +2445,6 @@ kbd {
   box-shadow: 0 2px 8px color-mix(in oklch, var(--ink-abyss) 50%, transparent), 0 20px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
   overflow: hidden;
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
-  animation: cowork-rise var(--duration-base) var(--ease-spring);
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
 .cowork-bar:focus-within { border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim-strong)); }
@@ -2542,7 +2542,6 @@ kbd {
   color: var(--ink-pearl);
   font-size: var(--font-size-label-sm);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-  animation: cowork-rise var(--duration-base) var(--ease-spring);
 }
 .cowork-review-count { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 600; }
 .cowork-review-count i { width: 6px; height: 6px; border-radius: 50%; background: var(--brass-bright); }
@@ -2559,7 +2558,6 @@ kbd {
   background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
   box-shadow: 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
   padding: var(--space-2);
-  animation: cowork-rise var(--duration-base) var(--ease-spring);
 }
 .cowork-empty { margin: 0; color: var(--ink-fog); font-size: var(--font-size-sm); padding: var(--space-2); text-align: center; }
 
@@ -2625,7 +2623,6 @@ kbd {
   color: var(--ink-pearl);
   font-size: var(--font-size-sm);
   padding: var(--space-3);
-  animation: cowork-rise var(--duration-base) var(--ease-spring);
 }
 .cowork-summary > span { color: var(--aurora); }
 .cowork-summary p { flex: 1; margin: 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -2650,7 +2647,7 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cowork-pill, .cowork-composer, .cowork-bar, .cowork-review, .cowork-popover, .cowork-summary, .cowork-glow, .cowork-spinner { animation: none; }
+  .cowork-pill, .cowork-composer, .cowork-dock-zone.is-open, .cowork-glow, .cowork-spinner { animation: none; }
   .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-bar, .cowork-card { transition: none; }
   .cowork-send:hover { transform: none; }
 }
