@@ -75,6 +75,7 @@ const companionOperationListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
 const formationLayoutListeners = new Set<Listener>();
 const maximizedOperationIdsByTheater = new Map<string, string>();
+const companionOperationIdsByTheater = new Map<string, string>();
 const formationViewsByTheater = new Map<string, true>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
@@ -422,13 +423,17 @@ export function loadForTheater(theaterId: string | null): void {
   flushScheduledSave();
   cancelZoomTween();
   saveMaximizedOperationForActiveTheater();
+  saveCompanionOperationForActiveTheater();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
   const nextMaximizedOperationId = theaterId ? maximizedOperationIdsByTheater.get(theaterId) ?? null : null;
   const maximizedChanged = maximizedOperationId !== nextMaximizedOperationId;
   maximizedOperationId = nextMaximizedOperationId;
-  const companionChanged = companionOperationId !== null;
-  companionOperationId = null;
+  // companion도 maximize와 동일하게 Theater별로 보존·복원한다 — activeTheaterId가 동기화 과정에서
+  // 재설정되며 loadForTheater가 같은 Theater로 다시 불려도 열린 분석 레이아웃이 소실되지 않는다.
+  const nextCompanionOperationId = theaterId ? companionOperationIdsByTheater.get(theaterId) ?? null : null;
+  const companionChanged = companionOperationId !== nextCompanionOperationId;
+  companionOperationId = nextCompanionOperationId;
   const nextFormationView = theaterId ? formationViewsByTheater.has(theaterId) : false;
   const formationChanged = formationView !== nextFormationView;
   formationView = nextFormationView;
@@ -614,6 +619,15 @@ function saveMaximizedOperationForActiveTheater(): void {
     maximizedOperationIdsByTheater.set(activeTheaterId, maximizedOperationId);
   } else {
     maximizedOperationIdsByTheater.delete(activeTheaterId);
+  }
+}
+
+function saveCompanionOperationForActiveTheater(): void {
+  if (!activeTheaterId) return;
+  if (companionOperationId) {
+    companionOperationIdsByTheater.set(activeTheaterId, companionOperationId);
+  } else {
+    companionOperationIdsByTheater.delete(activeTheaterId);
   }
 }
 

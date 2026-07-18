@@ -85,6 +85,23 @@ describe("canvas store", () => {
     expect(getCompanionOperationId()).toBeNull();
   });
 
+  it("keeps companionOperationId through a same-theater reload and restores it per Theater", () => {
+    setCompanionOperationId("op-a");
+    // ops 동기화가 loadForTheater를 같은 Theater로 다시 불러도 열린 분석 레이아웃은 보존되어야 한다.
+    loadForTheater("theater-a");
+    expect(getCompanionOperationId()).toBe("op-a");
+
+    loadForTheater("theater-b");
+    expect(getCompanionOperationId()).toBeNull();
+
+    loadForTheater("theater-a");
+    expect(getCompanionOperationId()).toBe("op-a");
+
+    clearCompanionOperationId();
+    loadForTheater("theater-a");
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
   it("restores maximizedOperationId independently for each Theater", () => {
     setMaximizedOperationId("op-a");
 
