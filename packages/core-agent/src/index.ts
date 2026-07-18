@@ -1,4 +1,5 @@
 export type {
+  AgentServerBindings,
   AgentToolCtx,
   AgentToolSpec,
   JsonRpcPayload,
@@ -82,6 +83,9 @@ export type {
   GlobalPackageUpdaterReport,
   GlobalPackageVersionResolver,
 } from "./global-package-updater.js";
+export {
+  snapshotAgentServerBindings,
+} from "./types.js";
 export {
   cleanupExecutorSession,
   installExecutorToolCallRouter,

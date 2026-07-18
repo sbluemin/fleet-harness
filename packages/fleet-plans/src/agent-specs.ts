@@ -1,6 +1,7 @@
 import type { AgentToolSpec, McpCallToolResult } from "@dotobokuri/core-agent";
 import { Type } from "typebox";
 
+import { resolvePlanWorkspaceBinding } from "./bindings.js";
 import { buildPlanExecutionView } from "./execution-view.js";
 import { formatPlanRef, parseTaskRef } from "./references.js";
 import {
@@ -142,7 +143,7 @@ function buildPlanWriteSpec(deps: PlanToolSpecDeps): AgentToolSpec {
     ],
     guardrails: [
       "Kirov-only mutation surface.",
-      "The tool computes WorkspaceDir from executor cwd and never accepts a caller path.",
+      "Storage comes only from a host-bound Plan workspace; missing or invalid bindings fail closed before Plan storage mutation.",
     ],
     parameters: Type.Object({
       plan_id: Type.String({ minLength: 1, maxLength: 128, pattern: PLAN_ID_PATTERN }),
@@ -153,7 +154,8 @@ function buildPlanWriteSpec(deps: PlanToolSpecDeps): AgentToolSpec {
         const input = asRecord(args);
         const planId = requiredString(input.plan_id, "plan_id");
         const markdown = requiredContent(input.markdown, "markdown");
-        const result = writePlanMarkdown(deps.dataDir, ctx.cwd, planId, markdown);
+        const workspace = resolvePlanWorkspaceBinding(deps.dataDir, ctx.serverBindings);
+        const result = writePlanMarkdown(deps.dataDir, workspace.cwd, planId, markdown);
         const payload = {
           ok: result.written,
           tool: "plan_write",

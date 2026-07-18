@@ -7,6 +7,7 @@ import type http from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ensureWorkspaceDirectory } from "@dotobokuri/core-infra/workspace-dir";
+import { createPlanWorkspaceServerBindings, getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 
 import { createPlansRouter } from "../core/host/plans/routes.js";
 
@@ -133,6 +134,83 @@ describe("Plans handlers — security", () => {
     const nestedRead = createContext({ theaterId: "theater", name: "nested.md" }, () => theaterPath);
     await handlePlansRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, nestedRead.ctx);
     expect(nestedRead.responses).toEqual([{ status: 404, body: { error: "not_found" } }]);
+  });
+
+  it("shows a Plan written from a Carrier worktree through the active Theater routes", async () => {
+    const carrierCwd = path.join(theaterPath, ".fleet", "worktrees", "carrier-topic");
+    await fs.promises.mkdir(carrierCwd, { recursive: true });
+    const specs = getPlanToolSpecs({ dataDir: fleetDataDir });
+    const serverBindings = createPlanWorkspaceServerBindings(fleetDataDir, theaterPath);
+    const markdown = `# Objective
+
+Keep the Plan visible from its active Theater.
+
+# File Ownership
+
+- W1-A owns plans/**
+
+# Execution Topology
+
+- Execution mode: Sequential
+- Shared mutable resources: Theater PlanStore
+
+# Waves
+
+## Wave 1 — Theater visibility
+
+### Lane W1-A — Theater Plan binding
+
+- Exact write set:
+  - plans/**
+- Read dependencies:
+  - Not applicable
+- Dependency/start condition: Theater root resolved
+- Eligible concurrent lanes: none
+- Integration gate: Theater routes return the Plan
+- Handoff: Theater-visible Plan
+- Rollback unit: Plan fixture
+- Implementation summary:
+  - [ ] W1-A-T1 — Write the Theater-bound Plan
+- Verification/static checks:
+  - plan lint
+- Escalation triggers: Theater binding unavailable
+
+# Dispatch Manifest
+
+- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only
+- Lane W1-A — exact write set, dependencies, gate, handoff, and rollback from W1-A
+
+# QA Gates
+
+- The Theater list and read routes return the written Plan.
+
+# Acceptance Criteria
+
+- A Carrier worktree write resolves to the Theater PlanStore.
+
+# Documentation Updates
+
+- No documentation update required.
+
+# Final Review Loop
+
+- Verify the Theater route response contains the Plan.
+`;
+
+    const written = await specs.write.execute({
+      plan_id: "theater-bound",
+      markdown,
+    }, { cwd: carrierCwd, serverBindings });
+    const list = createContext({ theaterId: "theater" }, () => theaterPath);
+    const read = createContext({ theaterId: "theater", name: "theater-bound.md" }, () => theaterPath);
+    await handlePlansList({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, list.ctx);
+    await handlePlansRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, read.ctx);
+
+    expect(written).toMatchObject({ ok: true });
+    expect((list.responses[0] as { readonly body: { readonly plans: Array<{ readonly name: string }> } }).body.plans).toEqual(expect.arrayContaining([expect.objectContaining({ name: "theater-bound.md" })]));
+    expect(read.responses).toEqual([expect.objectContaining({ status: 200, body: expect.objectContaining({ markdown }) })]);
+    expect(JSON.stringify({ list: list.responses, read: read.responses })).not.toContain(carrierCwd);
+    expect(JSON.stringify({ list: list.responses, read: read.responses })).not.toContain("fleet-plans.workspace-ref");
   });
 
   it("rejects legacy or path-shaped Plan scope before Theater lookup", async () => {

@@ -1,7 +1,7 @@
 import type { McpServerConfig } from "@dotobokuri/core-unified-agent";
 
 import type { McpRouterRuntime } from "./mcp-router.js";
-import type { AgentToolSpec } from "./types.js";
+import type { AgentServerBindings, AgentToolSpec } from "./types.js";
 
 export interface ExecutorMcpRouterRuntime {
   readonly name: string;
@@ -28,6 +28,7 @@ export interface ExecutorMcpSessionRequest {
   readonly specs: readonly AgentToolSpec[];
   readonly cwd: string;
   readonly signal?: AbortSignal;
+  readonly serverBindings?: AgentServerBindings;
 }
 
 export interface ExecutorMcpSession {

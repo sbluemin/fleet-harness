@@ -181,6 +181,7 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
       cliType: cliType as CliType,
       request,
       cwd,
+      serverBindings: ctx.serverBindings,
       model: modelInfo.model,
       effort: modelInfo.effort,
       resumeSessionId: claim.resumeSessions?.get(cliType),

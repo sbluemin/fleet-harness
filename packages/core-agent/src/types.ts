@@ -3,11 +3,21 @@ export interface McpCallToolResult {
   isError: boolean;
 }
 
+/** Server-owned string values that are available only while invoking local MCP tools. */
+export type AgentServerBindings = Readonly<Record<string, string>>;
+
+export function snapshotAgentServerBindings(
+  bindings: AgentServerBindings | undefined,
+): AgentServerBindings | undefined {
+  return bindings === undefined ? undefined : Object.freeze({ ...bindings });
+}
+
 export interface AgentToolCtx {
   readonly cwd: string;
   readonly sessionLabel?: string;
   readonly toolCallId?: string;
   readonly signal?: AbortSignal;
+  readonly serverBindings?: AgentServerBindings;
 }
 
 export interface AgentToolSpec {

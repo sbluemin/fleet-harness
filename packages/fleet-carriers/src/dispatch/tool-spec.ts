@@ -314,6 +314,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         cliType: trackModelInfo.cliType,
         request,
         cwd,
+        serverBindings: ctx.serverBindings,
         model: trackModelInfo.model,
         effort: trackModelInfo.effort,
         resumeSessionId: claim.resumeSessions?.get(trackModelInfo.cliType),

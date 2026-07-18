@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
-import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
+import { createPlanWorkspaceServerBindings, getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -96,7 +96,16 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
+    dataDir: ctx.host.paths.fleetDataDir,
     infraServices: deps,
+    resolveServerBindings: (launchContext) => {
+      const operationId = launchContext?.operationId;
+      if (!operationId) return undefined;
+      const operation = ctx.host.operations.get(operationId);
+      if (!operation || operation.pluginId !== ctx.pluginId || operation.type !== AGENT_OPERATION_TYPE) return undefined;
+      const theaterRoot = ctx.host.paths.resolveTheaterPath(operation.theaterId);
+      return theaterRoot ? createPlanWorkspaceServerBindings(ctx.host.paths.fleetDataDir, theaterRoot) : undefined;
+    },
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },
@@ -457,7 +466,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
     const providerSession = readProviderSession(operation?.payload)?.sessionId;
-    return launchResolver(cwd, { sessionId: operationId, operationId, operationType: AGENT_OPERATION_TYPE, pluginId: ctx.pluginId, cliId, resumeSessionId: providerSession });
+    return launchResolver(cwd, {
+      sessionId: operationId,
+      operationId,
+      operationType: AGENT_OPERATION_TYPE,
+      pluginId: ctx.pluginId,
+      ...(operation?.theaterId ? { theaterId: operation.theaterId } : {}),
+      ...(cliId ? { cliId } : {}),
+      ...(providerSession ? { resumeSessionId: providerSession } : {}),
+    });
   }
 
   async function handleExit(operationId: string): Promise<void> {

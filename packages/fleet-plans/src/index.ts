@@ -4,6 +4,7 @@ export {
   type PlanToolSpecDeps,
   type PlanToolSpecs,
 } from "./agent-specs.js";
+export { createPlanWorkspaceServerBindings } from "./bindings.js";
 export { lintPlanMarkdown, normalizePlanMarkdown } from "./lint.js";
 export {
   assertPlanId,

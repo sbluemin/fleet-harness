@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { AgentServerBindings } from "@dotobokuri/core-agent";
 import * as Admiral from "../src/index.js";
 import { buildHostShellCommand, buildPowerShellCommand, escapeTomlBasicString } from "../src/agent-cli/builders/toml.js";
 import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
@@ -14,9 +15,10 @@ import { createAgentCliPlugin } from "../src/agent-cli/plugin/index.js";
 import type { AgentCliProfile, FleetHookExec } from "../src/agent-cli/types.js";
 
 interface TestDedicatedMcpSession {
+  readonly issuedRequests: Array<{ readonly label: string; readonly cwd: string; readonly serverBindings?: AgentServerBindings }>;
   readonly releasedLabels: string[];
   getEndpoint(): Promise<{ readonly servers: readonly { readonly name: string; readonly url: string }[] }>;
-  issueSessionToken(request: { readonly label: string; readonly cwd: string }): readonly { readonly name: string; readonly token: string }[];
+  issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly serverBindings?: AgentServerBindings }): readonly { readonly name: string; readonly token: string }[];
   releaseSessionToken(label: string): void;
 }
 
@@ -45,6 +47,35 @@ afterEach(() => {
 });
 
 describe("agent CLI session resume and capture hooks", () => {
+  it("forwards server bindings only to the dedicated MCP session", async () => {
+    const root = createTempRoot("fleet-admiral-server-bindings-");
+    const serverBindings = { "test.workspace": "/theater-root" };
+    const dedicatedMcpSession = createDedicatedMcpSession();
+    const profile = baseProfile("claude", {
+      args: [],
+      cwd: root,
+      env: { HOME: root },
+    });
+
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      dedicatedMcpSession,
+      serverBindings,
+    }));
+
+    expect(dedicatedMcpSession.issuedRequests).toEqual([
+      expect.objectContaining({ cwd: root, serverBindings }),
+    ]);
+    expect(injected).not.toHaveProperty("serverBindings");
+    expect(injected.args.join("\n")).not.toContain(serverBindings["test.workspace"]);
+    expect(Object.values(injected.env).join("\n")).not.toContain(serverBindings["test.workspace"]);
+    const systemPromptFile = injected.args[injected.args.indexOf("--append-system-prompt-file") + 1];
+    expect(readFileSync(systemPromptFile ?? "", "utf8")).not.toContain(serverBindings["test.workspace"]);
+    expect(readTextFilesRecursively(path.join(root, "data")).join("\n")).not.toContain(serverBindings["test.workspace"]);
+
+    injected.cleanup?.();
+    expect(dedicatedMcpSession.releasedLabels).toHaveLength(1);
+  });
+
   it("defaults metaphor off and forwards explicit opt-in to the prompt builder", async () => {
     const observed: boolean[] = [];
 
@@ -392,6 +423,7 @@ function baseInjectOptions(
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
     readonly enableMetaphor?: boolean;
     readonly resumeSessionId?: string;
+    readonly serverBindings?: AgentServerBindings;
     readonly turnEndHookExec?: FleetHookExec;
     readonly turnStartHookExec?: FleetHookExec;
   } = {},
@@ -405,6 +437,7 @@ function baseInjectOptions(
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
+    ...(overrides.serverBindings ? { serverBindings: overrides.serverBindings } : {}),
     ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),
     ...(overrides.turnStartHookExec ? { turnStartHookExec: overrides.turnStartHookExec } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
@@ -417,21 +450,31 @@ function createDedicatedMcpSession(
     readonly tokens?: readonly { readonly name: string; readonly token: string }[];
   } = {},
 ): TestDedicatedMcpSession {
+  const issuedRequests: Array<{ readonly label: string; readonly cwd: string; readonly serverBindings?: AgentServerBindings }> = [];
   const releasedLabels: string[] = [];
   const servers = options.servers ?? [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }];
   const tokens = options.tokens ?? [{ name: "fleet", token: "token-123" }];
   return {
+    issuedRequests,
     releasedLabels,
     async getEndpoint() {
       return { servers };
     },
-    issueSessionToken() {
+    issueSessionToken(request) {
+      issuedRequests.push(request);
       return tokens;
     },
     releaseSessionToken(label: string) {
       releasedLabels.push(label);
     },
   };
+}
+
+function readTextFilesRecursively(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? readTextFilesRecursively(entryPath) : [readFileSync(entryPath, "utf8")];
+  });
 }
 
 function hookExec(command: string, args: readonly string[]): FleetHookExec {
