@@ -2002,39 +2002,42 @@
   top: var(--space-2);
 }
 
-.operations-canvas.is-companion-layout .canvas-operation-titlebar,
-.canvas-companion-frame .canvas-operation-titlebar {
+.operations-canvas.is-companion-layout .canvas-operation-titlebar {
   cursor: default;
 }
 
-.canvas-companion-frame .canvas-operation-identity-name {
+/* companion 프레임은 배지·창 컨트롤 없이 타이포 캡션으로만 정체를 표시한다 — 닫기는 EXIT 핸들 소유. */
+.canvas-companion-frame {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-companion-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
   cursor: default;
+  user-select: none;
 }
 
-.canvas-companion-close {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
-  color: var(--ink-fog);
-  font: inherit;
-  cursor: pointer;
-}
-
-.canvas-companion-close:hover,
-.canvas-companion-close:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
-  outline-offset: 2px;
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-  color: var(--brass-bright);
+.canvas-companion-caption-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--aurora);
+  box-shadow: 0 0 8px var(--aurora-glow);
 }
 
 .canvas-companion-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 

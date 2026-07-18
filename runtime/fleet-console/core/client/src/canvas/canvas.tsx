@@ -510,7 +510,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         </PluginErrorBoundary>
       </OperationFrame>
       {options.companions.map((companion, index) => (
-        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!} onClose={clearCompanionOperationId}>
+        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!}>
           <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin companion failed to render.</div>}>
             <PluginOperationRenderer
               active={options.active}
@@ -573,11 +573,10 @@ function PluginOperationRenderer({
   }) as ReactNode;
 }
 
-function CompanionFrame({ descriptor, geometry, children, onClose }: {
+function CompanionFrame({ descriptor, geometry, children }: {
   readonly descriptor: CompanionPanelDescriptor;
   readonly geometry: OperationGeometry;
   readonly children: ReactNode;
-  readonly onClose: () => void;
 }) {
   const frameStyle = {
     left: Math.round(geometry.x),
@@ -588,10 +587,11 @@ function CompanionFrame({ descriptor, geometry, children, onClose }: {
   } satisfies CSSProperties;
   return (
     <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={`Companion ${descriptor.title}`}>
-      <div className="canvas-operation-titlebar" data-canvas-blocker>
-        <span className="canvas-operation-identity-name">{descriptor.title}</span>
-        <button type="button" className="canvas-companion-close" aria-label={`Close ${descriptor.title}`} title="Close companion panels" onClick={onClose}>×</button>
-      </div>
+      {/* 닫기는 패널 본문의 EXIT 핸들이 소유한다 — 프레임은 배지 없이 타이포 캡션으로 정체만 표시한다. */}
+      <header className="canvas-companion-caption" data-canvas-blocker>
+        <span className="canvas-companion-caption-dot" aria-hidden="true" />
+        <span className="canvas-companion-caption-title">{descriptor.title}</span>
+      </header>
       <div className="canvas-operation-terminal canvas-companion-body" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} data-canvas-blocker>
         {children}
       </div>

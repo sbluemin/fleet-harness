@@ -226,7 +226,10 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(getComputedStyle(peer!).visibility).toBe("hidden");
     expect(Number.parseFloat(targetFrame?.style.width ?? "0")).toBeCloseTo((900 - 16) / 3, 0);
 
-    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Close Chat"]')?.click());
+    // 프레임에는 닫기 버튼이 없다(배지 없는 타이포 캡션만) — 닫기는 플러그인 EXIT 핸들이 콜백으로 소유한다.
+    expect(document.querySelector('.canvas-companion-frame button')).toBeNull();
+    expect([...document.querySelectorAll(".canvas-companion-caption-title")].map((el) => el.textContent)).toEqual(["Chat", "Artifacts"]);
+    act(() => targetBody?.click());
 
     expect(getCompanionOperationId()).toBeNull();
     expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(0);

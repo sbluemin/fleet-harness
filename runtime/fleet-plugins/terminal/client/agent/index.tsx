@@ -403,7 +403,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         disabled={!analysisReady}
         title={analysisReady ? undefined : "Send a message in this session first"}
         onClick={() => { if (analysisReady) context.onRequestCompanions?.(!context.companionsOpen); }}
-      >{context.companionsOpen ? "« EXIT" : "ANALYZE »"}</button>
+      ><span className="session-analyst-handle__chev" aria-hidden="true">{context.companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{context.companionsOpen ? "EXIT" : "ANALYZE"}</span></button>
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
