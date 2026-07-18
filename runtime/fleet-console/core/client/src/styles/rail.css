@@ -255,7 +255,7 @@
 }
 
 .rail-context-badge--root { color: var(--brass); }
-.rail-context-badge--worktree { color: var(--aurora); }
+.rail-context-badge--worktree { color: var(--ink-spectral); }
 
 .rail-context-tree-row {
   position: relative;

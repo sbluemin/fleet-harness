@@ -14,12 +14,13 @@
   overflow: hidden;
 }
 
+/* 상단 헤어라인 장식 — 단일 hue(brass)만. 이중색(brass→aurora) 그라디언트는 신호 어휘를 오염시킨다. */
 .stage::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--brass), var(--aurora), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--brass) 62%, transparent), transparent);
   pointer-events: none;
 }
 
@@ -688,15 +689,16 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* 정보 뱃지 — 신호색(aurora) 금지. 중립 잉크 + 헤어라인으로 침묵한다. */
 .new-badge {
   display: inline-flex;
   align-items: center;
   margin-left: var(--space-2);
   padding: 2px 7px;
-  border: 1px solid var(--aurora-glow);
-  border-radius: 999px;
-  background: var(--aurora-glow);
-  color: var(--aurora);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
+  color: var(--ink-spectral);
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -1357,7 +1359,7 @@
   align-items: center;
   justify-content: center;
   gap: 9px;
-  min-height: 38px;
+  min-height: 34px;
   padding: 6px var(--space-3);
   border: 0;
   border-radius: var(--radius-xs);
@@ -1490,8 +1492,8 @@
 
 .workspace-add-button {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   /* Theater 박스(theater-trigger)와 같은 글라스 웰 + 중립 헤어라인 + 브래스 아이콘 언어를 공유한다. */
   border: 1px solid var(--surface-rim);
@@ -2223,8 +2225,8 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -2328,7 +2330,7 @@
   flex: none;
   width: 18px;
   height: 18px;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-bright);
   font-family: var(--font-mono);
@@ -4536,6 +4538,7 @@
   }
 }
 
+/* 스트림 팔로우 — 원색 solid 필 금지. Action 문법(primary: brass 윤곽 고스트)으로 발화한다. */
 .follow-button {
   position: absolute;
   right: var(--space-6);
@@ -4543,13 +4546,16 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 8px var(--space-4);
-  border-radius: 999px;
-  background: var(--aurora);
-  color: var(--ink-abyss);
-  box-shadow: 0 12px 32px -16px var(--aurora);
-  font-size: 10.5px;
-  font-weight: 800;
+  min-height: 28px;
+  padding: 5px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 14%, var(--ink-deep));
+  color: var(--brass-bright);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   transition: transform var(--duration-fast) var(--ease-spring);
@@ -4678,7 +4684,7 @@
   gap: var(--space-2);
   min-width: 0;
   width: 100%;
-  height: 32px;
+  height: 34px;
   /* sigil+label을 박스 중앙에 두고, caret은 우측에 절대배치하므로 좌우 패딩을 caret 폭만큼 대칭으로 확보한다. */
   padding: 0 calc(var(--space-2) + 14px);
   /* 휴지 상태는 GNB의 조용한 언어에 맞춰 중립 헤어라인 + 살짝 가라앉은 글라스 웰로 둔다 — 발광하지 않는 계기판 필드. */
@@ -5566,8 +5572,9 @@
   border-color: color-mix(in oklch, var(--warn) 44%, var(--surface-rim));
 }
 
+/* 정보 토스트는 상태가 아니다 — 중립 림으로 둔다(신호 보더는 error/warn만). */
 .app-toast--info {
-  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
+  border-color: var(--surface-rim-strong);
 }
 
 .app-toast-dot {
@@ -5620,8 +5627,8 @@
 .app-toast-close {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex: none;
   margin: -2px -4px 0 auto;
   border-radius: var(--radius-xs);
@@ -6196,7 +6203,7 @@
 }
 
 .directory-browser-jump-button {
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
@@ -6412,7 +6419,7 @@
 }
 
 .directory-browser-button {
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
@@ -6721,7 +6728,7 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
+  height: 28px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
@@ -6921,7 +6928,7 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-version-selector select,
 .whatsnew-refresh {
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
@@ -7011,8 +7018,10 @@ body[data-codex-side="true"] .command-card {
   background: color-mix(in oklch, var(--ink-mid) 62%, transparent);
   color: var(--ink-fog);
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 760;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -7079,14 +7088,14 @@ body[data-codex-side="true"] .command-card {
   align-items: center;
   justify-content: center;
   min-width: 32px;
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
   color: var(--brass);
   font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 760;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -7210,7 +7219,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .whatsnew-done {
-  min-height: 38px;
+  min-height: 34px;
   padding: 0 18px;
   border: 1px solid color-mix(in oklch, var(--brass) 36%, transparent);
   border-radius: var(--radius-sm);
@@ -7773,7 +7782,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   flex: none;
   width: 16px;
   height: 16px;
-  border-radius: 4.5px;
+  border-radius: var(--radius-xs);
 }
 
 .brand-foot-wordmark {
@@ -7803,6 +7812,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   cursor: default;
 }
 
+/* 업데이트 준비됨 = 완료 상태 신호(positive). 정보 뱃지가 아니라 실제 상태만 색을 갖는다. */
 .brand-foot-version-dot {
   position: absolute;
   top: 3px;
@@ -7810,20 +7820,21 @@ body[data-codex-reading="true"] .operations-side-bar {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--aurora);
+  background: var(--positive);
 }
 
+/* 대기 중 업데이트 안내는 정보다 — 중립 잉크. 진행(live)=warn, 실패(error)=coral만 신호로 발화. */
 .brand-foot-update {
   padding: 3px 8px;
-  border: 1px solid color-mix(in oklch, var(--warn) 42%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--warn) 10%, transparent);
-  color: var(--warn);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
+  color: var(--ink-spectral);
   font-size: 10.5px;
   font-weight: 760;
 }
 
-.brand-foot-update--live { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--aurora); }
+.brand-foot-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn); }
 .brand-foot-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--ink-fog); }
 .brand-foot-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral); }
 .brand-foot-update:disabled { cursor: default; opacity: 0.75; }
@@ -7838,8 +7849,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 .brand-foot-more {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-xs);
   color: var(--ink-fog);
 }
@@ -7851,7 +7862,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 26px;
+  height: 24px;
   padding: 0 6px;
   border-radius: var(--radius-xs);
   color: var(--ink-fog);
@@ -7902,6 +7913,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   left: 0;
 }
 
+/* 메뉴 항목은 theater-menu-item과 같은 mono 대문자 문법을 쓴다 — 콘솔 메뉴 단일 방언. */
 .brand-foot-dropup-menu button {
   display: flex;
   align-items: center;
@@ -7909,7 +7921,11 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: 7px 10px;
   border-radius: var(--radius-xs);
   color: var(--ink-spectral);
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   text-align: left;
 }
 
@@ -7962,7 +7978,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 .keyboard-shortcuts-group dl > div { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 12px; padding: 4px; color: var(--ink-spectral); font-size: 12px; }
 .keyboard-shortcuts-group dt { color: var(--ink-fog); }
 .keyboard-shortcuts-group dd { margin: 0; }
-.keyboard-shortcuts-group kbd { margin-right: 3px; padding: 1px 4px; border: 1px solid var(--surface-rim); border-radius: 4px; color: var(--ink-pearl); font-family: var(--font-mono); font-size: 10px; }
+.keyboard-shortcuts-group kbd { margin-right: 3px; padding: 1px 4px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--ink-pearl); font-family: var(--font-mono); font-size: 10px; }
 
 /* v5: 비-Operations 라우트의 복귀 링크 — GNB 부재 보완 */
 .page-back-link {

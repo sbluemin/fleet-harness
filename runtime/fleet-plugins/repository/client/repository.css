@@ -441,8 +441,8 @@
   flex-shrink: 0;
   padding: 4px 12px;
   font-size: 11px;
-  color: var(--warn);
-  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  color: var(--ink-fog);
+  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
   border-bottom: 1px solid var(--surface-rim);
   font-family: var(--font-mono);
 }
@@ -781,9 +781,9 @@
 }
 
 .history-badge--branch {
-  color: var(--aurora);
-  border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent);
-  background: color-mix(in oklch, var(--aurora) 10%, transparent);
+  color: var(--ink-spectral);
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 45%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
 }
 
 .history-badge--remote {
@@ -792,8 +792,8 @@
 }
 
 .history-badge--worktree {
-  color: var(--aurora);
-  border: 1px dashed color-mix(in oklch, var(--aurora) 50%, transparent);
+  color: var(--ink-spectral);
+  border: 1px dashed color-mix(in oklch, var(--ink-fog) 60%, transparent);
 }
 
 .history-commit-subject,
@@ -841,9 +841,9 @@
 }
 
 .history-truncated {
-  color: var(--warn);
+  color: var(--ink-fog);
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--warn) 10%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
 }
 
 .history-detail-pane {
@@ -934,11 +934,11 @@
 .history-author > span:nth-child(2) { display: grid; gap: 1px; }
 .history-author b { font-weight: 500; }.history-author small, .history-author time { color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; }
 .history-author time { margin-left: auto; }
-.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: linear-gradient(135deg, var(--brass), var(--aurora)); color: var(--ink-deep); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
+.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--brass) 32%, var(--ink-veil)); color: var(--ink-pearl); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
 .history-inspector-ids, .history-ref-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .history-sha-copy, .history-parent { border-radius: var(--radius-sm); background: none; cursor: pointer; font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; }
 .history-sha-copy { border: 1px solid var(--surface-rim); color: var(--ink-spectral); }.history-sha-copy span { color: var(--ink-fog); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive); }
-.history-parent { border: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent); color: var(--aurora); }
+.history-parent { border: 1px solid var(--surface-rim); color: var(--ink-spectral); }
 .history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive); font-style: normal; }.history-files-title em { color: var(--coral); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
