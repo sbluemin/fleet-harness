@@ -9,4 +9,4 @@ export interface CoworkSessionRecord extends CoworkSessionDto {
 }
 export type CoworkAnnotation = CoworkAnnotationDto;
 export interface CoworkTranscriptTurn { role: "user" | "assistant"; text: string; at: string; }
-export interface CoworkStoredEvent { id: number; type: "session" | "draft" | "transcript" | "done" | "error"; text?: string; session?: CoworkSessionDto; }
+export interface CoworkStoredEvent { id: number; type: "session" | "draft" | "transcript" | "tool" | "done" | "error"; text?: string; session?: CoworkSessionDto; }

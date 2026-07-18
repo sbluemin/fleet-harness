@@ -144,8 +144,8 @@ export async function cancelCowork(theaterId: string | null, id: string): Promis
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/cancel`), {});
 }
 
-export async function applyCowork(theaterId: string | null, id: string): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/apply`), {});
+export async function applyCowork(theaterId: string | null, id: string, expectedRevision?: number): Promise<CoworkSessionDto> {
+  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/apply`), expectedRevision === undefined ? {} : { expectedRevision });
 }
 
 export async function closeCowork(theaterId: string | null, id: string): Promise<CoworkSessionDto> {
@@ -161,7 +161,7 @@ export function subscribeCoworkEvents(theaterId: string | null, id: string, afte
       onEvent(value, Number(event.lastEventId) || 0);
     } catch { /* malformed server event is ignored */ }
   };
-  for (const type of ["session", "draft", "transcript", "done", "error"] as const) source.addEventListener(type, receive);
+  for (const type of ["session", "draft", "transcript", "tool", "done", "error"] as const) source.addEventListener(type, receive);
   return () => source.close();
 }
 

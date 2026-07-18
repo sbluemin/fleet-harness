@@ -23,7 +23,7 @@ export interface CoworkSessionDto {
 }
 
 export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
-export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
+export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "tool" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
 export interface CoworkTranscriptTurnDto { role: "user" | "assistant"; text: string; at: string; }
 export interface CoworkOptionsResponse { clis: readonly string[]; models: readonly string[]; efforts: readonly string[]; }
 

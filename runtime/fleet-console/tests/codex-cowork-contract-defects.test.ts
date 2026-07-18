@@ -12,7 +12,9 @@ describe("Cowork contract defects", () => {
   it("applies a valid draft through Fleet Wiki and releases the session", async () => {
     const { service, store, paths } = await fixture();
     const session = await service.create("workspace", "entry");
+    await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     await store.draftPort("workspace", session.id).write({ body: draft({ body: "Updated", version: 1 }), expectedRevision: 0 });
+    await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
 
     await expect(service.apply("workspace", session.id)).resolves.toMatchObject({ state: "applied" });
     await expect(readWikiEntry("entry", paths)).resolves.toMatchObject({ body: "Updated", version: 2 });

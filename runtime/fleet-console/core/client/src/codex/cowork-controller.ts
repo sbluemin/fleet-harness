@@ -69,6 +69,7 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
     if (!session) return;
     unsubscribe?.();
     unsubscribe = subscribeCoworkEvents(options.theaterId, session.id, lastEventId, (event, id) => {
+      if (id && id <= lastEventId) return;
       lastEventId = Math.max(lastEventId, id);
       if (event.session) session = event.session;
       if (event.type === "transcript" && event.text) {
@@ -76,6 +77,7 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
         if (streamingReply && last?.role === "assistant") last.text += event.text;
         else { transcripts.push({ role: "assistant", text: event.text }); streamingReply = true; }
       }
+      if (event.type === "tool" && event.text) { transcripts.push({ role: "system", text: event.text }); streamingReply = false; }
       if (event.type === "done" || event.type === "error") streamingReply = false;
       if (event.type === "error" && event.text) error = event.text;
       redraw();
@@ -93,7 +95,7 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
     if (action === "comment" && quote) { annotations = [...annotations, { id: crypto.randomUUID(), text: quote }]; redraw(); return; }
     if (action === "cancel") void mutate(() => cancelCowork(options.theaterId, session!.id));
     if (action === "discard") void mutate(() => closeCowork(options.theaterId, session!.id), options.onExit);
-    if (action === "apply" && window.confirm("Apply this draft to the entry?")) void mutate(() => applyCowork(options.theaterId, session!.id), options.onApplied);
+    if (action === "apply" && window.confirm("Apply this draft to the entry?")) void mutate(() => applyCowork(options.theaterId, session!.id, session!.revision), options.onApplied);
   };
   const onChange = (event: Event) => {
     const input = event.target instanceof HTMLSelectElement ? event.target : null;

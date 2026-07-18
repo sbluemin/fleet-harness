@@ -21,7 +21,9 @@ describe("Cowork MCP runtime", () => {
     const { service, store, paths } = await fixture();
     const session = await service.create("workspace", "entry");
     const changedDraft = draft({ body: "Cowork draft", version: 1 });
+    await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     await store.draftPort("workspace", session.id).write({ body: changedDraft, expectedRevision: 0 });
+    await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
     await writeWikiEntry({ ...entry(), body: "External", version: 2 }, paths);
 
     await expect(service.apply("workspace", session.id)).rejects.toThrow("cowork_apply_stale");
@@ -32,20 +34,20 @@ describe("Cowork MCP runtime", () => {
   it("safely rejects a malformed draft before it can be applied", async () => {
     const { service, store } = await fixture();
     const session = await service.create("workspace", "entry");
+    await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     await store.draftPort("workspace", session.id).write({ body: "title: no frontmatter", expectedRevision: 0 });
+    await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
     await expect(service.apply("workspace", session.id)).rejects.toThrow("cowork_apply_invalid_draft");
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
   });
 
-  it("selects ACP permission options only for the seven Cowork tools", () => {
-    const allowed = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"] as const;
-    for (const tool of allowed) {
-      const response: AcpPermissionResponse = permissionResponse(permission(`mcp__cowork__${tool}`), allowed);
-      expect(response).toEqual({ outcome: { outcome: "selected", optionId: "allow-once" } });
+  it("rejects every provider permission request — the MCP token registry is the only grant path", () => {
+    // Cowork MCP tools never pass through provider approval; anything that asks is CLI-native and must be denied.
+    for (const title of ["mcp__cowork__wiki_draft_read", "bash", "write_file", "bash__wiki_read", "arbitrary.wiki_read"]) {
+      const response: AcpPermissionResponse = permissionResponse(permission(title));
+      expect(response).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
     }
-    expect(permissionResponse(permission("bash"), allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
-    expect(permissionResponse(permission("write_file"), allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
-    expect(permissionResponse({ ...permission("bash"), options: [] }, allowed)).toEqual({ outcome: { outcome: "cancelled" } });
+    expect(permissionResponse({ ...permission("bash"), options: [] })).toEqual({ outcome: { outcome: "cancelled" } });
   });
 
 });
