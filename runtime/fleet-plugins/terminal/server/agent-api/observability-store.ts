@@ -704,27 +704,36 @@ function readOrdinaryUrlEnd(value: string, start: number): number | undefined {
 function readFilesystemPathEnd(value: string, start: number): number | undefined {
   const previous = start > 0 ? value[start - 1] : undefined;
   const boundary = start === 0 || isPathBoundary(previous);
+  const explicitBoundary = boundary || previous === "<";
   if (
-    boundary
+    explicitBoundary
     && value.slice(start, start + 7).toLowerCase() === "file://"
   ) return scanPathEnd(value, start, start + 7, previous);
 
   if (
-    boundary
+    explicitBoundary
     && isAsciiLetter(value[start])
     && value[start + 1] === ":"
     && (value[start + 2] === "/" || value[start + 2] === "\\")
   ) return scanPathEnd(value, start, start + 3, previous);
 
   if (
-    boundary
+    explicitBoundary
     && value[start] === "\\"
     && value[start + 1] === "\\"
     && value[start + 2] !== undefined
     && !isPathTerminator(value[start + 2])
   ) return scanPathEnd(value, start, start + 2, previous);
 
-  if (boundary && value[start] === "~") {
+  if (
+    explicitBoundary
+    && value[start] === "\\"
+    && value[start + 1] !== undefined
+    && value[start + 1] !== "\\"
+    && !isPathTerminator(value[start + 1])
+  ) return scanPathEnd(value, start, start + 1, previous);
+
+  if (explicitBoundary && value[start] === "~") {
     let separator = start + 1;
     while (separator < value.length && isHomeUserCharacter(value[separator])) separator += 1;
     if (value[separator] === "/" || value[separator] === "\\") return scanPathEnd(value, start, separator + 1, previous);
