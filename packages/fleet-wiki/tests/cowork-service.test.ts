@@ -23,6 +23,27 @@ describe("Cowork contract defects", () => {
     expect((await service.get("workspace", session.id))?.state).toBe("applied");
   });
 
+  it("carries earlier session turns into each one-shot prompt", async () => {
+    const connector = new FakeConnector();
+    const sent: string[] = [];
+    connector.client.sendMessage = async (content: string) => { sent.push(content); return {}; };
+    const { service } = await fixture(connector);
+    const session = await service.create("workspace", "entry");
+
+    await service.prompt("workspace", session.id, "Make it shorter");
+    connector.client.emit("messageChunk", "Shortened.");
+    connector.client.emit("promptComplete");
+    await until(async () => (await service.get("workspace", session.id))?.state === "idle");
+    await service.prompt("workspace", session.id, "Also fix the tone");
+
+    // 원샷이라도 도화지(draft) + 대화 이력으로 맥락이 이어져야 한다.
+    expect(JSON.parse(sent[0]!).history).toBeUndefined();
+    expect(JSON.parse(sent[1]!).history).toEqual([
+      { role: "user", text: "Make it shorter" },
+      { role: "assistant", text: "Shortened." },
+    ]);
+  });
+
   it("restores durable annotations when the provider fails mid-run", async () => {
     const connector = new FakeConnector();
     connector.client.sendMessage = async () => { throw new Error("boom"); };

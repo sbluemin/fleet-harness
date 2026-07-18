@@ -91,11 +91,17 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
-  it("stays dormant without creating a session when the entry has no active draft", async () => {
+  it("shows the dock immediately and defers session creation until the first send", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fresh = sessionDto({ id: "cowork-first", draft: BASE_DRAFT, revision: 0, annotations: [] });
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
-      return new Response(JSON.stringify({}), { status: 500 });
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["claude"], models: ["sonnet"], efforts: ["medium"], defaultModel: "sonnet", defaultEffort: "medium" }));
+      if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
+      return new Response(JSON.stringify(fresh));
     });
     vi.stubGlobal("fetch", fetchMock);
     const { article, body } = host();
@@ -103,9 +109,24 @@ describe("Cowork inline copilot", () => {
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(false);
+    // 엔트리를 열면 채팅박스(도크)가 세션 없이도 무조건 떠 있고, 세션은 아직 생성되지 않는다.
+    expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true);
+    expect(article.querySelector(".cowork-dock-input")).not.toBeNull();
+    expect(article.querySelector(".cowork-review")).toBeNull();
     expect(body.textContent).toContain("Published body.");
     expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/cowork/sessions"))).toBe(false);
+
+    // 첫 전송 시점에 세션이 지연 생성되고 프롬프트가 나간다.
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "tighten this up";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => {
+      const urls = fetchMock.mock.calls.map(call => String(call[0]));
+      expect(urls.some(url => url.endsWith("/cowork/sessions"))).toBe(true);
+      expect(urls.some(url => url.endsWith("/prompt"))).toBe(true);
+    });
+
     controller.destroy();
     expect(article.querySelector(".cowork-dock-zone")).toBeNull();
     article.remove();
@@ -125,7 +146,8 @@ describe("Cowork inline copilot", () => {
     const { article, body } = host();
 
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
-    await vi.waitFor(() => expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true));
+    // 도크는 즉시 열리므로, 세션 engage 완료는 본문 교체로 판정한다.
+    await vi.waitFor(() => expect(body.textContent).toContain("Readable text."));
 
     // 본문이 초안으로 교체되고 frontmatter는 노출되지 않는다.
     expect(body.textContent).toContain("Readable text.");
@@ -137,6 +159,31 @@ describe("Cowork inline copilot", () => {
     expect(article.querySelector(".cowork-panel")?.textContent).toContain("Make this more precise.");
     // 변경 라인이 있으므로 리뷰 캡슐(Apply)이 떠 있다.
     expect(article.querySelector(".cowork-review")?.textContent).toContain("changed line");
+
+    controller.destroy();
+    article.remove();
+  });
+
+  it("keeps review controls visible for deletion-only drafts", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    // 삭제-전용: draft가 baseDraft에서 마지막 문단만 제거 — changed 라인 0이어도 리뷰는 떠야 한다.
+    const deletionOnly = sessionDto({ draft: BASE_DRAFT.replace("\n\nOriginal text.", ""), annotations: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(deletionOnly));
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      return new Response(JSON.stringify(deletionOnly));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-review")).not.toBeNull());
+
+    expect(article.querySelector(".cowork-review")?.textContent).toContain("Removed content");
+    expect(article.querySelector('[data-cowork-action="apply-arm"]')).not.toBeNull();
 
     controller.destroy();
     article.remove();
@@ -160,7 +207,8 @@ describe("Cowork inline copilot", () => {
     const { article, body } = host();
 
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
-    await vi.waitFor(() => expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true));
+    // engage 완료(세션 어노테이션 1건 복원)를 기다린 뒤 상호작용한다.
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')?.click();
     const cliSelect = article.querySelector<HTMLSelectElement>('select[name="cli"]')!;
@@ -222,7 +270,8 @@ describe("Cowork inline copilot", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { article, body } = host();
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
-    await vi.waitFor(() => expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true));
+    // engage 완료(어노테이션 1건 복원)를 기다린 뒤 진행한다.
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     // 리플레이된 done은 diff로 전환하지 않는다.
     listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "2" }));
@@ -257,7 +306,8 @@ describe("Cowork inline copilot", () => {
     const { article, body } = host();
 
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
-    await vi.waitFor(() => expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true));
+    // engage 완료(구독 시작) 후에 이벤트를 흘려야 한다.
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
     listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "4" }));

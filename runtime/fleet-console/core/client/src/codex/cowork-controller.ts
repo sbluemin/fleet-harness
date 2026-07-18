@@ -116,18 +116,21 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const renderDock = () => {
     if (disposed) return;
+    // 도크(채팅박스)는 세션 유무와 무관하게 엔트리를 열면 항상 떠 있다.
+    // 세션은 첫 전송/코멘트 시점에 지연 생성된다.
     const engaged = !!session && session.state !== "closed" && session.state !== "applied";
-    dockZone.classList.toggle("is-open", engaged);
-    if (!engaged) { dockZone.innerHTML = ""; lastDockHtml = null; return; }
-    const running = session!.state === "running";
-    const changed = draftLines().filter(line => line.changed).length;
-    const summary = summaryVisible ? [...activities].reverse().find(a => a.role === "assistant")?.text ?? "" : "";
+    dockZone.classList.add("is-open");
+    const running = engaged && session!.state === "running";
+    // 삭제-전용 변경은 라인 diff에 changed 라인이 없으므로 draft 불일치로 판정해야 한다.
+    const dirty = engaged && session!.baseDraft !== session!.draft;
+    const changed = dirty ? draftLines().filter(line => line.changed).length : 0;
+    const summary = engaged && summaryVisible ? [...activities].reverse().find(a => a.role === "assistant")?.text ?? "" : "";
     const ticker = [...activities].reverse().find(a => a.role === "tool")?.text ?? "AI is editing…";
     setDockHtml(`
       ${summary ? `<div class="cowork-summary" role="status"><span aria-hidden="true">✦</span><p>${escapeHtml(summary)}</p><button type="button" class="cowork-x" data-cowork-action="dismiss-summary" aria-label="Dismiss summary">×</button></div>` : ""}
       ${panelOpen ? renderPanel() : ""}
       ${configOpen ? renderConfig() : ""}
-      ${changed > 0 && !running ? renderReview(changed) : ""}
+      ${dirty && !running ? renderReview(changed) : ""}
       <div class="cowork-bar" data-cowork-form>
         ${running
           ? `<span class="cowork-glow" aria-hidden="true"></span><span class="cowork-spinner" aria-hidden="true"></span><span class="cowork-ticker" aria-live="polite">${escapeHtml(clip(ticker, 90))}</span><button type="button" class="cowork-ghost" data-cowork-action="cancel-run">Stop</button>`
@@ -183,7 +186,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       const proceed = confirmAction === "apply" ? "apply-confirm" : "discard-confirm";
       return `<div class="cowork-review is-confirm"><span>${question}</span><button type="button" class="cowork-solid${confirmAction === "discard" ? " cowork-solid--danger" : ""}" data-cowork-action="${proceed}">${confirmAction === "apply" ? "Apply" : "Discard"}</button><button type="button" class="cowork-ghost" data-cowork-action="confirm-back">Back</button></div>`;
     }
-    return `<div class="cowork-review"><span class="cowork-review-count"><i aria-hidden="true"></i>${changed} changed line${changed === 1 ? "" : "s"}</span><button type="button" class="cowork-ghost" data-cowork-action="toggle-diff">${diffVisible ? "View draft" : "View diff"}</button><button type="button" class="cowork-solid" data-cowork-action="apply-arm">Apply</button><button type="button" class="cowork-ghost" data-cowork-action="discard-arm">Discard</button></div>`;
+    return `<div class="cowork-review"><span class="cowork-review-count"><i aria-hidden="true"></i>${changed > 0 ? `${changed} changed line${changed === 1 ? "" : "s"}` : "Removed content"}</span><button type="button" class="cowork-ghost" data-cowork-action="toggle-diff">${diffVisible ? "View draft" : "View diff"}</button><button type="button" class="cowork-solid" data-cowork-action="apply-arm">Apply</button><button type="button" class="cowork-ghost" data-cowork-action="discard-arm">Discard</button></div>`;
   };
 
   const redraw = () => { renderBody(); renderDock(); };
@@ -215,6 +218,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     }
     try { await updateOptions(); } catch { /* 설정 팝오버가 비어 보일 뿐, 편집은 계속 가능하다. */ }
     if (disposed) return;
+    // 세션에 저장된 모델이 레지스트리에서 사라져 정규화로 바뀌었으면, 첫 실행이
+    // 무효 모델로 접속하지 않도록 서버 세션 설정을 즉시 동기화한다.
+    if (session && (session.cli !== settings.cli || session.model !== settings.model || session.effort !== settings.effort)) {
+      try { session = await updateCoworkSettings(options.theaterId, session.id, settings); } catch { /* 전송 시 오류로 표면화된다. */ }
+    }
+    if (disposed) return;
     subscribe();
     redraw();
   };
@@ -226,6 +235,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     return created;
   };
 
+  // 도크는 즉시 표시하고, 옵션 목록(CLI/모델/effort)도 세션 없이 미리 채운다.
+  renderDock();
+  void updateOptions().then(renderDock).catch(() => undefined);
   void (async () => {
     try {
       const existing = await peekCoworkEntrySession(options.theaterId, options.entryId);
@@ -251,10 +263,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         streamingReply = false;
         summaryVisible = activities.some(a => a.role === "assistant");
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
-        // AI 응답이 실제 변경을 남겼으면 곧바로 렌더드 diff로 전환해 검토를 유도한다.
+        // AI 응답이 실제 변경(삭제-전용 포함)을 남겼으면 렌더드 diff로 전환해 검토를 유도한다.
         if (awaitingResult) {
           awaitingResult = false;
-          if (draftLines().some(line => line.changed)) diffVisible = true;
+          if (session && session.baseDraft !== session.draft) diffVisible = true;
         }
       }
       if (event.type === "error" || (event.type === "session" && wasRunning && session?.state !== "running")) {
@@ -294,7 +306,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   async function send(): Promise<void> {
-    if (!session || session.state === "running") return;
+    if (session?.state === "running") return;
     // 이미 반영된(done) 카드는 재전송 대상에서 제외한다.
     const outgoing = annotations.filter(card => card.status !== "done");
     const prompt = promptText.trim() || (outgoing.length ? BATCH_INSTRUCTION : "");
@@ -306,6 +318,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     configOpen = false;
     renderDock();
     try {
+      // 도크 상시 표시: 세션이 아직 없으면 첫 전송 시점에 만든다.
+      await ensureSession();
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
       await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
       awaitingResult = true;
@@ -455,7 +469,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         ? { cli: target.value, model: "", effort: "" }
         : { ...settings, [target.name]: target.value };
       saveSettings(settings);
-      if (!session) return;
+      if (!session) {
+        // 세션 전(dormant)에도 새 CLI의 목록은 즉시 갱신해 보여준다.
+        if (target.name !== "effort") void updateOptions().then(renderDock).catch(() => undefined);
+        return;
+      }
       if (target.name !== "effort") {
         void updateOptions()
           .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
