@@ -190,10 +190,13 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const updateOptions = async () => {
     optionsDto = await fetchCoworkOptions(options.theaterId, settings.cli, settings.model || undefined);
+    // 저장값이 무효하면 provider 기본값(claude면 sonnet/medium)을 우선 채택한다.
+    const fallbackModel = optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "";
+    const fallbackEffort = optionsDto.defaultEffort && optionsDto.efforts.includes(optionsDto.defaultEffort) ? optionsDto.defaultEffort : optionsDto.efforts[0] ?? "";
     settings = {
       cli: optionsDto.clis.includes(settings.cli) ? settings.cli : optionsDto.clis[0] ?? "",
-      model: optionsDto.models.includes(settings.model) ? settings.model : optionsDto.models[0] ?? "",
-      effort: optionsDto.efforts.includes(settings.effort) ? settings.effort : optionsDto.efforts[0] ?? "",
+      model: optionsDto.models.includes(settings.model) ? settings.model : fallbackModel,
+      effort: optionsDto.efforts.includes(settings.effort) ? settings.effort : fallbackEffort,
     };
     saveSettings(settings);
   };
@@ -501,5 +504,5 @@ function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard {
 function stripFrontmatter(markdown: string): string { return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ""); }
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
-function readSettings(): Settings { try { const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); return { cli: typeof saved.cli === "string" ? saved.cli : "codex", model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "" }; } catch { return { cli: "codex", model: "", effort: "" }; } }
+function readSettings(): Settings { try { const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); return { cli: typeof saved.cli === "string" ? saved.cli : "claude", model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "medium" }; } catch { return { cli: "claude", model: "", effort: "medium" }; } }
 function saveSettings(settings: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Storage is optional. */ } }

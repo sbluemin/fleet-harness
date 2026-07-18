@@ -19,7 +19,7 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
   const service = context.coworkService ?? new CoworkService(new CoworkStore(context.paths.root), context.paths, context.paths.root);
   await service.ready;
   const parts = url.pathname.split("/").filter(Boolean);
-  if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "codex") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const model = url.searchParams.get("model") ?? provider.defaultModel; const effort = getEffort(cli, model); return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: effort.supported ? effort.levels : [] }); }
+  if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "claude") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const model = url.searchParams.get("model") ?? provider.defaultModel; const effort = getEffort(cli, model); return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: effort.supported ? effort.levels : [], defaultModel: provider.defaultModel, defaultEffort: effort.supported ? effort.default : "" }); }
   try {
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId, identity(b)))); }
     // 엔트리별 활성 세션 peek — 리딩 뷰가 세션을 만들지 않고 진행 중 초안을 복원할 때 쓴다.

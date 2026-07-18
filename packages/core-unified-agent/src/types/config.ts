@@ -122,8 +122,6 @@ export interface CliDetectionResult {
 
 /** 통합 클라이언트 옵션 */
 export interface UnifiedClientOptions extends ConnectionOptions {
-  /** ACP 에이전트의 호스트 파일 시스템 접근 정책. 기본값 allow는 기존 동작을 유지한다. */
-  hostFileAccess?: 'allow' | 'deny';
   /** CLI 선택 (미지정 시 자동 감지) */
   cli?: CliType;
   /** 자동 권한 승인 */

@@ -53,7 +53,7 @@ describe("Cowork contract defects", () => {
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
   });
 
-  it("accumulates fake connector chunks, emits SSE-safe events, and persists provider identity only in its session file", async () => {
+  it("accumulates fake connector chunks and emits SSE-safe events without provider identity", async () => {
     const connector = new FakeConnector();
     const { service, store } = await fixture(connector);
     const session = await service.create("workspace", "entry");
@@ -69,8 +69,8 @@ describe("Cowork contract defects", () => {
     expect(await store.transcript("workspace", session.id)).toEqual(expect.arrayContaining([{ role: "user", text: "Revise this", at: expect.any(String) }, { role: "assistant", text: "first second", at: expect.any(String) }]));
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: "transcript", text: "first " }), expect.objectContaining({ type: "done" })]));
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
-    expect((await service.get("workspace", session.id))?.providerSessionId).toBe("provider-session-only");
-    expect(JSON.stringify(events)).not.toContain("provider-session-only");
+    // 원샷 실행: provider 세션 식별자는 어디에도 저장·노출되지 않는다.
+    expect(JSON.stringify({ session: await service.get("workspace", session.id), events })).not.toContain("provider-session-only");
   });
 });
 

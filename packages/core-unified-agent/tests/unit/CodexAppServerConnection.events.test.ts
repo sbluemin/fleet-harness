@@ -329,8 +329,6 @@ describe('CodexAppServerConnection events', () => {
           'sbluemin/codexApproval': {
             method: 'item/commandExecution/requestApproval',
             requestedPermissions: null,
-            server: null,
-            tool: null,
           },
         },
       },
@@ -416,8 +414,6 @@ describe('CodexAppServerConnection events', () => {
         'sbluemin/codexApproval': {
           method: 'item/commandExecution/requestApproval',
           requestedPermissions: null,
-          server: null,
-          tool: null,
         },
       },
     });
@@ -486,8 +482,6 @@ describe('CodexAppServerConnection events', () => {
         'sbluemin/codexApproval': {
           method: 'item/permissions/requestApproval',
           requestedPermissions: permissionPayload,
-          server: null,
-          tool: null,
         },
       });
       resolve({ outcome: { outcome: 'cancelled' } });

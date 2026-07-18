@@ -12,12 +12,12 @@ import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { EventEmitter } from "node:events";
 
 describe("Cowork DTO", () => {
-  it("does not expose provider identity", () => {
+  it("does not expose the server-only target path", () => {
     const service = Object.create(CoworkService.prototype) as CoworkService;
-    expect(service.dto({ id: "s", workspaceId: "w", entryId: "e", state: "idle", revision: 0, draft: "x", baseHash: "h", baseVersion: 0, selection: null, annotations: [], createdAt: "now", updatedAt: "now", providerSessionId: "/secret" })).not.toHaveProperty("providerSessionId");
+    expect(service.dto({ id: "s", workspaceId: "w", entryId: "e", state: "idle", revision: 0, draft: "x", baseDraft: "x", baseHash: "h", baseVersion: 0, selection: null, annotations: [], createdAt: "now", updatedAt: "now", targetPath: "wiki/secret/e.md" })).not.toHaveProperty("targetPath");
   });
 
-  it("keeps provider identity out of DTO and SSE payloads while exposing user agent settings", async () => {
+  it("keeps server-only fields out of DTO and SSE payloads while exposing user agent settings", async () => {
     const root = await mkdtemp(join(tmpdir(), "cowork-"));
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
@@ -25,7 +25,7 @@ describe("Cowork DTO", () => {
     const store = new CoworkStore(root);
     const service = new CoworkService(store, paths, root, new FakeConnector());
     const session = await service.create("workspace", "entry");
-    await store.update("workspace", session.id, value => ({ ...value, providerSessionId: "/private/provider", cli: "codex", model: "secret-model", effort: "high" }));
+    await store.update("workspace", session.id, value => ({ ...value, cli: "codex", model: "secret-model", effort: "high" }));
     const events: unknown[] = [];
     service.subscribe(session.id, event => events.push(event));
 
@@ -33,7 +33,7 @@ describe("Cowork DTO", () => {
     const dto = service.dto((await service.get("workspace", session.id))!);
     const payload = JSON.stringify({ dto, events });
 
-    for (const secret of ["providerSessionId", "/private/provider", root]) expect(payload).not.toContain(secret);
+    for (const secret of ["targetPath", "createdAt", root]) expect(payload).not.toContain(secret);
     expect(dto).toMatchObject({ cli: "codex", model: "secret-model", effort: "high" });
   });
 

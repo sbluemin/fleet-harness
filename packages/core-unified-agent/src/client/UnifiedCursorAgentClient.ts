@@ -107,7 +107,6 @@ export class UnifiedCursorAgentClient extends EventEmitter implements IUnifiedAg
       promptIdleTimeout: options.promptIdleTimeout,
       clientInfo: options.clientInfo,
       autoApprove: options.autoApprove,
-      hostFileAccess: options.hostFileAccess,
     });
     this.connection = connection;
     this.setupEventForwarding();

@@ -4,8 +4,6 @@ export type CoworkState = CoworkSessionDto["state"];
 export interface CoworkSessionRecord extends CoworkSessionDto {
   createdAt: string;
   updatedAt: string;
-  /** Never serialize this field into a HTTP or SSE payload. */
-  providerSessionId?: string;
   /** Knowledge-root-relative entry path resolved from the index at session start. Server-only. */
   targetPath?: string;
 }

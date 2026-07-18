@@ -104,7 +104,7 @@ export async function fetchConflictDetail(theaterId: string | null, id: string):
   return fetchJson<ConflictDetailResponse>(apiPath(theaterId, `/conflicts/${encodeURIComponent(id)}`));
 }
 
-export async function fetchCoworkOptions(theaterId: string | null, cli = "codex", model?: string): Promise<CoworkOptionsResponse> {
+export async function fetchCoworkOptions(theaterId: string | null, cli = "claude", model?: string): Promise<CoworkOptionsResponse> {
   const query = new URLSearchParams({ cli });
   if (model) query.set("model", model);
   return fetchCoworkJson<CoworkOptionsResponse>(apiPath(theaterId, `/cowork/options?${query}`));

@@ -371,20 +371,6 @@ export const CODEX_NOTIFICATIONS = {
 
 export const CODEX_SERVER_REQUESTS = {
   COMMAND_EXECUTION_APPROVAL: 'item/commandExecution/requestApproval',
-  MCP_TOOL_CALL_APPROVAL: 'item/mcpToolCall/requestApproval',
   FILE_CHANGE_APPROVAL: 'item/fileChange/requestApproval',
   PERMISSIONS_APPROVAL: 'item/permissions/requestApproval',
 } as const;
-
-/** item/mcpToolCall/requestApproval 파라미터 — 필드는 방어적으로 선택 해석한다. */
-export interface CodexMcpToolCallApprovalParams {
-  threadId?: string;
-  turnId?: string;
-  itemId?: string;
-  server?: string;
-  tool?: string;
-  arguments?: unknown;
-  reason?: string | null;
-  availableDecisions?: CodexApprovalDecision[] | null;
-  item?: { server?: string; tool?: string };
-}
