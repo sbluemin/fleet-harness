@@ -11,11 +11,14 @@ const OPERATION_BODY_CLASS = "fc-operation-body";
 
 export class ApiError extends Error {
   readonly status: number;
+  /** Parsed JSON error payload when the failing response carried one — lets callers surface route-specific error contracts. */
+  readonly body: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 

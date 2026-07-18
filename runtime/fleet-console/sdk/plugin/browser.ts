@@ -184,7 +184,10 @@ export function useOperationStatus(status: ClientOperationStatusCapability, oper
 }
 
 async function assertSafeResponse(response: Response): Promise<Response> {
-  if (!response.ok) throw new ApiError(response.status, `Plugin request failed: ${response.status}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, `Plugin request failed: ${response.status}`, body);
+  }
   return response;
 }
 

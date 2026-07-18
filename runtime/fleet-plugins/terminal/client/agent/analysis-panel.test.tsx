@@ -14,7 +14,8 @@ describe("Session Analyst contract", () => {
     const artifacts = readFileSync(new URL("./analysis-artifacts-panel.tsx", import.meta.url), "utf8");
     const css = readFileSync(new URL("./analysis.css", import.meta.url), "utf8");
     expect(chat).toContain("Walk me through how this session unfolded");
-    expect(artifacts).toContain("Artifacts · sandboxed HTML");
+    expect(artifacts).toContain("SANDBOXED HTML");
+    expect(artifacts).toContain("[ HTML CANVAS ]");
     expect(css).not.toContain("agent-stream-host--analyst");
   });
   it("registers the two companion chips on the Agent operation kind", () => {
