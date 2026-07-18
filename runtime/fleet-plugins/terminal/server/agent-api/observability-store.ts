@@ -727,7 +727,7 @@ function readFilesystemPathEnd(value: string, start: number): number | undefined
   if (boundary && value[start] === "~") {
     let separator = start + 1;
     while (separator < value.length && isHomeUserCharacter(value[separator])) separator += 1;
-    if (value[separator] === "/") return scanPathEnd(value, start, separator + 1, previous);
+    if (value[separator] === "/" || value[separator] === "\\") return scanPathEnd(value, start, separator + 1, previous);
   }
 
   if (

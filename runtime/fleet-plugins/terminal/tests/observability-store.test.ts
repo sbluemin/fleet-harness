@@ -133,11 +133,12 @@ describe("agent observability DTO boundary", () => {
       "drive=C:\\Users\\Alice\\project\\file.ts",
       "forward=D:/work/project/file.ts",
       "home=~/repo/file.ts user=~alice/repo/file.ts",
+      "winhome=~\\repo\\file.ts winuser=~alice\\repo\\file.ts",
       "keep=~ ~alice https://example.com/~alice/repo I/O HTTP/2 <unknown>literal</unknown>",
     ].join("\n");
     const secondBody = "UNC=\\\\server\\share\\folder\\file.txt file=file:///Users/alice/project/file.ts XML=<root>/etc/fleet</root>";
-    const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet homes=~/repo ~alice/repo remote=https://example.org/x/y file://server/share/private.txt\n";
-    const requestPreview = "<objective>Inspect /Users/alice/app C:\\Users\\Alice\\app \\\\server\\share\\app file:///Users/alice/app ~/repo/file.ts ~alice/repo/file.ts; keep ~ ~alice https://example.com/~alice/repo I/O HTTP/2</objective>";
+    const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet homes=~/repo ~alice/repo ~\\repo ~alice\\repo remote=https://example.org/x/y file://server/share/private.txt\n";
+    const requestPreview = "<objective>Inspect /Users/alice/app C:\\Users\\Alice\\app \\\\server\\share\\app file:///Users/alice/app ~/repo/file.ts ~alice/repo/file.ts ~\\repo\\file.ts ~alice\\repo\\file.ts; keep ~ ~alice https://example.com/~alice/repo I/O HTTP/2</objective>";
     const request = {
       blocks: [
         { tag: "objective", hint: "Goal", required: true, present: true, body },
@@ -168,17 +169,18 @@ describe("agent observability DTO boundary", () => {
             "drive=[redacted path]",
             "forward=[redacted path]",
             "home=[redacted path] user=[redacted path]",
+            "winhome=[redacted path] winuser=[redacted path]",
             "keep=~ ~alice https://example.com/~alice/repo I/O HTTP/2 <unknown>literal</unknown>",
           ].join("\n"),
         },
         { tag: "context", hint: "Context", required: false, present: true, body: "UNC=[redacted path] file=[redacted path] XML=<root>[redacted path]</root>" },
       ],
-      additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] homes=[redacted path] [redacted path] remote=https://example.org/x/y [redacted path]\n",
+      additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] homes=[redacted path] [redacted path] [redacted path] [redacted path] remote=https://example.org/x/y [redacted path]\n",
     };
     const events = store.listEvents("session-a");
     const jobs = store.listJobs("session-a");
     const serialized = JSON.stringify({ jobs, events, liveFrames });
-    const observedPreview = "<objective>Inspect [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path]; keep ~ ~alice https://example.com/~alice/repo I/O HTTP/2</objective>";
+    const observedPreview = "<objective>Inspect [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path]; keep ~ ~alice https://example.com/~alice/repo I/O HTTP/2</objective>";
     expect(producerInput).toEqual(originalProducerInput);
     expect(events[0]?.event.request).toEqual(observedRequest);
     expect(events[0]?.event.requestPreview).toBe(observedPreview);
@@ -198,6 +200,8 @@ describe("agent observability DTO boundary", () => {
       "/var/lib/fleet",
       "~/repo/file.ts",
       "~alice/repo/file.ts",
+      "~\\repo\\file.ts",
+      "~alice\\repo\\file.ts",
       "file://server/share/private.txt",
     ]) expect(serialized).not.toContain(rawPath);
   });
