@@ -40,14 +40,12 @@ export class AnalystSession {
   private turn: Promise<void> = Promise.resolve();
   private disposeFlight: Promise<void> | null = null;
   constructor(options: AnalystSessionOptions) {
-    assertIsolatedAnalystCli(options.cliId);
     this.options = { ...options };
     this.tools = new AnalystTools(this.options);
   }
   async start(): Promise<void> {
     if (this.disposed) throw new Error("Session disposed");
     if (this.started) return;
-    assertIsolatedAnalystCli(this.options.cliId);
     await this.tools.refresh();
     this.throwIfDisposed();
     const specs = this.tools.specs();
@@ -65,7 +63,7 @@ export class AnalystSession {
     }
     this.bridge(client);
     try {
-      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: false, fsAccess: false, yoloMode: false, strictMcp: true, systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: ANALYST_MCP_SERVER, url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
+      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: false, fsAccess: false, yoloMode: false, strictMcp: this.options.cliId === "claude" || this.options.cliId === "claude-kimi", systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: ANALYST_MCP_SERVER, url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
     } catch (error) {
       if (this.disposed) await (this.disposeFlight ?? Promise.resolve());
       else await client.disconnect().catch(() => undefined);
@@ -116,10 +114,6 @@ export class AnalystSession {
     client.on("exit", (code, signal) => this.options.onEvent?.({ type: "error", error: { code: "analysis_exited", message: `Analysis process exited (code ${code ?? "unknown"}, signal ${signal ?? "none"})` } }));
   }
   private throwIfDisposed(): void { if (this.disposed) throw new Error("Session disposed"); }
-}
-
-function assertIsolatedAnalystCli(cliId: unknown): asserts cliId is AnalystSessionOptions["cliId"] {
-  if (cliId !== "claude" && cliId !== "claude-kimi") throw new Error("Analyst CLI must support strict MCP isolation");
 }
 
 function resolvePermissionRequest(

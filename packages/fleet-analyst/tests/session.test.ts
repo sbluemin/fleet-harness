@@ -14,21 +14,33 @@ import { AnalystSession } from "../src/session.js";
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-it.each(["codex", "opencode-go", "cursor"])("rejects non-isolated Analyst provider %s before UnifiedAgent.build", (cliId) => {
-  const build = vi.spyOn(UnifiedAgent, "build");
+it.each([
+  ["claude", true],
+  ["claude-kimi", true],
+  ["codex", false],
+  ["opencode-go", false],
+  ["cursor", false],
+] as const)("builds the selected %s Analyst provider with capability-aware isolation", async (cliId, strictMcp) => {
+  const file = join(await mkdtemp(join(tmpdir(), "analyst-provider-")), "capture.jsonl");
+  await writeFile(file, "");
+  const client = Object.assign(new EventEmitter(), {
+    connect: vi.fn().mockResolvedValue(undefined),
+    cancelPrompt: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+  }) as unknown as IUnifiedAgentClient;
+  const build = vi.spyOn(UnifiedAgent, "build").mockResolvedValue(client);
+  const session = new AnalystSession({ capturePath: file, cwd: process.cwd(), cliId, model: "test-model" });
 
-  expect(() => new AnalystSession({
-    capturePath: "/not-used.jsonl",
-    cwd: process.cwd(),
-    cliId,
-    model: "test-model",
-  } as never)).toThrow("Analyst CLI must support strict MCP isolation");
-  expect(build).not.toHaveBeenCalled();
-});
+  await session.start();
 
-it("preserves Claude and Kimi Analyst providers", () => {
-  expect(() => new AnalystSession({ capturePath: "/not-used.jsonl", cwd: process.cwd(), cliId: "claude", model: "test-model" })).not.toThrow();
-  expect(() => new AnalystSession({ capturePath: "/not-used.jsonl", cwd: process.cwd(), cliId: "claude-kimi", model: "test-model" })).not.toThrow();
+  expect(build).toHaveBeenCalledWith({ cli: cliId });
+  expect(client.connect).toHaveBeenCalledWith(expect.objectContaining({
+    autoApprove: false,
+    fsAccess: false,
+    yoloMode: false,
+    strictMcp,
+  }));
+  await session.dispose();
 });
 
 it("rejects sends before start and disposes idempotently", async () => {
