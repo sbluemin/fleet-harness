@@ -2918,7 +2918,7 @@
 
 .canvas-operation-identity-input {
   flex: 1 1 auto;
-  width: 0;
+  width: min(28ch, 34vw);
   padding: 3px 6px;
   border: 1px solid color-mix(in oklch, var(--brass) 68%, transparent);
   border-radius: var(--radius-sm);
