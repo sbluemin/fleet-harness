@@ -189,7 +189,14 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const handleSelect = useCallback((name: string) => {
     if (theaterId) setSelectedPlan({ theaterId, name });
   }, [theaterId]);
-  const handleClose = useCallback(() => setSelectedPlan(null), []);
+  // 닫힌 리더는 유지할 내용이 없다 — ref/상태를 함께 리셋해 같은 플랜 재열람이 background로
+  // 오분류되어 읽기 실패를 침묵시키는 일이 없게 한다(재열람은 항상 foreground).
+  const handleClose = useCallback(() => {
+    setSelectedPlan(null);
+    readerSignatureRef.current = null;
+    readerStateRef.current = { kind: "loading" };
+    setReaderState({ kind: "loading" });
+  }, []);
   const refreshPlans = useCallback(() => {
     listSurfaceFailureRef.current = true;
     setListRetry((attempt) => attempt + 1);
