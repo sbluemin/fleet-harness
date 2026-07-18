@@ -118,6 +118,8 @@ export interface OperationRenderContext extends OperationContext {
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
+  /** Requests host-owned maximize state without exposing Canvas implementation to plugins. */
+  readonly onRequestMaximized?: (maximized: boolean) => void;
 }
 
 export interface FleetPluginManifest {

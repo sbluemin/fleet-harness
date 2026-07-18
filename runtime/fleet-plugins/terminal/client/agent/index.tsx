@@ -10,6 +10,8 @@ import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-font.js";
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
 import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
+import { AnalysisPanel } from "./analysis-panel.js";
+import "./analysis.css";
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
@@ -244,6 +246,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  const [analystOpen, setAnalystOpen] = React.useState(false);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
@@ -355,7 +358,18 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   }
 
   return (
-    <div className="agent-stream-host">
+    <div className={`agent-stream-host${analystOpen ? " agent-stream-host--analyst" : ""}`}>
+      <button
+        type="button"
+        className="session-analyst-handle"
+        aria-label={analystOpen ? "Exit Session Analyst" : "Open Session Analyst"}
+        aria-pressed={analystOpen}
+        onClick={() => {
+          const next = !analystOpen;
+          setAnalystOpen(next);
+          context.onRequestMaximized?.(next);
+        }}
+      >{analystOpen ? "← EXIT" : "ANALYZE →"}</button>
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
@@ -365,6 +379,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
+      {analystOpen ? <AnalysisPanel context={context} /> : null}
       {dockJobs.length > 0 ? (
         <StreamDock activeJobs={dockJobs} onOpenDetail={openModal} detailBtnRef={detailBtnRef} />
       ) : null}

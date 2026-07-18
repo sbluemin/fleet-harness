@@ -47,6 +47,7 @@ interface PluginOperationRendererProps {
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
+  readonly onRequestMaximized: (maximized: boolean) => void;
 }
 
 const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
@@ -443,6 +444,12 @@ function renderPluginOperation(operation: OperationNode, options: {
           onActivate={options.onActivate}
           onClose={options.onClose}
           onGeometryChange={options.onGeometryChange}
+          onRequestMaximized={(maximized) => {
+            if (maximized) {
+              setActiveOperation(operation.id);
+              setMaximizedOperationId(operation.id);
+            } else clearMaximizedOperationId();
+          }}
         />
       </PluginErrorBoundary>
     </OperationFrame>
@@ -460,6 +467,7 @@ function PluginOperationRenderer({
   onActivate,
   onClose,
   onGeometryChange,
+  onRequestMaximized,
 }: PluginOperationRendererProps) {
   if (!descriptor.render) return null;
   return descriptor.render({
@@ -483,6 +491,7 @@ function PluginOperationRenderer({
     onActivate,
     onClose,
     onGeometryChange,
+    onRequestMaximized,
   });
 }
 
