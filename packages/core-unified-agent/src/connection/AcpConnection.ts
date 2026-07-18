@@ -49,6 +49,8 @@ import { BaseConnection, type BaseConnectionOptions } from './BaseConnection.js'
 
 /** AcpConnection 생성 옵션 */
 export interface AcpConnectionOptions extends BaseConnectionOptions {
+  /** ACP 에이전트의 호스트 파일 시스템 접근 정책. */
+  hostFileAccess?: 'allow' | 'deny';
   /** CLI 종류 */
   cliType?: CliType;
   /** 클라이언트 정보 */
@@ -98,6 +100,7 @@ export class AcpConnection extends BaseConnection {
   private readonly clientInfo: { name: string; version: string };
   private readonly protocolVersion: number;
   private readonly autoApprove: boolean;
+  private readonly hostFileAccess: 'allow' | 'deny';
   private activeSessionId: string | null = null;
   private agentProxy: Agent | null = null;
   private agentCapabilities: InitializeResponse['agentCapabilities'] | null = null;
@@ -122,6 +125,7 @@ export class AcpConnection extends BaseConnection {
     };
     this.protocolVersion = options.protocolVersion ?? 1;
     this.autoApprove = options.autoApprove ?? false;
+    this.hostFileAccess = options.hostFileAccess ?? 'allow';
   }
 
   /** 타입 안전한 이벤트 리스너 등록 */
@@ -571,8 +575,8 @@ export class AcpConnection extends BaseConnection {
 
     const clientCapabilities = {
       fs: {
-        readTextFile: true,
-        writeTextFile: true,
+        readTextFile: this.hostFileAccess === 'allow',
+        writeTextFile: this.hostFileAccess === 'allow',
       },
       permissions: true,
       terminal: false,
@@ -632,6 +636,9 @@ export class AcpConnection extends BaseConnection {
       // 파일 읽기 요청 처리 - 직접 파일 I/O 수행
       readTextFile: async (params: ReadTextFileRequest): Promise<ReadTextFileResponse> => {
         this.promptKeepAlive?.();
+        if (this.hostFileAccess === 'deny') {
+          return { content: '' };
+        }
         // 파일 존재 여부를 먼저 확인하여 ENOENT를 graceful하게 처리
         try {
           await access(params.path);
@@ -656,6 +663,9 @@ export class AcpConnection extends BaseConnection {
       // 파일 쓰기 요청 처리 - 직접 파일 I/O 수행
       writeTextFile: async (params: WriteTextFileRequest): Promise<WriteTextFileResponse> => {
         this.promptKeepAlive?.();
+        if (this.hostFileAccess === 'deny') {
+          throw new Error('Host file access is denied');
+        }
         await mkdir(dirname(params.path), { recursive: true });
         await writeFile(params.path, params.content, 'utf-8');
         return {};

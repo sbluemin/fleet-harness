@@ -125,6 +125,7 @@ export class UnifiedOpenCodeAgentClient extends EventEmitter implements IUnified
       promptIdleTimeout: options.promptIdleTimeout,
       clientInfo: options.clientInfo,
       autoApprove: options.autoApprove,
+      hostFileAccess: options.hostFileAccess,
     });
     this.connection = connection;
     this.setupEventForwarding();
