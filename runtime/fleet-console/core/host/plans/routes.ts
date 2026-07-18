@@ -6,6 +6,7 @@ import { TheaterPathContextError, resolveTheaterPathContext } from "../theater-p
 export interface PlansRouteDeps {
   readonly dataDir: string;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  readonly isEventsAuthorized?: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly resolveTheaterPath: (theaterId: string) => string | null;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -50,7 +51,7 @@ async function handlePlansEvents(req: http.IncomingMessage, res: http.ServerResp
     deps.writeJson(res, 405, { error: "Method not allowed" });
     return;
   }
-  if (!deps.isAuthorized(req)) {
+  if (!deps.isEventsAuthorized?.(req)) {
     deps.writeJson(res, 401, { error: "unauthorized" });
     return;
   }

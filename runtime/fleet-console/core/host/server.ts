@@ -248,6 +248,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
+    method: "GET",
+    path: "/api/v1/plans/events",
+    summary: "Stream theater plan invalidations from the exact Console origin.",
+    category: "Observer",
+    gate: "origin-strict",
+  },
+  {
     method: "POST",
     path: "/api/v1/updates/apply",
     summary: "Request console update application.",
@@ -522,6 +529,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const plansRouter = createPlansRouter({
     dataDir: fleetDataDir,
     isAuthorized: isTerminalAuthorized,
+    isEventsAuthorized: isExactConsoleOrigin,
     readJsonBody,
     resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
     writeJson,
@@ -532,9 +540,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         "Connection": "keep-alive",
       }));
       res.write(":connected\n\n");
-      const unsubscribe = plansWatcherRegistry.subscribe(watchPath, () => {
-        res.write(encodeSseData("plans-changed", {}));
-      });
+      const unsubscribe = plansWatcherRegistry.subscribe(
+        watchPath,
+        () => {
+          res.write(encodeSseData("plans-changed", {}));
+        },
+        () => res.end(),
+      );
       let cleanedUp = false;
       const cleanup = () => {
         if (cleanedUp) return;

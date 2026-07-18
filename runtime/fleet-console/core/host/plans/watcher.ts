@@ -12,12 +12,17 @@ export type PlansWatcherFactory = (
 ) => PlansWatcherHandle;
 
 export interface PlansWatcherRegistry {
-  subscribe(watchPath: string, onChange: () => void): () => void;
+  subscribe(watchPath: string, onChange: () => void, onClose: () => void): () => void;
+}
+
+interface WatchSubscriber {
+  readonly onChange: () => void;
+  readonly onClose: () => void;
 }
 
 interface WatchEntry {
   readonly watcher: PlansWatcherHandle;
-  readonly subscribers: Set<() => void>;
+  readonly subscribers: Set<WatchSubscriber>;
   timer: ReturnType<typeof setTimeout> | null;
   closed: boolean;
 }
@@ -31,19 +36,23 @@ export function createPlansWatcherRegistry(
   const entries = new Map<string, WatchEntry>();
 
   return {
-    subscribe(watchPath, onChange) {
+    subscribe(watchPath, onChange, onClose) {
       let entry: WatchEntry | null | undefined = entries.get(watchPath);
       if (!entry) {
         entry = createEntry(watchPath);
-        if (!entry) return () => {};
+        if (!entry) {
+          onClose();
+          return () => {};
+        }
         entries.set(watchPath, entry);
       }
-      entry.subscribers.add(onChange);
+      const subscriber = { onChange, onClose };
+      entry.subscribers.add(subscriber);
       let unsubscribed = false;
       return () => {
         if (unsubscribed) return;
         unsubscribed = true;
-        entry.subscribers.delete(onChange);
+        entry.subscribers.delete(subscriber);
         if (entry.subscribers.size !== 0) return;
         closeEntry(watchPath, entry);
       };
@@ -51,7 +60,7 @@ export function createPlansWatcherRegistry(
   };
 
   function createEntry(watchPath: string): WatchEntry | null {
-    const subscribers = new Set<() => void>();
+    const subscribers = new Set<WatchSubscriber>();
     let entry: WatchEntry;
     try {
       const watcher = watcherFactory(watchPath, { recursive: false }, () => {
@@ -59,18 +68,18 @@ export function createPlansWatcherRegistry(
         if (entry.timer) clearTimeout(entry.timer);
         entry.timer = setTimeout(() => {
           entry.timer = null;
-          for (const subscriber of entry.subscribers) subscriber();
+          for (const subscriber of entry.subscribers) subscriber.onChange();
         }, debounceMs);
       });
       entry = { watcher, subscribers, timer: null, closed: false };
-      watcher.on("error", () => closeEntry(watchPath, entry));
+      watcher.on("error", () => closeEntry(watchPath, entry, true));
       return entry;
     } catch {
       return null;
     }
   }
 
-  function closeEntry(watchPath: string, entry: WatchEntry): void {
+  function closeEntry(watchPath: string, entry: WatchEntry, notifySubscribers = false): void {
     if (entry.closed) return;
     entry.closed = true;
     if (entry.timer) clearTimeout(entry.timer);
@@ -81,5 +90,8 @@ export function createPlansWatcherRegistry(
       // A platform watcher can already be closed when its error event arrives.
     }
     if (entries.get(watchPath) === entry) entries.delete(watchPath);
+    if (notifySubscribers) {
+      for (const subscriber of entry.subscribers) subscriber.onClose();
+    }
   }
 }

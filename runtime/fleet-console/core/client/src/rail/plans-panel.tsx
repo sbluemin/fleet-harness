@@ -81,6 +81,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const listRequestRef = useRef(0);
   const readerRequestRef = useRef(0);
   const listSignaturesRef = useRef<Map<string, string> | null>(null);
+  const readerStateRef = useRef<PlanReaderState>(readerState);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
 
@@ -92,7 +93,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
       return;
     }
 
-    setListState({ kind: "loading" });
+    const isBackgroundRevalidation = listSignaturesRef.current !== null;
+    if (!isBackgroundRevalidation) setListState({ kind: "loading" });
     void fetchPlansList(theaterId).then((result) => {
       if (requestId !== listRequestRef.current) return;
       const nextSignatures = new Map(result.plans.map((plan) => [plan.name, planListSignature(plan)]));
@@ -107,8 +109,11 @@ function PlansPanelBody(ctx: RailPanelContext) {
       }
       listSignaturesRef.current = nextSignatures;
       setListState({ kind: "ready", plans: result.plans });
+      if (selectedName && previousSignatures?.get(selectedName) !== nextSignatures.get(selectedName)) {
+        setReaderRetry((attempt) => attempt + 1);
+      }
     }).catch(() => {
-      if (requestId === listRequestRef.current) setListState({ kind: "error" });
+      if (requestId === listRequestRef.current && !isBackgroundRevalidation) setListState({ kind: "error" });
     });
   }, [theaterId, listRetry]);
 
@@ -117,11 +122,22 @@ function PlansPanelBody(ctx: RailPanelContext) {
 
     if (!theaterId || !selectedName) return;
 
-    setReaderState({ kind: "loading" });
+    const isBackgroundRevalidation = readerStateRef.current.kind === "ready" && readerStateRef.current.plan.name === selectedName;
+    if (!isBackgroundRevalidation) {
+      readerStateRef.current = { kind: "loading" };
+      setReaderState({ kind: "loading" });
+    }
     void fetchPlanRead(theaterId, selectedName).then((result) => {
-      if (requestId === readerRequestRef.current) setReaderState({ kind: "ready", plan: result });
+      if (requestId === readerRequestRef.current) {
+        const nextState = { kind: "ready", plan: result } as const;
+        readerStateRef.current = nextState;
+        setReaderState(nextState);
+      }
     }).catch(() => {
-      if (requestId === readerRequestRef.current) setReaderState({ kind: "error" });
+      if (requestId === readerRequestRef.current && !isBackgroundRevalidation) {
+        readerStateRef.current = { kind: "error" };
+        setReaderState({ kind: "error" });
+      }
     });
   }, [readerRetry, selectedName, theaterId]);
 
@@ -129,7 +145,6 @@ function PlansPanelBody(ctx: RailPanelContext) {
     if (!theaterId) return;
     return subscribeToPlanChanges(theaterId, () => {
       setListRetry((attempt) => attempt + 1);
-      setReaderRetry((attempt) => attempt + 1);
     });
   }, [theaterId]);
 
@@ -148,7 +163,6 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const handleClose = useCallback(() => setSelectedPlan(null), []);
   const refreshPlans = useCallback(() => {
     setListRetry((attempt) => attempt + 1);
-    setReaderRetry((attempt) => attempt + 1);
   }, []);
   const retryList = refreshPlans;
   const retryReader = useCallback(() => setReaderRetry((attempt) => attempt + 1), []);
