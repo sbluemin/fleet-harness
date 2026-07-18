@@ -26,7 +26,6 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     if (request.method === "GET" && parts.length === 5 && parts[2] === "entries" && parts[4] === "session") { const s = await service.peek(context.workspaceId, decodeURIComponent(parts[3] ?? "")); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
     const id = parts[3]; if (!id) return json(response, 404, { error: "not_found" });
     if (request.method === "GET" && parts.length === 4) { const s = await service.get(context.workspaceId, id); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
-    if (request.method === "GET" && parts[4] === "transcript") { const s = await service.get(context.workspaceId, id); if (!s) return json(response, 404, { error: "cowork_session_not_found" }); return json(response, 200, { turns: await service.store.transcript(context.workspaceId, id) }); }
     if (request.method === "GET" && parts[4] === "events") {
       const s = await service.get(context.workspaceId, id);
       if (!s) return json(response, 404, { error: "cowork_session_not_found" });

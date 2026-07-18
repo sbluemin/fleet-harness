@@ -1,12 +1,31 @@
+import { createExecutorSessionManager, createInProcessMcpServer, createMcpToolRegistry, createMcpToolSnapshotStore } from "@dotobokuri/core-agent";
 import { approvePatch, enqueuePatch } from "../patch.js";
 import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../store.js";
+import { createWikiDraftToolSpecs } from "../tools/draft.js";
+import { getWikiToolSpecs } from "../agent-specs.js";
 import type { MemoryPaths, Patch, WikiEntry } from "../types.js";
 import type { WikiWorkspaceResolver } from "../workspace-resolver.js";
 import { join } from "node:path";
 import type { CoworkSessionDto } from "./types.js";
-import { createCoworkMcpRuntime } from "./runtime.js";
 import type { CoworkStore } from "./store.js";
 import type { CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
+
+/** The per-session registry is deliberately not shared with global Wiki tools. */
+export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, sessionId: string, resolver?: WikiWorkspaceResolver) {
+  const registry = createMcpToolRegistry();
+  const snapshots = createMcpToolSnapshotStore();
+  const server = createInProcessMcpServer({ toolSnapshotStore: snapshots });
+  const manager = createExecutorSessionManager({ runtimes: [{ name: "cowork", runtime: { registry, snapshotStore: snapshots, server } }] });
+  const draftTools = createWikiDraftToolSpecs({ draft: store.draftPort(workspaceId, sessionId) });
+  const allowedToolIds = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"] as const;
+  const specs = [...draftTools, ...getWikiToolSpecs(resolver).filter(spec => allowedToolIds.includes(spec.id as typeof allowedToolIds[number]))];
+  // The session-token snapshot scopes tools/list, but the executor call router still
+  // invokes through the registry — the same seven specs must be registered there too.
+  for (const spec of specs) registry.registerAgentTool(spec);
+  // 스코프 강제는 승인 게이트가 아니라 전용 MCP 도구 주입 + 시스템 프롬프트가 담당한다.
+  // yolo/autoApprove가 없으면 백엔드별 승인 프로토콜(claude/opencode/cursor)마다 브릿지가 필요해진다.
+  return { registry, snapshots, server, manager, specs, allowedToolIds, connection: { strictMcp: true, yoloMode: true, autoApprove: true } };
+}
 
 /**
  * 호스트가 주입하는 provider 클라이언트의 최소 표면 — fleet-wiki 독트린상 이 패키지는

@@ -5,7 +5,6 @@ import type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
-  CoworkTranscriptTurnDto,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -25,7 +24,6 @@ export type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
-  CoworkTranscriptTurnDto,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -130,10 +128,6 @@ export async function updateCoworkSettings(theaterId: string | null, id: string,
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/settings`), { ...settings });
 }
 
-export async function fetchCoworkTranscript(theaterId: string | null, id: string): Promise<{ turns: readonly CoworkTranscriptTurnDto[] }> {
-  return fetchCoworkJson<{ turns: readonly CoworkTranscriptTurnDto[] }>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/transcript`));
-}
-
 export async function updateCoworkSelection(theaterId: string | null, id: string, selection: string | null): Promise<CoworkSessionDto> {
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/selection`), { selection });
 }
@@ -167,7 +161,7 @@ export function subscribeCoworkEvents(theaterId: string | null, id: string, afte
       onEvent(value, Number(event.lastEventId) || 0);
     } catch { /* malformed server event is ignored */ }
   };
-  for (const type of ["session", "draft", "transcript", "tool", "done", "error"] as const) source.addEventListener(type, receive);
+  for (const type of ["session", "transcript", "tool", "done", "error"] as const) source.addEventListener(type, receive);
   return () => source.close();
 }
 
@@ -222,7 +216,7 @@ async function coworkError(response: Response): Promise<CoworkRequestError> {
 function isCoworkEvent(value: unknown): value is CoworkEventDto {
   if (!value || typeof value !== "object") return false;
   const event = value as Partial<CoworkEventDto>;
-  return ["session", "draft", "transcript", "tool", "done", "error"].includes(event.type ?? "")
+  return ["session", "transcript", "tool", "done", "error"].includes(event.type ?? "")
     && (event.session === undefined || (event.session !== null && typeof event.session === "object"));
 }
 

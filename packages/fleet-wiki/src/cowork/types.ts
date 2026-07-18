@@ -19,16 +19,13 @@ export interface CoworkSessionDto {
 }
 
 export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
-export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "tool" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
-export interface CoworkTranscriptTurnDto { role: "user" | "assistant"; text: string; at: string; }
+export interface CoworkEventDto { type: "session" | "transcript" | "tool" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
 
-export type CoworkState = CoworkSessionDto["state"];
 export interface CoworkSessionRecord extends CoworkSessionDto {
   createdAt: string;
   updatedAt: string;
   /** Knowledge-root-relative entry path resolved at session start. Server-only. */
   targetPath?: string;
 }
-export type CoworkAnnotation = CoworkAnnotationDto;
 export interface CoworkTranscriptTurn { role: "user" | "assistant"; text: string; at: string; }
-export interface CoworkStoredEvent { id: number; type: "session" | "draft" | "transcript" | "tool" | "done" | "error"; text?: string; session?: CoworkSessionDto; }
+export interface CoworkStoredEvent { id: number; type: CoworkEventDto["type"]; text?: string; session?: CoworkSessionDto; }
