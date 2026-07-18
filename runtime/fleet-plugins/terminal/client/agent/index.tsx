@@ -369,7 +369,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
           setAnalystOpen(next);
           context.onRequestMaximized?.(next);
         }}
-      >{analystOpen ? "← EXIT" : "ANALYZE →"}</button>
+      >{analystOpen ? "« EXIT" : "ANALYZE »"}</button>
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
