@@ -964,3 +964,5 @@
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--hairline); }
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
 @container (max-width: 420px) { .repository-source-nav { width: 44px; } .repository-source-nav button { display: grid; place-items: center; padding: 5px; } .repository-source-nav button span, .repository-source-nav button i, .repository-source-nav b { display: none; } }
+/* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
+.repository-unified [hidden] { display: none !important; }
