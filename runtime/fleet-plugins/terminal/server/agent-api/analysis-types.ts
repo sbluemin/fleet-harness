@@ -33,24 +33,26 @@ export type AnalysisEvent =
   | { readonly type: "complete" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
-export const ANALYST_CLI_BY_BINARY: Readonly<Record<string, AnalystCliId>> = {
-  claude: "claude",
-  codex: "codex",
-  opencode: "opencode-go",
-  "cursor-agent": "cursor",
-};
+// 하나의 설치 바이너리가 여러 Analyst CLI를 제공할 수 있다 — claude 바이너리는 claude-kimi 백엔드도 구동한다.
+export const ANALYST_CLI_ENTRIES: readonly { readonly binaryId: string; readonly cliId: AnalystCliId; readonly label?: string }[] = [
+  { binaryId: "claude", cliId: "claude" },
+  { binaryId: "claude", cliId: "claude-kimi", label: "Kimi (Claude Code)" },
+  { binaryId: "codex", cliId: "codex" },
+  { binaryId: "opencode", cliId: "opencode-go" },
+  { binaryId: "cursor-agent", cliId: "cursor" },
+];
 
 export function buildAnalysisCatalog(
   statuses: readonly AgentCliStatus[],
   modelsFor: (cliId: AnalystCliId) => { readonly defaultModel: string; readonly models: readonly { readonly modelId: string; readonly name: string; readonly effort: { readonly supported: boolean; readonly levels?: readonly string[]; readonly default?: string | null } }[] },
 ): AnalysisCatalog {
   const statusById = new Map(statuses.map((status) => [status.id, status]));
-  return { clis: Object.entries(ANALYST_CLI_BY_BINARY).map(([binaryId, cliId]) => {
+  return { clis: ANALYST_CLI_ENTRIES.map(({ binaryId, cliId, label }) => {
     const provider = modelsFor(cliId);
     const status = statusById.get(binaryId);
     return {
       cliId,
-      label: status?.displayName ?? cliId,
+      label: label ?? status?.displayName ?? cliId,
       available: status?.available === true,
       defaultModel: provider.defaultModel,
       models: provider.models.map((model) => ({

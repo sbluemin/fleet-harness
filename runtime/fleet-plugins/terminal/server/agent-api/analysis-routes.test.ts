@@ -18,6 +18,8 @@ describe("Session Analyst server contract", () => {
       { id: "codex", displayName: "Codex CLI", available: false, version: null },
     ], () => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
+    // claude 바이너리 하나가 claude-kimi 백엔드도 제공한다 — 카탈로그에 함께 광고돼야 한다.
+    expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude-kimi", label: "Kimi (Claude Code)", available: true })]));
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low" })).toBe(true);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a" })).toBe(false);
