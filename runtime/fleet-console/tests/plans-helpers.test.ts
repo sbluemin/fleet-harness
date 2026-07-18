@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled } from "../core/client/src/rail/plans-helpers.js";
+import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, isWaveSettled, normalizePlanHeading, planLaneHeadingMatches, planListSignature } from "../core/client/src/rail/plans-helpers.js";
 
 const NOW = Date.UTC(2026, 6, 10, 0, 0, 0);
 
@@ -61,5 +61,34 @@ describe("getLaneDispatchState", () => {
   it("keeps first-wave lanes ready and taskless lanes unmarked", () => {
     expect(getLaneDispatchState([wave(0, 2)], 0, wave(0, 2))).toBe("ready");
     expect(getLaneDispatchState([wave(0, 2)], 0, wave(0, 0))).toBe("none");
+  });
+});
+
+describe("Plans live-view helpers", () => {
+  const plans = [
+    { name: "alpha.md", title: "Alpha launch", tasksDone: 1, tasksTotal: 3, updatedAt: "2026-07-10T00:00:00.000Z", executionMode: "sequential" as const, waveCount: 1, sizeBytes: 10 },
+    { name: "bravo.md", title: "Bravo complete", tasksDone: 2, tasksTotal: 2, updatedAt: "2026-07-10T00:00:00.000Z", executionMode: "parallel" as const, waveCount: 2, sizeBytes: 20 },
+    { name: "notes.md", title: "Taskless notes", tasksDone: 0, tasksTotal: 0, updatedAt: "2026-07-10T00:00:00.000Z", executionMode: null, waveCount: 0, sizeBytes: 5 },
+  ];
+
+  it("filters name/title case-insensitively and classifies task-bearing status", () => {
+    expect(filterPlans(plans, "LAUNCH", "all").map((plan) => plan.name)).toEqual(["alpha.md"]);
+    expect(filterPlans(plans, "", "in-progress").map((plan) => plan.name)).toEqual(["alpha.md"]);
+    expect(filterPlans(plans, "", "complete").map((plan) => plan.name)).toEqual(["bravo.md"]);
+    expect(filterPlans(plans, "notes", "complete")).toEqual([]);
+  });
+
+  it("changes a row signature for material list changes and normalizes headings", () => {
+    expect(planListSignature(plans[0]!)).toBe(planListSignature({ ...plans[0]! }));
+    expect(planListSignature(plans[0]!)).not.toBe(planListSignature({ ...plans[0]!, tasksDone: 2 }));
+    expect(normalizePlanHeading("  Wave 1\n  Build  ")).toBe("Wave 1 Build");
+    expect(normalizePlanHeading("Lane W1-A")).toBe("Lane W1-A");
+  });
+
+  it("matches rendered lane headings whose Lane prefix the parser strips", () => {
+    expect(planLaneHeadingMatches("Lane W1-A \u2014 Build", "W1-A \u2014 Build")).toBe(true);
+    expect(planLaneHeadingMatches("lane  W1-A \u2014 Build", "W1-A \u2014 Build")).toBe(true);
+    expect(planLaneHeadingMatches("Lane W1-A \u2014 Build", "Lane W1-A \u2014 Build")).toBe(true);
+    expect(planLaneHeadingMatches("Lane W1-B \u2014 Build", "W1-A \u2014 Build")).toBe(false);
   });
 });

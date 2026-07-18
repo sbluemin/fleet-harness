@@ -7,13 +7,15 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import "@fleet-console/markdown/styles.css";
 import { fetchPlanRead, fetchPlansList, type PlanListItem, type PlanReadResult } from "../api.js";
 import "./plans.css";
-import { formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState } from "./plans-helpers.js";
+import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planLaneHeadingMatches, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
+import { subscribeToPlanChanges } from "./plans-events.js";
 
 interface PlansListProps {
   readonly selectedName: string | null;
   readonly state: PlansListState;
   readonly onRetry: () => void;
   readonly onSelect: (name: string) => void;
+  readonly pulsedNames: ReadonlySet<string>;
 }
 
 interface PlanReaderProps {
@@ -75,42 +77,112 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const [selectedPlan, setSelectedPlan] = useState<{ readonly theaterId: string; readonly name: string } | null>(null);
   const [listRetry, setListRetry] = useState(0);
   const [readerRetry, setReaderRetry] = useState(0);
+  const [pulsedNames, setPulsedNames] = useState<ReadonlySet<string>>(() => new Set());
+  const listRequestRef = useRef(0);
+  const readerRequestRef = useRef(0);
+  const listSignaturesRef = useRef<Map<string, string> | null>(null);
+  const readerStateRef = useRef<PlanReaderState>(readerState);
+  // reader가 실제 반영한 목록 signature. 성공 시에만 갱신되므로 background read 실패는
+  // 다음 목록 갱신에서 signature 불일치로 다시 감지된다.
+  const readerSignatureRef = useRef<string | null>(null);
+  // 목록 갱신에서 선택 Plan이 사라졌을 때 세팅 — 다음 reader 조회 실패를 조용히 버리지 않고 error로 표면화한다.
+  const readerForceRef = useRef(false);
+  // 수동 REFRESH에서 세팅 — 다음 목록 조회 실패를 background로 삼키지 않고 error로 표면화한다.
+  const listSurfaceFailureRef = useRef(false);
+  const selectedNameRef = useRef<string | null>(null);
+  const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
 
   useEffect(() => {
-    let cancelled = false;
-    setSelectedPlan(null);
-    setReaderState({ kind: "loading" });
+    selectedNameRef.current = selectedName;
+  }, [selectedName]);
+
+  useEffect(() => {
+    const requestId = ++listRequestRef.current;
 
     if (!theaterId) {
       setListState({ kind: "no-theater" });
-      return () => { cancelled = true; };
+      return;
     }
 
-    setListState({ kind: "loading" });
+    const isBackgroundRevalidation = listSignaturesRef.current !== null;
+    // 수동 REFRESH는 background여도 실패를 침묵시키지 않는다 — 기존 행은 유지하되 실패 시 error를 표면화.
+    const surfaceFailure = listSurfaceFailureRef.current;
+    listSurfaceFailureRef.current = false;
+    if (!isBackgroundRevalidation) setListState({ kind: "loading" });
     void fetchPlansList(theaterId).then((result) => {
-      if (!cancelled) setListState({ kind: "ready", plans: result.plans });
+      if (requestId !== listRequestRef.current) return;
+      const nextSignatures = new Map(result.plans.map((plan) => [plan.name, planListSignature(plan)]));
+      const previousSignatures = listSignaturesRef.current;
+      if (previousSignatures) {
+        const changed = new Set(result.plans.filter((plan) => previousSignatures.get(plan.name) !== nextSignatures.get(plan.name)).map((plan) => plan.name));
+        if (changed.size > 0) {
+          if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+          setPulsedNames(changed);
+          pulseTimerRef.current = setTimeout(() => setPulsedNames(new Set()), 1_200);
+        }
+      }
+      listSignaturesRef.current = nextSignatures;
+      setListState({ kind: "ready", plans: result.plans });
+      // 목록 갱신 완료 시점의 현재 선택(effect 시작 시점 클로저가 아닌)과 reader 반영분을 비교한다.
+      const currentSelection = selectedNameRef.current;
+      if (currentSelection) {
+        if (!nextSignatures.has(currentSelection)) {
+          readerSignatureRef.current = null;
+          readerForceRef.current = true;
+          setReaderRetry((attempt) => attempt + 1);
+        } else if (nextSignatures.get(currentSelection) !== readerSignatureRef.current) {
+          setReaderRetry((attempt) => attempt + 1);
+        }
+      }
     }).catch(() => {
-      if (!cancelled) setListState({ kind: "error" });
+      if (requestId === listRequestRef.current && (!isBackgroundRevalidation || surfaceFailure)) setListState({ kind: "error" });
     });
-
-    return () => { cancelled = true; };
   }, [theaterId, listRetry]);
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = ++readerRequestRef.current;
 
-    if (!theaterId || !selectedName) return () => { cancelled = true; };
+    if (!theaterId || !selectedName) return;
 
-    setReaderState({ kind: "loading" });
+    const forceSurface = readerForceRef.current;
+    readerForceRef.current = false;
+    const isBackgroundRevalidation = !forceSurface
+      && readerStateRef.current.kind === "ready"
+      && readerStateRef.current.plan.name === selectedName;
+    if (!isBackgroundRevalidation) {
+      readerSignatureRef.current = null;
+      readerStateRef.current = { kind: "loading" };
+      setReaderState({ kind: "loading" });
+    }
     void fetchPlanRead(theaterId, selectedName).then((result) => {
-      if (!cancelled) setReaderState({ kind: "ready", plan: result });
+      if (requestId === readerRequestRef.current) {
+        readerSignatureRef.current = listSignaturesRef.current?.get(result.name) ?? null;
+        const nextState = { kind: "ready", plan: result } as const;
+        readerStateRef.current = nextState;
+        setReaderState(nextState);
+      }
     }).catch(() => {
-      if (!cancelled) setReaderState({ kind: "error" });
+      // background 재검증도 실패는 표면화한다 — 성공만 무깜빡임 교체 대상이며, 열린 리더가
+      // 읽기 불가(413 등)로 바뀐 사실을 낡은 본문으로 가리면 안 된다. loopback 특성상
+      // 일시 네트워크 실패로 인한 오탐 여지는 사실상 없다.
+      if (requestId === readerRequestRef.current) {
+        readerStateRef.current = { kind: "error" };
+        setReaderState({ kind: "error" });
+      }
     });
-
-    return () => { cancelled = true; };
   }, [readerRetry, selectedName, theaterId]);
+
+  useEffect(() => {
+    if (!theaterId) return;
+    return subscribeToPlanChanges(theaterId, () => {
+      setListRetry((attempt) => attempt + 1);
+    });
+  }, [theaterId]);
+
+  useEffect(() => () => {
+    if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+  }, []);
 
   useLayoutEffect(() => {
     requestExtraWidth?.(selectedName ? PLANS_EXTRA_WIDTH : null);
@@ -120,13 +192,26 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const handleSelect = useCallback((name: string) => {
     if (theaterId) setSelectedPlan({ theaterId, name });
   }, [theaterId]);
-  const handleClose = useCallback(() => setSelectedPlan(null), []);
-  const retryList = useCallback(() => setListRetry((attempt) => attempt + 1), []);
+  // 닫힌 리더는 유지할 내용이 없다 — ref/상태를 함께 리셋해 같은 플랜 재열람이 background로
+  // 오분류되어 읽기 실패를 침묵시키는 일이 없게 한다(재열람은 항상 foreground).
+  const handleClose = useCallback(() => {
+    setSelectedPlan(null);
+    readerSignatureRef.current = null;
+    readerStateRef.current = { kind: "loading" };
+    setReaderState({ kind: "loading" });
+  }, []);
+  const refreshPlans = useCallback(() => {
+    listSurfaceFailureRef.current = true;
+    setListRetry((attempt) => attempt + 1);
+  }, []);
+  const retryList = refreshPlans;
   const retryReader = useCallback(() => setReaderRetry((attempt) => attempt + 1), []);
 
   return (
     <div className="plans-panel-shell">
-      <div className={`plans-root${selectedName ? " is-reader-open" : ""}`}>
+      <div className={`plans-root${selectedName ? " is-reader-open" : ""}`} onKeyDown={(event) => {
+        if (event.key === "Escape" && selectedName) handleClose();
+      }}>
         {selectedName && <PlanReader state={readerState} onClose={handleClose} onRetry={retryReader} />}
         {selectedName && <div className="plans-divider" aria-hidden="true" />}
         <PlansList
@@ -134,13 +219,18 @@ function PlansPanelBody(ctx: RailPanelContext) {
           state={listState}
           onRetry={retryList}
           onSelect={handleSelect}
+          pulsedNames={pulsedNames}
         />
       </div>
     </div>
   );
 }
 
-function PlansList({ selectedName, state, onRetry, onSelect }: PlansListProps) {
+function PlansList({ selectedName, state, onRetry, onSelect, pulsedNames }: PlansListProps) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<PlanStatusFilter>("all");
+  const [copiedName, setCopiedName] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   if (state.kind === "no-theater") {
     return <div className="plans-list-pane"><EmptyState>Select a Theater to browse plans.</EmptyState></div>;
   }
@@ -165,33 +255,64 @@ function PlansList({ selectedName, state, onRetry, onSelect }: PlansListProps) {
     );
   }
 
+  const visiblePlans = filterPlans(state.plans, query, status);
+  const moveFocus = (index: number, direction: -1 | 1) => {
+    const nextIndex = (index + direction + visiblePlans.length) % visiblePlans.length;
+    rowRefs.current.get(visiblePlans[nextIndex]?.name ?? "")?.focus();
+  };
+  const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveFocus(index, event.key === "ArrowDown" ? 1 : -1);
+    }
+  };
+  const copyPlanPath = (event: React.MouseEvent<HTMLButtonElement>, name: string) => {
+    event.stopPropagation();
+    if (!navigator.clipboard) return;
+    void navigator.clipboard.writeText(`plans/${name}`).then(() => {
+      setCopiedName(name);
+      window.setTimeout(() => setCopiedName((current) => current === name ? null : current), 1_200);
+    }).catch(() => undefined);
+  };
+
   return (
     <div className="plans-list-pane">
+      <div className="plans-toolbar">
+        <label className="plans-search-label">
+          <span>Search plans</span>
+          <input className="plans-search" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <div className="plans-filter-group" aria-label="Plan status">
+          {(["all", "in-progress", "complete"] as const).map((filter) => (
+            <button key={filter} type="button" className={`plans-filter${status === filter ? " is-active" : ""}`} aria-pressed={status === filter} onClick={() => setStatus(filter)}>
+              {filter === "all" ? "ALL" : filter === "in-progress" ? "IN PROGRESS" : "COMPLETE"}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="plans-refresh" onClick={onRetry}>REFRESH</button>
+      </div>
       <div className="plans-list" aria-label="Plans">
-        {state.plans.map((plan) => {
+        {visiblePlans.length === 0 && <EmptyState>No matching plans.</EmptyState>}
+        {visiblePlans.map((plan, index) => {
           const progress = getProgressPercent(plan.tasksDone, plan.tasksTotal);
           const isComplete = progress === 100;
           return (
-            <button
+            <div
               key={plan.name}
-              type="button"
-              className={`plans-row${selectedName === plan.name ? " is-selected" : ""}`}
-              onClick={() => onSelect(plan.name)}
+              className={`plans-row${selectedName === plan.name ? " is-selected" : ""}${pulsedNames.has(plan.name) ? " is-pulsing" : ""}`}
             >
-              <span className="plans-row-name">{plan.name}</span>
-              <span className="plans-row-meta">
-                {plan.waveCount} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · {formatRelativeTime(plan.updatedAt)}
-                {plan.executionMode === "parallel" ? " · parallel" : ""}
-              </span>
-              {progress !== null && (
-                <span className="plans-progress-track" aria-label={`${progress}% complete`}>
-                  <span
-                    className={`plans-progress-fill${isComplete ? " is-complete" : ""}`}
-                    style={{ width: `${progress}%` }}
-                  />
+              <button ref={(node) => { if (node) rowRefs.current.set(plan.name, node); else rowRefs.current.delete(plan.name); }} type="button" className="plans-row-select" onClick={() => onSelect(plan.name)} onKeyDown={(event) => handleRowKeyDown(event, index)}>
+                <span className="plans-row-name">{plan.name}</span>
+                <span className="plans-row-meta">
+                  {plan.waveCount} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · {formatRelativeTime(plan.updatedAt)}
+                  {plan.executionMode === "parallel" ? " · parallel" : ""}
                 </span>
-              )}
-            </button>
+                {progress !== null && <span className="plans-progress-track" aria-label={`${progress}% complete`}><span className={`plans-progress-fill${isComplete ? " is-complete" : ""}`} style={{ width: `${progress}%` }} /></span>}
+              </button>
+              <button type="button" className="plans-copy" onClick={(event) => copyPlanPath(event, plan.name)} aria-label={copiedName === plan.name ? `Copied plans/${plan.name}` : `Copy plans/${plan.name}`}>
+                {copiedName === plan.name ? "COPIED" : "COPY"}
+              </button>
+            </div>
           );
         })}
       </div>
@@ -236,6 +357,23 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
     return doc.body.innerHTML;
   }, [plan.content]);
   const markdownRootRef = useRef<HTMLDivElement | null>(null);
+  const headingFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const jumpToHeading = useCallback((level: "h2" | "h3", heading: string) => {
+    const root = markdownRootRef.current;
+    if (!root) return;
+    const target = [...root.querySelectorAll(level)].find((element) => level === "h3"
+      ? planLaneHeadingMatches(element.textContent ?? "", heading)
+      : normalizePlanHeading(element.textContent ?? "") === normalizePlanHeading(heading));
+    if (!target) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+    target.classList.remove("plans-heading-flash");
+    void target.getBoundingClientRect();
+    target.classList.add("plans-heading-flash");
+    if (headingFlashTimerRef.current) clearTimeout(headingFlashTimerRef.current);
+    headingFlashTimerRef.current = setTimeout(() => target.classList.remove("plans-heading-flash"), 1_200);
+  }, []);
 
   // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 위임 처리한다 — 준거: file-explorer.
   const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -263,6 +401,10 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
     return () => observer.disconnect();
   }, [html]);
 
+  useEffect(() => () => {
+    if (headingFlashTimerRef.current) clearTimeout(headingFlashTimerRef.current);
+  }, []);
+
   return (
     <div className="plans-reader-pane">
       <div className="plans-reader-head">
@@ -280,24 +422,24 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
           {plan.waves.map((wave, waveIndex) => {
             const progressState = getWaveProgressState(wave.tasksDone, wave.tasksTotal);
             return (
-              <span key={wave.index} className={`plans-wave is-${progressState}`}>
-                <span className="plans-wave-heading">{wave.heading}</span>
+              <div key={wave.index} className={`plans-wave is-${progressState}`}>
+                <button type="button" className="plans-wave-heading" onClick={() => jumpToHeading("h2", wave.heading)}>{wave.heading}</button>
                 {wave.tasksTotal > 0 && <span className="plans-wave-count">{wave.tasksDone}/{wave.tasksTotal}</span>}
                 {wave.lanes.length > 0 && (
-                  <span className="plans-lane-list">
+                  <div className="plans-lane-list">
                     {wave.lanes.map((lane, laneIndex) => {
                       const laneState = getLaneDispatchState(plan.waves, waveIndex, lane);
                       return (
-                        <span key={lane.id ?? `${wave.index}-${laneIndex}`} className={`plans-lane is-${laneState}`}>
-                          <span className="plans-lane-id">{lane.id ?? lane.heading}</span>
+                        <div key={lane.id ?? `${wave.index}-${laneIndex}`} className={`plans-lane is-${laneState}`}>
+                          <button type="button" className="plans-lane-id" onClick={() => jumpToHeading("h3", lane.heading)}>{lane.id ?? lane.heading}</button>
                           {lane.tasksTotal > 0 && <span className="plans-lane-count">{lane.tasksDone}/{lane.tasksTotal}</span>}
                           {laneState === "ready" && <span className="plans-lane-ready">READY</span>}
-                        </span>
+                        </div>
                       );
                     })}
-                  </span>
+                  </div>
                 )}
-              </span>
+              </div>
             );
           })}
         </div>

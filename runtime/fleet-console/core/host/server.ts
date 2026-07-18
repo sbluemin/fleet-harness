@@ -28,6 +28,7 @@ import { createOperationStore } from "./operations/store.js";
 import type { OperationNode } from "./operations/types.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createPlansRouter } from "./plans/routes.js";
+import { createPlansWatcherRegistry } from "./plans/watcher.js";
 import { createPluginClientAssets } from "./plugin-host/client-assets.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/types.js";
@@ -243,6 +244,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "POST",
     path: "/api/v1/plans/read",
     summary: "실행 계획 문서를 조회합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/plans/events",
+    summary: "Theater 실행 계획 변경 신호를 스트리밍합니다.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -517,12 +525,39 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     systemFonts: deps.systemFonts ?? createSystemFontsService(),
     writeJson,
   });
+  const plansWatcherRegistry = createPlansWatcherRegistry();
   const plansRouter = createPlansRouter({
     dataDir: fleetDataDir,
     isAuthorized: isTerminalAuthorized,
+    // events는 same-origin EventSource가 Origin 헤더를 보내지 않으므로 exact-Origin 게이트를 쓸 수 없다.
+    // list/read와 동일한 terminal Origin 게이트(무-Origin 허용·존재 시 정확 일치)를 적용한다.
+    isEventsAuthorized: isTerminalAuthorized,
     readJsonBody,
     resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
     writeJson,
+    subscribeToChanges: (res, watchPath) => {
+      res.writeHead(200, withSecurityHeaders({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      }));
+      res.write(":connected\n\n");
+      const unsubscribe = plansWatcherRegistry.subscribe(
+        watchPath,
+        () => {
+          res.write(encodeSseData("plans-changed", {}));
+        },
+        () => res.end(),
+      );
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        unsubscribe();
+      };
+      res.on("close", cleanup);
+      res.on("error", cleanup);
+    },
   });
   const theaterPathContextRouter = createTheaterPathContextRouter({
     getTheater: (theaterId) => theaters.get(theaterId),
@@ -634,7 +669,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTheaterFolderGrants(req, res), res);
       return;
     }
-    if (pathname === "/api/v1/plans/list" || pathname === "/api/v1/plans/read") {
+    if (pathname === "/api/v1/plans/list" || pathname === "/api/v1/plans/read" || pathname === "/api/v1/plans/events") {
       runAsyncBooleanHandler(plansRouter({ req, res, pathname }), res, () => false);
       return;
     }

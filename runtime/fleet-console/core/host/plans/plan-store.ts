@@ -82,6 +82,15 @@ export async function listPlansForWorkspace(dataDir: string, cwd: string): Promi
   return plans.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
+/**
+ * Resolves the Plans directory for server-side observation only.  A missing
+ * workspace or Plans directory is deliberately represented as null: readers
+ * and watchers must never create either as a side effect of a request.
+ */
+export function resolvePlansWatchDirectory(dataDir: string, cwd: string): string | null {
+  return resolvePlansRoot(dataDir, cwd, true)?.plansPath ?? null;
+}
+
 export function isValidPlanName(name: string): boolean {
   return PLAN_NAME_PATTERN.test(name) && !name.includes("..");
 }
