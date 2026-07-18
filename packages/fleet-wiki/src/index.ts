@@ -25,6 +25,7 @@ export * from "./store.js";
 export * from "./types.js";
 export * from "./tools/briefing.js";
 export * from "./tools/drydock.js";
+export * from "./tools/draft.js";
 export * from "./tools/ingest.js";
 export * from "./tools/orient.js";
 export * from "./tools/patch-edit.js";

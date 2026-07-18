@@ -52,6 +52,34 @@ export async function readWikiEntry(id: string, paths: MemoryPaths): Promise<Wik
   return match ? match.entry : null;
 }
 
+/**
+ * readWikiEntry와 동일한 해석 체인(인덱스 → 평면 경로 → 재귀 스캔)으로 엔트리의
+ * 루트 상대 경로를 반환한다. 인덱스가 스테일해도 실제 파일 위치를 돌려준다.
+ */
+export async function resolveWikiEntryPath(id: string, paths: MemoryPaths): Promise<string | null> {
+  try {
+    assertSafeEntryId(id);
+  } catch {
+    return null;
+  }
+  const index = await loadIndex(paths);
+  const indexed = index[id];
+  if (indexed) {
+    const resolved = path.resolve(paths.root, indexed.path);
+    const rel = path.relative(paths.wikiDir, resolved);
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel) && (await pathExists(resolved))) {
+      return path.relative(paths.root, resolved).replaceAll(path.sep, "/");
+    }
+  }
+  const fallbackPath = path.join(paths.wikiDir, `${id}.md`);
+  if (await pathExists(fallbackPath)) {
+    return path.relative(paths.root, fallbackPath).replaceAll(path.sep, "/");
+  }
+  const records = await listWikiRecords(paths);
+  const match = records.find((record) => record.entry.id === id);
+  return match ? match.path : null;
+}
+
 export async function writeWikiEntry(entry: WikiEntry, paths: MemoryPaths): Promise<string> {
   await ensureMemoryRoot(paths);
   assertSafeEntryId(entry.id);

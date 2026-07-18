@@ -11,6 +11,7 @@ Fleet Console owns its own local HTTP server. The Terminal plugin owns Shell and
 - Terminal plugin-spawned Agent CLI PTYs with in-process observation.
 - Per-job carrier tracks with incremental output text, reasoning folds, and tool-call activity.
 - Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
+- Codex Cowork lets you open a Wiki entry in a focused AI editing session: compare its immutable current version with a live draft, give the assistant selected text or annotations as context, and Apply once when ready. Your draft and conversation survive refresh or restart, while knowledge remains unchanged until that final Apply; Cowork has no terminal or PTY access and keeps provider details, workspace paths, and credentials out of the browser.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 

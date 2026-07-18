@@ -20,6 +20,8 @@ import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { getState } from "./state.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
+import { mountCoworkInline } from "./cowork-controller.js";
+import type { CoworkController } from "./cowork-controller.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ export function mountReadingInto(
 ): ReadingController {
   let destroyed = false;
   let cleanupSpy: (() => void) | null = null;
+  let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
 
@@ -97,6 +100,7 @@ export function mountReadingInto(
       handleDrydockAction(drydockBtn.dataset.drydockAction);
       return;
     }
+
   }
 
   function handleDrydockAction(action: string | undefined): void {
@@ -174,6 +178,8 @@ export function mountReadingInto(
   readContainer.addEventListener("click", handleClick);
 
   function cleanupReader(): void {
+    coworkController?.destroy();
+    coworkController = null;
     cleanupSpy?.();
     cleanupSpy = null;
   }
@@ -211,6 +217,18 @@ export function mountReadingInto(
       const article = readContainer.querySelector<HTMLElement>("article");
       if (article && toc.length > 0) {
         cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
+      }
+      // 별도 화면 전환 없이 리딩 뷰 자체를 Cowork로 증강한다(드래그 → Comment → 도크).
+      const body = readContainer.querySelector<HTMLElement>("#codex-reader-body");
+      if (article && body) {
+        coworkController = mountCoworkInline({
+          theaterId: liveOpts.theaterId,
+          entryId,
+          title: entry.frontmatter.title,
+          article,
+          body,
+          onApplied: () => { void renderEntryView(entryId); },
+        });
       }
     } catch (error) {
       if (!destroyed) showError(readContainer, opts.tocContainer, error);
@@ -294,6 +312,7 @@ export function mountReadingInto(
       destroyed = true;
       readContainer.removeEventListener("click", handleClick);
       cleanupReader();
+      coworkController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
       await renderEntryView(entryId);

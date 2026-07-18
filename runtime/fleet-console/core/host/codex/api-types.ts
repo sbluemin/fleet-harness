@@ -2,6 +2,11 @@
 // 런타임 코드 없이 타입만 둔다 — 클라이언트 tsconfig이 DOM 전용이므로
 // 이 파일에 Node 타입(NodeJS.* 등)을 참조하면 안 된다.
 
+// Cowork DTO의 단일 출처는 fleet-wiki cowork 서브패키지다(type-only라 브라우저 번들 무영향).
+export type { CoworkAnnotationDto, CoworkEventDto, CoworkSessionDto } from "@dotobokuri/fleet-wiki/cowork";
+/** 콘솔 options 라우트 계약 — CLI/모델 목록은 호스트가 core-unified-agent 레지스트리에서 채운다. */
+export interface CoworkOptionsResponse { clis: readonly string[]; models: readonly string[]; efforts: readonly string[]; defaultModel?: string; defaultEffort?: string; }
+
 // workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지
 export interface WorkspaceMetadata {
   id: string;

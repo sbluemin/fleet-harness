@@ -6,6 +6,10 @@ import net from "node:net";
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { handleApiRequest } from "./routes.js";
+import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
+import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
+import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
+import type { UnifiedClientOptions } from "@dotobokuri/core-unified-agent";
 import type { AllowedAccessSets } from "./types.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
@@ -17,6 +21,7 @@ interface CodexGatewayDeps {
   readonly version: string;
   readonly getPort: () => number;
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
+  readonly dataDir?: string;
 }
 
 interface ParsedHostHeader {
@@ -59,6 +64,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   let accessSets: AllowedAccessSets | null = null;
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
+  const coworkServices = new Map<string, CoworkService>();
+  // provider 조립은 호스트 소유 — fleet-wiki cowork 엔진에는 커넥터만 주입한다.
+  const coworkConnector: CoworkConnector = { connect: (options) => UnifiedAgent.connect(options as unknown as UnifiedClientOptions) };
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     let selected: WorkspaceSelection;
@@ -108,6 +116,8 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
+    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver);
+    coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,
       knowledgeRoot: paths.root,
@@ -117,6 +127,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       workspaceId: workspace.id,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
+      coworkService,
     });
     request.url = originalUrl;
     return handled;
@@ -158,6 +169,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     if (initialWorkspaceId === id) {
       initialWorkspace = null;
       initialWorkspaceId = null;
+    }
+    // Cowork 캐시도 함께 해제 — 라우트가 사라진 뒤 라이브 provider 클라이언트가
+    // 취소 불가능한 상태로 잔존하면 안 된다.
+    const coworkService = coworkServices.get(id);
+    if (coworkService) {
+      coworkServices.delete(id);
+      void coworkService.dispose().catch(() => undefined);
     }
     return workspaces.remove(id);
   }
