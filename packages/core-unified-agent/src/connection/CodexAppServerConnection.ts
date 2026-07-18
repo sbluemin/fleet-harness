@@ -624,6 +624,52 @@ export class CodexAppServerConnection extends BaseConnection {
         });
         break;
       }
+      case 'mcpServer/elicitation/request': {
+        const p = params as { serverName?: string; message?: string; _meta?: { codex_approval_kind?: string } };
+        if (p?._meta?.codex_approval_kind !== 'mcp_tool_call') {
+          this.sendJsonRpc({
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32601, message: `Unsupported elicitation: ${p?._meta?.codex_approval_kind ?? 'unknown'}` },
+          });
+          break;
+        }
+        const elicitServer = typeof p.serverName === 'string' ? p.serverName : undefined;
+        const elicitTool = typeof p.message === 'string' ? /run tool "([^"]+)"/.exec(p.message)?.[1] : undefined;
+        const elicitTitle = `${elicitServer ?? 'mcp'}/${elicitTool ?? 'unknown'}`;
+        const elicitParams: AcpPermissionRequestParams = {
+          sessionId: this.sessionId ?? '',
+          options: [
+            { optionId: 'accept', name: 'accept', kind: 'allow_once' },
+            { optionId: 'decline', name: 'decline', kind: 'reject_once' },
+          ],
+          toolCall: {
+            toolCallId: `${elicitTitle}:${id}`,
+            title: elicitTitle,
+            kind: 'execute',
+            status: 'pending',
+            rawInput: {},
+          },
+          _meta: {
+            'sbluemin/codexApproval': {
+              method,
+              requestedPermissions: null,
+              server: elicitServer ?? null,
+              tool: elicitTool ?? null,
+            },
+          },
+        };
+        if (this.autoApprove) {
+          this.sendJsonRpc({ jsonrpc: '2.0', id, result: { action: 'accept' } });
+          this.emit('permissionRequest', elicitParams, () => {});
+          break;
+        }
+        this.emit('permissionRequest', elicitParams, (response) => {
+          const optionId = this.extractPermissionOptionId(response);
+          this.sendJsonRpc({ jsonrpc: '2.0', id, result: { action: optionId === 'accept' ? 'accept' : 'decline' } });
+        });
+        break;
+      }
       case CODEX_SERVER_REQUESTS.MCP_TOOL_CALL_APPROVAL: {
         const approval = params as import('../types/codex-app-server.js').CodexMcpToolCallApprovalParams;
         const mcpServer = typeof approval?.server === 'string' ? approval.server : approval?.item?.server;

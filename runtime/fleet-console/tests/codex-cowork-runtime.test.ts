@@ -52,6 +52,8 @@ describe("Cowork MCP runtime", () => {
       const response: AcpPermissionResponse = permissionResponse(provenanced(tool), allowed);
       expect(response).toEqual({ outcome: { outcome: "selected", optionId: "allow-once" } });
     }
+    // The codex elicitation bridge stamps the same provenance shape.
+    expect(permissionResponse({ ...permission("cowork/wiki_draft_edit"), _meta: { "sbluemin/codexApproval": { method: "mcpServer/elicitation/request", server: "cowork", tool: "wiki_draft_edit" } } } as AcpPermissionRequestParams, allowed)).toEqual({ outcome: { outcome: "selected", optionId: "allow-once" } });
     // Provenanced but foreign server or unlisted tool stays rejected.
     expect(permissionResponse({ ...provenanced("wiki_draft_read"), _meta: { "sbluemin/codexApproval": { method: "item/mcpToolCall/requestApproval", server: "other", tool: "wiki_draft_read" } } } as AcpPermissionRequestParams, allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
     expect(permissionResponse(provenanced("bash"), allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });

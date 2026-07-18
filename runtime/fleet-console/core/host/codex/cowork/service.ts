@@ -160,7 +160,7 @@ export class CoworkService {
  */
 export function evaluatePermission(params: AcpPermissionRequestParams, allowedToolIds: readonly string[]): { tool: string; permitted: boolean; response: AcpPermissionResponse } {
   const meta = (params._meta as Record<string, { method?: unknown; server?: unknown; tool?: unknown }> | undefined)?.["sbluemin/codexApproval"];
-  const permitted = meta?.method === "item/mcpToolCall/requestApproval"
+  const permitted = (meta?.method === "item/mcpToolCall/requestApproval" || meta?.method === "mcpServer/elicitation/request")
     && meta.server === "cowork"
     && typeof meta.tool === "string"
     && allowedToolIds.includes(meta.tool);
