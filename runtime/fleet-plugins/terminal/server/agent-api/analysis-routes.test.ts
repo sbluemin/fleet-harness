@@ -17,8 +17,16 @@ describe("Session Analyst server contract", () => {
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "codex", model: "model-a", effort: "low" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "removed", effort: "low" })).toBe(false);
+
+    const noEffortCatalog = buildAnalysisCatalog([
+      { id: "claude", displayName: "Claude Code", available: true, version: "1.2.3" },
+    ], () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }));
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b" })).toBe(true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b", effort: "" })).toBe(true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b", effort: "low" })).toBe(false);
   });
 
   it("accepts only the frozen message shape", () => {
@@ -45,6 +53,64 @@ describe("Session Analyst server contract", () => {
     await Promise.resolve();
     await expect(registry.stop("op-0")).resolves.toBe(true);
     await expect(registry.stop("op-0")).resolves.toBe(false);
+  });
+
+  it("disposes and releases a session stopped while start is pending", async () => {
+    const registry = new AnalysisRegistry();
+    let resolveStart: (() => void) | undefined;
+    const dispose = vi.fn(async () => undefined);
+    const start = registry.start("op", () => ({
+      start: () => new Promise<void>((resolve) => { resolveStart = resolve; }),
+      send: async () => undefined,
+      dispose,
+    }) as never);
+
+    await expect(registry.stop("op")).resolves.toBe(true);
+    resolveStart?.();
+    await expect(start).resolves.toBe("stopped");
+    expect(dispose).toHaveBeenCalledTimes(1);
+    await expect(registry.start("op", () => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }) as never)).resolves.toBe("started");
+  });
+
+  it("releases a session after an analysis_exited event", async () => {
+    const registry = new AnalysisRegistry();
+    let emit: ((event: { type: "error"; error: { code: string; message: string } }) => void) | undefined;
+    const dispose = vi.fn(async () => undefined);
+    await registry.start("op", (onEvent) => {
+      emit = onEvent;
+      return { start: async () => undefined, send: async () => undefined, dispose } as never;
+    });
+
+    emit?.({ type: "error", error: { code: "analysis_exited", message: "exited" } });
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
+    await expect(registry.message("op", "hello")).resolves.toBe("not_found");
+  });
+
+  it("normalizes absent effort to undefined when creating an unsupported-effort session", async () => {
+    const router = createRouterHarness(true);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: "/capture/transcript.jsonl" }),
+      createSession: createSession as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined }));
+  });
+
+  it("writes connected and frozen error envelopes for a missing-session stream", async () => {
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never);
+
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/op/stream");
+    expect(response.writes).toEqual([
+      "data: {\"type\":\"connected\"}\n\n",
+      `data: ${JSON.stringify({ type: "error", error: { code: "analysis_session_not_found", message: "Analysis session was not found." } })}\n\n`,
+    ]);
+    expect(response.ended).toBe(true);
   });
 
   it("validates Host before route work and never reveals unavailable capture paths", async () => {
@@ -84,9 +150,12 @@ function createRouterHarness(initialHostAllowance: boolean) {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
     async call(method: string, pathname: string, body?: unknown) {
+      const writes: string[] = [];
+      let ended = false;
       const req = Object.assign(new EventEmitter(), { method, headers: { "content-type": "application/json" }, socket: { localPort: 4444 }, body });
-      const res = Object.assign(new EventEmitter(), { writableEnded: false, destroyed: false, writeHead: () => undefined, write: () => undefined, end: () => undefined });
+      const res = Object.assign(new EventEmitter(), { writableEnded: false, destroyed: false, writeHead: () => undefined, write: (data: string) => { writes.push(data); }, end: () => { ended = true; } });
       await handler?.({ req, res, pathname });
+      return { writes, get ended() { return ended; } };
     },
   };
 }

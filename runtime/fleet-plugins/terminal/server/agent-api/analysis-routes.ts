@@ -88,9 +88,10 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     return true;
   }
   try {
-    const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort, cwd, capturePath: capture.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
+    const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort || undefined, cwd, capturePath: capture.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
     else if (result === "limit") writeError(ctx, res, 429, ANALYSIS_ERROR_CODES.sessionLimit, "Analysis session limit reached.");
+    else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
     else ctx.host.http.writeJson(res, 200, { started: true });
   } catch {
     writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");
@@ -115,9 +116,9 @@ function handleStream(ctx: FleetPluginServerContext, req: http.IncomingMessage, 
   let closed = false;
   const write = (data: string) => { if (!closed && !res.writableEnded && !res.destroyed) res.write(data); };
   res.writeHead(200, securityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" }));
-  write(": connected\n\n");
+  write(`data: ${JSON.stringify({ type: "connected" } satisfies AnalysisEvent)}\n\n`);
   const unsubscribe = registry.subscribe(operationId, (event) => write(`data: ${JSON.stringify(event)}\n\n`));
-  if (!unsubscribe) { write(`data: ${JSON.stringify(analysisError(ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was not found."))}\n\n`); res.end(); return true; }
+  if (!unsubscribe) { write(`data: ${JSON.stringify({ type: "error", error: { code: ANALYSIS_ERROR_CODES.sessionNotFound, message: "Analysis session was not found." } } satisfies AnalysisEvent)}\n\n`); res.end(); return true; }
   const keepalive = setInterval(() => write(": keepalive\n\n"), 30_000);
   req.on("close", () => { closed = true; clearInterval(keepalive); unsubscribe(); });
   return true;

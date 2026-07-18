@@ -25,6 +25,7 @@ export type AnalysisCatalogModel = { readonly id: string; readonly label: string
 export type AnalystCliId = "claude" | "claude-kimi" | "codex" | "opencode-go" | "cursor";
 export type AnalysisSession = AnalystSessionInstance;
 export type AnalysisEvent =
+  | { readonly type: "connected" }
   | { readonly type: "chunk"; readonly text: string }
   | { readonly type: "thought"; readonly text: string }
   | { readonly type: "tool"; readonly title: string; readonly status: string }
@@ -71,7 +72,9 @@ export function isAnalysisSelection(catalog: AnalysisCatalog, value: unknown): v
   const cli = catalog.clis.find((candidate) => candidate.cliId === value.cliId);
   if (!cli?.available) return false;
   const model = cli.models.find((candidate) => candidate.id === value.model);
-  return !!model && (value.effort === undefined || model.effortLevels.includes(value.effort));
+  if (!model) return false;
+  if (model.effortLevels.length === 0) return value.effort === undefined || value.effort === "";
+  return typeof value.effort === "string" && value.effort.length > 0 && model.effortLevels.includes(value.effort);
 }
 
 export function isMessageBody(value: unknown): value is { readonly text: string } {

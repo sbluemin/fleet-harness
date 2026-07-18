@@ -2,20 +2,37 @@ import type { AnalysisEvent, AnalysisSession } from "./analysis-types.js";
 
 export const MAX_ANALYSIS_SESSIONS = 4;
 type Subscriber = (event: AnalysisEvent) => void;
-type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; starting: boolean; messaging: boolean; stopped: boolean };
+type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; starting: boolean; messaging: boolean; stopped: boolean; disposePromise?: Promise<void> };
 
 export class AnalysisRegistry {
   private readonly entries = new Map<string, Entry>();
 
-  async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession): Promise<"started" | "exists" | "limit"> {
+  async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession): Promise<"started" | "stopped" | "exists" | "limit"> {
     if (this.entries.has(operationId)) return "exists";
     if (this.entries.size >= MAX_ANALYSIS_SESSIONS) return "limit";
-    let entry: Entry;
-    const session = create((event) => { if (!entry.stopped) for (const subscriber of entry.subscribers) subscriber(event); });
+    let entry: Entry | undefined;
+    const session = create((event) => {
+      if (!entry || entry.stopped) return;
+      for (const subscriber of entry.subscribers) subscriber(event);
+      if (event.type === "error" && event.error.code === "analysis_exited") void this.stopEntry(operationId, entry);
+    });
     entry = { session, subscribers: new Set(), starting: true, messaging: false, stopped: false };
     this.entries.set(operationId, entry);
-    try { await session.start(); return "started"; }
-    catch (error) { this.entries.delete(operationId); await session.dispose().catch(() => undefined); throw error; }
+    try {
+      await session.start();
+      if (this.entries.get(operationId) !== entry || entry.stopped) {
+        await this.disposeEntry(entry);
+        return "stopped";
+      }
+      return "started";
+    }
+    catch (error) {
+      if (this.entries.get(operationId) === entry) this.entries.delete(operationId);
+      entry.stopped = true;
+      entry.subscribers.clear();
+      await this.disposeEntry(entry);
+      throw error;
+    }
     finally { entry.starting = false; }
   }
 
@@ -41,11 +58,21 @@ export class AnalysisRegistry {
   async stop(operationId: string): Promise<boolean> {
     const entry = this.entries.get(operationId);
     if (!entry) return false;
+    return this.stopEntry(operationId, entry);
+  }
+
+  private async stopEntry(operationId: string, entry: Entry): Promise<boolean> {
+    if (this.entries.get(operationId) !== entry) return false;
     this.entries.delete(operationId);
     entry.stopped = true;
     entry.subscribers.clear();
-    await entry.session.dispose().catch(() => undefined);
+    await this.disposeEntry(entry);
     return true;
+  }
+
+  private disposeEntry(entry: Entry): Promise<void> {
+    entry.disposePromise ??= entry.session.dispose().catch(() => undefined);
+    return entry.disposePromise;
   }
 
   async dispose(): Promise<void> { await Promise.all([...this.entries.keys()].map((operationId) => this.stop(operationId))); }
