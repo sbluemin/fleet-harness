@@ -5,7 +5,7 @@ import {
   updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
 } from "./api.js";
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
-import { diffDraftLines } from "./cowork-diff.js";
+import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
 import type { DraftLine } from "./cowork-diff.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
@@ -86,7 +86,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     lastBodyKey = key;
     if (!engaged) { options.body.innerHTML = publishedHtml; return; }
     options.body.innerHTML = diffVisible
-      ? `<div class="cowork-diff" aria-label="Draft changes">${renderDiffLines(draftLines())}</div>`
+      ? `<div class="cowork-rendered-diff" aria-label="Draft changes">${renderRenderedDiff(stripFrontmatter(session!.baseDraft), stripFrontmatter(session!.draft))}</div>`
       : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id) }).html;
   };
 
@@ -431,11 +431,17 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   const onChange = (event: Event) => {
     const target = event.target;
     if (target instanceof HTMLSelectElement && ["cli", "model", "effort"].includes(target.name)) {
-      settings = { ...settings, [target.name]: target.value };
+      // CLI가 바뀌면 이전 CLI의 model/effort는 무효 — 리셋해야 새 CLI의 기본 목록을 받는다.
+      settings = target.name === "cli"
+        ? { cli: target.value, model: "", effort: "" }
+        : { ...settings, [target.name]: target.value };
       saveSettings(settings);
       if (!session) return;
       if (target.name !== "effort") {
-        void updateOptions().then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings))).then(renderDock).catch(() => renderDock());
+        void updateOptions()
+          .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
+          .then(renderDock)
+          .catch(cause => { error = cause instanceof Error ? cause.message : "Cowork request failed."; renderDock(); });
       } else void mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)).catch(() => undefined);
       return;
     }
@@ -471,7 +477,14 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 function select(label: string, name: string, values: readonly string[], current: string): string {
   return `<label class="cowork-selector"><span>${label}</span><select name="${name}" ${values.length ? "" : "disabled"}>${values.map(value => `<option value="${escapeAttribute(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>`;
 }
-function renderDiffLines(lines: readonly DraftLine[]): string { return lines.map((line, index) => `<div class="cowork-diff-line${line.changed ? " is-changed" : ""}"><span>${index + 1}</span><code>${escapeHtml(line.text)}</code></div>`).join(""); }
+// 소스 라인이 아닌 "렌더된 문서" 관점의 diff — 변경 블록은 하이라이트, 삭제 블록은
+// 흐림+취소선으로 문서 흐름 안에 표시된다.
+function renderRenderedDiff(base: string, draft: string): string {
+  return diffDraftBlocks(base, draft).map(block => {
+    const html = renderMarkdown(block.markdown, { resolveWikiLink: (id) => entryPath(id) }).html;
+    return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
+  }).join("");
+}
 function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, text: `[${card.quote}]\n${card.comment.trim() || "Please revise this passage."}` }; }
 function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard {
   const divider = dto.text.indexOf("]\n");

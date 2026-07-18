@@ -142,6 +142,41 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
+  it("refreshes model and effort lists when the CLI changes", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
+      if (url.includes("/options")) {
+        return url.includes("cli=claude")
+          ? new Response(JSON.stringify({ clis: ["codex", "claude"], models: ["opus"], efforts: ["high"] }))
+          : new Response(JSON.stringify({ clis: ["codex", "claude"], models: ["gpt"], efforts: ["medium"] }));
+      }
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true));
+
+    article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')?.click();
+    const cliSelect = article.querySelector<HTMLSelectElement>('select[name="cli"]')!;
+    cliSelect.value = "claude";
+    cliSelect.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // 이전 CLI의 model을 들고 재조회하면 안 되고, 새 CLI의 목록으로 교체되어야 한다.
+    await vi.waitFor(() => expect(article.querySelector('select[name="model"]')?.innerHTML).toContain("opus"));
+    const claudeOptionsUrl = fetchMock.mock.calls.map(call => String(call[0])).find(url => url.includes("cli=claude"))!;
+    expect(claudeOptionsUrl).not.toContain("model=");
+    expect(article.querySelector('select[name="effort"]')?.innerHTML).toContain("high");
+
+    controller.destroy();
+    article.remove();
+  });
+
   it("keeps the dock alive after discarding: reopens a fresh session on the published entry", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }

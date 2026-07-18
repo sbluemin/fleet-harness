@@ -11,7 +11,7 @@ import type { CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
 
 export interface CoworkConnector { connect(options: UnifiedClientOptions): Promise<IUnifiedAgentClient>; }
 
-interface LiveResources { workspaceId: string; client: IUnifiedAgentClient; cleanup: () => void; }
+interface LiveResources { workspaceId: string; client: IUnifiedAgentClient; annotations: CoworkSessionRecord["annotations"]; cleanup: () => void; }
 
 const COWORK_SYSTEM_PROMPT = [
   "You are the Codex Cowork editing agent inside Fleet Console, editing exactly one Fleet Wiki entry draft.",
@@ -65,7 +65,7 @@ export class CoworkService {
       const providerCwd = this.store.sessionDir(workspaceId, id);
       const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli as UnifiedClientOptions["cli"], model: session.model, effort: session.effort, sessionId: session.providerSessionId, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
       this.releaseLive(id);
-      this.live.set(id, { workspaceId, client, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
+      this.live.set(id, { workspaceId, client, annotations, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
       client.on("permissionRequest", (params, resolve) => {
         const verdict = evaluatePermission(params, runtime.allowedToolIds);
         if (!verdict.permitted) void this.emit(workspaceId, id, "tool", `permission denied: ${verdict.tool.slice(0, 80)}`, false);
@@ -85,7 +85,8 @@ export class CoworkService {
       console.error(`[cowork] prompt setup failed (session ${id}):`, error instanceof Error ? error.message : error);
       this.releaseLive(id);
       await this.flushAssistantTurn(workspaceId, id);
-      await this.changed(await this.store.update(workspaceId, id, s => ({ ...s, state: "idle" })));
+      // 전송이 시작되지 못했으므로 선제 클리어된 어노테이션을 복원한다.
+      await this.changed(await this.store.update(workspaceId, id, s => ({ ...s, state: "idle", annotations: s.annotations.length ? s.annotations : annotations })));
       await this.emit(workspaceId, id, "error", "provider_unavailable", false);
       throw new Error("cowork_provider_unavailable");
     }
@@ -133,7 +134,7 @@ export class CoworkService {
     for (const [id, resources] of [...this.live]) {
       this.releaseLive(id);
       await this.flushAssistantTurn(resources.workspaceId, id);
-      try { await this.store.update(resources.workspaceId, id, s => s.state === "running" ? { ...s, state: "idle" } : s); } catch { /* 세션 파일이 이미 없으면 무시 */ }
+      try { await this.store.update(resources.workspaceId, id, s => s.state === "running" ? { ...s, state: "idle", annotations: s.annotations.length ? s.annotations : resources.annotations } : s); } catch { /* 세션 파일이 이미 없으면 무시 */ }
     }
   }
 
@@ -151,11 +152,18 @@ export class CoworkService {
 
   private async finishPrompt(workspaceId: string, id: string, client: IUnifiedAgentClient, errorCode: string | null) {
     // 취소 직후 새 프롬프트가 시작된 경우, 이전 클라이언트의 지연 완료가 새 실행을 해체하면 안 된다.
-    if (this.live.get(id)?.client !== client) return;
+    const live = this.live.get(id);
+    if (live?.client !== client) return;
     const providerSessionId = client.getConnectionInfo().sessionId ?? undefined;
     this.releaseLive(id);
     await this.flushAssistantTurn(workspaceId, id);
-    const s = await this.store.update(workspaceId, id, old => ({ ...old, state: old.state === "running" ? "idle" : old.state, providerSessionId: providerSessionId ?? old.providerSessionId }));
+    const s = await this.store.update(workspaceId, id, old => ({
+      ...old,
+      state: old.state === "running" ? "idle" : old.state,
+      // provider가 실패했으면 이번 실행에 실려 나간 어노테이션을 durable하게 복원한다.
+      annotations: errorCode && old.annotations.length === 0 ? live.annotations : old.annotations,
+      providerSessionId: providerSessionId ?? old.providerSessionId,
+    }));
     await this.changed(s);
     await this.emit(workspaceId, id, errorCode ? "error" : "done", errorCode ?? undefined, false);
   }

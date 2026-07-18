@@ -24,6 +24,19 @@ describe("Cowork contract defects", () => {
     expect((await service.get("workspace", session.id))?.state).toBe("applied");
   });
 
+  it("restores durable annotations when the provider fails mid-run", async () => {
+    const connector = new FakeConnector();
+    connector.client.sendMessage = async () => { throw new Error("boom"); };
+    const { service } = await fixture(connector);
+    const session = await service.create("workspace", "entry");
+    await service.annotations("workspace", session.id, [{ id: "a1", text: "[quote]\nfix this" }]);
+    await service.prompt("workspace", session.id, "go");
+    await until(async () => (await service.get("workspace", session.id))?.state === "idle");
+
+    // 전송 실패 시 선제 클리어된 어노테이션이 durable 세션에 복원되어야 한다.
+    expect((await service.get("workspace", session.id))?.annotations).toEqual([{ id: "a1", text: "[quote]\nfix this" }]);
+  });
+
   it("dispose releases live provider clients and returns running sessions to idle", async () => {
     const connector = new FakeConnector();
     const { service } = await fixture(connector);

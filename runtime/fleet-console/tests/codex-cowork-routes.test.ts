@@ -55,10 +55,17 @@ describe("Cowork DTO", () => {
       expect(found.status).toBe(200);
       expect(found.headers.get("cache-control")).toBe("no-store");
       await expect(found.json()).resolves.toMatchObject({ id: session.id, entryId: "entry" });
+      // draft가 실리는 SSE 스트림도 no-store를 유지해야 한다.
+      const abort = new AbortController();
+      const stream = await fetch(`http://127.0.0.1:${address.port}/api/cowork/sessions/${session.id}/events`, { headers: { origin: "http://console.test" }, signal: abort.signal });
+      expect(stream.headers.get("cache-control")).toBe("no-store");
+      abort.abort();
       await service.close("workspace", session.id);
       const gone = await fetch(base, { headers: { origin: "http://console.test" } });
       expect(gone.status).toBe(404);
     } finally {
+      // 열린 SSE 소켓이 close 완료를 막지 않게 강제로 끊는다.
+      server.closeAllConnections();
       server.close();
       await once(server, "close");
     }

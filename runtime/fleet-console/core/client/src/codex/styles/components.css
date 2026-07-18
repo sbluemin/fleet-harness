@@ -2629,12 +2629,11 @@ kbd {
 
 .cowork-error { width: min(560px, 100%); margin: 0; color: var(--coral); font-size: var(--font-size-xs); text-align: center; }
 
-/* 라인 diff 뷰 — 본문 자리에서 토글된다 */
-.cowork-diff { border: 1px solid var(--surface-rim); border-radius: var(--radius-lg); overflow: auto; background: color-mix(in oklch, var(--ink-abyss) 80%, transparent); }
-.cowork-diff-line { display: grid; grid-template-columns: 3ch minmax(0, 1fr); gap: var(--space-2); padding: 2px var(--space-3); white-space: pre-wrap; }
-.cowork-diff-line > span { color: var(--ink-fog); font-family: var(--font-mono); font-size: var(--font-size-xs); }
-.cowork-diff-line.is-changed { background: color-mix(in oklch, var(--brass) 15%, transparent); box-shadow: inset 2px 0 0 var(--brass); }
-.cowork-diff-line code { color: var(--ink-spectral); font-family: var(--font-mono); font-size: var(--font-size-xs); }
+/* 렌더드 diff — 본문 자리에서 토글되며, 문서 그대로의 렌더 위에 변경 블록만 표시한다 */
+.cowork-block { border-left: 3px solid; border-radius: var(--radius-sm); margin-block: var(--space-3); padding: var(--space-2) var(--space-3); }
+.cowork-block--added { border-left-color: var(--brass); background: color-mix(in oklch, var(--brass) 8%, transparent); }
+.cowork-block--removed { border-left-color: color-mix(in oklch, var(--coral) 70%, transparent); background: color-mix(in oklch, var(--coral) 5%, transparent); opacity: 0.55; text-decoration: line-through; }
+.cowork-block--removed * { text-decoration: inherit; }
 
 @keyframes cowork-pop { from { opacity: 0; transform: translateX(-50%) scale(0.92); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes cowork-rise { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }

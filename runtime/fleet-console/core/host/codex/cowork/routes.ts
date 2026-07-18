@@ -30,7 +30,10 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     if (request.method === "GET" && parts[4] === "events") {
       const s = await service.get(context.workspaceId, id);
       if (!s) return json(response, 404, { error: "cowork_session_not_found" });
-      response.writeHead(200, withSecurityHeaders({ "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" }));
+      // cache-control은 withSecurityHeaders의 no-store를 그대로 유지한다(draft가 실리는 스트림).
+      response.writeHead(200, withSecurityHeaders({ "content-type": "text/event-stream", connection: "keep-alive" }));
+      // 이벤트가 없어도 즉시 헤더를 내보내 EventSource가 open 상태로 전환되게 한다.
+      response.flushHeaders();
       const lastEventId = Number(request.headers["last-event-id"] ?? Number.NaN);
       const after = Number.isFinite(lastEventId) ? lastEventId : Number(url.searchParams.get("after") ?? 0);
       // Subscribe before replay so no event falls between the two; dedupe by monotonic id.
