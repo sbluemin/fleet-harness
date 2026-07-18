@@ -238,11 +238,13 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const card = annotations.find(a => a.id === mark.dataset.annotationId);
     if (!card) { tip.hidden = true; return; }
     tip.textContent = card.comment.trim() || "No comment yet";
+    tip.hidden = false;
     const rect = mark.getBoundingClientRect();
     const host = options.article.getBoundingClientRect();
-    tip.style.top = `${Math.max(rect.top - host.top, 0)}px`;
-    tip.style.left = `${Math.min(Math.max(rect.left + rect.width / 2 - host.left, 24), Math.max(host.width - 24, 24))}px`;
-    tip.hidden = false;
+    // 중앙 정렬(translateX(-50%))이므로 실측 절반 폭만큼 안쪽으로 클램프해야 경계에서 잘리지 않는다.
+    const half = tip.offsetWidth / 2 + 8;
+    tip.style.top = `${Math.max(rect.top - host.top - 6, 0)}px`;
+    tip.style.left = `${Math.min(Math.max(rect.left + rect.width / 2 - host.left, half), Math.max(host.width - half, half))}px`;
   };
 
   const redraw = () => { renderBody(); renderDock(); applyMarks(); };

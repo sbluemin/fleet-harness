@@ -48,9 +48,11 @@ describe("Cowork DTO", () => {
       if (!address || typeof address === "string") throw new Error("test server has no TCP address");
       const response = await fetch(`http://127.0.0.1:${address.port}/api/cowork/options?cli=claude&model=removed-model`, { headers: { origin: "http://console.test" } });
       expect(response.status).toBe(200);
-      const body = await response.json() as { models: string[]; efforts: string[]; defaultModel?: string };
+      const body = await response.json() as { models: string[]; efforts: string[]; defaultModel?: string; defaultEffort?: string };
       expect(body.models.length).toBeGreaterThan(0);
-      expect(body.defaultModel && body.models.includes(body.defaultModel)).toBe(true);
+      // cowork 제품 기본: claude는 레지스트리 기본(opus[1m])이 아니라 sonnet/medium.
+      expect(body.defaultModel).toBe("sonnet");
+      expect(body.defaultEffort).toBe("medium");
     } finally {
       server.closeAllConnections();
       server.close();
