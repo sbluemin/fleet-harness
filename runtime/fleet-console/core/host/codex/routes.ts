@@ -35,6 +35,7 @@ import type {
   SearchResponse,
 } from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
+import { handleCoworkRequest } from "./cowork/routes.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ interface RouteContext {
   workspaceId: string;
   allowedOrigins: Set<string>;
   externalMode: boolean;
+  dataDir?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -91,6 +93,8 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
   if (!request.url) return false;
   const url = new URL(request.url, "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/")) return false;
+
+  if (await handleCoworkRequest(request, response, context)) return true;
 
   if (request.method === "POST") {
     try {

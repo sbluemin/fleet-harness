@@ -306,6 +306,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     version,
     getPort: () => lockHandle?.payload.port ?? port,
     wikiWorkspaceResolver,
+    dataDir: durablePaths.dir,
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();

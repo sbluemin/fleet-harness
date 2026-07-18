@@ -17,6 +17,7 @@ interface CodexGatewayDeps {
   readonly version: string;
   readonly getPort: () => number;
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
+  readonly dataDir?: string;
 }
 
 interface ParsedHostHeader {
@@ -117,6 +118,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       workspaceId: workspace.id,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
+      dataDir: deps.dataDir ?? deps.cwd,
     });
     request.url = originalUrl;
     return handled;

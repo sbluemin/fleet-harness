@@ -2,6 +2,24 @@
 // 런타임 코드 없이 타입만 둔다 — 클라이언트 tsconfig이 DOM 전용이므로
 // 이 파일에 Node 타입(NodeJS.* 등)을 참조하면 안 된다.
 
+/** Browser-safe Cowork session state. Provider and filesystem identities are server-only. */
+export interface CoworkSessionDto {
+  id: string;
+  workspaceId: string;
+  entryId: string;
+  state: "idle" | "running" | "applied" | "closed";
+  revision: number;
+  draft: string;
+  baseHash: string;
+  baseVersion: number;
+  selection: string | null;
+  annotations: readonly CoworkAnnotationDto[];
+}
+
+export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
+export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "done" | "error"; session: CoworkSessionDto; text?: string; }
+export interface CoworkOptionsResponse { clis: readonly string[]; models: readonly string[]; efforts: readonly string[]; }
+
 // workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지
 export interface WorkspaceMetadata {
   id: string;
