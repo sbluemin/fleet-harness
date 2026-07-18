@@ -6,7 +6,7 @@ import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { putRailPathContext } from "../rail/path-context-api.js";
 import { PathContextDeck } from "../rail/path-context-deck.js";
-import { mutateRailPathContext, setRailPathContextDeckOpen, toggleRailChrome, useRailChromeExpanded, useRailPathContextStore, useRightRailWidth } from "../rail/rail-store.js";
+import { mutateRailPathContext, setRailPathContextDeckOpen, toggleRailChrome, useRailChromeExpanded, useRailPathContextStore } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -30,7 +30,6 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const registry = usePluginRegistry();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
-  const rightRailWidth = useRightRailWidth();
   const modLabel = resolveModLabel();
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
@@ -240,7 +239,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       <header
         ref={commandBandRef}
         className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}`}
-        style={{ "--command-band-left-width": `${sideBar.width}px`, "--command-band-right-width": `${rightRailWidth}px` } as CSSProperties}
+        style={{ "--command-band-left-width": `${sideBar.width}px` } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}
         inert={commandBandHidden || undefined}
         onPointerEnter={handleBandPointerEnter}

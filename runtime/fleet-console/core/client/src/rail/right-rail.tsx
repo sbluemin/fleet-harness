@@ -9,7 +9,7 @@ import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../compone
 import { fetchRailPathContext, putRailPathContext } from "./path-context-api.js";
 import { getState, subscribe } from "../store.js";
 import { PathContextDeck } from "./path-context-deck.js";
-import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, setRightRailWidth, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
+import { canRenderPathAwarePanelBody, closeRailPanel, hydrateRailPathContext, mutateRailPathContext, requestRailPanelExtraWidth, selectRailPathContextTheater, setRailPathContextDeckOpen, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailPanelExtraWidth, useRailPathContextStore } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -54,19 +54,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
-
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const publishWidth = () => setRightRailWidth(root.getBoundingClientRect().width);
-    publishWidth();
-    const observer = new ResizeObserver(publishWidth);
-    observer.observe(root);
-    return () => {
-      observer.disconnect();
-      setRightRailWidth(0);
-    };
-  }, []);
 
   useLayoutEffect(() => {
     if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
