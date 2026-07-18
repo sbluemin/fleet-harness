@@ -7,7 +7,7 @@
 
 import type { AuthEnvResolver } from "@dotobokuri/core-agent";
 import type { WorkspaceChangeScanner } from "../jobs/workspace-manifest.js";
-import type { CarrierMetadata, RequestBlock } from "./types.js";
+import type { CarrierMetadata, CarrierRequest, RequestBlock } from "./types.js";
 
 /** 검증 성공 결과 */
 export interface RequiredBlockValidationOk {
@@ -86,20 +86,28 @@ export function validateRequiredRequestBlocks(
   request: string,
   carrierId: string,
 ): RequiredBlockValidationResult {
+  return validateParsedRequiredRequestBlocks(meta, parseCarrierRequest(meta, request), carrierId);
+}
+
+/** Validate a request structure already parsed by the dispatch path. */
+export function validateParsedRequiredRequestBlocks(
+  meta: CarrierMetadata,
+  parsed: CarrierRequest,
+  carrierId: string,
+): RequiredBlockValidationResult {
   const required = meta.requestBlocks.filter((b) => b.required);
   if (required.length === 0) return { ok: true };
 
   const missing: string[] = [];
   const details: string[] = [];
 
+  const parsedByTag = new Map(parsed.blocks.map((block) => [block.tag, block]));
   for (const block of required) {
-    const escaped = escapeRegExp(block.tag);
-    const regex = new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)</${escaped}>`);
-    const match = regex.exec(request);
-    if (!match) {
+    const observed = parsedByTag.get(block.tag);
+    if (!observed?.present) {
       missing.push(block.tag);
       details.push(`<${block.tag}> (missing closing tag)`);
-    } else if (!match[1]?.trim()) {
+    } else if (!observed.body.trim()) {
       missing.push(block.tag);
       details.push(`<${block.tag}> (empty body)`);
     }
@@ -130,7 +138,145 @@ export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
   });
 }
 
-/** 정규식 특수문자를 이스케이프합니다 */
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Produce the observer request structure without modifying the executor input.
+ * Only the first balanced top-level instance of each configured tag is selected.
+ */
+export function parseCarrierRequest(meta: CarrierMetadata | undefined, request: string): CarrierRequest {
+  const selected = new Map<string, ParsedBlock>();
+  const configured = new Set(meta?.requestBlocks.map((block) => block.tag) ?? []);
+  const stack: OpenTag[] = [];
+  let capture: OpenConfiguredTag | undefined;
+
+  for (let cursor = 0; cursor < request.length;) {
+    const read = readTag(request, cursor);
+    cursor = read.next;
+    const token = read.token;
+    if (!token) continue;
+
+    if (capture) {
+      // Once a top-level configured block starts, all other tags are literal body text.
+      // Only same-name nesting changes the boundary of that block.
+      if (token.name === capture.name && !token.selfClosing) {
+        if (token.closing) {
+          capture.depth--;
+          if (capture.depth === 0) {
+            if (capture.select) {
+              selected.set(token.name, {
+                start: capture.start,
+                end: token.end,
+                body: request.slice(capture.contentStart, token.start),
+              });
+            }
+            capture = undefined;
+          }
+        } else {
+          capture.depth++;
+        }
+      }
+      continue;
+    }
+
+    if (token.selfClosing) continue;
+    if (!token.closing) {
+      if (stack.length === 0 && configured.has(token.name)) {
+        capture = {
+          name: token.name,
+          start: token.start,
+          contentStart: token.end,
+          depth: 1,
+          select: !selected.has(token.name),
+        };
+      } else {
+        stack.push({ name: token.name });
+      }
+      continue;
+    }
+    const opened = stack.at(-1);
+    if (!opened || opened.name !== token.name) continue;
+    stack.pop();
+  }
+
+  const blocks = (meta?.requestBlocks ?? []).map((block) => {
+    const parsed = selected.get(block.tag);
+    return { ...block, present: parsed !== undefined, body: parsed?.body ?? "" };
+  });
+  const ranges = [...selected.values()].sort((left, right) => left.start - right.start);
+  let additional = "";
+  let cursor = 0;
+  for (const range of ranges) {
+    additional += request.slice(cursor, range.start);
+    cursor = range.end;
+  }
+  additional += request.slice(cursor);
+  return { blocks, additional };
+}
+
+interface ParsedBlock {
+  start: number;
+  end: number;
+  body: string;
+}
+
+interface OpenTag {
+  name: string;
+}
+
+interface OpenConfiguredTag {
+  name: string;
+  start: number;
+  contentStart: number;
+  depth: number;
+  select: boolean;
+}
+
+interface RequestTag {
+  name: string;
+  start: number;
+  end: number;
+  closing: boolean;
+  selfClosing: boolean;
+}
+
+interface ReadTagResult {
+  token: RequestTag | undefined;
+  next: number;
+}
+
+/** Read a permissive XML-like tag while preserving every non-selected character verbatim. */
+function readTag(source: string, start: number): ReadTagResult {
+  if (source[start] !== "<") return { token: undefined, next: start + 1 };
+  let cursor = start + 1;
+  let closing = false;
+  if (source[cursor] === "/") {
+    closing = true;
+    cursor++;
+  }
+  const nameStart = cursor;
+  while (cursor < source.length && /[A-Za-z0-9_:-]/.test(source[cursor]!)) cursor++;
+  if (cursor === nameStart) return { token: undefined, next: start + 1 };
+  const name = source.slice(nameStart, cursor);
+  let quote: string | undefined;
+  for (; cursor < source.length; cursor++) {
+    const character = source[cursor]!;
+    if (quote) {
+      if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === ">") {
+      const beforeClose = source.slice(start, cursor).trimEnd();
+      return { token: { name, start, end: cursor + 1, closing, selfClosing: !closing && beforeClose.endsWith("/") }, next: cursor + 1 };
+    }
+    if (character === "<") {
+      // A later tag-like prefix terminates this malformed opener. Resume at it so
+      // repeated unterminated prefixes each scan only their own span.
+      return { token: undefined, next: cursor };
+    }
+  }
+  // No later prefix remains, so the inspected suffix cannot yield another tag.
+  return { token: undefined, next: source.length };
 }

@@ -30,6 +30,24 @@ export interface RequestBlock {
   required: boolean;
 }
 
+/** Lossless observer-only rendering of one configured request block. */
+export interface CarrierRequestBlock {
+  tag: string;
+  hint: string;
+  required: boolean;
+  present: boolean;
+  /** Exact, untrimmed text between the selected opening and closing tags. */
+  body: string;
+}
+
+/** Lossless observer-only rendering of a Carrier dispatch request. */
+export interface CarrierRequest {
+  /** Configured blocks in CarrierMetadata.requestBlocks order. */
+  blocks: CarrierRequestBlock[];
+  /** Every source character not belonging to a selected configured block. */
+  additional: string;
+}
+
 /**
  * Carrier 메타데이터 — 2-Tier 구조
  *
@@ -177,6 +195,9 @@ export type CarrierJobStreamEvent = { readonly originSessionId?: string } & (
     jobId: string;
     trackId: string;
     startedAt?: number;
+    /** Exact local parse of the original executor request for observers. */
+    request?: CarrierRequest;
+    /** @deprecated Compatibility preview; observers must use request instead. */
     requestPreview?: string;
   }
   | {

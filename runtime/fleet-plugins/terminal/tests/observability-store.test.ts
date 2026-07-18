@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { reduceSnapshotJob } from "../client/agent/reduce.js";
 import { createConsoleObservabilityStore } from "../server/agent-api/observability-store.js";
 
 const tempDirs: string[] = [];
@@ -79,6 +80,83 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("terminal-ticket-secret");
     expect(serialized).not.toContain("mcp-token-secret");
     expect(serialized).not.toContain("private prompt");
+  });
+
+  it("preserves only the exact declared request fields in snapshots and subscribed frames", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-"));
+    tempDirs.push(cwd);
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
+    const liveFrames: unknown[] = [];
+    store.subscribeAll((event) => liveFrames.push(event));
+    const body = " \n/path/with spaces\ntoken-like=sk_live_123\n<unknown>&<script>x</script>\n";
+    const additional = "outside <unknown> & <script>literal</script>";
+    store.appendTerminalRuntimeEvent("session-a", {
+      type: "track:begin",
+      jobId: "job-a",
+      trackId: "track-a",
+      request: {
+        blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body, providerSession: "ignored" }],
+        additional,
+        ticket: "ignored",
+      },
+      providerSession: "provider-session-secret",
+      token: "mcp-token-secret",
+      prompt: "private prompt",
+    }, 2_000);
+
+    const events = store.listEvents("session-a");
+    const serialized = JSON.stringify({ jobs: store.listJobs("session-a"), events, liveFrames });
+    expect(events[0]?.event.request).toEqual({
+      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body }],
+      additional,
+    });
+    expect((liveFrames[0] as { event: Record<string, unknown> }).event.request).toEqual(events[0]?.event.request);
+    expect(serialized).not.toContain("provider-session-secret");
+    expect(serialized).not.toContain("mcp-token-secret");
+    expect(serialized).not.toContain("private prompt");
+    expect(serialized).not.toContain("\"ticket\"");
+  });
+
+  it("narrows malformed request DTOs without manufacturing request content", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-invalid-"));
+    tempDirs.push(cwd);
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
+    store.appendTerminalRuntimeEvent("session-a", {
+      type: "track:begin", jobId: "job-a", trackId: "track-a", request: { blocks: "not-an-array", additional: 4 },
+    });
+
+    const event = store.listEvents("session-a")[0];
+    expect(event?.event).not.toHaveProperty("request");
+  });
+
+  it("retains the first exact request in a job snapshot after its begin event expires", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-retention-"));
+    tempDirs.push(cwd);
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
+    const request = {
+      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body: "  /tmp/fake\nsk-live\n<script>literal</script>  " }],
+      additional: "<unknown>&outside",
+    };
+    const malformed = store.appendTerminalRuntimeEvent("session-a", {
+      type: "track:begin", jobId: "job-a", trackId: "track-a", request: { blocks: [null], additional: "must not poison" },
+    }, 1_999);
+    expect(malformed?.event).not.toHaveProperty("request");
+    store.appendTerminalRuntimeEvent("session-a", { type: "track:begin", jobId: "job-a", trackId: "track-a", request }, 2_000);
+    for (let index = 0; index < 200; index++) {
+      store.appendTerminalRuntimeEvent("session-a", { type: "track:text", jobId: "job-a", trackId: "track-a", text: String(index) }, 2_001 + index);
+    }
+
+    const snapshot = store.listJobs("session-a")[0];
+    expect(snapshot?.events).toHaveLength(200);
+    expect(snapshot?.events.some((event) => event.type === "track:begin")).toBe(false);
+    expect(snapshot?.request).toEqual(request);
+    expect(reduceSnapshotJob("session-a", snapshot!).request).toEqual(request);
   });
 
   it("assigns globally monotonic observed ids across terminal sessions", () => {

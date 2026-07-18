@@ -56,6 +56,51 @@ describe("agent reducer streaming invariants", () => {
     expect(snapshotJob).toEqual(liveJob);
   });
 
+  it("preserves the first valid job request across live and replay Task Force track begins", () => {
+    const request = {
+      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body: "  /tmp/a\nsk-live\n<script>literal</script>  " }],
+      additional: "<unknown>&outside",
+    };
+    const events = [
+      makeEvent(1, "track:begin", { trackId: "carrier-a", request }),
+      makeEvent(2, "track:begin", { trackId: "carrier-b", request: { blocks: [], additional: "must not replace" } }),
+      makeEvent(3, "track:text", { trackId: "carrier-a", text: "Activity remains a delta" }),
+    ] as const;
+    const replay = reduceSnapshotJob("tenant-1", { jobId: "job-1", status: "active", updatedAt: 1_003, events });
+    const live = events.reduce((job, event) => applyEvent(job, event), createEmptyJob("tenant-1", "job-1", 1_000));
+
+    expect(replay).toEqual(live);
+    expect(live.request).toEqual(request);
+    expect(live.tracks["carrier-a"]?.text).toBe("Activity remains a delta");
+    expect(live.tracks["carrier-a"]?.sentTextLength).toBe("Activity remains a delta".length);
+  });
+
+  it("seeds a valid snapshot request before replay and rejects malformed legacy snapshot data", () => {
+    const request = {
+      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body: " exact <unknown> & <script>literal</script> " }],
+      additional: "outside",
+    };
+    const snapshot = { jobId: "job-1", status: "active", updatedAt: 1_002, request, events: [
+      makeEvent(2, "track:text", { trackId: "carrier-b", text: "Activity remains a delta" }),
+    ] } as const;
+    expect(reduceSnapshotJob("tenant-1", snapshot).request).toEqual(request);
+
+    const malformed = { ...snapshot, request: { blocks: [null], additional: "outside" } } as unknown as typeof snapshot;
+    expect(reduceSnapshotJob("tenant-1", malformed).request).toBeUndefined();
+  });
+
+  it("ignores malformed or legacy request payloads without adding request token usage", () => {
+    let job = createEmptyJob("tenant-1", "job-1", 1_000);
+    job = applyEvent(job, makeEvent(1, "track:begin", { trackId: "t1" }));
+    job = applyEvent(job, makeEvent(2, "track:begin", { trackId: "t2", request: { blocks: [null], additional: "bad" } }));
+    job = applyEvent(job, makeEvent(3, "track:begin", { trackId: "t3", request: { blocks: [], additional: "valid second" } }));
+
+    expect(job.request).toEqual({ blocks: [], additional: "valid second" });
+    expect(job.tracks.t1?.sentTextLength).toBe(0);
+    expect(job.tracks.t2?.sentTextLength).toBe(0);
+    expect(job.tracks.t1?.sentThoughtLength).toBe(0);
+  });
+
   it("tracks sentTextLength separately from retained text", () => {
     let job = createEmptyJob("tenant-1", "job-1", 1_000);
     job = applyEvent(job, makeEvent(1, "track:text", { trackId: "t1", text: "tail", textLength: 12_000 }));

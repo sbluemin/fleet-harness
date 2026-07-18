@@ -19,6 +19,7 @@ import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./m
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
+import { RequestDetails } from "./request-details.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
 import type { AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
 
@@ -182,6 +183,15 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
   return { containerRef, pinned, jumpToLatest };
 }
 
+function getTabbableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>("button, summary, [href], input, select, textarea, [tabindex]"))
+    .filter((element) => {
+      if (element.tabIndex < 0 || element.hidden || element.closest("[hidden]") || element.matches(":disabled")) return false;
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+    });
+}
+
 function useDockExpanded(): [boolean, (next: boolean) => void] {
   // 기본값 접힘(false). 펼치면 "true" 저장, 접으면 키 제거.
   const [expanded, setExpandedState] = React.useState(() => {
@@ -226,8 +236,10 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const [modalOpen, setModalOpen] = React.useState(false);
+  const [detailTab, setDetailTab] = React.useState<"request" | "activity">("request");
   const [modalJobIds, setModalJobIds] = React.useState<readonly string[]>([]);
   const [retainedJobs, setRetainedJobs] = React.useState<readonly RetainedJob[]>([]);
+  const detailTabsId = React.useId();
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
@@ -237,7 +249,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
   const dockJobs = mergeDockJobs(activeJobs, jobs, retainedJobs);
   const modalJobs = selectJobsByIds(jobs, modalJobIds);
-  const modalResetKey = String(modalOpen);
+  // Activity 패널은 Request-first 모달을 연 뒤에야 ref를 가진다. 탭 전환도
+  // scroll listener/바닥 reset의 mount lifecycle로 취급한다.
+  const modalResetKey = `${modalOpen}:${detailTab}`;
   const modalContentKey = modalJobs.map((job) => `${job.jobId}:${job.lastEventId}`).join(",");
   const modalScroll = usePinnedScrollLocal(modalResetKey, modalContentKey);
 
@@ -273,14 +287,34 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   const openModal = React.useCallback(() => {
     setModalJobIds(dockJobs.map((job) => job.jobId));
+    setDetailTab("request");
     setModalOpen(true);
   }, [dockJobs]);
 
-  // [M2] paint 전 동기 포커스 이동으로 순간 배경 포커스 잔류 방지
+  const selectDetailTab = React.useCallback((tab: "request" | "activity") => {
+    setDetailTab(tab);
+  }, []);
+
+  const handleDetailTabKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const tabs = ["request", "activity"] as const;
+    const currentIndex = tabs.indexOf(detailTab);
+    let nextIndex: number | undefined;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex + tabs.length - 1) % tabs.length;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    setDetailTab(nextTab);
+    document.getElementById(`${detailTabsId}-${nextTab}`)?.focus();
+  }, [detailTab, detailTabsId]);
+
+  // Details 클릭을 받는 canvas 핸들러가 모두 끝난 뒤 Close로 포커스를 회수한다.
   React.useLayoutEffect(() => {
-    if (modalOpen) {
-      closeButtonRef.current?.focus();
-    }
+    if (!modalOpen) return;
+    const frame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
   }, [modalOpen]);
 
   // Escape 키로 모달 닫기 + focus trap — capture phase로 전역 단축키보다 먼저 처리한다.
@@ -293,14 +327,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         return;
       }
       if (event.key === "Tab") {
-        // [L3] querySelector 대신 overlayRef로 방어성 강화
         const overlay = overlayRef.current;
         if (!overlay) return;
-        const focusable = Array.from(
-          overlay.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          )
-        ).filter((el) => !el.hasAttribute("disabled"));
+        const focusable = getTabbableElements(overlay);
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) {
@@ -344,14 +373,17 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
           <button type="button" className="job-overlay-scrim" aria-label="Close" tabIndex={-1} onClick={closeModal} />
           <div className="job-overlay-card">
             <button ref={closeButtonRef} type="button" className="job-overlay-close" aria-label="Close" onClick={closeModal}>×</button>
-            <div ref={modalScroll.containerRef} className="job-overlay-body" tabIndex={-1}>
-              {modalJobs.length === 0 ? (
-                <p className="job-overlay-empty">No active streams.</p>
-              ) : (
-                modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)
-              )}
+            <div className="job-overlay-tabs" role="tablist" aria-label="Carrier stream details">
+              <button id={`${detailTabsId}-request`} type="button" role="tab" aria-selected={detailTab === "request"} aria-controls={`${detailTabsId}-request-panel`} tabIndex={detailTab === "request" ? 0 : -1} onClick={() => selectDetailTab("request")} onKeyDown={handleDetailTabKeyDown}>Request</button>
+              <button id={`${detailTabsId}-activity`} type="button" role="tab" aria-selected={detailTab === "activity"} aria-controls={`${detailTabsId}-activity-panel`} tabIndex={detailTab === "activity" ? 0 : -1} onClick={() => selectDetailTab("activity")} onKeyDown={handleDetailTabKeyDown}>Activity</button>
             </div>
-            {!modalScroll.pinned ? (
+            <div id={`${detailTabsId}-request-panel`} className="job-overlay-body job-overlay-panel" role="tabpanel" aria-labelledby={`${detailTabsId}-request`} hidden={detailTab !== "request"} tabIndex={detailTab === "request" ? 0 : -1}>
+              {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <RequestDetails key={job.jobId} job={job} />)}
+            </div>
+            <div id={`${detailTabsId}-activity-panel`} ref={detailTab === "activity" ? modalScroll.containerRef : undefined} className="job-overlay-body job-overlay-panel" role="tabpanel" aria-labelledby={`${detailTabsId}-activity`} hidden={detailTab !== "activity"} tabIndex={detailTab === "activity" ? 0 : -1}>
+              {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)}
+            </div>
+            {detailTab === "activity" && !modalScroll.pinned ? (
               <button type="button" className="follow-button" onClick={modalScroll.jumpToLatest}>
                 ↓ Follow
               </button>

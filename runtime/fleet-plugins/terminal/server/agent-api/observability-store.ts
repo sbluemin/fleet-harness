@@ -8,6 +8,7 @@ import type {
   AgentLabelSource,
   AgentObservedEvent,
   AgentObservedJob,
+  AgentObservedRequest,
   AgentObservedWorkspace,
   AgentObserverTruncation,
   AgentProviderSession,
@@ -473,10 +474,12 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const state = getTenantJobState(tenantId);
     const previous = state.jobs.get(event.jobId);
     const status = inferStatus(event.type, event.event, previous?.status);
+    const request = previous?.request ?? (event.type === "track:begin" ? normalizeRequest(event.event.request) : undefined);
     state.jobs.set(event.jobId, {
       jobId: event.jobId,
       status,
       updatedAt: event.at,
+      ...(request ? { request } : {}),
       events: [...(previous?.events ?? []), event].slice(-JOB_EVENT_LIMIT),
     });
     if (event.type === "job:finalized") {
@@ -571,13 +574,17 @@ function normalizeEventPayload(event: unknown): Record<string, unknown> {
         summary: safeString(obj.summary),
       };
     case "track:begin":
+      {
+        const request = normalizeRequest(obj.request);
       return {
         type: "track:begin",
         jobId: safeString(obj.jobId),
         trackId: safeString(obj.trackId),
         startedAt: safeOptionalNumber(obj.startedAt),
+        ...(request ? { request } : {}),
         requestPreview: safeOptionalString(obj.requestPreview),
       };
+      }
     case "track:status":
       return {
         type: "track:status",
@@ -628,6 +635,33 @@ function normalizeEventPayload(event: unknown): Record<string, unknown> {
     default:
       return { type: safeString(obj.type) || "event" };
   }
+}
+
+function normalizeRequest(value: unknown): AgentObservedRequest | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const request = value as Record<string, unknown>;
+  if (!Array.isArray(request.blocks) || typeof request.additional !== "string") return undefined;
+
+  const blocks: AgentObservedRequest["blocks"][number][] = [];
+  for (const value of request.blocks) {
+    if (typeof value !== "object" || value === null) return undefined;
+    const block = value as Record<string, unknown>;
+    if (
+      typeof block.tag !== "string"
+      || typeof block.hint !== "string"
+      || typeof block.required !== "boolean"
+      || typeof block.present !== "boolean"
+      || typeof block.body !== "string"
+    ) return undefined;
+    blocks.push({
+      tag: block.tag,
+      hint: block.hint,
+      required: block.required,
+      present: block.present,
+      body: block.body,
+    });
+  }
+  return { blocks, additional: request.additional };
 }
 
 function clampText(value: unknown): string | undefined {

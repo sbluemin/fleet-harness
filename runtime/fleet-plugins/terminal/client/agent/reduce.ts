@@ -1,4 +1,4 @@
-import type { JobView, ObservedEvent, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
+import type { JobView, ObservedEvent, RequestBlockView, RequestView, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
 
 interface TrackMetaPayload {
   readonly trackId?: string;
@@ -16,7 +16,7 @@ const ACTIVE_JOB_STATUS = "active";
 const TERMINAL_JOB_STATUSES = new Set(["done", "error", "aborted"]);
 
 export function reduceSnapshotJob(tenantId: string, snapshot: SnapshotJob): JobView {
-  let job = createEmptyJob(tenantId, snapshot.jobId, snapshot.updatedAt);
+  let job = adoptRequest(createEmptyJob(tenantId, snapshot.jobId, snapshot.updatedAt), snapshot.request);
   for (const event of snapshot.events) job = applyEvent(job, event);
   if (TERMINAL_JOB_STATUSES.has(snapshot.status) && !TERMINAL_JOB_STATUSES.has(job.status)) {
     job = { ...job, status: snapshot.status };
@@ -45,7 +45,7 @@ export function applyEvent(job: JobView, observed: ObservedEvent): JobView {
         error: readString(payload.error),
       };
     case "track:begin":
-      return mutateTrack(base, payload, observed.id, (track) => ({
+      return mutateTrack(adoptRequest(base, payload.request), payload, observed.id, (track) => ({
         ...track,
         startedAt: readNumber(payload.startedAt) ?? observed.at,
         requestPreview: readString(payload.requestPreview),
@@ -92,6 +92,32 @@ export function applyEvent(job: JobView, observed: ObservedEvent): JobView {
     default:
       return base;
   }
+}
+
+function adoptRequest(job: JobView, value: unknown): JobView {
+  if (job.request) return job;
+  const request = readRequest(value);
+  return request ? { ...job, request } : job;
+}
+
+function readRequest(value: unknown): RequestView | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const request = value as Record<string, unknown>;
+  if (!Array.isArray(request.blocks) || typeof request.additional !== "string") return undefined;
+  const blocks: RequestBlockView[] = [];
+  for (const value of request.blocks) {
+    if (typeof value !== "object" || value === null) return undefined;
+    const block = value as Record<string, unknown>;
+    if (
+      typeof block.tag !== "string"
+      || typeof block.hint !== "string"
+      || typeof block.required !== "boolean"
+      || typeof block.present !== "boolean"
+      || typeof block.body !== "string"
+    ) return undefined;
+    blocks.push({ tag: block.tag, hint: block.hint, required: block.required, present: block.present, body: block.body });
+  }
+  return { blocks, additional: request.additional };
 }
 
 export function createEmptyJob(tenantId: string, jobId: string, at: number): JobView {

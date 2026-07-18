@@ -10,7 +10,7 @@ import type { AgentToolCtx, ExecResult, OneShotExecution, OneShotReady } from "@
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type { CarrierDispatchServices } from "../index.js";
-import type { CarrierJobStatus, TrackMeta, TrackStatus } from "./types.js";
+import type { CarrierJobStatus, CarrierRequest, TrackMeta, TrackStatus } from "./types.js";
 
 import {
   CLI_DISPLAY_NAMES,
@@ -32,7 +32,7 @@ import {
   toTrackFinalStatus,
   type CarrierRegistry,
 } from "./framework.js";
-import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./prompt.js";
+import { buildCarrierSystemPrompt, validateParsedRequiredRequestBlocks } from "./prompt.js";
 import type { CarrierToolSpecDeps } from "./prompt.js";
 import {
   getConfiguredTaskForceBackends,
@@ -92,6 +92,8 @@ export interface TaskForceLaunchOptions {
   registry: CarrierRegistry;
   carrierId: string;
   request: string;
+  /** Single observer parse shared by every backend begin event. */
+  parsedRequest: CarrierRequest;
   label: string;
   startedAt: number;
   toolName: `carrier_${string}`;
@@ -108,7 +110,7 @@ export interface TaskForceLaunchOptions {
 const taskForceStateStore = new Map<string, TaskForceState>();
 
 export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promise<ReturnType<typeof launchResponseResult>> {
-  const { registry, carrierId, request, label, startedAt, toolName, ctx, cwd, deps, services, resumeContextId } = options;
+  const { registry, carrierId, request, parsedRequest, label, startedAt, toolName, ctx, cwd, deps, services, resumeContextId } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
 
   assertRegisteredCarrier(registry, carrierId);
@@ -117,9 +119,9 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
   // 필수 request-block 검증은 carrier_dispatch와 동일한 hard-error 타이밍을 유지합니다.
   const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
   if (carrierConfig?.carrierMetadata) {
-    const blockValidation = validateRequiredRequestBlocks(
+    const blockValidation = validateParsedRequiredRequestBlocks(
       carrierConfig.carrierMetadata,
-      request,
+      parsedRequest,
       carrierId,
     );
     if (!blockValidation.ok) {
@@ -264,6 +266,7 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
       originSessionId: ctx.sessionLabel,
       trackId: backend.trackId,
       startedAt: execStartedAt,
+      request: parsedRequest,
       requestPreview: request.trim().split(/\r?\n/, 1)[0],
     });
   }
