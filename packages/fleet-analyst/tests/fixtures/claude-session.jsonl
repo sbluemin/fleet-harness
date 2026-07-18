@@ -1,0 +1,3 @@
+{"type":"user","timestamp":"2026-07-18T00:00:00Z","message":{"content":"Inspect the change"}}
+{"type":"tool_use","timestamp":"2026-07-18T00:00:01Z","name":"Read","path":"src/example.ts"}
+{"type":"assistant","timestamp":"2026-07-18T00:00:02Z","message":{"content":"The file is small."}}
