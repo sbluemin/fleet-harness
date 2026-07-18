@@ -6,29 +6,46 @@ export interface AccentOption {
   readonly color: string;
 }
 
-// 16색 큐레이션 팔레트 — hue 휠 전체(빨강/노랑/초록 포함). accent는 fill 채널 단독 소유이고 시스템 신호는
-// border/링/beacon/glow가 맡으므로, 신호색과 hue가 겹쳐도 채널 분리로 상태와 혼동되지 않는다(낮은 chroma 틴트).
+// 8톤 정체성 팔레트 — theme.css의 --id-* 토큰을 참조해 테마별 채도 봉투를 그대로 추종한다.
+// 정체성은 스파인·명판 마크·틱·도트 채널만 소유하고, 보더/링/beacon/glow는 상태 신호 전용이다.
 export const OPERATION_ACCENTS: readonly AccentOption[] = [
-  { key: "red", label: "Red", color: "oklch(70% 0.12 25)" },
-  { key: "orange", label: "Orange", color: "oklch(73% 0.12 50)" },
-  { key: "amber", label: "Amber", color: "oklch(78% 0.11 70)" },
-  { key: "yellow", label: "Yellow", color: "oklch(84% 0.11 95)" },
-  { key: "lime", label: "Lime", color: "oklch(81% 0.12 120)" },
-  { key: "green", label: "Green", color: "oklch(74% 0.12 145)" },
-  { key: "emerald", label: "Emerald", color: "oklch(73% 0.10 165)" },
-  { key: "teal", label: "Teal", color: "oklch(74% 0.09 185)" },
-  { key: "cyan", label: "Cyan", color: "oklch(76% 0.09 205)" },
-  { key: "sky", label: "Sky", color: "oklch(74% 0.10 230)" },
-  { key: "blue", label: "Blue", color: "oklch(70% 0.11 255)" },
-  { key: "indigo", label: "Indigo", color: "oklch(68% 0.11 278)" },
-  { key: "violet", label: "Violet", color: "oklch(70% 0.11 300)" },
-  { key: "purple", label: "Purple", color: "oklch(70% 0.12 320)" },
-  { key: "magenta", label: "Magenta", color: "oklch(71% 0.12 340)" },
-  { key: "rose", label: "Rose", color: "oklch(72% 0.11 5)" },
+  { key: "crimson", label: "Crimson", color: "var(--id-crimson)" },
+  { key: "amber", label: "Amber", color: "var(--id-amber)" },
+  { key: "moss", label: "Moss", color: "var(--id-moss)" },
+  { key: "teal", label: "Teal", color: "var(--id-teal)" },
+  { key: "cerulean", label: "Cerulean", color: "var(--id-cerulean)" },
+  { key: "indigo", label: "Indigo", color: "var(--id-indigo)" },
+  { key: "plum", label: "Plum", color: "var(--id-plum)" },
+  { key: "rose", label: "Rose", color: "var(--id-rose)" },
 ] as const;
 
+// 구 16키 → 8톤 매핑(hue 최근접). durable 스키마는 불변 — 저장된 구키는 읽기 시점에 변환되고,
+// 새 선택은 8톤 키로 저장된다. 미지 키는 null(accent 없음)로 폴백한다.
+const LEGACY_ACCENT_KEYS: Readonly<Record<string, string>> = {
+  red: "crimson",
+  orange: "amber",
+  yellow: "amber",
+  lime: "moss",
+  green: "moss",
+  emerald: "teal",
+  cyan: "teal",
+  sky: "cerulean",
+  blue: "cerulean",
+  violet: "plum",
+  purple: "plum",
+  magenta: "rose",
+};
+
+export function normalizeAccentKey(accentKey: string | null | undefined): string | null {
+  if (typeof accentKey !== "string" || accentKey.length === 0) return null;
+  if (OPERATION_ACCENTS.some((accent) => accent.key === accentKey)) return accentKey;
+  return LEGACY_ACCENT_KEYS[accentKey] ?? null;
+}
+
 export function resolveAccentColor(accentKey: string): string | null {
-  return OPERATION_ACCENTS.find((accent) => accent.key === accentKey)?.color ?? null;
+  const normalized = normalizeAccentKey(accentKey);
+  if (!normalized) return null;
+  return OPERATION_ACCENTS.find((accent) => accent.key === normalized)?.color ?? null;
 }
 
 export function operationAccentFromNode(operation: OperationNode): string | null {
