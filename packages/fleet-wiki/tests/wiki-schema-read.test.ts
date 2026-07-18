@@ -6,6 +6,19 @@ import { createMemoryPaths, ensureMemoryRoot } from "../src/paths.js";
 import { readSchemaCatalog, readSchemaDocument } from "../src/schema.js";
 
 describe("schema catalog reads", () => {
+  it("bootstraps the default schema before returning an uninitialized workspace catalog", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "wiki-schema-bootstrap-"));
+    try {
+      const paths = createMemoryPaths(path.join(root, "knowledge"));
+      const catalog = await readSchemaCatalog(paths);
+
+      expect(catalog.schema).toEqual(expect.objectContaining({ ref: "schema/wiki-schema.md", exists: true }));
+      expect(catalog.templates).toContainEqual(expect.objectContaining({ id: "prd", ref: "schema/template-prd.md" }));
+      expect((await readSchemaDocument(paths, "schema")).content).toContain("# Fleet Wiki Workspace Schema");
+      expect((await readSchemaDocument(paths, "template", "prd")).content).toContain("template_id: prd");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("returns logical refs and full documents", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "wiki-schema-read-"));
     try {

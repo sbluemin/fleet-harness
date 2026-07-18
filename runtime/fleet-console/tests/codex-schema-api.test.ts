@@ -32,6 +32,23 @@ describe("Codex schema API", () => {
     expect((await get("/api/schema/templates/prd")).body).toContain("## Summary");
   });
 
+  it("bootstraps schema catalog and documents for an uninitialized Theater", async () => {
+    await rm(paths.root, { recursive: true, force: true });
+
+    const catalog = await get("/api/schema");
+    expect(catalog.status).toBe(200);
+    expect(catalog.body).toContain("schema/wiki-schema.md");
+    expect(catalog.body).toContain("schema/template-prd.md");
+
+    const schema = await get("/api/schema/wiki-schema");
+    expect(schema.status).toBe(200);
+    expect(schema.body).toContain("# Fleet Wiki Workspace Schema");
+
+    const template = await get("/api/schema/templates/prd");
+    expect(template.status).toBe(200);
+    expect(template.body).toContain("template_id: prd");
+  });
+
   it("maps missing and invalid schema resources to stable GET errors", async () => {
     await unlink(path.join(paths.schemaDir, "wiki-schema.md"));
     expect(await get("/api/schema/wiki-schema")).toEqual({ status: 404, body: '{"error":"schema_not_found"}' });

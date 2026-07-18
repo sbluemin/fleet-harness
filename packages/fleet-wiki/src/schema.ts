@@ -326,7 +326,7 @@ export function schemaTemplateRef(id: string): string {
 }
 
 export async function readSchemaCatalog(paths: MemoryPaths): Promise<SchemaCatalog> {
-  const schema = await readWorkspaceSchemaSummary(paths);
+  const schema = await ensureWorkspaceSchema(paths);
   return {
     schema: { ref: "schema/wiki-schema.md", exists: schema.exists, summary: schema.summary },
     templates: (schema.templates ?? []).map((template) => ({
