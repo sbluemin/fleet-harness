@@ -52,7 +52,7 @@ interface PlanLocation {
 
 export function writePlanMarkdown(
   dataDir: string,
-  cwd: string,
+  workspaceRoot: string,
   planId: string,
   markdown: string,
 ): PlanWriteResult {
@@ -60,13 +60,13 @@ export function writePlanMarkdown(
   assertPlanSize(markdown);
   const normalized = normalizePlanMarkdown(markdown);
   const lint = lintPlanMarkdown(normalized);
-  const resolvedWorkspace = resolveWorkspaceDirectory(dataDir, cwd);
+  const resolvedWorkspace = resolveWorkspaceDirectory(dataDir, workspaceRoot);
   const planRef = formatPlanRef(resolvedWorkspace.name, planId);
   if (!lint.valid) {
     return { lint, planRef, written: false };
   }
 
-  const workspace = ensureWorkspaceDirectory(dataDir, cwd);
+  const workspace = ensureWorkspaceDirectory(dataDir, workspaceRoot);
   const location = ensurePlanLocation(workspace, planId);
   withDirectoryLock({ lockDir: location.lockDir }, () => {
     assertSafePlanFile(location.filePath);

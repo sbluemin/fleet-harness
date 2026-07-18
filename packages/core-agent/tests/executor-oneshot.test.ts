@@ -8,7 +8,12 @@ vi.mock("@dotobokuri/core-unified-agent", async (importOriginal) => {
   return { ...actual, UnifiedAgent: { ...actual.UnifiedAgent, build: buildMock }, getEffort: () => ({ supported: false }), getProviderModels: () => ({ defaultModel: "fake-model" }) };
 });
 const { executeOneShot } = await import("../src/index.js");
-const { executorMcpRuntimeProviderRuntime, executorPortRuntime } = await import("../src/executor-port.js");
+const {
+  createMcpToolRegistry,
+  createMcpToolSnapshotStore,
+  executorMcpRuntimeProviderRuntime,
+  executorPortRuntime,
+} = await import("../src/index.js");
 
 class FakeClient extends EventEmitter implements IUnifiedAgentClient {
   readonly connectCalls: UnifiedClientOptions[] = [];
@@ -104,5 +109,60 @@ describe("executeOneShot", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+  it("snapshots server bindings for one-shot MCP tools without adding them to provider options", async () => {
+    const registry = createMcpToolRegistry();
+    const snapshotStore = createMcpToolSnapshotStore();
+    let handler: ((name: string, args: Record<string, unknown>) => string) | null = null;
+    const resolveNextToolCall = vi.fn();
+    const seen: Array<{ cwd: string; workspace: string | undefined; frozen: boolean }> = [];
+    registry.registerExecutorTool({
+      id: "oneshot_binding_probe",
+      tag: "oneshot_binding_probe",
+      title: "probe",
+      description: "probe",
+      promptSnippet: "probe",
+      whenToUse: [],
+      whenNotToUse: [],
+      usageGuidelines: [],
+      parameters: {},
+      async execute(_args, ctx) {
+        seen.push({
+          cwd: ctx.cwd,
+          workspace: ctx.serverBindings?.workspace,
+          frozen: Object.isFrozen(ctx.serverBindings),
+        });
+        return "ok";
+      },
+    });
+    const runtime = {
+      registry,
+      snapshotStore,
+      server: {
+        start: async () => "http://127.0.0.1:1/mcp",
+        setOnToolCallArrived: (_token: string, callback: typeof handler) => { handler = callback; },
+        resolveNextToolCall,
+        clearPendingForSession: vi.fn(),
+      },
+    };
+    executorPortRuntime.register({
+      getScopeExternalMcpServerIds: () => [],
+      getExecutorMcpTools: () => [registry.getExecutorMcpToolsForScope()[0]!],
+    });
+    executorMcpRuntimeProviderRuntime.register({ getExecutorMcpRouterRuntimes: () => [{ name: "tools", runtime }] });
+    const callerBindings: Record<string, string> = { workspace: "/server-workspace" };
+    const execution = executeOneShot(options("bound", {
+      cwd: "/execution-worktree",
+      serverBindings: callerBindings,
+    }));
+    callerBindings.workspace = "/mutated-caller-value";
+
+    await execution.readiness;
+    handler!("oneshot_binding_probe", {});
+    await vi.waitFor(() => expect(resolveNextToolCall).toHaveBeenCalledTimes(1));
+    expect(seen).toEqual([{ cwd: "/execution-worktree", workspace: "/server-workspace", frozen: true }]);
+    expect(clients[0]!.connectCalls[0]).not.toHaveProperty("serverBindings");
+    expect(clients[0]!.connectCalls[0]!.env).toBeUndefined();
+    await execution.abort();
   });
 });

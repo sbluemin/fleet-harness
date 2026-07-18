@@ -21,17 +21,17 @@ afterEach(() => {
 
 describe("Fleet Plan store", () => {
   it("rejects filename-shaped or ambiguous Plan identities", () => {
-    const { cwd, dataDir } = makePaths();
+    const { workspaceRoot, dataDir } = makePaths();
 
     for (const planId of ["plan.md", "plan..v2", "plan."]) {
-      expect(() => writePlanMarkdown(dataDir, cwd, planId, buildValidPlan()))
+      expect(() => writePlanMarkdown(dataDir, workspaceRoot, planId, buildValidPlan()))
         .toThrow(/Invalid plan id/);
     }
   });
 
-  it("writes by cwd and reads the Plan through its cross-workspace PlanRef", () => {
-    const { cwd, dataDir } = makePaths();
-    const result = writePlanMarkdown(dataDir, cwd, "workspace-plan-mcp", buildValidPlan());
+  it("writes by host-bound workspace root and reads the Plan through its cross-workspace PlanRef", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const result = writePlanMarkdown(dataDir, workspaceRoot, "workspace-plan-mcp", buildValidPlan());
 
     expect(result.written).toBe(true);
     expect(result.planRef).toMatch(/:workspace-plan-mcp$/);
@@ -41,26 +41,26 @@ describe("Fleet Plan store", () => {
   });
 
   it("preserves an existing valid Plan when replacement lint fails", () => {
-    const { cwd, dataDir } = makePaths();
-    const first = writePlanMarkdown(dataDir, cwd, "safe-plan", buildValidPlan());
-    const invalid = writePlanMarkdown(dataDir, cwd, "safe-plan", "# Objective\n\nIncomplete\n");
+    const { workspaceRoot, dataDir } = makePaths();
+    const first = writePlanMarkdown(dataDir, workspaceRoot, "safe-plan", buildValidPlan());
+    const invalid = writePlanMarkdown(dataDir, workspaceRoot, "safe-plan", "# Objective\n\nIncomplete\n");
 
     expect(invalid.written).toBe(false);
     expect(readPlanMarkdown(dataDir, first.planRef).markdown).toBe(buildValidPlan());
   });
 
   it("does not create workspace storage when initial Markdown lint fails", () => {
-    const { cwd, dataDir } = makePaths();
+    const { workspaceRoot, dataDir } = makePaths();
 
-    const invalid = writePlanMarkdown(dataDir, cwd, "invalid-plan", "# Objective\n\nIncomplete\n");
+    const invalid = writePlanMarkdown(dataDir, workspaceRoot, "invalid-plan", "# Objective\n\nIncomplete\n");
 
     expect(invalid.written).toBe(false);
     expect(existsSync(dataDir)).toBe(false);
   });
 
   it("reads externally corrupted Markdown with blocking lint diagnostics", () => {
-    const { cwd, dataDir } = makePaths();
-    const written = writePlanMarkdown(dataDir, cwd, "corrupt-plan", buildValidPlan());
+    const { workspaceRoot, dataDir } = makePaths();
+    const written = writePlanMarkdown(dataDir, workspaceRoot, "corrupt-plan", buildValidPlan());
     const workspaceName = written.planRef.slice(0, written.planRef.lastIndexOf(":"));
     const planPath = path.join(dataDir, "workspaces", workspaceName, "plans", "corrupt-plan.md");
     writeFileSync(planPath, "# Objective\n\nCorrupted\n");
@@ -72,8 +72,8 @@ describe("Fleet Plan store", () => {
   });
 
   it("marks only same-Lane TaskRefs and keeps the operation idempotent", () => {
-    const { cwd, dataDir } = makePaths();
-    const written = writePlanMarkdown(dataDir, cwd, "mark-plan", buildValidPlan());
+    const { workspaceRoot, dataDir } = makePaths();
+    const written = writePlanMarkdown(dataDir, workspaceRoot, "mark-plan", buildValidPlan());
     const refs = ["W1-A-T1", "W1-A-T2", "W1-A-T3"].map((id) => `${written.planRef}#${id}`);
 
     const first = markPlanTasksComplete(dataDir, refs);
@@ -92,8 +92,8 @@ describe("Fleet Plan store", () => {
 
   it("rejects a symlinked Plan file", () => {
     if (process.platform === "win32") return;
-    const { root, cwd, dataDir } = makePaths();
-    const written = writePlanMarkdown(dataDir, cwd, "unsafe-plan", buildValidPlan());
+    const { root, workspaceRoot, dataDir } = makePaths();
+    const written = writePlanMarkdown(dataDir, workspaceRoot, "unsafe-plan", buildValidPlan());
     const workspaceName = written.planRef.slice(0, written.planRef.lastIndexOf(":"));
     const planPath = path.join(dataDir, "workspaces", workspaceName, "plans", "unsafe-plan.md");
     const outside = path.join(root, "outside.md");
@@ -105,8 +105,8 @@ describe("Fleet Plan store", () => {
 
   it("rejects a symlinked Plans directory for reads and writes", () => {
     if (process.platform === "win32") return;
-    const { root, cwd, dataDir } = makePaths();
-    const written = writePlanMarkdown(dataDir, cwd, "unsafe-directory", buildValidPlan());
+    const { root, workspaceRoot, dataDir } = makePaths();
+    const written = writePlanMarkdown(dataDir, workspaceRoot, "unsafe-directory", buildValidPlan());
     const workspaceName = written.planRef.slice(0, written.planRef.lastIndexOf(":"));
     const plansPath = path.join(dataDir, "workspaces", workspaceName, "plans");
     const outside = path.join(root, "outside-plans");
@@ -115,15 +115,15 @@ describe("Fleet Plan store", () => {
     symlinkSync(outside, plansPath, "dir");
 
     expect(() => readPlanMarkdown(dataDir, written.planRef)).toThrow(/directory not found or unsafe/);
-    expect(() => writePlanMarkdown(dataDir, cwd, "another-plan", buildValidPlan())).toThrow(/Unsafe Fleet directory/);
+    expect(() => writePlanMarkdown(dataDir, workspaceRoot, "another-plan", buildValidPlan())).toThrow(/Unsafe Fleet directory/);
   });
 });
 
-function makePaths(): { cwd: string; dataDir: string; root: string } {
+function makePaths(): { dataDir: string; root: string; workspaceRoot: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "fleet-plans-"));
   cleanupPaths.push(root);
-  const cwd = path.join(root, "repo");
+  const workspaceRoot = path.join(root, "repo");
   const dataDir = path.join(root, "data");
-  mkdirSync(cwd, { recursive: true });
-  return { cwd, dataDir, root };
+  mkdirSync(workspaceRoot, { recursive: true });
+  return { dataDir, root, workspaceRoot };
 }

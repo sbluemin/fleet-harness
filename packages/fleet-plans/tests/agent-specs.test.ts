@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FLEET_PLAN_TOOL_IDS, getPlanToolSpecs } from "../src/agent-specs.js";
+import { createPlanWorkspaceServerBindings } from "../src/bindings.js";
 import { buildMultiWavePlan, buildValidPlan } from "./fixtures.js";
 
 const cleanupPaths: string[] = [];
@@ -27,12 +28,14 @@ describe("Fleet Plan agent specs", () => {
     cleanupPaths.push(root);
     const cwd = path.join(root, "repo");
     mkdirSync(cwd, { recursive: true });
-    const specs = getPlanToolSpecs({ dataDir: path.join(root, "data") });
+    const dataDir = path.join(root, "data");
+    const specs = getPlanToolSpecs({ dataDir });
+    const serverBindings = createPlanWorkspaceServerBindings(dataDir, cwd);
 
     const write = await specs.write.execute({
       plan_id: "tool-plan",
       markdown: buildValidPlan(),
-    }, { cwd });
+    }, { cwd, serverBindings });
     const planRef = (write as { plan_ref: string }).plan_ref;
     const taskRefs = ["W1-A-T1", "W1-A-T2", "W1-A-T3"].map((id) => `${planRef}#${id}`);
     const fullRead = await specs.read.execute({ plan_ref: planRef }, { cwd });
@@ -79,9 +82,11 @@ describe("Fleet Plan agent specs", () => {
     cleanupPaths.push(root);
     const cwd = path.join(root, "repo");
     mkdirSync(cwd, { recursive: true });
-    const specs = getPlanToolSpecs({ dataDir: path.join(root, "data") });
-    const first = await specs.write.execute({ plan_id: "first-plan", markdown: buildValidPlan() }, { cwd });
-    const second = await specs.write.execute({ plan_id: "second-plan", markdown: buildValidPlan() }, { cwd });
+    const dataDir = path.join(root, "data");
+    const specs = getPlanToolSpecs({ dataDir });
+    const serverBindings = createPlanWorkspaceServerBindings(dataDir, cwd);
+    const first = await specs.write.execute({ plan_id: "first-plan", markdown: buildValidPlan() }, { cwd, serverBindings });
+    const second = await specs.write.execute({ plan_id: "second-plan", markdown: buildValidPlan() }, { cwd, serverBindings });
     const firstRef = (first as { plan_ref: string }).plan_ref;
     const secondRef = (second as { plan_ref: string }).plan_ref;
 
@@ -109,7 +114,8 @@ describe("Fleet Plan agent specs", () => {
     const dataDir = path.join(root, "data");
     mkdirSync(cwd, { recursive: true });
     const specs = getPlanToolSpecs({ dataDir });
-    const write = await specs.write.execute({ plan_id: "corrupt-plan", markdown: buildValidPlan() }, { cwd });
+    const serverBindings = createPlanWorkspaceServerBindings(dataDir, cwd);
+    const write = await specs.write.execute({ plan_id: "corrupt-plan", markdown: buildValidPlan() }, { cwd, serverBindings });
     const planRef = (write as { plan_ref: string }).plan_ref;
     const workspaceRef = planRef.slice(0, planRef.lastIndexOf(":"));
     writeFileSync(path.join(dataDir, "workspaces", workspaceRef, "plans", "corrupt-plan.md"), "# Objective\n\nCorrupt\n");
@@ -125,8 +131,10 @@ describe("Fleet Plan agent specs", () => {
     cleanupPaths.push(root);
     const cwd = path.join(root, "repo");
     mkdirSync(cwd, { recursive: true });
-    const specs = getPlanToolSpecs({ dataDir: path.join(root, "data") });
-    const write = await specs.write.execute({ plan_id: "multi-wave", markdown: buildMultiWavePlan() }, { cwd });
+    const dataDir = path.join(root, "data");
+    const specs = getPlanToolSpecs({ dataDir });
+    const serverBindings = createPlanWorkspaceServerBindings(dataDir, cwd);
+    const write = await specs.write.execute({ plan_id: "multi-wave", markdown: buildMultiWavePlan() }, { cwd, serverBindings });
     const planRef = (write as { plan_ref: string }).plan_ref;
     await specs.markTasks.execute({
       task_refs: ["W1-A-T1", "W1-A-T2", "W1-A-T3"].map((id) => `${planRef}#${id}`),
@@ -158,11 +166,13 @@ describe("Fleet Plan agent specs", () => {
     cleanupPaths.push(root);
     const cwd = path.join(root, "repo");
     mkdirSync(cwd, { recursive: true });
-    const specs = getPlanToolSpecs({ dataDir: path.join(root, "data") });
+    const dataDir = path.join(root, "data");
+    const specs = getPlanToolSpecs({ dataDir });
+    const serverBindings = createPlanWorkspaceServerBindings(dataDir, cwd);
     const write = await specs.write.execute({
       plan_id: "tool-plan",
       markdown: buildValidPlan(),
-    }, { cwd });
+    }, { cwd, serverBindings });
     const planRef = (write as { plan_ref: string }).plan_ref;
     const taskRefs = ["W1-A-T1", "W1-A-T2", "W1-A-T3"].map((id) => `${planRef}#${id}`);
 
@@ -181,5 +191,46 @@ describe("Fleet Plan agent specs", () => {
       ready_for_host_verification: true,
       implementation_verified: false,
     }));
+  });
+
+  it("writes through the host-bound workspace rather than the tool cwd and fails closed without it", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-plan-tools-"));
+    cleanupPaths.push(root);
+    const workspaceRoot = path.join(root, "theater");
+    const toolCwd = path.join(workspaceRoot, ".fleet", "worktrees", "topic");
+    const dataDir = path.join(root, "data");
+    mkdirSync(toolCwd, { recursive: true });
+    const specs = getPlanToolSpecs({ dataDir });
+    const serverBindings = createPlanWorkspaceServerBindings(dataDir, workspaceRoot);
+
+    const written = await specs.write.execute({ plan_id: "bound-plan", markdown: buildValidPlan() }, { cwd: toolCwd, serverBindings });
+
+    expect(Object.values(serverBindings)).not.toContain(workspaceRoot);
+    expect(written).toEqual(expect.objectContaining({ ok: true, plan_ref: expect.stringMatching(/:bound-plan$/) }));
+    expect((written as { plan_ref: string }).plan_ref).toContain(workspaceRoot.replace(/[^a-zA-Z0-9]/g, "-"));
+    expect(existsSync(path.join(dataDir, "workspaces", toolCwd.replace(/[^a-zA-Z0-9]/g, "-")))).toBe(false);
+  });
+
+  it("rejects missing, empty, and malformed Plan bindings before creating storage", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-plan-tools-"));
+    cleanupPaths.push(root);
+    const toolCwd = path.join(root, "worktree");
+    const dataDir = path.join(root, "data");
+    mkdirSync(toolCwd, { recursive: true });
+    const specs = getPlanToolSpecs({ dataDir });
+
+    for (const serverBindings of [
+      undefined,
+      Object.freeze({}),
+      Object.freeze({ "fleet-plans.workspace-ref": "" }),
+      Object.freeze({ "fleet-plans.workspace-ref": "  " }),
+      Object.freeze({ "fleet-plans.workspace-ref": "not/a-workspace-ref" }),
+      Object.freeze({ "fleet-plans.workspace-ref": "nonexistent-workspace-ref" }),
+    ]) {
+      const result = await specs.write.execute({ plan_id: "missing-binding", markdown: buildValidPlan() }, { cwd: toolCwd, serverBindings });
+      expect(result).toEqual(expect.objectContaining({ isError: true }));
+      expect(JSON.stringify(result)).toContain("host-bound Plan workspace");
+      expect(existsSync(dataDir)).toBe(false);
+    }
   });
 });

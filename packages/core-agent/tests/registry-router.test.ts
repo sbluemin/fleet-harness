@@ -4,6 +4,7 @@ import {
   cleanupExecutorSession,
   createMcpToolRegistry,
   createMcpToolSnapshotStore,
+  installExecutorToolCallRouter,
   registerExecutorSessionTools,
 } from "../src/index.js";
 import type { AgentToolSpec, McpRouterRuntime } from "../src/index.js";
@@ -128,5 +129,37 @@ describe("executor MCP router", () => {
     expect(routerRuntime.snapshotStore.getToolsForSession(token).length).toBeGreaterThan(0);
     cleanupExecutorSession(routerRuntime, token);
     expect(routerRuntime.snapshotStore.getToolsForSession(token)).toHaveLength(0);
+  });
+
+  it("direct router invokes tools with its server-only bindings while preserving cwd", async () => {
+    const seen: Array<{ cwd: string; bindings: Record<string, string> | undefined; frozen: boolean }> = [];
+    routerRuntime.registry.registerAgentTool({
+      ...makeToolSpec("binding_probe", () => "ok"),
+      async execute(_args, ctx) {
+        seen.push({
+          cwd: ctx.cwd,
+          bindings: ctx.serverBindings,
+          frozen: Object.isFrozen(ctx.serverBindings),
+        });
+        return "ok";
+      },
+    });
+    const arrived = vi.fn();
+    const resolve = vi.fn();
+    routerRuntime.server.setOnToolCallArrived = (_token, callback) => {
+      arrived.mockImplementation(callback ?? (() => ""));
+    };
+    routerRuntime.server.resolveNextToolCall = resolve;
+    const bindings = Object.freeze({ workspace: "/server-only" });
+
+    installExecutorToolCallRouter(routerRuntime, "router-binding", {
+      cwd: "/execution-cwd",
+      serverBindings: bindings,
+    });
+    const toolCallId = arrived("binding_probe", {});
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+
+    expect(toolCallId).toEqual(expect.any(String));
+    expect(seen).toEqual([{ cwd: "/execution-cwd", bindings: { workspace: "/server-only" }, frozen: true }]);
   });
 });

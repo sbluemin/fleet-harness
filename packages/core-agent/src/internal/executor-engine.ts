@@ -21,7 +21,7 @@ import {
 } from "../mcp-router.js";
 import { executorMcpRuntimeProviderRuntime, executorPortRuntime, type ExecutorMcpSession } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
-import type { TrackStatus } from "../types.js";
+import { snapshotAgentServerBindings, type AgentServerBindings, type TrackStatus } from "../types.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 
 export interface ExecuteOptions {
@@ -29,6 +29,7 @@ export interface ExecuteOptions {
   readonly authEnvResolver: AuthEnvResolver;
   readonly request: string;
   readonly cwd: string;
+  readonly serverBindings?: AgentServerBindings;
   readonly resumeSessionId?: string;
   readonly scopeId?: string;
   readonly model?: string;
@@ -77,6 +78,7 @@ const MAX_TOOL_CALLS_TO_KEEP = 30;
 
 export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
   assertAuthEnvResolver(opts.authEnvResolver);
+  const serverBindings = snapshotAgentServerBindings(opts.serverBindings);
   let client: IUnifiedAgentClient | undefined;
   let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
   let promptStarted = false;
@@ -141,7 +143,13 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       };
       client.on("error", onProviderError);
       if (aborted) throw new Error("Aborted");
-      const mcpSetup = await raceProviderFailure(setupExecutorMcp(opts.cwd, opts.signal, opts.scopeId, opts.reservedExternalMcpServerIds));
+      const mcpSetup = await raceProviderFailure(setupExecutorMcp(
+        opts.cwd,
+        opts.signal,
+        opts.scopeId,
+        opts.reservedExternalMcpServerIds,
+        serverBindings,
+      ));
       activeMcpTokens = mcpSetup?.tokens;
       if (aborted) throw new Error("Aborted");
       const model = opts.model ?? getProviderModels(opts.cliType).defaultModel;
@@ -154,7 +162,13 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
       if (opts.resumeSessionId) connectOpts.sessionId = opts.resumeSessionId;
       const connectResult = await raceAbort(raceProviderFailure(client.connect(connectOpts)), opts.signal);
       await raceProviderFailure(applyResolvedEffort(client, opts.cliType, model, effort));
-      if (activeMcpTokens) installActiveExecutorToolCallRouter(activeMcpTokens, { cwd: opts.cwd, signal: opts.signal });
+      if (activeMcpTokens) {
+        installActiveExecutorToolCallRouter(activeMcpTokens, {
+          cwd: opts.cwd,
+          signal: opts.signal,
+          serverBindings,
+        });
+      }
       sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? undefined;
       const protocol = client.getConnectionInfo().protocol ?? connectResult.protocol;
       if (!sessionId || !protocol) throw new Error("Provider readiness did not expose a session identity and protocol.");
@@ -275,14 +289,23 @@ function cleanupExecutorSessions(tokens: readonly ExecutorMcpSessionToken[]): vo
   }
 }
 
-function installActiveExecutorToolCallRouter(tokens: readonly ExecutorMcpSessionToken[], ctx: { cwd: string; signal?: AbortSignal }): void {
+function installActiveExecutorToolCallRouter(
+  tokens: readonly ExecutorMcpSessionToken[],
+  ctx: { cwd: string; signal?: AbortSignal; serverBindings?: AgentServerBindings },
+): void {
   for (const { serverName, token } of tokens) {
     const runtime = executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().find((entry) => entry.name === serverName)?.runtime;
     if (runtime) installExecutorToolCallRouter(runtime, token, ctx);
   }
 }
 
-async function setupExecutorMcp(cwd: string, signal?: AbortSignal, scopeId?: string, reservedIds: readonly string[] = []): Promise<ExecutorMcpSetup | null> {
+async function setupExecutorMcp(
+  cwd: string,
+  signal?: AbortSignal,
+  scopeId?: string,
+  reservedIds: readonly string[] = [],
+  serverBindings?: AgentServerBindings,
+): Promise<ExecutorMcpSetup | null> {
   if (signal?.aborted) return null;
   const tokens: ExecutorMcpSessionToken[] = [];
   const mcpServers: McpServerConfig[] = [];
@@ -292,7 +315,13 @@ async function setupExecutorMcp(cwd: string, signal?: AbortSignal, scopeId?: str
       const specs = executorPortRuntime.getExecutorMcpTools(name, scopeId);
       if (!specs.length) continue;
       if (provider.createExecutorMcpSession) {
-        const session = await provider.createExecutorMcpSession({ serverName: name, specs, cwd, signal });
+        const session = await provider.createExecutorMcpSession({
+          serverName: name,
+          specs,
+          cwd,
+          signal,
+          serverBindings,
+        });
         tokens.push({ serverName: name, token: session.token, session });
         mcpServers.push(session.mcpServer);
       } else {
