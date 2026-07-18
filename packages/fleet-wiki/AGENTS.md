@@ -7,7 +7,7 @@
 - Pure LLM-Wiki domain logic and types under `src/`
 - Single public subpath `./`
 - LLM-Wiki package-specific validation under `tests/`
-- `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`는 chronicle 전용으로 제한, `patch_queue`는 executor에 비노출(`allowedScopes: []`) — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
+- `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`는 chronicle 전용으로 제한, `patch_queue`는 executor에 비노출(`allowedScopes: []`) — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님). Cowork의 `wiki_draft_read` / `wiki_draft_edit` / `wiki_draft_write`는 전역 레지스트리에 등록하지 않는 세션 전용 closure-injected 도구이며, 경로 또는 엔트리 ID 인자를 받지 않는다.
 
 ## Must Not Own
 
@@ -33,6 +33,11 @@
 - `wiki_resolve` — Context-pack synthesizer combining briefing + read into compact JSON or `markdown_pack` output. Honors `freshness` (`prefer_recent` / `strict_current` / `any`), pulls claim provenance from `.claims/` sidecars when present, and reports `missing_or_uncertain`.
 - `wiki_compile_source` — Multi-page batch ingest from a single source. `mode="preview"` returns proposed patches without mutation; `mode="stage"` enqueues correlated patches under one `patch_set_id` (`queue/_sets/{id}/meta.json`).
 - `wiki_query` — Citation-aware query interface. `mode="answer"` returns context_pack + citations with no mutation; `mode="stage_answer_page"` (or `save_good_answer=true`) stages a wiki page patch under `wiki/queries/` or `wiki/synthesis/`. Claim sidecar auto-staging is deferred until queue auxiliary-file support is introduced; for now sidecars must be written manually via `writeClaims()`.
+- `wiki_draft_read` — Cowork session-scoped draft snapshot reader; not globally registered and accepts no path or entry ID.
+- `wiki_draft_edit` — Cowork session-scoped CAS draft editor; not globally registered and accepts no path or entry ID.
+- `wiki_draft_write` — Cowork session-scoped draft replacement writer; not globally registered and accepts no path or entry ID.
+
+All writes normally use the patch queue; the Cowork exception moves the approval gate to one final session Apply (`enqueuePatch` plus programmatic `approvePatch`) while retaining human approval and audit traceability.
 
 ## Key Modules
 
@@ -47,6 +52,7 @@
 - `src/claims.ts` — Claim provenance sidecar at `wiki/.claims/{id}.json` with `ClaimSet`/`Claim`/`ClaimSourceRef` types. Exports `readClaims()`, `writeClaims()`, `listClaims()`. Optional — `wiki_resolve` falls back to summary if absent.
 - `src/search.ts` — Optional enhanced ranker for `wiki_briefing`. Inline BM25-style scoring with alias/type/status/freshness/graph boost, no new dependency. Default ranker remains the deterministic substring scorer in `briefing.ts`.
 - `src/drydock.ts` — Lint rules including canonical/legacy link checks, frontmatter validation, duplicate frontmatter detection with optional auto-cleanup, schema health, conflict surfacing, and Wave 13 semantic issues (orphan/stale/deprecated/superseded/duplicate alias/contradiction marker/claim orphan/claim malformed).
+- `src/tools/draft.ts` — Private Cowork draft-tool factory; closure-scoped to one session and intentionally absent from the global registry.
 - `src/prompts.ts` — Tool prompt snippets, guidelines, and TypeBox schemas. References `schema/wiki-schema.md` for workspace conventions.
 - `src/paths.ts` — Memory path resolution, `ensureMemoryRoot()` bootstraps schema files via `ensureWorkspaceSchema()`.
 
@@ -63,6 +69,7 @@
 ## Compatibility Doctrine
 
 - Do not change MCP tool names: `wiki_briefing`, `wiki_drydock`, `wiki_ingest`, `wiki_patch_edit`, `wiki_patch_queue`, `wiki_orient`, `wiki_read`, `wiki_resolve`, `wiki_compile_source`, `wiki_query`.
+- Do not change Cowork-only tool names: `wiki_draft_read`, `wiki_draft_edit`, `wiki_draft_write`.
 - Existing `wiki_briefing` callers must remain working with `enhanced=false` (default).
 - Existing `wiki_ingest` callers must remain working with `mode="auto"` (default), which falls back to create when the target is absent.
 - Forbid refactoring or signature changes beyond what these waves require.
