@@ -171,6 +171,8 @@ Keep the Plan visible from its active Theater.
 - Rollback unit: Plan fixture
 - Implementation summary:
   - [ ] W1-A-T1 — Write the Theater-bound Plan
+  - [ ] W1-A-T2 — Verify the Theater route
+  - [ ] W1-A-T3 — Preserve the workspace binding
 - Verification/static checks:
   - plan lint
 - Escalation triggers: Theater binding unavailable
@@ -208,7 +210,7 @@ Keep the Plan visible from its active Theater.
 
     expect(written).toMatchObject({ ok: true });
     expect((list.responses[0] as { readonly body: { readonly plans: Array<{ readonly name: string }> } }).body.plans).toEqual(expect.arrayContaining([expect.objectContaining({ name: "theater-bound.md" })]));
-    expect(read.responses).toEqual([expect.objectContaining({ status: 200, body: expect.objectContaining({ markdown }) })]);
+    expect(read.responses).toEqual([expect.objectContaining({ status: 200, body: expect.objectContaining({ content: markdown }) })]);
     expect(JSON.stringify({ list: list.responses, read: read.responses })).not.toContain(carrierCwd);
     expect(JSON.stringify({ list: list.responses, read: read.responses })).not.toContain("fleet-plans.workspace-ref");
   });
