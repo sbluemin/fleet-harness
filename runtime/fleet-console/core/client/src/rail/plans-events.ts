@@ -28,6 +28,9 @@ export function subscribeToPlanChanges(theaterId: string, onInvalidate: () => vo
     };
     source.onerror = () => {
       if (source?.readyState !== EventSource.CLOSED || reconnectTimer !== null) return;
+      // 치명 종료는 스트림 부재 구간의 변경을 이미 놓쳤다는 뜻이다 — 즉시 한 번 refetch해
+      // 삭제된 plans 디렉터리가 빈 목록으로 수렴하게 하고, 백오프 후 재연결한다.
+      if (!unsubscribed) onInvalidate();
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         if (!unsubscribed) connect();

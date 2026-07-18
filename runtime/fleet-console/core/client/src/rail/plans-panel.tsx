@@ -87,6 +87,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const readerSignatureRef = useRef<string | null>(null);
   // 목록 갱신에서 선택 Plan이 사라졌을 때 세팅 — 다음 reader 조회 실패를 조용히 버리지 않고 error로 표면화한다.
   const readerForceRef = useRef(false);
+  // 수동 REFRESH에서 세팅 — 다음 목록 조회 실패를 background로 삼키지 않고 error로 표면화한다.
+  const listSurfaceFailureRef = useRef(false);
   const selectedNameRef = useRef<string | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
@@ -104,6 +106,9 @@ function PlansPanelBody(ctx: RailPanelContext) {
     }
 
     const isBackgroundRevalidation = listSignaturesRef.current !== null;
+    // 수동 REFRESH는 background여도 실패를 침묵시키지 않는다 — 기존 행은 유지하되 실패 시 error를 표면화.
+    const surfaceFailure = listSurfaceFailureRef.current;
+    listSurfaceFailureRef.current = false;
     if (!isBackgroundRevalidation) setListState({ kind: "loading" });
     void fetchPlansList(theaterId).then((result) => {
       if (requestId !== listRequestRef.current) return;
@@ -131,7 +136,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
         }
       }
     }).catch(() => {
-      if (requestId === listRequestRef.current && !isBackgroundRevalidation) setListState({ kind: "error" });
+      if (requestId === listRequestRef.current && (!isBackgroundRevalidation || surfaceFailure)) setListState({ kind: "error" });
     });
   }, [theaterId, listRetry]);
 
@@ -186,6 +191,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
   }, [theaterId]);
   const handleClose = useCallback(() => setSelectedPlan(null), []);
   const refreshPlans = useCallback(() => {
+    listSurfaceFailureRef.current = true;
     setListRetry((attempt) => attempt + 1);
   }, []);
   const retryList = refreshPlans;
