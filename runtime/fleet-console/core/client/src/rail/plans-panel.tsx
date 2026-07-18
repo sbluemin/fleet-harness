@@ -82,8 +82,18 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const readerRequestRef = useRef(0);
   const listSignaturesRef = useRef<Map<string, string> | null>(null);
   const readerStateRef = useRef<PlanReaderState>(readerState);
+  // reader가 실제 반영한 목록 signature. 성공 시에만 갱신되므로 background read 실패는
+  // 다음 목록 갱신에서 signature 불일치로 다시 감지된다.
+  const readerSignatureRef = useRef<string | null>(null);
+  // 목록 갱신에서 선택 Plan이 사라졌을 때 세팅 — 다음 reader 조회 실패를 조용히 버리지 않고 error로 표면화한다.
+  const readerForceRef = useRef(false);
+  const selectedNameRef = useRef<string | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
+
+  useEffect(() => {
+    selectedNameRef.current = selectedName;
+  }, [selectedName]);
 
   useEffect(() => {
     const requestId = ++listRequestRef.current;
@@ -109,8 +119,16 @@ function PlansPanelBody(ctx: RailPanelContext) {
       }
       listSignaturesRef.current = nextSignatures;
       setListState({ kind: "ready", plans: result.plans });
-      if (selectedName && previousSignatures?.get(selectedName) !== nextSignatures.get(selectedName)) {
-        setReaderRetry((attempt) => attempt + 1);
+      // 목록 갱신 완료 시점의 현재 선택(effect 시작 시점 클로저가 아닌)과 reader 반영분을 비교한다.
+      const currentSelection = selectedNameRef.current;
+      if (currentSelection) {
+        if (!nextSignatures.has(currentSelection)) {
+          readerSignatureRef.current = null;
+          readerForceRef.current = true;
+          setReaderRetry((attempt) => attempt + 1);
+        } else if (nextSignatures.get(currentSelection) !== readerSignatureRef.current) {
+          setReaderRetry((attempt) => attempt + 1);
+        }
       }
     }).catch(() => {
       if (requestId === listRequestRef.current && !isBackgroundRevalidation) setListState({ kind: "error" });
@@ -122,13 +140,19 @@ function PlansPanelBody(ctx: RailPanelContext) {
 
     if (!theaterId || !selectedName) return;
 
-    const isBackgroundRevalidation = readerStateRef.current.kind === "ready" && readerStateRef.current.plan.name === selectedName;
+    const forceSurface = readerForceRef.current;
+    readerForceRef.current = false;
+    const isBackgroundRevalidation = !forceSurface
+      && readerStateRef.current.kind === "ready"
+      && readerStateRef.current.plan.name === selectedName;
     if (!isBackgroundRevalidation) {
+      readerSignatureRef.current = null;
       readerStateRef.current = { kind: "loading" };
       setReaderState({ kind: "loading" });
     }
     void fetchPlanRead(theaterId, selectedName).then((result) => {
       if (requestId === readerRequestRef.current) {
+        readerSignatureRef.current = listSignaturesRef.current?.get(result.name) ?? null;
         const nextState = { kind: "ready", plan: result } as const;
         readerStateRef.current = nextState;
         setReaderState(nextState);
