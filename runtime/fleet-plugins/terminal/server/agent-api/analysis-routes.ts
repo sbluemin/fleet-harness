@@ -1,4 +1,6 @@
 import type http from "node:http";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 import { AnalystSession, type AnalystEvent } from "@dotobokuri/fleet-analyst";
 import { getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
@@ -78,7 +80,8 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.captureMissing, "Analysis capture is unavailable.");
     return true;
   }
-  if (!capture.transcriptPath) {
+  const transcriptPath = capture.transcriptPath ? await resolveTranscriptPath(capture.transcriptPath) : null;
+  if (!transcriptPath) {
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.transcriptMissing, "Analysis transcript is unavailable.");
     return true;
   }
@@ -88,7 +91,7 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     return true;
   }
   try {
-    const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort || undefined, cwd, capturePath: capture.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
+    const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort || undefined, cwd, capturePath: transcriptPath, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
     else if (result === "limit") writeError(ctx, res, 429, ANALYSIS_ERROR_CODES.sessionLimit, "Analysis session limit reached.");
     else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
@@ -132,6 +135,32 @@ async function handleStop(ctx: FleetPluginServerContext, req: http.IncomingMessa
   await registry.stop(operationId);
   ctx.host.http.writeJson(res, 200, { stopped: true });
   return true;
+}
+
+// Claude Code는 SessionStart 훅 시점의 세션 ID로 캡처를 남기지만, 실제 대화 트랜스크립트는
+// 다른 세션 ID 파일로 기록될 수 있다. 캡처 경로가 비어 있으면 같은 프로젝트 디렉터리에서
+// 가장 최근에 갱신된 트랜스크립트(현재 활성 세션)로 폴백한다.
+async function resolveTranscriptPath(capturePath: string): Promise<string | null> {
+  if (await fileExists(capturePath)) return capturePath;
+  const dir = path.dirname(capturePath);
+  try {
+    const entries = await fs.readdir(dir);
+    let latest: { readonly file: string; readonly mtimeMs: number } | null = null;
+    for (const entry of entries) {
+      if (!entry.endsWith(".jsonl")) continue;
+      const candidate = path.join(dir, entry);
+      const stat = await fs.stat(candidate).catch(() => null);
+      if (stat?.isFile() && (!latest || stat.mtimeMs > latest.mtimeMs)) latest = { file: candidate, mtimeMs: stat.mtimeMs };
+    }
+    return latest?.file ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  const stat = await fs.stat(filePath).catch(() => null);
+  return stat?.isFile() ?? false;
 }
 
 function getAgentOperation(ctx: FleetPluginServerContext, operationId: string): OperationNode | null {

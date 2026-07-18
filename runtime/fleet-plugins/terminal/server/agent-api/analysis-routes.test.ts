@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -87,18 +90,41 @@ describe("Session Analyst server contract", () => {
   });
 
   it("normalizes absent effort to undefined when creating an unsupported-effort session", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-transcripts-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: "/capture/transcript.jsonl" }),
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined }));
+  });
+
+  it("falls back to the newest sibling transcript when the captured session file was never written", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-transcripts-"));
+    const activePath = join(dir, "active-session.jsonl");
+    await writeFile(join(dir, "older-session.jsonl"), "{}\n");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await writeFile(activePath, "{}\n");
+    const router = createRouterHarness(true);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") }),
+      createSession: createSession as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ capturePath: activePath }));
   });
 
   it("writes connected and frozen error envelopes for a missing-session stream", async () => {
