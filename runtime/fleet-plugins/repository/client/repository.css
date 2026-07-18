@@ -1,7 +1,7 @@
 /* Diff rail panel styles */
 
 /* ── 루트 레이아웃 ── */
-.diff-root {
+.repository-root {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
@@ -10,19 +10,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .diff-root {
+  .repository-root {
     transition-duration: 0.01ms;
   }
 }
 
 /* 드래그 중에는 grid-template-columns transition을 끈다. 살려두면 split이 커서를 ease로
    지연 추적해 멈춰야 따라잡는다(우측 Rail 폭 드래그와 동일 원인). */
-.diff-root.is-dragging {
+.repository-root.is-dragging {
   transition: none;
 }
 
-.diff-list-pane,
-.diff-tree-pane {
+.repository-list-pane,
+.repository-tree-pane {
   display: grid;
   grid-template-rows: auto 1fr;
   /* 열 미선언 시 암시적 auto 트랙이 내용 min-content(툴바 고정폭 합)로 pane보다 넓어진다 */
@@ -34,10 +34,10 @@
   container-type: inline-size;
 }
 
-.diff-hunk-pane {
+.repository-hunk-pane {
   display: grid;
   grid-template-rows: auto 1fr;
-  /* .diff-tree-pane과 동일한 암시적 auto 열 클램프 */
+  /* .repository-tree-pane과 동일한 암시적 auto 열 클램프 */
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
@@ -46,23 +46,23 @@
 }
 
 /* ── hunk↔tree 디바이더 ── */
-.diff-divider {
+.repository-divider {
   width: 4px;
   cursor: col-resize;
   background: var(--surface-rim);
   transition: background 140ms;
 }
 
-.diff-divider:hover {
+.repository-divider:hover {
   background: color-mix(in oklch, var(--brass) 50%, transparent);
 }
 
-.diff-divider:active {
+.repository-divider:active {
   background: color-mix(in oklch, var(--brass) 80%, transparent);
 }
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
-.diff-toolbar {
+.repository-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -72,7 +72,7 @@
   background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
 }
 
-.diff-filter,
+.repository-filter,
 .history-filter {
   display: flex;
   align-items: center;
@@ -81,7 +81,7 @@
   flex: 1;
 }
 
-.diff-filter-input,
+.repository-filter-input,
 .history-filter-input {
   flex: 1;
   min-width: 0;
@@ -96,12 +96,12 @@
   transition: border-color 140ms;
 }
 
-.diff-filter-input:focus,
+.repository-filter-input:focus,
 .history-filter-input:focus {
   border-color: var(--brass);
 }
 
-.diff-filter-clear,
+.repository-filter-clear,
 .history-filter-clear {
   flex-shrink: 0;
   background: none;
@@ -115,13 +115,13 @@
   transition: color 0.1s;
 }
 
-.diff-filter-clear:hover,
+.repository-filter-clear:hover,
 .history-filter-clear:hover {
   color: var(--ink-spectral);
 }
 
-.diff-plugin-toolbar {
-  /* Command Deck(absolute inset:0)의 컨테이닝 블록은 .diff-tree-pane — 툴바에 relative를 두면 시트가 툴바 높이에 갇힌다 */
+.repository-plugin-toolbar {
+  /* Command Deck(absolute inset:0)의 컨테이닝 블록은 .repository-tree-pane — 툴바에 relative를 두면 시트가 툴바 높이에 갇힌다 */
   display: flex;
   align-items: center;
   gap: 6px;
@@ -130,7 +130,7 @@
   background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
 }
 
-.diff-toolbar-label {
+.repository-toolbar-label {
   flex: 1;
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -139,7 +139,7 @@
   color: var(--ink-fog);
 }
 
-.diff-view-toggle {
+.repository-view-toggle {
   margin-left: auto;
   display: inline-flex;
   background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
@@ -149,7 +149,7 @@
   gap: 2px;
 }
 
-.diff-toggle-btn {
+.repository-toggle-btn {
   width: 24px;
   height: 22px;
   display: inline-grid;
@@ -162,28 +162,28 @@
   transition: color 0.14s, background 0.14s;
 }
 
-.diff-toggle-btn:hover {
+.repository-toggle-btn:hover {
   color: var(--ink-spectral);
 }
 
-.diff-toggle-btn.is-active {
+.repository-toggle-btn.is-active {
   color: var(--brass);
   background: color-mix(in oklch, var(--brass) 14%, transparent);
 }
 
 /* ── 섹션 스크롤 컨테이너 ── */
-.diff-sections {
+.repository-sections {
   overflow-y: auto;
 }
 
-.diff-sections-loading {
+.repository-sections-loading {
   padding: 16px 12px;
   font-size: 12px;
   color: var(--ink-fog);
   font-family: var(--font-mono);
 }
 
-.diff-sections-error {
+.repository-sections-error {
   padding: 16px 12px;
   font-size: 12px;
   color: var(--coral);
@@ -193,7 +193,7 @@
   gap: 8px;
 }
 
-.diff-sections-notice {
+.repository-sections-notice {
   padding: 16px 12px;
   font-size: 12px;
   font-family: var(--font-mono);
@@ -202,21 +202,21 @@
   gap: 8px;
 }
 
-.diff-notice-title {
+.repository-notice-title {
   color: var(--ink-spectral);
   font-weight: 600;
 }
 
-.diff-notice-body {
+.repository-notice-body {
   color: var(--ink-fog);
 }
 
 /* ── 아코디언 섹션 ── */
-.diff-section {
+.repository-section {
   border-bottom: 1px solid var(--surface-rim);
 }
 
-.diff-section-head {
+.repository-section-head {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -229,11 +229,11 @@
   transition: background 0.12s;
 }
 
-.diff-section-head:hover {
+.repository-section-head:hover {
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-.diff-section-chevron {
+.repository-section-chevron {
   width: 12px;
   height: 12px;
   flex: none;
@@ -242,16 +242,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .diff-section-chevron {
+  .repository-section-chevron {
     transition-duration: 0.01ms;
   }
 }
 
-.diff-section.is-collapsed .diff-section-chevron {
+.repository-section.is-collapsed .repository-section-chevron {
   transform: rotate(-90deg);
 }
 
-.diff-section-name {
+.repository-section-name {
   flex: 1;
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -261,7 +261,7 @@
   color: var(--ink-spectral);
 }
 
-.diff-count-badge {
+.repository-count-badge {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
@@ -273,12 +273,12 @@
   text-align: center;
 }
 
-.diff-section-rows {
+.repository-section-rows {
   display: block;
 }
 
 /* ── 빈 상태 ── */
-.diff-empty-row {
+.repository-empty-row {
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -286,7 +286,7 @@
 }
 
 /* ── 파일 행 (리스트뷰 + 트리 리프 공유) ── */
-.diff-file-row {
+.repository-file-row {
   display: grid;
   grid-template-columns: 16px 1fr auto;
   align-items: center;
@@ -301,30 +301,30 @@
   transition: background 0.1s;
 }
 
-.diff-file-row:hover {
+.repository-file-row:hover {
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-.diff-file-row.is-cur {
+.repository-file-row.is-cur {
   background: color-mix(in oklch, var(--brass) 14%, transparent);
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
-.diff-status-glyph {
+.repository-status-glyph {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   text-align: center;
 }
 
-.diff-status-m { color: var(--warn); }
-.diff-status-a { color: var(--positive); }
-.diff-status-d { color: var(--coral); }
-.diff-status-r { color: var(--aurora); }
-.diff-status-t { color: var(--warn); }
-.diff-status-u { color: var(--positive); }
+.repository-status-m { color: var(--warn); }
+.repository-status-a { color: var(--positive); }
+.repository-status-d { color: var(--coral); }
+.repository-status-r { color: var(--aurora); }
+.repository-status-t { color: var(--warn); }
+.repository-status-u { color: var(--positive); }
 
-.diff-file-name {
+.repository-file-name {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -332,7 +332,7 @@
   gap: 1px;
 }
 
-.diff-file-fn {
+.repository-file-fn {
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--ink-spectral);
@@ -341,11 +341,11 @@
   white-space: nowrap;
 }
 
-.diff-file-row.is-cur .diff-file-fn {
+.repository-file-row.is-cur .repository-file-fn {
   color: var(--brass);
 }
 
-.diff-file-dir {
+.repository-file-dir {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink-fog);
@@ -356,23 +356,23 @@
   text-align: left;
 }
 
-.diff-nums {
+.repository-nums {
   display: inline-flex;
   gap: 6px;
   font-family: var(--font-mono);
   font-size: 10.5px;
 }
 
-.diff-additions {
+.repository-additions {
   color: var(--positive);
 }
 
-.diff-deletions {
+.repository-deletions {
   color: var(--coral);
 }
 
 /* ── 트리 폴더 행 ── */
-.diff-folder-row {
+.repository-folder-row {
   display: grid;
   grid-template-columns: 12px 15px 1fr;
   align-items: center;
@@ -386,11 +386,11 @@
   transition: background 0.1s;
 }
 
-.diff-folder-row:hover {
+.repository-folder-row:hover {
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-.diff-folder-chevron {
+.repository-folder-chevron {
   width: 11px;
   height: 11px;
   color: var(--ink-fog);
@@ -398,22 +398,22 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .diff-folder-chevron {
+  .repository-folder-chevron {
     transition-duration: 0.01ms;
   }
 }
 
-.diff-folder.is-collapsed .diff-folder-chevron {
+.repository-folder.is-collapsed .repository-folder-chevron {
   transform: rotate(-90deg);
 }
 
-.diff-folder-icon {
+.repository-folder-icon {
   width: 15px;
   height: 15px;
   color: var(--brass-deep);
 }
 
-.diff-folder-name {
+.repository-folder-name {
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--ink-fog);
@@ -423,7 +423,7 @@
 }
 
 /* ── 기타 공통 ── */
-.diff-refresh-btn {
+.repository-refresh-btn {
   background: none;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
@@ -433,11 +433,11 @@
   padding: 3px 8px;
 }
 
-.diff-refresh-btn:hover {
+.repository-refresh-btn:hover {
   color: var(--ink-spectral);
 }
 
-.diff-truncated-badge {
+.repository-truncated-badge {
   flex-shrink: 0;
   padding: 4px 12px;
   font-size: 11px;
@@ -448,7 +448,7 @@
 }
 
 /* ── Hunk 뷰어 헤더 (sticky) ── */
-.diff-hunk-head {
+.repository-hunk-head {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -461,7 +461,7 @@
   background: var(--surface-glass);
 }
 
-.diff-hunk-filename {
+.repository-hunk-filename {
   flex: 1;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -472,7 +472,7 @@
   min-width: 0;
 }
 
-.diff-hunk-close {
+.repository-hunk-close {
   flex-shrink: 0;
   background: none;
   border: none;
@@ -488,42 +488,42 @@
   transition: color 0.12s;
 }
 
-.diff-hunk-close:hover {
+.repository-hunk-close:hover {
   color: var(--ink-spectral);
 }
 
 /* ── Hunk 본문 ── */
-.diff-hunk-body {
+.repository-hunk-body {
   overflow: hidden;
   position: relative;
 }
 
-.diff-hunk-loading,
-.diff-hunk-error {
+.repository-hunk-loading,
+.repository-hunk-error {
   padding: 16px;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink-fog);
 }
 
-.diff-hunk-error {
+.repository-hunk-error {
   color: var(--coral);
 }
 
-.diff-hunk-wrap {
+.repository-hunk-wrap {
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.diff-hunk-scroll {
+.repository-hunk-scroll {
   flex: 1;
   overflow: auto;
 }
 
 /* ── Hunk 테이블 ── */
-.diff-hunk-table {
+.repository-hunk-table {
   border-collapse: collapse;
   width: 100%;
   font-family: var(--font-mono);
@@ -531,7 +531,7 @@
   line-height: 1.6;
 }
 
-.diff-line-code {
+.repository-line-code {
   padding: 0 12px;
   white-space: pre;
   color: var(--ink-spectral);
@@ -539,45 +539,45 @@
   width: 100%;
 }
 
-.diff-line-header .diff-line-code {
+.repository-line-header .repository-line-code {
   color: var(--ink-fog);
 }
 
-.diff-line-meta {
+.repository-line-meta {
   color: var(--ink-fog);
   font-family: var(--font-mono);
   font-size: 11px;
 }
 
-.diff-line-meta td {
+.repository-line-meta td {
   padding: 1px 12px;
 }
 
-.diff-line-add {
+.repository-line-add {
   background: color-mix(in oklch, var(--positive) 12%, transparent);
 }
 
-.diff-line-add .diff-line-code {
+.repository-line-add .repository-line-code {
   color: var(--positive);
 }
 
-.diff-line-del {
+.repository-line-del {
   background: color-mix(in oklch, var(--coral) 12%, transparent);
 }
 
-.diff-line-del .diff-line-code {
+.repository-line-del .repository-line-code {
   color: var(--coral);
 }
 
-.diff-token-keyword { color: var(--aurora); }
-.diff-token-string,
-.diff-token-number { color: var(--warn); }
-.diff-token-type { color: var(--brass); }
-.diff-token-comment { color: var(--ink-fog); font-style: italic; }
-.diff-token-punctuation { color: var(--ink-fog); }
+.repository-token-keyword { color: var(--aurora); }
+.repository-token-string,
+.repository-token-number { color: var(--warn); }
+.repository-token-type { color: var(--brass); }
+.repository-token-comment { color: var(--ink-fog); font-style: italic; }
+.repository-token-punctuation { color: var(--ink-fog); }
 
 /* ── 라인번호 거터 ── */
-.diff-gutter {
+.repository-gutter {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-fog);
@@ -589,7 +589,7 @@
   min-width: 2.5ch;
 }
 
-.diff-marker {
+.repository-marker {
   font-family: var(--font-mono);
   font-size: 11px;
   text-align: center;
@@ -600,15 +600,15 @@
   width: 1ch;
 }
 
-.diff-line-add .diff-marker { color: var(--positive); }
-.diff-line-del .diff-marker { color: var(--coral); }
+.repository-line-add .repository-marker { color: var(--positive); }
+.repository-line-del .repository-marker { color: var(--coral); }
 
 /* ── @@ 요약 라벨 행 ── */
-.diff-line-hunk-label {
+.repository-line-hunk-label {
   background: color-mix(in oklch, var(--aurora) 8%, transparent);
 }
 
-.diff-line-label {
+.repository-line-label {
   padding: 2px 10px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -616,14 +616,14 @@
 }
 
 /* ── 다중 파일 패치 파일 경계 행 ── */
-.diff-line-file-label {
+.repository-line-file-label {
   background: var(--ink-mid);
   border-top: 1px solid var(--surface-rim);
   border-bottom: 1px solid var(--surface-rim);
 }
 
-.diff-line-file-label .diff-line-code,
-.diff-line-file-label td {
+.repository-line-file-label .repository-line-code,
+.repository-line-file-label td {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-spectral);
@@ -941,10 +941,30 @@
 .history-parent { border: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent); color: var(--aurora); }
 .history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive); font-style: normal; }.history-files-title em { color: var(--coral); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
-.history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .diff-file-row { padding-left: 14px; }
+.history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-diff-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--aurora); font-family: var(--font-mono); font-size: 11px; }.history-file-diff-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-diff-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-diff-head button { width: 22px; height: 22px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; }.history-file-diff-head button:disabled { cursor: default; opacity: .4; }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--aurora); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 22px; height: 22px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 12px; }.history-inspector-error { color: var(--coral); }
 @container (max-width: 610px) { .history-commit-badges, .history-commit-time { display: none; } }
 @container (max-width: 430px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
+/* Repository sources mirror the approved unified explorer. */
+.repository-unified { display: flex; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
+.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--hairline); background: var(--surface-deep); }
+.repository-source-nav button, .repository-source-nav span { min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
+.repository-source-nav button[aria-current="page"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
+.repository-source-nav b { padding: 8px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; }
+.repository-source-nav svg { width: 14px; height: 14px; flex: none; }
+.repository-source-nav i { float: right; color: var(--text-tertiary); font-style: normal; }
+.repository-source-content, .repository-unified > .repository-root { flex: 1; min-width: 0; }
+/* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
+.repository-source-fill { height: 100%; min-height: 0; }
+.repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
+.repository-ref-list button, .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
+.repository-ref-list .is-current, .repository-wip-row { color: var(--brass); }
+.repository-wip-row { width: 100%; border-bottom: 1px dashed var(--hairline); }
+.repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
+@container (max-width: 420px) { .repository-source-nav { width: 44px; } .repository-source-nav button { display: grid; place-items: center; padding: 5px; } .repository-source-nav button span, .repository-source-nav button i, .repository-source-nav b { display: none; } }
+/* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
+.repository-unified [hidden] { display: none !important; }

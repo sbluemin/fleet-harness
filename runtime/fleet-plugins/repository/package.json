@@ -1,5 +1,5 @@
 {
-  "name": "@fleet-plugins/diff",
+  "name": "@fleet-plugins/repository",
   "version": "1.27.0",
   "private": true,
   "type": "module",

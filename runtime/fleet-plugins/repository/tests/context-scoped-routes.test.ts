@@ -5,11 +5,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { handleDiffCommit } from "../server/commit.js";
-import { handleDiffCommitFile } from "../server/commit-file.js";
-import { handleDiffChanged, handleDiffFile } from "../server/diff.js";
+import { handleRepositoryCommit } from "../server/commit.js";
+import { handleRepositoryCommitFile } from "../server/commit-file.js";
+import { handleRepositoryChanged, handleRepositoryFile } from "../server/diff.js";
 import { runGit } from "../server/git-executor.js";
-import { handleDiffLog } from "../server/log.js";
+import { handleRepositoryLog } from "../server/log.js";
 
 // ─── types ─────────────────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ describe("selected subdirectory diff route scope", () => {
   let fixture: ScopedRepoFixture;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-diff-context-"));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-context-"));
     fixture = await createScopedRepo(tmpDir);
   });
 
@@ -156,7 +156,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("changed returns only selected-cwd-relative paths and file opens the matching hunk", async () => {
     const changedWrites: JsonWrite[] = [];
-    await handleDiffChanged(
+    await handleRepositoryChanged(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR }, changedWrites),
@@ -171,7 +171,7 @@ describe("selected subdirectory diff route scope", () => {
     expect(changed.files.every((file) => !file.path.startsWith(`${INSIDE_DIR}/`))).toBe(true);
 
     const fileWrites: JsonWrite[] = [];
-    await handleDiffFile(
+    await handleRepositoryFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, {
@@ -202,7 +202,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("log and commit detail stay scoped to the selected context", async () => {
     const logWrites: JsonWrite[] = [];
-    await handleDiffLog(
+    await handleRepositoryLog(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR }, logWrites),
@@ -213,7 +213,7 @@ describe("selected subdirectory diff route scope", () => {
     expect(log.commits.map((commit) => commit.subject)).not.toContain("outside only commit");
 
     const commitWrites: JsonWrite[] = [];
-    await handleDiffCommit(
+    await handleRepositoryCommit(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, {
@@ -231,7 +231,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("returns a selected commit file and neutralizes option-like paths as literal pathspecs", async () => {
     const fileWrites: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "committed.txt" }, fileWrites),
@@ -243,7 +243,7 @@ describe("selected subdirectory diff route scope", () => {
     // and `:(literal)` prefix mean `--stat` reaches git as a literal pathspec (no such file → empty),
     // never as an executed `--stat` option, so no diffstat is injected.
     const optionLikeWrites: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: "--stat" }, optionLikeWrites),
@@ -253,7 +253,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("treats commit and worktree file paths as literal pathspecs", async () => {
     const commitWrites: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.head, filePath: ":(top)outside/committed.txt" }, commitWrites),
@@ -261,7 +261,7 @@ describe("selected subdirectory diff route scope", () => {
     expect(readPayload<ContentPayload>(commitWrites).content).toBe("");
 
     const worktreeWrites: JsonWrite[] = [];
-    await handleDiffFile(
+    await handleRepositoryFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, filePath: ":(top)outside/base.txt", mode: "unified" }, worktreeWrites),
@@ -271,7 +271,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("renders a renamed commit file with both literal paths", async () => {
     const writes: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.renameHead, filePath: "rename-new.txt", oldPath: "rename-old.txt" }, writes),
@@ -284,7 +284,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("lists a type change and loads its per-file diff", async () => {
     const commitWrites: JsonWrite[] = [];
-    await handleDiffCommit(
+    await handleRepositoryCommit(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.typeChangeHead }, commitWrites),
@@ -292,7 +292,7 @@ describe("selected subdirectory diff route scope", () => {
     expect(readPayload<CommitPayload>(commitWrites).files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "type-change.txt", status: "T" })]));
 
     const fileWrites: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", subPath: INSIDE_DIR, ref: fixture.typeChangeHead, filePath: "type-change.txt" }, fileWrites),
@@ -304,7 +304,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("diffs a real merge against its first parent and loads its selected file", async () => {
     const commitWrites: JsonWrite[] = [];
-    await handleDiffCommit(
+    await handleRepositoryCommit(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.mergeHead }, commitWrites),
@@ -313,7 +313,7 @@ describe("selected subdirectory diff route scope", () => {
     expect(commit.files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "merge-side.txt" })]));
 
     const fileWrites: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.mergeHead, filePath: "merge-side.txt" }, fileWrites),
@@ -323,7 +323,7 @@ describe("selected subdirectory diff route scope", () => {
 
   it("allows a legitimate in-repository ..-prefixed filename", async () => {
     const writes: JsonWrite[] = [];
-    await handleDiffCommitFile(
+    await handleRepositoryCommitFile(
       { method: "POST" } as never,
       {} as never,
       makeContext(fixture.theaterPath, { theaterId: "theater", ref: fixture.head, filePath: "..notes" }, writes),
@@ -336,7 +336,7 @@ describe("changed route non-Git theater handling", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-diff-no-git-"));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-no-git-"));
   });
 
   afterEach(async () => {
@@ -346,7 +346,7 @@ describe("changed route non-Git theater handling", () => {
   it("returns the client-friendly no_git_repo notice contract", async () => {
     const writes: JsonWrite[] = [];
 
-    await handleDiffChanged(
+    await handleRepositoryChanged(
       { method: "POST" } as never,
       {} as never,
       makeContext(tmpDir, { theaterId: "theater" }, writes),

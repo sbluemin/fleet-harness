@@ -29,6 +29,7 @@ type PathContextSaver = (signal: AbortSignal) => Promise<RailPathContext>;
 
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
+const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 const pathContexts = new Map<string, RailPathContextState>();
 const pathContextMutationChains = new Map<string, Promise<void>>();
@@ -190,7 +191,17 @@ export function useRailPathContextStore(): Pick<RailStore, "pathContextTheaterId
 }
 
 function readStoredPanelId(): string | null {
-  try { return localStorage.getItem(PREFS_ACTIVE_PANEL); } catch { return null; }
+  try {
+    const stored = localStorage.getItem(PREFS_ACTIVE_PANEL);
+    if (stored === "diff" || stored === "history") {
+      try {
+        localStorage.setItem(PREFS_ACTIVE_PANEL, "repository");
+        if (stored === "history") localStorage.setItem(PREFS_REPOSITORY_SOURCE, "history");
+      } catch { /* best-effort migration */ }
+      return "repository";
+    }
+    return stored;
+  } catch { return null; }
 }
 
 function readStoredChromeExpanded(): boolean {

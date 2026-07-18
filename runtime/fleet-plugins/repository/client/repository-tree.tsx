@@ -117,21 +117,21 @@ function DiffTreeFolder({ dirKey, node, depth, selectedPath, onSelect }: TreeFol
   const indent = depth * 16 + 12;
 
   return (
-    <div className={`diff-folder${collapsed ? " is-collapsed" : ""}`}>
+    <div className={`repository-folder${collapsed ? " is-collapsed" : ""}`}>
       <button
         type="button"
-        className="diff-folder-row"
+        className="repository-folder-row"
         style={{ paddingLeft: `${indent}px` }}
         onClick={handleToggle}
         aria-expanded={!collapsed}
       >
-        <svg className="diff-folder-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <svg className="repository-folder-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
           <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <svg className="diff-folder-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <svg className="repository-folder-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M2 4a1 1 0 011-1h3l1.2 1.2H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
         </svg>
-        <span className="diff-folder-name">{label}</span>
+        <span className="repository-folder-name">{label}</span>
       </button>
       {!collapsed && (
         <DiffTreeChildren
@@ -154,21 +154,21 @@ function DiffTreeLeaf({ entry, depth, selectedPath, onSelect }: TreeLeafProps) {
   return (
     <button
       type="button"
-      className={`diff-file-row${isSelected ? " is-cur" : ""}`}
+      className={`repository-file-row${isSelected ? " is-cur" : ""}`}
       style={{ paddingLeft: `${indent}px` }}
       title={entry.path}
       onClick={handleClick}
     >
-      <span className={`diff-status-glyph diff-status-${entry.status.toLowerCase()}`} aria-label={entry.status}>
+      <span className={`repository-status-glyph repository-status-${entry.status.toLowerCase()}`} aria-label={entry.status}>
         {STATUS_GLYPHS[entry.status] ?? entry.status}
       </span>
-      {/* 파일명 타이포/색·is-cur brass는 .diff-file-fn이 소유하므로 리스트 행과 동일 마크업을 유지한다 */}
-      <span className="diff-file-name">
-        <span className="diff-file-fn">{name}</span>
+      {/* 파일명 타이포/색·is-cur brass는 .repository-file-fn이 소유하므로 리스트 행과 동일 마크업을 유지한다 */}
+      <span className="repository-file-name">
+        <span className="repository-file-fn">{name}</span>
       </span>
-      <span className="diff-nums">
-        {entry.additions > 0 && <span className="diff-additions">+{entry.additions}</span>}
-        {entry.deletions > 0 && <span className="diff-deletions">−{entry.deletions}</span>}
+      <span className="repository-nums">
+        {entry.additions > 0 && <span className="repository-additions">+{entry.additions}</span>}
+        {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}
       </span>
     </button>
   );

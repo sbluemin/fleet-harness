@@ -16,7 +16,7 @@ const KEYWORDS = new Set(["import", "export", "from", "const", "let", "var", "fu
 export function highlightEscapedDiffCode(code: string): string {
   let out = "";
   let i = 0;
-  const wrap = (kind: string, value: string) => `<span class="diff-token-${kind}">${value}</span>`;
+  const wrap = (kind: string, value: string) => `<span class="repository-token-${kind}">${value}</span>`;
   while (i < code.length) {
     const char = code[i]!;
     if (char === "&") { const end = code.indexOf(";", i + 1); if (end >= 0) { out += code.slice(i, end + 1); i = end + 1; continue; } }

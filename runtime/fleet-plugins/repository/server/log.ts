@@ -19,11 +19,27 @@ interface ParsedWorktree {
 
 // porcelain HEAD 라인에서 파싱된 값만 rev 인자로 허용하는 방어 검증
 const WORKTREE_SHA_RE = /^[0-9a-f]{40}$/;
+const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\//;
+// gitrevisions 선택자(@{n}·^·~ 등)와 check-ref-format 금지 문자를 이름 수준에서 거부한다 —
+// rev-parse가 reflog/조상 표현식을 해석해 /refs 열거 밖 커밋으로 필터되는 것을 막는다
+const REF_METACHAR_RE = /[~^:?*\[\\\s\x00-\x1f\x7f]/;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isCanonicalRepositoryRef(ref: string): boolean {
+  return CANONICAL_REF_RE.test(ref)
+    && !ref.startsWith("-")
+    && !ref.includes("..")
+    && !ref.includes("//")
+    && !REF_METACHAR_RE.test(ref)
+    && !ref.includes("@{")
+    && !ref.endsWith("/")
+    && !ref.endsWith(".")
+    && !ref.split("/").some((part) => part.startsWith(".") || part.endsWith(".lock"));
 }
 
 export function parseLogOutput(stdout: string): LogCommitEntry[] {
@@ -158,7 +174,7 @@ async function readCurrentWorktreePath(gitCwd: string): Promise<string> {
 
 // ─── handlers ────────────────────────────────────────────────────────────────
 
-export async function handleDiffLog(
+export async function handleRepositoryLog(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
@@ -166,7 +182,7 @@ export async function handleDiffLog(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown; readonly ref?: unknown }>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
@@ -180,7 +196,15 @@ export async function handleDiffLog(
   if (!cwdResult) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
   const { gitCwd } = cwdResult;
 
+  const requestedRef = body.ref;
+  if (requestedRef !== undefined && (typeof requestedRef !== "string" || !isCanonicalRepositoryRef(requestedRef))) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_ref" }); return;
+  }
+
   try {
+    const resolvedRef = typeof requestedRef === "string"
+      ? (await runGit(["rev-parse", "--verify", "--end-of-options", `${requestedRef}^{commit}`], { cwd: gitCwd })).stdout.trim()
+      : null;
     const [worktrees, currentWorktreePath, headRevList] = await Promise.all([
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
       readCurrentWorktreePath(gitCwd),
@@ -193,15 +217,21 @@ export async function handleDiffLog(
       .filter((sha) => WORKTREE_SHA_RE.test(sha) && !/^0+$/.test(sha));
     // unborn(orphan) 체크아웃에서는 명시 HEAD 인자가 로그 전체를 실패시키므로 rev-list 성공 여부로 게이트한다
     const headRevs = headRevList ? ["HEAD"] : [];
-    const result = await runGit(
-      // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-      ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--relative", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", "."],
-      { cwd: gitCwd },
-    );
+    const result = resolvedRef
+      ? await runGit(["log", resolvedRef, "--date-order", "-n", "200", "--relative", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", "."], { cwd: gitCwd })
+      : await runGit(
+        // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
+        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--relative", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", "."],
+        { cwd: gitCwd },
+      );
     const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
     ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
+      if (requestedRef !== undefined && error.code === "non_zero_exit") {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_ref" });
+        return;
+      }
       if (error.code === "no_git_repo") {
         ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
         return;

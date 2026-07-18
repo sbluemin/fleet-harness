@@ -111,7 +111,7 @@ export async function resolveGitCwd(
 
 // ─── handlers ────────────────────────────────────────────────────────────────
 
-export async function handleDiffChanged(
+export async function handleRepositoryChanged(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
@@ -178,7 +178,7 @@ export async function handleDiffChanged(
   }
 }
 
-export async function handleDiffFile(
+export async function handleRepositoryFile(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,

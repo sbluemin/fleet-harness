@@ -50,7 +50,7 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
     setState({ kind: "loading" });
 
     if (commit) {
-      ctx.api.fetch("diff", "commit-file", {
+      ctx.api.fetch("repository", "commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}), subPath: commit.subPath }),
@@ -62,7 +62,7 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
       });
     } else {
-      ctx.api.fetch("diff", "file", {
+      ctx.api.fetch("repository", "file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, subPath }),
@@ -79,11 +79,11 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
   }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, subPath, commit]);
 
   if (state.kind === "loading") {
-    return <div className="diff-hunk-loading">Loading…</div>;
+    return <div className="repository-hunk-loading">Loading…</div>;
   }
 
   if (state.kind === "error") {
-    return <div className="diff-hunk-error">{state.message}</div>;
+    return <div className="repository-hunk-error">{state.message}</div>;
   }
 
   const { result } = state;
@@ -91,43 +91,43 @@ export function HunkView({ ctx, file, mode, subPath, commit }: HunkViewProps) {
   const lines = parsed.filter((l) => l.kind !== "file-label");
 
   return (
-    <div className="diff-hunk-wrap">
-      {result.truncated && <div className="diff-truncated-badge">Diff truncated</div>}
-      <div className="diff-hunk-scroll">
-        <table className="diff-hunk-table" cellSpacing={0} cellPadding={0}>
+    <div className="repository-hunk-wrap">
+      {result.truncated && <div className="repository-truncated-badge">Diff truncated</div>}
+      <div className="repository-hunk-scroll">
+        <table className="repository-hunk-table" cellSpacing={0} cellPadding={0}>
           <tbody>
             {lines.map((line, i) => (
-              <tr key={i} className={`diff-line diff-line-${line.kind}`}>
+              <tr key={i} className={`repository-line repository-line-${line.kind}`}>
                 {line.kind === "hunk-label" ? (
                   <td
                     colSpan={4}
-                    className="diff-line-label"
+                    className="repository-line-label"
                     // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
                 ) : line.kind === "meta" ? (
                   <td
                     colSpan={4}
-                    className="diff-line-meta"
+                    className="repository-line-meta"
                     // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
                 ) : line.kind === "file-label" ? (
                   <td
                     colSpan={4}
-                    className="diff-line-file-label"
+                    className="repository-line-file-label"
                     // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
                 ) : (
                   <>
-                    <td className="diff-gutter diff-gutter-old">{line.oldLine ?? ""}</td>
-                    <td className="diff-gutter diff-gutter-new">{line.newLine ?? ""}</td>
-                    <td className="diff-marker">
+                    <td className="repository-gutter repository-gutter-old">{line.oldLine ?? ""}</td>
+                    <td className="repository-gutter repository-gutter-new">{line.newLine ?? ""}</td>
+                    <td className="repository-marker">
                       {line.kind === "add" ? "+" : line.kind === "del" ? "−" : ""}
                     </td>
                     <td
-                      className="diff-line-code"
+                      className="repository-line-code"
                       // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: highlightEscapedDiffCode(escapeHtml(line.text.length > 0 ? line.text.slice(1) : line.text)) }}
                     />

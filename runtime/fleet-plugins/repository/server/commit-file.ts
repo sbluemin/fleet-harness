@@ -22,7 +22,7 @@ function literalPathspec(relativePath: string): string {
   return `:(literal)${relativePath}`;
 }
 
-export async function handleDiffCommitFile(req: http.IncomingMessage, res: http.ServerResponse, ctx: FleetPluginServerContext): Promise<void> {
+export async function handleRepositoryCommitFile(req: http.IncomingMessage, res: http.ServerResponse, ctx: FleetPluginServerContext): Promise<void> {
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly filePath?: unknown; readonly oldPath?: unknown }>(req);

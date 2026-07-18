@@ -15,7 +15,7 @@ packages:
   - "runtime/fleet-console/font-picker"
   - "runtime/fleet-cli"
   - "runtime/fleet-plugins/terminal"
-  - "runtime/fleet-plugins/diff"
+  - "runtime/fleet-plugins/repository"
   - "runtime/fleet-plugins/file-explorer"
   - "runtime/fleet-plugins/skills"
 allowBuilds:

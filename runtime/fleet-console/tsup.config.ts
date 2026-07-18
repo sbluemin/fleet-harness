@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,10 +7,13 @@ import { defineConfig } from "tsup";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, "../..");
 
+// Vite 산출물과 다른 플러그인은 보존하되, 이름이 바뀐 diff 라우트만 빌드 전에 제거한다.
+fs.rmSync(path.join(__dirname, "dist", "fleet-plugins", "diff"), { recursive: true, force: true });
+
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([
   {
-    entry: { cli: "core/host/cli.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/diff/routes": "../fleet-plugins/diff/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts" },
+    entry: { cli: "core/host/cli.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts" },
     format: ["esm"],
     banner: { js: "#!/usr/bin/env node" },
     // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli 엔트리에만 생성한다.
