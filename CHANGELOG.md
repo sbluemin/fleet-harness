@@ -5,6 +5,80 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-07-18
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] Add Kimi via Claude Code sessions, shared sign-in commands, System Menu authentication, and Carrier backend selection.
+- [fleet-cli] Expose workspace-scoped Fleet Plan read and verification tools to the host and authority-scoped Plan tools to Carrier executors.
+
+#### Changed
+- [fleet-cli] Resolve Wiki tools and knowledge counts from each project's durable workspace.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add Kimi API key registration and sign-in-aware launch availability to Agent CLI settings.
+- [fleet-console] Hold Alt to raise a glance HUD that shows every visible panel's session title at once.
+- [fleet-console] Auto-hide the command band in fullscreen with edge, keyboard, pin, and reduced-motion controls.
+- [fleet-console] Show a Local channel chip in the Command Band on development-channel consoles, with an Environment popover that reveals the console version, port, data root, and runtime lock paths with copy buttons; production channels render no indicator.
+- [fleet-console] Desktop shells add a derived Desktop data path row to the Environment popover, and macOS Desktop abbreviates the chip label to Local to fit beside the window controls.
+
+#### Changed
+- [fleet-console] Move Carrier Settings from the System Menu standalone page into Settings > Plugins > Terminal > Carriers, keep `/carrier-settings` as a one-release redirect, and support `?section=` deep links in Settings.
+- [fleet-console] Show complete Operations and Groups for inactive Theaters while preserving Group collapse state.
+- [fleet-console] Move the operations panel session identity onto a hull nameplate that rides the panel border, keeps the name visible on active panels, and tucks window controls behind hover or keyboard focus.
+- [fleet-console] Name Operations from provider session identity metadata while preserving Console user rename precedence.
+- [fleet-console] Read Console Plans from the Theater root workspace in the shared Fleet data directory instead of repository-local `.fleet/plans` directories.
+- [fleet-console] Provide theater-wide Codex knowledge per project with copy-only on-demand migration from legacy `.fleet/knowledge`.
+
+#### Fixed
+- [fleet-console] Keep Alt+Left and Alt+Right navigation within non-minimized panels.
+- [fleet-console] Preserve the underlying Map or Formation state when focusing, restoring, or minimizing a panel.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] Connect to a remote runtime over SSH: Desktop installs and runs Fleet Console on the remote machine and connects through an SSH tunnel, supporting Linux and macOS hosts.
+- [fleet-console] Show remote connection progress on the bootstrap screen, return to the local runtime from a menu action, and report connection failures in a dialog.
+- [fleet-console] Relay native window fullscreen state so Console chrome follows Desktop fullscreen.
+- [fleet-console] Keep a signature tray icon resident in the macOS menu bar as a monochrome template image, and show the Desktop window when it is clicked.
+
+#### Fixed
+- [fleet-console] Stop parenting the update dialog to a destroyed window after the Desktop window is closed while the app stays alive.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Host the Carriers settings section in the Terminal plugin as a Captain chip strip with a single detail card that follows the Settings column rhythm, including the runtime editor, Task Force editing, and draft SAVE and DISCARD semantics.
+- [fleet-console] Keep Kimi credentials server-side while exposing browser-safe sign-in state and guarded Terminal launches.
+- [fleet-plans] Equip Terminal-launched host and Carrier agents with workspace-scoped Fleet Plan tools.
+
+#### Changed
+- [fleet-console] Keep provider session identity markers server-only and refresh titles safely across turns and session replacement.
+- [fleet-console] Route Terminal agent Wiki tools to the same per-project durable workspace.
+
+#### Fixed
+- [fleet-console] Make the Terminal agent runtime follow the Console data directory override when reading Carrier state.
+- [fleet-console] Keep History commit details and changed-file scrolling within the full inspector height.
+
+### fleet-core
+
+#### Added
+- [core-infra] [core-unified-agent] [fleet-admiral] Add the shared claude-kimi backend, current model metadata, credential validation, and Carrier authentication injection.
+- [core-infra] Resolve stable cross-platform workspace directories under the Fleet data directory and guard their cwd identities against collisions and unsafe paths.
+- [fleet-plans] Add deterministic PlanRef and TaskRef storage, linting, compact execution reads, task completion marking, and Plan-state verification tools.
+- [fleet-carriers] Make Kirov author validated Plans through Plan tools and make Ohio execute explicit same-Lane TaskRefs with one compact Plan read per dispatch.
+- [fleet-wiki] Add a host-injected Wiki workspace resolver with one-time copy migration.
+
+#### Changed
+- [fleet-admiral] [fleet-carriers] Slimmed the always-injected Admiral system prompt by a further 11%: the Carrier Operations Policy standing order keeps only its judgment kernel, while dispatch composition rules moved into the on-demand carrier-operations skill (renamed from carrier-contracts) alongside the per-carrier request-block contracts.
+- [core-unified-agent] Bind provider-neutral session identity resolvers at Agent CLI launch while preserving Codex prompt auto-naming.
+
+#### Removed
+- [fleet-carriers] Remove the process-wide concurrency limit from Carrier dispatches.
+
 ## [1.26.2] - 2026-07-15
 
 ### fleet-core

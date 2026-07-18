@@ -5,6 +5,80 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-07-18
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] Kimi via Claude Code 세션, 공유 로그인 명령, System Menu 인증, Carrier 백엔드 선택을 추가합니다.
+- [fleet-cli] 호스트에는 workspace 범위의 Fleet Plan 읽기 및 검증 도구를, Carrier executor에는 권한별 Plan 도구를 제공합니다.
+
+#### Changed
+- [fleet-cli] 프로젝트별 영구 워크스페이스에서 Wiki 도구와 지식 개수를 확인합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Agent CLI 설정에 Kimi API 키 등록과 로그인 상태 기반 실행 가능 여부를 추가합니다.
+- [fleet-console] Alt 키를 누르고 있는 동안 모든 가시 패널의 세션 제목을 한눈에 보여주는 glance HUD를 추가합니다.
+- [fleet-console] 전체 화면에서 명령 밴드를 자동으로 숨기고 가장자리, 키보드, 고정, 모션 감소 제어를 지원합니다.
+- [fleet-console] 개발 채널 콘솔의 Command Band에 Local 칩을 표시하고, 콘솔 버전·포트·데이터 루트·런타임 lock 경로를 Copy 버튼과 함께 보여주는 Environment 팝오버를 추가합니다. 프로덕션 채널에는 어떤 표시도 렌더되지 않습니다.
+- [fleet-console] Desktop 셸에서는 Environment 팝오버에 파생 Desktop data 경로 행이 추가되고, macOS Desktop은 창 컨트롤 옆에 맞도록 칩 라벨을 Local로 축약합니다.
+
+#### Changed
+- [fleet-console] Carrier Settings를 System Menu 독립 페이지에서 Settings > Plugins > Terminal > Carriers로 이동하고, `/carrier-settings`는 1개 릴리스 동안 리다이렉트로 유지하며, Settings에 `?section=` 딥링크를 지원합니다.
+- [fleet-console] 비활성 Theater에서도 전체 Operations와 Group을 표시하고 Group 접힘 상태를 유지합니다.
+- [fleet-console] Operations 패널 세션 identity를 패널 보더에 걸치는 명판으로 옮겨 활성 패널에서도 이름이 보이게 하고, 윈도우 컨트롤은 hover/키보드 포커스 시 전개되도록 명판 우측에 수납합니다.
+- [fleet-console] provider 세션 identity 메타데이터로 Operation 이름을 지정하고 Console 사용자 이름 변경 우선순위를 유지합니다.
+- [fleet-console] Console Plan을 저장소 로컬 `.fleet/plans` 디렉터리 대신 공유 Fleet data directory의 Theater root workspace에서 읽습니다.
+- [fleet-console] 기존 `.fleet/knowledge`를 삭제하지 않고 온디맨드로 복사 마이그레이션하며 프로젝트별 theater-wide Codex 지식을 제공합니다.
+
+#### Fixed
+- [fleet-console] Alt+Left와 Alt+Right 탐색이 최소화되지 않은 패널 안에서만 이동하도록 수정했습니다.
+- [fleet-console] 패널을 최대화해 포커스하거나 복원 또는 최소화할 때 기존 Map 또는 Formation 상태를 보존합니다.
+
+### fleet-desktop
+
+#### Added
+- [fleet-console] SSH로 원격 런타임에 연결합니다. Desktop이 원격 머신에 Fleet Console을 설치·구동하고 SSH 터널로 접속하며, Linux와 macOS 호스트를 지원합니다.
+- [fleet-console] 원격 연결 진행을 부트스트랩 화면에 표시하고, 메뉴에서 로컬 런타임으로 돌아가며, 연결 실패를 dialog로 안내합니다.
+- [fleet-console] 네이티브 창의 전체 화면 상태를 전달해 Console 크롬이 Desktop 전체 화면을 따르도록 합니다.
+- [fleet-console] macOS 메뉴 막대에 시그니처 트레이 아이콘을 모노크롬 템플릿 이미지로 상주시키고, 클릭하면 Desktop 창을 표시합니다.
+
+#### Fixed
+- [fleet-console] 앱이 살아있는 상태에서 Desktop 창을 닫은 뒤 업데이트 대화상자가 파괴된 창을 부모로 삼지 않도록 수정합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Terminal 플러그인이 Settings 컬럼 리듬을 따르는 Captain 칩 스트립과 단일 상세 카드 구성으로 런타임 편집기, Task Force 편집, 드래프트 SAVE·DISCARD 의미론을 갖춘 Carriers 설정 섹션을 제공합니다.
+- [fleet-console] Kimi 인증 정보를 서버에만 보관하면서 브라우저에는 안전한 로그인 상태와 보호된 Terminal 실행을 제공합니다.
+- [fleet-plans] Terminal에서 실행한 호스트 및 Carrier agent에 workspace 범위의 Fleet Plan 도구를 제공합니다.
+
+#### Changed
+- [fleet-console] provider 세션 identity marker를 서버 전용으로 유지하고 턴과 세션 교체 사이에서 제목을 안전하게 갱신합니다.
+- [fleet-console] Terminal 에이전트의 Wiki 도구를 동일한 프로젝트별 영구 워크스페이스로 연결합니다.
+
+#### Fixed
+- [fleet-console] Terminal agent runtime이 Carrier 상태를 읽을 때 Console 데이터 디렉터리 오버라이드를 따르도록 수정합니다.
+- [fleet-console] History 커밋 상세와 변경 파일 스크롤이 inspector 전체 높이를 사용하도록 수정합니다.
+
+### fleet-core
+
+#### Added
+- [core-infra] [core-unified-agent] [fleet-admiral] 공유 claude-kimi 백엔드, 최신 모델 메타데이터, 인증 정보 검증, Carrier 인증 주입을 추가합니다.
+- [core-infra] Fleet data directory 아래에서 안정적인 cross-platform workspace 디렉터리를 해석하고 cwd identity의 충돌 및 안전하지 않은 경로를 방지합니다.
+- [fleet-plans] 결정론적 PlanRef 및 TaskRef 저장, lint, compact 실행 조회, 태스크 완료 마킹, Plan 상태 검증 도구를 추가합니다.
+- [fleet-carriers] Kirov가 Plan 도구로 검증된 Plan을 작성하고 Ohio가 dispatch마다 한 번의 compact Plan 조회로 명시적인 동일 Lane TaskRef를 실행하도록 합니다.
+- [fleet-wiki] 호스트가 주입하는 Wiki 워크스페이스 resolver와 1회 복사 마이그레이션을 추가합니다.
+
+#### Changed
+- [fleet-admiral] [fleet-carriers] 항상 주입되는 Admiral 시스템 프롬프트를 약 11% 더 줄였습니다. Carrier Operations Policy standing order는 판단 커널만 유지하고, 디스패치 조성 규칙은 캐리어별 request-block 계약과 함께 온디맨드 carrier-operations skill(기존 carrier-contracts에서 이름 변경)로 이관되었습니다.
+- [core-unified-agent] Agent CLI 실행 시 provider 중립 session identity resolver를 결합하고 Codex prompt auto-name을 유지합니다.
+
+#### Removed
+- [fleet-carriers] 캐리어 dispatch의 프로세스 전역 동시 실행 제한을 제거합니다.
+
 ## [1.26.2] - 2026-07-15
 
 ### fleet-core
