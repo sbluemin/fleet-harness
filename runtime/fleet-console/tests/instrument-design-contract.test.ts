@@ -403,6 +403,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation-identity-name,");
     expect(components).toContain("font-family: var(--font-body);");
     expect(components).toContain("font-size: calc(var(--font-body-size) * 0.86);");
+    const identityInputBlock = components.match(/^\.canvas-operation-identity-input \{\n  flex: 1 1 auto;[^}]*\}/m)?.[0] ?? "";
+    expect(identityInputBlock).toContain("width: min(28ch, 34vw);");
+    expect(identityInputBlock).not.toContain("width: 0;");
     expect(components).toContain("top: calc(-1 * var(--space-3));");
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("background: var(--ink-mid);");
