@@ -250,9 +250,9 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: "/api/v1/plans/events",
-    summary: "Stream theater plan invalidations from the exact Console origin.",
+    summary: "Theater 실행 계획 변경 신호를 스트리밍합니다.",
     category: "Observer",
-    gate: "origin-strict",
+    gate: "origin-write",
   },
   {
     method: "POST",
@@ -529,7 +529,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const plansRouter = createPlansRouter({
     dataDir: fleetDataDir,
     isAuthorized: isTerminalAuthorized,
-    isEventsAuthorized: isExactConsoleOrigin,
+    // events는 same-origin EventSource가 Origin 헤더를 보내지 않으므로 exact-Origin 게이트를 쓸 수 없다.
+    // list/read와 동일한 terminal Origin 게이트(무-Origin 허용·존재 시 정확 일치)를 적용한다.
+    isEventsAuthorized: isTerminalAuthorized,
     readJsonBody,
     resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
     writeJson,

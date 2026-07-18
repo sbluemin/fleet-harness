@@ -32,7 +32,7 @@ afterEach(async () => {
 });
 
 describe("Plans events route", () => {
-  it("requires the exact Console Origin before validating or subscribing to event requests", async () => {
+  it("applies the events authorization gate before validating or subscribing to event requests", async () => {
     const subscribe = vi.fn();
     const resolveTheaterPath = vi.fn((id: string) => id === "known" ? theaterPath : null);
     const eventOrigin = "http://127.0.0.1:4312";
