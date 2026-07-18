@@ -64,9 +64,31 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
 }
 
 type Source = "changes" | "history" | "branches" | "tags" | "stashes" | "worktrees";
-type RepositoryWorktree = { name: string; branch: string | null; current: boolean };
-type RefItem = { label: string; ref: string; current: boolean };
-type Refs = { branches: RefItem[]; remotes: RefItem[]; tags: RefItem[]; stashes: { name: string; subject: string }[]; worktrees: RepositoryWorktree[] };
+type RefSource = Exclude<Source, "changes" | "history">;
+export type RepositoryWorktree = { name: string; branch: string | null; current: boolean };
+export type RepositoryRefItem = { label: string; ref: string; current: boolean };
+export type RepositoryStash = { name: string; subject: string };
+export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[]; worktrees: RepositoryWorktree[] };
+export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean };
+export type RepositoryRefGroup = { label?: "LOCAL" | "REMOTES"; rows: RepositoryRefRow[] };
+type Refs = RepositoryRefs;
+
+export function isRemoteHeadRef(ref: string): boolean {
+  return /^refs\/remotes\/[^/]+\/HEAD$/.test(ref);
+}
+
+export function buildRefListGroups(source: RefSource, refs: RepositoryRefs): RepositoryRefGroup[] {
+  const refRows = (items: readonly RepositoryRefItem[], rowSource: "branches" | "tags"): RepositoryRefRow[] => items.map((item) => ({ key: item.ref, source: rowSource, primary: item.label, ref: item.ref, current: item.current }));
+  if (source === "branches") {
+    return [
+      { label: "LOCAL", rows: refRows(refs.branches, "branches") },
+      { label: "REMOTES", rows: refRows(refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)), "branches") },
+    ];
+  }
+  if (source === "tags") return [{ rows: refRows(refs.tags, "tags") }];
+  if (source === "stashes") return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false })) }];
+  return [{ rows: refs.worktrees.map((item) => ({ key: item.name, source, primary: item.branch ?? item.name, ...(item.branch && item.branch !== item.name ? { sub: item.name } : {}), ref: null, current: item.current })) }];
+}
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [refFilter, setRefFilter] = useState<string | null>(null);
@@ -171,8 +193,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 }
 
 function SourceIcon({ source }: { readonly source: Source }) { const path = source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : source === "stashes" ? "M4 5h10v9H4zM6 3h6" : "M3 5h5l1 2h6v7H3z"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function SourceNav({ source, refs, onSource }: { readonly source: Source; readonly refs: Refs; readonly onSource: (source: Source) => void; readonly onRef: (ref: string) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}{button("worktrees", "Worktrees", refs.worktrees.length)}</nav>; }
-function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) { const rows = source === "branches" ? [...refs.branches, ...refs.remotes] : source === "tags" ? refs.tags : source === "stashes" ? refs.stashes.map((item) => ({ label: `${item.name} ${item.subject}`, ref: "", current: false })) : refs.worktrees.map((item) => ({ label: item.branch ?? item.name, ref: "", current: item.current })); return <div className="repository-ref-list">{rows.map((row) => <button type="button" key={row.ref || row.label} className={row.current ? "is-current" : ""} disabled={!row.ref} onClick={() => onRef(row.ref)}>{row.label}{row.current && " ✓"}</button>)}</div>; }
+function SourceNav({ source, refs, onSource }: { readonly source: Source; readonly refs: Refs; readonly onSource: (source: Source) => void; readonly onRef: (ref: string) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}{button("worktrees", "Worktrees", refs.worktrees.length)}</nav>; }
+function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
+  if (source === "changes" || source === "history") return null;
+  return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => { if (row.ref) onRef(row.ref); }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}{row.current && " ✓"}</span>{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>)}</div>)}</div>;
+}
 
 function RepositoryIcon() {
   return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="7" width="10" height="1.5" rx="0.5" fill="currentColor" /><rect x="2" y="10" width="8" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="13" width="12" height="1.5" rx="0.5" fill="currentColor" /></svg>;
