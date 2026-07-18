@@ -2320,69 +2320,337 @@ kbd {
   font-size: var(--font-size-display-md);
 }
 
-/* ─── Cowork margin annotations ───────────────────────────────────────────── */
+/* ─── Cowork inline copilot ─────────────────────────────────────────────────
+   리딩 뷰 위에 떠 있는 AI 편집 레이어: 선택 → 플로팅 Comment 필 → 컴포저,
+   하단 sticky 도크 캡슐(전송/실행/리뷰). 크롬은 최소화하고 토큰만 사용한다. */
 
-.cowork-entry-button,
-.cowork-action {
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-veil) 78%, transparent);
+.cowork-host { position: relative; }
+.cowork-host .markdown-body ::selection { background: color-mix(in oklch, var(--brass) 30%, transparent); }
+
+/* 공용 버튼 어휘 */
+.cowork-ghost,
+.cowork-solid {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-label-sm);
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.cowork-ghost { background: transparent; color: var(--ink-fog); }
+.cowork-ghost:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); color: var(--ink-pearl); }
+.cowork-solid { background: var(--brass); color: var(--ink-abyss); }
+.cowork-solid:hover { background: var(--brass-bright); }
+.cowork-solid--danger { background: color-mix(in oklch, var(--coral) 80%, var(--ink-deep)); color: var(--ink-pearl); }
+.cowork-solid--danger:hover { background: var(--coral); }
+.cowork-x { border: 0; background: transparent; color: var(--ink-fog); cursor: pointer; font-size: var(--font-size-lg); line-height: 1; padding: 0 var(--space-1); }
+.cowork-x:hover { color: var(--ink-pearl); }
+.cowork-pill:focus-visible, .cowork-ghost:focus-visible, .cowork-solid:focus-visible, .cowork-x:focus-visible, .cowork-chip:focus-visible, .cowork-send:focus-visible,
+.cowork-dock-input:focus-visible, .cowork-composer textarea:focus-visible, .cowork-card textarea:focus-visible, .cowork-selector select:focus-visible {
+  outline: 2px solid var(--brass-bright);
+  outline-offset: 2px;
+}
+
+/* 선택 앵커 레이어 — 문서 스크롤을 따라가는 절대 배치 오버레이 */
+.cowork-anchor { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.cowork-anchor > * { pointer-events: auto; }
+
+.cowork-pill {
+  position: absolute;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-veil) 96%, var(--brass));
+  box-shadow: 0 2px 6px color-mix(in oklch, var(--ink-abyss) 45%, transparent), 0 12px 32px -8px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
   color: var(--ink-pearl);
   cursor: pointer;
   font-family: var(--font-ui);
   font-size: var(--font-size-label-sm);
-  font-weight: 650;
-  padding: var(--space-2) var(--space-3);
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  animation: cowork-pop var(--duration-fast) var(--ease-spring);
+}
+.cowork-pill span { color: var(--brass-bright); }
+.cowork-pill:hover { border-color: var(--brass); background: color-mix(in oklch, var(--ink-veil) 88%, var(--brass)); }
+
+.cowork-composer {
+  position: absolute;
+  transform: translateX(-50%);
+  display: grid;
+  gap: var(--space-2);
+  width: min(340px, 86%);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--ink-abyss) 50%, transparent), 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
+  padding: var(--space-3);
+  animation: cowork-rise var(--duration-base) var(--ease-spring);
+}
+.cowork-composer blockquote {
+  margin: 0;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--brass);
+  color: var(--ink-fog);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cowork-composer textarea {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-abyss) 82%, transparent);
+  color: var(--ink-pearl);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2);
+  resize: none;
+}
+.cowork-composer textarea::placeholder { color: var(--ink-fog); }
+.cowork-composer-actions { display: flex; justify-content: flex-end; gap: var(--space-1); }
+
+/* 도크 존 — 리딩 시트 스크롤포트 하단에 붙는 sticky 스택 */
+.cowork-dock-zone {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 7;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  pointer-events: none;
+}
+.cowork-dock-zone.is-open { display: flex; }
+.cowork-dock-zone > * { pointer-events: auto; }
+
+.cowork-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: min(560px, 100%);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--ink-abyss) 50%, transparent), 0 20px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
+  overflow: hidden;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  animation: cowork-rise var(--duration-base) var(--ease-spring);
+  transition: border-color var(--duration-fast) var(--ease-glide);
+}
+.cowork-bar:focus-within { border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim-strong)); }
+
+/* 실행 중 aurora 셔머 — 캡슐 상단 라인을 따라 흐른다 */
+.cowork-glow {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--aurora) 85%, transparent), transparent);
+  background-size: 200% 100%;
+  animation: cowork-shimmer 1.6s linear infinite;
+  pointer-events: none;
 }
 
-.cowork-entry-button { margin-top: var(--space-4); }
-.cowork-action--apply, .cowork-action--send { background: color-mix(in oklch, var(--brass) 30%, var(--ink-deep)); border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim)); color: var(--brass-bright); }
-.cowork-action:focus-visible, .cowork-entry-button:focus-visible, .cowork-selector select:focus-visible, .cowork-free-prompt:focus-visible, .cowork-annotation-card textarea:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
-.cowork-action:disabled { cursor: not-allowed; opacity: 0.5; }
+.cowork-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-label-sm);
+  font-weight: 600;
+  padding: var(--space-1) var(--space-2);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.cowork-chip span { color: var(--brass-bright); }
+.cowork-chip:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); color: var(--ink-pearl); }
+.cowork-chip.is-active { background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
+.cowork-chip--config { max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.cowork-margin { display: grid; gap: var(--space-3); color: var(--ink-pearl); }
-.cowork-margin-head, .cowork-head-actions, .cowork-selectors, .cowork-batch-bar { display: flex; align-items: center; gap: var(--space-2); }
-.cowork-margin-head { justify-content: space-between; border-bottom: 1px solid var(--surface-rim); padding-bottom: var(--space-3); }
-.cowork-margin h2 { margin: 0; font-size: var(--font-size-display-sm); }
-.cowork-kicker, .cowork-status, .cowork-selector span, .cowork-rail-label, .cowork-annotation-status, .cowork-diff-line > span { color: var(--ink-fog); font-family: var(--font-mono); font-size: var(--font-size-xs); letter-spacing: 0.08em; text-transform: uppercase; }
-.cowork-kicker { margin: 0 0 var(--space-1); color: var(--brass-bright); }
-.cowork-head-actions { flex-wrap: wrap; justify-content: flex-end; }
-.cowork-status--running { color: var(--aurora); }
-.cowork-status--applied { color: var(--positive); }
-.cowork-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); min-height: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); overflow: hidden; background: color-mix(in oklch, var(--ink-deep) 84%, transparent); }
-.cowork-document-wrap { position: relative; min-width: 0; }
-.cowork-document { max-inline-size: none; min-height: 48vh; padding: var(--space-5); }
-.cowork-document ::selection { background: color-mix(in oklch, var(--brass) 32%, transparent); }
-.cowork-selection-pill { position: absolute; z-index: 2; border: 1px solid color-mix(in oklch, var(--brass) 55%, var(--surface-rim)); border-radius: 999px; background: var(--ink-veil); box-shadow: 0 8px 20px color-mix(in oklch, var(--ink-abyss) 75%, transparent); color: var(--brass-bright); cursor: pointer; padding: var(--space-1) var(--space-3); }
-.cowork-margin-rail { display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(88px, 0.65fr); gap: var(--space-2); min-width: 0; padding: var(--space-3); border-left: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--ink-deep) 93%, var(--ink-abyss)); }
-.cowork-rail-label { margin: 0; color: var(--ink-fog); }
-.cowork-annotation-list, .cowork-activity { display: grid; align-content: start; gap: var(--space-2); min-height: 0; overflow: auto; }
-.cowork-activity { padding-top: var(--space-2); border-top: 1px solid var(--surface-rim); }
-.cowork-rail-empty { margin: 0; color: var(--ink-fog); font-size: var(--font-size-sm); }
-.cowork-annotation-card { position: relative; display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--ink-veil) 62%, transparent); }
-.cowork-annotation-card blockquote { margin: 0; padding-left: var(--space-2); border-left: 2px solid var(--brass); color: var(--ink-fog); font-size: var(--font-size-sm); font-style: italic; overflow-wrap: anywhere; }
-.cowork-annotation-card textarea, .cowork-free-prompt, .cowork-selector select { border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: var(--ink-abyss); color: var(--ink-pearl); font: inherit; padding: var(--space-2); }
-.cowork-annotation-card textarea { min-height: 52px; resize: vertical; }
-.cowork-annotation-delete { position: absolute; top: var(--space-1); right: var(--space-1); border: 0; background: transparent; color: var(--ink-fog); cursor: pointer; font-size: var(--font-size-lg); line-height: 1; }
-.cowork-annotation-status { margin: 0; color: var(--warn); }
-.cowork-annotation-status.is-sent { color: var(--aurora); }
-.cowork-annotation-status.is-done { color: var(--positive); }
-.cowork-spinner { display: inline-block; width: 0.8em; height: 0.8em; margin-right: var(--space-1); border: 1px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: cowork-spin 0.8s linear infinite; }
-.cowork-activity-item { margin: 0; padding: var(--space-2); border-left: 2px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-glass) 62%, transparent); color: var(--ink-fog); font-size: var(--font-size-xs); overflow-wrap: anywhere; white-space: pre-wrap; }
-.cowork-activity-item strong { display: block; margin-bottom: var(--space-1); color: var(--brass-bright); font-family: var(--font-mono); font-size: var(--font-size-2xs); letter-spacing: 0.08em; text-transform: uppercase; }
-.cowork-activity-item--assistant { border-left-color: var(--aurora); }
-.cowork-activity-item--tool { border-left-color: var(--brass); }
-.cowork-diff { height: 100%; overflow: auto; background: color-mix(in oklch, var(--ink-abyss) 80%, transparent); }
+.cowork-dock-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-pearl);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1);
+}
+.cowork-dock-input::placeholder { color: var(--ink-fog); }
+.cowork-dock-input:focus { outline: none; }
+
+.cowork-send {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brass);
+  color: var(--ink-abyss);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  transition: background var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-spring);
+}
+.cowork-send:hover { background: var(--brass-bright); transform: translateY(-1px); }
+
+.cowork-spinner {
+  flex: 0 0 auto;
+  width: 0.9em;
+  height: 0.9em;
+  border: 1.5px solid var(--aurora);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: cowork-spin 0.8s linear infinite;
+}
+.cowork-ticker {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-fog);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1);
+}
+
+/* 리뷰 캡슐 — 변경이 생기면 도크 위에 떠오른다 */
+.cowork-review {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--brass) 35%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-veil) 94%, var(--brass));
+  box-shadow: 0 12px 32px -10px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  color: var(--ink-pearl);
+  font-size: var(--font-size-label-sm);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  animation: cowork-rise var(--duration-base) var(--ease-spring);
+}
+.cowork-review-count { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 600; }
+.cowork-review-count i { width: 6px; height: 6px; border-radius: 50%; background: var(--brass-bright); }
+
+/* 팝오버(어노테이션 패널·에이전트 설정) */
+.cowork-popover {
+  display: grid;
+  gap: var(--space-2);
+  width: min(440px, 100%);
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
+  box-shadow: 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
+  padding: var(--space-2);
+  animation: cowork-rise var(--duration-base) var(--ease-spring);
+}
+.cowork-empty { margin: 0; color: var(--ink-fog); font-size: var(--font-size-sm); padding: var(--space-2); text-align: center; }
+
+.cowork-card {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 55%, transparent);
+  padding: var(--space-2) var(--space-3);
+  transition: border-color var(--duration-fast) var(--ease-glide), opacity var(--duration-fast) var(--ease-glide);
+}
+.cowork-card.is-sent { border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim)); }
+.cowork-card.is-done { border-color: color-mix(in oklch, var(--positive) 35%, var(--surface-rim)); opacity: 0.72; }
+.cowork-card blockquote {
+  margin: 0;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--brass);
+  color: var(--ink-fog);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.cowork-card textarea {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-abyss) 78%, transparent);
+  color: var(--ink-pearl);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  min-height: 40px;
+  padding: var(--space-2);
+  resize: vertical;
+}
+.cowork-card footer { display: flex; align-items: center; justify-content: space-between; }
+.cowork-card-status { color: var(--ink-fog); font-size: var(--font-size-2xs); font-weight: 600; }
+.cowork-card.is-sent .cowork-card-status { color: var(--aurora); }
+.cowork-card.is-done .cowork-card-status { color: var(--positive); }
+
+.cowork-config { display: flex; flex-wrap: wrap; gap: var(--space-2); width: auto; }
+.cowork-selector { display: grid; gap: var(--space-1); min-inline-size: 120px; }
+.cowork-selector span { color: var(--ink-fog); font-size: var(--font-size-2xs); font-weight: 600; }
+.cowork-selector select {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-abyss) 82%, transparent);
+  color: var(--ink-pearl);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* AI 요약 카드 */
+.cowork-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: min(560px, 100%);
+  border: 1px solid color-mix(in oklch, var(--aurora) 28%, var(--surface-rim));
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-veil) 96%, var(--aurora));
+  box-shadow: 0 16px 40px -12px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  color: var(--ink-pearl);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3);
+  animation: cowork-rise var(--duration-base) var(--ease-spring);
+}
+.cowork-summary > span { color: var(--aurora); }
+.cowork-summary p { flex: 1; margin: 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.cowork-error { width: min(560px, 100%); margin: 0; color: var(--coral); font-size: var(--font-size-xs); text-align: center; }
+
+/* 라인 diff 뷰 — 본문 자리에서 토글된다 */
+.cowork-diff { border: 1px solid var(--surface-rim); border-radius: var(--radius-lg); overflow: auto; background: color-mix(in oklch, var(--ink-abyss) 80%, transparent); }
 .cowork-diff-line { display: grid; grid-template-columns: 3ch minmax(0, 1fr); gap: var(--space-2); padding: 2px var(--space-3); white-space: pre-wrap; }
+.cowork-diff-line > span { color: var(--ink-fog); font-family: var(--font-mono); font-size: var(--font-size-xs); }
 .cowork-diff-line.is-changed { background: color-mix(in oklch, var(--brass) 15%, transparent); box-shadow: inset 2px 0 0 var(--brass); }
 .cowork-diff-line code { color: var(--ink-spectral); font-family: var(--font-mono); font-size: var(--font-size-xs); }
-.cowork-batch-bar { flex-wrap: wrap; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: color-mix(in oklch, var(--surface-glass) 78%, transparent); }
-.cowork-batch-count { color: var(--ink-pearl); font-family: var(--font-mono); font-size: var(--font-size-sm); white-space: nowrap; }
-.cowork-free-prompt { flex: 1 1 180px; min-width: 0; }
-.cowork-selectors { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; }
-.cowork-selector { display: grid; gap: var(--space-1); min-inline-size: 96px; }
-.cowork-error { color: var(--coral); font-size: var(--font-size-sm); margin: 0; }
 
+@keyframes cowork-pop { from { opacity: 0; transform: translateX(-50%) scale(0.92); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes cowork-rise { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
 @keyframes cowork-spin { to { transform: rotate(1turn); } }
-@media (max-width: 840px) { .cowork-layout { grid-template-columns: 1fr; } .cowork-margin-rail { max-height: 360px; border-top: 1px solid var(--surface-rim); border-left: 0; } .cowork-margin-head { align-items: flex-start; flex-direction: column; } }
-@media (prefers-reduced-motion: reduce) { .cowork-entry-button, .cowork-action, .cowork-spinner { animation: none; transition: none; } }
+@keyframes cowork-shimmer { to { background-position: -200% 0; } }
+
+@media (max-width: 720px) {
+  .cowork-composer { width: min(300px, 92%); }
+  .cowork-bar, .cowork-summary, .cowork-popover, .cowork-error { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cowork-pill, .cowork-composer, .cowork-bar, .cowork-review, .cowork-popover, .cowork-summary, .cowork-glow, .cowork-spinner { animation: none; }
+  .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-bar, .cowork-card { transition: none; }
+  .cowork-send:hover { transform: none; }
+}

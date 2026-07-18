@@ -5,6 +5,7 @@ import { CoworkService } from "./service.js";
 import { CoworkStore } from "./store.js";
 import type { CoworkStoredEvent } from "./types.js";
 import { encodeSseData } from "../../sse.js";
+import { withSecurityHeaders } from "../security-headers.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);
 
@@ -21,13 +22,15 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
   if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "codex") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const model = url.searchParams.get("model") ?? provider.defaultModel; const effort = getEffort(cli, model); return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: effort.supported ? effort.levels : [] }); }
   try {
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId, identity(b)))); }
+    // 엔트리별 활성 세션 peek — 리딩 뷰가 세션을 만들지 않고 진행 중 초안을 복원할 때 쓴다.
+    if (request.method === "GET" && parts.length === 5 && parts[2] === "entries" && parts[4] === "session") { const s = await service.peek(context.workspaceId, decodeURIComponent(parts[3] ?? "")); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
     const id = parts[3]; if (!id) return json(response, 404, { error: "not_found" });
     if (request.method === "GET" && parts.length === 4) { const s = await service.get(context.workspaceId, id); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
     if (request.method === "GET" && parts[4] === "transcript") { const s = await service.get(context.workspaceId, id); if (!s) return json(response, 404, { error: "cowork_session_not_found" }); return json(response, 200, { turns: await service.store.transcript(context.workspaceId, id) }); }
     if (request.method === "GET" && parts[4] === "events") {
       const s = await service.get(context.workspaceId, id);
       if (!s) return json(response, 404, { error: "cowork_session_not_found" });
-      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      response.writeHead(200, withSecurityHeaders({ "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" }));
       const lastEventId = Number(request.headers["last-event-id"] ?? Number.NaN);
       const after = Number.isFinite(lastEventId) ? lastEventId : Number(url.searchParams.get("after") ?? 0);
       // Subscribe before replay so no event falls between the two; dedupe by monotonic id.
@@ -59,4 +62,4 @@ function writeAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string> }) { 
 async function body(r: IncomingMessage): Promise<Record<string, unknown>> { let raw = ""; for await (const c of r) { raw += String(c); if (raw.length > 1024 * 1024) throw new Error("body_too_large"); } try { const v: unknown = JSON.parse(raw || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; } catch { throw new Error("invalid_json"); } }
 function validAnnotation(v: unknown): v is { id: string; text: string; start?: number; end?: number } { return !!v && typeof v === "object" && typeof (v as { id?: unknown }).id === "string" && typeof (v as { text?: unknown }).text === "string"; }
 function identity(b: Record<string, unknown>): { cli?: string; model?: string; effort?: string } { const pick = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 64 ? v : undefined; return { cli: pick(b.cli), model: pick(b.model), effort: pick(b.effort) }; }
-function json(r: ServerResponse, status: number, value: unknown) { r.writeHead(status, { "content-type": "application/json; charset=utf-8" }); r.end(JSON.stringify(value)); return true; }
+function json(r: ServerResponse, status: number, value: unknown) { r.writeHead(status, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" })); r.end(JSON.stringify(value)); return true; }

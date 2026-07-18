@@ -116,6 +116,16 @@ export async function createCoworkSession(theaterId: string | null, entryId: str
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, "/cowork/sessions"), { entryId, ...settings });
 }
 
+/** 엔트리의 활성 세션을 세션 생성 없이 조회한다 — 없으면 null. */
+export async function peekCoworkEntrySession(theaterId: string | null, entryId: string): Promise<CoworkSessionDto | null> {
+  try {
+    return await fetchCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/entries/${encodeURIComponent(entryId)}/session`));
+  } catch (cause) {
+    if (cause instanceof CoworkRequestError && cause.status === 404) return null;
+    throw cause;
+  }
+}
+
 export async function updateCoworkSettings(theaterId: string | null, id: string, settings: CoworkAgentSettings): Promise<CoworkSessionDto> {
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/settings`), { ...settings });
 }

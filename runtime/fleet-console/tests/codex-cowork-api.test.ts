@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCoworkSession, fetchCoworkOptions, subscribeCoworkEvents } from "../core/client/src/codex/api.js";
+import { createCoworkSession, fetchCoworkOptions, peekCoworkEntrySession, subscribeCoworkEvents } from "../core/client/src/codex/api.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,6 +15,13 @@ describe("Cowork API client", () => {
   it("surfaces typed busy errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "cowork_busy" }), { status: 409 })));
     await expect(createCoworkSession(null, "entry")).rejects.toMatchObject({ status: 409, code: "cowork_busy" });
+  });
+
+  it("peeks the entry session and maps 404 to null", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(peekCoworkEntrySession("theater", "entry/x")).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith("/console/codex/w/theater/api/cowork/entries/entry%2Fx/session", expect.any(Object));
   });
 
   it("replays named SSE events and ignores malformed payloads", () => {

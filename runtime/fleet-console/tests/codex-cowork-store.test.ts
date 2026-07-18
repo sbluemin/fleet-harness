@@ -23,4 +23,28 @@ describe("CoworkStore", () => {
     await expect(port.write({ body: "stale", expectedRevision: 0 })).rejects.toThrow("wiki draft revision conflict");
     expect(await port.read()).toEqual({ body: "current", revision: 1 });
   });
+
+  it("serializes overlapping same-revision writes so exactly one wins", async () => {
+    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-")));
+    const session = await store.create("workspace", "entry", "before");
+    await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
+    const port = store.draftPort("workspace", session.id);
+
+    const [first, second] = await Promise.allSettled([
+      port.write({ body: "first", expectedRevision: 0 }),
+      port.write({ body: "second", expectedRevision: 0 }),
+    ]);
+    expect(first.status).toBe("fulfilled");
+    expect(second.status).toBe("rejected");
+    expect(await port.read()).toEqual({ body: "first", revision: 1 });
+  });
+
+  it("resolves the entry's active writer session and forgets released ones", async () => {
+    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-")));
+    const session = await store.create("workspace", "entry", "before");
+    await expect(store.activeForEntry("workspace", "entry")).resolves.toMatchObject({ id: session.id });
+    const closed = await store.update("workspace", session.id, s => ({ ...s, state: "closed" }));
+    store.release(closed);
+    await expect(store.activeForEntry("workspace", "entry")).resolves.toBeNull();
+  });
 });

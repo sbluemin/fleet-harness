@@ -47,6 +47,7 @@ export class CoworkService {
 
   async settings(workspaceId: string, id: string, identity: { cli?: string; model?: string; effort?: string }) { return this.changed(await this.store.update(workspaceId, id, s => ({ ...s, ...identity }))); }
   async get(workspaceId: string, id: string) { return this.store.get(workspaceId, id); }
+  async peek(workspaceId: string, entryId: string) { return this.store.activeForEntry(workspaceId, entryId); }
   async setSelection(workspaceId: string, id: string, selection: string | null) { return this.changed(await this.store.update(workspaceId, id, s => ({ ...s, selection }))); }
   async annotations(workspaceId: string, id: string, annotations: CoworkSessionRecord["annotations"]) { return this.changed(await this.store.update(workspaceId, id, s => ({ ...s, annotations }))); }
 
@@ -140,6 +141,8 @@ export class CoworkService {
   }
 
   private async finishPrompt(workspaceId: string, id: string, client: IUnifiedAgentClient, errorCode: string | null) {
+    // 취소 직후 새 프롬프트가 시작된 경우, 이전 클라이언트의 지연 완료가 새 실행을 해체하면 안 된다.
+    if (this.live.get(id)?.client !== client) return;
     const providerSessionId = client.getConnectionInfo().sessionId ?? undefined;
     this.releaseLive(id);
     await this.flushAssistantTurn(workspaceId, id);

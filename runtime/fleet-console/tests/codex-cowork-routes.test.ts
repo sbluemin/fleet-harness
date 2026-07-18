@@ -37,6 +37,33 @@ describe("Cowork DTO", () => {
     expect(dto).toMatchObject({ cli: "codex", model: "secret-model", effort: "high" });
   });
 
+  it("peeks the entry's active session with no-store headers and 404s once released", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cowork-"));
+    const paths = createMemoryPaths(join(root, "knowledge"));
+    await ensureMemoryRoot(paths);
+    await writeWikiEntry(entry(), paths);
+    const service = new CoworkService(new CoworkStore(root), paths, root, new FakeConnector());
+    const session = await service.create("workspace", "entry");
+    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("test server has no TCP address");
+      const base = `http://127.0.0.1:${address.port}/api/cowork/entries/entry/session`;
+      const found = await fetch(base, { headers: { origin: "http://console.test" } });
+      expect(found.status).toBe(200);
+      expect(found.headers.get("cache-control")).toBe("no-store");
+      await expect(found.json()).resolves.toMatchObject({ id: session.id, entryId: "entry" });
+      await service.close("workspace", session.id);
+      const gone = await fetch(base, { headers: { origin: "http://console.test" } });
+      expect(gone.status).toBe(404);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("maps a running re-prompt to cowork_busy with HTTP 409", async () => {
     const root = await mkdtemp(join(tmpdir(), "cowork-"));
     const paths = createMemoryPaths(join(root, "knowledge"));
