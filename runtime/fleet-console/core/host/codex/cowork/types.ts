@@ -6,9 +6,6 @@ export interface CoworkSessionRecord extends CoworkSessionDto {
   updatedAt: string;
   /** Never serialize this field into a HTTP or SSE payload. */
   providerSessionId?: string;
-  cli?: string;
-  model?: string;
-  effort?: string;
 }
 export type CoworkAnnotation = CoworkAnnotationDto;
 export interface CoworkTranscriptTurn { role: "user" | "assistant"; text: string; at: string; }

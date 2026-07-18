@@ -17,7 +17,7 @@ describe("Cowork DTO", () => {
     expect(service.dto({ id: "s", workspaceId: "w", entryId: "e", state: "idle", revision: 0, draft: "x", baseHash: "h", baseVersion: 0, selection: null, annotations: [], createdAt: "now", updatedAt: "now", providerSessionId: "/secret" })).not.toHaveProperty("providerSessionId");
   });
 
-  it("keeps provider and CLI configuration out of DTO and SSE payloads", async () => {
+  it("keeps provider identity out of DTO and SSE payloads while exposing user agent settings", async () => {
     const root = await mkdtemp(join(tmpdir(), "cowork-"));
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
@@ -33,7 +33,8 @@ describe("Cowork DTO", () => {
     const dto = service.dto((await service.get("workspace", session.id))!);
     const payload = JSON.stringify({ dto, events });
 
-    for (const secret of ["providerSessionId", "/private/provider", "secret-model", "codex", "high", root]) expect(payload).not.toContain(secret);
+    for (const secret of ["providerSessionId", "/private/provider", root]) expect(payload).not.toContain(secret);
+    expect(dto).toMatchObject({ cli: "codex", model: "secret-model", effort: "high" });
   });
 
   it("maps a running re-prompt to cowork_busy with HTTP 409", async () => {

@@ -20,6 +20,8 @@ import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { getState } from "./state.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
+import { mountCoworkInto } from "./cowork-controller.js";
+import type { CoworkController } from "./cowork-controller.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ export function mountReadingInto(
 ): ReadingController {
   let destroyed = false;
   let cleanupSpy: (() => void) | null = null;
+  let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
 
@@ -96,6 +99,14 @@ export function mountReadingInto(
       event.preventDefault();
       handleDrydockAction(drydockBtn.dataset.drydockAction);
       return;
+    }
+
+    const editBtn = target.closest<HTMLElement>("[data-cowork-edit]");
+    if (editBtn?.dataset.coworkEdit) {
+      const entryId = editBtn.dataset.coworkEdit;
+      const base = editBtn.dataset.coworkBase;
+      if (!base) return;
+      void openCowork(entryId, decodeURIComponent(base));
     }
   }
 
@@ -174,6 +185,8 @@ export function mountReadingInto(
   readContainer.addEventListener("click", handleClick);
 
   function cleanupReader(): void {
+    coworkController?.destroy();
+    coworkController = null;
     cleanupSpy?.();
     cleanupSpy = null;
   }
@@ -199,6 +212,7 @@ export function mountReadingInto(
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
             ${renderMetaChips(entry.frontmatter)}
+            <button class="cowork-entry-button" type="button" data-cowork-edit="${escapeAttribute(entry.frontmatter.id)}" data-cowork-base="${escapeAttribute(encodeURIComponent(entry.body))}">Edit with AI</button>
           </header>
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}
@@ -215,6 +229,19 @@ export function mountReadingInto(
     } catch (error) {
       if (!destroyed) showError(readContainer, opts.tocContainer, error);
     }
+  }
+
+  async function openCowork(entryId: string, base: string): Promise<void> {
+    cleanupReader();
+    opts.tocContainer.innerHTML = "";
+    readContainer.innerHTML = '<div class="codex-reader-loading" aria-live="polite" aria-busy="true">Opening draft studio…</div>';
+    coworkController = await mountCoworkInto(readContainer, {
+      theaterId: liveOpts.theaterId,
+      entryId,
+      base,
+      onApplied: () => { void renderEntryView(entryId); },
+      onExit: () => { void renderEntryView(entryId); },
+    });
   }
 
   async function renderDrydockView(patchId: string | undefined): Promise<void> {
@@ -294,6 +321,7 @@ export function mountReadingInto(
       destroyed = true;
       readContainer.removeEventListener("click", handleClick);
       cleanupReader();
+      coworkController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
       await renderEntryView(entryId);

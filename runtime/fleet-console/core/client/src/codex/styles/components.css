@@ -2319,3 +2319,59 @@ kbd {
 .codex-reading-sheet .document-header h1 {
   font-size: var(--font-size-display-md);
 }
+
+/* ─── Cowork draft studio ─────────────────────────────────────────────────── */
+
+.cowork-entry-button,
+.cowork-action {
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-veil) 78%, transparent);
+  color: var(--ink-pearl);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-label-sm);
+  font-weight: 650;
+  padding: var(--space-2) var(--space-3);
+}
+
+.cowork-entry-button { margin-top: var(--space-4); }
+.cowork-action--apply, .cowork-action--send { background: color-mix(in oklch, var(--brass) 30%, var(--ink-deep)); border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim)); color: var(--brass-bright); }
+.cowork-action:focus-visible, .cowork-entry-button:focus-visible, .cowork-selector select:focus-visible, .cowork-composer textarea:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
+.cowork-action:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.cowork-studio { display: grid; gap: var(--space-4); color: var(--ink-pearl); }
+.cowork-studio-head, .cowork-head-actions, .cowork-selectors, .cowork-pane header, .cowork-composer, .cowork-quote { display: flex; align-items: center; gap: var(--space-2); }
+.cowork-studio-head { justify-content: space-between; border-bottom: 1px solid var(--surface-rim); padding-bottom: var(--space-3); }
+.cowork-studio h2 { margin: 0; font-size: var(--font-size-display-sm); }
+.cowork-kicker, .cowork-status, .cowork-selector span, .cowork-pane header, .cowork-diff-line > span { color: var(--ink-fog); font-family: var(--font-mono); font-size: var(--font-size-xs); letter-spacing: 0.08em; text-transform: uppercase; }
+.cowork-kicker { margin: 0 0 var(--space-1); color: var(--brass-bright); }
+.cowork-head-actions { flex-wrap: wrap; justify-content: flex-end; }
+.cowork-status { color: var(--aurora); }
+.cowork-selectors { flex-wrap: wrap; padding: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: color-mix(in oklch, var(--surface-glass) 78%, transparent); }
+.cowork-selector { display: grid; gap: var(--space-1); min-inline-size: 120px; }
+.cowork-selector select, .cowork-composer textarea { border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: var(--ink-abyss); color: var(--ink-pearl); font: inherit; padding: var(--space-2); }
+.cowork-panes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); min-height: 0; }
+.cowork-pane { min-width: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); overflow: hidden; background: color-mix(in oklch, var(--ink-deep) 84%, transparent); }
+.cowork-pane header { justify-content: space-between; padding: var(--space-3); border-bottom: 1px solid var(--surface-rim); }
+.cowork-pane header button { border: 0; background: transparent; color: var(--brass-bright); cursor: pointer; font: inherit; }
+.cowork-markdown { max-height: 42vh; overflow: auto; padding: var(--space-4); }
+.cowork-diff { max-height: 176px; overflow: auto; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--ink-abyss) 80%, transparent); }
+.cowork-diff-line { display: grid; grid-template-columns: 3ch minmax(0, 1fr); gap: var(--space-2); padding: 2px var(--space-3); white-space: pre-wrap; }
+.cowork-diff-line.is-changed { background: color-mix(in oklch, var(--brass) 15%, transparent); box-shadow: inset 2px 0 0 var(--brass); }
+.cowork-diff-line code { color: var(--ink-spectral); font-family: var(--font-mono); font-size: var(--font-size-xs); }
+.cowork-annotations { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: 0 var(--space-3) var(--space-3); }
+.cowork-annotation-chip, .cowork-quote { border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim)); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--ink-spectral); font-size: var(--font-size-xs); padding: var(--space-1) var(--space-2); }
+.cowork-chat { display: grid; gap: var(--space-2); border-top: 1px solid var(--surface-rim); padding-top: var(--space-3); }
+.cowork-transcript { display: grid; gap: var(--space-2); max-height: 180px; overflow: auto; }
+.cowork-turn { margin: 0; padding: var(--space-2) var(--space-3); border-left: 2px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-glass) 62%, transparent); white-space: pre-wrap; }
+.cowork-turn strong { display: block; color: var(--brass-bright); font-family: var(--font-mono); font-size: var(--font-size-xs); margin-bottom: var(--space-1); }
+.cowork-turn--assistant { border-left-color: var(--aurora); }
+.cowork-quote { justify-content: space-between; }
+.cowork-quote span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cowork-quote button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: var(--font-size-lg); }
+.cowork-composer textarea { flex: 1; resize: vertical; }
+.cowork-error { color: var(--coral); font-size: var(--font-size-sm); margin: 0; }
+
+@media (max-width: 720px) { .cowork-panes { grid-template-columns: 1fr; } .cowork-studio-head { align-items: flex-start; flex-direction: column; } }
+@media (prefers-reduced-motion: reduce) { .cowork-entry-button, .cowork-action { transition: none; } }

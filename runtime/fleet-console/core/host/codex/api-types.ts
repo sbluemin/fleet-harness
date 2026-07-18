@@ -14,6 +14,10 @@ export interface CoworkSessionDto {
   baseVersion: number;
   selection: string | null;
   annotations: readonly CoworkAnnotationDto[];
+  /** User-chosen agent identity. Safe to expose — provider session identity stays server-only. */
+  cli?: string;
+  model?: string;
+  effort?: string;
 }
 
 export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
