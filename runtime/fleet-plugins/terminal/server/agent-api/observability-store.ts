@@ -724,6 +724,12 @@ function readFilesystemPathEnd(value: string, start: number): number | undefined
     && !isPathTerminator(value[start + 2])
   ) return scanPathEnd(value, start, start + 2, previous);
 
+  if (boundary && value[start] === "~") {
+    let separator = start + 1;
+    while (separator < value.length && isHomeUserCharacter(value[separator])) separator += 1;
+    if (value[separator] === "/") return scanPathEnd(value, start, separator + 1, previous);
+  }
+
   if (
     boundary
     && value[start] === "/"
@@ -766,6 +772,10 @@ function isPathTerminator(value: string | undefined): boolean {
 
 function isAsciiLetter(value: string | undefined): boolean {
   return value !== undefined && ((value >= "A" && value <= "Z") || (value >= "a" && value <= "z"));
+}
+
+function isHomeUserCharacter(value: string | undefined): boolean {
+  return value !== undefined && (isAsciiLetter(value) || (value >= "0" && value <= "9") || value === "_" || value === "." || value === "-");
 }
 
 function isUriSchemeCharacter(value: string | undefined): boolean {
