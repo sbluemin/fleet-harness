@@ -11,7 +11,6 @@ export interface AnalysisStore {
   readonly send: (text: string) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly reset: () => Promise<void>;
-  readonly retain: () => () => void;
   readonly dispose: () => void;
 }
 
@@ -27,7 +26,6 @@ const stores = new Map<string, AnalysisStore>();
 
 export function useAnalysisStore(context: OperationRenderContext): AnalysisStoreBinding {
   const store = getAnalysisStore(context.operationId, context.api);
-  React.useEffect(() => store.retain(), [store]);
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset };
 }
@@ -49,7 +47,6 @@ const RESPONSE_TIMEOUT_MS = 120_000;
 
 function createAnalysisStore(operationId: string, api: ClientApiCapability): AnalysisStore {
   let state = initialAnalysisState;
-  let retainCount = 0;
   let disposed = false;
   let unsubscribe: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
@@ -82,12 +79,17 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     }, RESPONSE_TIMEOUT_MS);
   };
 
-  const endLostSession = () => {
+  const invalidateRun = () => {
     disarmWatchdog();
     streamGeneration += 1;
     runGeneration += 1;
-    unsubscribe?.();
+    const closeStream = unsubscribe;
     unsubscribe = null;
+    closeStream?.();
+  };
+
+  const endLostSession = () => {
+    invalidateRun();
     dispatch({ type: "session-lost", now: Date.now() });
   };
 
@@ -121,11 +123,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     if (disposed) return;
     disposed = true;
     stores.delete(operationId);
-    disarmWatchdog();
-    streamGeneration += 1;
-    runGeneration += 1;
-    unsubscribe?.();
-    unsubscribe = null;
+    invalidateRun();
     listeners.clear();
     if (state.started) void stopAnalysis(api, operationId).catch(() => {});
   };
@@ -185,12 +183,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       }
       if (stopFlight) return stopFlight;
       if (disposed || !state.started) return;
-      runGeneration += 1;
-      streamGeneration += 1;
-      disarmWatchdog();
-      const closeStream = unsubscribe;
-      unsubscribe = null;
-      closeStream?.();
+      invalidateRun();
       dispatch({ type: "stopped", now: Date.now() });
       const flight = stopAnalysis(api, operationId).catch((error: unknown) => {
         dispatch({ type: "stop-failed", message: failureMessage(error), now: Date.now() });
@@ -203,11 +196,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       if (resetFlight) return resetFlight;
       if (disposed) return;
       const shouldStopServer = state.started || state.phase !== "idle" || state.entries.length > 0 || state.artifacts.length > 0;
-      runGeneration += 1;
-      streamGeneration += 1;
-      disarmWatchdog();
-      unsubscribe?.();
-      unsubscribe = null;
+      invalidateRun();
       const flight = (async () => {
         if (stopFlight) await stopFlight;
         if (startFlight) await startFlight.catch(() => {});
@@ -223,18 +212,6 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       } finally {
         if (resetFlight === flight) resetFlight = null;
       }
-    },
-    retain: () => {
-      if (disposed) return () => {};
-      retainCount += 1;
-      let retained = true;
-      return () => {
-        if (!retained) return;
-        retained = false;
-        retainCount = Math.max(0, retainCount - 1);
-        // companion 패널이 닫혀도(EXIT) 대화·아티팩트·서버 세션은 보존한다 —
-        // 정리는 Operation 종료 경로의 disposeAnalysisStore만 소유한다.
-      };
     },
     dispose,
   };

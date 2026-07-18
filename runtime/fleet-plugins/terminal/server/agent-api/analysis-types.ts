@@ -1,4 +1,4 @@
-import type { AnalystSession as AnalystSessionInstance } from "@dotobokuri/fleet-analyst";
+import type { AnalystSession as AnalystSessionInstance, AnalystSessionOptions } from "@dotobokuri/fleet-analyst";
 import type { AgentCliStatus } from "./agent-cli-types.js";
 
 export const ANALYSIS_ERROR_CODES = {
@@ -22,7 +22,7 @@ export type AnalysisCatalogCli = {
   readonly models: readonly AnalysisCatalogModel[];
 };
 export type AnalysisCatalogModel = { readonly id: string; readonly label: string; readonly effortLevels: readonly string[]; readonly defaultEffort?: string };
-export type AnalystCliId = "claude" | "claude-kimi" | "codex" | "opencode-go" | "cursor";
+export type AnalystCliId = AnalystSessionOptions["cliId"];
 export type AnalysisSession = AnalystSessionInstance;
 export type AnalysisEvent =
   | { readonly type: "connected" }

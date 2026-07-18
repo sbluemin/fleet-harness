@@ -24,9 +24,9 @@ export interface MountCoworkInlineOptions {
   onApplied(): void;
 }
 
-interface Activity { role: "assistant"; text: string; }
 interface Settings { cli: string; model: string; effort: string; }
 interface AnnotationCard { id: string; quote: string; comment: string; status: "pending" | "sent" | "done"; }
+type RevisionOutcome = "idle" | "running" | "complete" | "stopped";
 
 const SETTINGS_KEY = "fleet.codex.cowork.settings";
 const BATCH_INSTRUCTION = "Revise the draft to address every saved annotation. Preserve unrelated content and summarize the changes.";
@@ -44,11 +44,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let optionsDto: CoworkOptionsResponse = { clis: [], models: [], efforts: [] };
   let settings = readSettings();
   let annotations: AnnotationCard[] = [];
-  let activities: Activity[] = [];
-  let streamingReply = false;
+  let reply = "";
   let revisionInstruction = "";
-  let revisionComplete = false;
-  let revisionStopped = false;
+  let revisionOutcome: RevisionOutcome = "idle";
   let revisionCollapsed = false;
   let selection: { quote: string; top: number; left: number } | null = null;
   let composerOpen = false;
@@ -128,7 +126,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     // 세션은 첫 전송/코멘트 시점에 지연 생성된다.
     const engaged = !!session && session.state !== "closed" && session.state !== "applied";
     dockZone.classList.add("is-open");
-    const running = promptPending || (engaged && session!.state === "running" && !revisionComplete && !revisionStopped);
+    const running = promptPending || (engaged && session!.state === "running" && revisionOutcome !== "complete" && revisionOutcome !== "stopped");
     options.body.classList.toggle("is-cowork-running", running);
     // 삭제-전용 변경은 라인 diff에 changed 라인이 없으므로 draft 불일치로 판정해야 한다.
     const dirty = engaged && session!.baseDraft !== session!.draft;
@@ -151,11 +149,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   };
 
   const renderRevisionStream = (running: boolean): string => {
-    const reply = activities.at(-1)?.text ?? "";
-    const visible = running || revisionComplete || revisionStopped;
+    const visible = running || revisionOutcome !== "idle";
     if (!visible) return "";
-    const state = running ? "running" : revisionComplete ? "complete" : "stopped";
-    const stateLabel = running ? "Editing entry" : revisionComplete ? "Revision complete" : "Revision stopped";
+    const state = running ? "running" : revisionOutcome;
+    const stateLabel = running ? "Editing entry" : revisionOutcome === "complete" ? "Revision complete" : "Revision stopped";
     const hasContent = !!(revisionInstruction || reply || running);
     return `<section class="cowork-revision-stream is-${state}${revisionCollapsed ? " is-collapsed" : ""}" aria-label="Cowork revision stream">
       ${running ? '<span class="cowork-revision-scan" aria-hidden="true"></span>' : ""}
@@ -172,7 +169,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const patchRevisionOutput = () => {
     const output = dockZone.querySelector<HTMLElement>(".cowork-revision-output");
-    const reply = activities.at(-1)?.text ?? "";
     if (!output) { renderDock(); return; }
     output.textContent = reply;
     const scroll = output.closest<HTMLElement>(".cowork-revision-output-scroll");
@@ -347,18 +343,15 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       const wasRunning = session?.state === "running";
       if (event.session) session = event.session;
       if (event.type === "transcript" && event.text && session?.state === "running") {
-        const last = activities[activities.length - 1];
-        if (streamingReply && last?.role === "assistant") last.text += event.text;
-        else { activities.push({ role: "assistant", text: event.text }); streamingReply = true; }
+        reply = revisionOutcome === "running" ? reply + event.text : event.text;
+        revisionOutcome = "running";
         patchRevisionOutput();
         return;
       }
       // 도구 호출 상세는 사용자에게 출력하지 않는다 — 러닝 상태는 일반 문구로만 표시.
       if (event.type === "done") {
-        const completedObservedRun = wasRunning || awaitingResult || revisionStopped || activities.length > 0 || !!revisionInstruction;
-        streamingReply = false;
-        revisionComplete = completedObservedRun;
-        revisionStopped = false;
+        const completedObservedRun = wasRunning || awaitingResult || revisionOutcome === "stopped" || !!reply || !!revisionInstruction;
+        revisionOutcome = completedObservedRun ? "complete" : "idle";
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
         // AI 응답이 실제 변경(삭제-전용 포함)을 남겼으면 렌더드 diff로 전환해 검토를 유도한다.
         if (awaitingResult) {
@@ -367,8 +360,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         }
       }
       if (event.type === "error" || (event.type === "session" && wasRunning && session?.state !== "running")) {
-        streamingReply = false;
-        revisionStopped = true;
+        revisionOutcome = "stopped";
         awaitingResult = false;
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
       }
@@ -415,10 +407,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (!prompt) return;
     promptPending = true;
     annotations = outgoing.map(card => ({ ...card, status: "sent" }));
-    activities = [];
+    reply = "";
     revisionInstruction = localInstruction;
-    revisionComplete = false;
-    revisionStopped = false;
+    revisionOutcome = "running";
     revisionCollapsed = false;
     promptText = "";
     panelOpen = false;
@@ -433,6 +424,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       awaitingResult = true;
     } catch {
       awaitingResult = false;
+      revisionOutcome = "idle";
       annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
     } finally {
       promptPending = false;
@@ -456,10 +448,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     unsubscribe = null;
     lastEventId = 0;
     annotations = [];
-    activities = [];
+    reply = "";
     revisionInstruction = "";
-    revisionComplete = false;
-    revisionStopped = false;
+    revisionOutcome = "idle";
     revisionCollapsed = false;
     confirmAction = null;
     diffVisible = false;
@@ -566,7 +557,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (action === "discard-confirm") { void discard(); }
     if (action === "cancel-run" && session) {
       void mutate(() => cancelCowork(options.theaterId, session!.id)).then(() => {
-        revisionStopped = true;
+        revisionOutcome = "stopped";
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
         renderDock();
       }).catch(() => undefined);

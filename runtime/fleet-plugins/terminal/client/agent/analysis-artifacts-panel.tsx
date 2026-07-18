@@ -1,8 +1,7 @@
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
-import type { AnalysisArtifact } from "./analysis-types.js";
+import { safeArtifactSrcdoc, type AnalysisArtifact } from "./analysis-types.js";
 
-import { safeArtifactSrcdoc } from "./analysis-artifact.js";
 import { useAnalysisStore } from "./analysis-store.js";
 
 export function AnalystArtifactsPanel({ context }: { readonly context: OperationRenderContext }) {

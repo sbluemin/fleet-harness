@@ -29,6 +29,10 @@ export const FORBIDDEN_ANALYSIS_KEYS = new Set(["path", "cwd", "canonicalcwd", "
 export const MAX_ARTIFACT_BYTES = 50 * 1024;
 export const ARTIFACT_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">`;
 
+export function safeArtifactSrcdoc(html: string): string | null {
+  return utf8Size(html) > MAX_ARTIFACT_BYTES ? null : `${ARTIFACT_CSP}${html}`;
+}
+
 export function hasForbiddenAnalysisKey(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(hasForbiddenAnalysisKey);

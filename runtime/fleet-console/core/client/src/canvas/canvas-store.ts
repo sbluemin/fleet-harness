@@ -47,6 +47,11 @@ export interface GridSlotGeometry {
 export type FormationLayout = "grid" | "columns" | "rows";
 
 type Listener = () => void;
+type FocusLayerMode = "maximized" | "companion";
+interface FocusLayerState {
+  readonly mode: FocusLayerMode;
+  readonly operationId: string;
+}
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
 const FORMATION_LAYOUT_STORAGE_KEY = "fleet-console.formation-layout";
@@ -70,18 +75,15 @@ const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
 const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [] };
 
 const listeners = new Set<Listener>();
-const maximizedOperationListeners = new Set<Listener>();
-const companionOperationListeners = new Set<Listener>();
+const focusLayerListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
 const formationLayoutListeners = new Set<Listener>();
-const maximizedOperationIdsByTheater = new Map<string, string>();
-const companionOperationIdsByTheater = new Map<string, string>();
+const focusLayersByTheater = new Map<string, FocusLayerState>();
 const formationViewsByTheater = new Map<string, true>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
-let maximizedOperationId: string | null = null;
-let companionOperationId: string | null = null;
+let focusLayer: FocusLayerState | null = null;
 let formationView = false;
 let formationLayout = readStoredFormationLayout();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
@@ -108,11 +110,11 @@ export function getTheaterCanvasSnapshot(theaterId: string): CanvasState {
 }
 
 export function getMaximizedOperationId(): string | null {
-  return maximizedOperationId;
+  return focusLayer?.mode === "maximized" ? focusLayer.operationId : null;
 }
 
 export function getCompanionOperationId(): string | null {
-  return companionOperationId;
+  return focusLayer?.mode === "companion" ? focusLayer.operationId : null;
 }
 
 export function getFormationView(): boolean {
@@ -123,8 +125,8 @@ export function getFormationLayout(): FormationLayout {
   return formationLayout;
 }
 
-// canvas 스토어가 현재 로드한 Theater id. maximizedOperationId·maximizedOperationIdsByTheater 등
-// 최대화 상태는 이 Theater 기준으로 동작하므로, 최대화 관련 가드는 store.activeTheaterId가 아니라 이 값을 기준으로 삼아야 한다.
+// canvas 스토어가 현재 로드한 Theater id. focus layer와 Formation 상태는 이 Theater 기준으로
+// 동작하므로 관련 가드는 store.activeTheaterId가 아니라 이 값을 기준으로 삼아야 한다.
 // (loadForTheater가 passive effect로 갱신되어 store.activeTheaterId보다 한 박자 늦을 수 있다.)
 export function getLoadedTheaterId(): string | null {
   return activeTheaterId;
@@ -135,11 +137,11 @@ export function useCanvasState(): CanvasState {
 }
 
 export function useMaximizedOperationId(): string | null {
-  return useSyncExternalStore(subscribeMaximizedOperation, getMaximizedOperationSnapshot, getMaximizedOperationSnapshot);
+  return useSyncExternalStore(subscribeFocusLayer, getMaximizedOperationId, getMaximizedOperationId);
 }
 
 export function useCompanionOperationId(): string | null {
-  return useSyncExternalStore(subscribeCompanionOperation, getCompanionOperationId, getCompanionOperationId);
+  return useSyncExternalStore(subscribeFocusLayer, getCompanionOperationId, getCompanionOperationId);
 }
 
 export function useFormationView(): boolean {
@@ -298,8 +300,8 @@ export function calculateGridSlots(
 // Operation을 최소화한다 — 캔버스 렌더에서 빠지고 하단 태스크바에 표시된다. geometry는 operations에 보존한다.
 export function minimizeOperation(sessionId: string): void {
   if (state.minimized.includes(sessionId)) return;
-  if (maximizedOperationId === sessionId) clearMaximizedOperationId();
-  if (companionOperationId === sessionId) clearCompanionOperationId();
+  if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
+  if (getCompanionOperationId() === sessionId) clearCompanionOperationId();
   setState({ minimized: [...state.minimized, sessionId] });
 }
 
@@ -317,6 +319,8 @@ export function minimizeOperations(sessionIds: readonly string[]): void {
     return true;
   })];
   if (stringArraysEqual(state.minimized, minimized)) return;
+  const maximizedOperationId = getMaximizedOperationId();
+  const companionOperationId = getCompanionOperationId();
   if (maximizedOperationId && minimized.includes(maximizedOperationId)) clearMaximizedOperationId();
   if (companionOperationId && minimized.includes(companionOperationId)) clearCompanionOperationId();
   setState({ minimized });
@@ -326,7 +330,7 @@ export function minimizeOperations(sessionIds: readonly string[]): void {
 // 활성화(selectTerminalSession)는 호출 측 책임으로 남겨, Operation 활성 조정을 한 곳(canvas)에서 유지한다.
 export function restoreOperation(sessionId: string): void {
   if (!state.minimized.includes(sessionId)) return;
-  if (maximizedOperationId === sessionId) clearMaximizedOperationId();
+  if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
   const minimized = state.minimized.filter((id) => id !== sessionId);
   const geometry = state.operations[sessionId];
   if (!geometry) {
@@ -410,6 +414,8 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   const orderChanged = operationOrder.length !== state.operationOrder.length;
   const operationAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
   const accentChanged = Object.keys(operationAccent).length !== Object.keys(state.operationAccent).length;
+  const maximizedOperationId = getMaximizedOperationId();
+  const companionOperationId = getCompanionOperationId();
   if (maximizedOperationId && (!valid.has(maximizedOperationId) || minimized.includes(maximizedOperationId))) clearMaximizedOperationId();
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
@@ -422,18 +428,14 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
 export function loadForTheater(theaterId: string | null): void {
   flushScheduledSave();
   cancelZoomTween();
-  saveMaximizedOperationForActiveTheater();
-  saveCompanionOperationForActiveTheater();
+  saveFocusLayerForActiveTheater();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
-  const nextMaximizedOperationId = theaterId ? maximizedOperationIdsByTheater.get(theaterId) ?? null : null;
-  const maximizedChanged = maximizedOperationId !== nextMaximizedOperationId;
-  maximizedOperationId = nextMaximizedOperationId;
-  // companion도 maximize와 동일하게 Theater별로 보존·복원한다 — activeTheaterId가 동기화 과정에서
-  // 재설정되며 loadForTheater가 같은 Theater로 다시 불려도 열린 분석 레이아웃이 소실되지 않는다.
-  const nextCompanionOperationId = theaterId ? companionOperationIdsByTheater.get(theaterId) ?? null : null;
-  const companionChanged = companionOperationId !== nextCompanionOperationId;
-  companionOperationId = nextCompanionOperationId;
+  // maximize와 companion은 상호 배타적인 focus layer다. Theater별 단일 상태로 보존·복원해
+  // 같은 Theater가 다시 로드돼도 현재 레이아웃 모드와 대상 Operation을 함께 유지한다.
+  const nextFocusLayer = theaterId ? focusLayersByTheater.get(theaterId) ?? null : null;
+  const focusLayerChanged = !focusLayersEqual(focusLayer, nextFocusLayer);
+  focusLayer = nextFocusLayer;
   const nextFormationView = theaterId ? formationViewsByTheater.has(theaterId) : false;
   const formationChanged = formationView !== nextFormationView;
   formationView = nextFormationView;
@@ -441,8 +443,7 @@ export function loadForTheater(theaterId: string | null): void {
   // 복원된 Operation의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.operations));
   emit();
-  if (maximizedChanged) emitMaximizedOperation();
-  if (companionChanged) emitCompanionOperation();
+  if (focusLayerChanged) emitFocusLayer();
   if (formationChanged) emitFormationView();
 }
 
@@ -475,40 +476,40 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
 }
 
 export function setMaximizedOperationId(operationId: string): void {
-  clearCompanionOperationId();
-  if (activeTheaterId) maximizedOperationIdsByTheater.set(activeTheaterId, operationId);
+  const nextFocusLayer = { mode: "maximized", operationId } as const;
+  if (activeTheaterId) focusLayersByTheater.set(activeTheaterId, nextFocusLayer);
   // 최대화는 underlay(Map 또는 Formation)를 바꾸지 않는 렌더 전용 포커스 레이어다.
   // 대상만 실제 최소화 목록에서 꺼내 보이게 하고, peer의 실제 최소화 상태는 그대로 둔다.
-  const minimized = state.minimized.filter((sessionId) => sessionId !== operationId);
-  const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
-  const maximizedChanged = maximizedOperationId !== operationId;
-  if (maximizedChanged) maximizedOperationId = operationId;
-  if (minimizedChanged) setState({ minimized });
-  if (maximizedChanged) emitMaximizedOperation();
+  setFocusLayer(nextFocusLayer);
 }
 
 export function clearMaximizedOperationId(): void {
-  if (activeTheaterId) maximizedOperationIdsByTheater.delete(activeTheaterId);
-  if (maximizedOperationId === null) return;
-  maximizedOperationId = null;
-  emitMaximizedOperation();
+  if (activeTheaterId && focusLayersByTheater.get(activeTheaterId)?.mode === "maximized") focusLayersByTheater.delete(activeTheaterId);
+  if (focusLayer?.mode !== "maximized") return;
+  focusLayer = null;
+  emitFocusLayer();
 }
 
 export function setCompanionOperationId(operationId: string): void {
-  clearMaximizedOperationId();
+  if (activeTheaterId && focusLayersByTheater.get(activeTheaterId)?.mode === "maximized") focusLayersByTheater.delete(activeTheaterId);
   clearFormationView();
-  const minimized = state.minimized.filter((sessionId) => sessionId !== operationId);
+  const nextFocusLayer = { mode: "companion", operationId } as const;
+  setFocusLayer(nextFocusLayer);
+}
+
+function setFocusLayer(nextFocusLayer: FocusLayerState): void {
+  const minimized = state.minimized.filter((sessionId) => sessionId !== nextFocusLayer.operationId);
   const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
-  const companionChanged = companionOperationId !== operationId;
-  if (companionChanged) companionOperationId = operationId;
+  const focusLayerChanged = !focusLayersEqual(focusLayer, nextFocusLayer);
+  if (focusLayerChanged) focusLayer = nextFocusLayer;
   if (minimizedChanged) setState({ minimized });
-  if (companionChanged) emitCompanionOperation();
+  if (focusLayerChanged) emitFocusLayer();
 }
 
 export function clearCompanionOperationId(): void {
-  if (companionOperationId === null) return;
-  companionOperationId = null;
-  emitCompanionOperation();
+  if (focusLayer?.mode !== "companion") return;
+  focusLayer = null;
+  emitFocusLayer();
 }
 
 export function toggleFormationView(): void {
@@ -571,22 +572,11 @@ function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function subscribeMaximizedOperation(listener: Listener): () => void {
-  maximizedOperationListeners.add(listener);
+function subscribeFocusLayer(listener: Listener): () => void {
+  focusLayerListeners.add(listener);
   return () => {
-    maximizedOperationListeners.delete(listener);
+    focusLayerListeners.delete(listener);
   };
-}
-
-function subscribeCompanionOperation(listener: Listener): () => void {
-  companionOperationListeners.add(listener);
-  return () => {
-    companionOperationListeners.delete(listener);
-  };
-}
-
-function getMaximizedOperationSnapshot(): string | null {
-  return maximizedOperationId;
 }
 
 function emitFormationView(): void {
@@ -605,30 +595,18 @@ function getCollapsedGroupsSnapshot(): readonly string[] {
   return state.collapsedGroups;
 }
 
-function emitMaximizedOperation(): void {
-  for (const listener of maximizedOperationListeners) listener();
+function emitFocusLayer(): void {
+  for (const listener of focusLayerListeners) listener();
 }
 
-function emitCompanionOperation(): void {
-  for (const listener of companionOperationListeners) listener();
-}
-
-function saveMaximizedOperationForActiveTheater(): void {
+function saveFocusLayerForActiveTheater(): void {
   if (!activeTheaterId) return;
-  if (maximizedOperationId) {
-    maximizedOperationIdsByTheater.set(activeTheaterId, maximizedOperationId);
-  } else {
-    maximizedOperationIdsByTheater.delete(activeTheaterId);
-  }
+  if (focusLayer) focusLayersByTheater.set(activeTheaterId, focusLayer);
+  else focusLayersByTheater.delete(activeTheaterId);
 }
 
-function saveCompanionOperationForActiveTheater(): void {
-  if (!activeTheaterId) return;
-  if (companionOperationId) {
-    companionOperationIdsByTheater.set(activeTheaterId, companionOperationId);
-  } else {
-    companionOperationIdsByTheater.delete(activeTheaterId);
-  }
+function focusLayersEqual(left: FocusLayerState | null, right: FocusLayerState | null): boolean {
+  return left?.mode === right?.mode && left?.operationId === right?.operationId;
 }
 
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {

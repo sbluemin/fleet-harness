@@ -17,13 +17,13 @@ import {
   type IUnifiedAgentClient,
 } from "@dotobokuri/core-unified-agent";
 import { ANALYST_SYSTEM_PROMPT } from "./prompt.js";
-import { AnalystTools } from "./tools.js";
+import { ANALYST_TOOL_IDS, AnalystTools } from "./tools.js";
 import { redactTranscriptString } from "./transcript-indexer.js";
 import type { AnalystSessionOptions } from "./types.js";
 
 const DISPOSE_SETTLE_MS = 2_000;
 const ANALYST_MCP_SERVER = "session_analyst";
-const ANALYST_MCP_TOOLS = new Set(["session_outline", "session_events", "session_read", "session_diff", "live_tail", "publish_artifact"]);
+const ANALYST_MCP_TOOLS = new Set<string>(Object.values(ANALYST_TOOL_IDS));
 
 /** Owns every per-analysis resource. Nothing survives dispose(). */
 export class AnalystSession {

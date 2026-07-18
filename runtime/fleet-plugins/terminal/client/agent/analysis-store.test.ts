@@ -57,8 +57,6 @@ describe("per-operation analysis store", () => {
     const harness = createHarness();
     const first = getAnalysisStore("operation-store-share", harness.api);
     const second = getAnalysisStore("operation-store-share", harness.api);
-    const releaseChat = first.retain();
-    const releaseArtifacts = second.retain();
     await vi.waitFor(() => expect(first.getSnapshot().cliId).toBe("claude"));
 
     expect(second).toBe(first);
@@ -73,10 +71,9 @@ describe("per-operation analysis store", () => {
     harness.emit({ type: "complete" });
     expect(first.getSnapshot().busy).toBe(false);
 
-    // EXIT(모든 companion unmount)은 대화·서버 세션을 보존해야 한다.
-    releaseChat();
-    releaseArtifacts();
+    // EXIT(모든 companion unmount)은 store를 건드리지 않으므로 대화·서버 세션을 보존해야 한다.
     await Promise.resolve();
+    expect(getAnalysisStore("operation-store-share", harness.api)).toBe(first);
     expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(false);
     expect(first.getSnapshot().entries.length).toBeGreaterThan(0);
 

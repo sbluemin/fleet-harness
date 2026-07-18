@@ -3,8 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
-import { safeArtifactSrcdoc } from "./analysis-artifact.js";
-import { ARTIFACT_CSP } from "./analysis-types.js";
+import { ARTIFACT_CSP, safeArtifactSrcdoc } from "./analysis-types.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 

@@ -10,6 +10,15 @@ const exec = promisify(execFile);
 const MAX_ARTIFACT_BYTES = 50 * 1024;
 const MAX_ARTIFACTS = 20;
 
+export const ANALYST_TOOL_IDS = {
+  sessionOutline: "session_outline",
+  sessionEvents: "session_events",
+  sessionRead: "session_read",
+  sessionDiff: "session_diff",
+  liveTail: "live_tail",
+  publishArtifact: "publish_artifact",
+} as const;
+
 interface ToolMetadata {
   readonly id: string;
   readonly description: string;
@@ -21,8 +30,8 @@ interface ToolMetadata {
 }
 
 const TOOL_METADATA: Record<string, ToolMetadata> = {
-  session_outline: {
-    id: "session_outline",
+  [ANALYST_TOOL_IDS.sessionOutline]: {
+    id: ANALYST_TOOL_IDS.sessionOutline,
     description: "Structured overview of the observed session: event count, stages, and touched files. Call this first.",
     promptSnippet: "Start analysis with session_outline before retrieving transcript detail.",
     whenToUse: ["At the beginning of every analysis request.", "To identify useful stages or file activity before drilling down."],
@@ -30,8 +39,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     usageGuidelines: ["Returns aggregate counts only and takes no parameters."],
     parameters: { type: "object", properties: {} },
   },
-  session_events: {
-    id: "session_events",
+  [ANALYST_TOOL_IDS.sessionEvents]: {
+    id: ANALYST_TOOL_IDS.sessionEvents,
     description: "Lists a bounded, paginated slice of indexed events, optionally filtered by event kind.",
     promptSnippet: "Use session_events to locate relevant evidence references before session_read.",
     whenToUse: ["To find events in a stage or event category.", "To page through a small relevant range."],
@@ -39,8 +48,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     usageGuidelines: ["kind filters message, tool, stage, file, or unknown; cursor is a zero-based page offset; limit is capped at 100."],
     parameters: { type: "object", properties: { kind: { type: "string", description: "Optional event kind filter." }, cursor: { type: "number", description: "Zero-based event offset." }, limit: { type: "number", description: "Page size, maximum 100." } } },
   },
-  session_read: {
-    id: "session_read",
+  [ANALYST_TOOL_IDS.sessionRead]: {
+    id: ANALYST_TOOL_IDS.sessionRead,
     description: "Reads a capped surrounding window for one stable event reference.",
     promptSnippet: "Use session_read after locating an [e#] reference that needs context.",
     whenToUse: ["To inspect context around a specific event.", "To verify an observed claim before citing it."],
@@ -48,8 +57,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     usageGuidelines: ["ref is the required stable e# reference; radius is an optional surrounding-event count capped at 10."],
     parameters: { type: "object", properties: { ref: { type: "string", description: "Required stable event reference, such as e12." }, radius: { type: "number", description: "Optional context radius, maximum 10." } }, required: ["ref"] },
   },
-  session_diff: {
-    id: "session_diff",
+  [ANALYST_TOOL_IDS.sessionDiff]: {
+    id: ANALYST_TOOL_IDS.sessionDiff,
     description: "Returns a bounded git diff-stat summary for the session working directory.",
     promptSnippet: "Use session_diff for changed-file scale, not transcript evidence.",
     whenToUse: ["To summarize the current change footprint.", "To compare observed file activity with repository changes."],
@@ -57,8 +66,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     usageGuidelines: ["Takes no parameters and returns only a bounded diff-stat summary."],
     parameters: { type: "object", properties: {} },
   },
-  live_tail: {
-    id: "live_tail",
+  [ANALYST_TOOL_IDS.liveTail]: {
+    id: ANALYST_TOOL_IDS.liveTail,
     description: "Most recent events including in-flight tool calls. Required before answering any question about current work.",
     promptSnippet: "Call live_tail before answering about current work, now, or in-flight activity.",
     whenToUse: ["Before any current-state question.", "To refresh the index after new transcript data may have arrived."],
@@ -66,8 +75,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     usageGuidelines: ["limit is an optional newest-event count capped at 100."],
     parameters: { type: "object", properties: { limit: { type: "number", description: "Newest event count, maximum 100." } } },
   },
-  publish_artifact: {
-    id: "publish_artifact",
+  [ANALYST_TOOL_IDS.publishArtifact]: {
+    id: ANALYST_TOOL_IDS.publishArtifact,
     description: "Publishes one newest-first, in-memory analysis artifact and emits it to the client event stream.",
     promptSnippet: "Use publish_artifact for a self-contained structured explanation with evidence citations.",
     whenToUse: ["When a timeline, comparison, risk review, or visual brief is clearer than chat alone.", "After collecting cited evidence for the artifact."],
@@ -87,12 +96,12 @@ export class AnalystTools {
 
   specs(): AgentToolSpec[] {
     return [
-      this.spec(TOOL_METADATA.session_outline, () => this.indexer.outline()),
-      this.spec(TOOL_METADATA.session_events, (args) => this.events(args)),
-      this.spec(TOOL_METADATA.session_read, (args) => this.read(args)),
-      this.spec(TOOL_METADATA.session_diff, () => this.diff()),
-      this.spec(TOOL_METADATA.live_tail, (args) => this.tail(args)),
-      this.spec(TOOL_METADATA.publish_artifact, (args) => this.publish(args)),
+      this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.sessionOutline], () => this.indexer.outline()),
+      this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.sessionEvents], (args) => this.events(args)),
+      this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.sessionRead], (args) => this.read(args)),
+      this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.sessionDiff], () => this.diff()),
+      this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.liveTail], (args) => this.tail(args)),
+      this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.publishArtifact], (args) => this.publish(args)),
     ];
   }
 
