@@ -10,9 +10,9 @@ import {
   readCarriersSnapshot,
   resetStoreForTests,
   saveAgentCliSelection,
-  updateCarriers,
   withStoreLock,
 } from "../../src/index.js";
+import { updateCarriers } from "../../src/store/state-io.js";
 
 let tempDir: string | null = null;
 

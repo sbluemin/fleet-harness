@@ -41,7 +41,7 @@ export interface CarrierSettingsCarrier {
   readonly defaultCliType: CliType;
   readonly model: string;
   readonly effort?: string;
-  readonly taskForceBackendCount: number;
+  readonly taskForceCapable: boolean;
   readonly taskforce: {
     readonly backends: readonly CarrierSettingsTaskForceBackend[];
   };

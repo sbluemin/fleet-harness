@@ -1,4 +1,4 @@
-import { CLI_DISPLAY_NAMES } from "@dotobokuri/fleet-carriers";
+import { CLI_DISPLAY_NAMES, TASKFORCE_MIN_BACKENDS } from "@dotobokuri/fleet-carriers";
 
 import {
   truncateToWidth,
@@ -12,6 +12,7 @@ import {
 } from "../../styles/carriers.js";
 import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
+import { getCarrierActionLabels } from "./carrier-actions.js";
 
 import type { RenameState, StatusOverlayViewModel } from "./render-types.js";
 import type { BatchCliChoice, CarrierCliType, CarrierStatusEntry, CliModelInfo, OverlayState } from "./types.js";
@@ -51,13 +52,6 @@ const ANSI_RESET = "\x1b[0m";
 const INDENT = "    ";
 const MIN_CELL_WIDTH = 40;
 const ROSTER_ACTIONS_ID = "__roster_actions__";
-const CARRIER_ACTION_LABELS = [
-  "Agent CLI",
-  "Model",
-  "Configure TaskForce",
-  "Rename Carrier",
-  "Toggle Details",
-] as const;
 const ROSTER_ACTION_LABELS = [
   "Batch CLI Switch",
   "Reset CLI Types to Default",
@@ -109,7 +103,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
   body.push({ kind: "blank" });
   body.push(toCellLine(renderRosterActionsRow(model.viewModel.selectedCarrierId === ROSTER_ACTIONS_ID, deps)));
   if (model.state.kind === "carrierActions") {
-    body.push(...buildActionMenuLines("Carrier Actions", CARRIER_ACTION_LABELS, model.state.cursor, deps));
+    body.push(...buildActionMenuLines("Carrier Actions", getCarrierActionLabels(getSelectedEntry(model)), model.state.cursor, deps));
   }
   if (model.state.kind === "rosterActions") {
     body.push(...buildActionMenuLines("Roster Actions", ROSTER_ACTION_LABELS, model.state.cursor, deps));
@@ -133,13 +127,13 @@ export function estimateCarrierStatusRows(
   for (const group of model.viewModel.groupedEntries) {
     rows += 3 + group.entries.length;
   }
+  const selected = getSelectedEntry(model);
   rows += 2;
   if (model.state.kind === "batchFrom" || model.state.kind === "batchTo") {
     rows += buildBatchCliPanelLines(model.state, deps).length + 1;
   }
-  if (model.state.kind === "carrierActions") rows += CARRIER_ACTION_LABELS.length + 1;
+  if (model.state.kind === "carrierActions") rows += getCarrierActionLabels(selected).length + 1;
   if (model.state.kind === "rosterActions") rows += ROSTER_ACTION_LABELS.length + 1;
-  const selected = getSelectedEntry(model);
   if (selected && shouldRenderEntryEditor(model.state, selected.carrierId)) {
     rows += getEntryEditorOptions(selected, model.state, deps).length;
   }
@@ -157,6 +151,7 @@ export function getCarrierStatusFocusLine(width: number, model: CarrierStatusRen
   if (model.state.kind === "batchFrom" || model.state.kind === "batchTo") {
     return line + getBatchChoiceLineOffset(buildBatchCliPanelLines(model.state, deps), model.state);
   }
+  const selected = getSelectedEntry(model);
 
   for (let gi = 0; gi < model.viewModel.groupedEntries.length; gi++) {
     const group = model.viewModel.groupedEntries[gi]!;
@@ -184,7 +179,7 @@ export function getCarrierStatusFocusLine(width: number, model: CarrierStatusRen
   }
   line++;
   if (model.state.kind === "carrierActions") {
-    return line + 1 + clampCursor(model.state.cursor, CARRIER_ACTION_LABELS.length);
+    return line + 1 + clampCursor(model.state.cursor, getCarrierActionLabels(selected).length);
   }
   if (model.state.kind === "rosterActions") {
     return line + 1 + clampCursor(model.state.cursor, ROSTER_ACTION_LABELS.length);
@@ -414,7 +409,7 @@ function isWarningFeedback(message: string): boolean {
 }
 
 function getEntryColor(entry: CarrierStatusEntry): string {
-  if (entry.taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
+  if (entry.taskForceBackendCount >= TASKFORCE_MIN_BACKENDS) return TASKFORCE_BADGE_COLOR;
   return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
 }
 
@@ -473,7 +468,7 @@ function renderEntryLine(
   const effortSupported = deps.getModelEffortLevels(entry.cliType, entry.model).length > 0;
   const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
   const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
-  const taskForceTag = entry.taskForceBackendCount >= 2
+  const taskForceTag = entry.taskForceBackendCount >= TASKFORCE_MIN_BACKENDS
     ? `  ${TASKFORCE_BADGE_COLOR}[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   return `${selectedPrefix} ${slotCell} ${coloredName}  ${modelStr}${effortStr}${roleStr}${taskForceTag}`;

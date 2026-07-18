@@ -8,9 +8,12 @@ import {
   getCarriersFilePath,
   initStore,
   readCarriersSnapshot,
-  resetCarrierTaskForceConfig,
+  clearTaskForceConfig,
   resetStoreForTests,
-  updateTaskForceModelSelection,
+  type CarrierRegistry,
+  createCarrierRegistry,
+  registerCarrier,
+  setTaskForceBackend,
 } from "../../src/index.js";
 
 let tempDir: string | null = null;
@@ -28,11 +31,12 @@ describe("carrier taskforce config store", () => {
   });
 
   it("removes all Task Force backend selections for one carrier", () => {
-    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
-    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
-    updateTaskForceModelSelection("genesis", "codex", { model: firstModel("codex") });
+    const registry = registerCapableCarriers();
+    setTaskForceBackend(registry, "ohio", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(registry, "ohio", "codex", { model: firstModel("codex") });
+    setTaskForceBackend(registry, "genesis", "codex", { model: firstModel("codex") });
 
-    expect(resetCarrierTaskForceConfig("ohio")).toBe(true);
+    expect(clearTaskForceConfig("ohio")).toBe(true);
 
     const snapshot = readCarriersSnapshot();
     expect(snapshot.carriers.ohio?.taskforce).toBeUndefined();
@@ -40,10 +44,18 @@ describe("carrier taskforce config store", () => {
   });
 
   it("returns false without writing when the carrier has no Task Force config", () => {
-    expect(resetCarrierTaskForceConfig("ohio")).toBe(false);
+    expect(clearTaskForceConfig("ohio")).toBe(false);
     expect(fs.existsSync(getCarriersFilePath()!)).toBe(false);
   });
 });
+
+function registerCapableCarriers(): CarrierRegistry {
+  const registry = createCarrierRegistry();
+  for (const id of ["ohio", "genesis"]) {
+    registerCarrier(registry, { id, displayName: id, slot: 1, defaultCliType: "claude", taskForceCapable: true });
+  }
+  return registry;
+}
 
 function firstModel(cliType: CliType): string {
   const model = getProviderModels(cliType).models[0]?.modelId;

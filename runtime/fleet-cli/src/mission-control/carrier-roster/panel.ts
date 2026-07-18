@@ -26,6 +26,7 @@ import {
 } from "../../controls/index.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
+import { getCarrierActions } from "./carrier-actions.js";
 import { getAvailableModels, getModelEffort } from "./model-info.js";
 import { handleCarrierStatusOverlayInput } from "./input.js";
 import {
@@ -54,13 +55,6 @@ import type {
 } from "./types.js";
 
 const ROSTER_ACTIONS_ID = "__roster_actions__";
-const CARRIER_ACTION_LABELS = [
-  "Agent CLI",
-  "Model",
-  "Configure TaskForce",
-  "Rename Carrier",
-  "Toggle Details",
-] as const;
 const ROSTER_ACTION_LABELS = [
   "Batch CLI Switch",
   "Reset CLI Types to Default",
@@ -197,7 +191,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getActionCount(kind: OverlayState["kind"]): number {
-    if (kind === "carrierActions") return CARRIER_ACTION_LABELS.length;
+    if (kind === "carrierActions") return getCarrierActions(this.getSelectedEntry()).length;
     if (kind === "rosterActions") return ROSTER_ACTION_LABELS.length;
     const cursorState = this.state;
     return "choices" in cursorState ? cursorState.choices.length : 0;
@@ -229,20 +223,20 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private runCarrierAction(index: number): void {
     this.state = { kind: "browse" };
-    switch (index) {
-      case 0:
+    switch (getCarrierActions(this.getSelectedEntry())[index]) {
+      case "agent-cli":
         this.startCliTypeEdit();
         return;
-      case 1:
+      case "model":
         this.startModelEdit();
         return;
-      case 2:
+      case "taskforce":
         this.openTaskForce();
         return;
-      case 3:
+      case "rename":
         this.startRenameEdit();
         return;
-      case 4:
+      case "details":
         this.toggleDetails();
         return;
       default:
@@ -575,7 +569,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private openTaskForce(): void {
     const entry = this.getSelectedEntry();
-    if (!entry) return;
+    if (!entry?.taskForceCapable) return;
     this.options.openTaskForcePanel({
       carrierDisplayName: entry.displayName,
       carrierId: entry.carrierId,

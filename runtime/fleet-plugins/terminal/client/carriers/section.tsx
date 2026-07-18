@@ -104,7 +104,7 @@ function CarrierSettingsSection() {
             key={carrier.carrierId}
             carrier={carrier}
             active={carrier.carrierId === settings.activeCarrierId}
-            minBackends={settings.options?.taskForceConstraints.minBackends ?? 2}
+            minBackends={settings.options?.taskForceConstraints.minBackends ?? null}
             onSelect={() => selectCarrierSettingsCarrier(carrier.carrierId)}
           />
         ))}
@@ -210,14 +210,16 @@ function CarrierSettingsSection() {
                 </div>
               </div>
 
-              <TaskForcePanel
-                carrier={activeCarrier}
-                cliOptions={settings.options.cliTypes}
-                minBackends={settings.options.taskForceConstraints.minBackends}
-                savingActionId={settings.savingActionId}
-                rows={taskForceRows}
-                onRowsChange={setTaskForceRows}
-              />
+              {activeCarrier.taskForceCapable ? (
+                <TaskForcePanel
+                  carrier={activeCarrier}
+                  cliOptions={settings.options.cliTypes}
+                  minBackends={settings.options.taskForceConstraints.minBackends}
+                  savingActionId={settings.savingActionId}
+                  rows={taskForceRows}
+                  onRowsChange={setTaskForceRows}
+                />
+              ) : null}
             </div>
         </section>
       ) : (
@@ -233,8 +235,8 @@ function CarrierSettingsSection() {
   );
 }
 
-function CarrierChip({ carrier, active, minBackends, onSelect }: { readonly carrier: CarrierSettingsCarrier; readonly active: boolean; readonly minBackends: number; readonly onSelect: () => void }) {
-  const tfReady = carrier.taskForceBackendCount >= minBackends;
+function CarrierChip({ carrier, active, minBackends, onSelect }: { readonly carrier: CarrierSettingsCarrier; readonly active: boolean; readonly minBackends: number | null; readonly onSelect: () => void }) {
+  const tfReady = carrier.taskForceCapable && minBackends !== null && carrier.taskforce.backends.length >= minBackends;
   return (
     <button type="button" className={`terminal-carriers-chip ${active ? "is-active" : ""}`} aria-pressed={active} style={getCaptainColorStyle(carrier.carrierId)} onClick={onSelect}>
       <span className="terminal-carriers-captain-dot" aria-hidden="true" />
@@ -295,7 +297,7 @@ function TaskForcePanel({
   const [expanded, setExpanded] = useState(configuredCount > 0);
   const [addOpen, setAddOpen] = useState(false);
   const [addCliType, setAddCliType] = useState("");
-  const active = carrier.taskForceBackendCount >= minBackends;
+  const active = carrier.taskforce.backends.length >= minBackends;
   const availableCliOptions = cliOptions.filter((cli) => !rows.includes(cli.id));
   const selectedAddCliType = addCliType || availableCliOptions[0]?.id || "";
   return (

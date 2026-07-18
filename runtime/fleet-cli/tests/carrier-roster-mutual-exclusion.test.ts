@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createCarrierRuntime,
+  registerCarrier,
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
@@ -9,6 +10,7 @@ import { getCliModels } from "@dotobokuri/core-agent";
 
 import { getCarrierStatusFocusLine, renderCarrierStatusOverlay } from "../src/mission-control/carrier-roster/renderer.js";
 import { RosterTaskForcePanelSurface } from "../src/mission-control/carrier-roster/taskforce-panel.js";
+import { CarrierStatusOverlay } from "../src/mission-control/carrier-roster/panel.js";
 import { MISSION_CONTROL_THEME } from "../src/mission-control/renderer.js";
 import {
   PROVIDER_BG_ANSI_COLORS,
@@ -30,6 +32,35 @@ const ANSI_PATTERN = new RegExp("\\x1b\\[[0-9;?]*[ -/]*[@-~]", "g");
 const SELECTED_BG_ANSI = "\x1b[48;2;45;55;70m";
 
 describe("carrier roster renderer SA/TF colors", () => {
+  it("hides TaskForce actions and ignores programmatic open for incapable carriers while retaining details", () => {
+    const runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, {
+      id: "custom",
+      displayName: "Custom",
+      slot: 1,
+      defaultCliType: "claude",
+    });
+    const openTaskForcePanel = vi.fn();
+    const overlay = new CarrierStatusOverlay({
+      carrierRuntime: runtime,
+      done: vi.fn(),
+      openTaskForcePanel,
+      requestRender: vi.fn(),
+      theme: MISSION_CONTROL_THEME,
+    });
+
+    overlay.handleInput("\r");
+    expect(overlay.render(100).join("\n")).not.toContain("Configure TaskForce");
+    (overlay as unknown as { openTaskForce(): void }).openTaskForce();
+    expect(openTaskForcePanel).not.toHaveBeenCalled();
+
+    overlay.handleInput("\x1b[B");
+    overlay.handleInput("\x1b[B");
+    overlay.handleInput("\x1b[B");
+    overlay.handleInput("\r");
+    expect(stripAnsi(overlay.render(100).join("\n"))).toContain("model");
+  });
+
   it("renders TF roster names and badges with the TF badge SSoT color", () => {
     const entry = buildRosterEntry({ taskForceBackendCount: 2 });
 
@@ -244,6 +275,7 @@ function buildRosterEntry(overrides: Partial<CarrierStatusEntry> = {}): CarrierS
     roleDescription: null,
     slot: 1,
     taskForceBackendCount: 0,
+    taskForceCapable: true,
     ...overrides,
   };
 }

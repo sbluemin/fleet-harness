@@ -18,12 +18,12 @@ import * as carrierStore from "./store/index.js";
 export { DEFAULT_CARRIER_COUNT, registerDefaultCarriers } from "./agent-specs.js";
 export * from "./constants.js";
 export * as personas from "./personas/index.js";
-export * as store from "./store/index.js";
 export * from "./dispatch/framework.js";
 export * from "./dispatch/context-registry.js";
 export * from "./dispatch/prompt.js";
 export * from "./dispatch/readiness.js";
 export * from "./dispatch/status-overlay.js";
+export * from "./dispatch/taskforce-policy.js";
 export * from "./dispatch/taskforce.js";
 export * from "./dispatch/tool-spec.js";
 export * from "./dispatch/types.js";
@@ -52,13 +52,6 @@ export {
   getAgentCliSelection,
   saveAgentCliSelection,
   getTaskForceModelConfig,
-  updateTaskForceModelSelection,
-  resetTaskForceModelSelection,
-  resetCarrierTaskForceConfig,
-  getConfiguredTaskForceBackends,
-  getConfiguredTaskForceBackendsFromSnapshot,
-  getConfiguredTaskForceCarrierIds,
-  getConfiguredTaskForceCarrierIdsFromSnapshot,
   updateAgentCliTypeOverride,
   applyAgentCliTypeSelectionUpdate,
   loadCarrierDisplayNameOverrides,
@@ -67,7 +60,6 @@ export {
   sanitizeCarrierDisplayName,
   readCarriersSnapshot,
   getCarriersFilePath,
-  updateCarriers,
   withStoreLock,
   resetStoreForTests,
 } from "./store/index.js";
@@ -90,11 +82,16 @@ export interface CarrierRuntime {
   buildDispatchToolSpec(deps: Parameters<typeof dispatchToolSpec.buildCarrierDispatchToolSpec>[1]): ReturnType<typeof dispatchToolSpec.buildCarrierDispatchToolSpec>;
   jobs: ReturnType<typeof createBoundCarrierJobs>;
   personas: typeof carrierPersonas;
-  store: typeof carrierStore;
+  store: CarrierRuntimeStore;
   stream: ReturnType<typeof createBoundCarrierStream>;
   trackInFlight(task: RuntimeInFlightTask): () => void;
   cleanup(): Promise<void>;
   registerCarrierDefaults(): void;
+}
+
+/** Host lifecycle needs durable-store initialization, not store mutation internals. */
+export interface CarrierRuntimeStore {
+  initStore: typeof carrierStore.initStore;
 }
 
 export interface RuntimeInFlightTask {
@@ -188,7 +185,7 @@ export function createCarrierRuntime(): CarrierRuntime {
     },
     jobs: boundCarrierJobs,
     personas: carrierPersonas,
-    store: carrierStore,
+    store: { initStore: carrierStore.initStore },
     stream: boundStream,
     trackInFlight: dispatchServices.trackInFlight,
     async cleanup() {

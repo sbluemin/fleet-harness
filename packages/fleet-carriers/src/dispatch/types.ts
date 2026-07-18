@@ -81,6 +81,8 @@ export interface CarrierCoreConfig {
   displayName: string;
   /** carrier 메타데이터 (2-Tier: Routing + Composition) */
   carrierMetadata?: CarrierMetadata;
+  /** Source-owned marker that permits Task Force configuration and formation. */
+  readonly taskForceCapable?: true;
 }
 
 export interface CarrierCliConfig {
@@ -110,6 +112,7 @@ export interface CarrierPersonaDefaults {
   readonly displayName: string;
   readonly slot: number;
   readonly agent: CarrierPersonaAgentDefaults;
+  readonly taskForceCapable?: true;
 }
 
 export type CarrierConfig = CarrierCoreConfig & CarrierCliConfig;
@@ -130,8 +133,6 @@ export interface CarrierFrameworkState {
   statusUpdateCallbacks: Array<() => void>;
   /** Carrier job stream 이벤트 핸들러 */
   streamHandlers: Set<CarrierJobStreamHandler>;
-  /** Task Force 설정이 완료된 carrier ID 집합 */
-  taskforceConfiguredCarriers: Set<string>;
 }
 
 /** 스트림 job 최종 상태 — jobs/types.ts CarrierJobFinalStatus의 별칭 */
@@ -309,6 +310,7 @@ export interface CarrierStatusEntry {
   role: string | null;
   roleDescription: string | null;
   taskForceBackendCount: number;
+  taskForceCapable: boolean;
   category?: CarrierCategory;
 }
 

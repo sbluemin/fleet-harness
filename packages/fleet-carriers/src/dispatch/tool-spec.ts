@@ -27,11 +27,9 @@ import { sanitizeChunk, sanitizeProviderReason, sanitizeToolLabel } from "../job
 import { buildCarrierJobId, buildJobSummary } from "../jobs/types.js";
 import { captureJobWindowManifest, captureWorkspaceSnapshot, type WorkspaceChangeSnapshotEntry } from "../jobs/workspace-manifest.js";
 import { executeOneShot } from "@dotobokuri/core-agent";
-import {
-  getConfiguredTaskForceBackends,
-  loadCarrierStates,
-} from "../store/index.js";
+import { loadCarrierStates } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
+import { isTaskForceFormable } from "./taskforce-policy.js";
 import {
   claimDispatchContext,
   commitDispatchLease,
@@ -258,7 +256,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         }
       }
 
-      if (getConfiguredTaskForceBackends(carrierId).length >= 2) {
+      if (isTaskForceFormable(registry, carrierId)) {
         return launchTaskForceJob({
           registry,
           carrierId,

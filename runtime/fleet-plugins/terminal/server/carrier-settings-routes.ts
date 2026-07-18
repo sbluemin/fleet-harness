@@ -7,23 +7,23 @@ import {
   CLI_DISPLAY_NAMES,
   getAgentCliSelection,
   getCarrierSourceDisplayName,
-  getConfiguredTaskForceCarrierIds,
+  isTaskForceCapable,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   notifyStatusUpdate,
   normalizeCarrierDisplayNameInput,
   readCarriersSnapshot,
-  resetCarrierTaskForceConfig,
-  resetTaskForceModelSelection,
+  clearTaskForceConfig,
+  removeTaskForceBackend,
   resolveAgentCliType,
   saveAgentCliSelection,
-  setTaskForceConfiguredCarriers,
+  setTaskForceBackend,
   StatusOverlayController,
   TASKFORCE_CLI_TYPES,
   updateAgentCliSelection,
   updateCarrierCliType,
   updateCarrierDisplayName,
-  updateCarriers,
+  TASKFORCE_MIN_BACKENDS,
   type AgentCliSelection,
   type CarrierConfig,
   type CarrierRegistry,
@@ -66,8 +66,6 @@ type ParsedCarrierMutation =
 type JsonBodyResult<T> =
   | { readonly ok: true; readonly body: T }
   | { readonly ok: false };
-
-const TASKFORCE_MIN_BACKENDS = 2;
 
 export function registerCarrierSettingsRoutes(ctx: FleetPluginServerContext, deps: CarrierSettingsRouteDeps): void {
   const controller = createStatusOverlayController(deps.registry);
@@ -141,6 +139,10 @@ async function handleCarrierMutation(
     ctx.host.http.writeJson(res, 404, { error: "carrier_not_found" });
     return;
   }
+  if (mutation.kind === "taskforce-backend" && method === "PUT" && !isTaskForceCapable(deps.registry, mutation.carrierId)) {
+    ctx.host.http.writeJson(res, 409, { error: "taskforce_not_capable" });
+    return;
+  }
   if (mutation.kind === "taskforce-backend" && !isCliType(mutation.cliType)) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_cli_type" });
     return;
@@ -154,8 +156,8 @@ async function handleCarrierMutation(
       if (method === "DELETE") {
         const body = await readRequiredJsonBody<Record<string, never>>(req, res, ctx);
         if (!body.ok) return;
-        resetTaskForceModelSelection(mutation.carrierId, mutation.cliType);
-        refreshTaskForceConfiguredCarriers(deps.registry);
+        removeTaskForceBackend(mutation.carrierId, mutation.cliType);
+        notifyStatusUpdate(deps.registry);
         writeMutationState(res, deps, ctx);
         return;
       }
@@ -166,8 +168,8 @@ async function handleCarrierMutation(
     }
     const body = await readRequiredJsonBody<Record<string, never>>(req, res, ctx);
     if (!body.ok) return;
-    resetCarrierTaskForceConfig(mutation.carrierId);
-    refreshTaskForceConfiguredCarriers(deps.registry);
+    clearTaskForceConfig(mutation.carrierId);
+    notifyStatusUpdate(deps.registry);
     writeMutationState(res, deps, ctx);
   } catch (error) {
     ctx.host.http.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_request" });
@@ -242,8 +244,7 @@ function mutateTaskForceBackend(
     ctx.host.http.writeJson(res, 400, { error: "invalid_model_selection" });
     return;
   }
-  updateTaskForceBackendAtomically(carrierId, cliType, selection);
-  refreshTaskForceConfiguredCarriers(deps.registry);
+  setTaskForceBackend(deps.registry, carrierId, cliType, selection);
   notifyStatusUpdate(deps.registry);
   writeMutationState(res, deps, ctx);
 }
@@ -285,7 +286,7 @@ function toCarrierSettingsCarrier(
 ): CarrierSettingsCarrier {
   const cliType = resolved.agentCliType ?? config.defaultCliType;
   const selection = resolved.agentCli[cliType] ?? readDefaultSelection(cliType);
-  const taskForceBackends = toTaskForceBackends(resolved.taskforce);
+  const taskForceBackends = toTaskForceBackends(registry, config.id, resolved.taskforce);
   return {
     carrierId: config.id,
     displayName: resolved.displayName ?? getCarrierSourceDisplayName(registry, config.id),
@@ -298,12 +299,13 @@ function toCarrierSettingsCarrier(
     defaultCliType: config.defaultCliType,
     model: selection.model,
     ...(selection.effort ? { effort: selection.effort } : {}),
-    taskForceBackendCount: taskForceBackends.length,
+    taskForceCapable: isTaskForceCapable(registry, config.id),
     taskforce: { backends: taskForceBackends },
   };
 }
 
-function toTaskForceBackends(taskforce: ResolvedCarrierState["taskforce"]): readonly CarrierSettingsTaskForceBackend[] {
+function toTaskForceBackends(registry: CarrierRegistry, carrierId: string, taskforce: ResolvedCarrierState["taskforce"]): readonly CarrierSettingsTaskForceBackend[] {
+  if (!isTaskForceCapable(registry, carrierId)) return [];
   return TASKFORCE_CLI_TYPES
     .map((cliType) => {
       const selection = taskforce[cliType];
@@ -366,26 +368,6 @@ function createStatusOverlayController(registry: CarrierRegistry): StatusOverlay
     syncModelConfig: () => undefined,
     notifyStatusUpdate: () => notifyStatusUpdate(registry),
   });
-}
-
-function updateTaskForceBackendAtomically(carrierId: string, cliType: CliType, selection: AgentCliSelection): void {
-  updateCarriers((states) => {
-    const carriers = { ...(states.carriers ?? {}) };
-    const current = carriers[carrierId] ?? {};
-    carriers[carrierId] = {
-      ...current,
-      taskforce: {
-        ...(current.taskforce ?? {}),
-        [cliType]: selection,
-      },
-    };
-    states.carriers = carriers;
-  });
-}
-
-function refreshTaskForceConfiguredCarriers(registry: CarrierRegistry): void {
-  setTaskForceConfiguredCarriers(registry, getConfiguredTaskForceCarrierIds(getRegisteredOrder(registry)));
-  notifyStatusUpdate(registry);
 }
 
 function readSelection(cliType: CliType, body: ModelBody): AgentCliSelection | null {

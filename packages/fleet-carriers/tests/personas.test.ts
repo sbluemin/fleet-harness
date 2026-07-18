@@ -119,6 +119,16 @@ describe("allowedExecutorTools", () => {
   });
 });
 
+describe("Task Force capability defaults", () => {
+  it("only nimitz, vanguard, and tempest source-own the capability marker", () => {
+    const capable = DEFAULT_PERSONAS
+      .filter((persona) => persona.defaults.taskForceCapable === true)
+      .map((persona) => persona.defaults.id);
+
+    expect(capable).toEqual(["nimitz", "vanguard", "tempest"]);
+  });
+});
+
 describe("allowedBuiltinExternalMcpServers", () => {
   it("tempest만 grep_app builtin external MCP를 명시 허용", () => {
     expect(TEMPEST_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);

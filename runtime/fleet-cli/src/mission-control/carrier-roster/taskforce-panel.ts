@@ -1,14 +1,11 @@
 import {
   CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES,
-  getConfiguredTaskForceCarrierIds,
   getTaskForceModelConfig,
-  getRegisteredOrder,
   notifyStatusUpdate,
   readCarriersSnapshot,
-  resetTaskForceModelSelection,
-  setTaskForceConfiguredCarriers,
-  updateTaskForceModelSelection,
+  removeTaskForceBackend,
+  setTaskForceBackend,
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
@@ -293,8 +290,8 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       this.options.requestRender();
       return;
     }
-    resetTaskForceModelSelection(this.options.carrierId, entry.cliType);
-    syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
+    removeTaskForceBackend(this.options.carrierId, entry.cliType);
+    notifyStatusUpdate(this.options.carrierRuntime.registry);
     this.feedbackMessage = `${entry.displayName} 설정을 origin으로 초기화했습니다.`;
     this.options.requestRender();
   }
@@ -318,8 +315,8 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     this.mode = "saving";
     this.options.requestRender();
     try {
-      updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
-      syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
+      setTaskForceBackend(this.options.carrierRuntime.registry, this.options.carrierId, entry.cliType, normalizedSelection);
+      notifyStatusUpdate(this.options.carrierRuntime.registry);
       this.feedbackMessage = `${entry.displayName} 설정을 저장했습니다.`;
     } catch (error) {
       this.feedbackMessage = `저장 실패: ${errorMessage(error)}`;
@@ -454,14 +451,6 @@ export function createTaskForcePanel(options: TaskForceOverlayOptions): MenuPane
       return component.render(width);
     },
   };
-}
-
-function syncConfiguredTaskForceCarriers(carrierRuntime: CarrierRuntime): void {
-  const registry = carrierRuntime.registry;
-  const registeredOrder = getRegisteredOrder(registry);
-  const ids = getConfiguredTaskForceCarrierIds(registeredOrder);
-  setTaskForceConfiguredCarriers(registry, ids);
-  notifyStatusUpdate(registry);
 }
 
 function clampOverlayRows(maxRows: number, cardRows: number): number {

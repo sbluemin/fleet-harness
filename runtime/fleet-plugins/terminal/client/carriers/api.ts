@@ -130,7 +130,7 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     || typeof payload.defaultCliType !== "string"
     || typeof payload.model !== "string"
     || (payload.effort !== undefined && typeof payload.effort !== "string")
-    || typeof payload.taskForceBackendCount !== "number"
+    || typeof payload.taskForceCapable !== "boolean"
     || !payload.taskforce
     || !Array.isArray(payload.taskforce.backends)
   ) {
@@ -148,7 +148,7 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     defaultCliType: payload.defaultCliType,
     model: payload.model,
     ...(payload.effort ? { effort: payload.effort } : {}),
-    taskForceBackendCount: payload.taskForceBackendCount,
+    taskForceCapable: payload.taskForceCapable,
     taskforce: { backends: payload.taskforce.backends.map((backend) => assertTaskForceBackend(backend, status)) },
   };
 }
