@@ -104,18 +104,6 @@ export function getConfiguredTaskForceBackendsFromSnapshot(
   return getConfiguredTaskForceBackendsInConfig(snapshot.carriers[carrierId]?.taskforce ?? {});
 }
 
-export function getConfiguredTaskForceCarrierIds(registeredIds: string[]): string[] {
-  const carriers = readRawCarriers().carriers ?? {};
-  return registeredIds.filter((id) => getConfiguredTaskForceBackendsInConfig(sanitizeTaskforce(carriers[id]?.taskforce)).length >= 2);
-}
-
-export function getConfiguredTaskForceCarrierIdsFromSnapshot(
-  snapshot: FleetStoreSnapshot,
-  registeredIds: string[],
-): string[] {
-  return registeredIds.filter((id) => getConfiguredTaskForceBackendsInConfig(snapshot.carriers[id]?.taskforce ?? {}).length >= 2);
-}
-
 function getConfiguredTaskForceBackendsInConfig(taskforceConfig: TaskForceConfig): TaskForceCliType[] {
   return TASKFORCE_CLI_TYPES.filter((cli) => taskforceConfig[cli as TaskForceCliType] != null) as TaskForceCliType[];
 }

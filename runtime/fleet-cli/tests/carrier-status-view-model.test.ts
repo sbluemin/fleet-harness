@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getProviderModels } from "@dotobokuri/core-unified-agent";
 
 import {
   type CarrierConfig,
@@ -10,6 +11,7 @@ import {
   initStore,
   registerCarrier,
   resetStoreForTests,
+  setTaskForceBackend,
 } from "@dotobokuri/fleet-carriers";
 
 import { buildStatusEntries } from "../src/mission-control/carrier-roster/view-model.js";
@@ -73,11 +75,29 @@ describe("carrier status view model", () => {
     expect(entry?.model).toBe("gpt-5.4");
     expect(entry?.effort).toBe("high");
   });
+
+  it("hides stale TaskForce selections until source capability is re-registered", () => {
+    const runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createCarrierConfig({ summary: "TaskForce capable", title: "Operator" }, "claude", true));
+    setTaskForceBackend(runtime.registry, "metadata_test", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(runtime.registry, "metadata_test", "codex", { model: firstModel("codex") });
+
+    registerCarrier(runtime.registry, createCarrierConfig({ summary: "TaskForce disabled", title: "Operator" }));
+    let entry = buildStatusEntries(runtime)[0];
+    expect(entry?.taskForceCapable).toBe(false);
+    expect(entry?.taskForceBackendCount).toBe(0);
+
+    registerCarrier(runtime.registry, createCarrierConfig({ summary: "TaskForce restored", title: "Operator" }, "claude", true));
+    entry = buildStatusEntries(runtime)[0];
+    expect(entry?.taskForceCapable).toBe(true);
+    expect(entry?.taskForceBackendCount).toBe(2);
+  });
 });
 
 function createCarrierConfig(
   metadata: Pick<CarrierMetadata, "summary" | "title">,
   cliType: CarrierConfig["defaultCliType"] = "claude",
+  taskForceCapable = false,
 ): CarrierConfig {
   return {
     carrierMetadata: {
@@ -96,5 +116,12 @@ function createCarrierConfig(
     displayName: "Metadata Test",
     id: "metadata_test",
     slot: 1,
+    ...(taskForceCapable ? { taskForceCapable: true } : {}),
   };
+}
+
+function firstModel(cliType: "claude" | "codex"): string {
+  const model = getProviderModels(cliType).models[0]?.modelId;
+  if (!model) throw new Error(`No model for ${cliType}`);
+  return model;
 }

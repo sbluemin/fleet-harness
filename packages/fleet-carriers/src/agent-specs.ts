@@ -57,5 +57,6 @@ function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): Ca
     slot: defaults.slot,
     displayName: defaults.displayName,
     carrierMetadata: metadata,
+    ...(defaults.taskForceCapable ? { taskForceCapable: true } : {}),
   };
 }

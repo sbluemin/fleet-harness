@@ -13,6 +13,7 @@ export const TEMPEST_DEFAULTS: CarrierPersonaDefaults = {
   id: "tempest",
   displayName: "Tempest",
   slot: 7,
+  taskForceCapable: true,
   agent: {
     dispatch: {
       defaultCliType: "claude",

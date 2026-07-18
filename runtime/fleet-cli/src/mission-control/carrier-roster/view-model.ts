@@ -1,7 +1,7 @@
 import {
   buildCarrierModelDefaults,
   getCarrierConfig,
-  getConfiguredTaskForceBackendsFromSnapshot,
+  getEffectiveTaskForceBackends,
   getRegisteredOrder,
   readCarriersSnapshot,
   resolveAgentCliType,
@@ -125,7 +125,8 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
       role,
       roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
-      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
+      taskForceBackendCount: getEffectiveTaskForceBackends(registry, id, healedSnapshot).length,
+      taskForceCapable: config.taskForceCapable === true,
     });
   }
 

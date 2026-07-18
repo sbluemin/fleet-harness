@@ -13,6 +13,7 @@ export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
   id: "nimitz",
   displayName: "Nimitz",
   slot: 1,
+  taskForceCapable: true,
   agent: {
     dispatch: {
       defaultCliType: "claude",

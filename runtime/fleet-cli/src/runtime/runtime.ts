@@ -11,7 +11,6 @@ import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 
-import { reconcileRuntimeState } from "./reconciliation.js";
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
 export interface RuntimeServices {
@@ -86,7 +85,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			{ spec: planTools.markTasks, options: { allowedScopes: [] } },
 		],
 	});
-	reconcileRuntimeState(agentRuntime.carrierRuntime);
 
 	return {
 		agentRuntime,

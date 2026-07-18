@@ -13,6 +13,7 @@ export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
   id: "vanguard",
   displayName: "Vanguard",
   slot: 6,
+  taskForceCapable: true,
   agent: {
     dispatch: {
       defaultCliType: "claude",

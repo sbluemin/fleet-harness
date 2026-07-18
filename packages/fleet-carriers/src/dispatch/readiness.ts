@@ -2,10 +2,10 @@ import { getProviderModels } from "@dotobokuri/core-unified-agent";
 
 import { sanitizeToolBlockLabel } from "../jobs/sanitize.js";
 import {
-  getConfiguredTaskForceBackendsFromSnapshot,
   readCarriersSnapshot,
   readFileBackedCarriersSnapshot,
 } from "../store/index.js";
+import { getEffectiveTaskForceBackends, isTaskForceCapable } from "./taskforce-policy.js";
 import type { CarrierModelDefaults, FleetStoreSnapshot } from "../store/index.js";
 
 import {
@@ -54,7 +54,8 @@ function buildCarrierStatusEntriesFromSnapshot(registry: CarrierRegistry, snapsh
       role,
       roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
-      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
+      taskForceBackendCount: getEffectiveTaskForceBackends(registry, carrierId, snapshot).length,
+      taskForceCapable: isTaskForceCapable(registry, carrierId),
     });
   }
 

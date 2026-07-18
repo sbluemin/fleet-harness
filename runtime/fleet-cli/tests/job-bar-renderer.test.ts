@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCarrierRuntime,
   initStore,
+  registerCarrier,
   resetStoreForTests,
-  updateTaskForceModelSelection,
+  setTaskForceBackend,
 } from "@dotobokuri/fleet-carriers";
 import { getCliModels } from "@dotobokuri/core-agent";
 
@@ -509,9 +510,9 @@ describe("job bar renderer", () => {
   it("renders Task Force carrier strip, detail header, and job label in TF blue while preserving backend row colors", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-taskforce-"));
     initStore(tempDir);
-    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
-    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
     const runtime = createTestCarrierRuntime();
+    setTaskForceBackend(runtime.registry, "ohio", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(runtime.registry, "ohio", "codex", { model: firstModel("codex") });
     const state = createJobBarState({ carrierRuntime: runtime });
     currentJobBarState = state;
     state.getPanelJobs().set("taskforce:first", buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"));
@@ -531,9 +532,9 @@ describe("job bar renderer", () => {
   it("does not leak TF colors into backend rows when displayCli collides with a carrier id", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-displaycli-collision-"));
     initStore(tempDir);
-    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
-    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
     const runtime = createTestCarrierRuntime();
+    setTaskForceBackend(runtime.registry, "ohio", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(runtime.registry, "ohio", "codex", { model: firstModel("codex") });
     const state = createJobBarState({ carrierRuntime: runtime });
     currentJobBarState = state;
     state.getPanelJobs().set("taskforce:collision", buildTaskForceJob("taskforce:collision", "ohio", "ohio", "codex"));
@@ -617,6 +618,13 @@ let tempDir: string | null = null;
 function createTestCarrierRuntime(): ReturnType<typeof createCarrierRuntime> {
   const runtime = createCarrierRuntime();
   runtime.registerCarrierDefaults();
+  registerCarrier(runtime.registry, {
+    id: "ohio",
+    defaultCliType: "claude",
+    displayName: "Ohio",
+    slot: 4,
+    taskForceCapable: true,
+  });
   return runtime;
 }
 

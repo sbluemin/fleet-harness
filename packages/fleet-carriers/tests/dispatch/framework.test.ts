@@ -23,7 +23,7 @@ import {
   registerStreamHandler,
   resetStoreForTests,
   resolveCarrierDisplayName,
-  updateTaskForceModelSelection,
+  setTaskForceBackend,
   updateCarrierDisplayName,
 } from "../../src/index.js";
 import type { WorkspaceChangeScanner, WorkspaceChangeSnapshotEntry } from "../../src/jobs/workspace-manifest.js";
@@ -158,6 +158,7 @@ describe("carrier displayName resolution", () => {
       roleDescription: "Operator - Coordinates local execution",
       slot: 1,
       taskForceBackendCount: 0,
+      taskForceCapable: true,
     });
     expect(JSON.stringify(entries[0])).not.toContain("permissions");
     expect(JSON.stringify(entries[0])).not.toContain("outputFormat");
@@ -656,10 +657,10 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const codexModel = firstModel("codex");
     const claudeEffort = firstEffort("claude", claudeModel);
     const codexEffort = firstEffort("codex", codexModel);
-    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: claudeEffort });
-    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: codexEffort });
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
+    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: claudeEffort });
+    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: codexEffort });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
@@ -702,10 +703,10 @@ describe("carrier_dispatch taskforce stream metadata", () => {
   it("builds one fresh one-shot handle per Task Force backend with its own scope", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
-    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
+    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({ carrier_id: "ohio", label: "Task Force", request: "Run both backends." }, {
@@ -728,10 +729,10 @@ describe("carrier_dispatch taskforce stream metadata", () => {
   it("captures Task Force edits made immediately after the shared prompt gate opens", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
-    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
+    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     let edited = false;
@@ -902,10 +903,10 @@ describe("carrier_dispatch explicit cwd injection", () => {
   it("forwards an explicit absolute cwd to every Task Force backend spawn", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
-    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
+    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
@@ -933,6 +934,7 @@ function createConfig(id: string, displayName: string): CarrierConfig {
     defaultCliType: "claude",
     slot: 1,
     displayName,
+    taskForceCapable: true,
   };
 }
 

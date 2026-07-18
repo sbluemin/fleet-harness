@@ -45,7 +45,6 @@ export class CarrierRegistry {
     registeredOrder: [],
     statusUpdateCallbacks: [],
     streamHandlers: new Set(),
-    taskforceConfiguredCarriers: new Set(),
   };
 
   getState(): CarrierFrameworkState {
@@ -57,7 +56,6 @@ export class CarrierRegistry {
     this.state.registeredOrder.splice(0);
     this.state.statusUpdateCallbacks.splice(0);
     this.state.streamHandlers.clear();
-    this.state.taskforceConfiguredCarriers.clear();
   }
 }
 
@@ -89,20 +87,9 @@ export function registerCarrier(
   }
 
   const gs = registry.getState();
-  const existingState = gs.modes.get(config.id);
-
-  // Carrier 상태 등록
-  if (existingState) {
-    const existing = existingState.config;
-    existing.displayName = config.displayName;
-    existing.slot = config.slot;
-    existing.defaultCliType = config.defaultCliType;
-    existing.defaultModel = config.defaultModel;
-    existing.defaultEffort = config.defaultEffort;
-    existing.carrierMetadata = config.carrierMetadata;
-  } else {
-    gs.modes.set(config.id, { config });
-  }
+  // Re-registration replaces the source-owned config wholesale. In particular,
+  // an omitted readonly capability marker must clear an earlier opt-in.
+  gs.modes.set(config.id, { config });
 
   // registeredOrder에 slot 순으로 삽입 (resume 시 중복 방지: 기존 항목 먼저 제거)
   const existingIdx = gs.registeredOrder.indexOf(config.id);
@@ -162,16 +149,6 @@ export function emitStreamEvent(registry: CarrierRegistry, event: CarrierJobStre
  */
 export function getRegisteredOrder(registry: CarrierRegistry): string[] {
   return [...registry.getState().registeredOrder];
-}
-
-// ─── Task Force 설정 변경 관리 ──────────────────────────
-
-/**
- * Task Force 설정 완료 carrier ID 목록을 일괄 설정합니다.
- */
-export function setTaskForceConfiguredCarriers(registry: CarrierRegistry, ids: string[]): void {
-  const gs = registry.getState();
-  gs.taskforceConfiguredCarriers = new Set(ids);
 }
 
 /**

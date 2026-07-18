@@ -44,6 +44,7 @@ export interface CarrierStatusEntry {
   roleDescription: string | null;
   slot: number;
   taskForceBackendCount: number;
+  taskForceCapable: boolean;
 }
 
 export interface CliTypeChoice {

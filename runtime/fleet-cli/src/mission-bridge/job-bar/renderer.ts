@@ -1,9 +1,10 @@
 import {
   CLI_DISPLAY_NAMES,
-  getConfiguredTaskForceBackendsFromSnapshot,
+  getEffectiveTaskForceBackends,
   getRegisteredOrder,
   readCarriersSnapshot,
   resolveCarrierDisplayName,
+  TASKFORCE_MIN_BACKENDS,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../controls/index.js";
@@ -210,7 +211,7 @@ function appendWidgetJobSummary(
   for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
     const group = groups[groupIndex];
     if (!group || group.jobs.length === 0) continue;
-    const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(readCarriersSnapshot(), group.carrierId).length;
+    const taskForceBackendCount = getEffectiveTaskForceBackends(carrierRuntime.registry, group.carrierId, readCarriersSnapshot()).length;
     const groupColor = resolveCarrierPresentationColor(carrierRuntime, group.carrierId, taskForceBackendCount);
     const groupModelInfo = carrierGroupModelInfo(group);
     lines.push(truncateToWidth(
@@ -269,7 +270,7 @@ function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly 
   const snapshot = readCarriersSnapshot();
   return getRegisteredOrder(carrierRuntime.registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
-    const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
+    const taskForceBackendCount = getEffectiveTaskForceBackends(carrierRuntime.registry, carrierId, snapshot).length;
     return {
       activeJobCount: activeCarrierJobs.length,
       carrierId,
@@ -323,7 +324,7 @@ function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
-  return carrier.taskForceBackendCount >= 2
+  return carrier.taskForceBackendCount >= TASKFORCE_MIN_BACKENDS
     ? ` ${TASKFORCE_BADGE_COLOR}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
 }
@@ -373,7 +374,7 @@ function resolveCarrierPresentationColor(
   carrierId: string,
   taskForceBackendCount: number,
 ): string {
-  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
+  if (taskForceBackendCount >= TASKFORCE_MIN_BACKENDS) return TASKFORCE_BADGE_COLOR;
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
 
@@ -382,7 +383,7 @@ function resolveCarrierPresentationRgb(
   carrierId: string,
   taskForceBackendCount: number,
 ): [number, number, number] {
-  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB;
+  if (taskForceBackendCount >= TASKFORCE_MIN_BACKENDS) return TASKFORCE_BADGE_RGB;
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
 }
 

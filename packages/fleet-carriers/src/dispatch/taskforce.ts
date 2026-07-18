@@ -34,10 +34,8 @@ import {
 } from "./framework.js";
 import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./prompt.js";
 import type { CarrierToolSpecDeps } from "./prompt.js";
-import {
-  getConfiguredTaskForceBackends,
-  getTaskForceModelConfig,
-} from "../store/index.js";
+import { getTaskForceModelConfig } from "../store/index.js";
+import { getEffectiveTaskForceBackends, isTaskForceCapable, TASKFORCE_MIN_BACKENDS } from "./taskforce-policy.js";
 import {
   claimDispatchContext,
   commitDispatchLease,
@@ -112,7 +110,8 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
   const requestKey = buildTaskForceRequestKey(carrierId, request);
 
   assertRegisteredCarrier(registry, carrierId);
-  const activeBackends = assertTaskForceFormable(carrierId);
+  if (!isTaskForceCapable(registry, carrierId)) throw new Error("taskforce_not_capable");
+  const activeBackends = assertTaskForceFormable(registry, carrierId);
 
   // 필수 request-block 검증은 carrier_dispatch와 동일한 hard-error 타이밍을 유지합니다.
   const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
@@ -389,8 +388,8 @@ function assertRegisteredCarrier(registry: CarrierRegistry, carrierId: string): 
   }
 }
 
-function assertTaskForceFormable(carrierId: string): TaskForceCliType[] {
-  const activeBackends = getConfiguredTaskForceBackends(carrierId);
+function assertTaskForceFormable(registry: CarrierRegistry, carrierId: string): TaskForceCliType[] {
+  const activeBackends = getEffectiveTaskForceBackends(registry, carrierId);
   return [...assertTaskForceBackendCount(carrierId, activeBackends)] as TaskForceCliType[];
 }
 
@@ -600,9 +599,9 @@ function clearTaskForceState(requestKey: string): void {
 }
 
 export function assertTaskForceBackendCount(carrierId: string, backends: readonly TaskForceCliType[]): readonly TaskForceCliType[] {
-  if (backends.length >= 2) return backends;
+  if (backends.length >= TASKFORCE_MIN_BACKENDS) return backends;
   throw new Error(
-    `Carrier ${formatCarrierIdForMessage(carrierId)} needs ≥2 configured Task Force backends, got ${backends.length}. ` +
+    `Carrier ${formatCarrierIdForMessage(carrierId)} needs ≥${TASKFORCE_MIN_BACKENDS} configured Task Force backends, got ${backends.length}. ` +
     `Open Carrier Status (Alt+O), select ${formatCarrierIdForMessage(carrierId)}, press T to add a backend.`,
   );
 }

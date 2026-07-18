@@ -18,7 +18,7 @@ const state = {
   generation: 1,
   carriers: [{
     carrierId: "kirov", displayName: "Kirov", sourceDisplayName: "Kirov", role: "Planner", roleDescription: "Plans", slot: 1,
-    cliType: "codex", defaultCliType: "codex", model: "gpt-5", taskForceBackendCount: 0, taskforce: { backends: [] },
+    cliType: "codex", defaultCliType: "codex", model: "gpt-5", taskForceCapable: false, taskforce: { backends: [] },
   }],
 };
 const options = {
@@ -50,8 +50,12 @@ const interactiveState = {
     cliType: "codex",
     defaultCliType: "codex",
     model: "gpt-5",
-    taskForceBackendCount: carrierId === "nimitz" ? 2 : 0,
-    taskforce: { backends: [] },
+    taskForceCapable: carrierId === "nimitz",
+    taskforce: {
+      backends: carrierId === "nimitz"
+        ? [{ cliType: "codex", model: "gpt-5" }, { cliType: "claude", model: "sonnet" }]
+        : [],
+    },
   })),
 };
 const emptyState = { generation: 3, carriers: [] };
@@ -116,12 +120,15 @@ describe("Terminal Carrier Settings client", () => {
     expect(chips[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(chips.slice(1).every((chip) => chip.getAttribute("aria-pressed") === "false")).toBe(true);
     expect(chips[0]?.querySelector(".terminal-carriers-live-dot.is-live")).not.toBeNull();
+    expect(container!.querySelector(".terminal-carriers-control-group--taskforce")).not.toBeNull();
 
     const ohioChip = chips.find((chip) => chip.textContent?.includes("Ohio"));
     if (!ohioChip) throw new Error("Ohio chip must render.");
     await act(async () => ohioChip.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(ohioChip.getAttribute("aria-pressed")).toBe("true");
+    expect(ohioChip.querySelector(".terminal-carriers-live-dot.is-live")).toBeNull();
     expect(container!.querySelector(".terminal-carriers-card")?.textContent).toContain("Captain · OHIO");
+    expect(container!.querySelector(".terminal-carriers-control-group--taskforce")).toBeNull();
 
     const editName = container!.querySelector<HTMLButtonElement>('[aria-label="Edit display name"]');
     if (!editName) throw new Error("Display-name edit button must render.");

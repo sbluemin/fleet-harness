@@ -14,7 +14,7 @@ import {
   resetJobCancelRegistryForTest,
   resetJobTrackingForTest,
   resetStoreForTests,
-  updateTaskForceModelSelection,
+  setTaskForceBackend,
   type CarrierConfig,
   type CarrierRuntime,
 } from "../../src/index.js";
@@ -72,13 +72,13 @@ function firstEffort(cliType: CliType, model: string): string | undefined {
 }
 
 function createConfig(id: string, displayName: string): CarrierConfig {
-  return { id, displayName, slot: 1, defaultCliType: "claude", defaultModel: firstModel("claude") };
+  return { id, displayName, slot: 1, defaultCliType: "claude", defaultModel: firstModel("claude"), taskForceCapable: true };
 }
 
-function configureTaskForce(carrierId: string): void {
+function configureTaskForce(registry: CarrierRuntime["registry"], carrierId: string): void {
   for (const cliType of ["claude", "codex"] as const) {
     const model = firstModel(cliType);
-    updateTaskForceModelSelection(carrierId, cliType, { model, effort: firstEffort(cliType, model) });
+    setTaskForceBackend(registry, carrierId, cliType, { model, effort: firstEffort(cliType, model) });
   }
 }
 
@@ -304,7 +304,7 @@ describe("Task Force context barrier and resume", () => {
   it("tracks and rolls back every prepared Task Force handle while readiness is pending", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce("ohio");
+    configureTaskForce(runtime.registry, "ohio");
     const abortGate = defer<void>();
     const handles: OneShotExecution[] = [];
     vi.mocked(executeOneShot).mockImplementation((opts) => {
@@ -346,7 +346,7 @@ describe("Task Force context barrier and resume", () => {
   it("rolls back every Task Force backend when cleanup closes admission during baseline capture", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce("ohio");
+    configureTaskForce(runtime.registry, "ohio");
     const baseline = defer<readonly [] | null>();
     const handles: OneShotExecution[] = [];
     vi.mocked(executeOneShot).mockImplementation((opts) => {
@@ -387,7 +387,7 @@ describe("Task Force context barrier and resume", () => {
   it("aborts every backend and sends zero prompts when one readiness fails", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce("ohio");
+    configureTaskForce(runtime.registry, "ohio");
     vi.mocked(executeOneShot).mockImplementation((opts) => {
       const cliType = opts.cliType as CliType;
       if (cliType === "codex") {
@@ -418,7 +418,7 @@ describe("Task Force context barrier and resume", () => {
   it("resumes each backend by its own session without cross-wiring", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce("ohio");
+    configureTaskForce(runtime.registry, "ohio");
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
@@ -441,7 +441,7 @@ describe("Task Force context barrier and resume", () => {
   it("forwards server bindings unchanged to every nested-cwd Task Force backend on fresh and resumed launches", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce("ohio");
+    configureTaskForce(runtime.registry, "ohio");
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
     const serverBindings = Object.freeze({ plan_workspace: "/theater" });
@@ -473,7 +473,7 @@ describe("Task Force context barrier and resume", () => {
   it("rolls back every prepared Task Force resource when readiness confirmation rejects a resumed binding", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce("ohio");
+    configureTaskForce(runtime.registry, "ohio");
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
