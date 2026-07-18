@@ -15,6 +15,8 @@ import type {
   EntryResponse,
   SearchEntry,
   SearchResponse,
+  SchemaCatalogResponse,
+  SchemaDocumentResponse,
 } from "../../../host/codex/api-types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,6 +35,8 @@ export type {
   EntryFrontmatter,
   EntryResponse,
   SearchEntry,
+  SchemaCatalogResponse,
+  SchemaDocumentResponse,
 };
 
 // 하위 호환 별칭 — navigator 참조
@@ -78,6 +82,15 @@ export async function fetchDrydock(theaterId: string | null, status: "pending" |
 
 export async function fetchDrydockDetail(theaterId: string | null, patchId: string): Promise<DrydockDetailResponse> {
   return fetchJson<DrydockDetailResponse>(apiPath(theaterId, `/drydock/${encodeURIComponent(patchId)}`));
+}
+
+export async function fetchSchemaCatalog(theaterId: string | null): Promise<SchemaCatalogResponse> {
+  return fetchJson<SchemaCatalogResponse>(apiPath(theaterId, "/schema"));
+}
+
+export async function fetchSchemaDocument(theaterId: string | null, templateId?: string): Promise<SchemaDocumentResponse> {
+  const path = templateId ? `/schema/templates/${encodeURIComponent(templateId)}` : "/schema/wiki-schema";
+  return fetchJson<SchemaDocumentResponse>(apiPath(theaterId, path));
 }
 
 export async function decideDrydock(

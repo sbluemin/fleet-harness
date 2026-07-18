@@ -25,13 +25,7 @@ export function CodexReadingSheet() {
   const tocRef = useRef<HTMLDivElement>(null);
 
   const readerKey = reader
-    ? `${reader.kind}:${
-        reader.kind === "entry"
-          ? reader.entryId
-          : reader.kind === "drydock"
-          ? (reader.patchId ?? "")
-          : (reader.id ?? "")
-      }`
+    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
     : null;
 
   // W2: expand 전용 — reader != null && expanded의 경우에만 시트 표시
@@ -94,7 +88,7 @@ export function CodexReadingSheet() {
 
     const kind = reader.kind;
     const subId =
-      kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
+      kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
 
     mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",

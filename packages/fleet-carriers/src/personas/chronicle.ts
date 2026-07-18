@@ -65,6 +65,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   allowedExecutorTools: [
     "wiki_briefing", "wiki_drydock", "wiki_ingest",
     "wiki_orient", "wiki_query", "wiki_read", "wiki_resolve",
+    "wiki_schema_list", "wiki_schema_read",
     "carrier_jobs", "plan_read",
   ],
 
