@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../server/git-executor.js";
-import { annotateHeadReachability, handleDiffLog, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
+import { annotateHeadReachability, handleRepositoryLog, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -133,7 +133,7 @@ describe("parseWorktreePorcelain", () => {
   });
 });
 
-describe("handleDiffLog", () => {
+describe("handleRepositoryLog", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -155,7 +155,7 @@ describe("handleDiffLog", () => {
     await runGit(["clone", "--bare", sourceDir, bareDir], { cwd: tmpDir });
 
     const writes: { status: number; payload: unknown }[] = [];
-    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(bareDir, writes));
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(bareDir, writes));
 
     expect(writes).toHaveLength(1);
     expect(writes[0]?.status).toBe(200);
@@ -175,7 +175,7 @@ describe("handleDiffLog", () => {
     await runGit(["commit", "-m", "history"], { cwd: repoDir });
 
     const writes: { status: number; payload: unknown }[] = [];
-    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
 
     expect(writes[0]?.status).toBe(200);
     expect(JSON.stringify(writes[0]?.payload)).not.toContain(repoDir);
@@ -202,7 +202,7 @@ describe("handleDiffLog", () => {
     await runGit(["branch", "-D", "temp"], { cwd: repoDir });
 
     const writes: { status: number; payload: unknown }[] = [];
-    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
 
     expect(writes[0]?.status).toBe(200);
     const payload = writes[0]?.payload as {
@@ -225,7 +225,7 @@ describe("handleDiffLog", () => {
     await runGit(["checkout", "--orphan", "empty"], { cwd: repoDir });
 
     const writes: { status: number; payload: unknown }[] = [];
-    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
 
     expect(writes[0]?.status).toBe(200);
     const payload = writes[0]?.payload as { readonly commits: readonly { readonly subject: string }[] };
@@ -238,7 +238,7 @@ describe("handleDiffLog", () => {
     await initGitRepo(repoDir);
 
     const writes: { status: number; payload: unknown }[] = [];
-    await handleDiffLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
 
     expect(writes).toEqual([{ status: 200, payload: { commits: [], checkouts: [] } }]);
   });

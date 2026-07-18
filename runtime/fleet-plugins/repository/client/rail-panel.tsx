@@ -3,11 +3,12 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode } from "../server/types.js";
-import "./diff.css";
+import "./repository.css";
 import { ChangedFiles } from "./changed-files.js";
 import { pathContextKey } from "./context-key.js";
-import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./diff-view-store.js";
+import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
+import { HistoryPanel } from "./history-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
 
 type ViewMode = "list" | "tree";
@@ -43,13 +44,14 @@ function getHunkMode(selected: SelectedFile): DiffFileMode {
   return selected.entry.status === "U" ? "untracked" : "unified";
 }
 
-function DiffPanel({ ctx }: DiffPanelProps) {
+function RepositoryPanel({ ctx }: DiffPanelProps) {
   const contextKey = pathContextKey(ctx.theaterId, ctx.pathContext.relPath);
 
   return <DiffPanelBody key={contextKey} ctx={ctx} />;
 }
 
 function DiffPanelBody({ ctx }: DiffPanelProps) {
+  const [source, setSource] = useState<"changes" | "history">("changes");
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState("");
   const subPath = ctx.pathContext.relPath ?? "";
@@ -100,26 +102,29 @@ function DiffPanelBody({ ctx }: DiffPanelProps) {
   }, [ctx.requestExtraWidth, selectedFile]);
 
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
+  if (source === "history") return <div className="repository-unified"><SourceNav source={source} onSource={setSource} /><div className="repository-source-content"><HistoryPanel ctx={ctx} /></div></div>;
   return (
-    <div ref={rootRef} className={`diff-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
-      {selectedFile && hunkMode ? <div className="diff-hunk-pane"><div className="diff-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} /></div> : null}
-      {selectedFile ? <div className="diff-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
-      <div className="diff-list-pane">
-        <div className="diff-toolbar"><div className="diff-filter"><input type="text" className="diff-filter-input" placeholder="Filter…" aria-label="Filter changed files" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="diff-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div><div className="diff-view-toggle"><button type="button" className={`diff-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title="List view" aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`diff-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title="Tree view" aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
+    <div className="repository-unified"><SourceNav source={source} onSource={setSource} /><div ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
+      {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} /></div> : null}
+      {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
+      <div className="repository-list-pane">
+        <div className="repository-toolbar"><div className="repository-filter"><input type="text" className="repository-filter-input" placeholder="Filter…" aria-label="Filter changed files" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="repository-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div><div className="repository-view-toggle"><button type="button" className={`repository-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title="List view" aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`repository-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title="Tree view" aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
         <ChangedFiles ctx={ctx} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} subPath={subPath} onSelect={handleSelectFile} filterText={filterText} />
       </div>
-    </div>
+    </div></div>
   );
 }
+
+function SourceNav({ source, onSource }: { readonly source: "changes" | "history"; readonly onSource: (source: "changes" | "history") => void }) { return <nav className="repository-source-nav" aria-label="Repository sources"><button type="button" aria-current={source === "changes" ? "page" : undefined} onClick={() => onSource("changes")}>Changes</button><button type="button" aria-current={source === "history" ? "page" : undefined} onClick={() => onSource("history")}>History</button><span>REFS</span><button type="button" disabled>Branches</button><button type="button" disabled>Tags</button><button type="button" disabled>Stashes</button><button type="button" disabled>Worktrees</button></nav>; }
 
 function DiffIcon() {
   return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="7" width="10" height="1.5" rx="0.5" fill="currentColor" /><rect x="2" y="10" width="8" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="13" width="12" height="1.5" rx="0.5" fill="currentColor" /></svg>;
 }
 
-export const diffPanel: RailPanelDescriptor = {
-  id: "diff",
-  title: "Diff",
+export const repositoryPanel: RailPanelDescriptor = {
+  id: "repository",
+  title: "Repository",
   icon: () => <DiffIcon />,
   pathAware: true,
-  render: (ctx: RailPanelContext) => <DiffPanel ctx={ctx} />,
+  render: (ctx: RailPanelContext) => <RepositoryPanel ctx={ctx} />,
 };

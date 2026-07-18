@@ -10,7 +10,7 @@ describe("runGit", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-diff-test-"));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-test-"));
   });
 
   afterEach(async () => {

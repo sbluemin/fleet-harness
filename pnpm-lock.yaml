@@ -497,7 +497,7 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  runtime/fleet-plugins/diff:
+  runtime/fleet-plugins/repository:
     dependencies:
       '@dotobokuri/core-process':
         specifier: workspace:*

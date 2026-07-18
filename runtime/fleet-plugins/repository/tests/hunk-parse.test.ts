@@ -187,8 +187,8 @@ describe("parseHunk", () => {
 describe("highlightEscapedDiffCode", () => {
   it("wraps escaped tokens without restoring executable HTML", () => {
     const html = highlightEscapedDiffCode("const value = &lt;script&gt;42&lt;/script&gt;; // note");
-    expect(html).toContain('class="diff-token-keyword"');
-    expect(html).toContain('class="diff-token-number"');
+    expect(html).toContain('class="repository-token-keyword"');
+    expect(html).toContain('class="repository-token-number"');
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
   });

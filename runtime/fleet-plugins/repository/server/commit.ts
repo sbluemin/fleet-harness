@@ -35,7 +35,7 @@ export function parseCommitMeta(output: string): CommitMeta | null {
 
 // ─── handlers ────────────────────────────────────────────────────────────────
 
-export async function handleDiffCommit(
+export async function handleRepositoryCommit(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,

@@ -1,6 +1,6 @@
 {
-  "id": "diff",
-  "name": "Diff",
+  "id": "repository",
+  "name": "Repository",
   "apiVersion": 1,
   "routes": "routes.ts",
   "client": "client/index.tsx"
