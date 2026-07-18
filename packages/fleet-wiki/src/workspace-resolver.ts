@@ -89,7 +89,7 @@ function resolveLocked(workspace: WikiWorkspace, hooks?: WikiWorkspaceResolverTe
 }
 
 type TreeState = "missing" | "empty" | "content" | "unsafe";
-function inspectTree(target: string, regularRootIsContent = false): TreeState {
+function inspectTree(target: string, regularRootIsContent = false, treeRoot = target): TreeState {
   let stat: fs.Stats;
   try { stat = fs.lstatSync(target); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
@@ -100,10 +100,16 @@ function inspectTree(target: string, regularRootIsContent = false): TreeState {
   if (nodeKind === "file") return regularRootIsContent ? "content" : "unsafe";
   let content = false;
   for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-    if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) return "unsafe";
+    const entryPath = path.join(target, entry.name);
+    if (entry.isSymbolicLink()) {
+      if (readSafeFileSymlink(treeRoot, entryPath) === null) return "unsafe";
+      content = true;
+      continue;
+    }
+    if (!entry.isDirectory() && !entry.isFile()) return "unsafe";
     if (entry.isFile()) content = true;
     if (entry.isDirectory()) {
-      const nested = inspectTree(path.join(target, entry.name));
+      const nested = inspectTree(entryPath, false, treeRoot);
       if (nested === "unsafe") return "unsafe";
       if (nested === "content") content = true;
     }
@@ -127,17 +133,49 @@ function readMarker(markerPath: string): MigrationMarker | null {
   return record as unknown as MigrationMarker;
 }
 
-function copyTree(source: string, destination: string, hooks?: WikiWorkspaceResolverTestHooks): void {
+function copyTree(source: string, destination: string, hooks?: WikiWorkspaceResolverTestHooks, sourceRoot = source): void {
   fs.mkdirSync(destination, { recursive: true });
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
     const from = path.join(source, entry.name); const to = path.join(destination, entry.name);
     const stat = fs.lstatSync(from);
+    if (stat.isSymbolicLink()) {
+      const target = readSafeFileSymlink(sourceRoot, from);
+      if (target === null) throw new Error("Unsafe Fleet Wiki legacy source state");
+      fs.symlinkSync(target, to, "file");
+      continue;
+    }
     const nodeKind = classifyWikiWorkspaceNodeForTest(stat);
     if (nodeKind === "unsafe") throw new Error("Unsafe Fleet Wiki legacy source state");
-    if (nodeKind === "directory") copyTree(from, to, hooks);
+    if (nodeKind === "directory") copyTree(from, to, hooks, sourceRoot);
     else { hooks?.beforeCopyFile?.(from, to); fs.copyFileSync(from, to); syncFile(to); }
   }
   syncDirectory(destination);
+}
+
+function readSafeFileSymlink(treeRoot: string, linkPath: string): string | null {
+  const target = fs.readlinkSync(linkPath);
+  if (path.posix.isAbsolute(target) || path.win32.isAbsolute(target)) return null;
+  const lexicalRoot = path.resolve(treeRoot);
+  const lexicalTarget = path.resolve(path.dirname(linkPath), target);
+  if (!isWithinRoot(lexicalRoot, lexicalTarget)) return null;
+  let canonicalRoot: string;
+  let canonicalTarget: string;
+  let targetStat: fs.Stats;
+  try {
+    canonicalRoot = fs.realpathSync(treeRoot);
+    canonicalTarget = fs.realpathSync(linkPath);
+    targetStat = fs.statSync(linkPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (!isWithinRoot(canonicalRoot, canonicalTarget) || !targetStat.isFile()) return null;
+  return target;
+}
+
+function isWithinRoot(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 /** Test-only direct-module seam for the lstat branch; absent from the package-root barrel. */
