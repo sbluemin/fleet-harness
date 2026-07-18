@@ -160,7 +160,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
   const responses: Array<{ status: number; body: unknown }> = [];
   const state = { allowHost: initialHostAllowance };
-  const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {} };
+  const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
   const ctx = {
     pluginId: "terminal", basePath: "/api/v1/plugins/terminal",
     registerRouter: (_path: string, registered: typeof handler) => { handler = registered; },
