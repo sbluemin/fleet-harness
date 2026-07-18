@@ -1,3 +1,5 @@
-{"type":"user","timestamp":"2026-07-18T00:00:00Z","message":{"content":"Inspect the change"}}
-{"type":"tool_use","timestamp":"2026-07-18T00:00:01Z","name":"Read","path":"src/example.ts"}
-{"type":"assistant","timestamp":"2026-07-18T00:00:02Z","message":{"content":"The file is small."}}
+{"type":"user","timestamp":"2026-07-18T00:00:00Z","message":{"role":"user","content":"Inspect the change"}}
+{"type":"assistant","timestamp":"2026-07-18T00:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"I will inspect the implementation."},{"type":"thinking","thinking":"Need locate the changed file."},{"type":"tool_use","name":"Read","input":{"path":"src/example.ts"}}]}}
+{"type":"user","timestamp":"2026-07-18T00:00:02Z","message":{"role":"user","content":[{"type":"tool_result","content":"export const value = 1;"}]}}
+{"type":"mystery_record","timestamp":"2026-07-18T00:00:03Z","payload":{"text":"harmless unknown"}}
+this is intentionally malformed
