@@ -126,6 +126,13 @@ describe("legacy active Repository panel migration", () => {
     expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.activePanelId", "repository");
   });
 
+  it("seeds History as the Repository source during history migration", async () => {
+    const storage = stubStorage("history");
+    await freshStore();
+    expect(storage.values.get("fleet-console.repository.source")).toBe("history");
+    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.repository.source", "history");
+  });
+
   it.each(["repository", "terminal", null])("passes through %s without migration", async (id) => {
     const storage = stubStorage(id);
     const { getRailStoreSnapshot } = await freshStore();

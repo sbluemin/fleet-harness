@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -5,6 +6,9 @@ import { defineConfig } from "tsup";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, "../..");
+
+// Vite 산출물과 다른 플러그인은 보존하되, 이름이 바뀐 diff 라우트만 빌드 전에 제거한다.
+fs.rmSync(path.join(__dirname, "dist", "fleet-plugins", "diff"), { recursive: true, force: true });
 
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([

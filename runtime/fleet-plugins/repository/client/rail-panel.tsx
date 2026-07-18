@@ -19,6 +19,7 @@ interface RepositoryPanelProps {
 
 const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
 const PREFS_LIST_PANE_WIDTH = "fleet-console.diff.listPaneWidth";
+const PREFS_SOURCE = "fleet-console.repository.source";
 const EXTENDED_EXTRA_WIDTH = 400;
 const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
@@ -29,6 +30,18 @@ function readViewMode(): ViewMode {
     if (value === "list" || value === "tree") return value;
   } catch { /* ignore */ }
   return "list";
+}
+
+export function readRepositorySource(): Source {
+  try {
+    const value = localStorage.getItem(PREFS_SOURCE);
+    if (value === "changes" || value === "history" || value === "branches" || value === "tags" || value === "stashes" || value === "worktrees") return value;
+  } catch { /* ignore */ }
+  return "changes";
+}
+
+function saveRepositorySource(source: Source): void {
+  try { localStorage.setItem(PREFS_SOURCE, source); } catch { /* ignore */ }
 }
 
 function readListPaneWidth(): number {
@@ -55,7 +68,7 @@ type RepositoryWorktree = { name: string; branch: string | null; current: boolea
 type RefItem = { label: string; ref: string; current: boolean };
 type Refs = { branches: RefItem[]; remotes: RefItem[]; tags: RefItem[]; stashes: { name: string; subject: string }[]; worktrees: RepositoryWorktree[] };
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
-  const [source, setSource] = useState<Source>("changes");
+  const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [refFilter, setRefFilter] = useState<string | null>(null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [], worktrees: [] });
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
@@ -70,6 +83,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const listPaneWidthRef = useRef(listPaneWidth);
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const setSource = useCallback((next: Source) => {
+    setSourceState(next);
+    saveRepositorySource(next);
+  }, []);
   useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setRefsError(false); ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject()).then((value) => { if (!cancelled) setRefs(value); }).catch(() => { if (!cancelled) setRefsError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, subPath, refsRetry]);
   useEffect(() => {
     if (!ctx.theaterId) {
