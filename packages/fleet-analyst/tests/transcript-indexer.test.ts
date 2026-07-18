@@ -48,6 +48,74 @@ describe("TranscriptIndexer", () => {
     expect(indexer.all).toHaveLength(1);
     expect(indexer.all[0]).toMatchObject({ ref: "e1", summary: "replacement" });
   });
+
+  it("shares concurrent refresh work without indexing records twice", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    await writeFile(file, [
+      '{"type":"assistant","message":{"content":"first"}}',
+      '{"type":"assistant","message":{"content":"second"}}',
+      "",
+    ].join("\n"));
+    const indexer = new TranscriptIndexer(file, { maxReadBytes: 16 });
+
+    const first = indexer.refresh();
+    const second = indexer.refresh();
+    expect(first).toBe(second);
+    await Promise.all([first, second]);
+
+    expect(indexer.all.map((event) => event.summary)).toEqual(["first", "second"]);
+  });
+
+  it("resets when a same-size rewrite breaks the continuity sentinel", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    const original = '{"type":"assistant","message":{"content":"first"}}\n';
+    const replacement = '{"type":"assistant","message":{"content":"other"}}\n';
+    expect(Buffer.byteLength(replacement)).toBe(Buffer.byteLength(original));
+    await writeFile(file, original);
+    const indexer = new TranscriptIndexer(file);
+    await indexer.refresh();
+
+    await writeFile(file, replacement);
+    await indexer.refresh();
+
+    expect(indexer.all).toEqual([expect.objectContaining({ ref: "e1", summary: "other" })]);
+  });
+
+  it("walks multiple read chunks to EOF in one refresh", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    const records = Array.from({ length: 12 }, (_, index) => JSON.stringify({ type: "assistant", message: { content: `event-${index}` } }));
+    await writeFile(file, `${records.join("\n")}\n`);
+    const indexer = new TranscriptIndexer(file, { maxReadBytes: 31 });
+
+    await indexer.refresh();
+
+    expect(indexer.all.map((event) => event.summary)).toEqual(records.map((_, index) => `event-${index}`));
+  });
+
+  it("preserves UTF-8 records split across byte-sized chunks", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    await writeFile(file, `${JSON.stringify({ type: "assistant", message: { content: "분석 완료" } })}\n`);
+    const indexer = new TranscriptIndexer(file, { maxReadBytes: 1 });
+
+    await indexer.refresh();
+
+    expect(indexer.all).toEqual([expect.objectContaining({ summary: "분석 완료", offset: 0 })]);
+  });
+
+  it("jumps to a bounded tail and marks the skipped range in the outline", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    const tailRecord = JSON.stringify({ type: "assistant", message: { content: "tail-event" } });
+    await writeFile(file, `${"x".repeat(32 * 1024 * 1024 + 1)}\n${tailRecord}\n`);
+    const indexer = new TranscriptIndexer(file, { maxReadBytes: 160 });
+
+    await indexer.refresh();
+
+    expect(indexer.all.length).toBeGreaterThan(0);
+    expect(indexer.all.at(-1)?.summary).toBe("tail-event");
+    expect(indexer.outline()).toMatchObject({
+      gaps: [{ startOffset: 0, endOffset: expect.any(Number), skippedBytes: expect.any(Number) }],
+    });
+  });
 });
 
 async function copyFixture(name: string): Promise<string> {

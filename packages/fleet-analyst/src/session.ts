@@ -15,6 +15,8 @@ import { ANALYST_SYSTEM_PROMPT } from "./prompt.js";
 import { AnalystTools } from "./tools.js";
 import type { AnalystSessionOptions } from "./types.js";
 
+const DISPOSE_SETTLE_MS = 2_000;
+
 /** Owns every per-analysis resource. Nothing survives dispose(). */
 export class AnalystSession {
   private readonly token = crypto.randomUUID();
@@ -26,34 +28,53 @@ export class AnalystSession {
   private started = false;
   private disposed = false;
   private turn: Promise<void> = Promise.resolve();
+  private disposeFlight: Promise<void> | null = null;
   constructor(private readonly options: AnalystSessionOptions) { this.tools = new AnalystTools(options); }
   async start(): Promise<void> {
     if (this.disposed) throw new Error("Session disposed");
     if (this.started) return;
     await this.tools.refresh();
+    this.throwIfDisposed();
     const specs = this.tools.specs();
     for (const spec of specs) this.registry.registerExecutorTool(spec);
     registerExecutorSessionTools({ registry: this.registry, server: this.server, snapshotStore: this.snapshotStore }, this.token, specs);
     installExecutorToolCallRouter({ registry: this.registry, server: this.server, snapshotStore: this.snapshotStore }, this.token, { cwd: this.options.cwd });
     const url = await this.server.start();
+    this.throwIfDisposed();
     const client = await UnifiedAgent.build({ cli: this.options.cliId });
     this.bridge(client);
-    await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: true, yoloMode: true, systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: "session_analyst", url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
+    try {
+      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: true, yoloMode: true, systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: "session_analyst", url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
+    } catch (error) {
+      if (this.disposed) await Promise.allSettled([client.disconnect(), this.disposeFlight ?? Promise.resolve()]);
+      throw error;
+    }
+    if (this.disposed) {
+      await Promise.allSettled([client.disconnect(), this.disposeFlight ?? Promise.resolve()]);
+      throw new Error("Session disposed");
+    }
     this.client = client; this.started = true;
   }
   send(text: string): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error("Session disposed"));
     if (!this.started || !this.client) return Promise.reject(new Error("Session not started"));
     if (!text.trim()) return Promise.reject(new Error("Message required"));
     const run = this.turn.then(async () => { await this.client!.sendMessage(text); });
     this.turn = run.catch(() => undefined);
     return run;
   }
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposeFlight) return this.disposeFlight;
     this.disposed = true;
-    await this.turn.catch(() => undefined);
+    this.disposeFlight = this.disposeResources();
+    return this.disposeFlight;
+  }
+  private async disposeResources(): Promise<void> {
+    const client = this.client;
+    const cancel = client?.cancelPrompt().catch(() => undefined) ?? Promise.resolve();
+    await settleWithin([cancel, this.turn.catch(() => undefined)], DISPOSE_SETTLE_MS);
     cleanupExecutorSession({ registry: this.registry, server: this.server, snapshotStore: this.snapshotStore }, this.token);
-    try { await this.client?.disconnect(); } finally { this.client = null; await this.server.stop(); this.started = false; }
+    try { await client?.disconnect(); } finally { this.client = null; await this.server.stop(); this.started = false; }
   }
   private bridge(client: IUnifiedAgentClient): void {
     client.on("messageChunk", text => this.options.onEvent?.({ type: "chunk", text }));
@@ -62,5 +83,19 @@ export class AnalystSession {
     client.on("toolCallUpdate", (title, status) => this.options.onEvent?.({ type: "tool", title, status }));
     client.on("promptComplete", () => this.options.onEvent?.({ type: "complete" }));
     client.on("error", error => this.options.onEvent?.({ type: "error", error: { code: "analysis_error", message: error.message } }));
+    client.on("exit", (code, signal) => this.options.onEvent?.({ type: "error", error: { code: "analysis_exited", message: `Analysis process exited (code ${code ?? "unknown"}, signal ${signal ?? "none"})` } }));
+  }
+  private throwIfDisposed(): void { if (this.disposed) throw new Error("Session disposed"); }
+}
+
+async function settleWithin(promises: readonly Promise<unknown>[], timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.allSettled(promises),
+      new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }

@@ -1,58 +1,112 @@
 import { open } from "node:fs/promises";
-import { basename, isAbsolute } from "node:path";
+import { isAbsolute } from "node:path";
 
 import type { SessionOutline, TranscriptEvent, TranscriptIndexerOptions, TranscriptKind } from "./types.js";
 
 const DEFAULT_MAX_READ = 4 * 1024 * 1024;
+const DEFAULT_MAX_REFRESH = 32 * 1024 * 1024;
+const CONTINUITY_BYTES = 4 * 1024;
+
+interface TranscriptGap {
+  readonly startOffset: number;
+  readonly endOffset: number;
+  readonly skippedBytes: number;
+}
 
 /** Read-only, bounded JSONL index. References are stable until a source truncates. */
 export class TranscriptIndexer {
   private readonly maxReadBytes: number;
+  private readonly maxRefreshBytes: number;
   private readonly events: TranscriptEvent[] = [];
+  private readonly gaps: TranscriptGap[] = [];
   private offset = 0;
-  private remainder = "";
+  private remainder = Buffer.alloc(0);
+  private continuitySentinel: Buffer | null = null;
+  private refreshFlight: Promise<readonly TranscriptEvent[]> | null = null;
 
   constructor(private readonly capturePath: string, options: TranscriptIndexerOptions = {}) {
-    this.maxReadBytes = options.maxReadBytes ?? DEFAULT_MAX_READ;
+    this.maxReadBytes = positiveInteger(options.maxReadBytes, DEFAULT_MAX_READ);
+    this.maxRefreshBytes = Math.max(this.maxReadBytes, DEFAULT_MAX_REFRESH);
   }
 
   get all(): readonly TranscriptEvent[] { return this.events; }
 
   outline(): SessionOutline {
-    return {
+    const outline: SessionOutline = {
       eventCount: this.events.length,
       fileTouchCount: new Set(this.events.map((event) => event.targetPath).filter(Boolean)).size,
       stages: [...new Set(this.events.map((event) => event.stage).filter((stage): stage is string => !!stage))],
     };
+    return this.gaps.length > 0 ? { ...outline, gaps: this.gaps.map((gap) => ({ ...gap })) } : outline;
   }
 
-  async refresh(): Promise<readonly TranscriptEvent[]> {
+  refresh(): Promise<readonly TranscriptEvent[]> {
+    if (this.refreshFlight) return this.refreshFlight;
+    const flight = this.refreshOnce().finally(() => {
+      if (this.refreshFlight === flight) this.refreshFlight = null;
+    });
+    this.refreshFlight = flight;
+    return flight;
+  }
+
+  private async refreshOnce(): Promise<readonly TranscriptEvent[]> {
     const handle = await open(this.capturePath, "r");
     try {
       const stat = await handle.stat();
-      if (stat.size < this.offset) {
-        this.offset = 0;
-        this.remainder = "";
-        this.events.length = 0;
+      const currentPrefix = await readPrefix(handle, stat.size);
+      if (stat.size < this.offset || !startsWith(currentPrefix, this.continuitySentinel)) {
+        this.reset();
       }
-      const size = Math.min(Math.max(0, stat.size - this.offset), this.maxReadBytes);
-      if (!size) return this.events;
+      this.continuitySentinel = currentPrefix;
 
-      const buffer = Buffer.alloc(size);
-      const { bytesRead } = await handle.read(buffer, 0, size, this.offset);
-      const start = this.offset;
-      this.offset += bytesRead;
-      const text = this.remainder + buffer.subarray(0, bytesRead).toString("utf8");
-      const lines = text.split("\n");
-      this.remainder = lines.pop() ?? "";
+      let discardPartialLine = false;
+      const unreadBytes = Math.max(0, stat.size - this.offset);
+      if (unreadBytes > this.maxRefreshBytes) {
+        const nextOffset = Math.max(0, stat.size - this.maxReadBytes);
+        this.gaps.push({ startOffset: this.offset, endOffset: nextOffset, skippedBytes: nextOffset - this.offset });
+        this.offset = nextOffset;
+        this.remainder = Buffer.alloc(0);
+        discardPartialLine = this.offset > 0;
+      }
 
-      let lineOffset = start;
-      for (const line of lines) {
-        this.addLine(line, lineOffset);
-        lineOffset += Buffer.byteLength(line) + 1;
+      while (this.offset < stat.size) {
+        const size = Math.min(stat.size - this.offset, this.maxReadBytes);
+        const buffer = Buffer.alloc(size);
+        const start = this.offset;
+        const { bytesRead } = await handle.read(buffer, 0, size, start);
+        if (!bytesRead) break;
+        this.offset += bytesRead;
+        discardPartialLine = this.addChunk(buffer.subarray(0, bytesRead), start, discardPartialLine);
       }
       return this.events;
     } finally { await handle.close(); }
+  }
+
+  private addChunk(buffer: Buffer, start: number, discardPartialLine: boolean): boolean {
+    const priorRemainder = this.remainder;
+    const bytes = priorRemainder.length > 0 ? Buffer.concat([priorRemainder, buffer]) : buffer;
+    const combinedStart = start - priorRemainder.length;
+    let cursor = 0;
+
+    if (discardPartialLine) {
+      const newline = bytes.indexOf(0x0a);
+      if (newline < 0) return true;
+      cursor = newline + 1;
+    }
+
+    for (let newline = bytes.indexOf(0x0a, cursor); newline >= 0; newline = bytes.indexOf(0x0a, cursor)) {
+      this.addLine(bytes.subarray(cursor, newline).toString("utf8"), combinedStart + cursor);
+      cursor = newline + 1;
+    }
+    this.remainder = Buffer.from(bytes.subarray(cursor));
+    return false;
+  }
+
+  private reset(): void {
+    this.offset = 0;
+    this.remainder = Buffer.alloc(0);
+    this.events.length = 0;
+    this.gaps.length = 0;
   }
 
   private addLine(line: string, offset: number): void {
@@ -74,14 +128,14 @@ function normalize(value: Record<string, unknown>, firstNumber: number, offset: 
   return candidates.map((candidate, index) => {
     const blockType = text(candidate.type) ?? type;
     const targetPath = safePath(firstPath(candidate, value, payload, object(candidate.input) ?? {}));
-    const summary = contentFor(candidate) ?? text(value.summary) ?? text(value.name) ?? blockType;
+    const summary = redactTranscriptString(contentFor(candidate) ?? text(value.summary) ?? text(value.name) ?? blockType);
     return {
       ref: `e${firstNumber + index}`,
-      timestamp,
+      timestamp: timestamp ? redactTranscriptString(timestamp) : undefined,
       kind: kindFor(blockType, targetPath),
       summary: truncate(summary, 500),
       targetPath,
-      stage,
+      stage: stage ? redactTranscriptString(stage) : undefined,
       offset,
     };
   });
@@ -123,7 +177,43 @@ function firstPath(...values: Record<string, unknown>[]): string | undefined {
 }
 
 function safePath(value: string | undefined): string | undefined {
-  return value && isAbsolute(value) ? `<external>/${basename(value)}` : value;
+  if (!value) return undefined;
+  return redactTranscriptString(isAbsolute(value) || isWindowsAbsolute(value) ? shortenAbsolutePath(value) : value);
 }
 
 function truncate(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
+
+function redactTranscriptString(value: string): string {
+  return value
+    .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]*mcp[^\s"'<>]*/gi, "[MCP_URL]")
+    .replace(/\bAuthorization\s*[:=]\s*(?:Bearer\s+)?[^\s,;"'<>]+/gi, "Authorization: [REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]")
+    .replace(/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|npm_[A-Za-z0-9]{8,}|xox[A-Za-z]-[A-Za-z0-9-]{8,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,})\b/g, "[REDACTED]")
+    .replace(/\b(api[_-]?key|access[_-]?token|client[_-]?secret|secret)\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{8,}["']?/gi, "$1=[REDACTED]")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[SESSION_ID]")
+    .replace(/\b[A-Za-z]:\\(?:[^\\\s"'<>|]+\\)+[^\\\s"'<>|]+/g, match => shortenAbsolutePath(match))
+    .replace(/\/(?:Users|home|private|var|tmp|opt|Volumes)\/(?:[^/\s"'<>]+\/)+[^/\s"'<>]+/g, match => shortenAbsolutePath(match));
+}
+
+function isWindowsAbsolute(value: string): boolean { return /^[A-Za-z]:\\/.test(value); }
+
+function shortenAbsolutePath(value: string): string {
+  const segments = value.replace(/\\/g, "/").split("/").filter(Boolean);
+  return `…/${segments.slice(-2).join("/")}`;
+}
+
+async function readPrefix(handle: Awaited<ReturnType<typeof open>>, size: number): Promise<Buffer> {
+  const length = Math.min(size, CONTINUITY_BYTES);
+  if (!length) return Buffer.alloc(0);
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, 0);
+  return buffer.subarray(0, bytesRead);
+}
+
+function startsWith(current: Buffer, previous: Buffer | null): boolean {
+  return previous === null || (current.length >= previous.length && current.subarray(0, previous.length).equals(previous));
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
