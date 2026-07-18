@@ -62,6 +62,26 @@ describe("Session Analyst readiness handle", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("opens Session Analyst from a ready dormant operation without resuming it", async () => {
+    const fetch = vi.fn().mockResolvedValue(readyResponse(true));
+    const onRequestCompanions = vi.fn();
+    await renderOperation(fetch, "dormant", onRequestCompanions);
+
+    const resume = container?.querySelector<HTMLButtonElement>(".canvas-operation-dormant");
+    const resumeClick = vi.fn();
+    resume?.addEventListener("click", resumeClick);
+    const handle = analystHandle();
+    expect(resume?.textContent).toContain("Resume");
+    expect(handle.disabled).toBe(false);
+    expect(handle.textContent).toContain("ANALYZE");
+
+    act(() => handle.click());
+    expect(onRequestCompanions).toHaveBeenCalledWith(true);
+    expect(resumeClick).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0]?.[1]).toBe(`analysis/${OPERATION_ID}/ready`);
+  });
+
   it("treats readiness request failures as not ready", async () => {
     const api = createApi(vi.fn().mockRejectedValue(new Error("offline")));
     await expect(fetchAnalysisReady(api, OPERATION_ID)).resolves.toBe(false);
@@ -69,12 +89,16 @@ describe("Session Analyst readiness handle", () => {
 });
 
 async function renderLiveOperation(fetch: ReturnType<typeof vi.fn>): Promise<void> {
+  await renderOperation(fetch, "live");
+}
+
+async function renderOperation(fetch: ReturnType<typeof vi.fn>, status: "live" | "dormant", onRequestCompanions = vi.fn()): Promise<void> {
   applySessionUpdate({
     sessionId: OPERATION_ID,
     terminalSessionId: OPERATION_ID,
     cwdLabel: "Workspace",
     label: "Ready test",
-    status: "live",
+    status,
     turnState: "none",
     createdAt: 1,
     theaterId: "theater",
@@ -86,7 +110,7 @@ async function renderLiveOperation(fetch: ReturnType<typeof vi.fn>): Promise<voi
   const render = agentOperationKind.render;
   if (!render) throw new Error("Agent operation renderer must exist.");
   await act(async () => {
-    root?.render(render(createContext(createApi(fetch))) as React.ReactNode);
+    root?.render(render(createContext(createApi(fetch), onRequestCompanions)) as React.ReactNode);
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -96,7 +120,7 @@ function createApi(fetch: ReturnType<typeof vi.fn>): ClientApiCapability {
   return { fetch, subscribe: () => () => undefined, resync: vi.fn() } as ClientApiCapability;
 }
 
-function createContext(api: ClientApiCapability): OperationRenderContext {
+function createContext(api: ClientApiCapability, onRequestCompanions = vi.fn()): OperationRenderContext {
   const operation = {
     id: OPERATION_ID,
     pluginId: "terminal",
@@ -117,7 +141,7 @@ function createContext(api: ClientApiCapability): OperationRenderContext {
     zoom: 1,
     theme: "instrument",
     companionsOpen: false,
-    onRequestCompanions: vi.fn(),
+    onRequestCompanions,
   } as unknown as OperationRenderContext;
 }
 

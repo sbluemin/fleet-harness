@@ -243,12 +243,12 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
   return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
-function useAnalysisReady(context: OperationRenderContext, live: boolean): boolean {
+function useAnalysisReady(context: OperationRenderContext): boolean {
   const companionsOpen = context.companionsOpen ?? false;
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
-    if (!live || companionsOpen || ready) return;
+    if (companionsOpen || ready) return;
     let disposed = false;
     let requestPending = false;
     const poll = async () => {
@@ -264,9 +264,25 @@ function useAnalysisReady(context: OperationRenderContext, live: boolean): boole
       disposed = true;
       window.clearInterval(interval);
     };
-  }, [companionsOpen, context.api, context.operationId, live, ready]);
+  }, [companionsOpen, context.api, context.operationId, ready]);
 
   return companionsOpen || ready;
+}
+
+function SessionAnalystHandle({ context, ready }: { readonly context: OperationRenderContext; readonly ready: boolean }) {
+  const companionsOpen = context.companionsOpen ?? false;
+  return (
+    <button
+      type="button"
+      className={`session-analyst-handle${ready ? "" : " is-waiting"}`}
+      aria-label={companionsOpen ? "Exit Session Analyst" : "Open Session Analyst"}
+      aria-pressed={companionsOpen}
+      aria-disabled={!ready}
+      disabled={!ready}
+      title={ready ? undefined : "Send a message in this session first"}
+      onClick={() => { if (ready) context.onRequestCompanions?.(!context.companionsOpen); }}
+    ><span className="session-analyst-handle__chev" aria-hidden="true">{companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{companionsOpen ? "EXIT" : "ANALYZE"}</span></button>
+  );
 }
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
@@ -281,7 +297,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
-  const analysisReady = useAnalysisReady(context, session.status !== "dormant");
+  const analysisReady = useAnalysisReady(context);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
@@ -385,25 +401,19 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   if (session.status === "dormant") {
     return (
-      <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
-        <span className="canvas-operation-dormant-status">Dormant</span>
-        <span className="canvas-operation-dormant-action">Resume</span>
-      </button>
+      <div className="agent-stream-host">
+        <SessionAnalystHandle context={context} ready={analysisReady} />
+        <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
+          <span className="canvas-operation-dormant-status">Dormant</span>
+          <span className="canvas-operation-dormant-action">Resume</span>
+        </button>
+      </div>
     );
   }
 
   return (
     <div className="agent-stream-host">
-      <button
-        type="button"
-        className={`session-analyst-handle${analysisReady ? "" : " is-waiting"}`}
-        aria-label={context.companionsOpen ? "Exit Session Analyst" : "Open Session Analyst"}
-        aria-pressed={context.companionsOpen ?? false}
-        aria-disabled={!analysisReady}
-        disabled={!analysisReady}
-        title={analysisReady ? undefined : "Send a message in this session first"}
-        onClick={() => { if (analysisReady) context.onRequestCompanions?.(!context.companionsOpen); }}
-      ><span className="session-analyst-handle__chev" aria-hidden="true">{context.companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{context.companionsOpen ? "EXIT" : "ANALYZE"}</span></button>
+      <SessionAnalystHandle context={context} ready={analysisReady} />
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
