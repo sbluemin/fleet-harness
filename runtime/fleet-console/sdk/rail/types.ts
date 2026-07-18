@@ -11,6 +11,8 @@ export interface RailPathContext {
 export interface RailPanelContext {
   readonly theaterId: string | null;
   readonly pathContext: RailPathContext;
+  /** deck 선택과 동일 경로로 path context를 전환한다. */
+  readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
 }

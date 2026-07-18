@@ -103,19 +103,20 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
-  const ctx: RailPanelContext = useMemo(() => ({
-    theaterId,
-    pathContext: pathContext ?? ROOT_PATH_CONTEXT,
-    api,
-    requestExtraWidth: (px: number | null) => {
-      if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
-    },
-  }), [theaterId, pathContext, api, activeId]);
-
   const selectPathContext = useCallback((relPath: string | null) => {
     if (!theaterId) return;
     void mutateRailPathContext(theaterId, (signal) => putRailPathContext(theaterId, relPath, signal));
   }, [theaterId]);
+
+  const ctx: RailPanelContext = useMemo(() => ({
+    theaterId,
+    pathContext: pathContext ?? ROOT_PATH_CONTEXT,
+    selectPathContext,
+    api,
+    requestExtraWidth: (px: number | null) => {
+      if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
+    },
+  }), [theaterId, pathContext, selectPathContext, api, activeId]);
 
   return (
     <div
