@@ -65,11 +65,11 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
 
 type Source = "changes" | "history" | "branches" | "tags" | "stashes" | "worktrees";
 type RefSource = Exclude<Source, "changes" | "history">;
-export type RepositoryWorktree = { name: string; branch: string | null; current: boolean };
+export type RepositoryWorktree = { name: string; branch: string | null; current: boolean; contextRelPath: string | null };
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
 export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[]; worktrees: RepositoryWorktree[] };
-export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean };
+export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean; contextRelPath?: string | null };
 export type RepositoryRefGroup = { label?: "LOCAL" | "REMOTES"; rows: RepositoryRefRow[] };
 type Refs = RepositoryRefs;
 
@@ -87,7 +87,15 @@ export function buildRefListGroups(source: RefSource, refs: RepositoryRefs): Rep
   }
   if (source === "tags") return [{ rows: refRows(refs.tags, "tags") }];
   if (source === "stashes") return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false })) }];
-  return [{ rows: refs.worktrees.map((item) => ({ key: item.name, source, primary: item.branch ?? item.name, ...(item.branch && item.branch !== item.name ? { sub: item.name } : {}), ref: null, current: item.current })) }];
+  return [{ rows: refs.worktrees.map((item) => ({ key: item.name, source, primary: item.branch ?? item.name, ...(item.branch && item.branch !== item.name ? { sub: item.name } : {}), ref: null, current: item.current, contextRelPath: item.contextRelPath })) }];
+}
+
+export function isWorktreePathContextSelectable(selectPathContext: RailPanelContext["selectPathContext"], contextRelPath: string | null | undefined): boolean {
+  return selectPathContext !== undefined && contextRelPath !== null && contextRelPath !== undefined;
+}
+
+export function worktreePathContextRelPath(contextRelPath: string): string | null {
+  return contextRelPath === "" ? null : contextRelPath;
 }
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [source, setSourceState] = useState<Source>(readRepositorySource);
@@ -180,7 +188,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   return (
     <div className="repository-unified"><SourceNav source={source} refs={refs} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /><div className="repository-source-content">
       <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel ctx={ctx} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
-      {source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
+      {source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} selectPathContext={ctx.selectPathContext} /> : null}
       <div hidden={source !== "changes"} ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
       {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} /></div> : null}
       {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
@@ -194,9 +202,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
 function SourceIcon({ source }: { readonly source: Source }) { const path = source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : source === "stashes" ? "M4 5h10v9H4zM6 3h6" : "M3 5h5l1 2h6v7H3z"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function SourceNav({ source, refs, onSource }: { readonly source: Source; readonly refs: Refs; readonly onSource: (source: Source) => void; readonly onRef: (ref: string) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}{button("worktrees", "Worktrees", refs.worktrees.length)}</nav>; }
-function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
+function RefList({ source, refs, onRef, selectPathContext }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void; readonly selectPathContext: RailPanelContext["selectPathContext"] }) {
   if (source === "changes" || source === "history") return null;
-  return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => { if (row.ref) onRef(row.ref); }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}{row.current && " ✓"}</span>{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>)}</div>)}</div>;
+  return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => {
+    const worktreeSelectable = row.source === "worktrees" && isWorktreePathContextSelectable(selectPathContext, row.contextRelPath);
+    return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.source === "worktrees" ? !worktreeSelectable : row.ref === null} onClick={() => {
+      if (row.ref) onRef(row.ref);
+      else if (worktreeSelectable && selectPathContext && typeof row.contextRelPath === "string") selectPathContext(worktreePathContextRelPath(row.contextRelPath));
+    }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}{row.current && " ✓"}</span>{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>;
+  })}</div>)}</div>;
 }
 
 function RepositoryIcon() {

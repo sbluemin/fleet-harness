@@ -24,16 +24,34 @@ async function readStashes(gitCwd: string): Promise<string> {
     throw error;
   }
 }
-export async function parseWorktrees(stdout: string, currentWorktreePath: string): Promise<readonly { name: string; branch: string | null; current: boolean }[]> {
+export interface ParseWorktreesDeps {
+  readonly realpath?: (path: string) => Promise<string>;
+}
+
+export async function parseWorktrees(stdout: string, currentWorktreePath: string, theaterPath: string, deps: ParseWorktreesDeps = {}): Promise<readonly { name: string; branch: string | null; current: boolean; contextRelPath: string | null }[]> {
   const records = stdout.split("\n\n").map((record) => record.split("\n"));
-  const normalizedCurrent = currentWorktreePath ? await fs.realpath(currentWorktreePath).catch(() => currentWorktreePath) : "";
+  const realpath = deps.realpath ?? fs.realpath;
+  const normalizedCurrent = currentWorktreePath ? await realpath(currentWorktreePath).catch(() => currentWorktreePath) : "";
+  const realTheaterPath = await realpath(theaterPath).catch(() => null);
   return Promise.all(records.flatMap((record) => {
     const rawPath = record.find((line) => line.startsWith("worktree "))?.slice(9);
     if (!rawPath) return [];
     const branchRef = record.find((line) => line.startsWith("branch "))?.slice(7) ?? null;
     const branch = branchRef?.startsWith("refs/heads/") ? branchRef.slice(11) : null;
     return [{ rawPath, name: path.basename(rawPath) || "worktree", branch }];
-  }).map(async ({ rawPath, ...item }) => ({ ...item, current: normalizedCurrent !== "" && (await fs.realpath(rawPath).catch(() => rawPath)) === normalizedCurrent })));
+  }).map(async ({ rawPath, ...item }) => {
+    const realWorktreePath = await realpath(rawPath).catch(() => null);
+    const currentPath = realWorktreePath ?? rawPath;
+    const contextRelPath = realTheaterPath !== null && realWorktreePath !== null && isWithinTheater(realWorktreePath, realTheaterPath)
+      ? path.relative(realTheaterPath, realWorktreePath).split(path.sep).join("/")
+      : null;
+    return { ...item, current: normalizedCurrent !== "" && currentPath === normalizedCurrent, contextRelPath };
+  }));
+}
+
+function isWithinTheater(candidate: string, theaterPath: string): boolean {
+  const normalizedTheaterPath = theaterPath.endsWith(path.sep) ? theaterPath : `${theaterPath}${path.sep}`;
+  return candidate === theaterPath || candidate.startsWith(normalizedTheaterPath);
 }
 
 /** Browser-safe, read-only ref inventory. Never return worktree filesystem paths. */
@@ -60,7 +78,7 @@ export async function handleRepositoryRefs(req: http.IncomingMessage, res: http.
     ctx.host.http.writeJson(res, 200, {
       branches: parseRefItems(local.stdout, current), remotes: parseRefItems(remote.stdout, current), tags: parseRefItems(tags.stdout, current),
       stashes: lines(stashes).map((line) => { const [name, subject = ""] = line.split("\0"); return { name, subject }; }),
-      worktrees: await parseWorktrees(worktrees.stdout, currentWorktreePath),
+      worktrees: await parseWorktrees(worktrees.stdout, currentWorktreePath, theaterPath),
     });
   } catch (error) {
     if (error instanceof GitExecutorError && error.code === "no_git_repo") { ctx.host.http.writeJson(res, 200, { branches: [], remotes: [], tags: [], stashes: [], worktrees: [] }); return; }
