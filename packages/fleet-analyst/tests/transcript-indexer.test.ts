@@ -128,12 +128,24 @@ describe("TranscriptIndexer", () => {
       "cloud-credential-value", "private-key-value", "provider-session-value", "dXNlcjpwYXNzd29yZA==",
       "private-key-material", "eyJhbGciOiJIUzI1NiJ9", "cookie-secret", "set-cookie-secret",
       "ses_providerSecret42", "sess-providerSecret43", "/etc/ssh/sshd_config",
+      "/workspace/repo/src/a.ts", "/mnt/data/capture.jsonl", "/srv/team files/report.md",
+      "openai-secret-value", "aws-secret-value", "client-secret-value",
     ]) expect(exposed).not.toContain(secret);
     expect(exposed).toContain("packages/fleet-analyst/src/session.ts");
+    expect(exposed).toContain("packages/fleet-analyst/src/tools.ts");
+    expect(exposed).toContain("./scripts/build.sh");
+    expect(exposed).toContain("and/or");
+    expect(exposed).toContain("24/7");
+    expect(exposed).toContain("TURKEY=bird");
+    expect(exposed).toContain("primary_key=id");
+    expect(exposed).toContain("https://example.com/a/b");
     expect(exposed).toContain("The session analysis is ordinary prose.");
     expect(exposed).toContain("[REDACTED_PEM_KEY]");
     expect(exposed).toContain("[REDACTED_JWT]");
     expect(exposed).toContain("…/ssh/sshd_config");
+    expect(exposed).toContain("…/src/a.ts");
+    expect(exposed).toContain("…/data/capture.jsonl");
+    expect(exposed).toContain("…/team files/report.md");
   });
 
   it("caps cumulative events at 20,000, evicts the oldest, and records truncation", async () => {

@@ -27,10 +27,76 @@ export type AnalysisEvent =
 
 export const FORBIDDEN_ANALYSIS_KEYS = new Set(["path", "cwd", "canonicalcwd", "transcriptpath", "providersession", "sessionid", "token", "ticket", "url", "mcpurl", "rawtranscript"]);
 export const MAX_ARTIFACT_BYTES = 50 * 1024;
-export const ARTIFACT_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">`;
+const ARTIFACT_CSP_CONTENT = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
+export const ARTIFACT_CSP = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP_CONTENT}">`;
+
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+const STATIC_ARTIFACT_ELEMENTS = new Set([
+  "abbr", "address", "article", "aside", "b", "bdi", "bdo", "blockquote", "br", "caption", "cite", "code", "col", "colgroup",
+  "data", "dd", "details", "div", "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
+  "header", "hr", "i", "img", "kbd", "li", "main", "mark", "meter", "ol", "p", "pre", "progress", "q", "s", "samp", "section",
+  "small", "span", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var",
+]);
+const GLOBAL_ARTIFACT_ATTRIBUTES = new Set(["class", "dir", "hidden", "id", "lang", "role", "style", "title"]);
+const ELEMENT_ARTIFACT_ATTRIBUTES = new Map<string, ReadonlySet<string>>([
+  ["col", new Set(["span"])], ["colgroup", new Set(["span"])], ["data", new Set(["value"])], ["details", new Set(["open"])],
+  ["img", new Set(["alt", "height", "src", "width"])], ["li", new Set(["value"])],
+  ["meter", new Set(["high", "low", "max", "min", "optimum", "value"])], ["ol", new Set(["reversed", "start", "type"])],
+  ["progress", new Set(["max", "value"])], ["td", new Set(["colspan", "headers", "rowspan"])],
+  ["th", new Set(["abbr", "colspan", "headers", "rowspan", "scope"])], ["time", new Set(["datetime"])],
+]);
+const RASTER_DATA_IMAGE = /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-9+/]*={0,2}$/i;
 
 export function safeArtifactSrcdoc(html: string): string | null {
-  return utf8Size(html) > MAX_ARTIFACT_BYTES ? null : `${ARTIFACT_CSP}${html}`;
+  if (utf8Size(html) > MAX_ARTIFACT_BYTES) return null;
+  const parser = new DOMParser();
+  const source = parser.parseFromString(html, "text/html");
+  const clean = parser.parseFromString("<!doctype html><html><head></head><body></body></html>", "text/html");
+  const csp = clean.createElement("meta");
+  csp.httpEquiv = "Content-Security-Policy";
+  csp.content = ARTIFACT_CSP_CONTENT;
+  clean.head.append(csp);
+  appendStaticChildren(source.head, clean.head, clean);
+  appendStaticChildren(source.body, clean.body, clean);
+  return `<!doctype html>${clean.documentElement.outerHTML}`;
+}
+
+function appendStaticChildren(source: ParentNode, target: Node, clean: Document): void {
+  for (const child of source.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      target.appendChild(clean.createTextNode(child.textContent ?? ""));
+      continue;
+    }
+    if (!(child instanceof Element) || child.namespaceURI !== HTML_NAMESPACE) continue;
+    const tag = child.localName;
+    if (!STATIC_ARTIFACT_ELEMENTS.has(tag)) continue;
+    const element = clean.createElement(tag);
+    copyStaticAttributes(child, element, tag);
+    if (tag === "style") element.textContent = safeInlineCss(child.textContent ?? "");
+    else appendStaticChildren(child, element, clean);
+    target.appendChild(element);
+  }
+}
+
+function copyStaticAttributes(source: Element, target: Element, tag: string): void {
+  const elementAttributes = ELEMENT_ARTIFACT_ATTRIBUTES.get(tag);
+  for (const attribute of source.attributes) {
+    const name = attribute.name.toLowerCase();
+    if (!GLOBAL_ARTIFACT_ATTRIBUTES.has(name) && !elementAttributes?.has(name) && !/^aria-[a-z0-9-]+$/.test(name) && !/^data-[a-z0-9-]+$/.test(name)) continue;
+    if (name === "src") {
+      if (tag === "img" && RASTER_DATA_IMAGE.test(attribute.value)) target.setAttribute(name, attribute.value);
+      continue;
+    }
+    if (name === "style") target.setAttribute(name, safeInlineCss(attribute.value));
+    else if (name === "dir" && !["ltr", "rtl", "auto"].includes(attribute.value.toLowerCase())) continue;
+    else target.setAttribute(name, attribute.value);
+  }
+}
+
+function safeInlineCss(value: string): string {
+  return value
+    .replace(/@import\b[\s\S]*?(?:;|$)/gi, "")
+    .replace(/url\s*\([^)]*\)/gi, "none");
 }
 
 export function hasForbiddenAnalysisKey(value: unknown): boolean {

@@ -13,3 +13,6 @@
 {"type":"assistant","message":{"content":"Set-Cookie: session=set-cookie-secret; HttpOnly"}}
 {"type":"assistant","message":{"content":"provider ids ses_providerSecret42 and sess-providerSecret43"}}
 {"type":"assistant","message":{"content":"Read /etc/ssh/sshd_config but keep packages/fleet-analyst/src/session.ts. The session analysis is ordinary prose."}}
+{"type":"assistant","message":{"content":"Inspect /workspace/repo/src/a.ts and /mnt/data/capture.jsonl, then \"/srv/team files/report.md\"."}}
+{"type":"assistant","message":{"content":"OPENAI_API_KEY=openai-secret-value \"AWS_SECRET_ACCESS_KEY\": \"aws-secret-value\" clientSecret=client-secret-value"}}
+{"type":"assistant","message":{"content":"Keep packages/fleet-analyst/src/tools.ts, ./scripts/build.sh, and/or, 24/7, TURKEY=bird, primary_key=id, and https://example.com/a/b intact."}}

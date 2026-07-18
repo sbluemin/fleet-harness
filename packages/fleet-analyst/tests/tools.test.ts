@@ -33,12 +33,17 @@ describe("AnalystTools", () => {
       "/Users/alice/workspace/private/file.ts",
       "/home/alice/project/config.json",
       "C:\\Users\\alice\\project\\secret.txt",
+      "/workspace/repo/src/private.ts",
+      "/mnt/data/private.jsonl",
+      "/srv/team files/private report.md",
+      "openai-api-secret-value",
+      "aws-access-secret-value",
       "http://127.0.0.1:8123/mcp?session=private",
       "123e4567-e89b-42d3-a456-426614174000",
     ];
     await writeFile(file, `${JSON.stringify({
       type: "assistant",
-      message: { content: `Authorization: Bearer ${secrets[0]} ${secrets.slice(1).join(" ")}` },
+      message: { content: `Authorization: Bearer ${secrets[0]} ${secrets.slice(1, 10).join(" ")} "${secrets[10]}" OPENAI_API_KEY=${secrets[11]} "AWS_SECRET_ACCESS_KEY": "${secrets[12]}" ${secrets.slice(13).join(" ")}` },
     })}\n`);
     const tools = new AnalystTools({ capturePath: file, cwd: process.cwd() });
     await tools.refresh();
@@ -47,6 +52,7 @@ describe("AnalystTools", () => {
     const responses = [
       await byId.get("session_events")!.execute({}, {} as never),
       await byId.get("session_read")!.execute({ ref: "e1", radius: 0 }, {} as never),
+      await byId.get("live_tail")!.execute({}, {} as never),
     ];
     const exposed = JSON.stringify(responses);
     for (const secret of secrets) expect(exposed).not.toContain(secret);
@@ -56,6 +62,9 @@ describe("AnalystTools", () => {
     expect(exposed).toContain("…/private/file.ts");
     expect(exposed).toContain("…/project/config.json");
     expect(exposed).toContain("…/project/secret.txt");
+    expect(exposed).toContain("…/src/private.ts");
+    expect(exposed).toContain("…/data/private.jsonl");
+    expect(exposed).toContain("…/team files/private report.md");
   });
 
   it("does not rewrite publish_artifact input", async () => {

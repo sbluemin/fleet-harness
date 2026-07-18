@@ -74,20 +74,12 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
 }
 
 function ActiveArtifact({ artifact }: { readonly artifact: AnalysisArtifact }) {
-  const loadCount = React.useRef(0);
-  const [blocked, setBlocked] = React.useState(false);
   const srcdoc = safeArtifactSrcdoc(artifact.html);
   if (!srcdoc) return null;
-  const handleLoad = () => {
-    loadCount.current += 1;
-    if (loadCount.current > 1) setBlocked(true);
-  };
   return (
     <article aria-label="Selected artifact preview">
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} /></header>
-      {blocked
-        ? <p role="alert">Artifact blocked after attempting navigation.</p>
-        : <iframe title={artifact.title} srcDoc={srcdoc} sandbox="allow-scripts" onLoad={handleLoad} />}
+      <iframe title={artifact.title} srcDoc={srcdoc} sandbox="" />
     </article>
   );
 }

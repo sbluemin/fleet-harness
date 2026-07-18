@@ -1,5 +1,5 @@
 import { open } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { posix } from "node:path";
 
 import type { SessionOutline, TranscriptEvent, TranscriptIndexerOptions, TranscriptKind } from "./types.js";
 
@@ -196,13 +196,13 @@ function firstPath(...values: Record<string, unknown>[]): string | undefined {
 
 function safePath(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  return redactTranscriptString(isAbsolute(value) || isWindowsAbsolute(value) ? shortenAbsolutePath(value) : value);
+  return redactTranscriptString(posix.isAbsolute(value) || isWindowsAbsolute(value) ? shortenAbsolutePath(value) : value);
 }
 
 function truncate(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 
 export function redactTranscriptString(value: string): string {
-  return value
+  const secretsRedacted = redactSecretAssignments(value
     .replace(/-----BEGIN [^-\r\n]*KEY-----[\s\S]*?-----END [^-\r\n]*KEY-----/gi, "[REDACTED_PEM_KEY]")
     .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]*mcp[^\s"'<>]*/gi, "[MCP_URL]")
     .replace(/\bAuthorization\s*[:=]\s*Basic\s+[A-Za-z0-9+/]+={0,2}/gi, "Authorization: [REDACTED]")
@@ -212,10 +212,92 @@ export function redactTranscriptString(value: string): string {
     .replace(/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|npm_[A-Za-z0-9]{8,}|xox[A-Za-z]-[A-Za-z0-9-]{8,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,})\b/g, "[REDACTED]")
     .replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g, "[REDACTED_JWT]")
     .replace(/\b(?:ses_[A-Za-z0-9_-]{4,}|sess-[A-Za-z0-9_-]{4,})\b/g, "[SESSION_ID]")
-    .replace(/\b([A-Za-z_][A-Za-z0-9_-]*(?:password|passwd|pwd|secret|token|credential|private[_-]?key|session(?:[_-]?(?:id|key|token))?))(\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi, "$1$2[REDACTED]")
-    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[SESSION_ID]")
-    .replace(/\b[A-Za-z]:\\(?:[^\\\s"'<>|]+\\)+[^\\\s"'<>|]+/g, match => shortenAbsolutePath(match))
-    .replace(/\/(?:Users|home|private|var|tmp|opt|Volumes|etc)\/(?:[^/\s"'<>]+\/)*[^/\s"'<>]+/g, match => shortenAbsolutePath(match));
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[SESSION_ID]"));
+  const windowsPathsRedacted = secretsRedacted.replace(/\b[A-Za-z]:\\(?:[^\\\s"'<>|]+\\)+[^\\\s"'<>|]+/g, match => shortenAbsolutePath(match));
+  return redactPosixAbsolutePaths(windowsPathsRedacted);
+}
+
+function redactSecretAssignments(value: string): string {
+  const assignment = /(?<![A-Za-z0-9_-])(?:(['"])([A-Za-z_][A-Za-z0-9_-]*)\1|([A-Za-z_][A-Za-z0-9_-]*))(\s*[:=]\s*)/g;
+  let output = "";
+  let cursor = 0;
+  for (let match = assignment.exec(value); match; match = assignment.exec(value)) {
+    const key = match[2] ?? match[3] ?? "";
+    if (!isSensitiveAssignmentKey(key)) continue;
+    const valueStart = assignment.lastIndex;
+    const valueEnd = assignmentValueEnd(value, valueStart);
+    if (valueEnd <= valueStart) continue;
+    const token = value.slice(valueStart, valueEnd);
+    const quote = token[0] === '"' || token[0] === "'" ? token[0] : "";
+    const closedQuote = !!quote && token.length > 1 && token.at(-1) === quote;
+    output += value.slice(cursor, valueStart);
+    output += closedQuote ? `${quote}[REDACTED]${quote}` : "[REDACTED]";
+    cursor = valueEnd;
+    assignment.lastIndex = valueEnd;
+  }
+  return `${output}${value.slice(cursor)}`;
+}
+
+function isSensitiveAssignmentKey(key: string): boolean {
+  const parts = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map(part => part.toLowerCase());
+  const terminal = parts.at(-1) ?? "";
+  if (new Set(["password", "passwd", "pwd", "secret", "token", "credential", "credentials", "session", "auth", "apikey"]).has(terminal)) return true;
+  const prior = parts.at(-2) ?? "";
+  if (terminal === "key" && new Set(["api", "access", "secret", "private", "signing", "encryption"]).has(prior)) return true;
+  if (prior === "client" && terminal === "secret") return true;
+  return prior === "session" && new Set(["id", "key", "token"]).has(terminal);
+}
+
+function assignmentValueEnd(value: string, start: number): number {
+  const quote = value[start] === '"' || value[start] === "'" ? value[start] : "";
+  if (!quote) {
+    let end = start;
+    while (end < value.length && !/[\s,;\]}]/.test(value[end]!)) end += 1;
+    return end;
+  }
+  let end = start + 1;
+  while (end < value.length && value[end] !== "\n" && value[end] !== "\r") {
+    if (value[end] === "\\") { end += 2; continue; }
+    if (value[end] === quote) return end + 1;
+    end += 1;
+  }
+  return end;
+}
+
+function redactPosixAbsolutePaths(value: string): string {
+  let output = "";
+  let cursor = 0;
+  let index = 0;
+  while (index < value.length) {
+    const fileUrl = value.startsWith("file:///", index);
+    const start = fileUrl ? index + "file://".length : index;
+    if (value[start] !== "/") { index += 1; continue; }
+    const prior = value[start - 1];
+    if (!fileUrl && ((prior && /[A-Za-z0-9_./…-]/.test(prior)) || value[start + 1] === "/")) { index = start + 1; continue; }
+    const quote = prior === '"' || prior === "'" ? prior : "";
+    let end = start + 1;
+    if (quote) {
+      while (end < value.length && value[end] !== quote && value[end] !== "\n" && value[end] !== "\r") end += 1;
+    } else {
+      while (end < value.length && !/[\s"'<>]/.test(value[end]!)) end += 1;
+    }
+    let pathEnd = end;
+    if (!quote) while (pathEnd > start && /[.,;:!?\])}]/.test(value[pathEnd - 1]!)) pathEnd -= 1;
+    const candidate = value.slice(start, pathEnd);
+    if (candidate !== "/" && posix.isAbsolute(candidate)) {
+      output += `${value.slice(cursor, start)}${shortenAbsolutePath(candidate)}`;
+      cursor = pathEnd;
+      index = pathEnd;
+      continue;
+    }
+    index = start + 1;
+  }
+  return `${output}${value.slice(cursor)}`;
 }
 
 function isWindowsAbsolute(value: string): boolean { return /^[A-Za-z]:\\/.test(value); }
