@@ -82,7 +82,7 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
   }
   const transcriptPath = capture.transcriptPath ? await resolveTranscriptPath(capture.transcriptPath, operation.ts.createdAt) : null;
   if (!transcriptPath) {
-    writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.transcriptMissing, "Analysis transcript is unavailable.");
+    writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.transcriptMissing, "No transcript yet — send a message in this session first, then ask again.");
     return true;
   }
   const cwd = ctx.host.paths.resolveTheaterPath(operation.theaterId);
