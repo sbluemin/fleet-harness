@@ -12,6 +12,16 @@ export async function fetchAnalysisCatalog(api: ClientApiCapability): Promise<An
   if (catalog) return catalog;
   throw errorFrom(response.status, payload);
 }
+export async function fetchAnalysisReady(api: ClientApiCapability, operationId: string): Promise<boolean> {
+  try {
+    const response = await fetchOrThrow(api, `${base(operationId)}/ready`);
+    if (!response.ok) return false;
+    const payload = await response.json().catch(() => null);
+    return !!payload && typeof payload === "object" && !Array.isArray(payload) && (payload as { ready?: unknown }).ready === true;
+  } catch {
+    return false;
+  }
+}
 export async function startAnalysis(api: ClientApiCapability, operationId: string, input: { readonly cliId: string; readonly model: string; readonly effort: string }): Promise<void> { await request(api, `${base(operationId)}/start`, input); }
 export async function sendAnalysisMessage(api: ClientApiCapability, operationId: string, text: string): Promise<void> { await request(api, `${base(operationId)}/message`, { text }); }
 export async function stopAnalysis(api: ClientApiCapability, operationId: string): Promise<void> { await request(api, `${base(operationId)}/stop`, {}); }

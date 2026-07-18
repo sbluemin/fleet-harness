@@ -12,6 +12,7 @@ import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTer
 import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { fetchAnalysisReady } from "./analysis-api.js";
 import { disposeAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
@@ -74,6 +75,7 @@ const PIN_SLACK_PX = 56;
 const DOCK_RETENTION_MS = 4_000;
 const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
 const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
+const ANALYSIS_READY_POLL_MS = 5_000;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -241,6 +243,32 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
   return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
+function useAnalysisReady(context: OperationRenderContext, live: boolean): boolean {
+  const companionsOpen = context.companionsOpen ?? false;
+  const [ready, setReady] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!live || companionsOpen || ready) return;
+    let disposed = false;
+    let requestPending = false;
+    const poll = async () => {
+      if (requestPending) return;
+      requestPending = true;
+      const nextReady = await fetchAnalysisReady(context.api, context.operationId);
+      requestPending = false;
+      if (!disposed && nextReady) setReady(true);
+    };
+    void poll();
+    const interval = window.setInterval(() => { void poll(); }, ANALYSIS_READY_POLL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [companionsOpen, context.api, context.operationId, live, ready]);
+
+  return companionsOpen || ready;
+}
+
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
@@ -253,6 +281,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  const analysisReady = useAnalysisReady(context, session.status !== "dormant");
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
@@ -367,10 +396,13 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     <div className="agent-stream-host">
       <button
         type="button"
-        className="session-analyst-handle"
+        className={`session-analyst-handle${analysisReady ? "" : " is-waiting"}`}
         aria-label={context.companionsOpen ? "Exit Session Analyst" : "Open Session Analyst"}
         aria-pressed={context.companionsOpen ?? false}
-        onClick={() => context.onRequestCompanions?.(!context.companionsOpen)}
+        aria-disabled={!analysisReady}
+        disabled={!analysisReady}
+        title={analysisReady ? undefined : "Send a message in this session first"}
+        onClick={() => { if (analysisReady) context.onRequestCompanions?.(!context.companionsOpen); }}
       >{context.companionsOpen ? "« EXIT" : "ANALYZE »"}</button>
       <TerminalSurface
         operationId={session.sessionId}

@@ -107,6 +107,45 @@ describe("Session Analyst server contract", () => {
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined }));
   });
 
+  it("reports analysis as not ready when no provider capture exists", async () => {
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never, { readCapture: () => null });
+
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
+
+    expect(router.responses.at(-1)).toEqual({ status: 200, body: { ready: false } });
+  });
+
+  it("reports analysis as ready when the captured transcript exists", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-ready-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never, {
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+    });
+
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
+
+    expect(router.responses.at(-1)).toEqual({ status: 200, body: { ready: true } });
+    expect(JSON.stringify(router.responses.at(-1))).not.toContain(transcriptPath);
+  });
+
+  it("reports analysis as ready when transcript fallback resolution succeeds", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-ready-fallback-"));
+    const fallbackPath = join(dir, "active-session.jsonl");
+    await writeFile(fallbackPath, "{}\n");
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never, {
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "missing-session.jsonl") }),
+    });
+
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
+
+    expect(router.responses.at(-1)).toEqual({ status: 200, body: { ready: true } });
+    expect(JSON.stringify(router.responses.at(-1))).not.toContain(fallbackPath);
+  });
+
   it("falls back to the newest sibling transcript when the captured session file was never written", async () => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-transcripts-"));
     const activePath = join(dir, "active-session.jsonl");

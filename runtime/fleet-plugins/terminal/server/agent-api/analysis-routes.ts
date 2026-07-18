@@ -39,7 +39,7 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
     }
     const path = pathname.slice(`${ctx.basePath}/analysis`.length) || "/";
     if (path === "/catalog") return handleCatalog(ctx, req, res, catalog);
-    const match = path.match(/^\/([^/]+)\/(start|message|stream|stop)$/);
+    const match = path.match(/^\/([^/]+)\/(ready|start|message|stream|stop)$/);
     if (!match) return false;
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -48,6 +48,7 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
       writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
       return true;
     }
+    if (action === "ready") return handleReady(ctx, req, res, operation, readCapture);
     if (action === "start") return handleStart(ctx, req, res, operation, registry, catalog, readCapture, createSession);
     if (action === "message") return handleMessage(ctx, req, res, operationId, registry);
     if (action === "stream") return handleStream(ctx, req, res, operationId, registry);
@@ -66,6 +67,17 @@ async function handleCatalog(ctx: FleetPluginServerContext, req: http.IncomingMe
   return true;
 }
 
+async function handleReady(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode, readCapture: typeof readProviderSessionCapture): Promise<boolean> {
+  if (req.method !== "GET") return methodNotAllowed(ctx, res);
+  try {
+    const { transcriptPath } = await resolveOperationTranscript(ctx, operation, readCapture);
+    ctx.host.http.writeJson(res, 200, { ready: transcriptPath !== null });
+  } catch {
+    ctx.host.http.writeJson(res, 200, { ready: false });
+  }
+  return true;
+}
+
 async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode, registry: AnalysisRegistry, catalog: () => Promise<AnalysisCatalog>, readCapture: typeof readProviderSessionCapture, createSession: (options: ConstructorParameters<typeof AnalystSession>[0]) => AnalystSession): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
@@ -75,12 +87,12 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     writeError(ctx, res, 400, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis selection is unavailable.");
     return true;
   }
-  const capture = readCapture(operation.id, { capturesDir: ctx.host.paths.capturesDir });
-  if (!capture) {
+  const transcript = await resolveOperationTranscript(ctx, operation, readCapture);
+  if (!transcript.captureFound) {
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.captureMissing, "Analysis capture is unavailable.");
     return true;
   }
-  const transcriptPath = capture.transcriptPath ? await resolveTranscriptPath(capture.transcriptPath, operation.ts.createdAt) : null;
+  const transcriptPath = transcript.transcriptPath;
   if (!transcriptPath) {
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.transcriptMissing, "No transcript yet — send a message in this session first, then ask again.");
     return true;
@@ -100,6 +112,15 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");
   }
   return true;
+}
+
+async function resolveOperationTranscript(ctx: FleetPluginServerContext, operation: OperationNode, readCapture: typeof readProviderSessionCapture): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {
+  const capture = readCapture(operation.id, { capturesDir: ctx.host.paths.capturesDir });
+  if (!capture) return { captureFound: false, transcriptPath: null };
+  const transcriptPath = capture.transcriptPath
+    ? await resolveTranscriptPath(capture.transcriptPath, operation.ts.createdAt)
+    : null;
+  return { captureFound: true, transcriptPath };
 }
 
 async function handleMessage(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operationId: string, registry: AnalysisRegistry): Promise<boolean> {
