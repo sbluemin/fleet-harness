@@ -17,6 +17,7 @@ export interface AnalysisCatalog { readonly clis: readonly AnalysisCli[]; }
 export interface AnalysisError { readonly code: string; readonly message: string; }
 export interface AnalysisArtifact { readonly id: string; readonly title: string; readonly html: string; readonly createdAt: number; }
 export type AnalysisEvent =
+  | { readonly type: "connected" }
   | { readonly type: "chunk"; readonly text: string }
   | { readonly type: "thought"; readonly text: string }
   | { readonly type: "tool"; readonly title: string; readonly status: string }
@@ -42,6 +43,7 @@ export function parseAnalysisCatalog(value: unknown): AnalysisCatalog | null {
 
 export function parseAnalysisEvent(value: unknown): AnalysisEvent | null {
   if (hasForbiddenAnalysisKey(value) || !isRecord(value) || typeof value.type !== "string") return null;
+  if (value.type === "connected") return { type: "connected" };
   if ((value.type === "chunk" || value.type === "thought") && typeof value.text === "string") return { type: value.type, text: value.text };
   if (value.type === "tool" && typeof value.title === "string" && typeof value.status === "string") return { type: "tool", title: value.title, status: value.status };
   if (value.type === "complete") return { type: "complete" };

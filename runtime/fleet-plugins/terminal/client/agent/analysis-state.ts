@@ -23,6 +23,7 @@ export type AnalysisAction =
   | { readonly type: "sending"; readonly started: boolean; readonly text: string }
   | { readonly type: "event"; readonly event: AnalysisEvent }
   | { readonly type: "error"; readonly message: string }
+  | { readonly type: "start-failed"; readonly message: string }
   | { readonly type: "clear-artifacts" };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
@@ -32,9 +33,12 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (action.type === "select-effort" && !state.started) return { ...state, effort: action.effort };
   if (action.type === "sending") return { ...state, started: state.started || action.started, busy: true, error: null, thinking: "", tools: [], entries: [...state.entries, { role: "user", text: action.text }] };
   if (action.type === "error") return { ...state, busy: false, error: action.message };
+  // start 실패는 선택기를 다시 열어야 하므로 started까지 되돌린다.
+  if (action.type === "start-failed") return { ...state, busy: false, started: false, error: action.message };
   if (action.type === "clear-artifacts") return { ...state, artifacts: [] };
   if (action.type !== "event") return state;
   const event = action.event;
+  if (event.type === "connected") return state;
   if (event.type === "chunk") return { ...state, entries: appendAnalystChunk(state.entries, event.text) };
   if (event.type === "thought") return { ...state, thinking: state.thinking + event.text };
   if (event.type === "tool") return { ...state, tools: [...state.tools.filter((tool) => tool.title !== event.title), { title: event.title, status: event.status }] };
