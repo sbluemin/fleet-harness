@@ -93,7 +93,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   const renderAnchor = () => {
     if (disposed) return;
     if (!selection) { anchor.innerHTML = ""; return; }
-    const at = `style="top:${selection.top}px;left:${selection.left}px"`;
+    // 중앙 정렬(translateX(-50%)) 기준이므로 요소 절반 폭만큼 안쪽으로 클램프해야
+    // 문서 좌우 경계에서 잘리지 않는다. 컴포저 폭은 CSS min(340px, 86%)와 동기.
+    const hostWidth = options.article.getBoundingClientRect().width || 0;
+    const half = composerOpen ? Math.min(340, hostWidth * 0.86) / 2 + 8 : 56;
+    const left = Math.min(Math.max(selection.left, half), Math.max(hostWidth - half, half));
+    const at = `style="top:${selection.top}px;left:${left}px"`;
     anchor.innerHTML = composerOpen
       ? `<div class="cowork-composer" ${at} role="dialog" aria-label="Add a comment">
           <blockquote>${escapeHtml(clip(selection.quote, 140))}</blockquote>
@@ -352,10 +357,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (!quote || !range || range.rangeCount === 0 || !options.body.contains(range.anchorNode)) return;
     const rect = range.getRangeAt(0).getBoundingClientRect();
     const host = options.article.getBoundingClientRect();
+    // 클램프는 렌더 시점(요소 폭 기준)에 하므로 여기서는 원시 중심 좌표만 저장한다.
     selection = {
       quote,
       top: rect.bottom - host.top + 8,
-      left: Math.min(Math.max(rect.left + rect.width / 2 - host.left, 48), Math.max(host.width - 48, 48)),
+      left: Math.min(Math.max(rect.left + rect.width / 2 - host.left, 0), Math.max(host.width, 0)),
     };
     renderAnchor();
   };
