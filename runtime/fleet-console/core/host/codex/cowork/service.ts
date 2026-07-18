@@ -63,12 +63,12 @@ export class CoworkService {
       this.releaseLive(id);
       this.live.set(id, { client, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
       client.on("permissionRequest", (params, resolve) => {
-        const verdict = evaluatePermission(params);
-        void this.emit(workspaceId, id, "tool", `permission denied: ${verdict.tool.slice(0, 80)}`, false);
+        const verdict = evaluatePermission(params, runtime.allowedToolIds);
+        if (!verdict.permitted) void this.emit(workspaceId, id, "tool", `permission denied: ${verdict.tool.slice(0, 80)}`, false);
         resolve(verdict.response);
       });
       client.on("toolCall", (title, status) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}`, false); });
-      client.on("toolCallUpdate", (title, status) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}`, false).then(() => this.emit(workspaceId, id, "session")); });
+      client.on("toolCallUpdate", (title, status, _sid, data) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}${data ? ` · ${JSON.stringify(data).slice(0, 220)}` : ""}`, false).then(() => this.emit(workspaceId, id, "session")); });
       client.on("messageChunk", (text) => { this.streamBuffers.set(id, (this.streamBuffers.get(id) ?? "") + text); void this.emit(workspaceId, id, "transcript", text, false); });
       client.on("promptComplete", () => { void this.finishPrompt(workspaceId, id, client, null); });
       client.on("error", (error) => { console.error(`[cowork] provider error (session ${id}):`, error?.message ?? error); void this.finishPrompt(workspaceId, id, client, "provider_error"); });
@@ -153,21 +153,27 @@ export class CoworkService {
 }
 
 /**
- * Cowork denies every provider permission request. The hard enforcement boundary is the
- * per-session in-process MCP token registry — the seven cowork tools call our server directly
- * and never pass through provider approval. Anything that DOES ask for approval is a
- * CLI-native capability (shell, file writes, patches) and is rejected outright; toolCall
- * titles are untrusted display strings and must never grant access.
+ * Cowork permission policy: default-deny. The only grant path is protocol-level MCP tool
+ * provenance — the codex app-server bridge stamps the JSON-RPC approval method plus the
+ * declared MCP server and tool names into _meta. Display titles are untrusted and never
+ * grant access; CLI-native capabilities (shell, file writes, patches) are always rejected.
  */
-export function evaluatePermission(params: AcpPermissionRequestParams): { tool: string; response: AcpPermissionResponse } {
-  const tool = params.toolCall.title ?? "";
-  const option = params.options.find(x => x.kind === "reject_once") ?? params.options.find(x => x.kind === "reject_always");
+export function evaluatePermission(params: AcpPermissionRequestParams, allowedToolIds: readonly string[]): { tool: string; permitted: boolean; response: AcpPermissionResponse } {
+  const meta = (params._meta as Record<string, { method?: unknown; server?: unknown; tool?: unknown }> | undefined)?.["sbluemin/codexApproval"];
+  const permitted = meta?.method === "item/mcpToolCall/requestApproval"
+    && meta.server === "cowork"
+    && typeof meta.tool === "string"
+    && allowedToolIds.includes(meta.tool);
+  const tool = typeof meta?.tool === "string" ? `${String(meta.server ?? "")}/${meta.tool}` : (params.toolCall.title ?? "");
+  const option = permitted
+    ? params.options.find(x => x.kind === "allow_once") ?? params.options.find(x => x.kind === "allow_always")
+    : params.options.find(x => x.kind === "reject_once") ?? params.options.find(x => x.kind === "reject_always");
   const response: AcpPermissionResponse = option ? { outcome: { outcome: "selected", optionId: option.optionId } } : { outcome: { outcome: "cancelled" } };
-  return { tool, response };
+  return { tool, permitted, response };
 }
 
-export function permissionResponse(params: AcpPermissionRequestParams): AcpPermissionResponse {
-  return evaluatePermission(params).response;
+export function permissionResponse(params: AcpPermissionRequestParams, allowedToolIds: readonly string[]): AcpPermissionResponse {
+  return evaluatePermission(params, allowedToolIds).response;
 }
 
 function parseDraft(markdown: string): WikiEntry { const match = markdown.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/); if (!match) throw new Error("missing frontmatter"); const values: Record<string, unknown> = {}; for (const line of match[1]!.split("\n")) { const at = line.indexOf(":"); if (at < 1) throw new Error("invalid frontmatter"); const key = line.slice(0, at).trim(); const raw = line.slice(at + 1).trim(); values[key] = raw.startsWith("[") ? JSON.parse(raw) : raw.startsWith('"') ? JSON.parse(raw) : /^-?\d+$/.test(raw) ? Number(raw) : raw; } if (typeof values.id !== "string" || typeof values.title !== "string" || !Array.isArray(values.tags) || typeof values.created !== "string" || typeof values.updated !== "string" || typeof values.version !== "number") throw new Error("invalid entry"); return { ...values, tags: values.tags as string[], body: match[2]! } as WikiEntry; }

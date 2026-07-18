@@ -41,13 +41,21 @@ describe("Cowork MCP runtime", () => {
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
   });
 
-  it("rejects every provider permission request — the MCP token registry is the only grant path", () => {
-    // Cowork MCP tools never pass through provider approval; anything that asks is CLI-native and must be denied.
+  it("grants only protocol-provenanced cowork MCP approvals and rejects everything else", () => {
+    const allowed = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"] as const;
+    // Untrusted display titles never grant access — including spoofed cowork-looking names.
     for (const title of ["mcp__cowork__wiki_draft_read", "bash", "write_file", "bash__wiki_read", "arbitrary.wiki_read"]) {
-      const response: AcpPermissionResponse = permissionResponse(permission(title));
-      expect(response).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
+      expect(permissionResponse(permission(title), allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
     }
-    expect(permissionResponse({ ...permission("bash"), options: [] })).toEqual({ outcome: { outcome: "cancelled" } });
+    // Protocol-level provenance (bridge-stamped method + server + tool) is the only grant path.
+    for (const tool of allowed) {
+      const response: AcpPermissionResponse = permissionResponse(provenanced(tool), allowed);
+      expect(response).toEqual({ outcome: { outcome: "selected", optionId: "allow-once" } });
+    }
+    // Provenanced but foreign server or unlisted tool stays rejected.
+    expect(permissionResponse({ ...provenanced("wiki_draft_read"), _meta: { "sbluemin/codexApproval": { method: "item/mcpToolCall/requestApproval", server: "other", tool: "wiki_draft_read" } } } as AcpPermissionRequestParams, allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
+    expect(permissionResponse(provenanced("bash"), allowed)).toEqual({ outcome: { outcome: "selected", optionId: "reject-once" } });
+    expect(permissionResponse({ ...permission("bash"), options: [] }, allowed)).toEqual({ outcome: { outcome: "cancelled" } });
   });
 
 });
@@ -62,6 +70,7 @@ async function fixture(connector: CoworkConnector = new FakeConnector()) {
 }
 function entry() { return { id: "entry", title: "Entry", tags: ["test"], created: "2026-01-01T00:00:00.000Z", updated: "2026-01-01T00:00:00.000Z", version: 1, body: "Original" }; }
 function draft(value: { body: string; version: number }) { const e = { ...entry(), ...value }; return `---\nid: ${e.id}\ntitle: ${e.title}\ntags: ["test"]\ncreated: ${e.created}\nupdated: ${e.updated}\nversion: ${e.version}\n---\n${e.body}`; }
+function provenanced(tool: string): AcpPermissionRequestParams { return { ...permission(`cowork/${tool}`), _meta: { "sbluemin/codexApproval": { method: "item/mcpToolCall/requestApproval", server: "cowork", tool } } } as AcpPermissionRequestParams; }
 function permission(title: string): AcpPermissionRequestParams { return { sessionId: "session", toolCall: { toolCallId: "call", title, kind: "other", status: "pending", rawInput: {} }, options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }, { optionId: "reject-once", name: "Reject once", kind: "reject_once" }] } as AcpPermissionRequestParams; }
 class FakeConnector implements CoworkConnector {
   readonly client = new EventEmitter() as EventEmitter & { getConnectionInfo(): { sessionId: string }; sendMessage(content: string): Promise<{}>; cancelPrompt(): Promise<void>; disconnect(): Promise<void> };
