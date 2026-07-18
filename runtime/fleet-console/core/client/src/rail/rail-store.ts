@@ -190,7 +190,14 @@ export function useRailPathContextStore(): Pick<RailStore, "pathContextTheaterId
 }
 
 function readStoredPanelId(): string | null {
-  try { return localStorage.getItem(PREFS_ACTIVE_PANEL); } catch { return null; }
+  try {
+    const stored = localStorage.getItem(PREFS_ACTIVE_PANEL);
+    if (stored === "diff" || stored === "history") {
+      try { localStorage.setItem(PREFS_ACTIVE_PANEL, "repository"); } catch { /* best-effort migration */ }
+      return "repository";
+    }
+    return stored;
+  } catch { return null; }
 }
 
 function readStoredChromeExpanded(): boolean {
