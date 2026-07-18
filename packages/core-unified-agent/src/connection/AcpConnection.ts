@@ -60,6 +60,8 @@ export interface AcpConnectionOptions extends BaseConnectionOptions {
   protocolVersion?: number;
   /** 자동 권한 승인 여부 */
   autoApprove?: boolean;
+  /** 클라이언트 파일 I/O(fs.readTextFile/writeTextFile) 허용 여부 (기본: true). 읽기 전용 관찰자처럼 파일 접근을 차단해야 하는 세션에서 끈다. */
+  fsAccess?: boolean;
 }
 
 /** AcpConnection 이벤트 맵 */
@@ -98,6 +100,7 @@ export class AcpConnection extends BaseConnection {
   private readonly clientInfo: { name: string; version: string };
   private readonly protocolVersion: number;
   private readonly autoApprove: boolean;
+  private readonly fsAccess: boolean;
   private activeSessionId: string | null = null;
   private agentProxy: Agent | null = null;
   private agentCapabilities: InitializeResponse['agentCapabilities'] | null = null;
@@ -122,6 +125,7 @@ export class AcpConnection extends BaseConnection {
     };
     this.protocolVersion = options.protocolVersion ?? 1;
     this.autoApprove = options.autoApprove ?? false;
+    this.fsAccess = options.fsAccess ?? true;
   }
 
   /** 타입 안전한 이벤트 리스너 등록 */
@@ -571,8 +575,8 @@ export class AcpConnection extends BaseConnection {
 
     const clientCapabilities = {
       fs: {
-        readTextFile: true,
-        writeTextFile: true,
+        readTextFile: this.fsAccess,
+        writeTextFile: this.fsAccess,
       },
       permissions: true,
       terminal: false,
@@ -632,6 +636,8 @@ export class AcpConnection extends BaseConnection {
       // 파일 읽기 요청 처리 - 직접 파일 I/O 수행
       readTextFile: async (params: ReadTextFileRequest): Promise<ReadTextFileResponse> => {
         this.promptKeepAlive?.();
+        // fs 비허용 세션은 capability로 광고하지 않지만, 호출이 오더라도 디스크에 접근하지 않는다.
+        if (!this.fsAccess) return { content: '' };
         // 파일 존재 여부를 먼저 확인하여 ENOENT를 graceful하게 처리
         try {
           await access(params.path);
@@ -656,6 +662,7 @@ export class AcpConnection extends BaseConnection {
       // 파일 쓰기 요청 처리 - 직접 파일 I/O 수행
       writeTextFile: async (params: WriteTextFileRequest): Promise<WriteTextFileResponse> => {
         this.promptKeepAlive?.();
+        if (!this.fsAccess) return {};
         await mkdir(dirname(params.path), { recursive: true });
         await writeFile(params.path, params.content, 'utf-8');
         return {};

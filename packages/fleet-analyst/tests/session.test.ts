@@ -116,7 +116,7 @@ it("registers a client before connect so concurrent disposal owns a pending conn
 
   void session.start();
   await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
-  expect(connect).toHaveBeenCalledWith(expect.objectContaining({ autoApprove: false }));
+  expect(connect).toHaveBeenCalledWith(expect.objectContaining({ autoApprove: false, fsAccess: false }));
   expect(Object.hasOwn(connect.mock.calls[0]?.[0] ?? {}, "yoloMode")).toBe(false);
 
   await session.dispose();
