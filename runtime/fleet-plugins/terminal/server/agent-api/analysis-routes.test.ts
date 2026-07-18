@@ -13,17 +13,25 @@ import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMess
 
 describe("Session Analyst server contract", () => {
   it("maps detected binaries to a non-sensitive authoritative catalog and rejects stale selections", () => {
+    const modelsFor = vi.fn((_cliId: "claude" | "claude-kimi") => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
     const catalog = buildAnalysisCatalog([
       { id: "claude", displayName: "Claude Code", available: true, version: "1.2.3" },
-      { id: "codex", displayName: "Codex CLI", available: false, version: null },
-    ], () => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
+      { id: "codex", displayName: "Codex CLI", available: true, version: "1.2.3" },
+      { id: "opencode", displayName: "OpenCode", available: true, version: "1.2.3" },
+      { id: "cursor-agent", displayName: "Cursor Agent", available: true, version: "1.2.3" },
+    ], modelsFor);
+    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "claude-kimi"]);
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
     // claude 바이너리 하나가 claude-kimi 백엔드도 제공한다 — 카탈로그에 함께 광고돼야 한다.
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude-kimi", label: "Kimi (Claude Code)", available: true })]));
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
+    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "claude-kimi"]);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-kimi", model: "model-a", effort: "low" })).toBe(true);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "codex", model: "model-a", effort: "low" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "opencode-go", model: "model-a", effort: "low" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "cursor", model: "model-a", effort: "low" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "removed", effort: "low" })).toBe(false);
 
     const noEffortCatalog = buildAnalysisCatalog([

@@ -49,15 +49,15 @@ const RASTER_DATA_IMAGE = /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-
 
 export function safeArtifactSrcdoc(html: string): string | null {
   if (utf8Size(html) > MAX_ARTIFACT_BYTES) return null;
+  const source = document.createElement("template");
+  source.innerHTML = html;
   const parser = new DOMParser();
-  const source = parser.parseFromString(html, "text/html");
   const clean = parser.parseFromString("<!doctype html><html><head></head><body></body></html>", "text/html");
   const csp = clean.createElement("meta");
   csp.httpEquiv = "Content-Security-Policy";
   csp.content = ARTIFACT_CSP_CONTENT;
   clean.head.append(csp);
-  appendStaticChildren(source.head, clean.head, clean);
-  appendStaticChildren(source.body, clean.body, clean);
+  appendStaticChildren(source.content, clean.body, clean);
   return `<!doctype html>${clean.documentElement.outerHTML}`;
 }
 

@@ -14,6 +14,23 @@ import { AnalystSession } from "../src/session.js";
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it.each(["codex", "opencode-go", "cursor"])("rejects non-isolated Analyst provider %s before UnifiedAgent.build", (cliId) => {
+  const build = vi.spyOn(UnifiedAgent, "build");
+
+  expect(() => new AnalystSession({
+    capturePath: "/not-used.jsonl",
+    cwd: process.cwd(),
+    cliId,
+    model: "test-model",
+  } as never)).toThrow("Analyst CLI must support strict MCP isolation");
+  expect(build).not.toHaveBeenCalled();
+});
+
+it("preserves Claude and Kimi Analyst providers", () => {
+  expect(() => new AnalystSession({ capturePath: "/not-used.jsonl", cwd: process.cwd(), cliId: "claude", model: "test-model" })).not.toThrow();
+  expect(() => new AnalystSession({ capturePath: "/not-used.jsonl", cwd: process.cwd(), cliId: "claude-kimi", model: "test-model" })).not.toThrow();
+});
+
 it("rejects sends before start and disposes idempotently", async () => {
   const session = new AnalystSession({
     capturePath: "/not-used-before-start.jsonl",

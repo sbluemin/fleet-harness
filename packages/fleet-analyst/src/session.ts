@@ -31,6 +31,7 @@ export class AnalystSession {
   private readonly registry: McpToolRegistry = createMcpToolRegistry();
   private readonly snapshotStore: McpToolSnapshotStore = createMcpToolSnapshotStore();
   private readonly server: InProcessMcpServer = createInProcessMcpServer({ toolSnapshotStore: this.snapshotStore, serverInfo: { name: "session-analyst" } });
+  private readonly options: AnalystSessionOptions;
   private readonly tools: AnalystTools;
   private client: IUnifiedAgentClient | null = null;
   private pendingClient: IUnifiedAgentClient | null = null;
@@ -38,10 +39,15 @@ export class AnalystSession {
   private disposed = false;
   private turn: Promise<void> = Promise.resolve();
   private disposeFlight: Promise<void> | null = null;
-  constructor(private readonly options: AnalystSessionOptions) { this.tools = new AnalystTools(options); }
+  constructor(options: AnalystSessionOptions) {
+    assertIsolatedAnalystCli(options.cliId);
+    this.options = { ...options };
+    this.tools = new AnalystTools(this.options);
+  }
   async start(): Promise<void> {
     if (this.disposed) throw new Error("Session disposed");
     if (this.started) return;
+    assertIsolatedAnalystCli(this.options.cliId);
     await this.tools.refresh();
     this.throwIfDisposed();
     const specs = this.tools.specs();
@@ -110,6 +116,10 @@ export class AnalystSession {
     client.on("exit", (code, signal) => this.options.onEvent?.({ type: "error", error: { code: "analysis_exited", message: `Analysis process exited (code ${code ?? "unknown"}, signal ${signal ?? "none"})` } }));
   }
   private throwIfDisposed(): void { if (this.disposed) throw new Error("Session disposed"); }
+}
+
+function assertIsolatedAnalystCli(cliId: unknown): asserts cliId is AnalystSessionOptions["cliId"] {
+  if (cliId !== "claude" && cliId !== "claude-kimi") throw new Error("Analyst CLI must support strict MCP isolation");
 }
 
 function resolvePermissionRequest(

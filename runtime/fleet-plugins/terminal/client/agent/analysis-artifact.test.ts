@@ -22,7 +22,7 @@ import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 
 describe("artifact frame", () => {
   it("regenerates a CSP-first static document from positive element and attribute allowlists", () => {
-    const srcdoc = safeArtifactSrcdoc(`<!doctype html><html><head>
+    const raw = `<!doctype html><html><head>
       <meta http-equiv="refresh" content="0;url=https://attacker.example/meta">
       <base href="https://attacker.example/"><link rel="preload" href="https://attacker.example/leak">
       <style>.safe { color: red; background: url(https://attacker.example/css) } @import "https://attacker.example/import";</style>
@@ -41,22 +41,31 @@ describe("artifact frame", () => {
       <svg><a href="https://attacker.example/svg"><animate attributeName="href" values="https://attacker.example/smil"></animate></a></svg>
       <math><a href="https://attacker.example/math">math</a></math>
       <template shadowrootmode="open"><script>location='https://attacker.example/shadow'</script></template>
-    </body></html>`)!;
-    const document = new DOMParser().parseFromString(srcdoc, "text/html");
-    const csp = document.head.firstElementChild;
+    </body></html>`;
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
+    const createElement = vi.spyOn(document, "createElement");
+    const srcdoc = safeArtifactSrcdoc(raw)!;
+
+    expect(createElement).toHaveBeenCalledWith("template");
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(parse.mock.calls[0]?.[0]).not.toBe(raw);
+    parse.mockRestore();
+    createElement.mockRestore();
+    const sanitizedDocument = new DOMParser().parseFromString(srcdoc, "text/html");
+    const csp = sanitizedDocument.head.firstElementChild;
 
     expect(csp?.outerHTML).toBe(ARTIFACT_CSP);
-    expect(document.querySelector("article#safe.safe")).not.toBeNull();
-    expect(document.querySelector("details[open] summary")?.textContent).toBe("Evidence");
-    expect(document.querySelector("table code")?.textContent).toBe("[e1]");
-    expect(document.querySelector("style")?.textContent).toContain("color: red");
-    expect(document.querySelector("article")?.getAttribute("style")).toContain("display:grid");
-    expect(document.querySelector("img#raster")?.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
-    expect(document.querySelector("img#svg-image")?.hasAttribute("src")).toBe(false);
-    expect(document.querySelector("img#remote-image")?.hasAttribute("src")).toBe(false);
-    expect(document.querySelector("[onload], [onerror], [href], [ping], [action], [formaction], [srcdoc], [srcset], [poster]")).toBeNull();
-    expect(document.querySelector("script, noscript, template, svg, math, animate, a, area, form, input, button, iframe, frame, object, embed, video, audio, source, link, base")).toBeNull();
-    expect(document.querySelectorAll("meta")).toHaveLength(1);
+    expect(sanitizedDocument.querySelector("article#safe.safe")).not.toBeNull();
+    expect(sanitizedDocument.querySelector("details[open] summary")?.textContent).toBe("Evidence");
+    expect(sanitizedDocument.querySelector("table code")?.textContent).toBe("[e1]");
+    expect(sanitizedDocument.querySelector("style")?.textContent).toContain("color: red");
+    expect(sanitizedDocument.querySelector("article")?.getAttribute("style")).toContain("display:grid");
+    expect(sanitizedDocument.querySelector("img#raster")?.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(sanitizedDocument.querySelector("img#svg-image")?.hasAttribute("src")).toBe(false);
+    expect(sanitizedDocument.querySelector("img#remote-image")?.hasAttribute("src")).toBe(false);
+    expect(sanitizedDocument.querySelector("[onload], [onerror], [href], [ping], [action], [formaction], [srcdoc], [srcset], [poster]")).toBeNull();
+    expect(sanitizedDocument.querySelector("script, noscript, template, svg, math, animate, a, area, form, input, button, iframe, frame, object, embed, video, audio, source, link, base")).toBeNull();
+    expect(sanitizedDocument.querySelectorAll("meta")).toHaveLength(1);
     expect(srcdoc).not.toContain("attacker.example");
     expect(safeArtifactSrcdoc("x".repeat(50 * 1024 + 1))).toBeNull();
   });
