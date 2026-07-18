@@ -26,4 +26,16 @@ describe("Cowork API client", () => {
     listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: { id: "session" } }), lastEventId: "4" }));
     expect(received).toHaveBeenCalledWith(expect.objectContaining({ type: "session" }), 4);
   });
+
+  it("accepts session-less tool and completion events", () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const received = vi.fn();
+    subscribeCoworkEvents(null, "session", 0, received);
+    listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "5" }));
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "6" }));
+    expect(received).toHaveBeenNthCalledWith(1, { type: "tool", text: "wiki_draft_read · running" }, 5);
+    expect(received).toHaveBeenNthCalledWith(2, { type: "done" }, 6);
+  });
 });

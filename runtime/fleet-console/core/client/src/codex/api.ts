@@ -124,10 +124,6 @@ export async function fetchCoworkTranscript(theaterId: string | null, id: string
   return fetchCoworkJson<{ turns: readonly CoworkTranscriptTurnDto[] }>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/transcript`));
 }
 
-export async function fetchCoworkSession(theaterId: string | null, id: string): Promise<CoworkSessionDto> {
-  return fetchCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}`));
-}
-
 export async function updateCoworkSelection(theaterId: string | null, id: string, selection: string | null): Promise<CoworkSessionDto> {
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/selection`), { selection });
 }
@@ -216,7 +212,8 @@ async function coworkError(response: Response): Promise<CoworkRequestError> {
 function isCoworkEvent(value: unknown): value is CoworkEventDto {
   if (!value || typeof value !== "object") return false;
   const event = value as Partial<CoworkEventDto>;
-  return ["session", "draft", "transcript", "done", "error"].includes(event.type ?? "") && !!event.session && typeof event.session === "object";
+  return ["session", "draft", "transcript", "tool", "done", "error"].includes(event.type ?? "")
+    && (event.session === undefined || (event.session !== null && typeof event.session === "object"));
 }
 
 async function buildRequestError(url: string, response: Response): Promise<string> {

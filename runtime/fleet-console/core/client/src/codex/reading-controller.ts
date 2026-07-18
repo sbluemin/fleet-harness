@@ -234,7 +234,7 @@ export function mountReadingInto(
   async function openCowork(entryId: string, base: string): Promise<void> {
     cleanupReader();
     opts.tocContainer.innerHTML = "";
-    readContainer.innerHTML = '<div class="codex-reader-loading" aria-live="polite" aria-busy="true">Opening draft studio…</div>';
+    readContainer.innerHTML = '<div class="codex-reader-loading" aria-live="polite" aria-busy="true">Opening annotations…</div>';
     coworkController = await mountCoworkInto(readContainer, {
       theaterId: liveOpts.theaterId,
       entryId,
