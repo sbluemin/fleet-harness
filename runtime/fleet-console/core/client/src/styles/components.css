@@ -1622,6 +1622,11 @@
   display: none;
 }
 
+.operations-canvas:has(.job-overlay) .canvas-minimap,
+.operations-canvas:has(.job-overlay) .canvas-minimap-fab {
+  display: none;
+}
+
 /* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
 .canvas-operation--shell .canvas-operation-titlebar {
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
@@ -5029,6 +5034,40 @@
   box-shadow: var(--shadow-floating);
 }
 
+.job-overlay-tabs {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: var(--space-4) calc(var(--space-6) + 42px) 0 var(--space-6);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.job-overlay-tabs [role="tab"] {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.job-overlay-tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--brass-bright);
+  color: var(--brass-bright);
+}
+
+.job-overlay-tabs [role="tab"]:focus-visible,
+.job-overlay-close:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
 .job-overlay-close {
   position: absolute;
   top: var(--space-3);
@@ -5075,6 +5114,63 @@
   flex-direction: column;
   gap: var(--space-5);
 }
+
+.job-overlay-panel[hidden] { display: none; }
+
+.request-details,
+.request-details-blocks {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.request-details-block,
+.request-details-unavailable {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--surface-glass-strong) 76%, transparent);
+}
+
+.request-details-block-head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.request-details-tag,
+.request-details-required,
+.request-details-presence {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.request-details-tag { color: var(--brass-bright); }
+.request-details-hint { min-width: 0; color: var(--ink-spectral); font-size: 12px; }
+.request-details-required { color: var(--ink-fog); }
+.request-details-presence { color: var(--aurora); }
+.request-details-presence.is-missing { color: var(--coral); }
+.request-details-block pre {
+  min-width: 0;
+  margin: var(--space-3) 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.request-details-unavailable { color: var(--ink-fog); }
 
 .job-overlay-card > .follow-button {
   right: var(--space-6);

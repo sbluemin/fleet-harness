@@ -43,7 +43,8 @@ import {
 import {
   buildCarrierSystemPrompt,
   formatRequestBlocksGuide,
-  validateRequiredRequestBlocks,
+  parseCarrierRequest,
+  validateParsedRequiredRequestBlocks,
   type CarrierToolSpecDeps,
 } from "./prompt.js";
 import {
@@ -243,10 +244,12 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       }
 
       const metadata = config.carrierMetadata;
+      // This observer snapshot is computed once; executeOneShot still receives request verbatim.
+      const parsedRequest = parseCarrierRequest(metadata, request);
 
       // 필수 request-block 검증
       if (metadata) {
-        const blockValidation = validateRequiredRequestBlocks(metadata, request, carrierId);
+        const blockValidation = validateParsedRequiredRequestBlocks(metadata, parsedRequest, carrierId);
         if (!blockValidation.ok) {
           return launchResponseResult({
             job_id: jobId,
@@ -261,6 +264,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
           registry,
           carrierId,
           request,
+          parsedRequest,
           label,
           startedAt: t0,
           toolName,
@@ -381,6 +385,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         originSessionId: ctx.sessionLabel,
         trackId: carrierId,
         startedAt: Date.now(),
+        request: parsedRequest,
         requestPreview: request.trim().split(/\r?\n/, 1)[0],
       });
       completionStarted = true;

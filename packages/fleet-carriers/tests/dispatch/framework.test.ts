@@ -700,6 +700,39 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     ]);
   });
 
+  it("emits one identical lossless request structure for every Task Force backend", async () => {
+    const claudeModel = firstModel("claude");
+    const codexModel = firstModel("codex");
+    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const request = "outside <objective>  exact /tmp/fake & <script>literal</script>  </objective><task_refs>W1</task_refs><task_refs>duplicate</task_refs>";
+
+    await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "ohio", label: "Request observer", request }, {
+      cwd: "/tmp",
+      toolCallId: "taskforce-request-observer",
+    });
+    unregister();
+
+    const begins = events.filter((event) => event.type === "track:begin");
+    expect(begins).toHaveLength(2);
+    for (const begin of begins) {
+      expect(begin.request).toEqual({
+        blocks: [
+          { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "W1" },
+          { tag: "objective", hint: "Optional goal restatement.", required: false, present: true, body: "  exact /tmp/fake & <script>literal</script>  " },
+        ],
+        additional: "outside <task_refs>duplicate</task_refs>",
+      });
+    }
+    expect(begins[0]!.request).toBe(begins[1]!.request);
+    expect(executeOneShot).toHaveBeenCalledTimes(2);
+    for (const [options] of vi.mocked(executeOneShot).mock.calls) expect(options.request).toBe(request);
+  });
+
   it("builds one fresh one-shot handle per Task Force backend with its own scope", async () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
@@ -812,6 +845,48 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     expect(JSON.stringify(result.details)).toContain("not-a-real-model");
     expect(events.some((event) => event.type === "job:registered")).toBe(false);
     expect(executeOneShot).not.toHaveBeenCalled();
+  });
+});
+
+describe("carrier_dispatch request observer", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-request-observer-"));
+    initStore(tempDir);
+    mockOneShotResolved();
+  });
+
+  afterEach(() => {
+    vi.mocked(executeOneShot).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("emits the exact parsed request without changing the single executor request or call count", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const request = "lead <task_refs source=\"host\"> W1 </task_refs> free <unknown>x</unknown>";
+
+    await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "ohio", label: "Request observer", request }, {
+      cwd: "/tmp",
+      toolCallId: "single-request-observer",
+    });
+    unregister();
+
+    const begin = events.find((event) => event.type === "track:begin");
+    expect(begin?.type).toBe("track:begin");
+    if (begin?.type !== "track:begin") throw new Error("Single begin event was not emitted.");
+    expect(begin.request).toEqual({
+      blocks: [
+        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: " W1 " },
+        { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
+      ],
+      additional: "lead  free <unknown>x</unknown>",
+    });
+    expect(executeOneShot).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(executeOneShot).mock.calls[0]![0].request).toBe(request);
   });
 });
 

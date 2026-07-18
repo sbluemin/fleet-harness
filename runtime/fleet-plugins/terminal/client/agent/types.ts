@@ -74,6 +74,8 @@ export interface SnapshotJob {
   readonly jobId: string;
   readonly status: string;
   readonly updatedAt: number;
+  /** First valid request retained at the snapshot level when begin events expire. */
+  readonly request?: RequestView;
   readonly events: readonly ObservedEvent[];
 }
 
@@ -90,6 +92,19 @@ export interface TrackToolCall {
   readonly input?: unknown;
   readonly output?: unknown;
   readonly status?: string;
+}
+
+export interface RequestBlockView {
+  readonly tag: string;
+  readonly hint: string;
+  readonly required: boolean;
+  readonly present: boolean;
+  readonly body: string;
+}
+
+export interface RequestView {
+  readonly blocks: readonly RequestBlockView[];
+  readonly additional: string;
 }
 
 export interface TrackView {
@@ -127,6 +142,8 @@ export interface JobView {
   readonly finishedAt?: number;
   readonly summary?: string;
   readonly error?: string;
+  /** First valid observer-only request emitted by a job track. */
+  readonly request?: RequestView;
   readonly trackOrder: readonly string[];
   readonly tracks: Readonly<Record<string, TrackView>>;
   readonly lastEventId: number;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { CarrierMetadata } from "../../src/index.js";
-import { KIROV_METADATA, formatRequestBlocksGuide, validateRequiredRequestBlocks } from "../../src/index.js";
+import type { CarrierMetadata, CarrierRequest } from "../../src/index.js";
+import { KIROV_METADATA, formatRequestBlocksGuide, parseCarrierRequest, validateParsedRequiredRequestBlocks, validateRequiredRequestBlocks } from "../../src/index.js";
 
 const META: CarrierMetadata = {
   category: "operations",
@@ -24,6 +24,18 @@ describe("validateRequiredRequestBlocks", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("validates a dispatch-owned parsed request without reparsing raw text", () => {
+    const parsed: CarrierRequest = {
+      blocks: [
+        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "workspace:plan#W1-A-T1" },
+        { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
+      ],
+      additional: "literal observer residual",
+    };
+
+    expect(validateParsedRequiredRequestBlocks(META, parsed, "ohio")).toEqual({ ok: true });
+  });
+
   it("echoes the full request-block contract in the rejection error", () => {
     const result = validateRequiredRequestBlocks(META, "do the thing", "ohio");
 
@@ -42,6 +54,13 @@ describe("validateRequiredRequestBlocks", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain("(empty body)");
+  });
+
+  it("accepts a required top-level block whose body contains unbalanced literal markup", () => {
+    const request = "<task_refs>Use <unknown> literally</task_refs>";
+
+    expect(validateRequiredRequestBlocks(META, request, "ohio")).toEqual({ ok: true });
+    expect(parseCarrierRequest(META, request).blocks[0]).toMatchObject({ present: true, body: "Use <unknown> literally" });
   });
 
   it("rejects a Kirov dispatch without its required plan_id", () => {
@@ -64,5 +83,76 @@ describe("formatRequestBlocksGuide", () => {
 
   it("returns no lines for blockless metadata", () => {
     expect(formatRequestBlocksGuide({ ...META, requestBlocks: [] })).toEqual([]);
+  });
+});
+
+describe("parseCarrierRequest", () => {
+  it("keeps configured metadata order and removes only first balanced top-level recognized blocks", () => {
+    const request = "prefix <objective source=\"host\">  exact <unknown>x</unknown> & <script>literal</script>  </objective> middle <task_refs>first</task_refs><task_refs>duplicate</task_refs> tail";
+
+    expect(parseCarrierRequest(META, request)).toEqual({
+      blocks: [
+        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "first" },
+        { tag: "objective", hint: "Optional goal restatement.", required: false, present: true, body: "  exact <unknown>x</unknown> & <script>literal</script>  " },
+      ],
+      additional: "prefix  middle <task_refs>duplicate</task_refs> tail",
+    });
+  });
+
+  it("distinguishes missing and explicitly empty blocks while preserving malformed and nested markup", () => {
+    const request = "before <task_refs></task_refs><unknown><objective>nested</objective></unknown><objective>unterminated";
+    const parsed = parseCarrierRequest(META, request);
+
+    expect(parsed.blocks).toEqual([
+      { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "" },
+      { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
+    ]);
+    expect(parsed.additional).toBe("before <unknown><objective>nested</objective></unknown><objective>unterminated");
+  });
+
+  it.each([
+    ["unmatched prose markup", "use <draft> wording <task_refs>W1</task_refs>", "use <draft> wording "],
+    ["generic-looking literals", "Foo<T> <task_refs>W1</task_refs>", "Foo<T> "],
+  ])("preserves %s before a later configured block", (_case, request, additional) => {
+    expect(validateRequiredRequestBlocks(META, request, "ohio")).toEqual({ ok: true });
+    expect(parseCarrierRequest(META, request)).toEqual({
+      blocks: [
+        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "W1" },
+        { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
+      ],
+      additional,
+    });
+  });
+
+  it("parses and validates configured tags containing dots", () => {
+    const meta: CarrierMetadata = {
+      ...META,
+      requestBlocks: [{ tag: "foo.bar", required: true, hint: "Dot-containing tag." }],
+    };
+    const request = "before <foo.bar source=\"test\"> ok </foo.bar> after";
+
+    expect(validateRequiredRequestBlocks(meta, request, "custom")).toEqual({ ok: true });
+    expect(parseCarrierRequest(meta, request)).toEqual({
+      blocks: [{ tag: "foo.bar", required: true, hint: "Dot-containing tag.", present: true, body: " ok " }],
+      additional: "before  after",
+    });
+  });
+
+  it("places a blockless request entirely in Additional without transforming sensitive-shaped literals", () => {
+    const request = "  /tmp/fake & token=sk-not-redacted <script>literal</script>\n";
+
+    expect(parseCarrierRequest({ ...META, requestBlocks: [] }, request)).toEqual({ blocks: [], additional: request });
+  });
+
+  it("handles repeated unterminated tag prefixes without rescanning their suffixes", () => {
+    const request = "<unknown".repeat(2_000);
+
+    expect(parseCarrierRequest(META, request)).toEqual({
+      blocks: [
+        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: false, body: "" },
+        { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
+      ],
+      additional: request,
+    });
   });
 });

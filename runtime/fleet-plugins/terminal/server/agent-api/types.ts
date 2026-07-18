@@ -82,7 +82,22 @@ export interface AgentObservedJob {
   readonly jobId: string;
   readonly status: string;
   readonly updatedAt: number;
+  /** First valid observer-only request, retained beyond the event window. */
+  readonly request?: AgentObservedRequest;
   readonly events: readonly AgentObservedEvent[];
+}
+
+export interface AgentObservedRequestBlock {
+  readonly tag: string;
+  readonly hint: string;
+  readonly required: boolean;
+  readonly present: boolean;
+  readonly body: string;
+}
+
+export interface AgentObservedRequest {
+  readonly blocks: readonly AgentObservedRequestBlock[];
+  readonly additional: string;
 }
 
 export interface AgentObserverTruncation {
