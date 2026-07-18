@@ -209,6 +209,40 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
+  it("switches to the rendered diff when a live run completes with changes", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true));
+
+    // 리플레이된 done은 diff로 전환하지 않는다.
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "2" }));
+    expect(body.querySelector(".cowork-block--added")).toBeNull();
+
+    // 이번 마운트에서 직접 보낸 실행의 done은 변경이 있으면 diff로 전환한다.
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "improve";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "9" }));
+
+    await vi.waitFor(() => expect(body.querySelector(".cowork-block--added")).not.toBeNull());
+    expect(body.textContent).toContain("Readable text.");
+
+    controller.destroy();
+    article.remove();
+  });
+
   it("shows live tool activity in the running dock ticker", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }

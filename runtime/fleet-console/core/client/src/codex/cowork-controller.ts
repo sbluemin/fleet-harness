@@ -53,6 +53,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let confirmAction: "apply" | "discard" | null = null;
   let summaryVisible = false;
   let diffVisible = false;
+  // 이번 마운트에서 직접 보낸 실행의 완료만 diff 자동 전환 대상(리플레이 done 제외).
+  let awaitingResult = false;
   let promptText = "";
   let error = "";
   let lastBodyKey = "published";
@@ -249,9 +251,15 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         streamingReply = false;
         summaryVisible = activities.some(a => a.role === "assistant");
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
+        // AI 응답이 실제 변경을 남겼으면 곧바로 렌더드 diff로 전환해 검토를 유도한다.
+        if (awaitingResult) {
+          awaitingResult = false;
+          if (draftLines().some(line => line.changed)) diffVisible = true;
+        }
       }
       if (event.type === "error" || (event.type === "session" && wasRunning && session?.state !== "running")) {
         streamingReply = false;
+        awaitingResult = false;
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
       }
       if (event.type === "error" && event.text) error = event.text;
@@ -300,7 +308,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     try {
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
       await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
+      awaitingResult = true;
     } catch {
+      awaitingResult = false;
       annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
       renderDock();
     }

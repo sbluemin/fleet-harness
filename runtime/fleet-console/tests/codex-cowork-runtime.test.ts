@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryPaths, ensureMemoryRoot, loadIndex, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { describe, expect, it } from "vitest";
 import { createCoworkMcpRuntime } from "../core/host/codex/cowork/runtime.js";
@@ -11,7 +11,7 @@ import { CoworkStore } from "../core/host/codex/cowork/store.js";
 
 describe("Cowork MCP runtime", () => {
   it("runs one-shot yolo with only the seven scoped MCP tools", async () => {
-    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-"))); const session = await store.create("workspace", "entry", "draft");
+    const store = new CoworkStore(); const session = await store.create("workspace", "entry", "draft");
     const runtime = createCoworkMcpRuntime(store, "workspace", session.id);
     expect(runtime.allowedToolIds).toHaveLength(7);
     expect(runtime.specs.map(spec => spec.id).sort()).toEqual([...runtime.allowedToolIds].sort());
@@ -42,6 +42,18 @@ describe("Cowork MCP runtime", () => {
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
   });
 
+  it("creates sessions for nested entries even when the index is stale", async () => {
+    const { service, paths } = await fixture();
+    // index.json이 모르는 중첩 엔트리 — readWikiEntry는 재귀 스캔으로 찾아낸다.
+    const nested = join(paths.root, "wiki", "queries", "nested.md");
+    await mkdir(join(paths.root, "wiki", "queries"), { recursive: true });
+    await writeFile(nested, `---\nid: nested\ntitle: Nested\ntags: ["test"]\ncreated: 2026-01-01T00:00:00.000Z\nupdated: 2026-01-01T00:00:00.000Z\nversion: 1\n---\nNested body`, "utf8");
+
+    const session = await service.create("workspace", "nested");
+    expect(session.draft).toContain("Nested body");
+    expect(session.targetPath).toBe("wiki/queries/nested.md");
+  });
+
   it("keeps template_id through a cowork apply", async () => {
     const { service, store, paths } = await fixture();
     await mkdir(paths.schemaDir, { recursive: true });
@@ -62,7 +74,7 @@ async function fixture(connector: CoworkConnector = new FakeConnector()) {
   const paths = createMemoryPaths(join(root, "knowledge"));
   await ensureMemoryRoot(paths);
   await writeWikiEntry(entry(), paths);
-  const store = new CoworkStore(root);
+  const store = new CoworkStore();
   return { paths, store, service: new CoworkService(store, paths, root, connector) };
 }
 function entry() { return { id: "entry", title: "Entry", tags: ["test"], created: "2026-01-01T00:00:00.000Z", updated: "2026-01-01T00:00:00.000Z", version: 1, body: "Original" }; }

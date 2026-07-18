@@ -1,12 +1,9 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CoworkStore } from "../core/host/codex/cowork/store.js";
 
 describe("CoworkStore", () => {
-  it("persists a monotonic session draft without provider identity", async () => {
-    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-")));
+  it("keeps a monotonic in-memory session draft", async () => {
+    const store = new CoworkStore();
     const session = await store.create("workspace", "entry", "before");
     await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     await store.draftPort("workspace", session.id).write({ body: "after", expectedRevision: 0 });
@@ -14,7 +11,7 @@ describe("CoworkStore", () => {
   });
 
   it("rejects stale draft-port writes without changing the revision", async () => {
-    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-")));
+    const store = new CoworkStore();
     const session = await store.create("workspace", "entry", "before");
     await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     const port = store.draftPort("workspace", session.id);
@@ -25,7 +22,7 @@ describe("CoworkStore", () => {
   });
 
   it("serializes overlapping same-revision writes so exactly one wins", async () => {
-    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-")));
+    const store = new CoworkStore();
     const session = await store.create("workspace", "entry", "before");
     await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     const port = store.draftPort("workspace", session.id);
@@ -40,7 +37,7 @@ describe("CoworkStore", () => {
   });
 
   it("resolves the entry's active writer session and forgets released ones", async () => {
-    const store = new CoworkStore(await mkdtemp(join(tmpdir(), "cowork-")));
+    const store = new CoworkStore();
     const session = await store.create("workspace", "entry", "before");
     await expect(store.activeForEntry("workspace", "entry")).resolves.toMatchObject({ id: session.id });
     const closed = await store.update("workspace", session.id, s => ({ ...s, state: "closed" }));

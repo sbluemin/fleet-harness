@@ -2630,9 +2630,9 @@ kbd {
 .cowork-error { width: min(560px, 100%); margin: 0; color: var(--coral); font-size: var(--font-size-xs); text-align: center; }
 
 /* 렌더드 diff — 본문 자리에서 토글되며, 문서 그대로의 렌더 위에 변경 블록만 표시한다 */
-.cowork-block { border-left: 3px solid; border-radius: var(--radius-sm); margin-block: var(--space-3); padding: var(--space-2) var(--space-3); }
-.cowork-block--added { border-left-color: var(--brass); background: color-mix(in oklch, var(--brass) 8%, transparent); }
-.cowork-block--removed { border-left-color: color-mix(in oklch, var(--coral) 70%, transparent); background: color-mix(in oklch, var(--coral) 5%, transparent); opacity: 0.55; text-decoration: line-through; }
+.cowork-block { border-radius: var(--radius-md); margin-block: var(--space-3); padding: var(--space-2) var(--space-3); }
+.cowork-block--added { background: color-mix(in oklch, var(--brass) 8%, transparent); }
+.cowork-block--removed { background: color-mix(in oklch, var(--coral) 5%, transparent); opacity: 0.55; text-decoration: line-through; }
 .cowork-block--removed * { text-decoration: inherit; }
 
 @keyframes cowork-pop { from { opacity: 0; transform: translateX(-50%) scale(0.92); } to { opacity: 1; transform: translateX(-50%) scale(1); } }

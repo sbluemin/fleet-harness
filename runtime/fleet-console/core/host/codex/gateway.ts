@@ -112,7 +112,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
-    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(deps.dataDir ?? deps.cwd), paths, workspace.cwd, undefined, deps.wikiWorkspaceResolver);
+    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, undefined, deps.wikiWorkspaceResolver);
     coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,

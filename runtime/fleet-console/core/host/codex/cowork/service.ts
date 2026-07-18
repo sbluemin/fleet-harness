@@ -1,4 +1,4 @@
-import { approvePatch, computeContentHash, enqueuePatch, loadIndex, readPatchFile, readWikiEntry } from "@dotobokuri/fleet-wiki";
+import { approvePatch, computeContentHash, enqueuePatch, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "@dotobokuri/fleet-wiki";
 import type { MemoryPaths, Patch, WikiEntry, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { join } from "node:path";
 import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
@@ -30,17 +30,14 @@ export class CoworkService {
   private readonly live = new Map<string, LiveResources>();
   private readonly listeners = new Map<string, Set<(event: CoworkStoredEvent) => void>>();
   private readonly streamBuffers = new Map<string, string>();
-  readonly ready: Promise<void>;
-  constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector = UnifiedAgent, private readonly resolver?: WikiWorkspaceResolver) {
-    this.ready = this.store.hydrate().catch(() => undefined);
-  }
+  constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector = UnifiedAgent, private readonly resolver?: WikiWorkspaceResolver) {}
 
   async create(workspaceId: string, entryId: string, identity?: { cli?: string; model?: string; effort?: string }): Promise<CoworkSessionRecord> {
     const entry = await readWikiEntry(entryId, this.paths);
     if (!entry) throw new Error("cowork_entry_not_found");
-    // Nested entries (wiki/queries/…) live at their indexed path, not wiki/<id>.md.
-    const index = await loadIndex(this.paths);
-    const target = index[entryId]?.path ?? `wiki/${entryId}.md`;
+    // readWikiEntry와 같은 해석 체인으로 실제 파일 경로를 얻는다 — 인덱스가 스테일해도
+    // 재귀 스캔으로 찾아지는 중첩 엔트리(wiki/queries/…)의 편집이 막히면 안 된다.
+    const target = await resolveWikiEntryPath(entryId, this.paths) ?? `wiki/${entryId}.md`;
     const markdown = await readPatchFile(join(this.paths.root, target));
     return this.store.create(workspaceId, entryId, markdown, entry.version, computeContentHash(markdown), identity, target);
   }
@@ -64,7 +61,7 @@ export class CoworkService {
       // Provider cwd is the session's own directory — minimizes what a backend CLI can read on its own.
       // 원샷 실행: provider 세션을 resume하지 않고 매 프롬프트마다 새로 연결한다.
       // 스코프 강제는 yolo + 전용 MCP 도구 주입 + 시스템 프롬프트가 담당한다.
-      const providerCwd = this.store.sessionDir(workspaceId, id);
+      const providerCwd = await this.store.sessionDir(workspaceId, id);
       const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli as UnifiedClientOptions["cli"], model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
       this.releaseLive(id);
       this.live.set(id, { workspaceId, client, annotations, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });

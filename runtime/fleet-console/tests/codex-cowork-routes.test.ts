@@ -22,7 +22,7 @@ describe("Cowork DTO", () => {
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
     await writeWikiEntry(entry(), paths);
-    const store = new CoworkStore(root);
+    const store = new CoworkStore();
     const service = new CoworkService(store, paths, root, new FakeConnector());
     const session = await service.create("workspace", "entry");
     await store.update("workspace", session.id, value => ({ ...value, cli: "codex", model: "secret-model", effort: "high" }));
@@ -37,12 +37,35 @@ describe("Cowork DTO", () => {
     expect(dto).toMatchObject({ cli: "codex", model: "secret-model", effort: "high" });
   });
 
+  it("recovers to the provider default when the saved model no longer exists", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cowork-"));
+    const paths = createMemoryPaths(join(root, "knowledge"));
+    await ensureMemoryRoot(paths);
+    const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
+    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("test server has no TCP address");
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/cowork/options?cli=claude&model=removed-model`, { headers: { origin: "http://console.test" } });
+      expect(response.status).toBe(200);
+      const body = await response.json() as { models: string[]; efforts: string[]; defaultModel?: string };
+      expect(body.models.length).toBeGreaterThan(0);
+      expect(body.defaultModel && body.models.includes(body.defaultModel)).toBe(true);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("peeks the entry's active session with no-store headers and 404s once released", async () => {
     const root = await mkdtemp(join(tmpdir(), "cowork-"));
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
     await writeWikiEntry(entry(), paths);
-    const service = new CoworkService(new CoworkStore(root), paths, root, new FakeConnector());
+    const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
     const session = await service.create("workspace", "entry");
     const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
     server.listen(0, "127.0.0.1");
@@ -77,7 +100,7 @@ describe("Cowork DTO", () => {
     await ensureMemoryRoot(paths);
     await writeWikiEntry(entry(), paths);
     const connector = new FakeConnector();
-    const service = new CoworkService(new CoworkStore(root), paths, root, connector);
+    const service = new CoworkService(new CoworkStore(), paths, root, connector);
     const session = await service.create("workspace", "entry");
     await service.prompt("workspace", session.id, "first");
     const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));

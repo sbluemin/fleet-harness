@@ -1,26 +1,26 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 import { getAllBackendConfigs, getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
-import { CoworkService } from "./service.js";
-import { CoworkStore } from "./store.js";
+import type { CoworkService } from "./service.js";
 import type { CoworkStoredEvent } from "./types.js";
 import { encodeSseData } from "../../sse.js";
 import { withSecurityHeaders } from "../security-headers.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);
 
-export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService?: CoworkService; allowedOrigins: Set<string>; port: number }): Promise<boolean> {
+export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number }): Promise<boolean> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/cowork")) return false;
   // Read gate: loopback always; when a browser supplies Origin it must be an allowed one.
   if (!readAllowed(request, context)) return json(response, 403, { error: "origin_mismatch" });
   // Write gate: loopback plus a mandatory allowed Origin.
   if (request.method !== "GET" && !writeAllowed(request, context)) return json(response, 403, { error: "origin_mismatch" });
-  const service = context.coworkService ?? new CoworkService(new CoworkStore(context.paths.root), context.paths, context.paths.root);
-  await service.ready;
+  // 인메모리 store 특성상 요청별 서비스 생성은 세션 소실로 이어진다 — 게이트웨이 캐시가 유일한 소유자다.
+  const service = context.coworkService;
   const parts = url.pathname.split("/").filter(Boolean);
-  if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "claude") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const model = url.searchParams.get("model") ?? provider.defaultModel; const effort = getEffort(cli, model); return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: effort.supported ? effort.levels : [], defaultModel: provider.defaultModel, defaultEffort: effort.supported ? effort.default : "" }); }
   try {
+    // 저장돼 있던 모델이 레지스트리에서 사라졌어도 500이 아니라 provider 기본값으로 복구한다.
+    if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "claude") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const requested = url.searchParams.get("model"); const model = requested && models.includes(requested) ? requested : provider.defaultModel; const effort = getEffort(cli, model); return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: effort.supported ? effort.levels : [], defaultModel: provider.defaultModel, defaultEffort: effort.supported ? effort.default : "" }); }
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId, identity(b)))); }
     // 엔트리별 활성 세션 peek — 리딩 뷰가 세션을 만들지 않고 진행 중 초안을 복원할 때 쓴다.
     if (request.method === "GET" && parts.length === 5 && parts[2] === "entries" && parts[4] === "session") { const s = await service.peek(context.workspaceId, decodeURIComponent(parts[3] ?? "")); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }

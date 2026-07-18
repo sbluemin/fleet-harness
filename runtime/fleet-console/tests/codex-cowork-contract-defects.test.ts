@@ -79,7 +79,7 @@ async function fixture(connector: CoworkConnector = new FakeConnector()) {
   const paths = createMemoryPaths(join(root, "knowledge"));
   await ensureMemoryRoot(paths);
   await writeWikiEntry(entry(), paths);
-  const store = new CoworkStore(root);
+  const store = new CoworkStore();
   return { paths, store, service: new CoworkService(store, paths, root, connector) };
 }
 function entry() { return { id: "entry", title: "Entry", tags: ["test"], created: "2026-01-01T00:00:00.000Z", updated: "2026-01-01T00:00:00.000Z", version: 1, body: "Original" }; }
