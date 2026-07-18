@@ -36,6 +36,7 @@ import type {
 } from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { handleCoworkRequest } from "./cowork/routes.js";
+import type { CoworkService } from "./cowork/service.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ interface RouteContext {
   workspaceId: string;
   allowedOrigins: Set<string>;
   externalMode: boolean;
-  dataDir?: string;
+  coworkService?: CoworkService;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────

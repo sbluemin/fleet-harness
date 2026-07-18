@@ -6,6 +6,8 @@ import net from "node:net";
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { handleApiRequest } from "./routes.js";
+import { CoworkService } from "./cowork/service.js";
+import { CoworkStore } from "./cowork/store.js";
 import type { AllowedAccessSets } from "./types.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
@@ -60,6 +62,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   let accessSets: AllowedAccessSets | null = null;
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
+  const coworkServices = new Map<string, CoworkService>();
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     let selected: WorkspaceSelection;
@@ -109,6 +112,8 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
+    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(deps.dataDir ?? deps.cwd), paths, workspace.cwd);
+    coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,
       knowledgeRoot: paths.root,
@@ -118,7 +123,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       workspaceId: workspace.id,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
-      dataDir: deps.dataDir ?? deps.cwd,
+      coworkService,
     });
     request.url = originalUrl;
     return handled;
