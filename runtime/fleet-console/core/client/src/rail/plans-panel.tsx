@@ -163,7 +163,10 @@ function PlansPanelBody(ctx: RailPanelContext) {
         setReaderState(nextState);
       }
     }).catch(() => {
-      if (requestId === readerRequestRef.current && !isBackgroundRevalidation) {
+      // background 재검증도 실패는 표면화한다 — 성공만 무깜빡임 교체 대상이며, 열린 리더가
+      // 읽기 불가(413 등)로 바뀐 사실을 낡은 본문으로 가리면 안 된다. loopback 특성상
+      // 일시 네트워크 실패로 인한 오탐 여지는 사실상 없다.
+      if (requestId === readerRequestRef.current) {
         readerStateRef.current = { kind: "error" };
         setReaderState({ kind: "error" });
       }
