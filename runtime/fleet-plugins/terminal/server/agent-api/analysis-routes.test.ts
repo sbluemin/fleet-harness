@@ -68,6 +68,34 @@ describe("Session Analyst server contract", () => {
     await expect(registry.stop("op-0")).resolves.toBe(false);
   });
 
+  it("streams a generic analysis_error without exposing send rejection details", async () => {
+    const registry = new AnalysisRegistry();
+    const rejectionDetails = [
+      "/Users/alice/private/project",
+      "Bearer sk-proj-private-token",
+      "https://127.0.0.1:8123/mcp?token=private",
+      "session 123e4567-e89b-42d3-a456-426614174000",
+    ];
+    const events: unknown[] = [];
+    await registry.start("op", () => ({
+      start: async () => undefined,
+      send: async () => { throw new Error(rejectionDetails.join(" ")); },
+      dispose: async () => undefined,
+    }) as never);
+    const unsubscribe = registry.subscribe("op", (event) => events.push(event));
+
+    await expect(registry.message("op", "review this")).resolves.toBe("accepted");
+    await vi.waitFor(() => expect(events).toEqual([{
+      type: "error",
+      error: { code: "analysis_error", message: "Analysis request failed." },
+    }]));
+    const exposed = JSON.stringify(events);
+    for (const detail of rejectionDetails) expect(exposed).not.toContain(detail);
+
+    unsubscribe?.();
+    await registry.stop("op");
+  });
+
   it("disposes and releases a session stopped while start is pending", async () => {
     const registry = new AnalysisRegistry();
     let resolveStart: (() => void) | undefined;

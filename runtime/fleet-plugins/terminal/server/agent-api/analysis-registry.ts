@@ -41,9 +41,8 @@ export class AnalysisRegistry {
     if (!entry || entry.stopped) return "not_found";
     if (entry.starting || entry.messaging) return "busy";
     entry.messaging = true;
-    void entry.session.send(text).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : "Analysis request failed.";
-      for (const subscriber of entry.subscribers) subscriber({ type: "error", error: { code: "analysis_error", message } });
+    void entry.session.send(text).catch(() => {
+      for (const subscriber of entry.subscribers) subscriber({ type: "error", error: { code: "analysis_error", message: "Analysis request failed." } });
     }).finally(() => { entry.messaging = false; });
     return "accepted";
   }
