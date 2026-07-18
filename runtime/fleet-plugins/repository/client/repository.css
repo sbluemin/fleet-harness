@@ -949,10 +949,18 @@
 @container (max-width: 430px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
-.repository-unified { display: flex; min-width: 0; min-height: 0; height: 100%; }
+.repository-unified { display: flex; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
 .repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--hairline); background: var(--surface-deep); }
 .repository-source-nav button, .repository-source-nav span { min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
 .repository-source-nav button[aria-current="page"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
+.repository-source-nav b { padding: 8px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; }
+.repository-source-nav svg { width: 14px; height: 14px; flex: none; }
+.repository-source-nav i { float: right; color: var(--text-tertiary); font-style: normal; }
 .repository-source-content, .repository-unified > .repository-root { flex: 1; min-width: 0; }
-@container (max-width: 312px) { .repository-source-nav { width: 44px; } .repository-source-nav button { font-size: 0; text-align: center; } .repository-source-nav button::before { content: "•"; font-size: 14px; } .repository-source-nav span { display: none; } }
+.repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
+.repository-ref-list button, .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
+.repository-ref-list .is-current, .repository-wip-row { color: var(--brass); }
+.repository-wip-row { width: 100%; border-bottom: 1px dashed var(--hairline); }
+.repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
+@container (max-width: 420px) { .repository-source-nav { width: 44px; } .repository-source-nav button { display: grid; place-items: center; padding: 5px; } .repository-source-nav button span, .repository-source-nav button i, .repository-source-nav b { display: none; } }

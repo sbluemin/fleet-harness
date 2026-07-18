@@ -5,6 +5,16 @@ import { resolveGitCwd } from "./diff.js";
 
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function lines(stdout: string): string[] { return stdout.split("\n").map((line) => line.trim()).filter(Boolean); }
+export function parseWorktrees(stdout: string, currentBranch: string): readonly { name: string; branch: string | null; current: boolean }[] {
+  const records = stdout.split("\n\n").map((record) => record.split("\n"));
+  return records.flatMap((record) => {
+    const rawPath = record.find((line) => line.startsWith("worktree "))?.slice(9);
+    if (!rawPath) return [];
+    const branchRef = record.find((line) => line.startsWith("branch "))?.slice(7) ?? null;
+    const branch = branchRef?.startsWith("refs/heads/") ? branchRef.slice(11) : null;
+    return [{ name: rawPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "worktree", branch, current: branch === currentBranch }];
+  });
+}
 
 /** Browser-safe, read-only ref inventory. Never return worktree filesystem paths. */
 export async function handleRepositoryRefs(req: http.IncomingMessage, res: http.ServerResponse, ctx: FleetPluginServerContext): Promise<void> {
@@ -30,8 +40,7 @@ export async function handleRepositoryRefs(req: http.IncomingMessage, res: http.
       branches: lines(local.stdout).map((name) => ({ name, current: name === current })),
       remotes: lines(remote.stdout), tags: lines(tags.stdout),
       stashes: lines(stashes.stdout).map((line) => { const [name, subject = ""] = line.split("\0"); return { name, subject }; }),
-      // A worktree's branch/SHA/current status is useful; its absolute path is intentionally omitted.
-      worktrees: lines(worktrees.stdout).filter((line) => line.startsWith("branch ") || line.startsWith("HEAD ")).map((line) => line.startsWith("branch ") ? { branch: line.slice(18) } : { sha: line.slice(5) }),
+      worktrees: parseWorktrees(worktrees.stdout, current),
     });
   } catch (error) {
     if (error instanceof GitExecutorError && error.code === "no_git_repo") { ctx.host.http.writeJson(res, 200, { branches: [], remotes: [], tags: [], stashes: [], worktrees: [] }); return; }
