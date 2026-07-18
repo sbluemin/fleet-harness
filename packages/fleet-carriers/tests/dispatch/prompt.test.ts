@@ -110,6 +110,20 @@ describe("parseCarrierRequest", () => {
     expect(parsed.additional).toBe("before <unknown><objective>nested</objective></unknown><objective>unterminated");
   });
 
+  it.each([
+    ["unmatched prose markup", "use <draft> wording <task_refs>W1</task_refs>", "use <draft> wording "],
+    ["generic-looking literals", "Foo<T> <task_refs>W1</task_refs>", "Foo<T> "],
+  ])("preserves %s before a later configured block", (_case, request, additional) => {
+    expect(validateRequiredRequestBlocks(META, request, "ohio")).toEqual({ ok: true });
+    expect(parseCarrierRequest(META, request)).toEqual({
+      blocks: [
+        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "W1" },
+        { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
+      ],
+      additional,
+    });
+  });
+
   it("places a blockless request entirely in Additional without transforming sensitive-shaped literals", () => {
     const request = "  /tmp/fake & token=sk-not-redacted <script>literal</script>\n";
 

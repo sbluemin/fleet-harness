@@ -144,8 +144,10 @@ export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
  */
 export function parseCarrierRequest(meta: CarrierMetadata | undefined, request: string): CarrierRequest {
   const selected = new Map<string, ParsedBlock>();
+  const candidates: ParsedBlockCandidate[] = [];
   const configured = new Set(meta?.requestBlocks.map((block) => block.tag) ?? []);
   const stack: OpenTag[] = [];
+  const openedTags: OpenTag[] = [];
   let capture: OpenConfiguredTag | undefined;
 
   for (let cursor = 0; cursor < request.length;) {
@@ -161,13 +163,13 @@ export function parseCarrierRequest(meta: CarrierMetadata | undefined, request: 
         if (token.closing) {
           capture.depth--;
           if (capture.depth === 0) {
-            if (capture.select) {
-              selected.set(token.name, {
-                start: capture.start,
-                end: token.end,
-                body: request.slice(capture.contentStart, token.start),
-              });
-            }
+            candidates.push({
+              name: token.name,
+              start: capture.start,
+              end: token.end,
+              body: request.slice(capture.contentStart, token.start),
+              ancestor: capture.ancestor,
+            });
             capture = undefined;
           }
         } else {
@@ -179,22 +181,40 @@ export function parseCarrierRequest(meta: CarrierMetadata | undefined, request: 
 
     if (token.selfClosing) continue;
     if (!token.closing) {
-      if (stack.length === 0 && configured.has(token.name)) {
+      if (configured.has(token.name)) {
         capture = {
           name: token.name,
           start: token.start,
           contentStart: token.end,
           depth: 1,
-          select: !selected.has(token.name),
+          ancestor: stack.at(-1),
         };
       } else {
-        stack.push({ name: token.name });
+        const opened: OpenTag = {
+          name: token.name,
+          parent: stack.at(-1),
+          balanced: false,
+          insideBalanced: false,
+        };
+        openedTags.push(opened);
+        stack.push(opened);
       }
       continue;
     }
     const opened = stack.at(-1);
     if (!opened || opened.name !== token.name) continue;
+    opened.balanced = true;
     stack.pop();
+  }
+
+  // 실제로 닫힌 비설정 래퍼에 감싸지 않은 설정 블록은 최상위로 취급한다.
+  // 부모 링크를 사용해 잘못된 긴 접두사와 후보가 많아도 2차 순회를 선형으로 유지한다.
+  for (const opened of openedTags) {
+    opened.insideBalanced = opened.balanced || (opened.parent?.insideBalanced ?? false);
+  }
+  for (const candidate of candidates) {
+    if (candidate.ancestor?.insideBalanced || selected.has(candidate.name)) continue;
+    selected.set(candidate.name, candidate);
   }
 
   const blocks = (meta?.requestBlocks ?? []).map((block) => {
@@ -218,8 +238,16 @@ interface ParsedBlock {
   body: string;
 }
 
+interface ParsedBlockCandidate extends ParsedBlock {
+  name: string;
+  ancestor: OpenTag | undefined;
+}
+
 interface OpenTag {
   name: string;
+  parent: OpenTag | undefined;
+  balanced: boolean;
+  insideBalanced: boolean;
 }
 
 interface OpenConfiguredTag {
@@ -227,7 +255,7 @@ interface OpenConfiguredTag {
   start: number;
   contentStart: number;
   depth: number;
-  select: boolean;
+  ancestor: OpenTag | undefined;
 }
 
 interface RequestTag {
