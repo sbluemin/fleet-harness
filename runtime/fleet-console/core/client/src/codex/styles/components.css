@@ -2150,6 +2150,10 @@ kbd {
 
 /* ─── Codex Navigator ─────────────────────────────────────────────────────── */
 
+.codex-nav-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 10px 0; }
+.codex-nav-modes button { border: 0; border-bottom: 2px solid transparent; padding: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.codex-nav-modes button[aria-selected="true"] { border-bottom-color: var(--brass); color: var(--text); }
+
 .codex-nav-search {
   display: flex;
   align-items: center;

@@ -7,7 +7,8 @@ import type { WikiIndexEntry } from "../api.js";
 export type NavigatorRequest =
   | { kind: "entry"; id: string }
   | { kind: "drydock"; patchId?: string }
-  | { kind: "conflicts"; id?: string };
+  | { kind: "conflicts"; id?: string }
+  | { kind: "schema"; templateId?: string };
 
 export interface NavigatorController {
   destroy(): void;
@@ -87,11 +88,16 @@ export function mountNavigatorInto(
 ): NavigatorController {
   let currentQuery = "";
   let currentEntryId: string | null = null;
+  let mode: "entries" | "schema" = "entries";
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // 단일 컬럼 Navigator 셸 삽입
   root.innerHTML = `
     <div class="codex-navigator">
+      <div class="codex-nav-modes" role="tablist" aria-label="Codex catalog">
+        <button type="button" role="tab" data-mode="entries" aria-selected="true">Entries</button>
+        <button type="button" role="tab" data-mode="schema" aria-selected="false">Schema</button>
+      </div>
       <div class="codex-nav-search">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <input
@@ -122,6 +128,17 @@ export function mountNavigatorInto(
   const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
 
   function renderList(state: AppState): void {
+    root.querySelectorAll<HTMLElement>("[data-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.mode === mode)));
+    searchInput.hidden = mode === "schema";
+    if (mode === "schema") {
+      const catalog = state.schemaCatalog;
+      eyebrow.textContent = `Schema · ${catalog?.templates.length ?? 0} templates`;
+      navList.innerHTML = catalog ? `
+        <button class="codex-nav-entry" type="button" ${catalog.schema.exists ? 'data-schema-resource="workspace"' : 'disabled aria-disabled="true"'}><span class="t">Workspace schema</span><span class="meta">${catalog.schema.exists ? escapeHtml(catalog.schema.ref) : "Unavailable"}</span></button>
+        ${catalog.templates.map((template) => `<button class="codex-nav-entry" type="button" data-template-id="${escapeHtml(template.id)}"><span class="t">${escapeHtml(template.id)}</span><span class="meta">${escapeHtml(template.ref)}</span></button>`).join("")}` : `<div class="codex-nav-empty">Schema catalog unavailable.</div>`;
+      drydockBadge.textContent = String(state.pendingPatchCount);
+      return;
+    }
     const filtered = filterEntries(state.index, currentQuery);
     eyebrow.textContent = `Entries · ${filtered.length}`;
     drydockBadge.textContent = String(state.pendingPatchCount);
@@ -148,6 +165,17 @@ export function mountNavigatorInto(
   function handleClick(event: MouseEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
+
+    const modeBtn = target.closest<HTMLElement>("[data-mode]");
+    if (modeBtn?.dataset.mode === "entries" || modeBtn?.dataset.mode === "schema") {
+      mode = modeBtn.dataset.mode;
+      renderList(getState());
+      return;
+    }
+    const schemaBtn = target.closest<HTMLElement>("[data-schema-resource]");
+    if (schemaBtn) { options.onRequest({ kind: "schema" }); return; }
+    const templateBtn = target.closest<HTMLElement>("[data-template-id]");
+    if (templateBtn?.dataset.templateId) { options.onRequest({ kind: "schema", templateId: templateBtn.dataset.templateId }); return; }
 
     const entryBtn = target.closest<HTMLElement>("[data-entry-id]");
     if (entryBtn?.dataset.entryId) {

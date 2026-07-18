@@ -149,6 +149,16 @@ export interface DrydockDetailResponse {
   patchSet: DrydockPatchSetResponse | null;
 }
 
+export interface SchemaCatalogResponse {
+  schema: { ref: string; exists: boolean; summary: string };
+  templates: Array<{ id: string; ref: string; sections: string[] }>;
+}
+
+export interface SchemaDocumentResponse {
+  ref: string;
+  content: string;
+}
+
 export interface ConflictListItem {
   id: string;
   title: string;

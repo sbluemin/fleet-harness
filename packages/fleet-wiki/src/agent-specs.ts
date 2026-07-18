@@ -13,6 +13,9 @@ import { buildPatchQueueToolConfig } from "./tools/patch-queue.js";
 import { buildQueryToolConfig } from "./tools/query.js";
 import { buildReadToolConfig } from "./tools/read.js";
 import { buildResolveToolConfig } from "./tools/resolve.js";
+import { buildSchemaCreateToolConfig } from "./tools/schema-create.js";
+import { buildSchemaListToolConfig } from "./tools/schema-list.js";
+import { buildSchemaReadToolConfig } from "./tools/schema-read.js";
 import type { MemoryPaths } from "./types.js";
 import type { WikiWorkspaceResolver } from "./workspace-resolver.js";
 
@@ -36,7 +39,7 @@ interface WikiAgentToolConfig {
 // Constants — build specs (uses hoisted function declarations below)
 // ═══════════════════════════════════════
 
-// fleet-wiki가 @dotobokuri/core-agent registry에 노출하는 10종 wiki tool ID 카탈로그 상수.
+// fleet-wiki가 @dotobokuri/core-agent registry에 노출하는 13종 wiki tool ID 카탈로그 상수.
 // 실제 등록은 fleet-cli runtime.ts가 getWikiToolSpecs() 순회로 직접 수행하며,
 // 이 상수는 테스트(wiki-patch-edit.test.ts)가 도구 ID 명세를 고정하는 용도로만 쓰인다.
 export const FLEET_WIKI_AGENT_TOOL_IDS = [
@@ -50,6 +53,9 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_query",
   "wiki_read",
   "wiki_resolve",
+  "wiki_schema_list",
+  "wiki_schema_read",
+  "wiki_schema_create",
 ] as const;
 
 // ═══════════════════════════════════════
@@ -61,7 +67,29 @@ export function getWikiToolSpecs(resolver?: WikiWorkspaceResolver): AgentToolSpe
     buildWikiBriefingSpec(resolver), buildWikiDryDockSpec(resolver), buildWikiIngestSpec(resolver),
     buildWikiOrientSpec(resolver), buildWikiPatchEditSpec(resolver), buildWikiPatchQueueSpec(resolver),
     buildWikiCompileSourceSpec(resolver), buildWikiQuerySpec(resolver), buildWikiReadSpec(resolver), buildWikiResolveSpec(resolver),
+    buildWikiSchemaListSpec(resolver), buildWikiSchemaReadSpec(resolver), buildWikiSchemaCreateSpec(resolver),
   ];
+}
+
+function buildWikiSchemaListSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+  return buildWikiToolSpec(buildSchemaListToolConfig(), {
+    whenToUse: ["Discover the workspace Wiki schema and available templates"],
+    whenNotToUse: ["Reading a schema document — use wiki_schema_read"],
+  }, resolver);
+}
+
+function buildWikiSchemaReadSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+  return buildWikiToolSpec(buildSchemaReadToolConfig(), {
+    whenToUse: ["Read the workspace Wiki schema or a named template"],
+    whenNotToUse: ["Reading approved Wiki entries — use wiki_read"],
+  }, resolver);
+}
+
+function buildWikiSchemaCreateSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+  return buildWikiToolSpec(buildSchemaCreateToolConfig(), {
+    whenToUse: ["Create a new custom Wiki schema template"],
+    whenNotToUse: ["Updating, deleting, overwriting, or approving templates"],
+  }, resolver);
 }
 
 function buildWikiBriefingSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {

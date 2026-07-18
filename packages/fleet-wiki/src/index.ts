@@ -34,3 +34,6 @@ export * from "./tools/compile-source.js";
 export * from "./tools/read.js";
 export * from "./tools/query.js";
 export * from "./tools/resolve.js";
+export * from "./tools/schema-create.js";
+export * from "./tools/schema-list.js";
+export * from "./tools/schema-read.js";

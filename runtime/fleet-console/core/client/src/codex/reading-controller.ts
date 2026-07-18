@@ -5,6 +5,7 @@ import {
   fetchDrydock,
   fetchDrydockDetail,
   fetchEntry,
+  fetchSchemaDocument,
 } from "./api.js";
 import type {
   ConflictDetailResponse,
@@ -34,7 +35,7 @@ export interface ReadingController {
 
 export interface MountReadingOptions {
   readonly initialEntryId: string;
-  readonly kind: "entry" | "drydock" | "conflicts";
+  readonly kind: "entry" | "drydock" | "conflicts" | "schema";
   readonly subId?: string;
   readonly theaterId: string | null;
   readonly onRelatedClick: (id: string) => void;
@@ -58,6 +59,7 @@ export function mountReadingInto(
   opts: MountReadingOptions,
 ): ReadingController {
   let destroyed = false;
+  let schemaRequestEpoch = 0;
   let cleanupSpy: (() => void) | null = null;
   let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
@@ -299,17 +301,38 @@ export function mountReadingInto(
     }
   }
 
+  async function renderSchemaView(templateId: string | undefined): Promise<void> {
+    const requestEpoch = ++schemaRequestEpoch;
+    const theaterId = liveOpts.theaterId;
+    showLoading(readContainer, opts.tocContainer);
+    cleanupReader();
+    try {
+      const document = await fetchSchemaDocument(theaterId, templateId);
+      if (destroyed || requestEpoch !== schemaRequestEpoch || theaterId !== liveOpts.theaterId) return;
+      const { html, toc } = renderMarkdown(document.content);
+      readContainer.innerHTML = `<article class="document"><header class="document-header"><nav class="breadcrumb"><ol><li><span>Codex</span></li><li><span>Schema</span></li><li><span aria-current="page">${escapeHtml(templateId ?? "Workspace schema")}</span></li></ol></nav><h1>${escapeHtml(templateId ?? "Workspace schema")}</h1><span class="queue-dl-mono">${escapeHtml(document.ref)}</span></header><div class="markdown-body" id="codex-reader-body">${html}</div></article>`;
+      opts.tocContainer.innerHTML = renderTocSheet(toc);
+    } catch (error) {
+      if (!destroyed && requestEpoch === schemaRequestEpoch && theaterId === liveOpts.theaterId) {
+        showError(readContainer, opts.tocContainer, error);
+      }
+    }
+  }
+
   if (opts.kind === "entry" && opts.initialEntryId) {
     void renderEntryView(opts.initialEntryId);
   } else if (opts.kind === "drydock") {
     void renderDrydockView(opts.subId);
   } else if (opts.kind === "conflicts") {
     void renderConflictsView(opts.subId);
+  } else if (opts.kind === "schema") {
+    void renderSchemaView(opts.subId);
   }
 
   return {
     destroy(): void {
       destroyed = true;
+      schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
       cleanupReader();
       coworkController?.destroy();
@@ -322,6 +345,8 @@ export function mountReadingInto(
         await renderDrydockView(subId);
       } else if (opts.kind === "conflicts") {
         await renderConflictsView(subId);
+      } else if (opts.kind === "schema") {
+        await renderSchemaView(subId);
       }
     },
     refreshCallbacks(next): void {

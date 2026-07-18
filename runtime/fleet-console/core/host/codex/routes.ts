@@ -9,6 +9,8 @@ import {
   listQueue,
   listWiki,
   parsePatch,
+  readSchemaCatalog,
+  readSchemaDocument,
   readPatchSet,
   readWikiEntry,
   rejectPatch,
@@ -34,6 +36,8 @@ import type {
   RawSourceItem,
   SearchEntry,
   SearchResponse,
+  SchemaCatalogResponse,
+  SchemaDocumentResponse,
 } from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { handleCoworkRequest } from "./cowork/routes.js";
@@ -139,6 +143,34 @@ export function isLoopbackRemoteAddress(address: string | undefined): boolean {
 // ─── Route dispatchers ────────────────────────────────────────────────────────
 
 async function routeGet(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
+  if (url.pathname === "/api/schema") {
+    sendJson(response, 200, await readSchemaCatalog(context.paths) satisfies SchemaCatalogResponse);
+    return;
+  }
+  if (url.pathname === "/api/schema/wiki-schema") {
+    try {
+      sendJson(response, 200, await readSchemaDocument(context.paths, "schema") satisfies SchemaDocumentResponse);
+    } catch (error) {
+      if (isErrorCode(error, "ENOENT")) sendJson(response, 404, { error: "schema_not_found" });
+      else {
+        process.stderr.write(`[fleet-console-codex] schema read error: ${error instanceof Error ? error.message : String(error)}\n`);
+        sendJson(response, 400, { error: "invalid_schema_resource" });
+      }
+    }
+    return;
+  }
+  const schemaTemplateMatch = url.pathname.match(/^\/api\/schema\/templates\/([^/]+)$/);
+  if (schemaTemplateMatch) {
+    try {
+      sendJson(response, 200, await readSchemaDocument(context.paths, "template", decodePathSegment(schemaTemplateMatch[1] ?? "")) satisfies SchemaDocumentResponse);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendJson(response, message.includes("template_id must match") ? 400 : 404, {
+        error: message.includes("template_id must match") ? "invalid_template_id" : "template_not_found",
+      });
+    }
+    return;
+  }
   if (url.pathname === "/api/search") {
     return handleSearch(url, response, context);
   }
@@ -821,6 +853,10 @@ async function readOptionalFile(filePath: string): Promise<string | null> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
+}
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 function statusRank(status: ConflictListItem["status"]): number {

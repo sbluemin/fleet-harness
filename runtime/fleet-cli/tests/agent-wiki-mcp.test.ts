@@ -34,6 +34,9 @@ const EXPECTED_WIKI_TOOL_IDS = [
   "wiki_query",
   "wiki_read",
   "wiki_resolve",
+  "wiki_schema_list",
+  "wiki_schema_read",
+  "wiki_schema_create",
 ] as const;
 
 const EXPECTED_CARRIER_TOOL_IDS = [
@@ -50,6 +53,8 @@ const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
   "wiki_patch_edit",
   "wiki_compile_source",
   "wiki_query",
+  "wiki_schema_list",
+  "wiki_schema_read",
 ] as const;
 const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex profile";
 const CODEX_LEGACY_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
@@ -122,11 +127,18 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(nonChronicleTools.has(toolId)).toBe(false);
     }
     expect(chronicleTools.has("wiki_patch_queue")).toBe(false);
+    expect(chronicleTools.has("wiki_schema_create")).toBe(false);
     expect(nonChronicleTools.has("wiki_patch_queue")).toBe(false);
     expect(nonChronicleTools.has("wiki_briefing")).toBe(true);
     expect(nonChronicleTools.has("wiki_orient")).toBe(true);
     expect(nonChronicleTools.has("wiki_read")).toBe(true);
     expect(nonChronicleTools.has("wiki_resolve")).toBe(true);
+    expect(nonChronicleTools.has("wiki_schema_list")).toBe(false);
+    expect(nonChronicleTools.has("wiki_schema_read")).toBe(false);
+    expect(nonChronicleTools.has("wiki_schema_create")).toBe(false);
+    expect(fleetToolNames.has("wiki_schema_create")).toBe(true);
+    expect(fleetToolNames.has("wiki_patch_queue")).toBe(true);
+
     expect(nonChronicleTools.has("carrier_jobs")).toBe(true);
     expect(nonChronicleTools.has("plan_read")).toBe(true);
     expect(nonChronicleTools.has("plan_write")).toBe(false);

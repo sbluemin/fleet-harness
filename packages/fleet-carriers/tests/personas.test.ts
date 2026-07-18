@@ -61,6 +61,8 @@ const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
   "wiki_query",
   "wiki_read",
   "wiki_resolve",
+  "wiki_schema_list",
+  "wiki_schema_read",
   "carrier_jobs",
   "plan_read",
 ] as const;
@@ -108,8 +110,9 @@ describe("PRIOR_JOBS_REQUEST_HINT", () => {
 });
 
 describe("allowedExecutorTools", () => {
-  it("chronicle은 wiki 도구 7종과 carrier_jobs를 정확히 선언", () => {
+  it("chronicle은 schema list/read를 포함한 executor 도구를 정확히 선언", () => {
     expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
+    expect(CHRONICLE_METADATA.allowedExecutorTools).not.toContain("wiki_schema_create");
   });
 
   it("모든 기본 persona가 carrier_jobs를 명시 선언", () => {

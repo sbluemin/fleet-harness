@@ -52,13 +52,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   const shouldMountCodex = workspaceId !== null;
 
   const readerKey = reader
-    ? `${reader.kind}:${
-        reader.kind === "entry"
-          ? reader.entryId
-          : reader.kind === "drydock"
-          ? (reader.patchId ?? "")
-          : (reader.id ?? "")
-      }`
+    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
     : null;
 
   // Theater 변경 시 이전 reader가 새 workspace에서 잠시 보이지 않도록 먼저 닫는다.
@@ -96,6 +90,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       if (r.kind === "entry") openCodexReader({ kind: "entry", entryId: r.id });
       else if (r.kind === "drydock") openCodexReader({ kind: "drydock", patchId: r.patchId });
       else if (r.kind === "conflicts") openCodexReader({ kind: "conflicts", id: r.id });
+      else if (r.kind === "schema") openCodexReader({ kind: "schema", templateId: r.templateId });
     });
     return () => {
       setOnRequestOpenReader(null);
@@ -114,7 +109,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     if (!shouldMountCodex || !workspaceId || !hasReader || expanded) return;
     if (!readRef.current || !tocRef.current || !reader) return;
     const kind = reader.kind;
-    const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : undefined;
+    const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
     mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,

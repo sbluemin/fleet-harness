@@ -76,6 +76,8 @@ const CHRONICLE_WIKI_TOOL_IDS = new Set([
 	"wiki_patch_edit",
 	"wiki_compile_source",
 	"wiki_query",
+	"wiki_schema_list",
+	"wiki_schema_read",
 ]);
 
 export function createFleetAgentRuntimeLifecycle(
@@ -201,7 +203,7 @@ function registerFleetAgentRuntimeTools(
 
 function registerWikiToolSpec(mcpRegistry: McpToolRegistry, spec: AgentToolSpec): void {
 	mcpRegistry.registerAgentTool(spec);
-	if (spec.id === "wiki_patch_queue") {
+	if (spec.id === "wiki_patch_queue" || spec.id === "wiki_schema_create") {
 		return;
 	}
 	if (CHRONICLE_WIKI_TOOL_IDS.has(spec.id)) {

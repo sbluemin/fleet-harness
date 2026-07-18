@@ -194,6 +194,33 @@ describe("workspace schema", () => {
     await expect(validateTemplateCompliance(paths, "prd", "## Overview\n\nsummary")).rejects.toThrow("missing sections: Problem");
   });
 
+  it("ignores fenced headings consistently in template catalogs and entry compliance", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await ensureWorkspaceSchema(paths);
+    await writeFile(path.join(paths.schemaDir, "template-fenced.md"), [
+      "---",
+      "template_id: fenced",
+      "description: Fence-aware template.",
+      "---",
+      "# Fenced Template",
+      "",
+      "```md",
+      "## Example Only",
+      "```",
+      "",
+      "## Real Section",
+    ].join("\n"), "utf8");
+
+    const templates = await scanTemplates(paths);
+
+    expect(templates.find((template) => template.id === "fenced")?.sections).toEqual(["Real Section"]);
+    await expect(validateTemplateCompliance(paths, "fenced", "```md\n## Real Section\n```\n"))
+      .rejects.toThrow("missing sections: Real Section");
+    await expect(validateTemplateCompliance(paths, "fenced", "## Real Section\n"))
+      .resolves.toBeUndefined();
+  });
+
   it("documents current raw provenance and pending patch edit workflow", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
@@ -208,10 +235,14 @@ describe("workspace schema", () => {
     expect(schema).toContain("`rawSourceRefs`: Ordered provenance history");
     expect(schema).not.toContain("`rawSourceRef`, `status`, `kind`");
     expect(schema).toContain("`wiki_patch_edit` may revise already-pending queue proposals");
+    expect(schema).toContain("13 tools");
+    expect(schema).toContain("`wiki_schema_create` creates a new custom template directly");
     expect(schema).toContain("schema/template-{id}.md");
     expect(schema).toContain("patch approval enforce selected template body sections");
     expect(schemaAgents).toContain("Treat `rawSourceRef` as current latest-provenance metadata.");
     expect(doctrine).toContain("already-pending queue proposal revisions may use `wiki_patch_edit`");
+    expect(doctrine).toContain("Chronicle schema lookup: `wiki_schema_list` / `wiki_schema_read`");
+    expect(doctrine).toContain("New custom schema templates are created directly through the Admiral's create-only `wiki_schema_create` tool.");
   });
 
   it("does not recreate a deleted wiki-schema file when reading summary", async () => {

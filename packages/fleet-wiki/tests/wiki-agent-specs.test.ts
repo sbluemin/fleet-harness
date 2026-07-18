@@ -16,6 +16,9 @@ import { buildPatchQueueToolConfig } from "../src/tools/patch-queue.js";
 import { buildQueryToolConfig } from "../src/tools/query.js";
 import { buildReadToolConfig } from "../src/tools/read.js";
 import { buildResolveToolConfig } from "../src/tools/resolve.js";
+import { buildSchemaCreateToolConfig } from "../src/tools/schema-create.js";
+import { buildSchemaListToolConfig } from "../src/tools/schema-list.js";
+import { buildSchemaReadToolConfig } from "../src/tools/schema-read.js";
 import { createWikiDraftToolSpecs } from "../src/tools/draft.js";
 
 const BODY = "A durable test entry. ".repeat(12);
@@ -39,13 +42,13 @@ describe("Wiki agent specs", () => {
     expect(getWikiToolSpecs().map((spec) => spec.id)).not.toEqual(expect.arrayContaining(draftIds));
   });
 
-  it("preserves every schema and resolves once before each of the ten domain tools", async () => {
+  it("preserves every schema and resolves once before each domain tool", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-agent-specs-"));
     const paths = createMemoryPaths(path.join(root, "knowledge"));
     const expectedParameters = [
       buildBriefingToolConfig(), buildDryDockToolConfig(), buildIngestToolConfig(), buildOrientToolConfig(),
       buildPatchEditToolConfig(), buildPatchQueueToolConfig(), buildCompileSourceToolConfig(), buildQueryToolConfig(),
-      buildReadToolConfig(), buildResolveToolConfig(),
+      buildReadToolConfig(), buildResolveToolConfig(), buildSchemaListToolConfig(), buildSchemaReadToolConfig(), buildSchemaCreateToolConfig(),
     ].map((config) => config.parameters);
     let calls = 0;
     const specs = getWikiToolSpecs({ resolve: () => { calls += 1; return paths; } });
@@ -72,6 +75,9 @@ describe("Wiki agent specs", () => {
       await invoke("wiki_query", { question: "What is entry?" });
       await invoke("wiki_read", { ids: ["entry"] });
       await invoke("wiki_resolve", { query: "entry" });
+      await invoke("wiki_schema_list", {});
+      await invoke("wiki_schema_read", {});
+      await invoke("wiki_schema_create", { template_id: "incident", markdown: "---\ntemplate_id: incident\n---\n## Summary\n" });
       expect(calls).toBe(FLEET_WIKI_AGENT_TOOL_IDS.length);
     } finally {
       await rm(root, { recursive: true, force: true });

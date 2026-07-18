@@ -7,7 +7,7 @@
 - Pure LLM-Wiki domain logic and types under `src/`
 - Public subpaths `./` and `./cowork` — the cowork subpath owns the terminal-free AI draft-editing engine (in-memory session store, one-shot session service, scoped MCP runtime, session DTOs). Provider connectors are structural (`CoworkConnector`) and MUST be injected by hosts; the engine never imports provider packages.
 - LLM-Wiki package-specific validation under `tests/`
-- `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`는 chronicle 전용으로 제한, `patch_queue`는 executor에 비노출(`allowedScopes: []`) — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님). Cowork의 `wiki_draft_read` / `wiki_draft_edit` / `wiki_draft_write`는 전역 레지스트리에 등록하지 않는 세션 전용 closure-injected 도구이며, 경로 또는 엔트리 ID 인자를 받지 않는다.
+- `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (13종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`와 schema 조회 2종 `schema_list` / `schema_read`는 Chronicle 전용으로 제한, `patch_queue`와 create-only `schema_create`는 executor에 비노출 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님). Cowork의 `wiki_draft_read` / `wiki_draft_edit` / `wiki_draft_write`는 전역 레지스트리에 등록하지 않는 세션 전용 closure-injected 도구이며, 경로 또는 엔트리 ID 인자를 받지 않는다.
 
 ## Must Not Own
 
@@ -33,17 +33,20 @@
 - `wiki_resolve` — Context-pack synthesizer combining briefing + read into compact JSON or `markdown_pack` output. Honors `freshness` (`prefer_recent` / `strict_current` / `any`), pulls claim provenance from `.claims/` sidecars when present, and reports `missing_or_uncertain`.
 - `wiki_compile_source` — Multi-page batch ingest from a single source. `mode="preview"` returns proposed patches without mutation; `mode="stage"` enqueues correlated patches under one `patch_set_id` (`queue/_sets/{id}/meta.json`).
 - `wiki_query` — Citation-aware query interface. `mode="answer"` returns context_pack + citations with no mutation; `mode="stage_answer_page"` (or `save_good_answer=true`) stages a wiki page patch under `wiki/queries/` or `wiki/synthesis/`. Claim sidecar auto-staging is deferred until queue auxiliary-file support is introduced; for now sidecars must be written manually via `writeClaims()`.
+- `wiki_schema_list` — Chronicle-scoped catalog of the workspace schema and available templates.
+- `wiki_schema_read` — Chronicle-scoped read of `schema/wiki-schema.md` or one named template.
+- `wiki_schema_create` — Host-only direct creation of a new custom schema template; never updates or overwrites an existing template.
 - `wiki_draft_read` — Cowork session-scoped draft snapshot reader; not globally registered and accepts no path or entry ID.
 - `wiki_draft_edit` — Cowork session-scoped CAS draft editor; not globally registered and accepts no path or entry ID.
 - `wiki_draft_write` — Cowork session-scoped draft replacement writer; not globally registered and accepts no path or entry ID.
 
-All writes normally use the patch queue; the Cowork exception moves the approval gate to one final session Apply (`enqueuePatch` plus programmatic `approvePatch`) while retaining human approval and audit traceability.
+Wiki entry writes normally use the patch queue; the Cowork exception moves the approval gate to one final session Apply (`enqueuePatch` plus programmatic `approvePatch`) while retaining human approval and audit traceability. Schema template creation is separate: host-only `wiki_schema_create` is direct and create-only.
 
 ## Key Modules
 
 - `src/links.ts` — Canonical wiki link helper SSoT. Exports `WIKI_LINK_PATTERN`, `extractWikiLinks()`, `extractLegacyMarkdownWikiLinks()`, `replaceWikiLinksWithMarkdown()`.
 - `src/log.ts` — Append-only operational log helpers. Exports `appendLog()`, `parseLog()`, `formatLogEntry()` for `.fleet/knowledge/log.md`. Payload values are escaped (newlines → `\n`, backticks → `` \` ``) so multiline user input cannot break the single-bullet line invariant.
-- `src/schema.ts` — Workspace schema bootstrap and summary. Exports `ensureWorkspaceSchema()`, `readWorkspaceSchemaSummary()`, default schema constants, required section definitions.
+- `src/schema.ts` — Workspace schema bootstrap, catalog, read, and create-only template validation. Exports `ensureWorkspaceSchema()`, `readWorkspaceSchemaSummary()`, `readSchemaCatalog()`, `readSchemaDocument()`, `createSchemaTemplate()`, default schema constants, and required section definitions.
 - `src/boundaries.ts` — Retrieval boundary helper SSoT. Exports `wrapWikiEntryBoundary()`, `wrapWikiRawSourceBoundary()`, `FLEET_WIKI_BOUNDARY_GUIDELINES` (four-rule array). Used by every LLM-facing tool (briefing/orient/read/resolve/query).
 - `src/store.ts` — Wiki entry storage, `index.json` + `wiki/index.md` generation, raw source management with content-hash filename suffix. `readWikiEntry()` falls back to recursive scan when `index.json` is stale. `writeWikiEntry()` automatically strips duplicate leading frontmatter from the body before serialization.
 - `src/patch.ts` — Patch queuing, validation (`create_wiki` overwrite prevention, target/body collision detection), approval/rejection. `buildPatchId()` hashes timestamp + summary + target + body to prevent compile_source ID collisions. The module-level lock Maps (`approvalLocks` / `patchEditLocks`) are an intended exception to the no-module-level-singleton rule: they implement the in-process per-patch mutex shared by tool and direct (console Codex) call paths.
@@ -68,7 +71,7 @@ All writes normally use the patch queue; the Cowork exception moves the approval
 
 ## Compatibility Doctrine
 
-- Do not change MCP tool names: `wiki_briefing`, `wiki_drydock`, `wiki_ingest`, `wiki_patch_edit`, `wiki_patch_queue`, `wiki_orient`, `wiki_read`, `wiki_resolve`, `wiki_compile_source`, `wiki_query`.
+- Do not change MCP tool names: `wiki_briefing`, `wiki_drydock`, `wiki_ingest`, `wiki_patch_edit`, `wiki_patch_queue`, `wiki_orient`, `wiki_read`, `wiki_resolve`, `wiki_compile_source`, `wiki_query`, `wiki_schema_list`, `wiki_schema_read`, `wiki_schema_create`.
 - Do not change Cowork-only tool names: `wiki_draft_read`, `wiki_draft_edit`, `wiki_draft_write`.
 - Existing `wiki_briefing` callers must remain working with `enhanced=false` (default).
 - Existing `wiki_ingest` callers must remain working with `mode="auto"` (default), which falls back to create when the target is absent.

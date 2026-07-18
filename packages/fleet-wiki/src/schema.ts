@@ -1,13 +1,15 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { MemoryPaths, WorkspaceSchema, WorkspaceTemplate } from "./types.js";
+import type { MemoryPaths, SchemaCatalog, SchemaDocument, WorkspaceSchema, WorkspaceTemplate } from "./types.js";
 
 export const WORKSPACE_KNOWLEDGE_AGENTS_FILENAME = "AGENTS.md";
 export const WORKSPACE_SCHEMA_AGENTS_FILENAME = "AGENTS.md";
 export const WORKSPACE_SCHEMA_FILENAME = "wiki-schema.md";
 export const WORKSPACE_TEMPLATE_PREFIX = "template-";
 export const WORKSPACE_TEMPLATE_SUFFIX = ".md";
+export const TEMPLATE_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+export const MAX_TEMPLATE_UTF8_BYTES = 256 * 1024;
 
 // 파일명 prefix로 template id를 추론할 때 쓰는 기본 후보 목록.
 const DEFAULT_TEMPLATE_IDS = ["prd"];
@@ -114,7 +116,8 @@ Guide wiki files should use the \`guide-\` prefix.
 
 ## Ingest, Patch, and Lint Workflow
 
-- The existing workflow uses 10 tools. \`wiki_patch_edit\` may revise already-pending queue proposals before approval.
+- The Fleet Wiki MCP surface exposes 13 tools. \`wiki_schema_list\` and \`wiki_schema_read\` inspect schema resources; \`wiki_schema_create\` creates a new custom template directly and never updates or overwrites an existing one.
+- \`wiki_patch_edit\` may revise already-pending queue proposals before approval.
 - \`wiki_ingest\` and patch approval enforce selected template body sections as hard gates.
 - \`wiki_drydock\` reports existing persisted template compliance issues as warnings and continues to check prohibited content.
 `;
@@ -195,10 +198,10 @@ The following prohibitions are **absolute** for every carrier (including Chronic
 
 | Role | Capability | Gate |
 |------|-----------|------|
-| **Carriers** (Chronicle for entry proposals; any carrier for read-only consult) | Propose: \`wiki_ingest\` · Revise pending: \`wiki_patch_edit\` · Orient: \`wiki_orient\` · Lookup: \`wiki_briefing\` / \`wiki_read\` / \`wiki_resolve\` · Lint: \`wiki_drydock\` · Query: \`wiki_query\` | Cannot approve patches |
-| **Admiral (Host PI)** | All carrier capabilities + \`wiki_patch_queue\` (approve / reject) | Sole approval authority |
+| **Carriers** (Chronicle for entry proposals; any carrier for read-only consult) | Propose: \`wiki_ingest\` · Revise pending: \`wiki_patch_edit\` · Orient: \`wiki_orient\` · Lookup: \`wiki_briefing\` / \`wiki_read\` / \`wiki_resolve\` · Lint: \`wiki_drydock\` · Query: \`wiki_query\` · Chronicle schema lookup: \`wiki_schema_list\` / \`wiki_schema_read\` | Cannot approve patches |
+| **Admiral (Host PI)** | All carrier capabilities + \`wiki_schema_create\` (new custom templates) + \`wiki_patch_queue\` (approve / reject) | Sole approval authority |
 
-Sub-agents **propose**; the Admiral **commits**. Every wiki write reaches disk only after \`wiki_patch_queue approve\` is invoked by the Admiral.
+Sub-agents **propose**; the Admiral **commits**. Wiki entry writes reach disk only after \`wiki_patch_queue approve\` is invoked by the Admiral. New custom schema templates are created directly through the Admiral's create-only \`wiki_schema_create\` tool.
 
 ## 3. Standard Workflow
 
@@ -260,7 +263,7 @@ export async function ensureWorkspaceDoctrine(paths: MemoryPaths): Promise<void>
 export async function readWorkspaceSchemaSummary(paths: MemoryPaths): Promise<WorkspaceSchema> {
   const agentsPath = path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME);
   const wikiSchemaPath = path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME);
-  const wikiSchemaContent = await tryReadFile(wikiSchemaPath);
+  const wikiSchemaContent = await tryReadSchemaFile(paths, wikiSchemaPath);
   const templates = await scanTemplates(paths);
 
   if (wikiSchemaContent === null) {
@@ -300,7 +303,7 @@ export async function scanTemplates(paths: MemoryPaths): Promise<WorkspaceTempla
     if (!entry.isFile()) continue;
     if (!entry.name.startsWith(WORKSPACE_TEMPLATE_PREFIX) || !entry.name.endsWith(WORKSPACE_TEMPLATE_SUFFIX)) continue;
     const id = entry.name.slice(WORKSPACE_TEMPLATE_PREFIX.length, -WORKSPACE_TEMPLATE_SUFFIX.length);
-    if (!id) continue;
+    if (!TEMPLATE_ID_PATTERN.test(id)) continue;
     const filePath = path.join(paths.schemaDir, entry.name);
     try {
       const parsed = parseTemplateMarkdown(await readFile(filePath, "utf8"));
@@ -315,6 +318,89 @@ export async function scanTemplates(paths: MemoryPaths): Promise<WorkspaceTempla
     }
   }
   return templates.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+export function schemaTemplateRef(id: string): string {
+  assertTemplateId(id);
+  return `schema/${WORKSPACE_TEMPLATE_PREFIX}${id}${WORKSPACE_TEMPLATE_SUFFIX}`;
+}
+
+export async function readSchemaCatalog(paths: MemoryPaths): Promise<SchemaCatalog> {
+  const schema = await ensureWorkspaceSchema(paths);
+  return {
+    schema: { ref: "schema/wiki-schema.md", exists: schema.exists, summary: schema.summary },
+    templates: (schema.templates ?? []).map((template) => ({
+      id: template.id,
+      ref: schemaTemplateRef(template.id),
+      sections: template.sections,
+    })),
+  };
+}
+
+export async function readSchemaDocument(paths: MemoryPaths, resource: "schema" | "template", templateId?: string): Promise<SchemaDocument> {
+  const ref = resource === "schema" ? "schema/wiki-schema.md" : schemaTemplateRef(templateId ?? "");
+  const absolute = path.resolve(paths.root, ref);
+  await assertContainedSchemaFile(paths, absolute, false);
+  return { ref, content: await readFile(absolute, "utf8") };
+}
+
+export async function createSchemaTemplate(
+  paths: MemoryPaths,
+  templateId: string,
+  markdown: string,
+): Promise<SchemaDocument> {
+  await validateSchemaTemplateCreate(paths, templateId, markdown);
+  await mkdir(paths.schemaDir, { recursive: true });
+  const absolute = await validateSchemaTemplateCreate(paths, templateId, markdown);
+  await writeFile(absolute, markdown, { encoding: "utf8", flag: "wx" });
+  return { ref: schemaTemplateRef(templateId), content: markdown };
+}
+
+export async function validateSchemaTemplateCreate(
+  paths: MemoryPaths,
+  templateId: string,
+  markdown: string,
+): Promise<string> {
+  assertTemplateId(templateId);
+  const ref = schemaTemplateRef(templateId);
+  if (Buffer.byteLength(markdown, "utf8") > MAX_TEMPLATE_UTF8_BYTES) throw new Error("schema template exceeds 256 KiB UTF-8 limit");
+  const parsed = parseTemplateMarkdownStrict(markdown);
+  if (parsed.frontmatter.template_id !== templateId) throw new Error("template_id frontmatter must match template_id");
+  const sections = parseRequiredSections(parsed.body);
+  if (sections.length === 0) throw new Error("schema template must contain at least one ## section");
+  const folded = new Set<string>();
+  for (const section of sections) {
+    const key = section.toLocaleLowerCase("en-US");
+    if (folded.has(key)) throw new Error(`schema template contains duplicate ## section: ${section}`);
+    folded.add(key);
+  }
+  const absolute = path.resolve(paths.root, ref);
+  await assertContainedSchemaFile(paths, absolute, true);
+  const entries = await readdir(paths.schemaDir).catch(() => [] as string[]);
+  const basename = path.basename(absolute).toLocaleLowerCase("en-US");
+  if (entries.some((entry) => entry.toLocaleLowerCase("en-US") === basename)) throw new Error("schema template target already exists");
+  return absolute;
+}
+
+export function assertTemplateId(id: string): void {
+  if (!TEMPLATE_ID_PATTERN.test(id)) throw new Error("template_id must match /^[a-z][a-z0-9-]{0,63}$/");
+}
+
+async function assertContainedSchemaFile(paths: MemoryPaths, absolute: string, allowMissing: boolean): Promise<void> {
+  const schemaReal = await realpath(paths.schemaDir).catch(() => path.resolve(paths.schemaDir));
+  const parentReal = await realpath(path.dirname(absolute)).catch(() => path.resolve(path.dirname(absolute)));
+  if (parentReal !== schemaReal) throw new Error("schema resource escapes schema directory");
+  const relative = path.relative(paths.root, absolute);
+  let cursor = paths.root;
+  for (const part of relative.split(path.sep)) {
+    cursor = path.join(cursor, part);
+    try {
+      if ((await lstat(cursor)).isSymbolicLink()) throw new Error("schema resource path contains symlink");
+    } catch (error) {
+      if (allowMissing && typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return;
+      throw error;
+    }
+  }
 }
 
 export async function validateTemplateCompliance(
@@ -360,11 +446,13 @@ async function writeDefaultFileIfMissing(filePath: string, content: string): Pro
   }
 }
 
-async function tryReadFile(filePath: string): Promise<string | null> {
+async function tryReadSchemaFile(paths: MemoryPaths, filePath: string): Promise<string | null> {
   try {
+    await assertContainedSchemaFile(paths, filePath, false);
     return await readFile(filePath, "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return null;
+    throw error;
   }
 }
 
@@ -397,12 +485,86 @@ function parseTemplateMarkdown(content: string): { frontmatter: Record<string, u
   return { frontmatter, body };
 }
 
+function parseTemplateMarkdownStrict(content: string): { frontmatter: Record<string, unknown>; body: string } {
+  const normalized = content.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) throw new Error("schema template frontmatter is malformed");
+  const closing = normalized.indexOf("\n---\n", 4);
+  if (closing === -1) throw new Error("schema template frontmatter is malformed");
+  const rawFrontmatter = normalized.slice(4, closing);
+  const frontmatter: Record<string, unknown> = {};
+  const foldedKeys = new Set<string>();
+  for (const line of rawFrontmatter.split("\n")) {
+    if (!line.trim()) continue;
+    const separator = line.indexOf(":");
+    const key = separator > 0 ? line.slice(0, separator).trim() : "";
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(key)) throw new Error("schema template frontmatter is malformed");
+    const folded = key.toLocaleLowerCase("en-US");
+    if (foldedKeys.has(folded)) throw new Error(`schema template contains duplicate frontmatter field: ${key}`);
+    foldedKeys.add(folded);
+    const value = line.slice(separator + 1).trim();
+    assertValidYamlScalar(value);
+    frontmatter[key] = value.replace(/^"(.*)"$/, "$1");
+  }
+  return { frontmatter, body: normalized.slice(closing + 5) };
+}
+
+function assertValidYamlScalar(value: string): void {
+  if (!value) return;
+  if (value.startsWith('"')) {
+    if (!/^"(?:[^"\\]|\\.)*"(?:\s+#.*)?$/.test(value)) throw new Error("schema template frontmatter contains malformed YAML value");
+    return;
+  }
+  if (value.startsWith("'")) {
+    if (!/^'(?:[^']|'')*'(?:\s+#.*)?$/.test(value)) throw new Error("schema template frontmatter contains malformed YAML value");
+    return;
+  }
+  if (value.startsWith("[") || value.startsWith("{")) {
+    const stack: string[] = [];
+    let quote: '"' | "'" | null = null;
+    let rootClosed = false;
+    for (let index = 0; index < value.length; index += 1) {
+      const char = value[index]!;
+      if (quote) {
+        if (quote === '"' && char === "\\") index += 1;
+        else if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'") quote = char;
+      else if (char === "[" || char === "{") stack.push(char);
+      else if (char === "]" || char === "}") {
+        const expected = char === "]" ? "[" : "{";
+        if (stack.pop() !== expected) throw new Error("schema template frontmatter contains malformed YAML value");
+        if (stack.length === 0) {
+          if (!/^\s*(?:#.*)?$/.test(value.slice(index + 1))) throw new Error("schema template frontmatter contains malformed YAML value");
+          rootClosed = true;
+          break;
+        }
+      }
+    }
+    if (quote || stack.length > 0 || !rootClosed) throw new Error("schema template frontmatter contains malformed YAML value");
+  }
+}
+
 function parseRequiredSections(content: string): string[] {
-  return content
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim())
-    .filter((section): section is string => Boolean(section));
+  const sections: string[] = [];
+  let fence: { marker: "`" | "~"; length: number } | null = null;
+  for (const line of content.replace(/\r\n/g, "\n").split("\n")) {
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1]![0] as "`" | "~";
+      if (!fence) fence = { marker, length: fenceMatch[1]!.length };
+      else if (
+        marker === fence.marker
+        && fenceMatch[1]!.length >= fence.length
+        && /^[ \t]*$/.test(line.slice(fenceMatch[0].length))
+      ) fence = null;
+      continue;
+    }
+    if (fence) continue;
+    const section = line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim();
+    if (section) sections.push(section);
+  }
+  return sections;
 }
 
 function isAlreadyExistsError(error: unknown): boolean {

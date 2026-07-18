@@ -21,7 +21,7 @@ let onRequestOpenReaderHandler: ((r: NavigatorRequest) => void) | null = null;
 let readerHostNode: HTMLDivElement | null = null;
 let tocHostNode: HTMLDivElement | null = null;
 let readerController: ReadingController | null = null;
-let activeReaderKind: "entry" | "drydock" | "conflicts" | null = null;
+let activeReaderKind: "entry" | "drydock" | "conflicts" | "schema" | null = null;
 let activeReaderEntryId: string | null = null;
 let activeReaderSubId: string | undefined = undefined;
 let lastReaderScrollTop = 0;
@@ -84,7 +84,7 @@ export function mountReaderInto(
   } else if (opts.kind === "entry" && opts.initialEntryId && opts.initialEntryId !== activeReaderEntryId) {
     // 엔트리가 실제로 바뀐 경우에만 재렌더(같은 엔트리 relocate는 재렌더 없이 스크롤 보존).
     void readerController.setEntry(opts.initialEntryId);
-  } else if ((opts.kind === "drydock" || opts.kind === "conflicts") && opts.subId !== activeReaderSubId) {
+  } else if ((opts.kind === "drydock" || opts.kind === "conflicts" || opts.kind === "schema") && opts.subId !== activeReaderSubId) {
     // 드라이독/컨플릭트: subId가 바뀐 경우(목록↔상세 전환) navigateSub으로 내부 재렌더
     activeReaderSubId = opts.subId;
     void readerController.navigateSub(opts.subId);

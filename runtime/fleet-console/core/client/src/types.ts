@@ -163,7 +163,8 @@ export interface NotificationPreferences {
 export type CodexReaderRequest =
   | { readonly kind: "entry"; readonly entryId: string }
   | { readonly kind: "drydock"; readonly patchId?: string }
-  | { readonly kind: "conflicts"; readonly id?: string };
+  | { readonly kind: "conflicts"; readonly id?: string }
+  | { readonly kind: "schema"; readonly templateId?: string };
 
 export interface ConsoleState {
   readonly connection: ConnectionState;

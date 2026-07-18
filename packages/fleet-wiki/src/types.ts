@@ -138,6 +138,22 @@ export interface PatchMeta {
   previousPatchHash?: string;
 }
 
+export interface SchemaCatalogTemplate {
+  id: string;
+  ref: string;
+  sections: string[];
+}
+
+export interface SchemaCatalog {
+  schema: { ref: string; exists: boolean; summary: string };
+  templates: SchemaCatalogTemplate[];
+}
+
+export interface SchemaDocument {
+  ref: string;
+  content: string;
+}
+
 export interface PatchSet {
   id: string;
   sourceRef: string;

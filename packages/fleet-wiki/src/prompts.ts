@@ -112,6 +112,9 @@ export const WIKI_PATCH_EDIT_GUIDELINES = [
 ];
 
 export const WIKI_ORIENT_DESCRIPTION = "Retrieve a Fleet Wiki workspace orientation snapshot.";
+export const WIKI_SCHEMA_LIST_DESCRIPTION = "List the workspace Wiki schema and template catalog.";
+export const WIKI_SCHEMA_READ_DESCRIPTION = "Read the workspace Wiki schema or a named template.";
+export const WIKI_SCHEMA_CREATE_DESCRIPTION = "Create a new custom workspace Wiki schema template.";
 export const WIKI_ORIENT_PROMPT_SNIPPET = "At the start of work, check the wiki schema, index, recent log, queue, and drydock status first.";
 export const WIKI_ORIENT_GUIDELINES = [
   "Call once at the start of work or before wiki-based answers to understand the current terrain.",
@@ -309,5 +312,22 @@ export function buildWikiOrientSchema() {
     include_recent_log: Type.Optional(Type.Boolean({ description: "Whether to include recent log.md entries. Default true" })),
     log_limit: Type.Optional(Type.Number({ description: "Maximum recent_log entry count. Default 5, allowed range 1-20" })),
     max_tokens: Type.Optional(Type.Number({ description: "Rough output token budget. Default 12000, allowed range 1000-50000" })),
+  });
+}
+
+export function buildWikiSchemaListSchema() {
+  return Type.Object({});
+}
+
+export function buildWikiSchemaReadSchema() {
+  return Type.Object({
+    template_id: Type.Optional(Type.String({ description: "Template ID to read. Omit to read wiki-schema.md" })),
+  });
+}
+
+export function buildWikiSchemaCreateSchema() {
+  return Type.Object({
+    template_id: Type.String({ description: "Custom template ID" }),
+    markdown: Type.String({ description: "Complete template Markdown including matching template_id frontmatter" }),
   });
 }
