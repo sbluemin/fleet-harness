@@ -14,6 +14,8 @@ export interface CoworkSessionDto {
   baseVersion: number;
   selection: string | null;
   annotations: readonly CoworkAnnotationDto[];
+  /** Original entry markdown captured at session start — the diff baseline for the studio. */
+  baseDraft: string;
   /** User-chosen agent identity. Safe to expose — provider session identity stays server-only. */
   cli?: string;
   model?: string;
@@ -21,7 +23,8 @@ export interface CoworkSessionDto {
 }
 
 export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
-export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "done" | "error"; session: CoworkSessionDto; text?: string; }
+export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
+export interface CoworkTranscriptTurnDto { role: "user" | "assistant"; text: string; at: string; }
 export interface CoworkOptionsResponse { clis: readonly string[]; models: readonly string[]; efforts: readonly string[]; }
 
 // workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지

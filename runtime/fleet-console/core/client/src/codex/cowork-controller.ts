@@ -2,7 +2,7 @@ import { renderMarkdown } from "@fleet-console/markdown/core";
 import {
   applyCowork, cancelCowork, closeCowork, CoworkRequestError, createCoworkSession,
   fetchCoworkOptions, fetchCoworkSession, promptCowork, subscribeCoworkEvents,
-  updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
+  fetchCoworkTranscript, updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
 } from "./api.js";
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
 import { diffDraftLines } from "./cowork-diff.js";
@@ -25,13 +25,14 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
   let annotations: CoworkAnnotationDto[] = [];
   let quote = "";
   let transcripts: Transcript[] = [];
+  let streamingReply = false;
   let error = "";
 
   const redraw = () => {
     if (disposed || !session) return;
     const current = renderMarkdown(options.base).html;
     const draft = renderMarkdown(session.draft).html;
-    const changed = diffDraftLines(options.base, session.draft).filter(line => line.changed).length;
+    const changed = diffDraftLines(session.baseDraft || options.base, session.draft).filter(line => line.changed).length;
     container.innerHTML = `<section class="cowork-studio" aria-label="AI draft studio">
       <header class="cowork-studio-head"><div><p class="cowork-kicker">Codex · Cowork</p><h2>Draft studio</h2></div>
       <div class="cowork-head-actions"><span class="cowork-status" aria-live="polite">${escapeHtml(session.state === "running" ? "Writing" : session.state)}</span>
@@ -42,7 +43,7 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
       </div>
       <div class="cowork-panes"><article class="cowork-pane cowork-pane--current"><header><span>Current</span><button type="button" data-cowork-action="comment" ${quote ? "" : "disabled"}>Comment</button></header><div class="markdown-body cowork-markdown" data-cowork-current>${current}</div>
         <div class="cowork-annotations">${annotations.map(annotation => `<span class="cowork-annotation-chip">${escapeHtml(annotation.text)}</span>`).join("")}</div></article>
-        <article class="cowork-pane cowork-pane--draft"><header><span>AI Draft</span><small>${changed} changed lines</small></header><div class="cowork-diff" aria-label="Draft changed lines">${renderDiff(options.base, session.draft)}</div><div class="markdown-body cowork-markdown">${draft}</div></article></div>
+        <article class="cowork-pane cowork-pane--draft"><header><span>AI Draft</span><small>${changed} changed lines</small></header><div class="cowork-diff" aria-label="Draft changed lines">${renderDiff(session.baseDraft || options.base, session.draft)}</div><div class="markdown-body cowork-markdown">${draft}</div></article></div>
       <footer class="cowork-chat"><div class="cowork-transcript" aria-live="polite">${transcripts.map(turn => `<p class="cowork-turn cowork-turn--${turn.role}"><strong>${turn.role === "user" ? "You" : turn.role === "assistant" ? "AI" : "Cowork"}</strong>${escapeHtml(turn.text)}</p>`).join("")}</div>
         ${quote ? `<div class="cowork-quote"><span>${escapeHtml(quote)}</span><button type="button" data-cowork-action="clear-quote" aria-label="Remove quote">×</button></div>` : ""}
         <form class="cowork-composer" data-cowork-form><textarea name="prompt" rows="2" placeholder="Tell the draft what to change" aria-label="Message draft" ${session.state === "running" ? "disabled" : ""}></textarea>
@@ -59,6 +60,7 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
     await updateOptions();
     session = await createCoworkSession(options.theaterId, options.entryId, settings);
     if (session.cli || session.model || session.effort) { settings = { cli: session.cli ?? settings.cli, model: session.model ?? settings.model, effort: session.effort ?? settings.effort }; saveSettings(settings); }
+    try { transcripts = (await fetchCoworkTranscript(options.theaterId, session.id)).turns.map(turn => ({ role: turn.role, text: turn.text })); } catch { /* fresh session — no transcript yet */ }
     if (disposed) return { destroy() {} };
     subscribe(); redraw();
   } catch (cause) { container.innerHTML = `<div class="codex-reader-error" role="alert">${escapeHtml(message(cause))}</div>`; }
@@ -67,8 +69,14 @@ export async function mountCoworkInto(container: HTMLElement, options: MountCowo
     if (!session) return;
     unsubscribe?.();
     unsubscribe = subscribeCoworkEvents(options.theaterId, session.id, lastEventId, (event, id) => {
-      lastEventId = Math.max(lastEventId, id); session = event.session;
-      if (event.type === "transcript" && event.text) transcripts.push({ role: "assistant", text: event.text });
+      lastEventId = Math.max(lastEventId, id);
+      if (event.session) session = event.session;
+      if (event.type === "transcript" && event.text) {
+        const last = transcripts[transcripts.length - 1];
+        if (streamingReply && last?.role === "assistant") last.text += event.text;
+        else { transcripts.push({ role: "assistant", text: event.text }); streamingReply = true; }
+      }
+      if (event.type === "done" || event.type === "error") streamingReply = false;
       if (event.type === "error" && event.text) error = event.text;
       redraw();
     });

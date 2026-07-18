@@ -32,11 +32,10 @@ describe("Cowork contract defects", () => {
     await service.prompt("workspace", session.id, "Revise this");
     connector.client.emit("messageChunk", "first ");
     connector.client.emit("messageChunk", "second");
-    await until(async () => (await store.transcript("workspace", session.id)).length === 3);
     connector.client.emit("promptComplete");
     await until(async () => (await store.events("workspace", session.id)).some(event => event.type === "done"));
 
-    expect(await store.transcript("workspace", session.id)).toEqual(expect.arrayContaining([{ role: "user", text: "Revise this", at: expect.any(String) }, { role: "assistant", text: "first ", at: expect.any(String) }, { role: "assistant", text: "second", at: expect.any(String) }]));
+    expect(await store.transcript("workspace", session.id)).toEqual(expect.arrayContaining([{ role: "user", text: "Revise this", at: expect.any(String) }, { role: "assistant", text: "first second", at: expect.any(String) }]));
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: "transcript", text: "first " }), expect.objectContaining({ type: "done" })]));
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
     expect((await service.get("workspace", session.id))?.providerSessionId).toBe("provider-session-only");

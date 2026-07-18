@@ -10,9 +10,24 @@ import { CoworkStore } from "./store.js";
 import type { CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
 
 export interface CoworkConnector { connect(options: UnifiedClientOptions): Promise<IUnifiedAgentClient>; }
+
+const COWORK_SYSTEM_PROMPT = [
+  "You are the Codex Cowork editing agent inside Fleet Console, editing exactly one Fleet Wiki entry draft.",
+  "The draft is the single source of truth and is reachable ONLY through your MCP tools:",
+  "wiki_draft_read (current draft + revision), wiki_draft_edit (exact find/replace), wiki_draft_write (full body replace).",
+  "Read-only research tools: wiki_briefing, wiki_orient, wiki_read, wiki_resolve.",
+  "Workflow: ALWAYS call wiki_draft_read first, apply the user's feedback through wiki_draft_edit or wiki_draft_write, then reply with a short summary of what changed.",
+  "Never ask the user to paste the document — the draft is already available via wiki_draft_read.",
+  "Do not use any other tools, do not touch files, do not run commands.",
+  "The draft is markdown with YAML frontmatter — preserve frontmatter keys and structure unless explicitly asked.",
+  "The user message is JSON: { prompt, annotations, selection } — annotations and selection quote exact draft text the feedback refers to.",
+  "Reply in the user's language.",
+].join(" ");
+
 export class CoworkService {
   private readonly live = new Map<string, IUnifiedAgentClient>();
   private readonly listeners = new Map<string, Set<(event: CoworkStoredEvent) => void>>();
+  private readonly streamBuffers = new Map<string, string>();
   constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector = UnifiedAgent, private readonly resolver?: WikiWorkspaceResolver) {}
   async create(workspaceId: string, entryId: string, identity?: { cli?: string; model?: string; effort?: string }): Promise<CoworkSessionRecord> { const entry = await readWikiEntry(entryId, this.paths); if (!entry) throw new Error("cowork_entry_not_found"); const markdown = await readPatchFile(join(this.paths.wikiDir, `${entryId}.md`)); return this.store.create(workspaceId, entryId, markdown, entry.version, computeContentHash(markdown), identity); }
   async settings(workspaceId: string, id: string, identity: { cli?: string; model?: string; effort?: string }) { return this.changed(await this.store.update(workspaceId, id, s => ({ ...s, ...identity }))); }
@@ -25,11 +40,11 @@ export class CoworkService {
     await this.store.appendTranscript(workspaceId, id, { role: "user", text: prompt, at: new Date().toISOString() });
     const runtime = createCoworkMcpRuntime(this.store, workspaceId, id, this.resolver);
     const mcp = await runtime.manager.createExecutorMcpSession({ serverName: "cowork", specs: runtime.specs, cwd: this.cwd });
-    const client = await this.connector.connect({ cwd: this.cwd, cli: session.cli as UnifiedClientOptions["cli"], model: session.model, effort: session.effort, sessionId: session.providerSessionId, mcpServers: [mcp.mcpServer], ...runtime.connection });
+    const client = await this.connector.connect({ cwd: this.cwd, cli: session.cli as UnifiedClientOptions["cli"], model: session.model, effort: session.effort, sessionId: session.providerSessionId, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
     this.live.set(id, client); client.on("permissionRequest", (params, resolve) => resolve(permissionResponse(params, runtime.allowedToolIds)));
-    client.on("messageChunk", (text) => { void this.store.appendTranscript(workspaceId, id, { role: "assistant", text, at: new Date().toISOString() }); void this.emit(workspaceId, id, "transcript", text); });
-    client.on("promptComplete", () => { void this.store.update(workspaceId, id, s => ({ ...s, state: "idle", providerSessionId: client.getConnectionInfo().sessionId ?? s.providerSessionId })).then(s => this.changed(s)).then(() => this.emit(workspaceId, id, "done")); });
-    client.on("error", (error) => { void this.store.update(workspaceId, id, s => ({ ...s, state: "idle" })).then(s => this.changed(s)).then(() => this.emit(workspaceId, id, "error", error.message)); });
+    client.on("messageChunk", (text) => { this.streamBuffers.set(id, (this.streamBuffers.get(id) ?? "") + text); void this.emit(workspaceId, id, "transcript", text, false); });
+    client.on("promptComplete", () => { void this.flushAssistantTurn(workspaceId, id).then(() => this.store.update(workspaceId, id, s => ({ ...s, state: "idle", providerSessionId: client.getConnectionInfo().sessionId ?? s.providerSessionId }))).then(s => this.changed(s)).then(() => this.emit(workspaceId, id, "done")); });
+    client.on("error", (error) => { void this.flushAssistantTurn(workspaceId, id).then(() => this.store.update(workspaceId, id, s => ({ ...s, state: "idle" }))).then(s => this.changed(s)).then(() => this.emit(workspaceId, id, "error", error.message)); });
     void client.sendMessage(this.composePrompt(prompt, annotations, session.selection)); return session;
   }
   async cancel(workspaceId: string, id: string) { const client = this.live.get(id); if (client) await client.cancelPrompt(); return this.changed(await this.store.update(workspaceId, id, s => s.state === "running" ? { ...s, state: "idle" } : s)); }
@@ -40,7 +55,8 @@ export class CoworkService {
   async replay(workspaceId: string, id: string, after = 0) { return (await this.store.events(workspaceId, id)).filter(e => e.id > after); }
   private composePrompt(prompt: string, annotations: CoworkSessionRecord["annotations"], selection: string | null) { return JSON.stringify({ prompt, annotations, selection: selection ? { quote: selection } : undefined }); }
   private async changed(s: CoworkSessionRecord) { await this.emit(s.workspaceId, s.id, "session"); return s; }
-  private async emit(workspaceId: string, id: string, type: CoworkStoredEvent["type"], text?: string) { const s = await this.required(workspaceId, id); const event = await this.store.appendEvent(workspaceId, id, { type, text, session: this.dto(s) }); for (const cb of this.listeners.get(id) ?? []) cb(event); }
+  private async flushAssistantTurn(workspaceId: string, id: string) { const text = this.streamBuffers.get(id); this.streamBuffers.delete(id); if (text) await this.store.appendTranscript(workspaceId, id, { role: "assistant", text, at: new Date().toISOString() }); }
+  private async emit(workspaceId: string, id: string, type: CoworkStoredEvent["type"], text?: string, includeSession = true) { const session = includeSession ? this.dto(await this.required(workspaceId, id)) : undefined; const event = await this.store.appendEvent(workspaceId, id, { type, text, session }); for (const cb of this.listeners.get(id) ?? []) cb(event); }
   private async required(workspaceId: string, id: string) { const s = await this.get(workspaceId, id); if (!s) throw new Error("cowork_session_not_found"); return s; }
 }
 

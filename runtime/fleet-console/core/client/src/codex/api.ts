@@ -5,6 +5,7 @@ import type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
+  CoworkTranscriptTurnDto,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -24,6 +25,7 @@ export type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
+  CoworkTranscriptTurnDto,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -116,6 +118,10 @@ export async function createCoworkSession(theaterId: string | null, entryId: str
 
 export async function updateCoworkSettings(theaterId: string | null, id: string, settings: CoworkAgentSettings): Promise<CoworkSessionDto> {
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/settings`), { ...settings });
+}
+
+export async function fetchCoworkTranscript(theaterId: string | null, id: string): Promise<{ turns: readonly CoworkTranscriptTurnDto[] }> {
+  return fetchCoworkJson<{ turns: readonly CoworkTranscriptTurnDto[] }>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/transcript`));
 }
 
 export async function fetchCoworkSession(theaterId: string | null, id: string): Promise<CoworkSessionDto> {
