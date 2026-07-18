@@ -961,8 +961,18 @@
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
 .repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
-.repository-ref-list button, .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
-.repository-ref-list .is-current, .repository-wip-row { color: var(--brass); }
+.repository-ref-group { display: grid; gap: 2px; }
+.repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; font-weight: 400; letter-spacing: .18em; text-transform: uppercase; }
+.repository-ref-row { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; text-align: left; padding: 7px 10px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
+.repository-ref-row:hover { background: var(--ink-mid); color: var(--text-primary); }
+.repository-ref-row:disabled { cursor: default; }
+.repository-ref-row.is-current { color: var(--brass); }
+.repository-ref-row.is-current:hover { color: var(--brass); }
+.repository-ref-row svg { width: 13px; height: 13px; flex: none; opacity: .85; }
+.repository-ref-name { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.repository-ref-sub { margin-left: auto; color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 10px; }
+.repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
+.repository-wip-row { color: var(--brass); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--hairline); }
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
 @container (max-width: 420px) { .repository-source-nav { width: 44px; } .repository-source-nav button { display: grid; place-items: center; padding: 5px; } .repository-source-nav button span, .repository-source-nav button i, .repository-source-nav b { display: none; } }
