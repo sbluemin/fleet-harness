@@ -25,7 +25,7 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     if (request.method === "POST" && parts[4] === "apply") return json(response, 200, service.dto(await service.apply(context.workspaceId, id)));
     if (request.method === "POST" && (parts[4] === "close" || parts[4] === "discard")) return json(response, 200, service.dto(await service.close(context.workspaceId, id)));
     return json(response, 404, { error: "not_found" });
-  } catch (error) { const message = error instanceof Error ? error.message : "internal_error"; return json(response, message === "cowork_busy" ? 409 : message.includes("not_found") ? 404 : 400, { error: message }); }
+  } catch (error) { const message = error instanceof Error ? error.message : "internal_error"; return json(response, message === "cowork_busy" || message === "cowork_apply_stale" ? 409 : message.includes("not_found") ? 404 : 400, { error: message }); }
 }
 function writeAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string> }) { const addr = r.socket.remoteAddress; return (addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1") && typeof r.headers.origin === "string" && c.allowedOrigins.has(r.headers.origin); }
 async function body(r: IncomingMessage): Promise<Record<string, unknown>> { let raw = ""; for await (const c of r) { raw += String(c); if (raw.length > 1024 * 1024) throw new Error("body_too_large"); } try { const v: unknown = JSON.parse(raw || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; } catch { throw new Error("invalid_json"); } }
