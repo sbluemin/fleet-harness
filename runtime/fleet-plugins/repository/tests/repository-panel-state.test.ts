@@ -15,12 +15,18 @@ describe("Repository panel state contracts", () => {
 
   it("keeps canonical full names distinct when heads and tags share a label", () => {
     expect({
-      branches: parseRefItems("refs/heads/main\0main\n", "main"),
-      tags: parseRefItems("refs/tags/main\0main\n", "main"),
+      branches: parseRefItems("refs/heads/main\0main\n", "refs/heads/main"),
+      tags: parseRefItems("refs/tags/main\0main\n", "refs/heads/main"),
     }).toEqual({
       branches: [{ label: "main", ref: "refs/heads/main", current: true }],
       tags: [{ label: "main", ref: "refs/tags/main", current: false }],
     });
+  });
+
+  it("uses the canonical current ref when an ambiguous short label includes its namespace", () => {
+    expect(parseRefItems("refs/heads/collision\0heads/collision\n", "refs/heads/collision")).toEqual([
+      { label: "heads/collision", ref: "refs/heads/collision", current: true },
+    ]);
   });
 
   it("renders browser-safe worktree names and current marker without paths", async () => {
