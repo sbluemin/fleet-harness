@@ -177,7 +177,6 @@
   --hairline: oklch(36% 0.035 248);
   --hairline-strong: oklch(48% 0.03 248);
 
-  /* Maritime 봉투: 유리질 고채도 골격 → 정체성 톤도 C≈0.085로 동반 상승. */
   --id-crimson: oklch(74% 0.09 25);
   --id-amber: oklch(78% 0.088 70);
   --id-moss: oklch(76% 0.085 140);
@@ -230,7 +229,6 @@
   --hairline: oklch(33% 0.006 252);
   --hairline-strong: oklch(45% 0.005 252);
 
-  /* Carbon 봉투: 무채색 골격 → 정체성 톤은 C≈0.05로 절제. */
   --id-crimson: oklch(72% 0.052 25);
   --id-amber: oklch(76% 0.05 70);
   --id-moss: oklch(74% 0.048 140);
