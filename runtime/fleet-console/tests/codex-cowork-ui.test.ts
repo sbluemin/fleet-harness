@@ -132,6 +132,54 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
+  it("stops a first send while lazy session creation is pending", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let releaseCreate!: (response: Response) => void;
+    const createGate = new Promise<Response>((resolve) => { releaseCreate = resolve; });
+    const fresh = sessionDto({ id: "cowork-slow", draft: BASE_DRAFT, revision: 0, annotations: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.endsWith("/cowork/sessions")) return createGate;
+      return new Response(JSON.stringify(fresh));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "cancel before creation finishes";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/cowork/sessions"))).toBe(true));
+
+    article.querySelector<HTMLElement>('[data-cowork-action="cancel-run"]')!.click();
+    expect(article.querySelector(".cowork-revision-stream")?.classList.contains("is-stopped")).toBe(true);
+    expect(article.querySelector('[data-cowork-action="send"]')).not.toBeNull();
+
+    releaseCreate(new Response(JSON.stringify(fresh), { status: 201 }));
+    await vi.waitFor(() => expect(body.textContent).toContain("Original text."));
+    expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/annotations"))).toBe(false);
+    expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(false);
+
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "1" }));
+    expect(article.querySelector(".cowork-revision-stream")?.classList.contains("is-stopped")).toBe(true);
+    expect(article.querySelector(".cowork-revision-stream")?.classList.contains("is-complete")).toBe(false);
+
+    const nextInput = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    nextInput.value = "try again";
+    nextInput.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
+
+    controller.destroy();
+    article.remove();
+  });
+
   it("locks the prompt locally before the server reports running", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }

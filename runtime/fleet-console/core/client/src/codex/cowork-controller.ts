@@ -26,6 +26,7 @@ export interface MountCoworkInlineOptions {
 
 interface Settings { cli: string; model: string; effort: string; }
 interface AnnotationCard { id: string; quote: string; comment: string; status: "pending" | "sent" | "done"; }
+interface PromptAttempt { cancelled: boolean; submitted: boolean; }
 type RevisionOutcome = "idle" | "running" | "complete" | "stopped";
 
 const SETTINGS_KEY = "fleet.codex.cowork.settings";
@@ -58,6 +59,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let awaitingResult = false;
   // 서버의 running DTO가 돌아오기 전에도 전송을 잠가 동일 프롬프트의 재진입을 막는다.
   let promptPending = false;
+  let promptAttempt: PromptAttempt | null = null;
   let promptText = "";
   let error = "";
   let lastBodyKey = "published";
@@ -350,13 +352,16 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       }
       // 도구 호출 상세는 사용자에게 출력하지 않는다 — 러닝 상태는 일반 문구로만 표시.
       if (event.type === "done") {
-        const completedObservedRun = wasRunning || awaitingResult || revisionOutcome === "stopped" || !!reply || !!revisionInstruction;
-        revisionOutcome = completedObservedRun ? "complete" : "idle";
-        annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
-        // AI 응답이 실제 변경(삭제-전용 포함)을 남겼으면 렌더드 diff로 전환해 검토를 유도한다.
-        if (awaitingResult) {
-          awaitingResult = false;
-          if (session && session.baseDraft !== session.draft) diffVisible = true;
+        // 제출 전에 취소된 지연 생성 요청은 뒤늦은 이벤트로 완료 처리하지 않는다.
+        if (!promptAttempt?.cancelled || promptAttempt.submitted) {
+          const completedObservedRun = wasRunning || awaitingResult || revisionOutcome === "stopped" || !!reply || !!revisionInstruction;
+          revisionOutcome = completedObservedRun ? "complete" : "idle";
+          annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
+          // AI 응답이 실제 변경(삭제-전용 포함)을 남겼으면 렌더드 diff로 전환해 검토를 유도한다.
+          if (awaitingResult) {
+            awaitingResult = false;
+            if (session && session.baseDraft !== session.draft) diffVisible = true;
+          }
         }
       }
       if (event.type === "error" || (event.type === "session" && wasRunning && session?.state !== "running")) {
@@ -405,6 +410,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const localInstruction = promptText.trim();
     const prompt = localInstruction || (outgoing.length ? BATCH_INSTRUCTION : "");
     if (!prompt) return;
+    const attempt: PromptAttempt = { cancelled: false, submitted: false };
+    promptAttempt = attempt;
     promptPending = true;
     annotations = outgoing.map(card => ({ ...card, status: "sent" }));
     reply = "";
@@ -419,16 +426,24 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     try {
       // 도크 상시 표시: 세션이 아직 없으면 첫 전송 시점에 만든다.
       await ensureSession();
+      if (attempt.cancelled || promptAttempt !== attempt) return;
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
+      if (attempt.cancelled || promptAttempt !== attempt) return;
+      attempt.submitted = true;
       await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
       awaitingResult = true;
     } catch {
-      awaitingResult = false;
-      revisionOutcome = "idle";
-      annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
+      if (!attempt.cancelled && promptAttempt === attempt) {
+        awaitingResult = false;
+        revisionOutcome = "idle";
+        annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
+      }
     } finally {
-      promptPending = false;
-      renderDock();
+      if (!attempt.cancelled && promptAttempt === attempt) {
+        promptPending = false;
+        promptAttempt = null;
+        renderDock();
+      }
     }
   }
 
@@ -545,6 +560,16 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       stream?.querySelector<HTMLElement>(".cowork-revision-content")?.setAttribute("aria-hidden", String(revisionCollapsed));
     }
     if (action === "send") void send();
+    if (action === "cancel-run" && promptPending && promptAttempt && !promptAttempt.submitted) {
+      promptAttempt.cancelled = true;
+      promptPending = false;
+      awaitingResult = false;
+      revisionOutcome = "stopped";
+      annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
+      renderDock();
+      applyMarks();
+      return;
+    }
     if (action === "toggle-diff") { diffVisible = !diffVisible; redraw(); }
     if (action === "delete-annotation" && target.dataset.annotationId) void deleteAnnotation(target.dataset.annotationId);
     if (action === "apply-arm") { confirmAction = "apply"; renderDock(); }
