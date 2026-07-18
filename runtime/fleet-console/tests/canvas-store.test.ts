@@ -73,10 +73,15 @@ describe("canvas store", () => {
     expect(getFormationView()).toBe(true);
   });
 
-  it("clears companion layout when its Operation disappears", () => {
+  it("keeps companion layout through a transient prune and clears it only when the target is minimized", () => {
     setOperationGeometry("op-a", { ...GEOMETRY });
     setCompanionOperationId("op-a");
+    // ops 푸시 레이스로 목록에서 일시적으로 빠져도 즉시 닫지 않는다 — 지속 부재 정리는 캔버스 유예 효과 소유.
     pruneOperations([]);
+    expect(getCompanionOperationId()).toBe("op-a");
+
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    minimizeOperation("op-a");
     expect(getCompanionOperationId()).toBeNull();
   });
 

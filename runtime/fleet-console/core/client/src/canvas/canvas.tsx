@@ -149,7 +149,11 @@ export function OperationsCanvas({
   const companionPanels = companionDescriptor?.companions ?? [];
   const panelCompanion = companionOperation && companionPanels.length > 0 ? companionOperation.id : null;
   useEffect(() => {
-    if (companionOperationId !== null && panelCompanion === null) clearCompanionOperationId();
+    if (companionOperationId === null || panelCompanion !== null) return;
+    // ops 푸시 직후 대상 Operation이 목록에서 일시적으로 빠지는 레이스가 있어, 방금 연 분석
+    // 레이아웃이 즉시 닫히지 않도록 부재가 지속될 때만 정리한다(복귀 시 cleanup으로 취소).
+    const timer = setTimeout(() => clearCompanionOperationId(), 1_500);
+    return () => clearTimeout(timer);
   }, [companionOperationId, panelCompanion]);
   const formationOperationIds = flattenGroupedOrder(
     theaterOperations,

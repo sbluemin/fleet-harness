@@ -410,7 +410,9 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   const operationAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
   const accentChanged = Object.keys(operationAccent).length !== Object.keys(state.operationAccent).length;
   if (maximizedOperationId && (!valid.has(maximizedOperationId) || minimized.includes(maximizedOperationId))) clearMaximizedOperationId();
-  if (companionOperationId && (!valid.has(companionOperationId) || minimized.includes(companionOperationId))) clearCompanionOperationId();
+  // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
+  // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
+  if (companionOperationId && minimized.includes(companionOperationId)) clearCompanionOperationId();
   if (changed || minimizedChanged || orderChanged || accentChanged) {
     setState({ operations, minimized, operationOrder, operationAccent });
   }
