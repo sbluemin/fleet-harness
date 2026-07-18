@@ -6,13 +6,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
-import { clearFormationView, clearMaximizedOperationId, getSnapshot, loadForTheater, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getSnapshot, loadForTheater, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
   usePluginRegistry: () => ({
     plugins: [],
-    operationKinds: [{ pluginId: "test-plugin", type: "shell", title: "Test", render: ({ operationId }: { readonly operationId: string }) => createElement("div", { "data-plugin-operation": operationId }) }],
+    operationKinds: [{
+      pluginId: "test-plugin",
+      type: "shell",
+      title: "Test",
+      render: ({ operationId, companionsOpen, onRequestCompanions }: { readonly operationId: string; readonly companionsOpen?: boolean; readonly onRequestCompanions?: (open: boolean) => void }) => createElement("button", { "data-plugin-operation": operationId, "data-companions-open": String(companionsOpen), onClick: () => onRequestCompanions?.(!companionsOpen) }, "Toggle companions"),
+      companions: [
+        { id: "chat", title: "Chat", render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "chat", "data-companions-open": String(companionsOpen) }) },
+        { id: "artifacts", title: "Artifacts", render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen) }) },
+      ],
+    }],
     settingsSections: [],
     notificationKinds: [],
     railPanels: [],
@@ -54,6 +63,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => {} });
   loadForTheater("minimap-boundary");
   clearFormationView();
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   setState({
     viewport: { x: 0, y: 0, zoom: 1 },
@@ -70,6 +80,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   clearFormationView();
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   loadForTheater(null);
   window.localStorage.clear();
@@ -197,6 +208,36 @@ describe("CanvasMinimap collapse behavior", () => {
 
     expect(peer?.hidden).toBe(false);
     expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("passes the companion callback through render context and restores Map geometry on exit", () => {
+    renderOperationsCanvas();
+    const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
+    const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+    const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
+
+    act(() => targetBody?.click());
+
+    expect(getCompanionOperationId()).toBe("operation");
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+    expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
+    expect(document.querySelectorAll('[data-test-companion][data-companions-open="true"]')).toHaveLength(2);
+    expect(document.querySelector('[data-plugin-operation="operation"]')).toBe(targetBody);
+    expect(getComputedStyle(peer!).visibility).toBe("hidden");
+    expect(Number.parseFloat(targetFrame?.style.width ?? "0")).toBeCloseTo((900 - 16) / 3, 0);
+
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Close Chat"]')?.click());
+
+    expect(getCompanionOperationId()).toBeNull();
+    expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(0);
+    expect(document.querySelector('[data-plugin-operation="operation"]')).toBe(targetBody);
+    expect(targetFrame?.style.width).toBe("320px");
+    expect(getComputedStyle(peer!).visibility).not.toBe("hidden");
+
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBe("operation");
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBeNull();
   });
 
   it("closes a hidden peer's portaled accent menu and transfers its menu focus", () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analysisReducer, initialAnalysisState } from "./analysis-state.js";
 
 const catalog = { clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [{ id: "sonnet", label: "Sonnet", effortLevels: ["low", "high"], defaultEffort: "high" }] }] };
-describe("analysisReducer", () => {
+describe("shared analysis store reducer", () => {
   it("locks its selection after first send and remains in component memory", () => {
     const selected = analysisReducer(initialAnalysisState, { type: "catalog", catalog });
     const locked = analysisReducer(selected, { type: "sending", started: true, text: "Review this" });

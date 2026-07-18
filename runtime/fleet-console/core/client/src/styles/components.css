@@ -1618,7 +1618,9 @@
 .operations-canvas.is-formation-view .canvas-minimap,
 .operations-canvas.is-formation-view .canvas-minimap-fab,
 .operations-canvas.is-panel-maximized .canvas-minimap,
-.operations-canvas.is-panel-maximized .canvas-minimap-fab {
+.operations-canvas.is-panel-maximized .canvas-minimap-fab,
+.operations-canvas.is-companion-layout .canvas-minimap,
+.operations-canvas.is-companion-layout .canvas-minimap-fab {
   display: none;
 }
 
@@ -1962,7 +1964,8 @@
 }
 
 /* Formation 슬롯은 계산값이 규약이다 — 320×200 CSS 최소값이 슬롯을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
-.operations-canvas.is-formation-view .canvas-operation {
+.operations-canvas.is-formation-view .canvas-operation,
+.operations-canvas.is-companion-layout .canvas-operation {
   min-width: 0;
   min-height: 0;
 }
@@ -1994,8 +1997,45 @@
 /* Formation 슬롯은 y=0에서 시작하고, 일반 맵 뷰에서도 뷰포트-상대 상단 밀착(is-top-edge) 패널은
    캔버스 클립(overflow:hidden)이 보더 위 명판을 잘라낸다 — 최대화와 동일하게 내부 인셋으로 전환한다. */
 .operations-canvas.is-formation-view .canvas-operation-titlebar,
+.operations-canvas.is-companion-layout .canvas-operation-titlebar,
 .canvas-operation.is-top-edge .canvas-operation-titlebar {
   top: var(--space-2);
+}
+
+.operations-canvas.is-companion-layout .canvas-operation-titlebar,
+.canvas-companion-frame .canvas-operation-titlebar {
+  cursor: default;
+}
+
+.canvas-companion-frame .canvas-operation-identity-name {
+  cursor: default;
+}
+
+.canvas-companion-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
+  color: var(--ink-fog);
+  font: inherit;
+  cursor: pointer;
+}
+
+.canvas-companion-close:hover,
+.canvas-companion-close:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
+  outline-offset: 2px;
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+  color: var(--brass-bright);
+}
+
+.canvas-companion-body {
+  overflow: auto;
 }
 
 /* 포커스는 단일 location accent로만 표시한다. */

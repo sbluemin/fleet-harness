@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearFormationView, clearMaximizedOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setCompanionOperationId, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -17,15 +17,18 @@ beforeEach(() => {
   window.localStorage.clear();
   setFormationLayout("grid");
   loadForTheater("theater-a");
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   clearFormationView();
 });
 
 afterEach(() => {
   loadForTheater("theater-a");
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   clearFormationView();
   loadForTheater("theater-b");
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   clearFormationView();
   loadForTheater(null);
@@ -34,6 +37,49 @@ afterEach(() => {
 });
 
 describe("canvas store", () => {
+  it("enters companion layout without mutating Map state and restores a minimized target", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 48, y: 72 });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    minimizeOperation("op-a");
+    const viewport = { x: 24, y: 36, zoom: 0.75 };
+    setState({ viewport });
+    const operations = getSnapshot().operations;
+    toggleFormationView();
+    setMaximizedOperationId("op-b");
+
+    setCompanionOperationId("op-a");
+
+    expect(getCompanionOperationId()).toBe("op-a");
+    expect(getMaximizedOperationId()).toBeNull();
+    expect(getFormationView()).toBe(false);
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getSnapshot().viewport).toEqual(viewport);
+    expect(getSnapshot().operations).toEqual(operations);
+
+    clearCompanionOperationId();
+    expect(getSnapshot().viewport).toEqual(viewport);
+    expect(getSnapshot().operations).toEqual(operations);
+  });
+
+  it("clears companion layout when maximize or Formation takes ownership", () => {
+    setCompanionOperationId("op-a");
+    setMaximizedOperationId("op-b");
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getMaximizedOperationId()).toBe("op-b");
+
+    setCompanionOperationId("op-a");
+    toggleFormationView();
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(true);
+  });
+
+  it("clears companion layout when its Operation disappears", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setCompanionOperationId("op-a");
+    pruneOperations([]);
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
   it("restores maximizedOperationId independently for each Theater", () => {
     setMaximizedOperationId("op-a");
 

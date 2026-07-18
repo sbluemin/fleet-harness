@@ -9,9 +9,29 @@ describe("Session Analyst contract", () => {
   it("rejects recursive sensitive payload keys", () => {
     expect(parseAnalysisEvent({ type: "chunk", text: "x", nested: { transcriptPath: "/private" } })).toBeNull();
   });
-  it("keeps the approved three-pane copy", () => {
-    const panel = readFileSync(new URL("./analysis-panel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("Walk me through how this session unfolded");
-    expect(panel).toContain("Artifacts · sandboxed HTML");
+  it("keeps the approved copy in separate companion panels", () => {
+    const chat = readFileSync(new URL("./analysis-chat-panel.tsx", import.meta.url), "utf8");
+    const artifacts = readFileSync(new URL("./analysis-artifacts-panel.tsx", import.meta.url), "utf8");
+    const css = readFileSync(new URL("./analysis.css", import.meta.url), "utf8");
+    expect(chat).toContain("Walk me through how this session unfolded");
+    expect(artifacts).toContain("Artifacts · sandboxed HTML");
+    expect(css).not.toContain("agent-stream-host--analyst");
+  });
+  it("registers the two companion chips on the Agent operation kind", () => {
+    const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
+    const companions = [...source.matchAll(/\{ id: "([^"]+)", title: "([^"]+)"/g)].map((match) => ({ id: match[1], title: match[2] }));
+    expect(companions).toMatchInlineSnapshot(`
+      [
+        {
+          "id": "session-analyst-chat",
+          "title": "Session Analyst",
+        },
+        {
+          "id": "session-analyst-artifacts",
+          "title": "Artifacts",
+        },
+      ]
+    `);
+    expect(source).toContain("context.onRequestCompanions?.(!context.companionsOpen)");
   });
 });

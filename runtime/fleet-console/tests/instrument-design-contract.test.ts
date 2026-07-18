@@ -57,7 +57,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap,");
-    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab {");
+    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
+    expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
+    expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
     expect(contextMenu).toContain('<p className="canvas-context-menu-section">Launch</p>');
     expect(contextMenu).not.toContain("CanvasContextMenuMode");
     expect(contextMenu).not.toContain("canvas-context-menu-tabs");

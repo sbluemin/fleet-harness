@@ -3,14 +3,16 @@ import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
-import { definePlugin, React, type PluginInstallContext } from "@fleet-console/sdk/plugin/browser";
+import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-font.js";
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
 import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
-import { AnalysisPanel } from "./analysis-panel.js";
+import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
+import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { disposeAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
@@ -79,6 +81,10 @@ export const agentOperationKind = defineOperationKind({
   title: "Agent",
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
+  companions: [
+    { id: "session-analyst-chat", title: "Session Analyst", render: (context) => <AnalystChatPanel context={context} /> },
+    { id: "session-analyst-artifacts", title: "Artifacts", render: (context) => <AnalystArtifactsPanel context={context} /> },
+  ],
 });
 
 export const agentSettingsSection = defineSettingsSection({
@@ -109,6 +115,7 @@ export const agentPlugin = definePlugin({
     try {
       await terminateAgentSession(operationId);
     } finally {
+      disposeAnalysisStore(operationId);
       removeSession(operationId);
     }
   },
@@ -246,7 +253,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
-  const [analystOpen, setAnalystOpen] = React.useState(false);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
@@ -358,18 +364,14 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   }
 
   return (
-    <div className={`agent-stream-host${analystOpen ? " agent-stream-host--analyst" : ""}`}>
+    <div className="agent-stream-host">
       <button
         type="button"
         className="session-analyst-handle"
-        aria-label={analystOpen ? "Exit Session Analyst" : "Open Session Analyst"}
-        aria-pressed={analystOpen}
-        onClick={() => {
-          const next = !analystOpen;
-          setAnalystOpen(next);
-          context.onRequestMaximized?.(next);
-        }}
-      >{analystOpen ? "« EXIT" : "ANALYZE »"}</button>
+        aria-label={context.companionsOpen ? "Exit Session Analyst" : "Open Session Analyst"}
+        aria-pressed={context.companionsOpen ?? false}
+        onClick={() => context.onRequestCompanions?.(!context.companionsOpen)}
+      >{context.companionsOpen ? "« EXIT" : "ANALYZE »"}</button>
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
@@ -379,7 +381,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
-      {analystOpen ? <AnalysisPanel context={context} /> : null}
       {dockJobs.length > 0 ? (
         <StreamDock activeJobs={dockJobs} onOpenDetail={openModal} detailBtnRef={detailBtnRef} />
       ) : null}

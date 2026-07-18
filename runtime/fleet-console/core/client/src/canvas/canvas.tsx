@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
 import { isBlockingDialogOpen } from "../blocking-dialog.js";
@@ -9,7 +9,7 @@ import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../s
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
@@ -39,7 +39,6 @@ interface ContextMenuRequest {
 interface PluginOperationRendererProps {
   readonly active: boolean;
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
-  readonly descriptor: OperationKindDescriptor;
   readonly geometry: OperationGeometry;
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
@@ -47,7 +46,9 @@ interface PluginOperationRendererProps {
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
-  readonly onRequestMaximized: (maximized: boolean) => void;
+  readonly onRequestCompanions: (open: boolean) => void;
+  readonly companionsOpen: boolean;
+  readonly render: (context: OperationRenderContext) => unknown;
 }
 
 const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
@@ -73,6 +74,7 @@ export function OperationsCanvas({
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const maximizedOperationId = useMaximizedOperationId();
+  const companionOperationId = useCompanionOperationId();
   const minimized = useMinimized();
   const activePluginOperationId = state.activeOperationId;
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -95,7 +97,7 @@ export function OperationsCanvas({
     viewport: canvas.viewport,
     // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
     // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
-    disabled: disabled || formationView,
+    disabled: disabled || formationView || companionOperationId !== null,
     onViewportChange: setViewport,
     onZoom: animateViewportTo,
     onCreate: (rect) => {
@@ -142,6 +144,13 @@ export function OperationsCanvas({
   const operationKindRegistry = registry.operationKinds;
   const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
+  const companionOperation = companionOperationId === null ? undefined : theaterOperations.find((operation) => operation.id === companionOperationId && !minimizedSet.has(operation.id));
+  const companionDescriptor = companionOperation ? operationKindRegistry.find((kind) => kind.pluginId === companionOperation.pluginId && kind.type === companionOperation.type) : undefined;
+  const companionPanels = companionDescriptor?.companions ?? [];
+  const panelCompanion = companionOperation && companionPanels.length > 0 ? companionOperation.id : null;
+  useEffect(() => {
+    if (companionOperationId !== null && panelCompanion === null) clearCompanionOperationId();
+  }, [companionOperationId, panelCompanion]);
   const formationOperationIds = flattenGroupedOrder(
     theaterOperations,
     state.groups.filter((group) => group.theaterId === state.activeTheaterId),
@@ -151,12 +160,13 @@ export function OperationsCanvas({
   const formationSlots = formationView ? calculateGridSlots({ x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }, formationOperationIds.length, undefined, undefined, undefined, undefined, formationLayout) : [];
   const formationSlotByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, formationSlots[index]!]));
   // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
-  const effectiveZoom = panelMaximized || formationView ? 1 : canvas.viewport.zoom;
+  const effectiveZoom = panelMaximized || panelCompanion || formationView ? 1 : canvas.viewport.zoom;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
+  const companionSlotCount = companionPanels.length + 1;
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${formationView ? "is-formation-view" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
@@ -171,7 +181,7 @@ export function OperationsCanvas({
         style={{
           // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해
           // will-change 합성 레이어의 서브픽셀 오프셋 리샘플(글자 번짐)을 제거한다.
-          transform: panelMaximized || formationView
+          transform: panelMaximized || panelCompanion || formationView
             ? "none"
             : `translate(${Math.round(canvas.viewport.x)}px, ${Math.round(canvas.viewport.y)}px) scale(${canvas.viewport.zoom})`,
         }}
@@ -180,15 +190,17 @@ export function OperationsCanvas({
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;
+          const operationCompanion = panelCompanion === operation.id;
           // focus layer는 peer를 실제 최소화하지 않고, mount를 보존한 채 렌더만 감춘다.
-          const focusLayerHidden = panelMaximized !== null && !operationMaximized;
+          const focusLayerHidden = (panelMaximized !== null || panelCompanion !== null) && !operationMaximized && !operationCompanion;
           const formationSlot = formationSlotByOperationId.get(operation.id);
           const frameGeometry = operationMaximized
             ? maximizedGeometryFor(canvasSize, topPanelZIndex)
+            : operationCompanion ? companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
           // 보더 위 명판(top: -space-3)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치면 내부 인셋으로 전환한다.
           // 최대화/Formation은 전용 CSS 인셋 규칙이 이미 소유한다.
-          const topEdge = !operationMaximized && !formationSlot
+          const topEdge = !operationMaximized && !operationCompanion && !formationSlot
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
@@ -200,6 +212,9 @@ export function OperationsCanvas({
             viewportZoom: effectiveZoom,
             minimized: minimizedSet.has(operation.id),
             maximized: operationMaximized,
+            companion: operationCompanion,
+            companions: operationCompanion ? companionPanels : [],
+            companionGeometries: operationCompanion ? companionPanels.map((_, index) => companionGeometryFor(canvasSize, index + 1, companionSlotCount, topPanelZIndex)) : [],
             formation: formationView,
             focusLayerHidden,
             onRenderHiddenFocus: () => {
@@ -213,11 +228,12 @@ export function OperationsCanvas({
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             onActivate: () => {
               setActiveOperation(operation.id);
-              if (!operationMaximized && !formationView) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+              if (!operationMaximized && !operationCompanion && !formationView) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
             },
             onClose: () => {
               if (state.activeOperationId === operation.id) setActiveOperation(null);
               if (panelMaximized === operation.id) clearMaximizedOperationId();
+              if (panelCompanion === operation.id) clearCompanionOperationId();
               onClose(operation.id);
             },
             onMinimize: () => {
@@ -239,10 +255,10 @@ export function OperationsCanvas({
               onSetAccent(operation.id, accentKey);
             },
             onGeometryChange: (geometry) => {
-              if (!operationMaximized && !formationView) setOperationGeometry(operation.id, geometry);
+              if (!operationMaximized && !operationCompanion && !formationView) setOperationGeometry(operation.id, geometry);
             },
             onGeometryCommit: (geometry) => {
-              if (!operationMaximized && !formationView) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
+              if (!operationMaximized && !operationCompanion && !formationView) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
             },
           });
         })}
@@ -319,6 +335,21 @@ function maximizedGeometryFor(canvasSize: { readonly width: number; readonly hei
   };
 }
 
+// Companion layout은 world transform이 none인 전용 화면 레이아웃이다. Operation과 companion panel이
+// 동일한 슬롯 폭을 사용하므로 Map의 geometry/viewport를 변경하지 않고 EXIT 시 원상 복원된다.
+function companionGeometryFor(canvasSize: { readonly width: number; readonly height: number }, slotIndex: number, slotCount: number, zIndex: number): OperationGeometry {
+  const count = Math.max(1, slotCount);
+  const gap = 8;
+  const width = Math.max(0, (canvasSize.width - gap * (count - 1)) / count);
+  return {
+    x: slotIndex * (width + gap),
+    y: 0,
+    width,
+    height: Math.max(0, canvasSize.height),
+    zIndex,
+  };
+}
+
 function maxOperationZIndex(operations: Record<string, OperationGeometry>): number {
   return Object.values(operations).reduce((max, geometry) => Math.max(max, geometry.zIndex), 0);
 }
@@ -387,6 +418,9 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly viewportZoom: number;
   readonly minimized: boolean;
   readonly maximized: boolean;
+  readonly companion: boolean;
+  readonly companions: readonly CompanionPanelDescriptor[];
+  readonly companionGeometries: readonly OperationGeometry[];
   readonly formation: boolean;
   readonly focusLayerHidden: boolean;
   readonly onRenderHiddenFocus: () => void;
@@ -407,59 +441,81 @@ function renderPluginOperation(operation: OperationNode, options: {
   const capabilities = createHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
   });
+  const onRequestCompanions = (open: boolean) => {
+    if (open) {
+      setActiveOperation(operation.id);
+      setCompanionOperationId(operation.id);
+    } else clearCompanionOperationId();
+  };
   return (
-    <OperationFrame
-      key={operation.id}
-      operation={operation}
-      active={options.active}
-      geometry={geometry}
-      zoom={options.viewportZoom}
-      status={options.status}
-      minimized={options.minimized}
-      maximized={options.maximized}
-      topEdge={options.topEdge}
-      renderHidden={options.focusLayerHidden}
-      focusLayerTarget={options.maximized}
-      interactionDisabled={options.formation || options.focusLayerHidden}
-      accentKey={options.accentKey}
-      onActivate={options.onActivate}
-      onClose={options.onClose}
-      onMinimize={options.onMinimize}
-      onMaximize={options.onMaximize}
-      onRename={options.onRename}
-      onSetAccent={options.onSetAccent}
-      onGeometryChange={options.onGeometryChange}
-      onGeometryCommit={options.onGeometryCommit}
-      onRenderHiddenFocus={options.onRenderHiddenFocus}
-    >
-      <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
-        <PluginOperationRenderer
-          active={options.active}
-          capabilities={capabilities}
-          descriptor={descriptor}
-          geometry={geometry}
-          operation={operation}
-          theme={options.theme}
-          viewportZoom={options.viewportZoom}
-          onActivate={options.onActivate}
-          onClose={options.onClose}
-          onGeometryChange={options.onGeometryChange}
-          onRequestMaximized={(maximized) => {
-            if (maximized) {
-              setActiveOperation(operation.id);
-              setMaximizedOperationId(operation.id);
-            } else clearMaximizedOperationId();
-          }}
-        />
-      </PluginErrorBoundary>
-    </OperationFrame>
+    <Fragment key={operation.id}>
+      <OperationFrame
+        operation={operation}
+        active={options.active}
+        geometry={geometry}
+        zoom={options.viewportZoom}
+        status={options.status}
+        minimized={options.minimized}
+        maximized={options.maximized}
+        topEdge={options.topEdge}
+        renderHidden={options.focusLayerHidden}
+        focusLayerTarget={options.maximized || options.companion}
+        interactionDisabled={options.formation || options.companion || options.focusLayerHidden}
+        accentKey={options.accentKey}
+        onActivate={options.onActivate}
+        onClose={options.onClose}
+        onMinimize={options.onMinimize}
+        onMaximize={options.onMaximize}
+        onRename={options.onRename}
+        onSetAccent={options.onSetAccent}
+        onGeometryChange={options.onGeometryChange}
+        onGeometryCommit={options.onGeometryCommit}
+        onRenderHiddenFocus={options.onRenderHiddenFocus}
+      >
+        <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
+          <PluginOperationRenderer
+            active={options.active}
+            capabilities={capabilities}
+            geometry={geometry}
+            operation={operation}
+            theme={options.theme}
+            viewportZoom={options.viewportZoom}
+            onActivate={options.onActivate}
+            onClose={options.onClose}
+            onGeometryChange={options.onGeometryChange}
+            onRequestCompanions={onRequestCompanions}
+            companionsOpen={options.companion}
+            render={descriptor.render}
+          />
+        </PluginErrorBoundary>
+      </OperationFrame>
+      {options.companions.map((companion, index) => (
+        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!} onClose={clearCompanionOperationId}>
+          <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin companion failed to render.</div>}>
+            <PluginOperationRenderer
+              active={options.active}
+              capabilities={capabilities}
+              geometry={geometry}
+              operation={operation}
+              theme={options.theme}
+              viewportZoom={options.viewportZoom}
+              onActivate={options.onActivate}
+              onClose={options.onClose}
+              onGeometryChange={options.onGeometryChange}
+              onRequestCompanions={onRequestCompanions}
+              companionsOpen={options.companion}
+              render={companion.render}
+            />
+          </PluginErrorBoundary>
+        </CompanionFrame>
+      ))}
+    </Fragment>
   );
 }
 
 function PluginOperationRenderer({
   active,
   capabilities,
-  descriptor,
   geometry,
   operation,
   theme,
@@ -467,10 +523,11 @@ function PluginOperationRenderer({
   onActivate,
   onClose,
   onGeometryChange,
-  onRequestMaximized,
+  onRequestCompanions,
+  companionsOpen,
+  render,
 }: PluginOperationRendererProps) {
-  if (!descriptor.render) return null;
-  return descriptor.render({
+  return render({
     operationId: operation.id,
     theaterId: operation.theaterId,
     pluginId: operation.pluginId,
@@ -491,8 +548,35 @@ function PluginOperationRenderer({
     onActivate,
     onClose,
     onGeometryChange,
-    onRequestMaximized,
-  });
+    onRequestCompanions,
+    companionsOpen,
+  }) as ReactNode;
+}
+
+function CompanionFrame({ descriptor, geometry, children, onClose }: {
+  readonly descriptor: CompanionPanelDescriptor;
+  readonly geometry: OperationGeometry;
+  readonly children: ReactNode;
+  readonly onClose: () => void;
+}) {
+  const frameStyle = {
+    left: Math.round(geometry.x),
+    top: Math.round(geometry.y),
+    width: Math.round(geometry.width),
+    height: Math.round(geometry.height),
+    zIndex: geometry.zIndex,
+  } satisfies CSSProperties;
+  return (
+    <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={`Companion ${descriptor.title}`}>
+      <div className="canvas-operation-titlebar" data-canvas-blocker>
+        <span className="canvas-operation-identity-name">{descriptor.title}</span>
+        <button type="button" className="canvas-companion-close" aria-label={`Close ${descriptor.title}`} title="Close companion panels" onClick={onClose}>×</button>
+      </div>
+      <div className="canvas-operation-terminal canvas-companion-body" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} data-canvas-blocker>
+        {children}
+      </div>
+    </article>
+  );
 }
 
 async function updatePluginOperationGeometry(operationId: string, geometry: OperationGeometry): Promise<void> {
