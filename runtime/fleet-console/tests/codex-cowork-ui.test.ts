@@ -159,6 +159,14 @@ describe("Cowork inline copilot", () => {
     expect(article.querySelector(".cowork-panel")?.textContent).toContain("Make this more precise.");
     // 변경 라인이 있으므로 리뷰 캡슐(Apply)이 떠 있다.
     expect(article.querySelector(".cowork-review")?.textContent).toContain("changed line");
+    // 인용문이 본문에 하이라이트되고, 호버하면 코멘트 팝업이 뜬다.
+    const mark = body.querySelector<HTMLElement>("mark.cowork-mark");
+    expect(mark?.dataset.annotationId).toBe("a1");
+    expect(mark?.textContent).toBe("Readable text.");
+    mark?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    const tip = article.querySelector<HTMLElement>(".cowork-tip");
+    expect(tip?.hidden).toBe(false);
+    expect(tip?.textContent).toBe("Make this more precise.");
 
     controller.destroy();
     article.remove();
@@ -312,7 +320,9 @@ describe("Cowork inline copilot", () => {
     listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
     listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "4" }));
 
-    expect(article.querySelector(".cowork-ticker")?.textContent).toContain("wiki_draft_read · running");
+    // 도구 사용 상세는 출력하지 않고 일반 상태 문구만 보여준다.
+    expect(article.querySelector(".cowork-ticker")?.textContent).toBe("AI is editing…");
+    expect(article.querySelector(".cowork-ticker")?.textContent).not.toContain("wiki_draft_read");
     expect(article.querySelector(".cowork-spinner")).not.toBeNull();
 
     controller.destroy();

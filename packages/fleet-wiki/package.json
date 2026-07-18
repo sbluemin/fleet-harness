@@ -32,7 +32,6 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
-    "@dotobokuri/core-unified-agent": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

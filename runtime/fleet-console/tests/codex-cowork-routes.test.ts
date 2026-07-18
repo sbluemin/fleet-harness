@@ -6,8 +6,7 @@ import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import { describe, expect, it } from "vitest";
 import { handleCoworkRequest } from "../core/host/codex/cowork/routes.js";
-import { CoworkService, CoworkStore, type CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
-import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
+import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import { EventEmitter } from "node:events";
 
 describe("Cowork DTO", () => {
@@ -128,5 +127,5 @@ class FakeConnector implements CoworkConnector {
     this.client.cancelPrompt = async () => {};
     this.client.disconnect = async () => {};
   }
-  async connect(): Promise<IUnifiedAgentClient> { return this.client as unknown as IUnifiedAgentClient; }
+  async connect(): Promise<CoworkAgentClient> { return this.client as unknown as CoworkAgentClient; }
 }

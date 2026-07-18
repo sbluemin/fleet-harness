@@ -3,9 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, loadIndex, readWikiEntry, writeWikiEntry } from "../src/index.js";
-import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { describe, expect, it } from "vitest";
-import { CoworkService, CoworkStore, type CoworkConnector } from "../src/cowork/index.js";
+import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnector } from "../src/cowork/index.js";
 
 describe("Cowork contract defects", () => {
   it("applies a valid draft through Fleet Wiki and releases the session", async () => {
@@ -115,5 +114,5 @@ async function until(condition: () => Promise<boolean>, timeoutMs = 2000): Promi
 class FakeConnector implements CoworkConnector {
   readonly client = new EventEmitter() as EventEmitter & { getConnectionInfo(): { sessionId: string }; sendMessage(content: string): Promise<{}>; cancelPrompt(): Promise<void>; disconnect(): Promise<void> };
   constructor() { this.client.getConnectionInfo = () => ({ sessionId: "provider-session-only" }); this.client.sendMessage = async () => ({}); this.client.cancelPrompt = async () => {}; this.client.disconnect = async () => {}; }
-  async connect(): Promise<IUnifiedAgentClient> { return this.client as unknown as IUnifiedAgentClient; }
+  async connect(): Promise<CoworkAgentClient> { return this.client as unknown as CoworkAgentClient; }
 }

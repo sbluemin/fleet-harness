@@ -3,20 +3,45 @@ import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath 
 import type { MemoryPaths, Patch, WikiEntry } from "../types.js";
 import type { WikiWorkspaceResolver } from "../workspace-resolver.js";
 import { join } from "node:path";
-import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
-import type { IUnifiedAgentClient, UnifiedClientOptions } from "@dotobokuri/core-unified-agent";
 import type { CoworkSessionDto } from "./types.js";
 import { createCoworkMcpRuntime } from "./runtime.js";
-import { CoworkStore } from "./store.js";
+import type { CoworkStore } from "./store.js";
 import type { CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
 
-export interface CoworkConnector { connect(options: UnifiedClientOptions): Promise<IUnifiedAgentClient>; }
+/**
+ * 호스트가 주입하는 provider 클라이언트의 최소 표면 — fleet-wiki 독트린상 이 패키지는
+ * provider 조립(core-unified-agent 등)을 알지 못하며, 커넥터는 반드시 호스트가 소유한다.
+ */
+export interface CoworkAgentClient {
+  on(event: "toolCall", listener: (title: unknown, status: unknown) => void): unknown;
+  on(event: "toolCallUpdate", listener: (title: unknown, status: unknown, sessionId?: unknown, data?: unknown) => void): unknown;
+  on(event: "messageChunk", listener: (text: string) => void): unknown;
+  on(event: "promptComplete", listener: () => void): unknown;
+  on(event: "error", listener: (error?: { message?: unknown }) => void): unknown;
+  sendMessage(content: string): Promise<unknown>;
+  cancelPrompt(): Promise<void>;
+  disconnect(): Promise<void>;
+}
+
+export interface CoworkConnectOptions {
+  cwd: string;
+  cli?: string;
+  model?: string;
+  effort?: string;
+  systemPrompt: string;
+  mcpServers: readonly unknown[];
+  strictMcp: boolean;
+  yoloMode: boolean;
+  autoApprove: boolean;
+}
+
+export interface CoworkConnector { connect(options: CoworkConnectOptions): Promise<CoworkAgentClient>; }
 
 /** 원샷 프롬프트에 실어 보내는 이전 대화 턴 수 상한 — 도화지(draft)가 상태를 들고 있으므로 맥락만 보태면 된다. */
 const HISTORY_TURNS = 12;
 function clipText(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 
-interface LiveResources { workspaceId: string; client: IUnifiedAgentClient; annotations: CoworkSessionRecord["annotations"]; cleanup: () => void; }
+interface LiveResources { workspaceId: string; client: CoworkAgentClient; annotations: CoworkSessionRecord["annotations"]; cleanup: () => void; }
 
 const COWORK_SYSTEM_PROMPT = [
   "You are the Fleet Wiki Cowork editing agent, editing exactly one wiki entry draft.",
@@ -36,7 +61,7 @@ export class CoworkService {
   private readonly live = new Map<string, LiveResources>();
   private readonly listeners = new Map<string, Set<(event: CoworkStoredEvent) => void>>();
   private readonly streamBuffers = new Map<string, string>();
-  constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector = UnifiedAgent, private readonly resolver?: WikiWorkspaceResolver) {}
+  constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector, private readonly resolver?: WikiWorkspaceResolver) {}
 
   async create(workspaceId: string, entryId: string, identity?: { cli?: string; model?: string; effort?: string }): Promise<CoworkSessionRecord> {
     const entry = await readWikiEntry(entryId, this.paths);
@@ -70,14 +95,14 @@ export class CoworkService {
       // 원샷 실행: provider 세션을 resume하지 않고 매 프롬프트마다 새로 연결한다.
       // 스코프 강제는 yolo + 전용 MCP 도구 주입 + 시스템 프롬프트가 담당한다.
       const providerCwd = await this.store.sessionDir(workspaceId, id);
-      const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli as UnifiedClientOptions["cli"], model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
+      const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli, model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
       this.releaseLive(id);
       this.live.set(id, { workspaceId, client, annotations, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
       client.on("toolCall", (title, status) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}`, false); });
       client.on("toolCallUpdate", (title, status, _sid, data) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}${data ? ` · ${JSON.stringify(data).slice(0, 220)}` : ""}`, false).then(() => this.emit(workspaceId, id, "session")); });
       client.on("messageChunk", (text) => { this.streamBuffers.set(id, (this.streamBuffers.get(id) ?? "") + text); void this.emit(workspaceId, id, "transcript", text, false); });
       client.on("promptComplete", () => { void this.finishPrompt(workspaceId, id, client, null); });
-      client.on("error", (error) => { console.error(`[cowork] provider error (session ${id}):`, error?.message ?? error); void this.finishPrompt(workspaceId, id, client, "provider_error"); });
+      client.on("error", (error) => { console.error(`[cowork] provider error (session ${id}):`, error && typeof error === "object" && "message" in error ? error.message : error); void this.finishPrompt(workspaceId, id, client, "provider_error"); });
       client.sendMessage(this.composePrompt(prompt, annotations, session.selection, history)).catch((error: unknown) => {
         console.error(`[cowork] sendMessage failed (session ${id}):`, error instanceof Error ? error.message : error);
         void this.finishPrompt(workspaceId, id, client, "provider_error");
@@ -153,7 +178,7 @@ export class CoworkService {
     void resources.client.disconnect().catch(() => undefined);
   }
 
-  private async finishPrompt(workspaceId: string, id: string, client: IUnifiedAgentClient, errorCode: string | null) {
+  private async finishPrompt(workspaceId: string, id: string, client: CoworkAgentClient, errorCode: string | null) {
     // 취소 직후 새 프롬프트가 시작된 경우, 이전 클라이언트의 지연 완료가 새 실행을 해체하면 안 된다.
     const live = this.live.get(id);
     if (live?.client !== client) return;

@@ -24,7 +24,7 @@ export interface MountCoworkInlineOptions {
   onApplied(): void;
 }
 
-interface Activity { role: "assistant" | "tool"; text: string; }
+interface Activity { role: "assistant"; text: string; }
 interface Settings { cli: string; model: string; effort: string; }
 interface AnnotationCard { id: string; quote: string; comment: string; status: "pending" | "sent" | "done"; }
 
@@ -75,8 +75,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   anchor.className = "cowork-anchor";
   const dockZone = document.createElement("div");
   dockZone.className = "cowork-dock-zone";
+  const tip = document.createElement("div");
+  tip.className = "cowork-tip";
+  tip.hidden = true;
   options.article.classList.add("cowork-host");
-  options.article.append(anchor, dockZone);
+  options.article.append(anchor, dockZone, tip);
 
   // ── 렌더 ────────────────────────────────────────────────────────────────────
 
@@ -125,7 +128,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const dirty = engaged && session!.baseDraft !== session!.draft;
     const changed = dirty ? draftLines().filter(line => line.changed).length : 0;
     const summary = engaged && summaryVisible ? [...activities].reverse().find(a => a.role === "assistant")?.text ?? "" : "";
-    const ticker = [...activities].reverse().find(a => a.role === "tool")?.text ?? "AI is editing…";
     setDockHtml(`
       ${summary ? `<div class="cowork-summary" role="status"><span aria-hidden="true">✦</span><p>${escapeHtml(summary)}</p><button type="button" class="cowork-x" data-cowork-action="dismiss-summary" aria-label="Dismiss summary">×</button></div>` : ""}
       ${panelOpen ? renderPanel() : ""}
@@ -133,7 +135,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       ${dirty && !running ? renderReview(changed) : ""}
       <div class="cowork-bar" data-cowork-form>
         ${running
-          ? `<span class="cowork-glow" aria-hidden="true"></span><span class="cowork-spinner" aria-hidden="true"></span><span class="cowork-ticker" aria-live="polite">${escapeHtml(clip(ticker, 90))}</span><button type="button" class="cowork-ghost" data-cowork-action="cancel-run">Stop</button>`
+          ? `<span class="cowork-glow" aria-hidden="true"></span><span class="cowork-spinner" aria-hidden="true"></span><span class="cowork-ticker" aria-live="polite">AI is editing…</span><button type="button" class="cowork-ghost" data-cowork-action="cancel-run">Stop</button>`
           : `<button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="Annotations"><span aria-hidden="true">✦</span>${annotations.length}</button>
              <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${annotations.length ? "Add an instruction (optional)…" : "Ask AI to revise this entry…"}" aria-label="Instruction">
              <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="Agent settings">${escapeHtml(settings.cli || "agent")}</button>
@@ -189,7 +191,61 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     return `<div class="cowork-review"><span class="cowork-review-count"><i aria-hidden="true"></i>${changed > 0 ? `${changed} changed line${changed === 1 ? "" : "s"}` : "Removed content"}</span><button type="button" class="cowork-ghost" data-cowork-action="toggle-diff">${diffVisible ? "View draft" : "View diff"}</button><button type="button" class="cowork-solid" data-cowork-action="apply-arm">Apply</button><button type="button" class="cowork-ghost" data-cowork-action="discard-arm">Discard</button></div>`;
   };
 
-  const redraw = () => { renderBody(); renderDock(); };
+  // 어노테이션 인용문을 렌더된 본문에 하이라이트(mark)로 표시한다. 인용문이 여러 텍스트
+  // 노드에 걸치면 노드별 조각으로 나눠 감싸고, 편집으로 사라진 인용문은 조용히 생략한다.
+  const applyMarks = () => {
+    if (disposed) return;
+    for (const mark of [...options.body.querySelectorAll("mark.cowork-mark")]) {
+      const parent = mark.parentNode;
+      if (!parent) continue;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+    }
+    options.body.normalize();
+    if (diffVisible) return;
+    for (const card of annotations) {
+      if (card.quote) markQuote(card);
+    }
+  };
+
+  const markQuote = (card: AnnotationCard) => {
+    const nodes: Text[] = [];
+    const walker = document.createTreeWalker(options.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+    let full = "";
+    const starts: number[] = [];
+    for (const node of nodes) { starts.push(full.length); full += node.data; }
+    const at = full.indexOf(card.quote);
+    if (at < 0) return;
+    const end = at + card.quote.length;
+    for (let index = 0; index < nodes.length; index += 1) {
+      const nodeStart = starts[index]!;
+      const nodeEnd = nodeStart + nodes[index]!.data.length;
+      const from = Math.max(at, nodeStart);
+      const to = Math.min(end, nodeEnd);
+      if (from >= to) continue;
+      const range = document.createRange();
+      range.setStart(nodes[index]!, from - nodeStart);
+      range.setEnd(nodes[index]!, to - nodeStart);
+      const mark = document.createElement("mark");
+      mark.className = "cowork-mark";
+      mark.dataset.annotationId = card.id;
+      try { range.surroundContents(mark); } catch { /* 요소 경계와 겹치는 조각은 생략한다. */ }
+    }
+  };
+
+  const showTip = (mark: HTMLElement) => {
+    const card = annotations.find(a => a.id === mark.dataset.annotationId);
+    if (!card) { tip.hidden = true; return; }
+    tip.textContent = card.comment.trim() || "No comment yet";
+    const rect = mark.getBoundingClientRect();
+    const host = options.article.getBoundingClientRect();
+    tip.style.top = `${Math.max(rect.top - host.top, 0)}px`;
+    tip.style.left = `${Math.min(Math.max(rect.left + rect.width / 2 - host.left, 24), Math.max(host.width - 24, 24))}px`;
+    tip.hidden = false;
+  };
+
+  const redraw = () => { renderBody(); renderDock(); applyMarks(); };
 
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
@@ -258,7 +314,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         if (streamingReply && last?.role === "assistant") last.text += event.text;
         else { activities.push({ role: "assistant", text: event.text }); streamingReply = true; }
       }
-      if (event.type === "tool" && event.text) { activities.push({ role: "tool", text: event.text }); streamingReply = false; }
+      // 도구 호출 상세는 사용자에게 출력하지 않는다 — 러닝 상태는 일반 문구로만 표시.
       if (event.type === "done") {
         streamingReply = false;
         summaryVisible = activities.some(a => a.role === "assistant");
@@ -287,6 +343,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     composerOpen = false;
     renderAnchor();
     renderDock();
+    applyMarks();
     try {
       await ensureSession();
       await mutate(() => updateCoworkSelection(options.theaterId, session!.id, quote));
@@ -297,6 +354,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   async function deleteAnnotation(id: string): Promise<void> {
     annotations = annotations.filter(card => card.id !== id);
     renderDock();
+    applyMarks();
+    tip.hidden = true;
     try { await persistAnnotations(); } catch { /* mutate가 오류를 표면화한다. */ }
   }
 
@@ -317,6 +376,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     panelOpen = false;
     configOpen = false;
     renderDock();
+    applyMarks();
     try {
       // 도크 상시 표시: 세션이 아직 없으면 첫 전송 시점에 만든다.
       await ensureSession();
@@ -452,6 +512,13 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     }
   };
 
+  const onMouseOverMark = (event: MouseEvent) => {
+    const mark = event.target instanceof Element ? event.target.closest<HTMLElement>("mark.cowork-mark") : null;
+    if (mark) showTip(mark);
+    else if (!tip.hidden) tip.hidden = true;
+  };
+  const onMouseLeaveArticle = () => { tip.hidden = true; };
+
   const onInput = (event: Event) => {
     const target = event.target;
     if (target instanceof HTMLInputElement && target.name === "prompt") { promptText = target.value; return; }
@@ -491,6 +558,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   options.article.addEventListener("click", onClick);
   options.article.addEventListener("input", onInput);
   options.article.addEventListener("change", onChange);
+  options.article.addEventListener("mouseover", onMouseOverMark);
+  options.article.addEventListener("mouseleave", onMouseLeaveArticle);
 
   return {
     destroy() {
@@ -502,8 +571,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       options.article.removeEventListener("click", onClick);
       options.article.removeEventListener("input", onInput);
       options.article.removeEventListener("change", onChange);
+      options.article.removeEventListener("mouseover", onMouseOverMark);
+      options.article.removeEventListener("mouseleave", onMouseLeaveArticle);
       anchor.remove();
       dockZone.remove();
+      tip.remove();
       options.article.classList.remove("cowork-host");
     },
   };

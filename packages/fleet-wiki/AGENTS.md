@@ -5,7 +5,7 @@
 ## Owns
 
 - Pure LLM-Wiki domain logic and types under `src/`
-- Single public subpath `./`
+- Public subpaths `./` and `./cowork` — the cowork subpath owns the terminal-free AI draft-editing engine (in-memory session store, one-shot session service, scoped MCP runtime, session DTOs). Provider connectors are structural (`CoworkConnector`) and MUST be injected by hosts; the engine never imports provider packages.
 - LLM-Wiki package-specific validation under `tests/`
 - `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`는 chronicle 전용으로 제한, `patch_queue`는 executor에 비노출(`allowedScopes: []`) — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님). Cowork의 `wiki_draft_read` / `wiki_draft_edit` / `wiki_draft_write`는 전역 레지스트리에 등록하지 않는 세션 전용 closure-injected 도구이며, 경로 또는 엔트리 ID 인자를 받지 않는다.
 

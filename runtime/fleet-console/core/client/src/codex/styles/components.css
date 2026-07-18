@@ -2635,6 +2635,31 @@ kbd {
 .cowork-block--removed { background: color-mix(in oklch, var(--coral) 5%, transparent); opacity: 0.55; text-decoration: line-through; }
 .cowork-block--removed * { text-decoration: inherit; }
 
+/* 어노테이션 하이라이트 + 호버 팝업 */
+.cowork-mark {
+  background: color-mix(in oklch, var(--brass) 24%, transparent);
+  border-bottom: 1px dashed color-mix(in oklch, var(--brass) 70%, transparent);
+  border-radius: 2px;
+  color: inherit;
+  cursor: default;
+}
+.cowork-tip {
+  position: absolute;
+  z-index: 8;
+  transform: translate(-50%, -100%);
+  max-width: min(320px, 70%);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
+  box-shadow: 0 12px 32px -10px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  color: var(--ink-pearl);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  padding: var(--space-2) var(--space-3);
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
 @keyframes cowork-pop { from { opacity: 0; transform: translateX(-50%) scale(0.92); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes cowork-rise { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
 @keyframes cowork-spin { to { transform: rotate(1turn); } }

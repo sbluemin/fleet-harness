@@ -3,5 +3,5 @@
 export * from "./types.js";
 export { CoworkStore } from "./store.js";
 export { CoworkService } from "./service.js";
-export type { CoworkConnector } from "./service.js";
+export type { CoworkAgentClient, CoworkConnectOptions, CoworkConnector } from "./service.js";
 export { createCoworkMcpRuntime } from "./runtime.js";

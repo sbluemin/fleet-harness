@@ -3,10 +3,9 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "../src/index.js";
-import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { describe, expect, it } from "vitest";
 import { createCoworkMcpRuntime } from "../src/cowork/index.js";
-import { CoworkService, CoworkStore, type CoworkConnector } from "../src/cowork/index.js";
+import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnector } from "../src/cowork/index.js";
 
 describe("Cowork MCP runtime", () => {
   it("runs one-shot yolo with only the seven scoped MCP tools", async () => {
@@ -81,5 +80,5 @@ function draft(value: { body: string; version: number; templateId?: string }) { 
 class FakeConnector implements CoworkConnector {
   readonly client = new EventEmitter() as EventEmitter & { getConnectionInfo(): { sessionId: string }; sendMessage(content: string): Promise<{}>; cancelPrompt(): Promise<void>; disconnect(): Promise<void> };
   constructor() { this.client.getConnectionInfo = () => ({ sessionId: "provider-session-only" }); this.client.sendMessage = async () => ({}); this.client.cancelPrompt = async () => {}; this.client.disconnect = async () => {}; }
-  async connect(): Promise<IUnifiedAgentClient> { return this.client as unknown as IUnifiedAgentClient; }
+  async connect(): Promise<CoworkAgentClient> { return this.client as unknown as CoworkAgentClient; }
 }
