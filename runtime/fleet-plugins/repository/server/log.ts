@@ -20,6 +20,9 @@ interface ParsedWorktree {
 // porcelain HEAD 라인에서 파싱된 값만 rev 인자로 허용하는 방어 검증
 const WORKTREE_SHA_RE = /^[0-9a-f]{40}$/;
 const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\//;
+// gitrevisions 선택자(@{n}·^·~ 등)와 check-ref-format 금지 문자를 이름 수준에서 거부한다 —
+// rev-parse가 reflog/조상 표현식을 해석해 /refs 열거 밖 커밋으로 필터되는 것을 막는다
+const REF_METACHAR_RE = /[~^:?*\[\\\s\x00-\x1f\x7f]/;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +31,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 export function isCanonicalRepositoryRef(ref: string): boolean {
-  return CANONICAL_REF_RE.test(ref) && !ref.startsWith("-") && !ref.includes("..") && !ref.includes("//");
+  return CANONICAL_REF_RE.test(ref)
+    && !ref.startsWith("-")
+    && !ref.includes("..")
+    && !ref.includes("//")
+    && !REF_METACHAR_RE.test(ref)
+    && !ref.includes("@{")
+    && !ref.endsWith("/")
+    && !ref.endsWith(".")
+    && !ref.split("/").some((part) => part.startsWith(".") || part.endsWith(".lock"));
 }
 
 export function parseLogOutput(stdout: string): LogCommitEntry[] {

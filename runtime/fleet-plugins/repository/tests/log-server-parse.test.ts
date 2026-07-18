@@ -168,7 +168,22 @@ describe("handleRepositoryLog", () => {
 
     expect(isCanonicalRepositoryRef("refs/heads/a..b")).toBe(false);
     expect(isCanonicalRepositoryRef("refs/heads/a//b")).toBe(false);
-    for (const ref of ["refs/heads/a..b", "refs/heads/a//b"]) {
+    // gitrevisions 선택자·금지 문자는 rev-parse 도달 전에 이름 수준에서 거부되어야 한다
+    expect(isCanonicalRepositoryRef("refs/heads/main@{1}")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/main^")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/main~2")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/ma:in")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/m*n")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/wild?card")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/.hidden")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/topic.lock")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/trailing/")).toBe(false);
+    expect(isCanonicalRepositoryRef("refs/heads/has space")).toBe(false);
+    // 정상 브랜치 이름은 계속 허용된다
+    expect(isCanonicalRepositoryRef("refs/heads/feature-x")).toBe(true);
+    expect(isCanonicalRepositoryRef("refs/heads/_valid")).toBe(true);
+    expect(isCanonicalRepositoryRef("refs/heads/기능")).toBe(true);
+    for (const ref of ["refs/heads/a..b", "refs/heads/a//b", "refs/heads/main@{1}", "refs/heads/main^", "refs/heads/main~2"]) {
       const writes: { status: number; payload: unknown }[] = [];
       await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes, { theaterId: "theater", ref }));
       expect(writes).toEqual([{ status: 400, payload: { error: "invalid_ref" } }]);
