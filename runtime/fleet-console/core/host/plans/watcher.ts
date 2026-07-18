@@ -15,6 +15,11 @@ export interface PlansWatcherRegistry {
   subscribe(watchPath: string, onChange: () => void, onClose: () => void): () => void;
 }
 
+export interface PlansWatchDirectoryIdentity {
+  readonly dev: number;
+  readonly ino: number;
+}
+
 interface WatchSubscriber {
   readonly onChange: () => void;
   readonly onClose: () => void;
@@ -23,6 +28,7 @@ interface WatchSubscriber {
 interface WatchEntry {
   readonly watcher: PlansWatcherHandle;
   readonly subscribers: Set<WatchSubscriber>;
+  readonly identity: PlansWatchDirectoryIdentity | null;
   timer: ReturnType<typeof setTimeout> | null;
   closed: boolean;
 }
@@ -32,7 +38,14 @@ export const PLANS_WATCH_DEBOUNCE_MS = 200;
 export function createPlansWatcherRegistry(
   watcherFactory: PlansWatcherFactory = (watchPath, options, listener) => fs.watch(watchPath, options, listener),
   debounceMs = PLANS_WATCH_DEBOUNCE_MS,
-  directoryExists: (watchPath: string) => boolean = (watchPath) => fs.existsSync(watchPath),
+  directoryIdentity: (watchPath: string) => PlansWatchDirectoryIdentity | null = (watchPath) => {
+    try {
+      const stat = fs.statSync(watchPath);
+      return { dev: stat.dev, ino: stat.ino };
+    } catch {
+      return null;
+    }
+  },
 ): PlansWatcherRegistry {
   const entries = new Map<string, WatchEntry>();
 
@@ -66,10 +79,13 @@ export function createPlansWatcherRegistry(
     try {
       const watcher = watcherFactory(watchPath, { recursive: false }, () => {
         if (entry.closed) return;
-        // 감시 대상 디렉터리 자체가 삭제되면 fs.watch는 죽은 inode에 붙은 채 이후 이벤트를
-        // 놓친다 — 구독을 종료 전파해 SSE를 닫고, 클라이언트 재연결 경로가 재생성된
-        // 디렉터리로 새 워처를 붙이게 한다.
-        if (!directoryExists(watchPath)) {
+        // 감시 대상 디렉터리가 삭제·교체되면 fs.watch는 죽은 inode에 붙은 채 이후 이벤트를
+        // 놓친다. 빠른 rm -rf && mkdir 교체는 이벤트 도착 시점에 경로가 이미 다시 존재하므로
+        // 존재 여부가 아니라 watch 시점에 캡처한 dev/ino 아이덴티티와 비교해 판별한다 —
+        // 불일치·소실이면 구독을 종료 전파해 SSE를 닫고, 클라이언트 재연결 경로가
+        // 재생성된 디렉터리로 새 워처를 붙이게 한다.
+        const current = directoryIdentity(watchPath);
+        if (!current || entry.identity === null || current.dev !== entry.identity.dev || current.ino !== entry.identity.ino) {
           closeEntry(watchPath, entry, true);
           return;
         }
@@ -79,7 +95,7 @@ export function createPlansWatcherRegistry(
           for (const subscriber of entry.subscribers) subscriber.onChange();
         }, debounceMs);
       });
-      entry = { watcher, subscribers, timer: null, closed: false };
+      entry = { watcher, subscribers, identity: directoryIdentity(watchPath), timer: null, closed: false };
       watcher.on("error", () => closeEntry(watchPath, entry, true));
       return entry;
     } catch {

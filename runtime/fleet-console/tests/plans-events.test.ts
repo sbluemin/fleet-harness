@@ -82,7 +82,7 @@ describe("Plans watcher registry", () => {
       watcher.listen(listener);
       return watcher;
     });
-    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => true);
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => ({ dev: 1, ino: 1 }));
     const first = vi.fn();
     const second = vi.fn();
     const unsubscribeFirst = registry.subscribe("/safe/plans", first, vi.fn());
@@ -112,7 +112,7 @@ describe("Plans watcher registry", () => {
       watcher.listen(listener);
       return watcher;
     });
-    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => true);
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => ({ dev: 1, ino: 1 }));
     const onChange = vi.fn();
     const onClose = vi.fn();
     const unsubscribe = registry.subscribe("/safe/plans", onChange, onClose);
@@ -146,13 +146,36 @@ describe("Plans watcher registry", () => {
       watcher.listen(listener);
       return watcher;
     });
-    let exists = true;
-    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => exists);
+    let identity: { dev: number; ino: number } | null = { dev: 1, ino: 1 };
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => identity);
     const onChange = vi.fn();
     const onClose = vi.fn();
     registry.subscribe("/safe/plans", onChange, onClose);
 
-    exists = false;
+    identity = null;
+    watcher.change();
+    vi.advanceTimersByTime(PLANS_WATCH_DEBOUNCE_MS);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(watcher.close).toHaveBeenCalledOnce();
+  });
+
+  it("closes the subscription when a fast directory swap changes the watched identity", () => {
+    vi.useFakeTimers();
+    const watcher = new FakeWatcher();
+    const factory = vi.fn((_path: string, _options: { readonly recursive: boolean }, listener: Parameters<PlansWatcherFactory>[2]) => {
+      watcher.listen(listener);
+      return watcher;
+    });
+    // rm -rf && mkdir 직후에는 경로가 다시 존재하지만 inode가 바뀐다 — 존재 여부만으로는 못 잡는 케이스.
+    let identity: { dev: number; ino: number } | null = { dev: 1, ino: 1 };
+    const registry = createPlansWatcherRegistry(factory, PLANS_WATCH_DEBOUNCE_MS, () => identity);
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    registry.subscribe("/safe/plans", onChange, onClose);
+
+    identity = { dev: 1, ino: 2 };
     watcher.change();
     vi.advanceTimersByTime(PLANS_WATCH_DEBOUNCE_MS);
 
