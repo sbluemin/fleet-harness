@@ -16,6 +16,7 @@ import { buildPatchQueueToolConfig } from "../src/tools/patch-queue.js";
 import { buildQueryToolConfig } from "../src/tools/query.js";
 import { buildReadToolConfig } from "../src/tools/read.js";
 import { buildResolveToolConfig } from "../src/tools/resolve.js";
+import { createWikiDraftToolSpecs } from "../src/tools/draft.js";
 
 const BODY = "A durable test entry. ".repeat(12);
 
@@ -23,6 +24,19 @@ describe("Wiki agent specs", () => {
   it("exports only the production resolver factory through the package root", () => {
     expect(publicApi.createWikiWorkspaceResolver).toBeTypeOf("function");
     expect("createWikiWorkspaceResolverForTest" in publicApi).toBe(false);
+  });
+
+  it("keeps session-scoped Cowork draft tools out of every global Wiki surface", () => {
+    const draftIds = createWikiDraftToolSpecs({
+      draft: {
+        read: async () => ({ body: "draft", revision: 0 }),
+        write: async ({ body }) => ({ body, revision: 1 }),
+      },
+    }).map((spec) => spec.id);
+
+    expect(draftIds).toEqual(["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write"]);
+    expect(FLEET_WIKI_AGENT_TOOL_IDS).not.toEqual(expect.arrayContaining(draftIds));
+    expect(getWikiToolSpecs().map((spec) => spec.id)).not.toEqual(expect.arrayContaining(draftIds));
   });
 
   it("preserves every schema and resolves once before each of the ten domain tools", async () => {
