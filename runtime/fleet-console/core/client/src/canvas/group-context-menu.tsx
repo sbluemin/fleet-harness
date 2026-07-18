@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { createPortal } from "react-dom";
 
 import type { OperationGroup, OperationNode } from "../types.js";
-import { OPERATION_ACCENTS, resolveAccentColor } from "./operation-accent.js";
+import { AccentToneList } from "./accent-popover.js";
+import { resolveAccentColor } from "./operation-accent.js";
 
 export interface GroupContextMenuChipActions {
   readonly onSetAccent: (key: string | null) => void;
@@ -35,7 +36,7 @@ type GroupContextMenuProps =
     };
 
 const POPOVER_GAP = 8;
-const POPOVER_ESTIMATED_HEIGHT = 260;
+const POPOVER_ESTIMATED_HEIGHT = 320;
 
 export function GroupContextMenu(props: GroupContextMenuProps) {
   const { anchor, onClose } = props;
@@ -171,32 +172,11 @@ function ChipMenuContent({
       )}
       <div className="group-context-menu-divider" aria-hidden="true" />
       <div className="group-context-menu-section-label">Accent</div>
-      <button
-        type="button"
-        className="accent-popover-swatch accent-popover-swatch--clear"
-        role="menuitem"
-        aria-label="No accent"
-        aria-pressed={accentKey === null}
-        onClick={() => { actions.onSetAccent(null); onClose(); }}
-      >
-        <span />
-        None
-      </button>
-      <div className="group-context-menu-swatches">
-        {OPERATION_ACCENTS.map((accent) => (
-          <button
-            key={accent.key}
-            type="button"
-            className="accent-popover-swatch"
-            role="menuitem"
-            aria-label={accent.label}
-            aria-pressed={accentKey === accent.key}
-            onClick={() => { actions.onSetAccent(accent.key); onClose(); }}
-          >
-            <span style={{ background: accent.color }} />
-          </button>
-        ))}
-      </div>
+      <AccentToneList
+        accentKey={accentKey}
+        includeNone
+        onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
+      />
     </>
   );
 }
@@ -223,23 +203,16 @@ function GroupHeaderMenuContent({
 
   return (
     <>
-      {/* 그룹 색은 durable 스키마상 16색 중 하나로 필수다(무색 그룹 미지원). None 항목은 제공하지 않는다. */}
+      {/* 그룹 색은 durable 스키마상 팔레트 키 중 하나로 필수다(무색 그룹 미지원). None 항목은 제공하지 않는다. */}
       <div className="group-context-menu-section-label">Color</div>
-      <div className="group-context-menu-swatches">
-        {OPERATION_ACCENTS.map((accent) => (
-          <button
-            key={accent.key}
-            type="button"
-            className="accent-popover-swatch"
-            role="menuitem"
-            aria-label={accent.label}
-            aria-pressed={group.color === accent.key}
-            onClick={() => { actions.onSetColor(accent.key); onClose(); }}
-          >
-            <span style={{ background: accent.color }} />
-          </button>
-        ))}
-      </div>
+      <AccentToneList
+        accentKey={group.color}
+        includeNone={false}
+        onSelect={(key) => {
+          if (key) actions.onSetColor(key);
+          onClose();
+        }}
+      />
       <div className="group-context-menu-divider" aria-hidden="true" />
       <div className="group-context-menu-section-label">Rename</div>
       <input

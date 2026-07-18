@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useFormationView, type CanvasViewport, type OperationGeometry } from "./canvas-store.js";
 import type { CanvasPoint } from "./coordinates.js";
@@ -11,6 +11,8 @@ interface PluginOperationEntry {
 interface CanvasMinimapProps {
   readonly operations: Record<string, OperationGeometry>;
   readonly pluginOperations: Record<string, PluginOperationEntry>;
+  // Operation id → 정체성 색(resolveAccentColor 결과). 블립 좌상단 정체성 도트로만 칠한다.
+  readonly accents?: Record<string, string>;
   readonly viewport: CanvasViewport;
   readonly canvasSize: { readonly width: number; readonly height: number };
   // 미니맵의 한 지점을 캔버스 중앙으로 가져오도록 뷰포트를 옮긴다(world 좌표).
@@ -32,7 +34,7 @@ const MINIMAP_PADDING = 12;
 const WORLD_MARGIN = 220;
 const RADAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.radarCollapsed";
 
-export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSize, onJump }: CanvasMinimapProps) {
+export function CanvasMinimap({ operations, pluginOperations, accents, viewport, canvasSize, onJump }: CanvasMinimapProps) {
   const innerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const collapsedBeforeFormationRef = useRef<boolean | null>(null);
@@ -173,7 +175,13 @@ export function CanvasMinimap({ operations, pluginOperations, viewport, canvasSi
           <div
             key={r.id}
             className="canvas-minimap-operation"
-            style={{ left: miniLeft(r.x), top: miniTop(r.y), width: Math.max(2, r.width * scale), height: Math.max(2, r.height * scale) }}
+            style={{
+              left: miniLeft(r.x),
+              top: miniTop(r.y),
+              width: Math.max(2, r.width * scale),
+              height: Math.max(2, r.height * scale),
+              ...(accents?.[r.id] ? { "--user-accent": accents[r.id] } : {}),
+            } as CSSProperties}
           />
         ))}
         <div

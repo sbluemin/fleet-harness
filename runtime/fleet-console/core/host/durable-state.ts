@@ -36,11 +36,13 @@ const STATE_VERSION = 2;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
-// 그룹 색상 키 화이트리스트 — 16색 accent 팔레트(operation-accent.ts)와 동일 키만 durable에 허용한다.
+// 그룹 색상 키 화이트리스트 — 8톤 정체성 팔레트(operation-accent.ts)와 동일 키를 durable에 허용한다.
+// 구 16키는 기존 durable state 하위호환용으로만 남는다(클라이언트가 읽기 시점에 8톤으로 매핑).
 const VALID_GROUP_COLOR_KEYS = new Set([
-  "red", "orange", "amber", "yellow", "lime", "green",
-  "emerald", "teal", "cyan", "sky", "blue", "indigo",
-  "violet", "purple", "magenta", "rose",
+  "crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose",
+  "red", "orange", "yellow", "lime", "green",
+  "emerald", "cyan", "sky", "blue",
+  "violet", "purple", "magenta",
 ]);
 
 export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateStoreDeps = {}): DurableJsonStore<DurableConsoleState> {

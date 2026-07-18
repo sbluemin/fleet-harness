@@ -46,14 +46,27 @@
   --carrier-opencode-go: oklch(76% 0.12 184);
   --carrier-cursor: oklch(72% 0.13 238);
   --carrier-taskforce: oklch(78% 0.12 216);
-  --captain-nimitz: #d4af37;
-  --captain-kirov: #e8a854;
-  --captain-genesis: #ff6b6b;
-  --captain-ohio: #a78bfa;
-  --captain-sentinel: #fb7185;
-  --captain-vanguard: #5fd673;
-  --captain-tempest: #3dd5f3;
-  --captain-chronicle: #3dd5f3;
+  /* 정체성 톤(--id-*) — Operation accent·그룹색·captain 식별이 공유하는 8톤.
+     각 테마의 채도 봉투를 따라 재조율된다(Instrument C≈0.06). 신호색(brass/aurora/warn/coral)과
+     hue가 이웃한 crimson/amber는 채도를 낮춰 상태 신호와 혼동되지 않게 한다. */
+  --id-crimson: oklch(72% 0.065 25);
+  --id-amber: oklch(76% 0.062 70);
+  --id-moss: oklch(74% 0.06 140);
+  --id-teal: oklch(74% 0.058 190);
+  --id-cerulean: oklch(73% 0.062 235);
+  --id-indigo: oklch(71% 0.065 278);
+  --id-plum: oklch(72% 0.065 318);
+  --id-rose: oklch(73% 0.06 350);
+
+  /* captain 식별은 --id-* 8톤에 1:1 배정한다 — raw hex 금지, 테마 연동, 중복 없음. */
+  --captain-nimitz: var(--id-amber);
+  --captain-kirov: var(--id-plum);
+  --captain-genesis: var(--id-crimson);
+  --captain-ohio: var(--id-indigo);
+  --captain-sentinel: var(--id-rose);
+  --captain-vanguard: var(--id-moss);
+  --captain-tempest: var(--id-teal);
+  --captain-chronicle: var(--id-cerulean);
 
   --surface-glass: var(--ink-deep);
   --surface-glass-strong: var(--ink-mid);
@@ -78,6 +91,8 @@
   --radius-md: 10px;
   --radius-lg: 10px;
   --radius-xl: 10px;
+  /* 999px는 도트·비콘·상태 캡슐 전용 — 컨트롤(버튼/칩)에는 쓰지 않는다. */
+  --radius-pill: 999px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -161,6 +176,15 @@
 
   --hairline: oklch(36% 0.035 248);
   --hairline-strong: oklch(48% 0.03 248);
+
+  --id-crimson: oklch(74% 0.09 25);
+  --id-amber: oklch(78% 0.088 70);
+  --id-moss: oklch(76% 0.085 140);
+  --id-teal: oklch(76% 0.082 190);
+  --id-cerulean: oklch(75% 0.088 235);
+  --id-indigo: oklch(73% 0.09 278);
+  --id-plum: oklch(74% 0.09 318);
+  --id-rose: oklch(75% 0.085 350);
 }
 
 :root[data-theme="carbon"] {
@@ -204,6 +228,15 @@
 
   --hairline: oklch(33% 0.006 252);
   --hairline-strong: oklch(45% 0.005 252);
+
+  --id-crimson: oklch(72% 0.052 25);
+  --id-amber: oklch(76% 0.05 70);
+  --id-moss: oklch(74% 0.048 140);
+  --id-teal: oklch(74% 0.047 190);
+  --id-cerulean: oklch(73% 0.05 235);
+  --id-indigo: oklch(71% 0.052 278);
+  --id-plum: oklch(72% 0.052 318);
+  --id-rose: oklch(73% 0.05 350);
 }
 
 *,

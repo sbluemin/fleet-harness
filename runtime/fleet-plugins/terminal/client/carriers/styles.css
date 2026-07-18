@@ -1,12 +1,13 @@
 .terminal-carriers-action-button {
   display: inline-flex;
   align-items: center;
+  min-height: 34px;
   padding: 6px var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   color: var(--ink-fog);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -58,14 +59,16 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ink-spectral);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -92,7 +95,6 @@
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--cap-color);
-  box-shadow: 0 0 10px var(--cap-color);
 }
 
 .terminal-carriers-chip-name {
@@ -133,11 +135,12 @@
 .terminal-carriers-card::before {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 10px;
+  bottom: 10px;
   left: 0;
   width: 3px;
-  background: linear-gradient(180deg, var(--cap-color, var(--brass)), transparent 80%);
+  border-radius: 0 3px 3px 0;
+  background: var(--cap-color, var(--brass));
 }
 
 .terminal-carriers-detail-head {
@@ -157,11 +160,11 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  color: var(--cap-color, var(--brass-bright));
+  color: var(--ink-pearl);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -439,7 +442,7 @@
 .terminal-carriers-tf-toggle {
   align-items: center;
   gap: 9px;
-  min-height: 38px;
+  min-height: 34px;
   padding: 6px var(--space-3);
 }
 

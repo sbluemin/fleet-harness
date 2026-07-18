@@ -14,12 +14,13 @@
   overflow: hidden;
 }
 
+/* 상단 헤어라인 장식 — 단일 hue(brass)만. 이중색(brass→aurora) 그라디언트는 신호 어휘를 오염시킨다. */
 .stage::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--brass), var(--aurora), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--brass) 62%, transparent), transparent);
   pointer-events: none;
 }
 
@@ -688,15 +689,16 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* 정보 뱃지 — 신호색(aurora) 금지. 중립 잉크 + 헤어라인으로 침묵한다. */
 .new-badge {
   display: inline-flex;
   align-items: center;
   margin-left: var(--space-2);
   padding: 2px 7px;
-  border: 1px solid var(--aurora-glow);
-  border-radius: 999px;
-  background: var(--aurora-glow);
-  color: var(--aurora);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
+  color: var(--ink-spectral);
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -1357,7 +1359,7 @@
   align-items: center;
   justify-content: center;
   gap: 9px;
-  min-height: 38px;
+  min-height: 34px;
   padding: 6px var(--space-3);
   border: 0;
   border-radius: var(--radius-xs);
@@ -1490,8 +1492,8 @@
 
 .workspace-add-button {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   /* Theater 박스(theater-trigger)와 같은 글라스 웰 + 중립 헤어라인 + 브래스 아이콘 언어를 공유한다. */
   border: 1px solid var(--surface-rim);
@@ -1786,22 +1788,24 @@
   line-height: 1.4;
 }
 
-/* 우하단 캔버스 미니맵 — 해군 레이더 스코프. 심해 글래스 위에 동심 링/그리드 텍스처를 깔고
-   현재 뷰포트를 발광 브래스 렌즈로 표시한다(브래스="보는 곳", 아우로라="살아있는 셸"). */
+/* 우하단 캔버스 미니맵 — 침묵하는 계기. 크롬은 중립 헤어라인으로 소등하고,
+   brass는 위치 채널(뷰포트 렌즈·hover/focus)에서만 발화한다. */
 .canvas-minimap {
   position: absolute;
   right: var(--space-4);
   bottom: var(--space-4);
   z-index: 14;
-  border: 1px solid color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(130% 100% at 50% 0%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 62%),
-    color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
-  box-shadow:
-    var(--shadow-floating),
-    inset 0 1px 0 color-mix(in oklch, var(--brass) 24%, transparent);
+  background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  box-shadow: var(--shadow-floating);
   overflow: hidden;
+  transition: border-color var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-minimap:hover,
+.canvas-minimap:focus-within {
+  border-color: color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
 }
 
 /* 계기 캡션 — JetBrains Mono 대문자 트래킹. */
@@ -1815,7 +1819,7 @@
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--brass-bright) 78%, var(--ink-fog));
+  color: var(--ink-fog);
   pointer-events: none;
 }
 
@@ -1830,26 +1834,12 @@
     linear-gradient(150deg, color-mix(in oklch, var(--ink-deep) 38%, transparent), transparent 70%);
 }
 
-/* 동심 레이더 링(구조 장식=브래스). */
-.canvas-minimap-inner::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-radial-gradient(
-    circle at 50% 50%,
-    transparent 0 15px,
-    color-mix(in oklch, var(--brass) 11%, transparent) 15px 16px
-  );
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-/* 미세 그리드 점 — 캔버스 그리드와 동일 언어(아우로라). */
+/* 미세 그리드 점 — 상시 장식은 중립 잉크만. 신호색(aurora) 상시 점등 금지. */
 .canvas-minimap-inner::after {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, color-mix(in oklch, var(--aurora) 16%, transparent) 0.5px, transparent 1px);
+  background-image: radial-gradient(circle, color-mix(in oklch, var(--ink-fog) 16%, transparent) 0.5px, transparent 1px);
   background-size: 13px 13px;
   opacity: 0.32;
   pointer-events: none;
@@ -1863,6 +1853,18 @@
   background: color-mix(in oklch, var(--ink-spectral) 17%, transparent);
   border: 1px solid color-mix(in oklch, var(--ink-fog) 38%, transparent);
   box-shadow: 0 0 7px color-mix(in oklch, var(--ink-rim) 36%, transparent);
+}
+
+/* 정체성 도트 — 패널 스파인과 같은 --user-accent 채널을 원거리 식별 표면으로 확장한다. */
+.canvas-minimap-operation[style*="--user-accent"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--user-accent);
 }
 
 /* 현재 뷰포트 렌즈 — '지금 보고 있는 곳' 발광 브래스 스코프. */
@@ -1887,19 +1889,19 @@
   z-index: 4;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
-  color: var(--brass);
+  color: var(--ink-fog);
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring);
 }
 
-/* 접힌 Map — 우하단 단일 Map 아이콘 버튼. */
+/* 접힌 Map — 우하단 단일 Map 아이콘 버튼. 휴지 상태는 중립, brass는 hover/focus에서만. */
 .canvas-minimap-fab {
   position: absolute;
   right: var(--space-4);
@@ -1907,15 +1909,13 @@
   z-index: 14;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(130% 100% at 50% 0%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 62%),
-    color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
-  color: var(--brass);
-  box-shadow: var(--shadow-anchor);
+  background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  color: var(--ink-fog);
+  box-shadow: var(--shadow-floating);
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -2070,10 +2070,30 @@
   border-color: var(--brass);
 }
 
-/* Map에서는 사용자 accent가 active/status 여부와 무관하게 패널 전체 외곽선을 소유한다.
-   fill과 status 비콘에는 누출하지 않는다. */
-.operations-canvas .canvas-operation[style*="--user-accent"] {
-  border-color: var(--user-accent);
+/* Map에서 사용자 accent(정체성)는 좌측 스파인·명판 마크·명판 워시만 소유한다.
+   패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용으로 남는다. */
+.canvas-operation-spine {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  z-index: 5;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--user-accent);
+  pointer-events: none;
+}
+
+.canvas-operation-id-mark {
+  flex: none;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--user-accent);
+}
+
+.canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {
+  background: color-mix(in oklch, var(--user-accent) 10%, var(--ink-mid));
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -2205,8 +2225,8 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -2310,7 +2330,7 @@
   flex: none;
   width: 18px;
   height: 18px;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-bright);
   font-family: var(--font-mono);
@@ -2453,16 +2473,16 @@
   }
 }
 
-/* User-selected identity stays a small static side tick; brass focus and
-   aurora/warn status continue to own their existing channels. */
+/* User-selected identity stays a small static side spine (same 3px grammar as the
+   canvas panel spine); brass focus and aurora/warn status continue to own their channels. */
 .side-bar-chip[style*="--user-accent"]::before {
   content: "";
   position: absolute;
   top: 7px;
   bottom: 7px;
   left: 0;
-  width: 2px;
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
   background: var(--user-accent);
   pointer-events: none;
 }
@@ -2752,7 +2772,8 @@
   margin: 2px var(--space-1) 0 0;
   border-radius: var(--radius-md);
   user-select: none;
-  background: color-mix(in oklch, var(--grp-color, transparent) 14%, transparent);
+  /* 그룹 정체성은 도트+레일만 소유한다 — 헤더 배경·글자는 중립 잉크로 침묵. */
+  background: transparent;
   cursor: grab;
   transition:
     background var(--duration-fast) var(--ease-spring),
@@ -2762,7 +2783,7 @@
 }
 
 .side-bar-group-header--drop-target {
-  background: color-mix(in oklch, var(--brass) 12%, var(--grp-color, transparent));
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 34%, transparent);
 }
 
@@ -2784,7 +2805,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--grp-color, var(--ink-fog));
+  color: var(--ink-fog);
   border-radius: var(--radius-sm);
   transition: color var(--duration-fast) var(--ease-spring);
 }
@@ -2829,7 +2850,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--grp-color, var(--ink-fog)) 92%, var(--ink-pearl));
+  color: var(--ink-spectral);
 }
 
 .side-bar-group-header__count {
@@ -3155,13 +3176,6 @@
   background: var(--surface-rim);
 }
 
-.group-context-menu-swatches {
-  display: grid;
-  grid-template-columns: repeat(8, 24px);
-  gap: 4px;
-  padding: 2px 4px 4px;
-}
-
 /* ── Accent Popover ─────────────────────────────────────────────────────────────── */
 
 .accent-popover-overlay {
@@ -3173,63 +3187,67 @@
 .accent-popover-card {
   position: fixed;
   z-index: 1;
-  display: grid;
-  /* 16색을 8열 2행으로 — clear(None) 행은 전체 폭을 차지한다. */
-  grid-template-columns: repeat(8, 24px);
-  gap: 6px;
-  padding: 8px;
+  display: flex;
+  /* 8톤을 "플래그 + 이름" 세로 리스트로 — 색이 아니라 이름으로도 고를 수 있다. */
+  flex-direction: column;
+  gap: 2px;
+  min-width: 176px;
+  padding: 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
   box-shadow: var(--shadow-anchor);
 }
 
-.accent-popover-swatch {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
+/* 정체성 톤 행 — 팝오버·칩 메뉴·그룹 메뉴가 공유하는 단일 피커 문법. */
+.accent-tone-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 9px;
   cursor: pointer;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
+  text-align: left;
 }
 
-/* clear(None)는 색이 아니라 해제 동작이라 색 그리드와 분리해 전체 폭 행으로 둔다. */
-.accent-popover-swatch--clear {
-  grid-column: 1 / -1;
-  width: auto;
-  height: 22px;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-rim);
-  grid-auto-flow: column;
-  justify-content: start;
-}
-
-.accent-popover-swatch:hover,
-.accent-popover-swatch:focus-visible,
-.accent-popover-swatch[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--ink-fog) 38%, var(--surface-rim));
+.accent-tone-row:hover,
+.accent-tone-row:focus-visible {
+  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   outline: none;
 }
 
-.accent-popover-swatch span {
-  display: block;
-  width: 14px;
-  height: 14px;
-  border: 1px solid color-mix(in oklch, var(--ink-fog) 34%, transparent);
-  border-radius: 999px;
+.accent-tone-row[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
 }
 
-.accent-popover-swatch--clear span {
-  background:
-    linear-gradient(135deg, transparent 44%, color-mix(in oklch, var(--ink-rim) 82%, transparent) 46% 54%, transparent 56%),
-    color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+.accent-tone-flag {
+  flex: none;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.accent-tone-flag--none {
+  border: 1px solid var(--ink-rim);
+  background: transparent;
+}
+
+.accent-tone-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-spectral);
+}
+
+.accent-tone-row--clear .accent-tone-name {
+  color: var(--ink-fog);
 }
 
 .canvas-operation-job-count {
@@ -4520,6 +4538,7 @@
   }
 }
 
+/* 스트림 팔로우 — 원색 solid 필 금지. Action 문법(primary: brass 윤곽 고스트)으로 발화한다. */
 .follow-button {
   position: absolute;
   right: var(--space-6);
@@ -4527,13 +4546,16 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 8px var(--space-4);
-  border-radius: 999px;
-  background: var(--aurora);
-  color: var(--ink-abyss);
-  box-shadow: 0 12px 32px -16px var(--aurora);
-  font-size: 10.5px;
-  font-weight: 800;
+  min-height: 28px;
+  padding: 5px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 14%, var(--ink-deep));
+  color: var(--brass-bright);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   transition: transform var(--duration-fast) var(--ease-spring);
@@ -4662,7 +4684,7 @@
   gap: var(--space-2);
   min-width: 0;
   width: 100%;
-  height: 32px;
+  height: 34px;
   /* sigil+label을 박스 중앙에 두고, caret은 우측에 절대배치하므로 좌우 패딩을 caret 폭만큼 대칭으로 확보한다. */
   padding: 0 calc(var(--space-2) + 14px);
   /* 휴지 상태는 GNB의 조용한 언어에 맞춰 중립 헤어라인 + 살짝 가라앉은 글라스 웰로 둔다 — 발광하지 않는 계기판 필드. */
@@ -5550,8 +5572,9 @@
   border-color: color-mix(in oklch, var(--warn) 44%, var(--surface-rim));
 }
 
+/* 정보 토스트는 상태가 아니다 — 중립 림으로 둔다(신호 보더는 error/warn만). */
 .app-toast--info {
-  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
+  border-color: var(--surface-rim-strong);
 }
 
 .app-toast-dot {
@@ -5604,8 +5627,8 @@
 .app-toast-close {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex: none;
   margin: -2px -4px 0 auto;
   border-radius: var(--radius-xs);
@@ -6180,7 +6203,7 @@
 }
 
 .directory-browser-jump-button {
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
@@ -6396,7 +6419,7 @@
 }
 
 .directory-browser-button {
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
@@ -6705,7 +6728,7 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
+  height: 28px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
@@ -6905,7 +6928,7 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-version-selector select,
 .whatsnew-refresh {
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
@@ -6995,8 +7018,10 @@ body[data-codex-side="true"] .command-card {
   background: color-mix(in oklch, var(--ink-mid) 62%, transparent);
   color: var(--ink-fog);
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 760;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -7063,14 +7088,14 @@ body[data-codex-side="true"] .command-card {
   align-items: center;
   justify-content: center;
   min-width: 32px;
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
   color: var(--brass);
   font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 760;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -7194,7 +7219,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .whatsnew-done {
-  min-height: 38px;
+  min-height: 34px;
   padding: 0 18px;
   border: 1px solid color-mix(in oklch, var(--brass) 36%, transparent);
   border-radius: var(--radius-sm);
@@ -7757,7 +7782,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   flex: none;
   width: 16px;
   height: 16px;
-  border-radius: 4.5px;
+  border-radius: var(--radius-xs);
 }
 
 .brand-foot-wordmark {
@@ -7787,6 +7812,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   cursor: default;
 }
 
+/* 업데이트 준비됨 = 완료 상태 신호(positive). 정보 뱃지가 아니라 실제 상태만 색을 갖는다. */
 .brand-foot-version-dot {
   position: absolute;
   top: 3px;
@@ -7794,20 +7820,21 @@ body[data-codex-reading="true"] .operations-side-bar {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--aurora);
+  background: var(--positive);
 }
 
+/* 대기 중 업데이트 안내는 정보다 — 중립 잉크. 진행(live)=warn, 실패(error)=coral만 신호로 발화. */
 .brand-foot-update {
   padding: 3px 8px;
-  border: 1px solid color-mix(in oklch, var(--warn) 42%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--warn) 10%, transparent);
-  color: var(--warn);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
+  color: var(--ink-spectral);
   font-size: 10.5px;
   font-weight: 760;
 }
 
-.brand-foot-update--live { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--aurora); }
+.brand-foot-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn); }
 .brand-foot-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--ink-fog); }
 .brand-foot-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral); }
 .brand-foot-update:disabled { cursor: default; opacity: 0.75; }
@@ -7822,8 +7849,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 .brand-foot-more {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-xs);
   color: var(--ink-fog);
 }
@@ -7835,7 +7862,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 26px;
+  height: 24px;
   padding: 0 6px;
   border-radius: var(--radius-xs);
   color: var(--ink-fog);
@@ -7886,6 +7913,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   left: 0;
 }
 
+/* 메뉴 항목은 theater-menu-item과 같은 mono 대문자 문법을 쓴다 — 콘솔 메뉴 단일 방언. */
 .brand-foot-dropup-menu button {
   display: flex;
   align-items: center;
@@ -7893,7 +7921,11 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: 7px 10px;
   border-radius: var(--radius-xs);
   color: var(--ink-spectral);
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   text-align: left;
 }
 
@@ -7946,7 +7978,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 .keyboard-shortcuts-group dl > div { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 12px; padding: 4px; color: var(--ink-spectral); font-size: 12px; }
 .keyboard-shortcuts-group dt { color: var(--ink-fog); }
 .keyboard-shortcuts-group dd { margin: 0; }
-.keyboard-shortcuts-group kbd { margin-right: 3px; padding: 1px 4px; border: 1px solid var(--surface-rim); border-radius: 4px; color: var(--ink-pearl); font-family: var(--font-mono); font-size: 10px; }
+.keyboard-shortcuts-group kbd { margin-right: 3px; padding: 1px 4px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--ink-pearl); font-family: var(--font-mono); font-size: 10px; }
 
 /* v5: 비-Operations 라우트의 복귀 링크 — GNB 부재 보완 */
 .page-back-link {

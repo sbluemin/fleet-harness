@@ -12,6 +12,7 @@ import type { ConsoleState, OperationNode } from "../types.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
+import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { OperationFrame } from "./operation-frame.js";
 import { RubberBand } from "./rubber-band.js";
@@ -309,6 +310,11 @@ export function OperationsCanvas({
           theaterId: operation.theaterId,
           geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
         }]))}
+        accents={Object.fromEntries(theaterOperations.flatMap((operation) => {
+          const accentKey = canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation);
+          const color = accentKey ? resolveAccentColor(accentKey) : null;
+          return color ? [[operation.id, color] as const] : [];
+        }))}
         viewport={canvas.viewport}
         canvasSize={canvasSize}
         onJump={(center) => setViewport({

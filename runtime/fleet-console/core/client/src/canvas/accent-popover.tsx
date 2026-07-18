@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import { OPERATION_ACCENTS } from "./operation-accent.js";
+import { OPERATION_ACCENTS, normalizeAccentKey } from "./operation-accent.js";
 
 interface AccentPopoverProps {
   // 트리거(인디케이터) 인디케이터의 뷰포트 기준 rect. 열린 시점에 캡처해 넘긴다.
@@ -12,8 +12,53 @@ interface AccentPopoverProps {
 }
 
 const POPOVER_GAP = 8;
-// 팝업 카드의 추정 높이(None 행 + 2행 그리드). 트리거 아래로 띄울지 위로 뒤집을지 판단에만 쓴다.
-const POPOVER_ESTIMATED_HEIGHT = 120;
+// 팝업 카드의 추정 높이(None 행 + 8톤 리스트). 트리거 아래로 띄울지 위로 뒤집을지 판단에만 쓴다.
+const POPOVER_ESTIMATED_HEIGHT = 268;
+
+// 정체성 톤 선택 리스트 — 팝오버·칩 메뉴·그룹 메뉴 3곳이 공유하는 단일 피커 표면.
+// 스와치 그리드 대신 "플래그 + 이름" 행으로, 색이 아니라 이름으로도 고를 수 있게 한다.
+export function AccentToneList({
+  accentKey,
+  includeNone,
+  onSelect,
+}: {
+  readonly accentKey: string | null;
+  readonly includeNone: boolean;
+  readonly onSelect: (accentKey: string | null) => void;
+}) {
+  const activeKey = normalizeAccentKey(accentKey);
+  return (
+    <>
+      {includeNone ? (
+        <button
+          type="button"
+          className="accent-tone-row accent-tone-row--clear"
+          role="menuitem"
+          aria-label="No accent"
+          aria-pressed={activeKey === null}
+          onClick={() => onSelect(null)}
+        >
+          <span className="accent-tone-flag accent-tone-flag--none" aria-hidden="true" />
+          <span className="accent-tone-name">None</span>
+        </button>
+      ) : null}
+      {OPERATION_ACCENTS.map((accent) => (
+        <button
+          key={accent.key}
+          type="button"
+          className="accent-tone-row"
+          role="menuitem"
+          aria-label={accent.label}
+          aria-pressed={activeKey === accent.key}
+          onClick={() => onSelect(accent.key)}
+        >
+          <span className="accent-tone-flag" style={{ background: accent.color }} aria-hidden="true" />
+          <span className="accent-tone-name">{accent.label}</span>
+        </button>
+      ))}
+    </>
+  );
+}
 
 export function AccentPopover({ anchor, accentKey, onSelect, onClose }: AccentPopoverProps) {
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
@@ -55,30 +100,7 @@ export function AccentPopover({ anchor, accentKey, onSelect, onClose }: AccentPo
     <div className="accent-popover-overlay" role="presentation" onPointerDown={onClose}>
       {style ? (
         <div className="accent-popover-card" role="menu" aria-label="Accent" style={style} onPointerDown={(event) => event.stopPropagation()}>
-          <button
-            type="button"
-            className="accent-popover-swatch accent-popover-swatch--clear"
-            role="menuitem"
-            aria-label="No accent"
-            aria-pressed={accentKey === null}
-            onClick={() => choose(null)}
-          >
-            <span />
-            None
-          </button>
-          {OPERATION_ACCENTS.map((accent) => (
-            <button
-              key={accent.key}
-              type="button"
-              className="accent-popover-swatch"
-              role="menuitem"
-              aria-label={accent.label}
-              aria-pressed={accentKey === accent.key}
-              onClick={() => choose(accent.key)}
-            >
-              <span style={{ background: accent.color }} />
-            </button>
-          ))}
+          <AccentToneList accentKey={accentKey} includeNone onSelect={choose} />
         </div>
       ) : null}
     </div>,

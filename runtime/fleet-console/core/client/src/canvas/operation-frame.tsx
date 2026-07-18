@@ -72,7 +72,8 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       restoreIdentityFocusRef.current = true;
     },
   });
-  // 사용자 accent는 패널 전체 외곽선을 소유한다. status 비콘 채널은 별도로 유지한다.
+  // 사용자 accent(정체성)는 좌측 스파인과 명판 마크만 소유한다.
+  // 패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용이다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
     "canvas-operation",
@@ -291,6 +292,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       tabIndex={focusLayerTarget ? -1 : undefined}
       inert={minimized || renderHidden ? true : undefined}
     >
+      {accentColor ? <span className="canvas-operation-spine" aria-hidden="true" /> : null}
       {!maximized && !interactionDisabled ? (
         <div
           className="canvas-operation-drag-edge"
@@ -310,6 +312,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         onPointerCancel={endDrag}
         data-canvas-blocker
       >
+        {accentColor ? <span className="canvas-operation-id-mark" aria-hidden="true" /> : null}
         {rename.renaming ? (
           <input
             ref={rename.inputRef}

@@ -76,27 +76,39 @@ describe("Instrument core design contract", () => {
     expect(css).toContain(":focus-visible");
   });
 
-  it("keeps user accents functional through panel perimeters and sidebar side ticks", () => {
+  it("keeps user identity on the spine+mark grammar and off the state border channel", () => {
     const frame = source("canvas/operation-frame.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
-    const panelAccentSelector = '.operations-canvas .canvas-operation[style*="--user-accent"]';
-    const panelAccentBlock = components.match(/\.operations-canvas \.canvas-operation\[style\*="--user-accent"\] \{[^}]*\}/)?.[0] ?? "";
+    const spineBlock = components.match(/\.canvas-operation-spine \{[^}]*\}/)?.[0] ?? "";
+    const markBlock = components.match(/\.canvas-operation-id-mark \{[^}]*\}/)?.[0] ?? "";
+    const washBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
     const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
+    const minimapDotBlock = components.match(/\.canvas-minimap-operation\[style\*="--user-accent"\]::after \{[^}]*\}/)?.[0] ?? "";
     const accentSources = [frame, chip, components].join("\n");
 
     expect(frame).toContain('{ "--user-accent": accentColor }');
+    expect(frame).toContain('className="canvas-operation-spine"');
+    expect(frame).toContain('className="canvas-operation-id-mark"');
     expect(chip).toContain('{ "--user-accent": accentValue }');
-    expect(panelAccentBlock).toContain("border-color: var(--user-accent);");
-    expect(panelAccentBlock).not.toMatch(/background|box-shadow|animation/);
-    expect(components.indexOf(panelAccentSelector)).toBeGreaterThan(components.indexOf(".canvas-operation.is-running.is-active"));
-    expect(chipAccentBlock).toContain("width: 2px;");
+    // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
+    expect(components).not.toContain("border-color: var(--user-accent)");
+    expect(spineBlock).toContain("width: 3px;");
+    expect(spineBlock).toContain("background: var(--user-accent);");
+    expect(spineBlock).toContain("pointer-events: none;");
+    expect(spineBlock).not.toMatch(/animation|box-shadow/);
+    expect(markBlock).toContain("width: 8px;");
+    expect(markBlock).toContain("height: 14px;");
+    expect(markBlock).toContain("background: var(--user-accent);");
+    expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--ink-mid))");
+    expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
     expect(chipAccentBlock).toContain("bottom: 7px;");
     expect(chipAccentBlock).toContain("background: var(--user-accent);");
     expect(chipAccentBlock).toContain("pointer-events: none;");
     expect(chipAccentBlock).not.toMatch(/animation/);
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(2);
+    expect(minimapDotBlock).toContain("background: var(--user-accent);");
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
@@ -330,7 +342,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text)[a-z-]*:$/);
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id)[a-z-]*:$/);
       }
     }
     expect(theme).not.toMatch(/body::(?:before|after)/);
