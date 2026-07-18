@@ -10,7 +10,7 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
   if (!url.pathname.startsWith("/api/cowork")) return false;
   const service = context.coworkService ?? new CoworkService(new CoworkStore(context.paths.root), context.paths, context.paths.root);
   const parts = url.pathname.split("/").filter(Boolean);
-  if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "codex") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const model = url.searchParams.get("model") ?? provider.defaultModel; return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: getEffort(cli, model).supported ? getEffort(cli, model).levels : [] }); }
+  if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const cli = (url.searchParams.get("cli") ?? "codex") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); const model = url.searchParams.get("model") ?? provider.defaultModel; const effort = getEffort(cli, model); return json(response, 200, { clis: getAllBackendConfigs().map(c => c.id), models, efforts: effort.supported ? effort.levels : [] }); }
   if (request.method === "POST" && !writeAllowed(request, context)) return json(response, 403, { error: "origin_mismatch" });
   try {
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId))); }
