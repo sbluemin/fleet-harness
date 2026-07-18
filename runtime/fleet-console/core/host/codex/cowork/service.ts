@@ -1,4 +1,4 @@
-import { approvePatch, computeContentHash, enqueuePatch, readPatchFile, readWikiEntry } from "@dotobokuri/fleet-wiki";
+import { approvePatch, computeContentHash, enqueuePatch, loadIndex, readPatchFile, readWikiEntry } from "@dotobokuri/fleet-wiki";
 import type { MemoryPaths, Patch, WikiEntry, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import type { AcpPermissionRequestParams, AcpPermissionResponse } from "@dotobokuri/core-unified-agent";
 import { join } from "node:path";
@@ -38,8 +38,11 @@ export class CoworkService {
   async create(workspaceId: string, entryId: string, identity?: { cli?: string; model?: string; effort?: string }): Promise<CoworkSessionRecord> {
     const entry = await readWikiEntry(entryId, this.paths);
     if (!entry) throw new Error("cowork_entry_not_found");
-    const markdown = await readPatchFile(join(this.paths.wikiDir, `${entryId}.md`));
-    return this.store.create(workspaceId, entryId, markdown, entry.version, computeContentHash(markdown), identity);
+    // Nested entries (wiki/queries/…) live at their indexed path, not wiki/<id>.md.
+    const index = await loadIndex(this.paths);
+    const target = index[entryId]?.path ?? `wiki/${entryId}.md`;
+    const markdown = await readPatchFile(join(this.paths.root, target));
+    return this.store.create(workspaceId, entryId, markdown, entry.version, computeContentHash(markdown), identity, target);
   }
 
   async settings(workspaceId: string, id: string, identity: { cli?: string; model?: string; effort?: string }) { return this.changed(await this.store.update(workspaceId, id, s => ({ ...s, ...identity }))); }
@@ -110,7 +113,7 @@ export class CoworkService {
     let entry: WikiEntry;
     try { entry = parseDraft(s.draft); } catch { throw new Error("cowork_apply_invalid_draft"); }
     entry = { ...entry, version: s.baseVersion + 1, updated: new Date().toISOString() };
-    const patch: Patch = { frontmatter: { op: "update_wiki", target: `wiki/${s.entryId}.md`, summary: `Cowork update ${s.entryId}`, proposer: "codex-cowork", created: new Date().toISOString() }, body: JSON.stringify(entry) };
+    const patch: Patch = { frontmatter: { op: "update_wiki", target: s.targetPath ?? `wiki/${s.entryId}.md`, summary: `Cowork update ${s.entryId}`, proposer: "codex-cowork", created: new Date().toISOString() }, body: JSON.stringify(entry) };
     try {
       const patchId = await enqueuePatch(patch, this.paths, { baseVersion: s.baseVersion, baseHash: s.baseHash });
       await approvePatch(patchId, this.paths);
@@ -124,7 +127,7 @@ export class CoworkService {
     }
   }
 
-  dto(session: CoworkSessionRecord): CoworkSessionDto { const { providerSessionId: _p, createdAt: _a, updatedAt: _u, ...dto } = session; return dto; }
+  dto(session: CoworkSessionRecord): CoworkSessionDto { const { providerSessionId: _p, targetPath: _t, createdAt: _a, updatedAt: _u, ...dto } = session; return dto; }
   subscribe(id: string, cb: (event: CoworkStoredEvent) => void) { const set = this.listeners.get(id) ?? new Set(); set.add(cb); this.listeners.set(id, set); return () => set.delete(cb); }
   async replay(workspaceId: string, id: string, after = 0) { return (await this.store.events(workspaceId, id)).filter(e => e.id > after); }
 
@@ -176,4 +179,14 @@ export function permissionResponse(params: AcpPermissionRequestParams, allowedTo
   return evaluatePermission(params, allowedToolIds).response;
 }
 
-function parseDraft(markdown: string): WikiEntry { const match = markdown.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/); if (!match) throw new Error("missing frontmatter"); const values: Record<string, unknown> = {}; for (const line of match[1]!.split("\n")) { const at = line.indexOf(":"); if (at < 1) throw new Error("invalid frontmatter"); const key = line.slice(0, at).trim(); const raw = line.slice(at + 1).trim(); values[key] = raw.startsWith("[") ? JSON.parse(raw) : raw.startsWith('"') ? JSON.parse(raw) : /^-?\d+$/.test(raw) ? Number(raw) : raw; } if (typeof values.id !== "string" || typeof values.title !== "string" || !Array.isArray(values.tags) || typeof values.created !== "string" || typeof values.updated !== "string" || typeof values.version !== "number") throw new Error("invalid entry"); return { ...values, tags: values.tags as string[], body: match[2]! } as WikiEntry; }
+function parseDraft(markdown: string): WikiEntry { const match = markdown.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/); if (!match) throw new Error("missing frontmatter"); const values: Record<string, unknown> = {}; for (const line of match[1]!.split("\n")) { const at = line.indexOf(":"); if (at < 1) throw new Error("invalid frontmatter"); const key = line.slice(0, at).trim(); const raw = line.slice(at + 1).trim(); values[key] = raw.startsWith("[") ? JSON.parse(raw) : raw.startsWith('"') ? reviveQuoted(JSON.parse(raw) as string) : /^-?\d+$/.test(raw) ? Number(raw) : raw; } if (typeof values.id !== "string" || typeof values.title !== "string" || !Array.isArray(values.tags) || typeof values.created !== "string" || typeof values.updated !== "string" || typeof values.version !== "number") throw new Error("invalid entry"); return { ...values, tags: values.tags as string[], body: match[2]! } as WikiEntry; }
+
+// Fleet Wiki serializes array/object frontmatter (e.g. rawSourceRefs) as a quoted JSON string —
+// revive it so apply hands the writer real arrays instead of double-encoded strings.
+function reviveQuoted(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try { return JSON.parse(trimmed); } catch { return value; }
+  }
+  return value;
+}

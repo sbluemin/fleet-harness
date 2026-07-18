@@ -11,11 +11,11 @@ export class CoworkStore {
   private dir(workspaceId: string, sessionId: string) { return join(this.root, "codex-cowork", safe(workspaceId), safe(sessionId)); }
   sessionDir(workspaceId: string, sessionId: string) { return this.dir(workspaceId, sessionId); }
   private file(workspaceId: string, sessionId: string) { return join(this.dir(workspaceId, sessionId), FILE); }
-  async create(workspaceId: string, entryId: string, body: string, baseVersion = 0, baseHash = hash(body), identity?: { cli?: string; model?: string; effort?: string }): Promise<CoworkSessionRecord> {
+  async create(workspaceId: string, entryId: string, body: string, baseVersion = 0, baseHash = hash(body), identity?: { cli?: string; model?: string; effort?: string }, targetPath?: string): Promise<CoworkSessionRecord> {
     const existing = this.writers.get(`${workspaceId}:${entryId}`);
     if (existing) { const found = await this.get(workspaceId, existing); if (found && found.state !== "closed" && found.state !== "applied") return found; }
     const now = new Date().toISOString(); const id = crypto.randomUUID();
-    const record: CoworkSessionRecord = { id, workspaceId, entryId, state: "idle", revision: 0, draft: body, baseDraft: body, baseHash, baseVersion, selection: null, annotations: [], ...identity, createdAt: now, updatedAt: now };
+    const record: CoworkSessionRecord = { id, workspaceId, entryId, state: "idle", revision: 0, draft: body, baseDraft: body, baseHash, baseVersion, selection: null, annotations: [], ...identity, targetPath, createdAt: now, updatedAt: now };
     await this.save(record); this.writers.set(`${workspaceId}:${entryId}`, id); return record;
   }
   async get(workspaceId: string, sessionId: string): Promise<CoworkSessionRecord | null> { try { return JSON.parse(await readFile(this.file(workspaceId, sessionId), "utf8")) as CoworkSessionRecord; } catch { return null; } }
