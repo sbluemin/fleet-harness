@@ -134,12 +134,13 @@ describe("agent observability DTO boundary", () => {
       "forward=D:/work/project/file.ts",
       "home=~/repo/file.ts user=~alice/repo/file.ts",
       "winhome=~\\repo\\file.ts winuser=~alice\\repo\\file.ts",
+      "slashunc=//server/share/private.txt",
       "angle=<file:///Users/alice/angle> <C:\\Users\\Alice\\angle> <~/angle> <~alice\\angle> <\\\\server\\share\\angle> <\\Users\\Alice\\angle> rooted=\\Users\\Alice\\repo",
       "single=\\alpha keep=~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2 <unknown>literal</unknown>",
     ].join("\n");
     const secondBody = "UNC=\\\\server\\share\\folder\\file.txt file=file:///Users/alice/project/file.ts XML=<root>/etc/fleet</root>";
-    const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet homes=~/repo ~alice/repo ~\\repo ~alice\\repo angles=<file:///opt/angle> <D:\\work\\angle> <~\\angle> rooted=\\Windows\\System32 single=\\alpha remote=https://example.org/x/y file://server/share/private.txt\n";
-    const requestPreview = "<objective>Inspect /Users/alice/app C:\\Users\\Alice\\app \\\\server\\share\\app file:///Users/alice/app ~/repo/file.ts ~alice/repo/file.ts ~\\repo\\file.ts ~alice\\repo\\file.ts angles=<file:///Users/alice/autolink> <C:\\Users\\Alice\\autolink> <~/autolink> <~alice\\autolink> <\\Users\\Alice\\autolink> single=\\alpha; keep ~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2</objective>";
+    const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet homes=~/repo ~alice/repo ~\\repo ~alice\\repo angles=<file:///opt/angle> <D:\\work\\angle> <~\\angle> rooted=\\Windows\\System32 single=\\alpha slashunc=//server/share/additional.txt remote=https://example.org/x/y file://server/share/private.txt\n";
+    const requestPreview = "<objective>Inspect /Users/alice/app C:\\Users\\Alice\\app \\\\server\\share\\app //server/share/preview.txt file:///Users/alice/app ~/repo/file.ts ~alice/repo/file.ts ~\\repo\\file.ts ~alice\\repo\\file.ts angles=<file:///Users/alice/autolink> <C:\\Users\\Alice\\autolink> <~/autolink> <~alice\\autolink> <\\Users\\Alice\\autolink> single=\\alpha; keep ~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2</objective>";
     const request = {
       blocks: [
         { tag: "objective", hint: "Goal", required: true, present: true, body },
@@ -171,18 +172,19 @@ describe("agent observability DTO boundary", () => {
             "forward=[redacted path]",
             "home=[redacted path] user=[redacted path]",
             "winhome=[redacted path] winuser=[redacted path]",
+            "slashunc=[redacted path]",
             "angle=<[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> rooted=[redacted path]",
             "single=[redacted path] keep=~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2 <unknown>literal</unknown>",
           ].join("\n"),
         },
         { tag: "context", hint: "Context", required: false, present: true, body: "UNC=[redacted path] file=[redacted path] XML=<root>[redacted path]</root>" },
       ],
-      additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] homes=[redacted path] [redacted path] [redacted path] [redacted path] angles=<[redacted path]> <[redacted path]> <[redacted path]> rooted=[redacted path] single=[redacted path] remote=https://example.org/x/y [redacted path]\n",
+      additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] homes=[redacted path] [redacted path] [redacted path] [redacted path] angles=<[redacted path]> <[redacted path]> <[redacted path]> rooted=[redacted path] single=[redacted path] slashunc=[redacted path] remote=https://example.org/x/y [redacted path]\n",
     };
     const events = store.listEvents("session-a");
     const jobs = store.listJobs("session-a");
     const serialized = JSON.stringify({ jobs, events, liveFrames });
-    const observedPreview = "<objective>Inspect [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] angles=<[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> single=[redacted path]; keep ~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2</objective>";
+    const observedPreview = "<objective>Inspect [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] angles=<[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> single=[redacted path]; keep ~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2</objective>";
     expect(producerInput).toEqual(originalProducerInput);
     expect(events[0]?.event.request).toEqual(observedRequest);
     expect(events[0]?.event.requestPreview).toBe(observedPreview);
@@ -208,6 +210,9 @@ describe("agent observability DTO boundary", () => {
       "C:\\Users\\Alice\\angle",
       "\\Users\\Alice\\repo",
       "\\alpha",
+      "//server/share/private.txt",
+      "//server/share/additional.txt",
+      "//server/share/preview.txt",
       "file:///Users/alice/autolink",
       "file://server/share/private.txt",
     ]) expect(serialized).not.toContain(rawPath);

@@ -740,6 +740,14 @@ function readFilesystemPathEnd(value: string, start: number): number | undefined
   }
 
   if (
+    explicitBoundary
+    && value[start] === "/"
+    && value[start + 1] === "/"
+    && value[start + 2] !== undefined
+    && !isPathTerminator(value[start + 2])
+  ) return scanPathEnd(value, start, start + 2, previous);
+
+  if (
     boundary
     && value[start] === "/"
     && value[start + 1] !== undefined
