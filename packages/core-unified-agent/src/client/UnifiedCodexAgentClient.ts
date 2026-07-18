@@ -229,6 +229,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
       promptIdleTimeout: options.promptIdleTimeout ?? 600_000,
       clientInfo: options.clientInfo,
       autoApprove: options.autoApprove,
+      fsAccess: options.fsAccess,
     });
     this.connection = connection;
     this.setupEventForwarding();

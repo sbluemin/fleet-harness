@@ -1618,7 +1618,9 @@
 .operations-canvas.is-formation-view .canvas-minimap,
 .operations-canvas.is-formation-view .canvas-minimap-fab,
 .operations-canvas.is-panel-maximized .canvas-minimap,
-.operations-canvas.is-panel-maximized .canvas-minimap-fab {
+.operations-canvas.is-panel-maximized .canvas-minimap-fab,
+.operations-canvas.is-companion-layout .canvas-minimap,
+.operations-canvas.is-companion-layout .canvas-minimap-fab {
   display: none;
 }
 
@@ -1962,7 +1964,8 @@
 }
 
 /* Formation 슬롯은 계산값이 규약이다 — 320×200 CSS 최소값이 슬롯을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
-.operations-canvas.is-formation-view .canvas-operation {
+.operations-canvas.is-formation-view .canvas-operation,
+.operations-canvas.is-companion-layout .canvas-operation {
   min-width: 0;
   min-height: 0;
 }
@@ -1994,8 +1997,48 @@
 /* Formation 슬롯은 y=0에서 시작하고, 일반 맵 뷰에서도 뷰포트-상대 상단 밀착(is-top-edge) 패널은
    캔버스 클립(overflow:hidden)이 보더 위 명판을 잘라낸다 — 최대화와 동일하게 내부 인셋으로 전환한다. */
 .operations-canvas.is-formation-view .canvas-operation-titlebar,
+.operations-canvas.is-companion-layout .canvas-operation-titlebar,
 .canvas-operation.is-top-edge .canvas-operation-titlebar {
   top: var(--space-2);
+}
+
+.operations-canvas.is-companion-layout .canvas-operation-titlebar {
+  cursor: default;
+}
+
+/* companion 프레임은 배지·창 컨트롤 없이 타이포 캡션으로만 정체를 표시한다 — 닫기는 EXIT 핸들 소유. */
+.canvas-companion-frame {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-companion-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  cursor: default;
+  user-select: none;
+}
+
+.canvas-companion-caption-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--aurora);
+  box-shadow: 0 0 8px var(--aurora-glow);
+}
+
+.canvas-companion-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* 포커스는 단일 location accent로만 표시한다. */

@@ -6,13 +6,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
-import { clearFormationView, clearMaximizedOperationId, getSnapshot, loadForTheater, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getSnapshot, loadForTheater, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
   usePluginRegistry: () => ({
     plugins: [],
-    operationKinds: [{ pluginId: "test-plugin", type: "shell", title: "Test", render: ({ operationId }: { readonly operationId: string }) => createElement("div", { "data-plugin-operation": operationId }) }],
+    operationKinds: [{
+      pluginId: "test-plugin",
+      type: "shell",
+      title: "Test",
+      render: ({ operationId, companionsOpen, onRequestCompanions }: { readonly operationId: string; readonly companionsOpen?: boolean; readonly onRequestCompanions?: (open: boolean) => void }) => createElement("button", { "data-plugin-operation": operationId, "data-companions-open": String(companionsOpen), onClick: () => onRequestCompanions?.(!companionsOpen) }, "Toggle companions"),
+      companions: [
+        { id: "chat", title: "Chat", render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "chat", "data-companions-open": String(companionsOpen) }) },
+        { id: "artifacts", title: "Artifacts", hideCaption: true, render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen) }) },
+      ],
+    }],
     settingsSections: [],
     notificationKinds: [],
     railPanels: [],
@@ -54,6 +63,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => {} });
   loadForTheater("minimap-boundary");
   clearFormationView();
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   setState({
     viewport: { x: 0, y: 0, zoom: 1 },
@@ -70,6 +80,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   clearFormationView();
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   loadForTheater(null);
   window.localStorage.clear();
@@ -199,6 +210,73 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(getSnapshot().minimized).toEqual([]);
   });
 
+  it("passes the companion callback through render context and restores Map geometry on exit", () => {
+    renderOperationsCanvas();
+    const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
+    const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+    const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
+
+    act(() => targetBody?.click());
+
+    expect(getCompanionOperationId()).toBe("operation");
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+    expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
+    expect(document.querySelectorAll('[data-test-companion][data-companions-open="true"]')).toHaveLength(2);
+    expect(document.querySelector('[data-plugin-operation="operation"]')).toBe(targetBody);
+    expect(getComputedStyle(peer!).visibility).toBe("hidden");
+    expect(Number.parseFloat(targetFrame?.style.width ?? "0")).toBeCloseTo((900 - 16) / 3, 0);
+
+    // 기본 companion은 캡션을 유지하고 opt-in companion만 캡션을 숨긴다. 두 프레임 모두 접근성 이름은 유지한다.
+    expect(document.querySelector('.canvas-companion-frame button')).toBeNull();
+    expect([...document.querySelectorAll(".canvas-companion-caption-title")].map((el) => el.textContent)).toEqual(["Chat"]);
+    expect(document.querySelector('[aria-label="Companion Chat"] .canvas-companion-caption')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Companion Artifacts"] .canvas-companion-caption')).toBeNull();
+    expect(document.querySelector('[aria-label="Companion Artifacts"]')).not.toBeNull();
+    act(() => targetBody?.click());
+
+    expect(getCompanionOperationId()).toBeNull();
+    expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(0);
+    expect(document.querySelector('[data-plugin-operation="operation"]')).toBe(targetBody);
+    expect(targetFrame?.style.width).toBe("320px");
+    expect(getComputedStyle(peer!).visibility).not.toBe("hidden");
+
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBe("operation");
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
+  it("keeps the companion layout and frames during the missing-operation grace period", () => {
+    vi.useFakeTimers();
+    try {
+      renderOperationsCanvas();
+      const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
+      const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+      act(() => targetBody?.click());
+
+      renderOperationsCanvas({ ...CANVAS_STATE, operations: [PEER_OPERATION] });
+
+      expect(getCompanionOperationId()).toBe("operation");
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+      expect(document.querySelector('[aria-label="Operation Minimap boundary"]')).toBe(targetFrame);
+      expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
+      expect(getComputedStyle(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')!).visibility).toBe("hidden");
+
+      act(() => vi.advanceTimersByTime(1_499));
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+      expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(getCompanionOperationId()).toBeNull();
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(false);
+      expect(document.querySelector('[aria-label="Operation Minimap boundary"]')).toBeNull();
+      expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(0);
+      expect(getComputedStyle(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')!).visibility).not.toBe("hidden");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes a hidden peer's portaled accent menu and transfers its menu focus", () => {
     renderOperationsCanvas();
     const peerAccent = document.querySelector<HTMLButtonElement>('[aria-label="Set accent for operation Peer"]');
@@ -298,9 +376,9 @@ const CANVAS_STATE: ConsoleState = {
   codexReaderExpanded: false,
 };
 
-function renderOperationsCanvas() {
+function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
   act(() => root!.render(createElement(OperationsCanvas, {
-    state: CANVAS_STATE,
+    state,
     catalog: [],
     canLaunch: false,
     renderKindIcon: () => null,

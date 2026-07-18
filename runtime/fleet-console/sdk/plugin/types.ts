@@ -92,6 +92,14 @@ export interface OperationKindDescriptor {
   readonly title: string;
   readonly subtitle?: (operation: OperationNode) => string | undefined;
   readonly render?: (context: OperationRenderContext) => ReactNode;
+  readonly companions?: readonly CompanionPanelDescriptor[];
+}
+
+export interface CompanionPanelDescriptor {
+  readonly id: string;
+  readonly title: string;
+  readonly hideCaption?: boolean;
+  readonly render: (context: OperationRenderContext) => unknown;
 }
 
 export interface OperationContext {
@@ -118,6 +126,9 @@ export interface OperationRenderContext extends OperationContext {
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
+  /** Requests host-owned companion panels without exposing Canvas implementation to plugins. */
+  readonly onRequestCompanions?: (open: boolean) => void;
+  readonly companionsOpen?: boolean;
 }
 
 export interface FleetPluginManifest {

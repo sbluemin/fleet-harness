@@ -4,6 +4,7 @@ packages:
   - "packages/core-unified-agent"
   - "packages/core-infra"
   - "packages/fleet-admiral"
+  - "packages/fleet-analyst"
   - "packages/fleet-carriers"
   - "packages/fleet-plans"
   - "packages/fleet-wiki"

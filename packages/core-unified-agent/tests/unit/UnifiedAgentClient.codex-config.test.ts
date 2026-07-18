@@ -105,9 +105,9 @@ function connectAppServer(
 }
 
 // ACP 연결 생성자에 전달된 첫 호출 인자(env/args)를 추출한다.
-function acpCtorOptions(): { env?: Record<string, string | undefined>; args: string[] } {
+function acpCtorOptions(): { env?: Record<string, string | undefined>; args: string[]; fsAccess?: boolean } {
   const call = vi.mocked(AcpConnection).mock.calls[0];
-  return call[0] as unknown as { env?: Record<string, string | undefined>; args: string[] };
+  return call[0] as unknown as { env?: Record<string, string | undefined>; args: string[]; fsAccess?: boolean };
 }
 
 function restoreEnvironmentVariable(name: string, value: string | undefined): void {
@@ -207,6 +207,19 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
     expect(AcpConnection).toHaveBeenCalledTimes(1);
     expect(CodexAppServerConnection).not.toHaveBeenCalled();
+  });
+
+  it('Codex ACP 연결은 호출자의 fsAccess를 전달한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      fsAccess: false,
+      env: { CODEX_USE_ACP: 'true' },
+    });
+
+    expect(acpCtorOptions().fsAccess).toBe(false);
   });
 
   it.each([

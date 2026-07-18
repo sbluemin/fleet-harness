@@ -24,9 +24,10 @@ export interface MountCoworkInlineOptions {
   onApplied(): void;
 }
 
-interface Activity { role: "assistant"; text: string; }
 interface Settings { cli: string; model: string; effort: string; }
 interface AnnotationCard { id: string; quote: string; comment: string; status: "pending" | "sent" | "done"; }
+interface PromptAttempt { cancelled: boolean; submitted: boolean; }
+type RevisionOutcome = "idle" | "running" | "complete" | "stopped";
 
 const SETTINGS_KEY = "fleet.codex.cowork.settings";
 const BATCH_INSTRUCTION = "Revise the draft to address every saved annotation. Preserve unrelated content and summarize the changes.";
@@ -44,17 +45,21 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let optionsDto: CoworkOptionsResponse = { clis: [], models: [], efforts: [] };
   let settings = readSettings();
   let annotations: AnnotationCard[] = [];
-  let activities: Activity[] = [];
-  let streamingReply = false;
+  let reply = "";
+  let revisionInstruction = "";
+  let revisionOutcome: RevisionOutcome = "idle";
+  let revisionCollapsed = false;
   let selection: { quote: string; top: number; left: number } | null = null;
   let composerOpen = false;
   let panelOpen = false;
   let configOpen = false;
   let confirmAction: "apply" | "discard" | null = null;
-  let summaryVisible = false;
   let diffVisible = false;
   // 이번 마운트에서 직접 보낸 실행의 완료만 diff 자동 전환 대상(리플레이 done 제외).
   let awaitingResult = false;
+  // 서버의 running DTO가 돌아오기 전에도 전송을 잠가 동일 프롬프트의 재진입을 막는다.
+  let promptPending = false;
+  let promptAttempt: PromptAttempt | null = null;
   let promptText = "";
   let error = "";
   let lastBodyKey = "published";
@@ -123,25 +128,53 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     // 세션은 첫 전송/코멘트 시점에 지연 생성된다.
     const engaged = !!session && session.state !== "closed" && session.state !== "applied";
     dockZone.classList.add("is-open");
-    const running = engaged && session!.state === "running";
+    const running = promptPending || (engaged && session!.state === "running" && revisionOutcome !== "complete" && revisionOutcome !== "stopped");
+    options.body.classList.toggle("is-cowork-running", running);
     // 삭제-전용 변경은 라인 diff에 changed 라인이 없으므로 draft 불일치로 판정해야 한다.
     const dirty = engaged && session!.baseDraft !== session!.draft;
     const changed = dirty ? draftLines().filter(line => line.changed).length : 0;
-    const summary = engaged && summaryVisible ? [...activities].reverse().find(a => a.role === "assistant")?.text ?? "" : "";
     setDockHtml(`
-      ${summary ? `<div class="cowork-summary" role="status"><span aria-hidden="true">✦</span><p>${escapeHtml(summary)}</p><button type="button" class="cowork-x" data-cowork-action="dismiss-summary" aria-label="Dismiss summary">×</button></div>` : ""}
+      ${renderRevisionStream(running)}
       ${panelOpen ? renderPanel() : ""}
       ${configOpen ? renderConfig() : ""}
       ${dirty && !running ? renderReview(changed) : ""}
-      <div class="cowork-bar" data-cowork-form>
+      <div class="cowork-bar${running ? " is-running" : ""}" data-cowork-form>
+        ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
+        <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="Annotations" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
+        <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${annotations.length ? "Add an instruction (optional)…" : "Ask AI to revise this entry…"}" aria-label="Instruction" ${running ? "disabled" : ""}>
+        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="Agent settings" ${running ? "disabled" : ""}>${escapeHtml(settings.cli || "agent")}</button>
         ${running
-          ? `<span class="cowork-glow" aria-hidden="true"></span><span class="cowork-spinner" aria-hidden="true"></span><span class="cowork-ticker" aria-live="polite">AI is editing…</span><button type="button" class="cowork-ghost" data-cowork-action="cancel-run">Stop</button>`
-          : `<button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="Annotations"><span aria-hidden="true">✦</span>${annotations.length}</button>
-             <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${annotations.length ? "Add an instruction (optional)…" : "Ask AI to revise this entry…"}" aria-label="Instruction">
-             <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="Agent settings">${escapeHtml(settings.cli || "agent")}</button>
-             <button type="button" class="cowork-send" data-cowork-action="send" aria-label="Send to AI">↑</button>`}
+          ? '<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="Stop"><span aria-hidden="true"></span></button>'
+          : '<button type="button" class="cowork-send" data-cowork-action="send" aria-label="Send to AI">↑</button>'}
       </div>
       ${error ? `<p class="cowork-error" role="alert">${escapeHtml(error)}</p>` : ""}`);
+  };
+
+  const renderRevisionStream = (running: boolean): string => {
+    const visible = running || revisionOutcome !== "idle";
+    if (!visible) return "";
+    const state = running ? "running" : revisionOutcome;
+    const stateLabel = running ? "Editing entry" : revisionOutcome === "complete" ? "Revision complete" : "Revision stopped";
+    const hasContent = !!(revisionInstruction || reply || running);
+    return `<section class="cowork-revision-stream is-${state}${revisionCollapsed ? " is-collapsed" : ""}" aria-label="Cowork revision stream">
+      ${running ? '<span class="cowork-revision-scan" aria-hidden="true"></span>' : ""}
+      <header class="cowork-revision-head"><span class="cowork-revision-mark" aria-hidden="true">✳</span><span class="cowork-revision-copy"><strong>Cowork</strong><small>${stateLabel}</small></span>${hasContent ? `<button type="button" class="cowork-revision-toggle" data-cowork-action="toggle-revision" aria-expanded="${!revisionCollapsed}" aria-label="${revisionCollapsed ? "Expand" : "Collapse"} Cowork stream"><span aria-hidden="true"></span></button>` : ""}</header>
+      ${hasContent ? `<div class="cowork-revision-content" aria-hidden="${revisionCollapsed}"><div class="cowork-revision-content-inner">
+        ${revisionInstruction || reply ? `<div class="cowork-revision-body">
+          ${revisionInstruction ? `<p class="cowork-revision-instruction">${escapeHtml(revisionInstruction)}</p>` : ""}
+          ${reply ? `<div class="cowork-revision-output-scroll"><p class="cowork-revision-output">${escapeHtml(reply)}</p></div>` : ""}
+        </div>` : ""}
+        ${running ? '<footer class="cowork-revision-status" role="status" aria-live="polite"><i aria-hidden="true"></i><span><strong>Writing revision</strong></span></footer>' : ""}
+      </div></div>` : ""}
+    </section>`;
+  };
+
+  const patchRevisionOutput = () => {
+    const output = dockZone.querySelector<HTMLElement>(".cowork-revision-output");
+    if (!output) { renderDock(); return; }
+    output.textContent = reply;
+    const scroll = output.closest<HTMLElement>(".cowork-revision-output-scroll");
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
   };
 
   // 스트리밍 중 동일 마크업 재구축은 등장 애니메이션 재시작(깜빡임)을 유발하므로,
@@ -267,7 +300,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   const engage = async (next: CoworkSessionDto) => {
     session = next;
     // 지연 생성 경로에서는 서버에 아직 저장되지 않은 로컬 카드(첫 코멘트)를 보존해야 한다.
-    const restored = next.annotations.map(annotationFromDto);
+    const restored: AnnotationCard[] = next.annotations.map(annotationFromDto);
     const known = new Set(restored.map(card => card.id));
     annotations = [...restored, ...annotations.filter(card => !known.has(card.id))];
     if (next.cli || next.model || next.effort) {
@@ -312,23 +345,27 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       const wasRunning = session?.state === "running";
       if (event.session) session = event.session;
       if (event.type === "transcript" && event.text && session?.state === "running") {
-        const last = activities[activities.length - 1];
-        if (streamingReply && last?.role === "assistant") last.text += event.text;
-        else { activities.push({ role: "assistant", text: event.text }); streamingReply = true; }
+        reply = revisionOutcome === "running" ? reply + event.text : event.text;
+        revisionOutcome = "running";
+        patchRevisionOutput();
+        return;
       }
       // 도구 호출 상세는 사용자에게 출력하지 않는다 — 러닝 상태는 일반 문구로만 표시.
       if (event.type === "done") {
-        streamingReply = false;
-        summaryVisible = activities.some(a => a.role === "assistant");
-        annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
-        // AI 응답이 실제 변경(삭제-전용 포함)을 남겼으면 렌더드 diff로 전환해 검토를 유도한다.
-        if (awaitingResult) {
-          awaitingResult = false;
-          if (session && session.baseDraft !== session.draft) diffVisible = true;
+        // 제출 전에 취소된 지연 생성 요청은 뒤늦은 이벤트로 완료 처리하지 않는다.
+        if (!promptAttempt?.cancelled || promptAttempt.submitted) {
+          const completedObservedRun = wasRunning || awaitingResult || revisionOutcome === "stopped" || !!reply || !!revisionInstruction;
+          revisionOutcome = completedObservedRun ? "complete" : "idle";
+          annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "done" } : card);
+          // AI 응답이 실제 변경(삭제-전용 포함)을 남겼으면 렌더드 diff로 전환해 검토를 유도한다.
+          if (awaitingResult) {
+            awaitingResult = false;
+            if (session && session.baseDraft !== session.draft) diffVisible = true;
+          }
         }
       }
       if (event.type === "error" || (event.type === "session" && wasRunning && session?.state !== "running")) {
-        streamingReply = false;
+        revisionOutcome = "stopped";
         awaitingResult = false;
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
       }
@@ -367,13 +404,20 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   async function send(): Promise<void> {
-    if (session?.state === "running") return;
+    if (promptPending || session?.state === "running") return;
     // 이미 반영된(done) 카드는 재전송 대상에서 제외한다.
     const outgoing = annotations.filter(card => card.status !== "done");
-    const prompt = promptText.trim() || (outgoing.length ? BATCH_INSTRUCTION : "");
+    const localInstruction = promptText.trim();
+    const prompt = localInstruction || (outgoing.length ? BATCH_INSTRUCTION : "");
     if (!prompt) return;
+    const attempt: PromptAttempt = { cancelled: false, submitted: false };
+    promptAttempt = attempt;
+    promptPending = true;
     annotations = outgoing.map(card => ({ ...card, status: "sent" }));
-    summaryVisible = false;
+    reply = "";
+    revisionInstruction = localInstruction;
+    revisionOutcome = "running";
+    revisionCollapsed = false;
     promptText = "";
     panelOpen = false;
     configOpen = false;
@@ -382,13 +426,24 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     try {
       // 도크 상시 표시: 세션이 아직 없으면 첫 전송 시점에 만든다.
       await ensureSession();
+      if (attempt.cancelled || promptAttempt !== attempt) return;
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
+      if (attempt.cancelled || promptAttempt !== attempt) return;
+      attempt.submitted = true;
       await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
       awaitingResult = true;
     } catch {
-      awaitingResult = false;
-      annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
-      renderDock();
+      if (!attempt.cancelled && promptAttempt === attempt) {
+        awaitingResult = false;
+        revisionOutcome = "idle";
+        annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
+      }
+    } finally {
+      if (!attempt.cancelled && promptAttempt === attempt) {
+        promptPending = false;
+        promptAttempt = null;
+        renderDock();
+      }
     }
   }
 
@@ -408,9 +463,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     unsubscribe = null;
     lastEventId = 0;
     annotations = [];
-    activities = [];
+    reply = "";
+    revisionInstruction = "";
+    revisionOutcome = "idle";
+    revisionCollapsed = false;
     confirmAction = null;
-    summaryVisible = false;
     diffVisible = false;
     try {
       await engage(await createCoworkSession(options.theaterId, options.entryId, settings));
@@ -494,9 +551,26 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (action === "add-comment") submitComposer();
     if (action === "toggle-panel") { panelOpen = !panelOpen; configOpen = false; renderDock(); }
     if (action === "toggle-config") { configOpen = !configOpen; panelOpen = false; renderDock(); }
+    if (action === "toggle-revision") {
+      revisionCollapsed = !revisionCollapsed;
+      const stream = target.closest<HTMLElement>(".cowork-revision-stream");
+      stream?.classList.toggle("is-collapsed", revisionCollapsed);
+      target.setAttribute("aria-expanded", String(!revisionCollapsed));
+      target.setAttribute("aria-label", `${revisionCollapsed ? "Expand" : "Collapse"} Cowork stream`);
+      stream?.querySelector<HTMLElement>(".cowork-revision-content")?.setAttribute("aria-hidden", String(revisionCollapsed));
+    }
     if (action === "send") void send();
+    if (action === "cancel-run" && promptPending && promptAttempt && !promptAttempt.submitted) {
+      promptAttempt.cancelled = true;
+      promptPending = false;
+      awaitingResult = false;
+      revisionOutcome = "stopped";
+      annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
+      renderDock();
+      applyMarks();
+      return;
+    }
     if (action === "toggle-diff") { diffVisible = !diffVisible; redraw(); }
-    if (action === "dismiss-summary") { summaryVisible = false; renderDock(); }
     if (action === "delete-annotation" && target.dataset.annotationId) void deleteAnnotation(target.dataset.annotationId);
     if (action === "apply-arm") { confirmAction = "apply"; renderDock(); }
     if (action === "discard-arm") { confirmAction = "discard"; renderDock(); }
@@ -508,6 +582,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (action === "discard-confirm") { void discard(); }
     if (action === "cancel-run" && session) {
       void mutate(() => cancelCowork(options.theaterId, session!.id)).then(() => {
+        revisionOutcome = "stopped";
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
         renderDock();
       }).catch(() => undefined);
@@ -578,6 +653,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       anchor.remove();
       dockZone.remove();
       tip.remove();
+      options.body.classList.remove("is-cowork-running");
       options.article.classList.remove("cowork-host");
     },
   };

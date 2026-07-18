@@ -4,6 +4,7 @@ import { createInfraServices } from "@dotobokuri/core-infra";
 import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
 
 import { registerAgentRoutes } from "./server/agent.js";
+import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
@@ -40,6 +41,7 @@ export default definePlugin({
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
     registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
+    registerAnalysisRoutes(ctx);
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
       authService: infraServices.authService,
       globalOptionsService: infraServices.globalOptionsService,

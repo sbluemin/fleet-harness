@@ -3,13 +3,18 @@ import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
-import { definePlugin, React, type PluginInstallContext } from "@fleet-console/sdk/plugin/browser";
+import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-font.js";
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
 import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
+import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
+import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { fetchAnalysisReady } from "./analysis-api.js";
+import { disposeAnalysisStore } from "./analysis-store.js";
+import "./analysis.css";
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
@@ -70,6 +75,7 @@ const PIN_SLACK_PX = 56;
 const DOCK_RETENTION_MS = 4_000;
 const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
 const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
+const ANALYSIS_READY_POLL_MS = 5_000;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -77,6 +83,10 @@ export const agentOperationKind = defineOperationKind({
   title: "Agent",
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
+  companions: [
+    { id: "session-analyst-chat", title: "Session Analyst", hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
+    { id: "session-analyst-artifacts", title: "Artifacts", hideCaption: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
+  ],
 });
 
 export const agentSettingsSection = defineSettingsSection({
@@ -107,6 +117,7 @@ export const agentPlugin = definePlugin({
     try {
       await terminateAgentSession(operationId);
     } finally {
+      disposeAnalysisStore(operationId);
       removeSession(operationId);
     }
   },
@@ -232,6 +243,48 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
   return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
+function useAnalysisReady(context: OperationRenderContext): boolean {
+  const companionsOpen = context.companionsOpen ?? false;
+  const [ready, setReady] = React.useState(false);
+
+  React.useEffect(() => {
+    if (companionsOpen || ready) return;
+    let disposed = false;
+    let requestPending = false;
+    const poll = async () => {
+      if (requestPending) return;
+      requestPending = true;
+      const nextReady = await fetchAnalysisReady(context.api, context.operationId);
+      requestPending = false;
+      if (!disposed && nextReady) setReady(true);
+    };
+    void poll();
+    const interval = window.setInterval(() => { void poll(); }, ANALYSIS_READY_POLL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [companionsOpen, context.api, context.operationId, ready]);
+
+  return companionsOpen || ready;
+}
+
+function SessionAnalystHandle({ context, ready }: { readonly context: OperationRenderContext; readonly ready: boolean }) {
+  const companionsOpen = context.companionsOpen ?? false;
+  return (
+    <button
+      type="button"
+      className={`session-analyst-handle${ready ? "" : " is-waiting"}`}
+      aria-label={companionsOpen ? "Exit Session Analyst" : "Open Session Analyst"}
+      aria-pressed={companionsOpen}
+      aria-disabled={!ready}
+      disabled={!ready}
+      title={ready ? undefined : "Send a message in this session first"}
+      onClick={() => { if (ready) context.onRequestCompanions?.(!context.companionsOpen); }}
+    ><span className="session-analyst-handle__chev" aria-hidden="true">{companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{companionsOpen ? "EXIT" : "ANALYZE"}</span></button>
+  );
+}
+
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
@@ -244,6 +297,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  const analysisReady = useAnalysisReady(context);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
@@ -347,15 +401,19 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   if (session.status === "dormant") {
     return (
-      <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
-        <span className="canvas-operation-dormant-status">Dormant</span>
-        <span className="canvas-operation-dormant-action">Resume</span>
-      </button>
+      <div className="agent-stream-host">
+        <SessionAnalystHandle context={context} ready={analysisReady} />
+        <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
+          <span className="canvas-operation-dormant-status">Dormant</span>
+          <span className="canvas-operation-dormant-action">Resume</span>
+        </button>
+      </div>
     );
   }
 
   return (
     <div className="agent-stream-host">
+      <SessionAnalystHandle context={context} ready={analysisReady} />
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
