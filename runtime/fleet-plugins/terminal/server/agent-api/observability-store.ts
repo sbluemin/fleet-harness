@@ -583,7 +583,7 @@ function normalizeEventPayload(event: unknown): Record<string, unknown> {
         trackId: safeString(obj.trackId),
         startedAt: safeOptionalNumber(obj.startedAt),
         ...(request ? { request } : {}),
-        requestPreview: safeOptionalString(obj.requestPreview),
+        requestPreview: typeof obj.requestPreview === "string" ? redactRequestPaths(obj.requestPreview) : undefined,
       };
       }
     case "track:status":

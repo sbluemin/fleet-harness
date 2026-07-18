@@ -136,6 +136,7 @@ describe("agent observability DTO boundary", () => {
     ].join("\n");
     const secondBody = "UNC=\\\\server\\share\\folder\\file.txt file=file:///Users/alice/project/file.ts XML=<root>/etc/fleet</root>";
     const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet remote=https://example.org/x/y file://server/share/private.txt\n";
+    const requestPreview = "<objective>Inspect /Users/alice/app C:\\Users\\Alice\\app \\\\server\\share\\app file:///Users/alice/app; keep https://example.com/a/b I/O HTTP/2</objective>";
     const request = {
       blocks: [
         { tag: "objective", hint: "Goal", required: true, present: true, body },
@@ -143,11 +144,16 @@ describe("agent observability DTO boundary", () => {
       ],
       additional,
     };
-    const producerInput = structuredClone(request);
+    const producerInput = {
+      type: "track:begin",
+      jobId: "job-a",
+      trackId: "track-a",
+      request,
+      requestPreview,
+    };
+    const originalProducerInput = structuredClone(producerInput);
 
-    store.appendTerminalRuntimeEvent("session-a", {
-      type: "track:begin", jobId: "job-a", trackId: "track-a", request,
-    }, 2_000);
+    store.appendTerminalRuntimeEvent("session-a", producerInput, 2_000);
 
     const observedRequest = {
       blocks: [
@@ -168,11 +174,16 @@ describe("agent observability DTO boundary", () => {
       additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] remote=https://example.org/x/y [redacted path]\n",
     };
     const events = store.listEvents("session-a");
-    const serialized = JSON.stringify({ jobs: store.listJobs("session-a"), events, liveFrames });
-    expect(request).toEqual(producerInput);
+    const jobs = store.listJobs("session-a");
+    const serialized = JSON.stringify({ jobs, events, liveFrames });
+    const observedPreview = "<objective>Inspect [redacted path] [redacted path] [redacted path] [redacted path]; keep https://example.com/a/b I/O HTTP/2</objective>";
+    expect(producerInput).toEqual(originalProducerInput);
     expect(events[0]?.event.request).toEqual(observedRequest);
-    expect(store.listJobs("session-a")[0]?.request).toEqual(observedRequest);
+    expect(events[0]?.event.requestPreview).toBe(observedPreview);
+    expect(jobs[0]?.request).toEqual(observedRequest);
+    expect(jobs[0]?.events[0]?.event.requestPreview).toBe(observedPreview);
     expect((liveFrames[0] as { event: Record<string, unknown> }).event.request).toEqual(observedRequest);
+    expect((liveFrames[0] as { event: Record<string, unknown> }).event.requestPreview).toBe(observedPreview);
     for (const rawPath of [
       "/Users/alice/project/file.ts",
       "C:\\Users\\Alice\\project\\file.ts",
