@@ -1,9 +1,11 @@
-import { approvePatch, computeContentHash, enqueuePatch, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "@dotobokuri/fleet-wiki";
-import type { MemoryPaths, Patch, WikiEntry, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { approvePatch, enqueuePatch } from "../patch.js";
+import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../store.js";
+import type { MemoryPaths, Patch, WikiEntry } from "../types.js";
+import type { WikiWorkspaceResolver } from "../workspace-resolver.js";
 import { join } from "node:path";
 import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
 import type { IUnifiedAgentClient, UnifiedClientOptions } from "@dotobokuri/core-unified-agent";
-import type { CoworkSessionDto } from "../api-types.js";
+import type { CoworkSessionDto } from "./types.js";
 import { createCoworkMcpRuntime } from "./runtime.js";
 import { CoworkStore } from "./store.js";
 import type { CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
@@ -13,7 +15,7 @@ export interface CoworkConnector { connect(options: UnifiedClientOptions): Promi
 interface LiveResources { workspaceId: string; client: IUnifiedAgentClient; annotations: CoworkSessionRecord["annotations"]; cleanup: () => void; }
 
 const COWORK_SYSTEM_PROMPT = [
-  "You are the Codex Cowork editing agent inside Fleet Console, editing exactly one Fleet Wiki entry draft.",
+  "You are the Fleet Wiki Cowork editing agent, editing exactly one wiki entry draft.",
   "The draft is the single source of truth and is reachable ONLY through your MCP tools:",
   "wiki_draft_read (current draft + revision), wiki_draft_edit (exact find/replace), wiki_draft_write (full body replace).",
   "Read-only research tools: wiki_briefing, wiki_orient, wiki_read, wiki_resolve.",

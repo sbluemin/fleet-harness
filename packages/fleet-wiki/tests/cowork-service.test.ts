@@ -2,11 +2,10 @@ import { EventEmitter } from "node:events";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryPaths, ensureMemoryRoot, loadIndex, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths, ensureMemoryRoot, loadIndex, readWikiEntry, writeWikiEntry } from "../src/index.js";
 import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { describe, expect, it } from "vitest";
-import { CoworkService, type CoworkConnector } from "../core/host/codex/cowork/service.js";
-import { CoworkStore } from "../core/host/codex/cowork/store.js";
+import { CoworkService, CoworkStore, type CoworkConnector } from "../src/cowork/index.js";
 
 describe("Cowork contract defects", () => {
   it("applies a valid draft through Fleet Wiki and releases the session", async () => {

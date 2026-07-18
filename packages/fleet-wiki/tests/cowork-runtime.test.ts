@@ -2,12 +2,11 @@ import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "../src/index.js";
 import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { describe, expect, it } from "vitest";
-import { createCoworkMcpRuntime } from "../core/host/codex/cowork/runtime.js";
-import { CoworkService, type CoworkConnector } from "../core/host/codex/cowork/service.js";
-import { CoworkStore } from "../core/host/codex/cowork/store.js";
+import { createCoworkMcpRuntime } from "../src/cowork/index.js";
+import { CoworkService, CoworkStore, type CoworkConnector } from "../src/cowork/index.js";
 
 describe("Cowork MCP runtime", () => {
   it("runs one-shot yolo with only the seven scoped MCP tools", async () => {

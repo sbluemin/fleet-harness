@@ -6,8 +6,7 @@ import net from "node:net";
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { handleApiRequest } from "./routes.js";
-import { CoworkService } from "./cowork/service.js";
-import { CoworkStore } from "./cowork/store.js";
+import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
 import type { AllowedAccessSets } from "./types.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";

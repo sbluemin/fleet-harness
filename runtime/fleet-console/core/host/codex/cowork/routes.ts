@@ -1,8 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 import { getAllBackendConfigs, getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
-import type { CoworkService } from "./service.js";
-import type { CoworkStoredEvent } from "./types.js";
+import type { CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
 import { encodeSseData } from "../../sse.js";
 import { withSecurityHeaders } from "../security-headers.js";
 

@@ -6,8 +6,7 @@ import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import { describe, expect, it } from "vitest";
 import { handleCoworkRequest } from "../core/host/codex/cowork/routes.js";
-import { CoworkService, type CoworkConnector } from "../core/host/codex/cowork/service.js";
-import { CoworkStore } from "../core/host/codex/cowork/store.js";
+import { CoworkService, CoworkStore, type CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import type { IUnifiedAgentClient } from "@dotobokuri/core-unified-agent";
 import { EventEmitter } from "node:events";
 

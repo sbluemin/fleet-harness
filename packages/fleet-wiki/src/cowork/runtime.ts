@@ -1,6 +1,7 @@
 import { createExecutorSessionManager, createInProcessMcpServer, createMcpToolRegistry, createMcpToolSnapshotStore } from "@dotobokuri/core-agent";
-import { createWikiDraftToolSpecs, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
-import type { WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { createWikiDraftToolSpecs } from "../tools/draft.js";
+import { getWikiToolSpecs } from "../agent-specs.js";
+import type { WikiWorkspaceResolver } from "../workspace-resolver.js";
 import type { CoworkStore } from "./store.js";
 
 /** The per-session registry is deliberately not shared with global Wiki tools. */

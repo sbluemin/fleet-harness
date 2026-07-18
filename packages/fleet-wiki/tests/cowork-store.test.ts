@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoworkStore } from "../core/host/codex/cowork/store.js";
+import { CoworkStore } from "../src/cowork/index.js";
 
 describe("CoworkStore", () => {
   it("keeps a monotonic in-memory session draft", async () => {

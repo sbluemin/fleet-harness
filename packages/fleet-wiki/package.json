@@ -23,10 +23,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./cowork": {
+      "types": "./dist/cowork.d.ts",
+      "import": "./dist/cowork.js",
+      "require": "./dist/cowork.cjs"
     }
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-unified-agent": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

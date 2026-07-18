@@ -2,29 +2,9 @@
 // 런타임 코드 없이 타입만 둔다 — 클라이언트 tsconfig이 DOM 전용이므로
 // 이 파일에 Node 타입(NodeJS.* 등)을 참조하면 안 된다.
 
-/** Browser-safe Cowork session state. Provider and filesystem identities are server-only. */
-export interface CoworkSessionDto {
-  id: string;
-  workspaceId: string;
-  entryId: string;
-  state: "idle" | "running" | "applied" | "closed";
-  revision: number;
-  draft: string;
-  baseHash: string;
-  baseVersion: number;
-  selection: string | null;
-  annotations: readonly CoworkAnnotationDto[];
-  /** Original entry markdown captured at session start — the diff baseline for the studio. */
-  baseDraft: string;
-  /** User-chosen agent identity. Safe to expose — provider session identity stays server-only. */
-  cli?: string;
-  model?: string;
-  effort?: string;
-}
-
-export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
-export interface CoworkEventDto { type: "session" | "draft" | "transcript" | "tool" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
-export interface CoworkTranscriptTurnDto { role: "user" | "assistant"; text: string; at: string; }
+// Cowork DTO의 단일 출처는 fleet-wiki cowork 서브패키지다(type-only라 브라우저 번들 무영향).
+export type { CoworkAnnotationDto, CoworkEventDto, CoworkSessionDto, CoworkTranscriptTurnDto } from "@dotobokuri/fleet-wiki/cowork";
+/** 콘솔 options 라우트 계약 — CLI/모델 목록은 호스트가 core-unified-agent 레지스트리에서 채운다. */
 export interface CoworkOptionsResponse { clis: readonly string[]; models: readonly string[]; efforts: readonly string[]; defaultModel?: string; defaultEffort?: string; }
 
 // workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지

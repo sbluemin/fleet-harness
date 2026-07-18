@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { WikiDraftPort, WikiDraftSnapshot, WikiDraftWriteRequest } from "@dotobokuri/fleet-wiki";
+import type { WikiDraftPort, WikiDraftSnapshot, WikiDraftWriteRequest } from "../tools/draft.js";
 import type { CoworkSessionRecord, CoworkStoredEvent, CoworkTranscriptTurn } from "./types.js";
 
 const EVENT_LOG_CAP = 100;
