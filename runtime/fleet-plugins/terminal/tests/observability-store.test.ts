@@ -82,7 +82,7 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("private prompt");
   });
 
-  it("preserves only the exact declared request fields in snapshots and subscribed frames", () => {
+  it("preserves only declared request fields while redacting paths in snapshots and subscribed frames", () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-"));
     tempDirs.push(cwd);
     const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
@@ -91,6 +91,7 @@ describe("agent observability DTO boundary", () => {
     const liveFrames: unknown[] = [];
     store.subscribeAll((event) => liveFrames.push(event));
     const body = " \n/path/with spaces\ntoken-like=sk_live_123\n<unknown>&<script>x</script>\n";
+    const observedBody = " \n[redacted path] spaces\ntoken-like=sk_live_123\n<unknown>&<script>x</script>\n";
     const additional = "outside <unknown> & <script>literal</script>";
     store.appendTerminalRuntimeEvent("session-a", {
       type: "track:begin",
@@ -109,7 +110,7 @@ describe("agent observability DTO boundary", () => {
     const events = store.listEvents("session-a");
     const serialized = JSON.stringify({ jobs: store.listJobs("session-a"), events, liveFrames });
     expect(events[0]?.event.request).toEqual({
-      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body }],
+      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body: observedBody }],
       additional,
     });
     expect((liveFrames[0] as { event: Record<string, unknown> }).event.request).toEqual(events[0]?.event.request);
@@ -117,6 +118,73 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("mcp-token-secret");
     expect(serialized).not.toContain("private prompt");
     expect(serialized).not.toContain("\"ticket\"");
+  });
+
+  it("redacts filesystem paths without changing ordinary slash text or producer input", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-paths-"));
+    tempDirs.push(cwd);
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
+    const liveFrames: unknown[] = [];
+    store.subscribeAll((event) => liveFrames.push(event));
+    const body = [
+      "POSIX=/Users/alice/project/file.ts",
+      "drive=C:\\Users\\Alice\\project\\file.ts",
+      "forward=D:/work/project/file.ts",
+      "keep=https://example.com/a/b?next=/tmp I/O HTTP/2 <unknown>literal</unknown>",
+    ].join("\n");
+    const secondBody = "UNC=\\\\server\\share\\folder\\file.txt file=file:///Users/alice/project/file.ts XML=<root>/etc/fleet</root>";
+    const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet remote=https://example.org/x/y file://server/share/private.txt\n";
+    const request = {
+      blocks: [
+        { tag: "objective", hint: "Goal", required: true, present: true, body },
+        { tag: "context", hint: "Context", required: false, present: true, body: secondBody },
+      ],
+      additional,
+    };
+    const producerInput = structuredClone(request);
+
+    store.appendTerminalRuntimeEvent("session-a", {
+      type: "track:begin", jobId: "job-a", trackId: "track-a", request,
+    }, 2_000);
+
+    const observedRequest = {
+      blocks: [
+        {
+          tag: "objective",
+          hint: "Goal",
+          required: true,
+          present: true,
+          body: [
+            "POSIX=[redacted path]",
+            "drive=[redacted path]",
+            "forward=[redacted path]",
+            "keep=https://example.com/a/b?next=/tmp I/O HTTP/2 <unknown>literal</unknown>",
+          ].join("\n"),
+        },
+        { tag: "context", hint: "Context", required: false, present: true, body: "UNC=[redacted path] file=[redacted path] XML=<root>[redacted path]</root>" },
+      ],
+      additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] remote=https://example.org/x/y [redacted path]\n",
+    };
+    const events = store.listEvents("session-a");
+    const serialized = JSON.stringify({ jobs: store.listJobs("session-a"), events, liveFrames });
+    expect(request).toEqual(producerInput);
+    expect(events[0]?.event.request).toEqual(observedRequest);
+    expect(store.listJobs("session-a")[0]?.request).toEqual(observedRequest);
+    expect((liveFrames[0] as { event: Record<string, unknown> }).event.request).toEqual(observedRequest);
+    for (const rawPath of [
+      "/Users/alice/project/file.ts",
+      "C:\\Users\\Alice\\project\\file.ts",
+      "D:/work/project/file.ts",
+      "\\\\server\\share\\folder\\file.txt",
+      "file:///Users/alice/project/file.ts",
+      "/etc/fleet",
+      "/opt/fleet/bin",
+      "/srv/app",
+      "/var/lib/fleet",
+      "file://server/share/private.txt",
+    ]) expect(serialized).not.toContain(rawPath);
   });
 
   it("narrows malformed request DTOs without manufacturing request content", () => {
@@ -133,7 +201,7 @@ describe("agent observability DTO boundary", () => {
     expect(event?.event).not.toHaveProperty("request");
   });
 
-  it("retains the first exact request in a job snapshot after its begin event expires", () => {
+  it("retains the first normalized request in a job snapshot after its begin event expires", () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-retention-"));
     tempDirs.push(cwd);
     const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
@@ -153,10 +221,14 @@ describe("agent observability DTO boundary", () => {
     }
 
     const snapshot = store.listJobs("session-a")[0];
+    const observedRequest = {
+      ...request,
+      blocks: [{ ...request.blocks[0], body: "  [redacted path]\nsk-live\n<script>literal</script>  " }],
+    };
     expect(snapshot?.events).toHaveLength(200);
     expect(snapshot?.events.some((event) => event.type === "track:begin")).toBe(false);
-    expect(snapshot?.request).toEqual(request);
-    expect(reduceSnapshotJob("session-a", snapshot!).request).toEqual(request);
+    expect(snapshot?.request).toEqual(observedRequest);
+    expect(reduceSnapshotJob("session-a", snapshot!).request).toEqual(observedRequest);
   });
 
   it("assigns globally monotonic observed ids across terminal sessions", () => {

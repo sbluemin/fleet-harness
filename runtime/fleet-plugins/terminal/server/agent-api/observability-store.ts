@@ -93,6 +93,7 @@ const JOB_EVENT_LIMIT = 200;
 const TENANT_FINALIZED_JOB_LIMIT = 100;
 const TENANT_JOB_LIMIT = 200;
 const EVENT_TEXT_RETENTION_LIMIT = 8_192;
+const REDACTED_REQUEST_PATH = "[redacted path]";
 
 export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreDeps = {}) {
   const now = deps.now ?? Date.now;
@@ -658,10 +659,117 @@ function normalizeRequest(value: unknown): AgentObservedRequest | undefined {
       hint: block.hint,
       required: block.required,
       present: block.present,
-      body: block.body,
+      body: redactRequestPaths(block.body),
     });
   }
-  return { blocks, additional: request.additional };
+  return { blocks, additional: redactRequestPaths(request.additional) };
+}
+
+function redactRequestPaths(value: string): string {
+  let copyStart = 0;
+  let cursor = 0;
+  const parts: string[] = [];
+  // URL과 경로로 판정한 구간은 끝까지 건너뛰어 입력과 결과 조립을 각각 한 번의 선형 순회로 제한한다.
+  while (cursor < value.length) {
+    const ordinaryUrlEnd = readOrdinaryUrlEnd(value, cursor);
+    if (ordinaryUrlEnd !== undefined) {
+      cursor = ordinaryUrlEnd;
+      continue;
+    }
+    const pathEnd = readFilesystemPathEnd(value, cursor);
+    if (pathEnd === undefined) {
+      cursor += 1;
+      continue;
+    }
+    parts.push(value.slice(copyStart, cursor), REDACTED_REQUEST_PATH);
+    copyStart = pathEnd;
+    cursor = pathEnd;
+  }
+  if (parts.length === 0) return value;
+  parts.push(value.slice(copyStart));
+  return parts.join("");
+}
+
+function readOrdinaryUrlEnd(value: string, start: number): number | undefined {
+  if (!isAsciiLetter(value[start]) || (start > 0 && isUriSchemeCharacter(value[start - 1]))) return undefined;
+  let cursor = start + 1;
+  while (cursor < value.length && isUriSchemeCharacter(value[cursor])) cursor += 1;
+  if (value[cursor] !== ":" || value[cursor + 1] !== "/" || value[cursor + 2] !== "/") return undefined;
+  if (value.slice(start, cursor).toLowerCase() === "file") return undefined;
+  cursor += 3;
+  while (cursor < value.length && !isPathTerminator(value[cursor])) cursor += 1;
+  return cursor;
+}
+
+function readFilesystemPathEnd(value: string, start: number): number | undefined {
+  const previous = start > 0 ? value[start - 1] : undefined;
+  const boundary = start === 0 || isPathBoundary(previous);
+  if (
+    boundary
+    && value.slice(start, start + 7).toLowerCase() === "file://"
+  ) return scanPathEnd(value, start, start + 7, previous);
+
+  if (
+    boundary
+    && isAsciiLetter(value[start])
+    && value[start + 1] === ":"
+    && (value[start + 2] === "/" || value[start + 2] === "\\")
+  ) return scanPathEnd(value, start, start + 3, previous);
+
+  if (
+    boundary
+    && value[start] === "\\"
+    && value[start + 1] === "\\"
+    && value[start + 2] !== undefined
+    && !isPathTerminator(value[start + 2])
+  ) return scanPathEnd(value, start, start + 2, previous);
+
+  if (
+    boundary
+    && value[start] === "/"
+    && value[start + 1] !== undefined
+    && value[start + 1] !== "/"
+    && !isPathTerminator(value[start + 1])
+  ) return scanPathEnd(value, start, start + 1, previous);
+
+  return undefined;
+}
+
+function scanPathEnd(value: string, start: number, minimumEnd: number, previous: string | undefined): number {
+  const quote = previous === "\"" || previous === "'" || previous === "`" ? previous : undefined;
+  let cursor = minimumEnd;
+  while (cursor < value.length) {
+    const character = value[cursor];
+    if (quote ? character === quote || character === "\n" || character === "\r" : isPathTerminator(character)) break;
+    cursor += 1;
+  }
+  if (quote) return cursor;
+  while (cursor > minimumEnd && ".,;:!?)]}".includes(value[cursor - 1]!)) cursor -= 1;
+  return Math.max(cursor, start + 1);
+}
+
+function isPathBoundary(value: string | undefined): boolean {
+  return value !== undefined
+    && value !== "<"
+    && value !== "/"
+    && value !== "\\"
+    && value !== "."
+    && value !== "~"
+    && value !== "_"
+    && !isAsciiLetter(value)
+    && !(value >= "0" && value <= "9");
+}
+
+function isPathTerminator(value: string | undefined): boolean {
+  return value === undefined || /\s/.test(value) || value === "<" || value === ">" || value === "\"" || value === "'" || value === "`" || value === "|";
+}
+
+function isAsciiLetter(value: string | undefined): boolean {
+  return value !== undefined && ((value >= "A" && value <= "Z") || (value >= "a" && value <= "z"));
+}
+
+function isUriSchemeCharacter(value: string | undefined): boolean {
+  return value !== undefined && (isAsciiLetter(value) || (value >= "0" && value <= "9") || value === "+" || value === "-" || value === ".");
 }
 
 function clampText(value: unknown): string | undefined {

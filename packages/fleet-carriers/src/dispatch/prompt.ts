@@ -281,7 +281,7 @@ function readTag(source: string, start: number): ReadTagResult {
     cursor++;
   }
   const nameStart = cursor;
-  while (cursor < source.length && /[A-Za-z0-9_:-]/.test(source[cursor]!)) cursor++;
+  while (cursor < source.length && /[A-Za-z0-9_.:-]/.test(source[cursor]!)) cursor++;
   if (cursor === nameStart) return { token: undefined, next: start + 1 };
   const name = source.slice(nameStart, cursor);
   let quote: string | undefined;

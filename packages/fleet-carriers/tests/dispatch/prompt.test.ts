@@ -124,6 +124,20 @@ describe("parseCarrierRequest", () => {
     });
   });
 
+  it("parses and validates configured tags containing dots", () => {
+    const meta: CarrierMetadata = {
+      ...META,
+      requestBlocks: [{ tag: "foo.bar", required: true, hint: "Dot-containing tag." }],
+    };
+    const request = "before <foo.bar source=\"test\"> ok </foo.bar> after";
+
+    expect(validateRequiredRequestBlocks(meta, request, "custom")).toEqual({ ok: true });
+    expect(parseCarrierRequest(meta, request)).toEqual({
+      blocks: [{ tag: "foo.bar", required: true, hint: "Dot-containing tag.", present: true, body: " ok " }],
+      additional: "before  after",
+    });
+  });
+
   it("places a blockless request entirely in Additional without transforming sensitive-shaped literals", () => {
     const request = "  /tmp/fake & token=sk-not-redacted <script>literal</script>\n";
 
