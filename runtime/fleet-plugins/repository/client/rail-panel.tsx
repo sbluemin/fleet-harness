@@ -95,7 +95,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     }
     let cancelled = false;
     setChangedFiles({ kind: "loading" });
-    ctx.api.fetch("repository", "changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then(async (response) => {
+    // api.fetch(assertSafeResponse)는 non-2xx에서 payload를 버리고 throw하므로,
+    // no_git_repo/git_unavailable 안내 매핑을 위해 원래의 raw fetch 경로를 유지한다
+    fetch("/plugins/repository/changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then(async (response) => {
       if (!response.ok) {
         const payload = await response.json() as { readonly error?: string };
         const code = payload.error ?? "git_failed";
@@ -108,7 +110,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       if (!cancelled) setChangedFiles({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [changedFilesRetry, ctx.api, ctx.theaterId, subPath]);
+  }, [changedFilesRetry, ctx.theaterId, subPath]);
 
   useLayoutEffect(() => () => clearSelectedFile(), []);
 
