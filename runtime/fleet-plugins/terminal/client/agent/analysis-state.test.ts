@@ -18,4 +18,13 @@ describe("shared analysis store reducer", () => {
     expect(next.artifacts.map((artifact) => artifact.id)).toEqual(["b", "a"]);
     expect(analysisReducer(next, { type: "clear-artifacts" }).artifacts).toEqual([]);
   });
+  it("unlocks selection and shows restart guidance when the server session is lost", () => {
+    const sent = analysisReducer(initialAnalysisState, { type: "sending", started: true, text: "Review this" });
+    const ended = analysisReducer(sent, { type: "session-lost" });
+    expect(ended).toMatchObject({
+      started: false,
+      busy: false,
+      error: "Analysis session ended — send again to restart.",
+    });
+  });
 });

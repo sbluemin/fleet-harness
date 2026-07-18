@@ -146,11 +146,27 @@ describe("Session Analyst server contract", () => {
     expect(JSON.stringify(router.responses.at(-1))).not.toContain(fallbackPath);
   });
 
-  it("falls back to the newest sibling transcript when the captured session file was never written", async () => {
+  it("fails closed when multiple sibling transcripts pass the birthtime cutoff", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-transcripts-"));
+    await writeFile(join(dir, "session-a.jsonl"), "{}\n");
+    await writeFile(join(dir, "session-b.jsonl"), "{}\n");
+    const router = createRouterHarness(true);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") }),
+      createSession: createSession as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    expect(router.responses.at(-1)).toMatchObject({ status: 409, body: { error: { code: "analysis_transcript_missing" } } });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("uses a single sibling transcript that passes the birthtime cutoff", async () => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-transcripts-"));
     const activePath = join(dir, "active-session.jsonl");
-    await writeFile(join(dir, "older-session.jsonl"), "{}\n");
-    await new Promise((resolve) => setTimeout(resolve, 10));
     await writeFile(activePath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
@@ -193,6 +209,28 @@ describe("Session Analyst server contract", () => {
     expect(router.responses.at(-1)).toMatchObject({ status: 409, body: { error: { code: "analysis_transcript_missing" } } });
     expect(JSON.stringify(router.responses)).not.toContain("private");
   });
+
+  it("rejects a malicious Origin through the shared gate for every analysis action", async () => {
+    const detect = vi.fn(async () => []);
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never, { detect });
+    const requests = [
+      ["GET", "/api/v1/plugins/terminal/analysis/catalog"],
+      ["GET", "/api/v1/plugins/terminal/analysis/op/ready"],
+      ["POST", "/api/v1/plugins/terminal/analysis/op/start"],
+      ["POST", "/api/v1/plugins/terminal/analysis/op/message"],
+      ["GET", "/api/v1/plugins/terminal/analysis/op/stream"],
+      ["POST", "/api/v1/plugins/terminal/analysis/op/stop"],
+    ] as const;
+
+    for (const [method, pathname] of requests) {
+      await router.call(method, pathname, {}, { origin: "https://evil.example" });
+    }
+
+    expect(router.responses).toHaveLength(requests.length);
+    expect(router.responses).toEqual(requests.map(() => ({ status: 403, body: { error: { code: "analysis_catalog_invalid", message: "Analysis request is not accepted by this host." } } })));
+    expect(detect).not.toHaveBeenCalled();
+  });
 });
 
 function createRouterHarness(initialHostAllowance: boolean) {
@@ -204,7 +242,10 @@ function createRouterHarness(initialHostAllowance: boolean) {
     pluginId: "terminal", basePath: "/api/v1/plugins/terminal",
     registerRouter: (_path: string, registered: typeof handler) => { handler = registered; },
     host: {
-      security: { validateHost: () => state.allowHost },
+      security: {
+        validateHost: () => state.allowHost,
+        isTerminalAuthorized: (req: { headers: Record<string, string> }) => req.headers.origin !== "https://evil.example",
+      },
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
       operations: { get: (id: string) => id === "op" ? operation : null },
       paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
@@ -214,10 +255,10 @@ function createRouterHarness(initialHostAllowance: boolean) {
   return {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
-    async call(method: string, pathname: string, body?: unknown) {
+    async call(method: string, pathname: string, body?: unknown, headers: Record<string, string> = {}) {
       const writes: string[] = [];
       let ended = false;
-      const req = Object.assign(new EventEmitter(), { method, headers: { "content-type": "application/json" }, socket: { localPort: 4444 }, body });
+      const req = Object.assign(new EventEmitter(), { method, headers: { "content-type": "application/json", ...headers }, socket: { localPort: 4444 }, body });
       const res = Object.assign(new EventEmitter(), { writableEnded: false, destroyed: false, writeHead: () => undefined, write: (data: string) => { writes.push(data); }, end: () => { ended = true; } });
       await handler?.({ req, res, pathname });
       return { writes, get ended() { return ended; } };

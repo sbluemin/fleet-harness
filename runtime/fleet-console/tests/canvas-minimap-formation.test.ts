@@ -240,6 +240,37 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(getCompanionOperationId()).toBeNull();
   });
 
+  it("keeps the companion layout and frames during the missing-operation grace period", () => {
+    vi.useFakeTimers();
+    try {
+      renderOperationsCanvas();
+      const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
+      const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+      act(() => targetBody?.click());
+
+      renderOperationsCanvas({ ...CANVAS_STATE, operations: [PEER_OPERATION] });
+
+      expect(getCompanionOperationId()).toBe("operation");
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+      expect(document.querySelector('[aria-label="Operation Minimap boundary"]')).toBe(targetFrame);
+      expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
+      expect(getComputedStyle(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')!).visibility).toBe("hidden");
+
+      act(() => vi.advanceTimersByTime(1_499));
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+      expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(getCompanionOperationId()).toBeNull();
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(false);
+      expect(document.querySelector('[aria-label="Operation Minimap boundary"]')).toBeNull();
+      expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(0);
+      expect(getComputedStyle(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')!).visibility).not.toBe("hidden");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes a hidden peer's portaled accent menu and transfers its menu focus", () => {
     renderOperationsCanvas();
     const peerAccent = document.querySelector<HTMLButtonElement>('[aria-label="Set accent for operation Peer"]');
@@ -339,9 +370,9 @@ const CANVAS_STATE: ConsoleState = {
   codexReaderExpanded: false,
 };
 
-function renderOperationsCanvas() {
+function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
   act(() => root!.render(createElement(OperationsCanvas, {
-    state: CANVAS_STATE,
+    state,
     catalog: [],
     canLaunch: false,
     renderKindIcon: () => null,

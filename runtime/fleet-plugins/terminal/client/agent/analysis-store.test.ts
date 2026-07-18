@@ -10,10 +10,12 @@ interface StreamHarness {
   readonly fetch: ReturnType<typeof vi.fn>;
   readonly emit: (payload: unknown) => void;
   readonly streamReady: () => boolean;
+  readonly unsubscribeCount: () => number;
 }
 
 function createHarness(onPath?: (path: string) => Response | null): StreamHarness {
   let stream: ((event: MessageEvent<string>) => void) | null = null;
+  let unsubscribeCount = 0;
   const fetch = vi.fn(async (_pluginId: string, path: string) => {
     const override = onPath?.(path);
     if (override) return override;
@@ -23,7 +25,10 @@ function createHarness(onPath?: (path: string) => Response | null): StreamHarnes
     fetch,
     subscribe: (_pluginId: string, _path: string, listener: (event: MessageEvent<string>) => void) => {
       stream = listener;
-      return vi.fn();
+      return () => {
+        if (stream === listener) stream = null;
+        unsubscribeCount += 1;
+      };
     },
     resync: vi.fn(),
   } satisfies ClientApiCapability;
@@ -32,6 +37,7 @@ function createHarness(onPath?: (path: string) => Response | null): StreamHarnes
     fetch,
     emit: (payload) => stream?.({ data: JSON.stringify(payload) } as MessageEvent<string>),
     streamReady: () => stream !== null,
+    unsubscribeCount: () => unsubscribeCount,
   };
 }
 
@@ -104,5 +110,45 @@ describe("per-operation analysis store", () => {
     expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-adopt/message")).toBe(true);
     harness.emit({ type: "complete" });
     disposeAnalysisStore("operation-store-adopt");
+  });
+
+  it("drops a missing session after message failure and restarts from start on the next send", async () => {
+    let messageCount = 0;
+    const harness = createHarness((path) => {
+      if (!path.endsWith("/message") || messageCount++ > 0) return null;
+      return new Response(JSON.stringify({ error: { code: "analysis_session_not_found", message: "Analysis session was not found." } }), { status: 404, headers: { "Content-Type": "application/json" } });
+    });
+    const store = getAnalysisStore("operation-store-message-lost", harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+
+    await sendWithConnected(store, harness, "First attempt");
+    expect(store.getSnapshot()).toMatchObject({ started: false, busy: false, error: "Analysis session ended — send again to restart." });
+    expect(harness.streamReady()).toBe(false);
+    expect(harness.unsubscribeCount()).toBe(1);
+
+    await sendWithConnected(store, harness, "Second attempt");
+    const paths = harness.fetch.mock.calls.map((call) => call[1]);
+    expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(2);
+    expect(paths.filter((path) => path.endsWith("/message"))).toHaveLength(2);
+    expect(store.getSnapshot().started).toBe(true);
+    harness.emit({ type: "complete" });
+    disposeAnalysisStore("operation-store-message-lost");
+  });
+
+  it("unsubscribes after an analysis_exited stream event and restarts on the next send", async () => {
+    const harness = createHarness();
+    const store = getAnalysisStore("operation-store-stream-lost", harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+
+    await sendWithConnected(store, harness, "First attempt");
+    harness.emit({ type: "error", error: { code: "analysis_exited", message: "Process exited." } });
+    expect(store.getSnapshot()).toMatchObject({ started: false, busy: false, error: "Analysis session ended — send again to restart." });
+    expect(harness.streamReady()).toBe(false);
+    expect(harness.unsubscribeCount()).toBe(1);
+
+    await sendWithConnected(store, harness, "Second attempt");
+    expect(harness.fetch.mock.calls.map((call) => call[1]).filter((path) => path.endsWith("/start"))).toHaveLength(2);
+    harness.emit({ type: "complete" });
+    disposeAnalysisStore("operation-store-stream-lost");
   });
 });

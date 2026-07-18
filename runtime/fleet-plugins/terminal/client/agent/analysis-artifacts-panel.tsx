@@ -1,4 +1,6 @@
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import { React } from "@fleet-console/sdk/plugin/browser";
+import type { AnalysisArtifact } from "./analysis-types.js";
 
 import { safeArtifactSrcdoc } from "./analysis-artifact.js";
 import { useAnalysisStore } from "./analysis-store.js";
@@ -16,8 +18,25 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
       ) : null}
       {state.artifacts.map((artifact) => {
         const srcdoc = safeArtifactSrcdoc(artifact.html);
-        return srcdoc ? <article key={artifact.id}><header>{artifact.title}<span>Sandboxed</span></header><iframe title={artifact.title} srcDoc={srcdoc} sandbox="allow-scripts" /></article> : null;
+        return srcdoc ? <ArtifactCard key={artifact.id} artifact={artifact} srcdoc={srcdoc} /> : null;
       })}
     </section>
+  );
+}
+
+function ArtifactCard({ artifact, srcdoc }: { readonly artifact: AnalysisArtifact; readonly srcdoc: string }) {
+  const loadCount = React.useRef(0);
+  const [blocked, setBlocked] = React.useState(false);
+  const handleLoad = () => {
+    loadCount.current += 1;
+    if (loadCount.current > 1) setBlocked(true);
+  };
+  return (
+    <article>
+      <header>{artifact.title}<span>Sandboxed</span></header>
+      {blocked
+        ? <p role="alert">Artifact blocked after attempting navigation.</p>
+        : <iframe title={artifact.title} srcDoc={srcdoc} sandbox="allow-scripts" onLoad={handleLoad} />}
+    </article>
   );
 }

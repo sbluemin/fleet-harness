@@ -73,6 +73,13 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     }, RESPONSE_TIMEOUT_MS);
   };
 
+  const endLostSession = () => {
+    disarmWatchdog();
+    unsubscribe?.();
+    unsubscribe = null;
+    dispatch({ type: "session-lost" });
+  };
+
   // 서버의 connected 첫 프레임을 기다려 초기 chunk 유실 레이스를 닫는다(폴백 상한 포함).
   const openStream = async () => {
     if (unsubscribe) return;
@@ -82,6 +89,12 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       if (event.type === "connected") {
         resolveConnected?.();
         resolveConnected = null;
+        return;
+      }
+      if (event.type === "error" && isLostSessionCode(event.error.code)) {
+        resolveConnected?.();
+        resolveConnected = null;
+        endLostSession();
         return;
       }
       if (event.type === "complete" || event.type === "error") disarmWatchdog();
@@ -127,12 +140,14 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
         }
         if (disposed) return;
         await openStream();
+        if (!state.started) return;
       }
       try {
         await sendAnalysisMessage(api, operationId, trimmed);
         armWatchdog();
       } catch (error) {
-        dispatch({ type: "error", message: failureMessage(error) });
+        if (error instanceof AnalysisApiError && isLostSessionCode(error.code)) endLostSession();
+        else dispatch({ type: "error", message: failureMessage(error) });
       }
     },
     retain: () => {
@@ -159,4 +174,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
 
 function failureMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Analysis is unavailable.";
+}
+
+function isLostSessionCode(code: string): boolean {
+  return code === "analysis_exited" || code === "analysis_session_not_found";
 }

@@ -75,6 +75,7 @@ export function OperationsCanvas({
   const formationView = useFormationView();
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
+  const lastValidCompanionRef = useRef<{ readonly operation: OperationNode; readonly descriptor: OperationKindDescriptor } | null>(null);
   const minimized = useMinimized();
   const activePluginOperationId = state.activeOperationId;
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -139,22 +140,37 @@ export function OperationsCanvas({
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
   );
   const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId);
-  const pluginOperations = theaterOperations;
-  const hasContent = theaterOperations.length > 0;
   const operationKindRegistry = registry.operationKinds;
   const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
-  const companionOperation = companionOperationId === null ? undefined : theaterOperations.find((operation) => operation.id === companionOperationId && !minimizedSet.has(operation.id));
-  const companionDescriptor = companionOperation ? operationKindRegistry.find((kind) => kind.pluginId === companionOperation.pluginId && kind.type === companionOperation.type) : undefined;
+  const currentCompanionOperation = companionOperationId === null ? undefined : theaterOperations.find((operation) => operation.id === companionOperationId && !minimizedSet.has(operation.id));
+  const currentCompanionDescriptor = currentCompanionOperation ? operationKindRegistry.find((kind) => kind.pluginId === currentCompanionOperation.pluginId && kind.type === currentCompanionOperation.type) : undefined;
+  if (companionOperationId === null) lastValidCompanionRef.current = null;
+  if (currentCompanionOperation && currentCompanionDescriptor?.companions?.length) {
+    lastValidCompanionRef.current = { operation: currentCompanionOperation, descriptor: currentCompanionDescriptor };
+  }
+  const preservedCompanion = !currentCompanionOperation && lastValidCompanionRef.current?.operation.id === companionOperationId
+    ? lastValidCompanionRef.current
+    : null;
+  const companionOperation = currentCompanionOperation ?? preservedCompanion?.operation;
+  const companionDescriptor = currentCompanionDescriptor ?? preservedCompanion?.descriptor;
   const companionPanels = companionDescriptor?.companions ?? [];
   const panelCompanion = companionOperation && companionPanels.length > 0 ? companionOperation.id : null;
+  const currentPanelCompanion = currentCompanionOperation && currentCompanionDescriptor?.companions?.length ? currentCompanionOperation.id : null;
+  const pluginOperations = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
+    ? [...theaterOperations, companionOperation]
+    : theaterOperations;
+  const hasContent = pluginOperations.length > 0;
   useEffect(() => {
-    if (companionOperationId === null || panelCompanion !== null) return;
+    if (companionOperationId === null || currentPanelCompanion !== null) return;
     // ops 푸시 직후 대상 Operation이 목록에서 일시적으로 빠지는 레이스가 있어, 방금 연 분석
     // 레이아웃이 즉시 닫히지 않도록 부재가 지속될 때만 정리한다(복귀 시 cleanup으로 취소).
-    const timer = setTimeout(() => clearCompanionOperationId(), 1_500);
+    const timer = setTimeout(() => {
+      lastValidCompanionRef.current = null;
+      clearCompanionOperationId();
+    }, 1_500);
     return () => clearTimeout(timer);
-  }, [companionOperationId, panelCompanion]);
+  }, [companionOperationId, currentPanelCompanion]);
   const formationOperationIds = flattenGroupedOrder(
     theaterOperations,
     state.groups.filter((group) => group.theaterId === state.activeTheaterId),
