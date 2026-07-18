@@ -1,9 +1,0 @@
-{
-  "id": "2026-05-25T14-40-55-506Z-5feb76e8",
-  "status": "rejected",
-  "createdAt": "2026-05-25T14:40:55.506Z",
-  "rawSourceRef": "raw/2026-05-25-guide-004-cli-subagent-injection-source-ab971090.md",
-  "warnings": [],
-  "decidedAt": "2026-05-31T09:21:27.658Z",
-  "reason": "Superseded by updated Codex native subagent research: Codex custom roles require session-scoped role TOML plus spawn-time agents.<role>.config_file overrides, not inline developer_instructions."
-}

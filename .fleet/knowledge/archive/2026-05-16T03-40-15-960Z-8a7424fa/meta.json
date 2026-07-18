@@ -1,9 +1,0 @@
-{
-  "id": "2026-05-16T03-40-15-960Z-8a7424fa",
-  "status": "rejected",
-  "createdAt": "2026-05-16T03:40:15.960Z",
-  "rawSourceRef": "raw/2026-05-16-prd-coding-agent-model-cycling-source-a783ba41.md",
-  "warnings": [],
-  "decidedAt": "2026-05-16T03:43:07.889Z",
-  "reason": "본문 언어가 영문 — 기존 위키 엔트리(guide-001/002/003 등)는 모두 한글로 작성되어 있어 일관성 미준수. 한글 본문 + frontmatter(feature_area, lifecycle) 보강 후 재이식."
-}

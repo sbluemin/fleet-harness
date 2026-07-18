@@ -8,8 +8,6 @@ keybindings.json
 .spsec/
 .specs
 .fleet/*
-!.fleet/knowledge/
-!.fleet/knowledge/**
 !.fleet/prompts/
 !.fleet/prompts/**
 .grand-fleet/

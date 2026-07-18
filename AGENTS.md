@@ -29,7 +29,6 @@ Fleet is a multi-LLM orchestration kit. An Admiral host coordinates specialized 
 | `.agents/skills/` | On-demand task workflows and verification procedures |
 | `.changelog.d/` | Unreleased bilingual changelog fragments |
 | `examples/` | Reference plugin integrations |
-| `.fleet/knowledge/` | Workspace-local Fleet Wiki data and governance |
 
 ## Architecture constraints
 

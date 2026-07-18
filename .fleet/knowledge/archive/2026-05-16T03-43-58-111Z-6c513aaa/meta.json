@@ -1,9 +1,0 @@
-{
-  "id": "2026-05-16T03-43-58-111Z-6c513aaa",
-  "status": "rejected",
-  "createdAt": "2026-05-16T03:43:58.111Z",
-  "rawSourceRef": "raw/2026-05-16-prd-coding-agent-model-cycling-source-7d1d5585.md",
-  "warnings": [],
-  "decidedAt": "2026-05-16T03:59:00.070Z",
-  "reason": "PRD 프레임 오정렬 — 본 문서의 주제는 \"/scoped-models 제거\" 자체이나, Functional Requirements/Acceptance Criteria가 살아남은 사이클링 기능을 명세하고 있어 제거 요구사항 PRD로 재프레이밍 필요. 동시에 섹션 헤더 한글화, User Stories 패턴 미준수, 체크리스트 형식 누락 등 prd-harness-btw-overlay 컨벤션 미일치도 함께 보강."
-}
