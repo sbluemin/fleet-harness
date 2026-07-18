@@ -53,7 +53,7 @@ export function createWikiDraftToolSpecs(deps: CreateWikiDraftToolSpecsDependenc
 function createReadSpec(draft: WikiDraftPort): AgentToolSpec {
   return {
     id: "wiki_draft_read",
-    tag: "wiki",
+    tag: "wiki_draft_read",
     title: "Read Cowork Draft",
     description: "Read the current session-bound Cowork draft.",
     promptSnippet: "Read the current draft before proposing an exact edit.",
@@ -71,7 +71,7 @@ function createReadSpec(draft: WikiDraftPort): AgentToolSpec {
 function createEditSpec(draft: WikiDraftPort): AgentToolSpec {
   return {
     id: "wiki_draft_edit",
-    tag: "wiki",
+    tag: "wiki_draft_edit",
     title: "Edit Cowork Draft",
     description: "Replace exact text in the current session-bound Cowork draft.",
     promptSnippet: "Use exact find/replace text and a revision when coordinating edits.",
@@ -102,7 +102,7 @@ function createEditSpec(draft: WikiDraftPort): AgentToolSpec {
 function createWriteSpec(draft: WikiDraftPort): AgentToolSpec {
   return {
     id: "wiki_draft_write",
-    tag: "wiki",
+    tag: "wiki_draft_write",
     title: "Write Cowork Draft",
     description: "Replace the entire current session-bound Cowork draft.",
     promptSnippet: "Replace the whole draft only when a complete new body is intended.",

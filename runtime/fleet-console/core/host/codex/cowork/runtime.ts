@@ -12,5 +12,8 @@ export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, 
   const draftTools = createWikiDraftToolSpecs({ draft: store.draftPort(workspaceId, sessionId) });
   const allowedToolIds = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"] as const;
   const specs = [...draftTools, ...getWikiToolSpecs(resolver).filter(spec => allowedToolIds.includes(spec.id as typeof allowedToolIds[number]))];
+  // The session-token snapshot scopes tools/list, but the executor call router still
+  // invokes through the registry — the same seven specs must be registered there too.
+  for (const spec of specs) registry.registerAgentTool(spec);
   return { registry, snapshots, server, manager, specs, allowedToolIds, connection: { strictMcp: true, yoloMode: false, autoApprove: false, hostFileAccess: "deny" as const } };
 }
