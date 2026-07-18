@@ -9,6 +9,8 @@ export interface AnalysisStore {
   readonly subscribe: (listener: () => void) => () => void;
   readonly dispatch: (action: AnalysisAction) => void;
   readonly send: (text: string) => Promise<void>;
+  readonly stop: () => Promise<void>;
+  readonly reset: () => Promise<void>;
   readonly retain: () => () => void;
   readonly dispose: () => void;
 }
@@ -17,6 +19,8 @@ interface AnalysisStoreBinding {
   readonly state: AnalysisState;
   readonly dispatch: (action: AnalysisAction) => void;
   readonly send: (text: string) => Promise<void>;
+  readonly stop: () => Promise<void>;
+  readonly reset: () => Promise<void>;
 }
 
 const stores = new Map<string, AnalysisStore>();
@@ -25,7 +29,7 @@ export function useAnalysisStore(context: OperationRenderContext): AnalysisStore
   const store = getAnalysisStore(context.operationId, context.api);
   React.useEffect(() => store.retain(), [store]);
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  return { state, dispatch: store.dispatch, send: store.send };
+  return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset };
 }
 
 export function getAnalysisStore(operationId: string, api: ClientApiCapability): AnalysisStore {
@@ -49,6 +53,11 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
   let disposed = false;
   let unsubscribe: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
+  let startFlight: Promise<void> | null = null;
+  let stopFlight: Promise<void> | null = null;
+  let resetFlight: Promise<void> | null = null;
+  let streamGeneration = 0;
+  let runGeneration = 0;
   const listeners = new Set<() => void>();
 
   const dispatch = (action: AnalysisAction) => {
@@ -69,24 +78,29 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     disarmWatchdog();
     watchdog = setTimeout(() => {
       watchdog = null;
-      dispatch({ type: "error", message: "Analysis response timed out." });
+      dispatch({ type: "error", message: "Analysis response timed out.", now: Date.now() });
     }, RESPONSE_TIMEOUT_MS);
   };
 
   const endLostSession = () => {
     disarmWatchdog();
+    streamGeneration += 1;
+    runGeneration += 1;
     unsubscribe?.();
     unsubscribe = null;
-    dispatch({ type: "session-lost" });
+    dispatch({ type: "session-lost", now: Date.now() });
   };
 
   // 서버의 connected 첫 프레임을 기다려 초기 chunk 유실 레이스를 닫는다(폴백 상한 포함).
   const openStream = async () => {
     if (unsubscribe) return;
+    const generation = ++streamGeneration;
     let resolveConnected: (() => void) | null = null;
     const connected = new Promise<void>((resolve) => { resolveConnected = resolve; });
     unsubscribe = subscribeAnalysis(api, operationId, (event) => {
+      if (generation !== streamGeneration || disposed) return;
       if (event.type === "connected") {
+        dispatch({ type: "event", event, now: Date.now() });
         resolveConnected?.();
         resolveConnected = null;
         return;
@@ -98,7 +112,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
         return;
       }
       if (event.type === "complete" || event.type === "error") disarmWatchdog();
-      dispatch({ type: "event", event });
+      dispatch({ type: "event", event, now: Date.now() });
     });
     await Promise.race([connected, new Promise<void>((resolve) => setTimeout(resolve, CONNECT_WAIT_MS))]);
   };
@@ -108,6 +122,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     disposed = true;
     stores.delete(operationId);
     disarmWatchdog();
+    streamGeneration += 1;
+    runGeneration += 1;
     unsubscribe?.();
     unsubscribe = null;
     listeners.clear();
@@ -122,32 +138,90 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     },
     dispatch,
     send: async (text) => {
+      if (resetFlight) {
+        try { await resetFlight; } catch { return; }
+      }
+      if (stopFlight) await stopFlight;
       const trimmed = text.trim();
       if (!trimmed || state.busy || disposed) return;
       const starting = !state.started;
+      const generation = ++runGeneration;
       const selection = { cliId: state.cliId, model: state.model, effort: state.effort };
-      dispatch({ type: "sending", started: starting, text: trimmed });
+      dispatch({ type: "sending", started: starting, text: trimmed, now: Date.now() });
       if (starting) {
+        const flight = startAnalysis(api, operationId, selection);
+        startFlight = flight;
         try {
-          await startAnalysis(api, operationId, selection);
+          await flight;
         } catch (error) {
+          if (disposed || generation !== runGeneration) return;
           // 리로드 등으로 서버 세션이 이미 살아 있으면 그 세션을 이어받는다.
           const exists = error instanceof AnalysisApiError && error.code === "analysis_session_exists";
           if (!exists) {
-            dispatch({ type: "start-failed", message: failureMessage(error) });
+            dispatch({ type: "start-failed", message: failureMessage(error), now: Date.now() });
             return;
           }
+        } finally {
+          if (startFlight === flight) startFlight = null;
         }
-        if (disposed) return;
+        if (disposed || generation !== runGeneration || !state.started) return;
         await openStream();
-        if (!state.started) return;
+        if (generation !== runGeneration || !state.started) return;
       }
       try {
         await sendAnalysisMessage(api, operationId, trimmed);
+        if (generation !== runGeneration || !state.busy || !state.started) return;
         armWatchdog();
       } catch (error) {
+        if (disposed || generation !== runGeneration) return;
         if (error instanceof AnalysisApiError && isLostSessionCode(error.code)) endLostSession();
-        else dispatch({ type: "error", message: failureMessage(error) });
+        else dispatch({ type: "error", message: failureMessage(error), now: Date.now() });
+      }
+    },
+    stop: async () => {
+      if (resetFlight) {
+        await resetFlight.catch(() => {});
+        return;
+      }
+      if (stopFlight) return stopFlight;
+      if (disposed || !state.started) return;
+      runGeneration += 1;
+      streamGeneration += 1;
+      disarmWatchdog();
+      const closeStream = unsubscribe;
+      unsubscribe = null;
+      closeStream?.();
+      dispatch({ type: "stopped", now: Date.now() });
+      const flight = stopAnalysis(api, operationId).catch((error: unknown) => {
+        dispatch({ type: "stop-failed", message: failureMessage(error), now: Date.now() });
+      });
+      stopFlight = flight;
+      await flight;
+      if (stopFlight === flight) stopFlight = null;
+    },
+    reset: async () => {
+      if (resetFlight) return resetFlight;
+      if (disposed) return;
+      const shouldStopServer = state.started || state.phase !== "idle" || state.entries.length > 0 || state.artifacts.length > 0;
+      runGeneration += 1;
+      streamGeneration += 1;
+      disarmWatchdog();
+      unsubscribe?.();
+      unsubscribe = null;
+      const flight = (async () => {
+        if (stopFlight) await stopFlight;
+        if (startFlight) await startFlight.catch(() => {});
+        if (shouldStopServer) await stopAnalysis(api, operationId);
+        dispatch({ type: "reset" });
+      })().catch((error: unknown) => {
+        dispatch({ type: "error", message: `Reset failed: ${failureMessage(error)}`, now: Date.now() });
+        throw error;
+      });
+      resetFlight = flight;
+      try {
+        await flight;
+      } finally {
+        if (resetFlight === flight) resetFlight = null;
       }
     },
     retain: () => {
@@ -167,7 +241,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
 
   void fetchAnalysisCatalog(api)
     .then((catalog) => dispatch({ type: "catalog", catalog }))
-    .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error) }));
+    .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }));
 
   return store;
 }

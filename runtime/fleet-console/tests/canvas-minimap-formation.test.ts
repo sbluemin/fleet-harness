@@ -19,7 +19,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
       render: ({ operationId, companionsOpen, onRequestCompanions }: { readonly operationId: string; readonly companionsOpen?: boolean; readonly onRequestCompanions?: (open: boolean) => void }) => createElement("button", { "data-plugin-operation": operationId, "data-companions-open": String(companionsOpen), onClick: () => onRequestCompanions?.(!companionsOpen) }, "Toggle companions"),
       companions: [
         { id: "chat", title: "Chat", render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "chat", "data-companions-open": String(companionsOpen) }) },
-        { id: "artifacts", title: "Artifacts", render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen) }) },
+        { id: "artifacts", title: "Artifacts", hideCaption: true, render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen) }) },
       ],
     }],
     settingsSections: [],
@@ -226,9 +226,12 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(getComputedStyle(peer!).visibility).toBe("hidden");
     expect(Number.parseFloat(targetFrame?.style.width ?? "0")).toBeCloseTo((900 - 16) / 3, 0);
 
-    // 프레임에는 닫기 버튼이 없다(배지 없는 타이포 캡션만) — 닫기는 플러그인 EXIT 핸들이 콜백으로 소유한다.
+    // 기본 companion은 캡션을 유지하고 opt-in companion만 캡션을 숨긴다. 두 프레임 모두 접근성 이름은 유지한다.
     expect(document.querySelector('.canvas-companion-frame button')).toBeNull();
-    expect([...document.querySelectorAll(".canvas-companion-caption-title")].map((el) => el.textContent)).toEqual(["Chat", "Artifacts"]);
+    expect([...document.querySelectorAll(".canvas-companion-caption-title")].map((el) => el.textContent)).toEqual(["Chat"]);
+    expect(document.querySelector('[aria-label="Companion Chat"] .canvas-companion-caption')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Companion Artifacts"] .canvas-companion-caption')).toBeNull();
+    expect(document.querySelector('[aria-label="Companion Artifacts"]')).not.toBeNull();
     act(() => targetBody?.click());
 
     expect(getCompanionOperationId()).toBeNull();

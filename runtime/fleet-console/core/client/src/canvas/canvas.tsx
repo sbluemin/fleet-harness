@@ -587,11 +587,12 @@ function CompanionFrame({ descriptor, geometry, children }: {
   } satisfies CSSProperties;
   return (
     <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={`Companion ${descriptor.title}`}>
-      {/* 닫기는 패널 본문의 EXIT 핸들이 소유한다 — 프레임은 배지 없이 타이포 캡션으로 정체만 표시한다. */}
-      <header className="canvas-companion-caption" data-canvas-blocker>
-        <span className="canvas-companion-caption-dot" aria-hidden="true" />
-        <span className="canvas-companion-caption-title">{descriptor.title}</span>
-      </header>
+      {descriptor.hideCaption ? null : (
+        <header className="canvas-companion-caption" data-canvas-blocker>
+          <span className="canvas-companion-caption-dot" aria-hidden="true" />
+          <span className="canvas-companion-caption-title">{descriptor.title}</span>
+        </header>
+      )}
       <div className="canvas-operation-terminal canvas-companion-body" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} data-canvas-blocker>
         {children}
       </div>

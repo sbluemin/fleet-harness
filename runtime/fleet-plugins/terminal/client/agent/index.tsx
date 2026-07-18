@@ -84,8 +84,8 @@ export const agentOperationKind = defineOperationKind({
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
   companions: [
-    { id: "session-analyst-chat", title: "Session Analyst", render: (context) => <AnalystChatPanel context={context} /> },
-    { id: "session-analyst-artifacts", title: "Artifacts", render: (context) => <AnalystArtifactsPanel context={context} /> },
+    { id: "session-analyst-chat", title: "Session Analyst", hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
+    { id: "session-analyst-artifacts", title: "Artifacts", hideCaption: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
 });
 

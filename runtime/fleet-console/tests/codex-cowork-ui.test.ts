@@ -132,6 +132,49 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
+  it("locks the prompt locally before the server reports running", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let releasePrompt!: () => void;
+    const promptGate = new Promise<void>((resolve) => { releasePrompt = resolve; });
+    let promptRequests = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.endsWith("/prompt")) {
+        promptRequests += 1;
+        await promptGate;
+        return new Response(JSON.stringify(sessionDto({ state: "running" })));
+      }
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "Keep this complete prompt visible";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    // 첫 클릭의 동기 렌더 뒤 같은 위치를 다시 눌러도 두 번째 send가 없어야 한다.
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')?.click();
+
+    await vi.waitFor(() => expect(promptRequests).toBe(1));
+    expect(article.querySelector(".cowork-revision-stream")?.classList.contains("is-running")).toBe(true);
+    expect(article.querySelector(".cowork-revision-instruction")?.textContent).toBe("Keep this complete prompt visible");
+    expect(article.querySelector('[data-cowork-action="send"]')).toBeNull();
+    expect(article.querySelector(".cowork-stop")).not.toBeNull();
+    expect(article.querySelector(".cowork-error")).toBeNull();
+
+    releasePrompt();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
+    controller.destroy();
+    article.remove();
+  });
+
   it("resumes an active session inline: swaps the document to the draft and restores annotations", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
@@ -284,6 +327,7 @@ describe("Cowork inline copilot", () => {
     // 리플레이된 done은 diff로 전환하지 않는다.
     listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "2" }));
     expect(body.querySelector(".cowork-block--added")).toBeNull();
+    expect(article.querySelector(".cowork-revision-stream")).toBeNull();
 
     // 이번 마운트에서 직접 보낸 실행의 done은 변경이 있으면 diff로 전환한다.
     const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
@@ -300,7 +344,7 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
-  it("shows live tool activity in the running dock ticker", async () => {
+  it("keeps an escaped live revision stream visible through completion", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
     vi.stubGlobal("EventSource", FakeEventSource);
@@ -317,13 +361,70 @@ describe("Cowork inline copilot", () => {
     // engage 완료(구독 시작) 후에 이벤트를 흘려야 한다.
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
-    listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
-    listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "4" }));
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "Revise <strong>safely</strong>";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
 
-    // 도구 사용 상세는 출력하지 않고 일반 상태 문구만 보여준다.
-    expect(article.querySelector(".cowork-ticker")?.textContent).toBe("AI is editing…");
-    expect(article.querySelector(".cowork-ticker")?.textContent).not.toContain("wiki_draft_read");
-    expect(article.querySelector(".cowork-spinner")).not.toBeNull();
+    listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
+    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: "<img src=x onerror=alert(1)>Visible & safe" }), lastEventId: "4" }));
+
+    const stream = article.querySelector<HTMLElement>(".cowork-revision-stream")!;
+    const output = stream.querySelector<HTMLElement>(".cowork-revision-output")!;
+    const instruction = stream.querySelector<HTMLElement>(".cowork-revision-instruction")!;
+    const outputScroll = output.closest<HTMLElement>(".cowork-revision-output-scroll");
+    const toggle = stream.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-revision"]')!;
+    expect(stream.classList.contains("is-running")).toBe(true);
+    expect(stream.textContent).toContain("Writing revision");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe("Collapse Cowork stream");
+    expect(stream.querySelector(".cowork-revision-instruction")?.textContent).toBe("Revise <strong>safely</strong>");
+    expect(stream.querySelector(".cowork-revision-instruction strong")).toBeNull();
+    expect(outputScroll).not.toBeNull();
+    expect(outputScroll?.contains(instruction)).toBe(false);
+    expect(output.textContent).toBe("<img src=x onerror=alert(1)>Visible & safe");
+    expect(output.querySelector("img")).toBeNull();
+    expect(body.classList.contains("is-cowork-running")).toBe(true);
+    expect(article.querySelectorAll(".cowork-stop")).toHaveLength(1);
+    expect(article.querySelectorAll(".cowork-send")).toHaveLength(1);
+    expect(article.querySelector(".cowork-stop")?.getAttribute("aria-label")).toBe("Stop");
+    expect(article.querySelector(".cowork-stop")?.textContent).toBe("");
+    expect(article.querySelector(".cowork-stop span")).not.toBeNull();
+    expect(article.querySelector<HTMLInputElement>(".cowork-dock-input")?.disabled).toBe(true);
+    expect(article.querySelector(".cowork-ticker")).toBeNull();
+    expect(article.querySelector(".cowork-spinner")).toBeNull();
+
+    toggle.click();
+    expect(stream.classList.contains("is-collapsed")).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Expand Cowork stream");
+    expect(stream.querySelector(".cowork-revision-content")?.getAttribute("aria-hidden")).toBe("true");
+
+    toggle.click();
+    expect(stream.classList.contains("is-collapsed")).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(stream.querySelector(".cowork-revision-content")?.getAttribute("aria-hidden")).toBe("false");
+
+    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: " continuation" }), lastEventId: "5" }));
+    expect(article.querySelector(".cowork-revision-stream")).toBe(stream);
+    expect(output.textContent).toBe("<img src=x onerror=alert(1)>Visible & safe continuation");
+
+    listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "6" }));
+    expect(article.querySelector(".cowork-revision-stream")?.textContent).not.toContain("wiki_draft_read");
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-revision"]')!.click();
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "7" }));
+    const completed = article.querySelector<HTMLElement>(".cowork-revision-stream")!;
+    expect(completed.classList.contains("is-complete")).toBe(true);
+    expect(completed.classList.contains("is-collapsed")).toBe(true);
+    expect(completed.textContent).toContain("Revision complete");
+    expect(completed.querySelector(".cowork-revision-status")).toBeNull();
+    expect(completed.querySelector('[data-cowork-action="toggle-revision"]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(completed.querySelector(".cowork-revision-output")?.textContent).toBe("<img src=x onerror=alert(1)>Visible & safe continuation");
+    expect(body.classList.contains("is-cowork-running")).toBe(false);
+    expect(article.querySelector(".cowork-stop")).toBeNull();
+    expect(article.querySelector('[data-cowork-action="send"]')).not.toBeNull();
 
     controller.destroy();
     article.remove();

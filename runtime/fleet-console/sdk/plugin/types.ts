@@ -98,6 +98,7 @@ export interface OperationKindDescriptor {
 export interface CompanionPanelDescriptor {
   readonly id: string;
   readonly title: string;
+  readonly hideCaption?: boolean;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 

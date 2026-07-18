@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 
 vi.mock("./analysis-store.js", () => ({
   useAnalysisStore: () => ({
-    // 스토어 순서는 최신 우선 — 탭은 생성순으로 뒤집혀야 한다.
+    // 스토어 순서는 최신 우선 — 헤더 popover 목록은 생성순으로 뒤집혀야 한다.
     state: { artifacts: [
       { id: "artifact-late", title: "Later artifact", html: "<p>later</p>", createdAt: 2 },
       { id: "artifact-early", title: "Early artifact", html: "<p>early</p>", createdAt: 1 },
@@ -31,22 +31,33 @@ describe("artifact frame", () => {
     expect(panel).toContain('sandbox="allow-scripts"');
     expect(panel).toContain('type: "clear-artifacts"');
   });
-  it("shows one full-size active artifact with creation-ordered tabs and blocks after a second load", () => {
+  it("opens a creation-ordered header listbox and keeps one selected preview", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => root.render(createElement(AnalystArtifactsPanel, { context: {} as never })));
 
-    // 탭은 생성순, 활성 문서는 최신 게시본 하나만 렌더된다.
-    const tabs = [...container.querySelectorAll('[role="tab"]')];
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Early artifact", "Later artifact"]);
-    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__artifact-count")!;
+    expect(trigger.textContent).toBe("2 items");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
     expect(container.querySelectorAll("iframe")).toHaveLength(1);
     expect(container.querySelector("iframe")?.title).toBe("Later artifact");
+    expect(container.querySelector('article[aria-label="Selected artifact preview"]')).not.toBeNull();
 
-    // 탭 전환 시 해당 문서가 전체 뷰로 렌더된다.
-    act(() => (tabs[0] as HTMLButtonElement).click());
+    act(() => trigger.click());
+    const options = [...container.querySelectorAll('[role="option"]')];
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    expect(options.map((option) => option.querySelector("strong")?.textContent)).toEqual(["Early artifact", "Later artifact"]);
+    expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    expect(options.every((option) => option.querySelector("time")?.hasAttribute("datetime"))).toBe(true);
+
+    // 목록에서 선택하면 해당 문서가 전체 뷰로 렌더되고 popover는 닫힌다.
+    act(() => (options[0] as HTMLButtonElement).click());
     expect(container.querySelector("iframe")?.title).toBe("Early artifact");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
 
     const iframe = container.querySelector("iframe");
     act(() => iframe?.dispatchEvent(new Event("load", { bubbles: true })));
