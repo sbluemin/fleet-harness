@@ -21,6 +21,7 @@ const keyboardShortcutMocks = vi.hoisted(() => ({
 const sideBarMocks = vi.hoisted(() => ({
   onFocus: null as null | ((operationId: string) => void),
   onClose: null as null | ((operationId: string) => void),
+  onMinimize: null as null | ((operationId: string) => void),
 }));
 const canvasMocks = vi.hoisted(() => ({
   onLaunchAtGeometry: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly zIndex: number }) => void),
@@ -74,9 +75,10 @@ vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null 
 vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({ getSideBarState: () => ({ collapsed: false }), setSideBarCollapsed: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
-  OperationsSideBar: ({ onClose, onFocus }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void }) => {
+  OperationsSideBar: ({ onClose, onFocus, onMinimize }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
     sideBarMocks.onClose = onClose;
+    sideBarMocks.onMinimize = onMinimize;
     return null;
   },
 }));
@@ -104,6 +106,7 @@ beforeEach(() => {
   keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(false);
   sideBarMocks.onFocus = null;
   sideBarMocks.onClose = null;
+  sideBarMocks.onMinimize = null;
   canvasMocks.onLaunchAtGeometry = null;
   registryMocks.plugins = [];
   registryMocks.operationKinds = [];
@@ -508,6 +511,28 @@ describe("Operations boot minimization", () => {
 
     expect(getCompanionOperationId()).toBe("first");
     expect(getState().activeOperationId).not.toBe("second");
+  });
+
+  it("discards an asynchronous Analyze retarget after its destination is minimized", async () => {
+    const secondReady = deferred<boolean>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      restoreOperation("second");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    act(() => sideBarMocks.onMinimize?.("second"));
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+    expect(getSnapshot().minimized).toContain("second");
   });
 
   it("force-drops Analyze immediately when Sidebar closes its target", async () => {
