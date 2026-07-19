@@ -47,11 +47,9 @@ export interface GridSlotGeometry {
 export type FormationLayout = "grid" | "columns" | "rows";
 
 type Listener = () => void;
-type FocusLayerMode = "maximized" | "companion";
-interface FocusLayerState {
-  readonly mode: FocusLayerMode;
-  readonly operationId: string;
-}
+type FocusLayerState =
+  | { readonly mode: "maximized"; readonly operationId: string }
+  | { readonly mode: "companion"; readonly operationId: string; readonly returnTo: "underlay" | "maximized" };
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
 const FORMATION_LAYOUT_STORAGE_KEY = "fleet-console.formation-layout";
@@ -115,6 +113,11 @@ export function getMaximizedOperationId(): string | null {
 
 export function getCompanionOperationId(): string | null {
   return focusLayer?.mode === "companion" ? focusLayer.operationId : null;
+}
+
+export function getTheaterCompanionOperationId(theaterId: string): string | null {
+  const layer = activeTheaterId === theaterId ? focusLayer : focusLayersByTheater.get(theaterId) ?? null;
+  return layer?.mode === "companion" ? layer.operationId : null;
 }
 
 export function getFormationView(): boolean {
@@ -301,7 +304,7 @@ export function calculateGridSlots(
 export function minimizeOperation(sessionId: string): void {
   if (state.minimized.includes(sessionId)) return;
   if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
-  if (getCompanionOperationId() === sessionId) clearCompanionOperationId();
+  if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
   setState({ minimized: [...state.minimized, sessionId] });
 }
 
@@ -322,7 +325,7 @@ export function minimizeOperations(sessionIds: readonly string[]): void {
   const maximizedOperationId = getMaximizedOperationId();
   const companionOperationId = getCompanionOperationId();
   if (maximizedOperationId && minimized.includes(maximizedOperationId)) clearMaximizedOperationId();
-  if (companionOperationId && minimized.includes(companionOperationId)) clearCompanionOperationId();
+  if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
   setState({ minimized });
 }
 
@@ -419,7 +422,7 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   if (maximizedOperationId && (!valid.has(maximizedOperationId) || minimized.includes(maximizedOperationId))) clearMaximizedOperationId();
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
-  if (companionOperationId && minimized.includes(companionOperationId)) clearCompanionOperationId();
+  if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
   if (changed || minimizedChanged || orderChanged || accentChanged) {
     setState({ operations, minimized, operationOrder, operationAccent });
   }
@@ -491,9 +494,10 @@ export function clearMaximizedOperationId(): void {
 }
 
 export function setCompanionOperationId(operationId: string): void {
-  if (activeTheaterId && focusLayersByTheater.get(activeTheaterId)?.mode === "maximized") focusLayersByTheater.delete(activeTheaterId);
-  clearFormationView();
-  const nextFocusLayer = { mode: "companion", operationId } as const;
+  const returnTo = focusLayer?.mode === "companion"
+    ? focusLayer.returnTo
+    : focusLayer?.mode === "maximized" ? "maximized" : "underlay";
+  const nextFocusLayer = { mode: "companion", operationId, returnTo } as const;
   setFocusLayer(nextFocusLayer);
 }
 
@@ -502,24 +506,51 @@ function setFocusLayer(nextFocusLayer: FocusLayerState): void {
   const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
   const focusLayerChanged = !focusLayersEqual(focusLayer, nextFocusLayer);
   if (focusLayerChanged) focusLayer = nextFocusLayer;
+  if (focusLayerChanged && activeTheaterId) focusLayersByTheater.set(activeTheaterId, nextFocusLayer);
   if (minimizedChanged) setState({ minimized });
   if (focusLayerChanged) emitFocusLayer();
 }
 
 export function clearCompanionOperationId(): void {
   if (focusLayer?.mode !== "companion") return;
+  const closingLayer = focusLayer;
+  const canRestoreMaximized = closingLayer.returnTo === "maximized"
+    && closingLayer.operationId in state.operations
+    && !state.minimized.includes(closingLayer.operationId);
+  focusLayer = canRestoreMaximized
+    ? { mode: "maximized", operationId: closingLayer.operationId }
+    : null;
+  if (activeTheaterId) {
+    if (focusLayer) focusLayersByTheater.set(activeTheaterId, focusLayer);
+    else focusLayersByTheater.delete(activeTheaterId);
+  }
+  emitFocusLayer();
+}
+
+export function forceDropCompanionOperationId(): void {
+  if (focusLayer?.mode !== "companion") return;
   focusLayer = null;
+  if (activeTheaterId) focusLayersByTheater.delete(activeTheaterId);
   emitFocusLayer();
 }
 
 export function toggleFormationView(): void {
   if (!activeTheaterId) return;
+  if (getCompanionOperationId() !== null) {
+    forceDropCompanionOperationId();
+    if (!formationView) {
+      formationViewsByTheater.set(activeTheaterId, true);
+      formationView = true;
+      emitFormationView();
+    }
+    return;
+  }
   if (formationView) {
     clearFormationView();
     return;
   }
   clearMaximizedOperationId();
-  clearCompanionOperationId();
+  forceDropCompanionOperationId();
   formationViewsByTheater.set(activeTheaterId, true);
   formationView = true;
   emitFormationView();
@@ -527,6 +558,16 @@ export function toggleFormationView(): void {
 
 export function selectFormationLayout(layout: FormationLayout): void {
   if (!activeTheaterId) return;
+  if (getCompanionOperationId() !== null) {
+    setFormationLayout(layout);
+    forceDropCompanionOperationId();
+    if (!formationView) {
+      formationViewsByTheater.set(activeTheaterId, true);
+      formationView = true;
+      emitFormationView();
+    }
+    return;
+  }
   if (formationView && formationLayout === layout) {
     clearFormationView();
     return;
@@ -534,7 +575,7 @@ export function selectFormationLayout(layout: FormationLayout): void {
   setFormationLayout(layout);
   if (!formationView) {
     clearMaximizedOperationId();
-    clearCompanionOperationId();
+    forceDropCompanionOperationId();
     formationViewsByTheater.set(activeTheaterId, true);
     formationView = true;
     emitFormationView();
@@ -606,7 +647,9 @@ function saveFocusLayerForActiveTheater(): void {
 }
 
 function focusLayersEqual(left: FocusLayerState | null, right: FocusLayerState | null): boolean {
-  return left?.mode === right?.mode && left?.operationId === right?.operationId;
+  return left?.mode === right?.mode
+    && left?.operationId === right?.operationId
+    && (left?.mode !== "companion" || right?.mode !== "companion" || left.returnTo === right.returnTo);
 }
 
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {

@@ -9,7 +9,7 @@ import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../s
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -168,7 +168,7 @@ export function OperationsCanvas({
     // 레이아웃이 즉시 닫히지 않도록 부재가 지속될 때만 정리한다(복귀 시 cleanup으로 취소).
     const timer = setTimeout(() => {
       lastValidCompanionRef.current = null;
-      clearCompanionOperationId();
+      forceDropCompanionOperationId();
     }, 1_500);
     return () => clearTimeout(timer);
   }, [companionOperationId, currentPanelCompanion]);
@@ -254,7 +254,7 @@ export function OperationsCanvas({
             onClose: () => {
               if (state.activeOperationId === operation.id) setActiveOperation(null);
               if (panelMaximized === operation.id) clearMaximizedOperationId();
-              if (panelCompanion === operation.id) clearCompanionOperationId();
+              if (panelCompanion === operation.id) forceDropCompanionOperationId();
               onClose(operation.id);
             },
             onMinimize: () => {

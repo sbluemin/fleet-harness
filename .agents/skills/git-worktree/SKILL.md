@@ -64,12 +64,16 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - Treat `<abs-worktree-path>` as the required cwd for all subsequent commands in the task.
    - Do not continue issuing repository commands from the parent checkout unless the user explicitly redirects.
 
-8. **Report in Korean**:
+8. **Install dependencies inside the worktree**:
+   - From `<abs-worktree-path>`, run `pnpm install --frozen-lockfile` before reporting create-mode completion.
+   - If installation fails, stop immediately and report the command failure. Do not report the worktree as ready and do not proceed to Carrier dispatch.
+
+9. **Report in Korean**:
    - Worktree path.
    - Branch name and base branch.
    - Confirmation that cwd is now fixed to the worktree absolute path.
+   - Confirmation that `pnpm install --frozen-lockfile` completed successfully inside the worktree.
    - Suggested next steps.
-   - Note that dependency installation (`pnpm install`) is intentionally not part of this skill; the user runs it manually if needed.
 
 ### Remove Mode
 
@@ -125,7 +129,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 
 - Do not force the base to `main` or `master`; reject those bases by default.
 - Do not remove the main checkout under any circumstance.
-- Do not run `pnpm install`, `npm install`, or any other dependency installer as part of this skill; dependency setup is out of scope.
+- Do not symlink, bind-mount, or otherwise reuse `node_modules` from another checkout. Install dependencies inside the active worktree with `pnpm install --frozen-lockfile`.
 - Do not create helper scripts; execute commands directly through the `Bash` tool.
 - Do not silently route free-form extra text outside the two lifecycle modes. Interpret it into `create` or `remove`, then allow changes only within that mode's workflow.
 - Do not overwrite an existing worktree path or branch. If the path or branch already exists, stop and report.
@@ -139,5 +143,5 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 - **Nimitz** — consult before proceeding with any non-standard `<base-branch>` request. This is especially important when the requested base changes branch policy or release flow.
 - **Stop and report** — when a worktree path or branch is already present or in use. Do not resolve collisions autonomously.
 - Skip carrier delegation for clean create/remove operations that follow the standard `origin/canary` path and have no conflict or policy issue.
-- **Carrier edits inside the new worktree** — after `create`, when you delegate file edits to a carrier (`carrier_dispatch`), pass the **absolute worktree path** as the dispatch `cwd` argument so the carrier's CLI spawns inside this worktree and its repo-relative paths resolve here. If you omit `cwd`, the carrier's cwd defaults to the **main checkout** (not this worktree), so omitting it for worktree work risks editing the main checkout — always set `cwd` for worktree delegation. The carrier can run `build`/`typecheck` inside the worktree only if dependencies are installed there (`pnpm install`); otherwise the Admiral verifies inside the worktree. After each return run `git -C <main-checkout> status --short` to confirm the main checkout stayed clean, and treat the carrier's reported `workspaceChanges` (window-approx) as unreliable — trust the real `git status`.
+- **Carrier edits inside the new worktree** — after `create`, when you delegate file edits to a carrier (`carrier_dispatch`), pass the **absolute worktree path** as the dispatch `cwd` argument so the carrier's CLI spawns inside this worktree and its repo-relative paths resolve here. If you omit `cwd`, the carrier's cwd defaults to the **main checkout** (not this worktree), so omitting it for worktree work risks editing the main checkout — always set `cwd` for worktree delegation. Before dispatch, confirm `pnpm install --frozen-lockfile` succeeded in this worktree, identify every target package, and run each package's declared `typecheck` and `build` scripts from this worktree. If either preflight script is absent or fails, stop and report instead of dispatching. After each return run `git -C <main-checkout> status --short` to confirm the main checkout stayed clean, and treat the carrier's reported `workspaceChanges` (window-approx) as unreliable — trust the real `git status`.
 - **Fleet Plans are worktree-independent** — plans live under the Fleet data directory and are addressed by PlanRef/TaskRef, so never copy a Plan into a new git worktree. Pass the original fully qualified TaskRefs to Ohio; their workspace component resolves the authoritative Plan even when Ohio executes from another cwd.
