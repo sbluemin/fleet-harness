@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearFormationView, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearFormationView, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -348,6 +348,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.
 async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void): Promise<void> {
   const requestEpoch = ++requestEpochRef.current;
+  const focusLayerRevision = getFocusLayerRevision();
   const currentCompanionOperationId = getCompanionOperationId();
   if (currentCompanionOperationId !== null) {
     const operation = getState().operations.find((candidate) => candidate.id === operationId);
@@ -360,7 +361,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
         canOpenCompanions = false;
       }
       // readiness 확인 중 사용자가 Exit·다른 Operation·다른 Theater로 이동했으면 오래된 결과를 버린다.
-      if (requestEpochRef.current !== requestEpoch || getCompanionOperationId() !== currentCompanionOperationId || getLoadedTheaterId() !== operation.theaterId) return;
+      if (requestEpochRef.current !== requestEpoch || getFocusLayerRevision() !== focusLayerRevision || getCompanionOperationId() !== currentCompanionOperationId || getLoadedTheaterId() !== operation.theaterId) return;
     }
     if (descriptor && (!descriptor.companions?.length || !canOpenCompanions)) {
       forceDropCompanionOperationId();

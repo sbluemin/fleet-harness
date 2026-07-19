@@ -82,6 +82,7 @@ let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let focusLayer: FocusLayerState | null = null;
+let focusLayerRevision = 0;
 let formationView = false;
 let formationLayout = readStoredFormationLayout();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
@@ -113,6 +114,10 @@ export function getMaximizedOperationId(): string | null {
 
 export function getCompanionOperationId(): string | null {
   return focusLayer?.mode === "companion" ? focusLayer.operationId : null;
+}
+
+export function getFocusLayerRevision(): number {
+  return focusLayerRevision;
 }
 
 export function getTheaterCompanionOperationId(theaterId: string): string | null {
@@ -637,6 +642,7 @@ function getCollapsedGroupsSnapshot(): readonly string[] {
 }
 
 function emitFocusLayer(): void {
+  focusLayerRevision += 1;
   for (const listener of focusLayerListeners) listener();
 }
 
