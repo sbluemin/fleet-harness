@@ -79,7 +79,6 @@ export class AnalysisRegistry {
     this.entries.delete(operationId);
     entry.stopped = true;
     entry.subscribers.clear();
-    this.clearArtifacts(operationId);
     await this.disposeEntry(entry);
     return true;
   }

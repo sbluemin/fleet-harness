@@ -125,7 +125,7 @@ describe("Session Analyst server contract", () => {
     await expect(registry.message("op", "hello")).resolves.toBe("not_found");
   });
 
-  it("bounds process-memory artifacts and evicts them when the session stops", async () => {
+  it("bounds process-memory artifacts, keeps them after stop, and evicts them on registry dispose", async () => {
     const registry = new AnalysisRegistry();
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: number } }) => void) | undefined;
     await registry.start("op", (onEvent) => {
@@ -140,6 +140,8 @@ describe("Session Analyst server contract", () => {
     expect(registry.artifactHtml("artifact-0")).toBeNull();
     expect(registry.artifactHtml(`artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
     await registry.stop("op");
+    expect(registry.artifactHtml(`artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
+    await registry.dispose();
     expect(registry.artifactHtml(`artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBeNull();
   });
 
@@ -277,12 +279,24 @@ describe("Session Analyst server contract", () => {
       "X-Content-Type-Options": "nosniff",
     });
     expect(response.headers["Content-Security-Policy"]).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+    expect(response.headers["Content-Security-Policy"]).toContain("sandbox allow-scripts");
+    expect(response.headers["Content-Security-Policy"]).not.toContain("allow-same-origin");
     expect(response.headers["Content-Security-Policy"]).toContain("frame-ancestors 'self'");
     expect(response.headers).not.toHaveProperty("Cross-Origin-Opener-Policy");
     expect(response.headers).not.toHaveProperty("Cross-Origin-Resource-Policy");
 
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/stop", {});
+    const afterStop = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    expect(afterStop).toMatchObject({ status: 200, body: html, ended: true });
+
     await router.call("DELETE", "/api/v1/plugins/terminal/analysis/op/artifacts");
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    emit?.({ type: "artifact", artifact: { id: "deleted-artifact", title: "Deleted artifact", html, createdAt: new Date(0).toISOString() } });
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
   });
 
@@ -341,6 +355,7 @@ describe("Session Analyst server contract", () => {
 
 function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
+  let operationDeletedHandler: ((payload: unknown) => void) | undefined;
   const responses: Array<{ status: number; body: unknown }> = [];
   const state = { allowHost: initialHostAllowance };
   const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
@@ -355,12 +370,13 @@ function createRouterHarness(initialHostAllowance: boolean) {
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
       operations: { get: (id: string) => id === "op" ? operation : null },
       paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
-      events: { subscribe: () => () => undefined }, lifecycle: { registerCleanup: () => () => undefined },
+      events: { subscribe: (_channel: string, subscriber: (payload: unknown) => void) => { operationDeletedHandler = subscriber; return () => { operationDeletedHandler = undefined; }; } }, lifecycle: { registerCleanup: () => () => undefined },
     },
   };
   return {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
+    emitOperationDeleted(payload: unknown) { operationDeletedHandler?.(payload); },
     async call(method: string, pathname: string, body?: unknown, headers: Record<string, string> = {}) {
       const writes: string[] = [];
       let ended = false;

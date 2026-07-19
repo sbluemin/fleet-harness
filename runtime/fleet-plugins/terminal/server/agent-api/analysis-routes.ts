@@ -14,7 +14,7 @@ import { readProviderSessionCapture } from "./session-capture.js";
 
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
-export const ANALYSIS_ARTIFACT_CSP = "default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
+export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
 
 type AnalysisRouteDeps = {
   readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
@@ -61,7 +61,10 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
   });
 
   const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
-    if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) void registry.stop(payload.operationId);
+    if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) {
+      registry.clearArtifacts(payload.operationId);
+      void registry.stop(payload.operationId);
+    }
   });
   ctx.host.lifecycle.registerCleanup(async () => { unsubscribeDelete(); await registry.dispose(); });
 }
