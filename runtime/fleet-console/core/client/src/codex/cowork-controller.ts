@@ -31,6 +31,7 @@ type RevisionOutcome = "idle" | "running" | "complete" | "stopped";
 
 const SETTINGS_KEY = "fleet.codex.cowork.settings";
 const BATCH_INSTRUCTION = "Revise the draft to address every saved annotation. Preserve unrelated content and summarize the changes.";
+const STREAM_RENDER_DELAY_MS = 32;
 
 /**
  * 리딩 뷰 인라인 Cowork 증강 — 별도 화면 전환 없이 엔트리 문서 위에서 동작한다.
@@ -46,6 +47,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let settings = readSettings();
   let annotations: AnnotationCard[] = [];
   let reply = "";
+  let renderedReplyText = "";
+  let renderedReplyHtml = "";
+  let revisionRenderTimer: number | null = null;
   let revisionInstruction = "";
   let revisionOutcome: RevisionOutcome = "idle";
   let revisionCollapsed = false;
@@ -162,19 +166,44 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       ${hasContent ? `<div class="cowork-revision-content" aria-hidden="${revisionCollapsed}"><div class="cowork-revision-content-inner">
         ${revisionInstruction || reply ? `<div class="cowork-revision-body">
           ${revisionInstruction ? `<p class="cowork-revision-instruction">${escapeHtml(revisionInstruction)}</p>` : ""}
-          ${reply ? `<div class="cowork-revision-output-scroll"><p class="cowork-revision-output">${escapeHtml(reply)}</p></div>` : ""}
+          ${reply ? `<div class="cowork-revision-output-scroll"><div class="cowork-revision-output markdown-body">${renderedReplyHtml}</div></div>` : ""}
         </div>` : ""}
         ${running ? '<footer class="cowork-revision-status" role="status" aria-live="polite"><i aria-hidden="true"></i><span><strong>Writing revision</strong></span></footer>' : ""}
       </div></div>` : ""}
     </section>`;
   };
 
+  const cancelRevisionRender = () => {
+    if (revisionRenderTimer !== null) window.clearTimeout(revisionRenderTimer);
+    revisionRenderTimer = null;
+  };
+
+  const renderReplyMarkdown = () => {
+    if (renderedReplyText === reply) return;
+    renderedReplyText = reply;
+    renderedReplyHtml = reply ? renderMarkdown(reply).html : "";
+  };
+
   const patchRevisionOutput = () => {
+    renderReplyMarkdown();
     const output = dockZone.querySelector<HTMLElement>(".cowork-revision-output");
     if (!output) { renderDock(); return; }
-    output.textContent = reply;
+    output.innerHTML = renderedReplyHtml;
     const scroll = output.closest<HTMLElement>(".cowork-revision-output-scroll");
     if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  };
+
+  const scheduleRevisionOutput = () => {
+    if (revisionRenderTimer !== null) return;
+    revisionRenderTimer = window.setTimeout(() => {
+      revisionRenderTimer = null;
+      if (!disposed) patchRevisionOutput();
+    }, STREAM_RENDER_DELAY_MS);
+  };
+
+  const flushRevisionOutput = () => {
+    cancelRevisionRender();
+    renderReplyMarkdown();
   };
 
   // 스트리밍 중 동일 마크업 재구축은 등장 애니메이션 재시작(깜빡임)을 유발하므로,
@@ -347,11 +376,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       if (event.type === "transcript" && event.text && session?.state === "running") {
         reply = revisionOutcome === "running" ? reply + event.text : event.text;
         revisionOutcome = "running";
-        patchRevisionOutput();
+        scheduleRevisionOutput();
         return;
       }
       // 도구 호출 상세는 사용자에게 출력하지 않는다 — 러닝 상태는 일반 문구로만 표시.
       if (event.type === "done") {
+        flushRevisionOutput();
         // 제출 전에 취소된 지연 생성 요청은 뒤늦은 이벤트로 완료 처리하지 않는다.
         if (!promptAttempt?.cancelled || promptAttempt.submitted) {
           const completedObservedRun = wasRunning || awaitingResult || revisionOutcome === "stopped" || !!reply || !!revisionInstruction;
@@ -365,6 +395,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         }
       }
       if (event.type === "error" || (event.type === "session" && wasRunning && session?.state !== "running")) {
+        flushRevisionOutput();
         revisionOutcome = "stopped";
         awaitingResult = false;
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
@@ -414,7 +445,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     promptAttempt = attempt;
     promptPending = true;
     annotations = outgoing.map(card => ({ ...card, status: "sent" }));
+    cancelRevisionRender();
     reply = "";
+    renderedReplyText = "";
+    renderedReplyHtml = "";
     revisionInstruction = localInstruction;
     revisionOutcome = "running";
     revisionCollapsed = false;
@@ -463,7 +497,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     unsubscribe = null;
     lastEventId = 0;
     annotations = [];
+    cancelRevisionRender();
     reply = "";
+    renderedReplyText = "";
+    renderedReplyHtml = "";
     revisionInstruction = "";
     revisionOutcome = "idle";
     revisionCollapsed = false;
@@ -543,7 +580,15 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   };
 
   const onClick = (event: MouseEvent) => {
-    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-cowork-action]") : null;
+    if (!(event.target instanceof Element)) return;
+    const copyButton = event.target.closest<HTMLElement>('[data-action="copy-code"]');
+    if (copyButton) {
+      const code = copyButton.closest("pre")?.getAttribute("data-code");
+      if (!code) return;
+      copyCodeToClipboard(copyButton, code);
+      return;
+    }
+    const target = event.target.closest<HTMLElement>("[data-cowork-action]");
     if (!target) return;
     const action = target.dataset.coworkAction;
     if (action === "comment") { composerOpen = true; renderAnchor(); }
@@ -641,6 +686,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   return {
     destroy() {
       disposed = true;
+      cancelRevisionRender();
       unsubscribe?.();
       options.article.removeEventListener("mouseup", onMouseUp);
       options.article.removeEventListener("mousedown", onMouseDown);
@@ -663,6 +709,18 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
 function select(label: string, name: string, values: readonly string[], current: string): string {
   return `<label class="cowork-selector"><span>${label}</span><select name="${name}" ${values.length ? "" : "disabled"}>${values.map(value => `<option value="${escapeAttribute(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>`;
+}
+function copyCodeToClipboard(button: HTMLElement, code: string): void {
+  const clipboard = navigator.clipboard;
+  if (!clipboard) return;
+  let write: Promise<void>;
+  try { write = clipboard.writeText(code); } catch { return; }
+  const original = button.textContent;
+  void write.then(() => {
+    if (!button.isConnected) return;
+    button.textContent = "Copied";
+    window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1_200);
+  }).catch(() => undefined);
 }
 // 소스 라인이 아닌 "렌더된 문서" 관점의 diff — 변경 블록은 하이라이트, 삭제 블록은
 // 흐림+취소선으로 문서 흐름 안에 표시된다.

@@ -42,13 +42,42 @@
 .session-analyst__suggestion-icon[data-tone="aurora"] { color: var(--aurora); }
 .session-analyst__suggestion-icon[data-tone="coral"] { color: var(--coral); }
 .session-analyst__suggestion-icon[data-tone="brass"] { color: var(--brass); }
+.session-analyst__chat-pane :is(button, select) { user-select: none; }
 
-.session-analyst__chat ol { display: grid; gap: 15px; align-content: start; padding: 0; margin: 0; list-style: none; transition: opacity var(--duration-base) var(--ease-glide), filter var(--duration-base) var(--ease-glide); }
-.session-analyst__chat ol.is-dimmed { opacity: .34; filter: saturate(.45); }
+.session-analyst__chat > ol { display: grid; gap: 15px; align-content: start; padding: 0; margin: 0; list-style: none; user-select: text; cursor: text; }
 .session-analyst__message { padding: 11px 15px; border-radius: 18px; white-space: pre-wrap; line-height: 1.55; font-size: 12.5px; }
 .session-analyst__message--user { background: color-mix(in oklch, var(--ink-veil) 70%, var(--ink-mid)); color: var(--text-primary); justify-self: end; max-width: 90%; }
 .session-analyst__message--analyst { position: relative; max-width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--text-secondary); padding: 6px 4px 6px 28px; animation: analyst-answer-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__message--analyst::before { content: "✳"; position: absolute; left: 2px; top: 7px; color: var(--aurora); }
+.session-analyst__response.markdown-body {
+  --font-size-2xs: 9px;
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-lg: 12px;
+  --font-size-code: 11.5px;
+  --font-size-body: 12.5px;
+  --font-size-title-md: 15px;
+  --font-size-display-md: 17px;
+  --font-size-display-lg: 18px;
+  max-inline-size: none;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.58;
+  white-space: normal;
+}
+.session-analyst__response.markdown-body > * + * { margin-top: var(--space-3); }
+.session-analyst__response.markdown-body > :first-child { margin-top: 0; }
+.session-analyst__response.markdown-body > :last-child { margin-bottom: 0; }
+.session-analyst__response.markdown-body :is(h1, h2, h3, h4) { margin-top: var(--space-4); scroll-margin-top: 0; }
+.session-analyst__response.markdown-body h2 { padding-left: var(--space-3); }
+.session-analyst__response.markdown-body p { margin-bottom: var(--space-3); }
+.session-analyst__response.markdown-body :is(ul, ol) { margin-bottom: var(--space-3); padding-left: var(--space-5); }
+.session-analyst__response.markdown-body li + li { margin-top: var(--space-1); }
+.session-analyst__response.markdown-body table { margin-block: var(--space-3); font-size: 10px; }
+.session-analyst__response.markdown-body table :is(th, td) { padding: var(--space-2) var(--space-3); }
+.session-analyst__response.markdown-body :is(blockquote, .code-block, .diagram-block) { margin-block: var(--space-3); }
+.session-analyst__response.markdown-body blockquote { padding: var(--space-2) var(--space-3); }
+.session-analyst__response.markdown-body .code-block code { padding: var(--space-3); }
 
 .session-analyst__pulse { position: relative; min-height: 92px; flex: none; margin-top: 15px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--aurora) 35%, var(--hairline)); border-radius: var(--radius-md); background: color-mix(in oklch, var(--aurora) 6%, var(--ink-deep)); padding: var(--space-3); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before { content: ""; position: absolute; z-index: 1; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, transparent, var(--aurora), transparent); background-size: 200% 100%; animation: analyst-aurora-scan 1.6s linear infinite; }
@@ -147,7 +176,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__chat ol, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }
+  .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }
   .session-analyst-handle:hover { transform: translateY(-50%); }
   .session-analyst__suggestions button:hover { transform: none; }
   .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__composer.is-docking, .session-analyst__artifact-menu { animation: none; }

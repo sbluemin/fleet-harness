@@ -2471,7 +2471,38 @@ kbd {
 .cowork-revision-body { display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .cowork-revision-instruction { justify-self: end; max-width: 82%; margin: 0; border-radius: 15px 15px 4px 15px; background: var(--ink-mid); color: var(--ink-pearl); padding: var(--space-2) var(--space-3); font-size: var(--font-size-xs); overflow-wrap: anywhere; }
 .cowork-revision-output-scroll { max-height: 220px; overflow: auto; }
-.cowork-revision-output { position: relative; min-height: 2.5rem; margin: 0; padding-left: calc(var(--space-4) + var(--space-2)); color: var(--ink-fog); font-size: var(--font-size-sm); line-height: 1.58; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cowork-revision-output.markdown-body {
+  --font-size-2xs: 9px;
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-lg: 12px;
+  --font-size-code: 11.5px;
+  --font-size-body: 12.5px;
+  --font-size-title-md: 15px;
+  --font-size-display-md: 17px;
+  --font-size-display-lg: 18px;
+  position: relative;
+  min-height: 2.5rem;
+  max-inline-size: none;
+  margin: 0;
+  padding-left: calc(var(--space-4) + var(--space-2));
+  color: var(--ink-fog);
+  line-height: 1.58;
+  overflow-wrap: anywhere;
+}
+.cowork-revision-output.markdown-body > * + * { margin-top: var(--space-3); }
+.cowork-revision-output.markdown-body > :first-child { margin-top: 0; }
+.cowork-revision-output.markdown-body > :last-child { margin-bottom: 0; }
+.cowork-revision-output.markdown-body :is(h1, h2, h3, h4) { margin-top: var(--space-4); scroll-margin-top: 0; }
+.cowork-revision-output.markdown-body h2 { padding-left: var(--space-3); }
+.cowork-revision-output.markdown-body p { margin-bottom: var(--space-3); }
+.cowork-revision-output.markdown-body :is(ul, ol) { margin-bottom: var(--space-3); padding-left: var(--space-5); }
+.cowork-revision-output.markdown-body li + li { margin-top: var(--space-1); }
+.cowork-revision-output.markdown-body table { margin-block: var(--space-3); font-size: 10px; }
+.cowork-revision-output.markdown-body table :is(th, td) { padding: var(--space-2) var(--space-3); }
+.cowork-revision-output.markdown-body :is(blockquote, .code-block, .diagram-block) { margin-block: var(--space-3); }
+.cowork-revision-output.markdown-body blockquote { padding: var(--space-2) var(--space-3); }
+.cowork-revision-output.markdown-body .code-block code { padding: var(--space-3); }
 .cowork-revision-output::before { content: "✳"; position: absolute; left: 1px; top: 1px; color: var(--aurora); }
 .cowork-revision-status { display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--aurora) 5%, var(--ink-deep)); padding: var(--space-2) var(--space-3); }
 .cowork-revision-status i { position: relative; width: 16px; height: 16px; flex: none; border: 1px solid var(--aurora); border-radius: 50%; animation: cowork-revision-pulse 1.4s var(--ease-glide) infinite; }

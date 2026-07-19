@@ -36,6 +36,12 @@ describe("Session Analyst contract", () => {
     expect(css).toContain("var(--coral)");
     expect(css).toContain(".session-analyst__composer-surface:focus-within");
     expect(css).toContain(".session-analyst__composer.is-working .session-analyst__composer-surface");
+    expect(css).toContain("user-select: text");
+    expect(css).toContain(":is(button, select) { user-select: none; }");
+    expect(css).not.toContain(":is(button, a)");
+    expect(css).toContain(".session-analyst__chat > ol {");
+    expect(css).not.toMatch(/\.session-analyst__chat ol\s*\{/);
+    expect(css).not.toContain(".session-analyst__chat ol.is-dimmed");
     expect(css).toContain("var(--surface-glass-strong)");
     expect(css).not.toContain("background: color-mix(in oklch, var(--ink-mid) 60%, black)");
     expect(css).not.toContain(".session-analyst__chat-pane textarea:focus-visible");
