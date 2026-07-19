@@ -351,6 +351,10 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   const focusLayerRevision = getFocusLayerRevision();
   const currentCompanionOperationId = getCompanionOperationId();
   if (currentCompanionOperationId !== null) {
+    if (currentCompanionOperationId === operationId) {
+      setActiveOperation(operationId);
+      return;
+    }
     const operation = getState().operations.find((candidate) => candidate.id === operationId);
     const operationWasMinimized = getCanvasSnapshot().minimized.includes(operationId);
     const descriptor = operation && operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);

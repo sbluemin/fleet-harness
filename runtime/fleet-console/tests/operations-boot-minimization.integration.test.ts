@@ -393,6 +393,27 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).not.toContain("second");
   });
 
+  it("keeps the current Analyze target without revalidating readiness", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(false);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first")]);
+    await act(async () => {
+      toggleFormationView();
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("first");
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).not.toHaveBeenCalled();
+    expect(getCompanionOperationId()).toBe("first");
+    clearCompanionOperationId();
+    expect(getFormationView()).toBe(true);
+  });
+
   it("falls back to Map when an Analyze retarget is not ready", async () => {
     const canOpenCompanions = vi.fn().mockResolvedValue(false);
     registryMocks.operationKinds = [companionKind(canOpenCompanions)];
