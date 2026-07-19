@@ -122,6 +122,32 @@ describe("allowedExecutorTools", () => {
   });
 });
 
+describe("Chronicle routing metadata", () => {
+  it("keeps governed-knowledge routing Wiki-neutral", () => {
+    expect(CHRONICLE_METADATA.title).toBe("Chief Knowledge Officer");
+    expect(CHRONICLE_METADATA.summary).toBe("Documentation and governed knowledge stewardship.");
+    expect(CHRONICLE_METADATA.whenToUse).toEqual([
+      "[Codebase Doc] documentation creation, update, or post-change .md audit (including AGENTS.md, README, CHANGELOG)",
+      "[Codebase Doc] PR summaries, release notes, API specs (OpenAPI/Swagger), change-impact summaries, breaking-change reports, migration guides",
+      "[Governed Knowledge] structured knowledge entry proposal or revision",
+    ]);
+    expect(CHRONICLE_METADATA.whenNotToUse).toEqual([
+      "before implementation and verification are complete",
+      "code modification (→genesis) or code review (→sentinel)",
+      "architectural judgment (→nimitz) or release-scope planning decisions (→kirov)",
+    ]);
+
+    const routingFields = [
+      CHRONICLE_METADATA.title,
+      CHRONICLE_METADATA.summary,
+      ...CHRONICLE_METADATA.whenToUse,
+      ...CHRONICLE_METADATA.whenNotToUse,
+    ].join("\n");
+    expect(routingFields).not.toMatch(/wiki/i);
+    expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
+  });
+});
+
 describe("Task Force capability defaults", () => {
   it("only nimitz, vanguard, and tempest source-own the capability marker", () => {
     const capable = DEFAULT_PERSONAS
