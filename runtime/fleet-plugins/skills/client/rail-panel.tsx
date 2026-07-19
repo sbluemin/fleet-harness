@@ -32,7 +32,7 @@ interface ReadMoreEntry {
 // ─── SkillsPanel ─────────────────────────────────────────────────────────────
 
 function SkillsPanel({ ctx }: SkillsPanelProps) {
-  const contextKey = skillsContextKey(ctx.theaterId, ctx.pathContext.relPath);
+  const contextKey = skillsContextKey(ctx.theaterId);
 
   return <SkillsPanelBody key={contextKey} ctx={ctx} />;
 }
@@ -41,7 +41,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   const { theaterId } = ctx;
   const state = useSkillsStore();
   const { activeTab } = state;
-  const contextKey = skillsContextKey(ctx.theaterId, ctx.pathContext.relPath);
+  const contextKey = skillsContextKey(ctx.theaterId);
   const [readMoreEntry, setReadMoreEntry] = useState<ReadMoreEntry | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [installedRefreshKey, setInstalledRefreshKey] = useState(0);
@@ -100,14 +100,12 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
       {activeTab === "installed" ? (
         <InstalledTab
           theaterId={theaterId}
-          relPath={ctx.pathContext.relPath}
           onReadMore={handleReadMoreInstalled}
           refreshKey={installedRefreshKey}
         />
       ) : (
         <FindTab
           theaterId={theaterId}
-          relPath={ctx.pathContext.relPath}
           onReadMore={handleReadMoreFind}
           onInstallSuccess={handleInstallSuccess}
         />
@@ -119,7 +117,6 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         skill={readMoreEntry?.skill ?? null}
         isInstalled={readMoreEntry?.isInstalled ?? false}
         theaterId={theaterId}
-        relPath={ctx.pathContext.relPath}
         onClose={() => setReadMoreEntry(null)}
         onInstall={handleOverlayInstall}
       />
@@ -148,6 +145,5 @@ export const skillsPanel: RailPanelDescriptor = {
   id: "skills",
   title: "Skills",
   icon: SkillsIcon,
-  pathAware: true,
   render: (ctx: RailPanelContext) => <SkillsPanel ctx={ctx} />,
 };

@@ -17,7 +17,6 @@ interface MarkdownViewerProps {
   readonly onOpenPath: (relativePath: string) => void;
   readonly relativePath: string;
   readonly theaterId: string | null;
-  readonly contextRelPath: string | null;
   readonly truncated?: boolean;
 }
 
@@ -25,21 +24,20 @@ interface NeutralizeOptions {
   readonly allowLocalImageMarkers: boolean;
   readonly currentRelativePath: string;
   readonly theaterId: string | null;
-  readonly contextRelPath: string | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, contextRelPath, truncated }: MarkdownViewerProps) {
+export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, truncated }: MarkdownViewerProps) {
   // file-explorer는 신뢰할 수 없는 임의 .md를 미리보기하므로, 렌더 HTML을 DOM에 mount하기 전에
   // 위험 요소를 무력화한다. 로컬 이미지/링크는 안전한 console 내부 경로로만 되살리고, 외부
   // 이미지는 mount 전에 제거해야 추적(tracking pixel)·IP 노출을 막을 수 있다.
   const html = useMemo(() => {
     const rendered = renderMarkdown(content).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
-    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, contextRelPath });
+    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId });
     return doc.body.innerHTML;
-  }, [content, relativePath, theaterId, contextRelPath]);
+  }, [content, relativePath, theaterId]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -48,11 +46,11 @@ export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, c
     installDiagramHydrator(root);
     // Mermaid 하이드레이터가 비동기로 삽입하는 노드/속성(SPA href 등)도 즉시 무력화한다
     // (mount 전 사전 처리만으로는 비동기 삽입분이 누락되기 때문).
-    neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, contextRelPath });
-    const observer = new MutationObserver(() => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, contextRelPath }));
+    neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId });
+    const observer = new MutationObserver(() => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId }));
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
     return () => observer.disconnect();
-  }, [html, relativePath, theaterId, contextRelPath]);
+  }, [html, relativePath, theaterId]);
 
   // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 처리한다.
   // codex는 자체 위임 핸들러를 두지만 file-explorer엔 없어 버튼이 무동작이었다 —
@@ -138,7 +136,7 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
       && options.allowLocalImageMarkers
       && options.theaterId
       && localImagePath
-      && src === buildFileExplorerImageSrc(options.theaterId, localImagePath, options.contextRelPath)
+      && src === buildFileExplorerImageSrc(options.theaterId, localImagePath)
     ) {
       element.removeAttribute("srcset");
       continue;
@@ -152,7 +150,7 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
     const localPath = resolveMarkdownFileRef(src, options.currentRelativePath);
     element.removeAttribute("srcset");
     if (element.tagName === "IMG" && options.theaterId && localPath && isSupportedMarkdownImagePath(localPath)) {
-      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, localPath, options.contextRelPath));
+      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, localPath));
       element.setAttribute("data-fexp-local-image-path", localPath);
       element.removeAttribute("aria-hidden");
       continue;

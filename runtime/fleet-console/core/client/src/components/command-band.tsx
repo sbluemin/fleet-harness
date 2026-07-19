@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
-import { commandBandRenameCommitTarget, railPathContextDeckOpenAfterCommandBandToggle, shouldCloseCommandBandContextDeck } from "./command-band-guards.js";
+import { commandBandRenameCommitTarget } from "./command-band-guards.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { putRailPathContext } from "../rail/path-context-api.js";
-import { PathContextDeck } from "../rail/path-context-deck.js";
-import { mutateRailPathContext, setRailPathContextDeckOpen, toggleRailChrome, useRailChromeExpanded, useRailPathContextStore } from "../rail/rail-store.js";
+import { toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -40,16 +38,12 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const activeCliLabel = typeof activeOperation?.payload.cliLabel === "string" ? activeOperation.payload.cliLabel : activeCliId;
   const activeKind = activeOperation ? activePlugin?.operationKinds?.find((kind) => kind.type === activeOperation.type) ?? null : null;
   const activeOperationIcon = activeOperation && activePlugin?.renderLaunchIcon ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKind?.title ?? activeOperation.type }) : null;
-  const pathContext = useRailPathContextStore();
-  const contextTriggerRef = useRef<HTMLButtonElement>(null);
-  const contextDeckRef = useRef<HTMLDivElement>(null);
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
   const edgeRevealRef = useRef<HTMLButtonElement>(null);
   const pointerWithinRef = useRef({ edge: false, band: false });
   const renameTargetOperationIdRef = useRef<string | null>(null);
-  const [contextDeckOpen, setContextDeckOpen] = useState(false);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
@@ -92,17 +86,6 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     renameTargetOperationIdRef.current = null;
     rename.cancel();
   }, [rename, state.activeOperationId]);
-
-  useEffect(() => {
-    if (!contextDeckOpen) return;
-    const closeOnPointer = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || contextTriggerRef.current?.contains(target) || contextDeckRef.current?.contains(target)) return;
-      setContextDeckOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnPointer);
-    return () => document.removeEventListener("pointerdown", closeOnPointer);
-  }, [contextDeckOpen]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -154,34 +137,12 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     setCopyFailedValue(null);
   }, [state.channel]);
 
-  useEffect(() => {
-    if (shouldCloseCommandBandContextDeck(contextDeckOpen, pathContext.isPathContextDeckOpen)) setContextDeckOpen(false);
-  }, [contextDeckOpen, pathContext.isPathContextDeckOpen]);
-
-  const closeContextDeck = () => {
-    setContextDeckOpen(false);
-    contextTriggerRef.current?.focus();
-  };
-
   const copyEnvironmentValue = (value: string) => {
     // 복사 실패는 해당 버튼의 인라인 상태로만 알린다 — environmentError는 fetch 실패 전용이며
     // 세팅하면 팝오버 전체가 에러 화면으로 대체되어 진단 값 자체를 볼 수 없게 된다.
     void navigator.clipboard.writeText(value)
       .then(() => { setCopiedValue(value); setCopyFailedValue(null); })
       .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
-  };
-
-  // 밴드 데크는 로컬 상태만 사용한다 — 공유 open 플래그를 세우면 path-aware 레일 패널의
-  // 데크가 같은 플래그로 함께 열리므로, 밴드를 열 때는 레일 쪽 데크를 닫아 상호 배타를 유지한다.
-  const toggleContextDeck = () => {
-    const next = !contextDeckOpen;
-    setContextDeckOpen(next);
-    setRailPathContextDeckOpen(railPathContextDeckOpenAfterCommandBandToggle(next, pathContext.isPathContextDeckOpen));
-  };
-
-  const selectPathContext = (relPath: string | null) => {
-    if (!activeTheater) return;
-    void mutateRailPathContext(activeTheater.id, (signal) => putRailPathContext(activeTheater.id, relPath, signal));
   };
 
   const beginRename = () => {
@@ -272,10 +233,6 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
             {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKind?.title ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
           </> : null}
         </div> : null}
-        {operationsViewVisible && activeTheater && pathContext.pathContextHydrated && pathContext.pathContext ? <><span className="command-band-context-separator" aria-hidden="true" /><div className="command-band-context">
-          <button ref={contextTriggerRef} type="button" className="command-band-context-trigger" onClick={toggleContextDeck} aria-expanded={contextDeckOpen} aria-haspopup="dialog" title={pathContext.pathContextError ?? "Path context — shared with the Activity Rail"}><PathContextIcon />{pathContext.pathContext.label}<span aria-hidden="true">⌄</span></button>
-          {contextDeckOpen ? <PathContextDeck ref={contextDeckRef} className="command-band-context-deck" theaterId={activeTheater.id} theaterLabel={activeTheater.label} context={pathContext.pathContext} isMutating={pathContext.pathContextMutationInProgress} onSelect={selectPathContext} onClose={closeContextDeck} /> : null}
-        </div></> : null}
       </div>
       <div className="command-band-right">
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-pin" onClick={fullscreen.togglePin} aria-label="Pin command band" aria-pressed={fullscreen.isPinned} title={fullscreen.isPinned ? "Unpin command band" : "Pin command band"}>
@@ -340,8 +297,4 @@ function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {
 
 function PinIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5h6M6.2 2.5v3l2.1 2.1v1H7.1V13.5l.9 1M9.8 2.5v3L7.7 7.6v1h1.2V13.5L8 14.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function PathContextIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.7h4.5a1 1 0 0 1 1 1v6.3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }

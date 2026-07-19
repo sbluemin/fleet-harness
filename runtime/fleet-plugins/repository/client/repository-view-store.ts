@@ -7,8 +7,6 @@ import type { DiffFileEntry } from "../server/types.js";
 export interface SelectedFile {
   readonly entry: DiffFileEntry;
   readonly theaterId: string;
-  // 선택 시점의 subPath — 저장소가 바뀌면 선택을 초기화하는 데 사용
-  readonly subPath: string;
 }
 
 interface DiffViewState {
@@ -38,14 +36,14 @@ function getSnapshot(): DiffViewState {
   return state;
 }
 
-export function useSelectedFile(theaterId: string | null, subPath: string): SelectedFile | null {
+export function useSelectedFile(theaterId: string | null): SelectedFile | null {
   const s = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  if (!s.file || s.file.theaterId !== theaterId || s.file.subPath !== subPath) return null;
+  if (!s.file || s.file.theaterId !== theaterId) return null;
   return s.file;
 }
 
-export function setSelectedFile(entry: DiffFileEntry, subPath: string, theaterId: string): void {
-  state = { file: { entry, subPath, theaterId } };
+export function setSelectedFile(entry: DiffFileEntry, theaterId: string): void {
+  state = { file: { entry, theaterId } };
   emit();
 }
 

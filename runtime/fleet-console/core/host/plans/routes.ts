@@ -1,7 +1,7 @@
 import type http from "node:http";
 
 import { PlanStoreError, isValidPlanName, listPlansForWorkspace, readPlanForWorkspace, resolvePlansWatchDirectory } from "./plan-store.js";
-import { TheaterPathContextError, resolveTheaterPathContext } from "../theater-path-context.js";
+import { TheaterRootError, resolveTheaterRoot } from "../theater-root.js";
 
 export interface PlansRouteDeps {
   readonly dataDir: string;
@@ -66,8 +66,8 @@ async function handlePlansEvents(req: http.IncomingMessage, res: http.ServerResp
     return;
   }
   try {
-    const context = await resolveTheaterPathContext(theaterPath, null);
-    const watchPath = resolvePlansWatchDirectory(deps.dataDir, context.realPath);
+    const context = await resolveTheaterRoot(theaterPath);
+    const watchPath = resolvePlansWatchDirectory(deps.dataDir, context.realRoot);
     if (!watchPath || !deps.subscribeToChanges) {
       deps.writeJson(res, 404, { error: "not_found" });
       return;
@@ -105,8 +105,8 @@ async function handlePlansList(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   try {
-    const context = await resolveTheaterPathContext(theaterPath, null);
-    deps.writeJson(res, 200, { plans: await listPlansForWorkspace(deps.dataDir, context.realPath) });
+    const context = await resolveTheaterRoot(theaterPath);
+    deps.writeJson(res, 200, { plans: await listPlansForWorkspace(deps.dataDir, context.realRoot) });
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }
@@ -136,8 +136,8 @@ async function handlePlansRead(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   try {
-    const context = await resolveTheaterPathContext(theaterPath, null);
-    deps.writeJson(res, 200, await readPlanForWorkspace(deps.dataDir, context.realPath, body.name));
+    const context = await resolveTheaterRoot(theaterPath);
+    deps.writeJson(res, 200, await readPlanForWorkspace(deps.dataDir, context.realRoot, body.name));
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }
@@ -148,7 +148,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function writePlanStoreError(res: http.ServerResponse, deps: PlansRouteDeps, error: unknown): void {
-  if (error instanceof TheaterPathContextError) {
+  if (error instanceof TheaterRootError) {
     const httpStatus = error.code === "forbidden" ? 403 : error.code === "not_found" ? 404 : 400;
     deps.writeJson(res, httpStatus, { error: error.code });
     return;

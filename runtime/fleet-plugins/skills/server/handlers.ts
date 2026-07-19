@@ -91,20 +91,13 @@ function buildDisplayPath(scope: Scope, name: string): string {
   return scope === "global" ? `~/.agents/skills/${name}` : `.agents/skills/${name}`;
 }
 
-function parseOptionalRelPath(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) return null;
-  return typeof value === "string" ? value : undefined;
-}
-
 async function resolveProjectScopeCwd(
   ctx: FleetPluginServerContext,
   theaterId: string | undefined,
-  relPath: string | null | undefined,
 ): Promise<string | null> {
   if (!theaterId) return null;
-  if (relPath === undefined) throw new ProjectPathError("invalid_rel_path");
   const theaterRoot = ctx.host.paths.resolveTheaterPath(theaterId);
-  return theaterRoot ? resolveProjectCwd(theaterRoot, relPath) : null;
+  return theaterRoot ? resolveProjectCwd(theaterRoot) : null;
 }
 
 function writeProjectPathError(
@@ -181,15 +174,13 @@ export async function handleList(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  if (url.searchParams.has("relPath")) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   const theaterId = url.searchParams.get("theaterId") ?? undefined;
-  const relPath = url.searchParams.has("relPath")
-    ? url.searchParams.get("relPath") || null
-    : null;
   let projectCwd: string | null = null;
 
   if (theaterId) {
     try {
-      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
     } catch (error) {
       writeProjectPathError(res, ctx, error);
       return;
@@ -256,6 +247,7 @@ export async function handleSearch(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  if (url.searchParams.has("relPath")) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   const q = url.searchParams.get("q") ?? "";
   const rawLimit = parseInt(url.searchParams.get("limit") ?? "10", 10);
   const limit = isNaN(rawLimit) ? 10 : rawLimit;
@@ -280,11 +272,10 @@ export async function handleInstall(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { source, skill, scope, agents, theaterId: rawTheaterId, relPath: rawRelPath } = body;
+  const { source, skill, scope, agents, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
-  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateSource(source)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -297,7 +288,7 @@ export async function handleInstall(
   let projectCwd: string | null = null;
   if (scope === "project") {
     try {
-      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
     } catch (error) {
       writeProjectPathError(res, ctx, error);
       return;
@@ -329,18 +320,17 @@ export async function handleUpdate(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, theaterId: rawTheaterId, relPath: rawRelPath } = body;
+  const { scope, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
-  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
   let projectCwd: string | null = null;
   if (scope === "project") {
     try {
-      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
     } catch (error) {
       writeProjectPathError(res, ctx, error);
       return;
@@ -369,6 +359,7 @@ export async function handleGetJob(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  if (url.searchParams.has("relPath")) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   const jobId = url.searchParams.get("jobId");
   const rawCursor = parseInt(url.searchParams.get("cursor") ?? "0", 10);
   const cursor = isNaN(rawCursor) || rawCursor < 0 ? 0 : rawCursor;
@@ -391,11 +382,10 @@ export async function handleRemove(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, skill, theaterId: rawTheaterId, relPath: rawRelPath } = body;
+  const { scope, skill, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
-  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -403,7 +393,7 @@ export async function handleRemove(
   let projectCwd: string | null = null;
   if (scope === "project") {
     try {
-      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
     } catch (error) {
       writeProjectPathError(res, ctx, error);
       return;
@@ -437,18 +427,17 @@ export async function handlePreview(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { source, skill, theaterId: rawTheaterId, relPath: rawRelPath } = body;
+  const { source, skill, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
-  const relPath = parseOptionalRelPath(rawRelPath);
   if (!validateSource(source)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
   let cwd = defaultCwd();
   if (theaterId) {
     try {
-      const projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      const projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
       if (!projectCwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
       cwd = projectCwd;
     } catch (error) {
@@ -476,11 +465,10 @@ export async function handleInstalledFile(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, skill, theaterId: rawTheaterId, relPath: rawRelPath } = body;
+  const { scope, skill, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
-  const relPath = parseOptionalRelPath(rawRelPath);
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -488,7 +476,7 @@ export async function handleInstalledFile(
   let projectCwd: string | null = null;
   if (scope === "project") {
     try {
-      projectCwd = await resolveProjectScopeCwd(ctx, theaterId, relPath);
+      projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
     } catch (error) {
       writeProjectPathError(res, ctx, error);
       return;

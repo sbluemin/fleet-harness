@@ -28,7 +28,6 @@ export const codexPanel: RailPanelDescriptor = {
   id: "codex",
   title: "Codex",
   icon: () => <CodexIcon />,
-  pathAware: false,
   render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} />,
 };
 

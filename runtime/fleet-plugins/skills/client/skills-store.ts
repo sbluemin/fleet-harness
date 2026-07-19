@@ -90,8 +90,8 @@ export function setSearchState(results: readonly SkillSearchItem[], loading: boo
   emit();
 }
 
-export function skillsContextKey(theaterId: string | null, relPath: string | null): string {
-  return JSON.stringify([theaterId, relPath]);
+export function skillsContextKey(theaterId: string | null): string {
+  return theaterId ?? "";
 }
 
 export function hasInstalledStateForContext(current: SkillsState, contextKey: string): boolean {

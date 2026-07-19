@@ -60,7 +60,6 @@ export const plansPanel: RailPanelDescriptor = {
   id: "plans",
   title: "Plans",
   icon: PlansIcon,
-  pathAware: false,
   render: (ctx) => <PlansPanel {...ctx} />,
 };
 

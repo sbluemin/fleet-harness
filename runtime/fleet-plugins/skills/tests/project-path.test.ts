@@ -9,9 +9,7 @@ import { resolveProjectCwd } from "../server/project-path.js";
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface ProjectPathFixture {
-  readonly outside: string;
   readonly root: string;
-  readonly selected: string;
 }
 
 // ─── module state ────────────────────────────────────────────────────────────
@@ -24,10 +22,8 @@ async function makeFixture(): Promise<ProjectPathFixture> {
   const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-path-"));
   temporaryDirectories.push(temporaryDirectory);
   const root = path.join(temporaryDirectory, "theater");
-  const selected = path.join(root, "nested");
-  const outside = path.join(temporaryDirectory, "outside");
-  await Promise.all([fs.mkdir(selected, { recursive: true }), fs.mkdir(outside)]);
-  return { outside, root, selected };
+  await fs.mkdir(root, { recursive: true });
+  return { root };
 }
 
 afterEach(async () => {
@@ -35,29 +31,17 @@ afterEach(async () => {
 });
 
 describe("resolveProjectCwd", () => {
-  it("uses the selected contained directory as the project cwd", async () => {
+  it("uses the canonical Theater root as the project cwd", async () => {
     const fixture = await makeFixture();
 
-    await expect(resolveProjectCwd(fixture.root, "nested")).resolves.toBe(await fs.realpath(fixture.selected));
+    await expect(resolveProjectCwd(fixture.root)).resolves.toBe(await fs.realpath(fixture.root));
   });
 
-  it.each(["/tmp/escape", "C:\\escape", "\\\\server\\share", "../escape", "nested/../../escape"])(
-    "rejects unsafe relPath %s before use",
-    async (relPath) => {
-      const fixture = await makeFixture();
-
-      await expect(resolveProjectCwd(fixture.root, relPath)).rejects.toMatchObject({
-        code: "invalid_rel_path",
-      });
-    },
-  );
-
-  it("rejects a symlink that escapes the theater after realpath resolution", async () => {
+  it("rejects missing and non-directory Theater roots", async () => {
     const fixture = await makeFixture();
-    await fs.symlink(fixture.outside, path.join(fixture.root, "escape"));
-
-    await expect(resolveProjectCwd(fixture.root, "escape")).rejects.toMatchObject({
-      code: "path_outside_theater",
-    });
+    await expect(resolveProjectCwd(path.join(fixture.root, "missing"))).rejects.toMatchObject({ code: "not_found" });
+    const file = path.join(fixture.root, "file");
+    await fs.writeFile(file, "x");
+    await expect(resolveProjectCwd(file)).rejects.toMatchObject({ code: "invalid_path" });
   });
 });

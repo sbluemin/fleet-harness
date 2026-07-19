@@ -18,16 +18,15 @@ import { useJobLog } from "./use-job-log.js";
 
 interface InstalledTabProps {
   readonly theaterId: string | null;
-  readonly relPath: string | null;
   readonly onReadMore: (skill: SkillListItem) => void;
   readonly refreshKey?: number;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-async function fetchInstalledList(theaterId: string | null, relPath: string | null): Promise<SkillListItem[]> {
+async function fetchInstalledList(theaterId: string | null): Promise<SkillListItem[]> {
   const query = theaterId
-    ? `?theaterId=${encodeURIComponent(theaterId)}&relPath=${encodeURIComponent(relPath ?? "")}`
+    ? `?theaterId=${encodeURIComponent(theaterId)}`
     : "";
   const res = await fetch(`/plugins/skills/list${query}`);
   if (!res.ok) return [];
@@ -37,32 +36,32 @@ async function fetchInstalledList(theaterId: string | null, relPath: string | nu
 
 // ─── InstalledTab ─────────────────────────────────────────────────────────────
 
-export function InstalledTab({ theaterId, relPath, onReadMore, refreshKey }: InstalledTabProps) {
+export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTabProps) {
   const state = useSkillsStore();
   const { scope, filterText } = state;
-  const contextKey = skillsContextKey(theaterId, relPath);
+  const contextKey = skillsContextKey(theaterId);
   const installedList = hasInstalledStateForContext(state, contextKey) ? state.installedList : [];
   const installedLoading = hasInstalledStateForContext(state, contextKey) && state.installedLoading;
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
 
-  const loadList = useCallback((tid: string | null, contextRelPath: string | null) => {
-    const requestContextKey = skillsContextKey(tid, contextRelPath);
+  const loadList = useCallback((tid: string | null) => {
+    const requestContextKey = skillsContextKey(tid);
     setInstalledState(requestContextKey, [], true);
-    fetchInstalledList(tid, contextRelPath)
+    fetchInstalledList(tid)
       .then((skills) => setInstalledState(requestContextKey, skills, false))
       .catch(() => setInstalledState(requestContextKey, [], false));
   }, []);
 
   useEffect(() => {
-    loadList(theaterId, relPath);
-  }, [theaterId, relPath, loadList, refreshKey]);
+    loadList(theaterId);
+  }, [theaterId, loadList, refreshKey]);
 
   useEffect(() => {
     if (updateLog.status === "done" || updateLog.status === "error") {
-      loadList(theaterId, relPath);
+      loadList(theaterId);
     }
-  }, [updateLog.status, theaterId, relPath, loadList]);
+  }, [updateLog.status, theaterId, loadList]);
 
   const handleUpdate = useCallback((updScope: string) => {
     const s = updScope as Scope;
@@ -70,16 +69,14 @@ export function InstalledTab({ theaterId, relPath, onReadMore, refreshKey }: Ins
     const body: Record<string, unknown> = { scope: s };
     if (s === "project" && theaterId) {
       body["theaterId"] = theaterId;
-      body["relPath"] = relPath;
     }
     updateLog.start("/plugins/skills/update", body);
-  }, [theaterId, relPath, updateLog]);
+  }, [theaterId, updateLog]);
 
   const handleRemove = useCallback((name: string, removeScope: string) => {
     const body: Record<string, unknown> = { scope: removeScope, skill: name };
     if (removeScope === "project" && theaterId) {
       body["theaterId"] = theaterId;
-      body["relPath"] = relPath;
     }
 
     void fetch("/plugins/skills/remove", {
@@ -87,9 +84,9 @@ export function InstalledTab({ theaterId, relPath, onReadMore, refreshKey }: Ins
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(() => loadList(theaterId, relPath))
+      .then(() => loadList(theaterId))
       .catch(() => null);
-  }, [theaterId, relPath, loadList]);
+  }, [theaterId, loadList]);
 
   const handleRetry = useCallback(() => {
     if (updateScopeRef.current) handleUpdate(updateScopeRef.current);

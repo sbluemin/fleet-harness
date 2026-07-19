@@ -59,7 +59,7 @@ Fleet Console은 병렬 에이전트 작업을 탐색 가능한 작전 공간으
 
 <img src=".github/console-activity-files.png" alt="Files Activity Rail이 열린 Fleet Console" width="100%" />
 
-Activity Rail은 Files, Plans, Diff, History, Skills, Alerts, Global Shell을 라이브 Operation 옆에 둡니다. 지원 패널은 서버에 영속된 Theater 경로 컨텍스트를 공유하므로, 원본 파일시스템 경로를 브라우저에 노출하지 않고 탐색 범위를 동기화합니다.
+Activity Rail은 Files, Plans, Repository, Skills, Alerts, Codex, Global Shell을 라이브 Operation 옆에 둡니다. 각 패널은 활성 Theater 루트에서 동작하며, Theater를 전환하면 모든 패널이 새로고침되고 Theater별 Shell 세션은 필요한 경우 보존됩니다.
 
 ### 트랜스크립트가 아닌 결정을 축적
 

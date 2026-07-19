@@ -5,7 +5,6 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { FileReadResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
 import { FileTree, type PluginFilesClient } from "./tree.js";
-import { adaptFolderList, contextKey, prefixContextPath } from "./path-context.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
@@ -24,35 +23,30 @@ export const fileExplorerPanel: RailPanelDescriptor = {
   id: "file-explorer",
   title: "Files",
   icon: FileExplorerIcon,
-  pathAware: true,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
 };
 
-function makeFilesClient(theaterId: string | null, contextRelPath: string | null): PluginFilesClient {
+function makeFilesClient(theaterId: string | null): PluginFilesClient {
   return {
     listFolder: async (relativePath?) => {
       if (!theaterId) throw new Error("no_theater");
       const res = await fetch("/plugins/file-explorer/files/list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, relativePath: prefixContextPath(contextRelPath, relativePath ?? "") }),
+        body: JSON.stringify({ theaterId, relativePath: relativePath ?? "" }),
       });
       if (!res.ok) {
         const payload = await res.json() as { error?: string };
         throw new Error(payload.error ?? "list_failed");
       }
-      const result = await res.json() as FolderListResult;
-      const adapted = adaptFolderList(contextRelPath, result);
-      if (!adapted) throw new Error("context_boundary");
-      return adapted;
+      return res.json() as Promise<FolderListResult>;
     },
   };
 }
 
 function FileExplorerPanel(ctx: RailPanelContext) {
   const { theaterId } = ctx;
-  const contextRelPath = ctx.pathContext.relPath;
-  const contextScope = contextKey(theaterId, contextRelPath);
+  const contextScope = theaterId ?? "";
   const { selectedPath, viewState, treePaneWidth } = useFileExplorerViewState(contextScope);
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
@@ -60,7 +54,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const [isDragging, setIsDragging] = useState(false);
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
-  const files = useMemo(() => makeFilesClient(theaterId, contextRelPath), [theaterId, contextRelPath]);
+  const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
 
   const openFilePath = useCallback(async (relativePath: string, displayName?: string) => {
     if (!theaterId) {
@@ -73,7 +67,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
     if (IMAGE_EXTS.has(ext)) {
       const src = theaterId
-        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(prefixContextPath(contextRelPath, relativePath) ?? "")}`
+        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`
         : "";
       setViewState(contextScope, { kind: "image", relativePath, name, src });
       return;
@@ -85,7 +79,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       const res = await fetch("/plugins/file-explorer/files/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId, relativePath: prefixContextPath(contextRelPath, relativePath) }),
+        body: JSON.stringify({ theaterId, relativePath }),
       });
       if (!res.ok) {
         const payload = await res.json() as { error?: string };
@@ -96,9 +90,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
         setViewState(contextScope, { kind: "binary", name });
         return;
       }
-      const resultPath = adaptFolderList(contextRelPath, { relativePath: result.relativePath, parentRelativePath: null, entries: [] })?.relativePath;
-      if (resultPath === undefined) throw new Error("context_boundary");
-      setViewState(contextScope, { kind: "code", relativePath: resultPath, content: result.content, lang: result.lang, truncated: result.truncated });
+      setViewState(contextScope, { kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unable to load file";
       if (msg === "binary_file") {
@@ -107,7 +99,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
         setViewState(contextScope, { kind: "error", message: msg });
       }
     }
-  }, [contextRelPath, contextScope, theaterId]);
+  }, [contextScope, theaterId]);
   const handleSelect = useCallback(async (entry: FolderEntry) => {
     if (entry.kind !== "file") return;
     await openFilePath(entry.relativePath, entry.name);
@@ -182,7 +174,6 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   relativePath={viewState.relativePath}
                   theaterId={theaterId}
                   truncated={viewState.truncated}
-                  contextRelPath={contextRelPath}
                 />
               )}
               {viewState.kind === "code" && viewState.lang !== "markdown" && (
@@ -209,7 +200,6 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           files={files}
           theaterId={theaterId}
           contextKey={contextScope}
-          contextRelPath={contextRelPath}
           selectedPath={selectedPath}
           onSelect={handleSelect}
         />

@@ -59,7 +59,7 @@ Open multiple Operations on an infinite canvas, arrange them around the task, zo
 
 <img src=".github/console-activity-files.png" alt="Fleet Console with the Files Activity Rail open" width="100%" />
 
-The Activity Rail places Files, Plans, Diff, History, Skills, alerts, and a global shell beside live Operations. Supported panels share server-persisted Theater path context, so project exploration stays synchronized without exposing raw filesystem paths to the browser.
+The Activity Rail places Files, Plans, Repository, Skills, Alerts, Codex, and Global Shell beside live Operations. Each panel operates at the active Theater root — switching Theaters refreshes every panel and preserves Theater-specific Shell sessions where useful.
 
 ### Keep decisions, not just transcripts
 

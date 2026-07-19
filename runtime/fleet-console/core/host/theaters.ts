@@ -9,7 +9,6 @@ export interface TheaterRegistration {
   readonly label: string;
   readonly registeredAt: string;
   readonly lastOpenedAt: string;
-  readonly pathContext: string | null;
 }
 
 export class TheaterRegistry {
@@ -32,7 +31,6 @@ export class TheaterRegistry {
       label: theaterLabel(resolved),
       registeredAt: existing?.registeredAt ?? now,
       lastOpenedAt: now,
-      pathContext: existing?.pathContext ?? null,
     };
     this.#items.set(id, item);
     this.#mruId = id;
@@ -77,13 +75,5 @@ export class TheaterRegistry {
     const removed = this.#items.delete(id);
     if (this.#mruId === id) this.#mruId = this.list()[0]?.id ?? null;
     return removed;
-  }
-
-  setPathContext(id: string, pathContext: string | null): TheaterRegistration | null {
-    const current = this.#items.get(id);
-    if (!current) return null;
-    const next = { ...current, pathContext };
-    this.#items.set(id, next);
-    return next;
   }
 }

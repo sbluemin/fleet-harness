@@ -14,8 +14,8 @@ const SKILL_B: SkillListItem = { name: "from-b", scope: "project", agents: [], d
 
 describe("installed skills context state", () => {
   it("drops a late A response after context B has become active", () => {
-    const contextA = skillsContextKey("theater-a", "src");
-    const contextB = skillsContextKey("theater-b", "docs");
+    const contextA = skillsContextKey("theater-a");
+    const contextB = skillsContextKey("theater-b");
 
     resetSkillsStateForTest();
     resetProjectContextState(contextA);
