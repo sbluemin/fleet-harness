@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
+import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, forgetTheater, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError } from "../api.js";
 import { animateViewportTo, claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -14,7 +14,7 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -243,6 +243,20 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       .catch(() => {});
   }, []);
 
+  const handleReorderTheaters = useCallback((orderedTheaterIds: readonly string[]) => {
+    const theaterById = new Map(stateRef.current.theaters.map((theater) => [theater.id, theater]));
+    const patches = orderedTheaterIds.flatMap((theaterId, order) => {
+      const theater = theaterById.get(theaterId);
+      if (!theater || theater.order === order) return [];
+      return [patchTheaterOrder(theaterId, order)];
+    });
+    if (patches.length === 0) return;
+    void Promise.allSettled(patches)
+      .then(() => fetchTheaters(null))
+      .then(hydrateTheaters)
+      .catch(() => {});
+  }, []);
+
   const handleUngroupAll = useCallback((groupId: string) => {
     void deleteGroup(groupId)
       .then(() => Promise.all([
@@ -320,6 +334,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
         onSetGroupColor={handleSetGroupColor}
         onRenameGroup={handleRenameGroup}
         onReorderGroups={handleReorderGroups}
+        onReorderTheaters={handleReorderTheaters}
         onUngroupAll={handleUngroupAll}
         onSelectTheater={setActiveTheater}
         onAddTheater={handleAddTheater}

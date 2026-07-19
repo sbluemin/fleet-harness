@@ -14,7 +14,7 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import { getTheaterCanvasSnapshot, selectFormationLayout, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
 import { sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
-import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderWithinSegment, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
+import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { setSideBarCollapsed, setSideBarWidth, setTheaterCollapsed, useCollapsedTheaters, useSideBarState } from "./operations-side-bar-store.js";
@@ -45,6 +45,7 @@ interface OperationsSideBarProps {
   readonly onSetGroupColor: (groupId: string, color: string | null) => void;
   readonly onRenameGroup: (groupId: string, name: string) => void;
   readonly onReorderGroups: (orderedGroupIds: readonly string[]) => void;
+  readonly onReorderTheaters: (orderedTheaterIds: readonly string[]) => void;
   readonly onUngroupAll: (groupId: string) => void;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onAddTheater: (path: string) => void;
@@ -86,7 +87,18 @@ interface GroupDragState {
   readonly dropIndex: number;
 }
 
-type DragState = ChipDragState | GroupDragState;
+interface TheaterDragState {
+  readonly kind: "theater";
+  readonly sourceTheaterId: string;
+  readonly pointerId: number;
+  readonly startX: number;
+  readonly startY: number;
+  readonly currentY: number;
+  readonly dragging: boolean;
+  readonly dropIndex: number;
+}
+
+type DragState = ChipDragState | GroupDragState | TheaterDragState;
 
 interface TheaterEntryBuildInput {
   readonly theaterId: string;
@@ -105,11 +117,15 @@ interface TheaterSectionHeaderProps {
   readonly operationCount: number;
   readonly active: boolean;
   readonly collapsed: boolean;
+  readonly dragging: boolean;
+  readonly dropTarget: boolean;
+  readonly dragOffsetY: number;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
 }
 
 interface TheaterInactiveSectionProps {
@@ -120,12 +136,17 @@ interface TheaterInactiveSectionProps {
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly operationCount: number;
   readonly collapsed: boolean;
+  readonly dragging: boolean;
+  readonly dropBefore: boolean;
+  readonly dropAfter: boolean;
+  readonly dragOffsetY: number;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
 }
 
 interface TheaterActionsMenuProps {
@@ -166,6 +187,7 @@ export function OperationsSideBar({
   onSetGroupColor,
   onRenameGroup,
   onReorderGroups,
+  onReorderTheaters,
   onUngroupAll,
   onSelectTheater,
   onAddTheater,
@@ -188,8 +210,10 @@ export function OperationsSideBar({
   const currentOrderRef = useRef<string[]>([]);
   const dropSectionsRef = useRef<DropSectionInfo[]>([]);
   const orderedGroupIdsRef = useRef<string[]>([]);
+  const orderedTheaterIdsRef = useRef<string[]>([]);
   const onSetGroupIdRef = useRef(onSetGroupId);
   const onReorderGroupsRef = useRef(onReorderGroups);
+  const onReorderTheatersRef = useRef(onReorderTheaters);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -294,8 +318,10 @@ export function OperationsSideBar({
     currentOrderRef.current = currentOrder;
     dropSectionsRef.current = dropSections;
     orderedGroupIdsRef.current = orderedGroupIds;
+    orderedTheaterIdsRef.current = theaters.map((theater) => theater.id);
     onSetGroupIdRef.current = onSetGroupId;
     onReorderGroupsRef.current = onReorderGroups;
+    onReorderTheatersRef.current = onReorderTheaters;
   });
 
   const updateDrag = (next: DragState | null) => {
@@ -325,6 +351,11 @@ export function OperationsSideBar({
         updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
         return;
       }
+      if (current.kind === "theater") {
+        const dropIndex = theaterDropIndexFromPoint(event.clientY, orderedTheaterIdsRef.current, chipsRef.current, current.sourceTheaterId);
+        updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex });
+        return;
+      }
       const dropIndex = groupDropIndexFromPoint(event.clientY, orderedGroupIdsRef.current, chipsRef.current, current.sourceGroupId);
       updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex });
     };
@@ -334,6 +365,13 @@ export function OperationsSideBar({
       const snap = dragRef.current;
       updateDrag(null);
       if (!snap?.dragging) return;
+
+      if (snap.kind === "theater") {
+        const nextTheaterIds = reorderTheaterIds(orderedTheaterIdsRef.current, snap.sourceTheaterId, snap.dropIndex);
+        if (nextTheaterIds.join("\0") === orderedTheaterIdsRef.current.join("\0")) return;
+        onReorderTheatersRef.current(nextTheaterIds);
+        return;
+      }
 
       if (snap.kind === "group") {
         const nextGroupIds = reorderGroupIds(orderedGroupIdsRef.current, snap.sourceGroupId, snap.dropIndex);
@@ -414,6 +452,25 @@ export function OperationsSideBar({
       currentY: event.clientY,
       dragging: false,
       dropIndex: orderedGroupIds.indexOf(groupId),
+    });
+  };
+
+  const beginTheaterPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => {
+    if (event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    const orderedTheaterIds = theaters.map((theater) => theater.id);
+    if (!orderedTheaterIds.includes(theaterId)) return;
+    setActiveContextMenu(null);
+    disarmClose();
+    updateDrag({
+      kind: "theater",
+      sourceTheaterId: theaterId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentY: event.clientY,
+      dragging: false,
+      dropIndex: orderedTheaterIds.indexOf(theaterId),
     });
   };
 
@@ -518,10 +575,21 @@ export function OperationsSideBar({
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
-        {theaters.map((theater) => {
+        {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperationCount = operations.filter((operation) => operation.theaterId === theater.id).length;
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
+          const isTheaterDragging = drag?.kind === "theater" && drag.sourceTheaterId === theater.id && drag.dragging;
+          const theaterDragOffsetY = isTheaterDragging && drag?.kind === "theater" ? drag.currentY - drag.startY : 0;
+          const theaterDropBefore = drag?.kind === "theater"
+            && drag.dragging
+            && drag.sourceTheaterId !== theater.id
+            && drag.dropIndex === theaterIndex;
+          const theaterDropAfter = drag?.kind === "theater"
+            && drag.dragging
+            && drag.sourceTheaterId !== theater.id
+            && theaterIndex === theaters.length - 1
+            && drag.dropIndex === theaters.length;
           if (!isActiveTheater) {
             const theaterCanvas = getTheaterCanvasSnapshot(theater.id);
             const inactiveEntries = buildTheaterEntries({
@@ -546,6 +614,10 @@ export function OperationsSideBar({
                 operationAccent={theaterCanvas.operationAccent}
                 operationCount={theaterOperationCount}
                 collapsed={theaterCollapsed}
+                dragging={isTheaterDragging}
+                dropBefore={theaterDropBefore}
+                dropAfter={theaterDropAfter}
+                dragOffsetY={theaterDragOffsetY}
                 onSelectTheater={onSelectTheater}
                 onFocus={onFocus}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
@@ -558,13 +630,18 @@ export function OperationsSideBar({
                   setNewMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
                 }}
+                onPointerDragStart={beginTheaterPointerDrag}
               />
             );
           }
           return (
             <li
               key={theater.id}
-              className="side-bar-theater-section side-bar-theater-section--active"
+              className={[
+                "side-bar-theater-section side-bar-theater-section--active",
+                theaterDropBefore ? "side-bar-theater-section--drop-before" : "",
+                theaterDropAfter ? "side-bar-theater-section--drop-after" : "",
+              ].filter(Boolean).join(" ")}
               data-theater-id={theater.id}
             >
               <TheaterSectionHeader
@@ -572,6 +649,9 @@ export function OperationsSideBar({
                 operationCount={theaterOperationCount}
                 active
                 collapsed={theaterCollapsed}
+                dragging={isTheaterDragging}
+                dropTarget={theaterDropBefore}
+                dragOffsetY={theaterDragOffsetY}
                 onSelectTheater={onSelectTheater}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenActions={(anchor, returnFocus) => {
@@ -583,6 +663,7 @@ export function OperationsSideBar({
                   setNewMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
                 }}
+                onPointerDragStart={beginTheaterPointerDrag}
               />
               {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
@@ -837,12 +918,25 @@ function TheaterSectionHeader({
   operationCount,
   active,
   collapsed,
+  dragging,
+  dropTarget,
+  dragOffsetY,
   onSelectTheater,
   onToggleCollapsed,
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
+  onPointerDragStart,
 }: TheaterSectionHeaderProps) {
+  const suppressClickRef = useRef(false);
+  const headerClassName = [
+    "side-bar-theater-header",
+    active ? "is-active" : "",
+    dragging ? "side-bar-theater-header--dragging" : "",
+    dropTarget ? "side-bar-theater-header--drop-target" : "",
+  ].filter(Boolean).join(" ");
+  const headerStyle = dragging ? ({ "--drag-dy": `${Math.round(dragOffsetY)}px` } as CSSProperties) : undefined;
+
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     onContextMenu(event.currentTarget.getBoundingClientRect());
@@ -856,14 +950,34 @@ function TheaterSectionHeader({
     onSelectTheater(theater.id);
   };
 
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    onPointerDragStart(event, theater.id);
+  };
+
+  const handlePointerUp = () => {
+    if (dragging) suppressClickRef.current = true;
+  };
+
+  const select = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onSelectTheater(theater.id);
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`side-bar-theater-header${active ? " is-active" : ""}`}
-      onClick={() => onSelectTheater(theater.id)}
+      className={headerClassName}
+      style={headerStyle}
+      onClick={select}
       onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       aria-current={active ? "true" : undefined}
       aria-expanded={!collapsed}
       title={theater.label}
@@ -919,27 +1033,43 @@ function TheaterInactiveSection({
   operationAccent,
   operationCount,
   collapsed,
+  dragging,
+  dropBefore,
+  dropAfter,
+  dragOffsetY,
   onSelectTheater,
   onFocus,
   onToggleCollapsed,
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
+  onPointerDragStart,
 }: TheaterInactiveSectionProps) {
   const sections = groupOperations(entries, groups, []);
   const hasCustomGroups = sections.some((section) => section.group !== null);
   return (
-    <li className="side-bar-theater-section" data-theater-id={theater.id}>
+    <li
+      className={[
+        "side-bar-theater-section",
+        dropBefore ? "side-bar-theater-section--drop-before" : "",
+        dropAfter ? "side-bar-theater-section--drop-after" : "",
+      ].filter(Boolean).join(" ")}
+      data-theater-id={theater.id}
+    >
       <TheaterSectionHeader
         theater={theater}
         operationCount={operationCount}
         active={false}
         collapsed={collapsed}
+        dragging={dragging}
+        dropTarget={dropBefore}
+        dragOffsetY={dragOffsetY}
         onSelectTheater={onSelectTheater}
         onToggleCollapsed={onToggleCollapsed}
         onOpenActions={onOpenActions}
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
+        onPointerDragStart={onPointerDragStart}
       />
       {!collapsed && sections.length > 0 ? (
         <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>

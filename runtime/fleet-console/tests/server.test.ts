@@ -2472,6 +2472,61 @@ describe("observer theater forget", () => {
   });
 });
 
+describe("observer theater order", () => {
+  it("authorizes, validates, persists, and restores Theater order PATCHes", async () => {
+    const theaterDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-order-theater-"));
+    tempDirs.push(theaterDir);
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, theaterDir);
+    const url = `${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`;
+    const origin = new URL(fixture.endpoint).origin;
+
+    const unauthorized = await fetch(url, {
+      method: "PATCH",
+      headers: { Origin: "http://127.0.0.1:9999", "Content-Type": "application/json" },
+      body: JSON.stringify({ order: 1 }),
+    });
+    const invalid = await fetch(url, {
+      method: "PATCH",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ order: -1 }),
+    });
+    const missing = await fetch(`${fixture.endpoint}api/v1/theaters/missing`, {
+      method: "PATCH",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ order: 1 }),
+    });
+    const patched = await fetch(url, {
+      method: "PATCH",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ order: 3 }),
+    });
+    const patchedBody = await patched.json() as { readonly id: string; readonly order?: number };
+    const listed = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly order?: number }> }>(`${fixture.endpoint}api/v1/theaters`);
+    const statePath = path.join(fixture.carrierStoreDir, "console", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly version: number; readonly theaters: ReadonlyArray<{ readonly id: string; readonly order?: number }> };
+
+    expect(unauthorized.status).toBe(401);
+    expect(invalid.status).toBe(400);
+    expect(missing.status).toBe(404);
+    expect(patched.status).toBe(200);
+    expect(patchedBody).toMatchObject({ id: theater.id, order: 3 });
+    expect(listed.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
+    expect(state.version).toBe(2);
+    expect(state.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
+
+    await fixture.server.stop();
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-order-restart-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+    const restored = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly order?: number }> }>(`${restartedEndpoint}api/v1/theaters`);
+
+    expect(restored.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
+  });
+});
+
 async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
   readonly agentCliDetector?: ConsoleServerDeps["agentCliDetector"];

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, applyConsoleUpdate, fetchReleaseNotes } from "../core/client/src/api.js";
+import { ApiError, applyConsoleUpdate, fetchReleaseNotes, fetchTheaters, patchTheaterOrder } from "../core/client/src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -10,6 +10,44 @@ afterEach(() => {
 });
 
 describe("client api parsing", () => {
+  it("PATCHes Theater order and carries valid optional order values", async () => {
+    const theater = {
+      id: "theater-a",
+      label: "Alpha",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastOpenedAt: "2026-01-02T00:00:00.000Z",
+      order: 2,
+      hasWiki: true,
+      activeAdmiralCount: 0,
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(theater)));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(patchTheaterOrder("theater/a", 2)).resolves.toEqual(theater);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/theaters/theater%2Fa", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: 2 }),
+      signal: undefined,
+    });
+  });
+
+  it("keeps legacy Theater responses without order and ignores malformed optional order", async () => {
+    const theater = {
+      id: "theater-a",
+      label: "Alpha",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastOpenedAt: "2026-01-02T00:00:00.000Z",
+      hasWiki: false,
+      activeAdmiralCount: 0,
+    };
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      theaters: [theater, { ...theater, id: "theater-b", order: -1 }],
+    }))) as typeof fetch;
+
+    await expect(fetchTheaters()).resolves.toEqual([theater, { ...theater, id: "theater-b" }]);
+  });
+
   it("requests update apply without browser-controlled package targets", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "accepted" }), { status: 202 }));
     globalThis.fetch = fetchMock as typeof fetch;

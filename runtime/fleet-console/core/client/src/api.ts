@@ -92,11 +92,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function fetchTheaters(signal?: AbortSignal): Promise<readonly TheaterInfo[]> {
+export async function fetchTheaters(signal?: AbortSignal | null): Promise<readonly TheaterInfo[]> {
   return (await fetchTheaterBootstrap(signal)).theaters;
 }
 
-export async function fetchTheaterBootstrap(signal?: AbortSignal): Promise<TheaterBootstrap> {
+export async function fetchTheaterBootstrap(signal?: AbortSignal | null): Promise<TheaterBootstrap> {
   const response = await fetch("/api/v1/theaters", { signal });
   await assertOk(response);
   const payload = (await response.json()) as { theaters?: unknown };
@@ -143,6 +143,17 @@ export async function addTheater(folderGrantId: string, signal?: AbortSignal): P
   await assertOk(response);
   const payload = await response.json() as unknown;
   return assertTheaterInfo(payload, response.status);
+}
+
+export async function patchTheaterOrder(theaterId: string, order: number, signal?: AbortSignal): Promise<TheaterInfo> {
+  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order }),
+    signal,
+  });
+  await assertOk(response);
+  return assertTheaterInfo(await response.json(), response.status);
 }
 
 export async function listTheaterFolders(path: string | null, signal?: AbortSignal): Promise<TheaterFolderListResponse> {
@@ -367,7 +378,15 @@ function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
   ) {
     throw new ApiError(status, "Invalid Theater response");
   }
-  return payload as TheaterInfo;
+  return {
+    id: payload.id,
+    label: payload.label,
+    createdAt: payload.createdAt,
+    lastOpenedAt: payload.lastOpenedAt,
+    ...(typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? { order: payload.order } : {}),
+    hasWiki: payload.hasWiki,
+    activeAdmiralCount: payload.activeAdmiralCount,
+  };
 }
 
 function assertObserverStatus(value: unknown, status: number): ObserverStatus {

@@ -49,6 +49,7 @@ export interface ConsoleTheaterInfo {
   readonly label: string;
   readonly createdAt: string;
   readonly lastOpenedAt: string;
+  readonly order?: number;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
 }

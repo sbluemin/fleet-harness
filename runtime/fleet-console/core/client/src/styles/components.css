@@ -2274,6 +2274,7 @@
 }
 
 .side-bar-theater-section {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2297,7 +2298,7 @@
   border-radius: 8px;
   background: transparent;
   color: var(--ink-fog);
-  cursor: pointer;
+  cursor: grab;
   font-family: var(--font-body);
   font-size: 12.5px;
   font-weight: 750;
@@ -2306,7 +2307,9 @@
   transition:
     background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
+    color var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
   user-select: none;
 }
 
@@ -2734,7 +2737,9 @@
 }
 
 .side-bar-group-section--drop-before::before,
-.side-bar-group-section--drop-after::after {
+.side-bar-group-section--drop-after::after,
+.side-bar-theater-section--drop-before::before,
+.side-bar-theater-section--drop-after::after {
   content: "";
   position: absolute;
   left: 2px;
@@ -2747,11 +2752,13 @@
   z-index: 12;
 }
 
-.side-bar-group-section--drop-before::before {
+.side-bar-group-section--drop-before::before,
+.side-bar-theater-section--drop-before::before {
   top: -2px;
 }
 
-.side-bar-group-section--drop-after::after {
+.side-bar-group-section--drop-after::after,
+.side-bar-theater-section--drop-after::after {
   bottom: -2px;
 }
 
@@ -2784,12 +2791,14 @@
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-group-header--drop-target {
+.side-bar-group-header--drop-target,
+.side-bar-theater-header--drop-target {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 34%, transparent);
 }
 
-.side-bar-group-header--dragging {
+.side-bar-group-header--dragging,
+.side-bar-theater-header--dragging {
   opacity: 0.88;
   transform: translateY(var(--drag-dy, 0)) scale(1.015);
   z-index: 20;
@@ -2829,11 +2838,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .side-bar-group-header {
+  .side-bar-group-header,
+  .side-bar-theater-header {
     transition: none;
   }
 
-  .side-bar-group-header--dragging {
+  .side-bar-group-header--dragging,
+  .side-bar-theater-header--dragging {
     transform: translateY(var(--drag-dy, 0));
   }
 
