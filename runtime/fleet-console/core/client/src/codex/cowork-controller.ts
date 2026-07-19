@@ -745,13 +745,8 @@ function renderRenderedDiff(base: string, draft: string): string {
     return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
   }).join("");
 }
-function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, text: `[${card.quote}]\n${card.comment.trim() || "Please revise this passage."}` }; }
-function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard {
-  const divider = dto.text.indexOf("]\n");
-  return divider > 0 && dto.text.startsWith("[")
-    ? { id: dto.id, quote: dto.text.slice(1, divider), comment: dto.text.slice(divider + 2), status: "pending" }
-    : { id: dto.id, quote: "", comment: dto.text, status: "pending" };
-}
+function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, quote: card.quote, comment: card.comment.trim() || "Please revise this passage." }; }
+function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard { return { id: dto.id, quote: dto.quote, comment: dto.comment, status: "pending" }; }
 function stripFrontmatter(markdown: string): string { return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ""); }
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }

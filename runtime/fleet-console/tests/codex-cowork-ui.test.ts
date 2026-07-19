@@ -38,7 +38,7 @@ function sessionDto(overrides: Record<string, unknown> = {}) {
   return {
     id: "cowork-1", workspaceId: "theater", entryId: "entry", state: "idle", revision: 2,
     draft: DRAFT, baseDraft: BASE_DRAFT, baseHash: "hash", baseVersion: 1,
-    selection: null, annotations: [{ id: "a1", text: "[Readable text.]\nMake this more precise." }],
+    selection: null, annotations: [{ id: "a1", quote: "Readable text.", comment: "Make this more precise." }],
     cli: "codex", model: "gpt", effort: "medium", ...overrides,
   };
 }
@@ -99,8 +99,7 @@ describe("Cowork inline copilot", () => {
 
     // 지연 생성된 세션의 빈 annotations가 로컬 첫 카드를 덮어쓰면 안 된다.
     await vi.waitFor(() => expect(postedAnnotations).not.toBeNull());
-    expect(postedAnnotations).toHaveLength(1);
-    expect(JSON.stringify(postedAnnotations)).toContain("Make it clearer");
+    expect(postedAnnotations).toEqual([{ id: expect.any(String), quote: "Published body.", comment: "Make it clearer" }]);
     expect(article.querySelector(".cowork-chip")?.textContent).toContain("1");
 
     controller.destroy();

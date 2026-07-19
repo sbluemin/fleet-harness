@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 import { getAllBackendConfigs, getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
-import type { CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
+import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
 import { encodeSseData } from "../../sse.js";
 import { withSecurityHeaders } from "../security-headers.js";
 
@@ -50,7 +50,10 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     const b = await body(request);
     if (request.method === "POST" && parts[4] === "settings") return json(response, 200, service.dto(await service.settings(context.workspaceId, id, identity(b))));
     if (request.method === "POST" && parts[4] === "selection") return json(response, 200, service.dto(await service.setSelection(context.workspaceId, id, typeof b.selection === "string" ? b.selection : null)));
-    if (request.method === "POST" && parts[4] === "annotations") return json(response, 200, service.dto(await service.annotations(context.workspaceId, id, Array.isArray(b.annotations) ? b.annotations.filter(validAnnotation) : [])));
+    if (request.method === "POST" && parts[4] === "annotations") {
+      const annotations = Array.isArray(b.annotations) ? b.annotations.map(annotation).filter((value): value is CoworkAnnotationDto => value !== null) : [];
+      return json(response, 200, service.dto(await service.annotations(context.workspaceId, id, annotations)));
+    }
     if (request.method === "POST" && parts[4] === "prompt") return json(response, 202, service.dto(await service.prompt(context.workspaceId, id, typeof b.prompt === "string" ? b.prompt : "")));
     if (request.method === "POST" && parts[4] === "cancel") return json(response, 200, service.dto(await service.cancel(context.workspaceId, id)));
     if (request.method === "POST" && parts[4] === "apply") return json(response, 200, service.dto(await service.apply(context.workspaceId, id, typeof b.expectedRevision === "number" ? b.expectedRevision : undefined)));
@@ -62,6 +65,11 @@ function isLoopback(r: IncomingMessage) { const addr = r.socket.remoteAddress; r
 function readAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string> }) { if (!isLoopback(r)) return false; const origin = r.headers.origin; return typeof origin !== "string" || c.allowedOrigins.has(origin); }
 function writeAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string> }) { return isLoopback(r) && typeof r.headers.origin === "string" && c.allowedOrigins.has(r.headers.origin); }
 async function body(r: IncomingMessage): Promise<Record<string, unknown>> { let raw = ""; for await (const c of r) { raw += String(c); if (raw.length > 1024 * 1024) throw new Error("body_too_large"); } try { const v: unknown = JSON.parse(raw || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; } catch { throw new Error("invalid_json"); } }
-function validAnnotation(v: unknown): v is { id: string; text: string; start?: number; end?: number } { return !!v && typeof v === "object" && typeof (v as { id?: unknown }).id === "string" && typeof (v as { text?: unknown }).text === "string"; }
+function annotation(value: unknown): CoworkAnnotationDto | null {
+  if (!value || typeof value !== "object") return null;
+  const input = value as { id?: unknown; quote?: unknown; comment?: unknown; start?: unknown; end?: unknown };
+  if (typeof input.id !== "string" || typeof input.quote !== "string" || typeof input.comment !== "string") return null;
+  return { id: input.id, quote: input.quote, comment: input.comment, ...(typeof input.start === "number" && Number.isFinite(input.start) ? { start: input.start } : {}), ...(typeof input.end === "number" && Number.isFinite(input.end) ? { end: input.end } : {}) };
+}
 function identity(b: Record<string, unknown>): { cli?: string; model?: string; effort?: string } { const pick = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 64 ? v : undefined; return { cli: pick(b.cli), model: pick(b.model), effort: pick(b.effort) }; }
 function json(r: ServerResponse, status: number, value: unknown) { r.writeHead(status, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" })); r.end(JSON.stringify(value)); return true; }

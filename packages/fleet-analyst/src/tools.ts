@@ -32,10 +32,10 @@ interface ToolMetadata {
 const TOOL_METADATA: Record<string, ToolMetadata> = {
   [ANALYST_TOOL_IDS.sessionOutline]: {
     id: ANALYST_TOOL_IDS.sessionOutline,
-    description: "Structured overview of the observed session: event count, stages, and touched files. Call this first.",
-    promptSnippet: "Start analysis with session_outline before retrieving transcript detail.",
-    whenToUse: ["At the beginning of every analysis request.", "To identify useful stages or file activity before drilling down."],
-    whenNotToUse: ["Do not use it as evidence for a specific event; retrieve that event instead."],
+    description: "Structured overview of the observed session: event count, stages, and touched files.",
+    promptSnippet: "Use session_outline when a broad historical or session overview benefits from an aggregate map.",
+    whenToUse: ["For broad historical or session-overview questions.", "To identify useful stages or file activity before drilling down."],
+    whenNotToUse: ["Do not call it for identity, capability, limits, usage, or other direct-answer questions.", "Do not require it before live_tail for a current-state question.", "Do not use it as evidence for a specific event; retrieve that event instead."],
     usageGuidelines: ["Returns aggregate counts only and takes no parameters."],
     parameters: { type: "object", properties: {} },
   },
