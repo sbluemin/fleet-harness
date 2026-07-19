@@ -86,10 +86,16 @@ export class AnalysisRegistry {
   private storeArtifact(operationId: string, artifactId: string, html: string): void {
     this.artifacts.delete(artifactId);
     this.artifacts.set(artifactId, { operationId, html });
-    while (this.artifacts.size > MAX_ANALYSIS_ARTIFACTS) {
-      const oldestId = this.artifacts.keys().next().value as string | undefined;
-      if (!oldestId) break;
-      this.artifacts.delete(oldestId);
+    let operationSize = 0;
+    let oldestOperationArtifactId: string | undefined;
+    for (const [storedArtifactId, artifact] of this.artifacts) {
+      if (artifact.operationId !== operationId) continue;
+      oldestOperationArtifactId ??= storedArtifactId;
+      operationSize += 1;
+      if (operationSize > MAX_ANALYSIS_ARTIFACTS) {
+        this.artifacts.delete(oldestOperationArtifactId);
+        break;
+      }
     }
   }
 

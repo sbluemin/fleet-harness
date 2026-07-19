@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisReducer, initialAnalysisState } from "./analysis-state.js";
+import { analysisReducer, initialAnalysisState, MAX_ANALYSIS_ARTIFACTS } from "./analysis-state.js";
 
 const catalog = { clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [{ id: "sonnet", label: "Sonnet", effortLevels: ["low", "high"], defaultEffort: "high" }] }] };
 
@@ -74,6 +74,22 @@ describe("shared analysis store reducer", () => {
     expect(stopped).toMatchObject({ started: false, busy: false, phase: "stopped", runEndedAt: 1_500, entries: writing.entries, artifacts: next.artifacts, latestActivity: { kind: "writing" } });
     expect(stopped.artifacts.map((artifact) => artifact.id)).toEqual(["b", "a"]);
     expect(analysisReducer(stopped, { type: "clear-artifacts" }).artifacts).toEqual([]);
+  });
+
+  it("keeps only the newest per-operation artifact working set", () => {
+    let state = initialAnalysisState;
+    for (let index = 0; index <= MAX_ANALYSIS_ARTIFACTS; index += 1) {
+      state = analysisReducer(state, {
+        type: "event",
+        event: { type: "artifact", artifact: { id: `artifact-${index}`, title: `Artifact ${index}`, html: `<p>${index}</p>`, createdAt: index } },
+        now: index,
+      });
+    }
+
+    expect(state.artifacts).toHaveLength(MAX_ANALYSIS_ARTIFACTS);
+    expect(state.artifacts[0]?.id).toBe(`artifact-${MAX_ANALYSIS_ARTIFACTS}`);
+    expect(state.artifacts.at(-1)?.id).toBe("artifact-1");
+    expect(state.artifacts.some((artifact) => artifact.id === "artifact-0")).toBe(false);
   });
 
   it("unlocks selection and shows restart guidance when the server session is lost", () => {

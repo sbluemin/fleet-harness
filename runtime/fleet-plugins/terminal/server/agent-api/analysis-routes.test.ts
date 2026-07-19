@@ -125,24 +125,34 @@ describe("Session Analyst server contract", () => {
     await expect(registry.message("op", "hello")).resolves.toBe("not_found");
   });
 
-  it("bounds process-memory artifacts, keeps them after stop, and evicts them on registry dispose", async () => {
+  it("bounds process-memory artifacts per operation without evicting another operation", async () => {
     const registry = new AnalysisRegistry();
-    let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: number } }) => void) | undefined;
-    await registry.start("op", (onEvent) => {
-      emit = onEvent as typeof emit;
+    type ArtifactEmitter = (event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: number } }) => void;
+    let emitPrimary: ArtifactEmitter | undefined;
+    let emitOther: ArtifactEmitter | undefined;
+    await registry.start("op-primary", (onEvent) => {
+      emitPrimary = onEvent as ArtifactEmitter;
+      return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never;
+    });
+    await registry.start("op-other", (onEvent) => {
+      emitOther = onEvent as ArtifactEmitter;
       return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never;
     });
 
+    emitOther?.({ type: "artifact", artifact: { id: "other-artifact", title: "Other", html: "<p>other</p>", createdAt: 0 } });
     for (let index = 0; index <= MAX_ANALYSIS_ARTIFACTS; index += 1) {
-      emit?.({ type: "artifact", artifact: { id: `artifact-${index}`, title: `Artifact ${index}`, html: `<p>${index}</p>`, createdAt: index } });
+      emitPrimary?.({ type: "artifact", artifact: { id: `primary-artifact-${index}`, title: `Artifact ${index}`, html: `<p>${index}</p>`, createdAt: index } });
     }
 
-    expect(registry.artifactHtml("artifact-0")).toBeNull();
-    expect(registry.artifactHtml(`artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
-    await registry.stop("op");
-    expect(registry.artifactHtml(`artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
+    expect(registry.artifactHtml("primary-artifact-0")).toBeNull();
+    expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
+    expect(registry.artifactHtml("other-artifact")).toBe("<p>other</p>");
+    await registry.stop("op-primary");
+    expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
+    expect(registry.artifactHtml("other-artifact")).toBe("<p>other</p>");
     await registry.dispose();
-    expect(registry.artifactHtml(`artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBeNull();
+    expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBeNull();
+    expect(registry.artifactHtml("other-artifact")).toBeNull();
   });
 
   it("normalizes absent effort to undefined when creating an unsupported-effort session", async () => {
