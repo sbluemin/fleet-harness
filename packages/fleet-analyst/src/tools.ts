@@ -190,11 +190,20 @@ function hasVisibleStaticContent(html: string): boolean {
     }
 
     const parentKeepsText = openElements.at(-1)?.keepsText ?? true;
-    const keepsText = parentKeepsText && STATIC_ARTIFACT_ELEMENTS.has(tag) && tag !== "style";
+    const keepsText = parentKeepsText && STATIC_ARTIFACT_ELEMENTS.has(tag) && tag !== "style" && !hasHtmlAttribute(match[0], "hidden");
     if (!VOID_HTML_ELEMENTS.has(tag)) openElements.push({ tag, keepsText });
   }
 
   return (openElements.at(-1)?.keepsText ?? true) && hasVisibleText(html.slice(cursor));
+}
+
+function hasHtmlAttribute(openingTag: string, expectedName: string): boolean {
+  const attributePattern = /(?:^|[\t\n\f\r ])([^\t\n\f\r "'=<>`/]+)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"|'[^']*'|[^\t\n\f\r "'=<>`]+))?/g;
+  let match: RegExpExecArray | null;
+  while ((match = attributePattern.exec(openingTag)) !== null) {
+    if (match[1]?.toLowerCase() === expectedName) return true;
+  }
+  return false;
 }
 
 function hasVisibleText(value: string): boolean {

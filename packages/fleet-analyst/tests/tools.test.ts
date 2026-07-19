@@ -101,6 +101,23 @@ describe("AnalystTools", () => {
     expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ title: "Visible paragraph" }) })]);
   });
 
+  it("rejects content in hidden subtrees while accepting a visible sibling", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    await writeFile(file, "");
+    const tools = new AnalystTools({ capturePath: file, cwd: process.cwd() });
+    const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
+
+    for (const html of [
+      "<div hidden><p>Hidden</p></div>",
+      "<DIV HIDDEN=\"\"><p>Hidden</p></DIV>",
+      "<section hidden=\"hidden\"><p>Hidden</p></section>",
+      "<article HiDdEn='HiDdEn'><p>Hidden</p></article>",
+    ]) {
+      await expect(publish.execute({ title: "Hidden only", html }, {} as never)).rejects.toThrow("visible static content");
+    }
+    await expect(publish.execute({ title: "Visible sibling", html: "<div hidden><p>Hidden</p></div><p>Visible</p>" }, {} as never)).resolves.toMatchObject({ artifact: { title: "Visible sibling" } });
+  });
+
   it("keeps only the 20 newest in-memory artifacts", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
     await writeFile(file, "");
