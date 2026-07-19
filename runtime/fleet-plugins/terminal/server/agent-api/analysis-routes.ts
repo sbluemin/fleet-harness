@@ -15,6 +15,8 @@ import { readProviderSessionCapture } from "./session-capture.js";
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
+const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon"]);
+const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\([\d.e%+\-/, ]{1,96}\)|Canvas|CanvasText)$/i;
 
 type AnalysisRouteDeps = {
   readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
@@ -83,8 +85,25 @@ function handleArtifact(ctx: FleetPluginServerContext, req: http.IncomingMessage
     return true;
   }
   res.writeHead(200, artifactHeaders());
-  res.end(html);
+  res.end(artifactDocument(html, req.url));
   return true;
+}
+
+function artifactDocument(html: string, requestUrl: string | undefined): string {
+  const query = new URL(requestUrl ?? "/", "http://fleet.invalid").searchParams;
+  const theme = safeArtifactTheme(query.get("theme"));
+  const canvas = safeArtifactColor(query.get("canvas"), "Canvas");
+  const foreground = safeArtifactColor(query.get("foreground"), "CanvasText");
+  const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:dark!important;`;
+  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head></head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+}
+
+function safeArtifactTheme(value: string | null): string {
+  return value !== null && ANALYSIS_ARTIFACT_THEMES.has(value) ? value : "instrument";
+}
+
+function safeArtifactColor(value: string | null, fallback: "Canvas" | "CanvasText"): string {
+  return value !== null && value.length <= 100 && SAFE_ARTIFACT_COLOR.test(value) ? value : fallback;
 }
 
 function handleClearArtifacts(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operationId: string, registry: AnalysisRegistry): boolean {

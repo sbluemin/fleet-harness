@@ -1,4 +1,4 @@
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { AnalysisArtifact } from "./analysis-types.js";
 
@@ -67,19 +67,22 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
         <div className="session-analyst__artifacts-empty"><strong>No artifacts yet</strong>Artifacts the analyst publishes will appear here.</div>
       ) : (
         <div className="session-analyst__artifact-content">
-          {active ? <ActiveArtifact key={active.id} artifact={active} /> : null}
+          {active ? <ActiveArtifact key={active.id} artifact={active} theme={context.theme} /> : null}
         </div>
       )}
     </section>
   );
 }
 
-function ActiveArtifact({ artifact }: { readonly artifact: AnalysisArtifact }) {
+function ActiveArtifact({ artifact, theme }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme }) {
   if (!artifact.id) return null;
+  const consoleStyle = getComputedStyle(document.documentElement);
+  const canvas = consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas";
+  const foreground = consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText";
   return (
     <article aria-label="Selected artifact preview">
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} /></header>
-      <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id)} sandbox="allow-scripts" />
+      <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)} sandbox="allow-scripts" />
     </article>
   );
 }

@@ -325,9 +325,12 @@ describe("Session Analyst server contract", () => {
     const html = "<main>Artifact<script>globalThis.__artifactRan = true</script></main>";
     emit?.({ type: "artifact", artifact: { id: "artifact/id", title: "Artifact", html, createdAt: new Date(0).toISOString() } });
 
-    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid?theme=carbon&canvas=oklch%2833%25%200.006%20252%29&foreground=oklch%2895%25%200.003%20250%29");
 
-    expect(response).toMatchObject({ status: 200, body: html, ended: true });
+    expect(response).toMatchObject({ status: 200, ended: true });
+    expect(response.body).toContain('<html data-theme="carbon" style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;">');
+    expect(response.body).toContain(`<body style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;margin:0!important;">${html}</body>`);
+    expect(response.body).toContain("<script>globalThis.__artifactRan = true</script>");
     expect(response.headers).toMatchObject({
       "Content-Type": "text/html; charset=utf-8",
       "Content-Security-Policy": ANALYSIS_ARTIFACT_CSP,
@@ -343,7 +346,9 @@ describe("Session Analyst server contract", () => {
 
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/stop", {});
     const afterStop = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
-    expect(afterStop).toMatchObject({ status: 200, body: html, ended: true });
+    expect(afterStop).toMatchObject({ status: 200, ended: true });
+    expect(afterStop.body).toContain(html);
+    expect(afterStop.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;');
 
     await router.call("DELETE", "/api/v1/plugins/terminal/analysis/op/artifacts");
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
@@ -354,6 +359,63 @@ describe("Session Analyst server contract", () => {
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
+  });
+
+  it("wraps hostile artifact CSS with a validated host-owned canvas for every Console theme", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-artifact-theme-route-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: ((options: { onEvent: typeof emit }) => {
+        emit = options.onEvent;
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const hostileHtml = '<!doctype html><html style="background:white!important"><head><style>html,body{background:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important}</style></head><body><script>globalThis.__artifactRan=true</script><main>Artifact</main></body></html>';
+    emit?.({ type: "artifact", artifact: { id: "hostile", title: "Hostile", html: hostileHtml, createdAt: new Date(0).toISOString() } });
+
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      const path = `/api/v1/plugins/terminal/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("oklch(23.5% 0.02 245)")}&foreground=${encodeURIComponent("oklch(94% 0.008 90)")}`;
+      const response = await router.call("GET", path);
+      expect(response.status).toBe(200);
+      expect(response.body).toContain(`<html data-theme="${theme}" style="background-color:oklch(23.5% 0.02 245)!important;background-image:none!important;color:oklch(94% 0.008 90)!important;min-height:100%!important;color-scheme:dark!important;">`);
+      expect(response.body).toContain(hostileHtml);
+      expect(response.body.indexOf("background-image:none!important")).toBeLessThan(response.body.indexOf("linear-gradient"));
+    }
+  });
+
+  it("falls back instead of embedding hostile, invalid, or overlong theme canvas inputs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-artifact-input-route-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: ((options: { onEvent: typeof emit }) => {
+        emit = options.onEvent;
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    emit?.({ type: "artifact", artifact: { id: "safe", title: "Safe", html: "<p>safe</p>", createdAt: new Date(0).toISOString() } });
+    const hostile = 'red!important;"><script>globalThis.injected=true</script>';
+    const path = `/api/v1/plugins/terminal/analysis/artifacts/safe?theme=${encodeURIComponent('carbon" onload="alert(1)')}&canvas=${encodeURIComponent(hostile)}&foreground=${encodeURIComponent("x".repeat(101))}`;
+
+    const response = await router.call("GET", path);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;background-image:none!important;color:CanvasText!important;');
+    expect(response.body).not.toContain("globalThis.injected");
+    expect(response.body).not.toContain("onload=");
   });
 
   it("host-gates artifact documents and returns 404 for unknown ids", async () => {
@@ -439,7 +501,8 @@ function createRouterHarness(initialHostAllowance: boolean) {
       let responseStatus: number | undefined;
       let responseHeaders: Record<string, string> = {};
       let responseBody = "";
-      const req = Object.assign(new EventEmitter(), { method, headers: { "content-type": "application/json", ...headers }, socket: { localPort: 4444 }, body });
+      const url = new URL(pathname, "http://fleet.test");
+      const req = Object.assign(new EventEmitter(), { method, url: `${url.pathname}${url.search}`, headers: { "content-type": "application/json", ...headers }, socket: { localPort: 4444 }, body });
       const res = Object.assign(new EventEmitter(), {
         writableEnded: false,
         destroyed: false,
@@ -447,7 +510,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
         write: (data: string) => { writes.push(data); },
         end: (data?: string) => { if (data) responseBody += data; ended = true; },
       });
-      await handler?.({ req, res, pathname });
+      await handler?.({ req, res, pathname: url.pathname });
       return { writes, get ended() { return ended; }, get status() { return responseStatus; }, get headers() { return responseHeaders; }, get body() { return responseBody; } };
     },
   };

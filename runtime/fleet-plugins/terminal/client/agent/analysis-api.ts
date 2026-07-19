@@ -1,10 +1,13 @@
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ConsoleTheme } from "@fleet-console/sdk/plugin";
 import { ApiError } from "@fleet-console/sdk/operations/browser";
 import { parseAnalysisCatalog, parseAnalysisError, parseAnalysisEvent, type AnalysisCatalog, type AnalysisError, type AnalysisEvent } from "./analysis-types.js";
 
 export class AnalysisApiError extends Error { constructor(readonly code: string, message: string) { super(message); } }
 const base = (operationId: string) => `analysis/${encodeURIComponent(operationId)}`;
-export const analysisArtifactUrl = (artifactId: string): string => `/plugins/terminal/analysis/artifacts/${encodeURIComponent(artifactId)}`;
+export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, canvas: string, foreground: string): string {
+  const query = new URLSearchParams({ theme, canvas, foreground });
+  return `/plugins/terminal/analysis/artifacts/${encodeURIComponent(artifactId)}?${query.toString()}`;
+}
 
 export async function fetchAnalysisCatalog(api: ClientApiCapability): Promise<AnalysisCatalog> {
   const response = await fetchOrThrow(api, "analysis/catalog");

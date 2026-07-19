@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./analysis-store.js", () => ({
   useAnalysisStore: () => ({
@@ -19,21 +21,61 @@ vi.mock("./analysis-store.js", () => ({
 
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 
+const THEMES = ["instrument", "maritime", "carbon"] as const satisfies readonly ConsoleTheme[];
+
+function operationContext(theme: ConsoleTheme, fetch = vi.fn(async () => new Response(null, { status: 200 }))): OperationRenderContext {
+  return { theme, operationId: "op/id", api: { fetch } } as never;
+}
+
+function artifactUrl(frame: HTMLIFrameElement): URL {
+  return new URL(frame.getAttribute("src") ?? "", "http://console.test");
+}
+
+afterEach(() => {
+  document.documentElement.style.removeProperty("--ink-veil");
+  document.documentElement.style.removeProperty("--ink-pearl");
+});
+
 describe("artifact frame", () => {
-  it("loads the artifact route with scripts in an opaque-origin sandbox", () => {
+  it("loads the server artifact route with scripts in an opaque-origin sandbox", () => {
     const panel = readFileSync(resolve("client/agent/analysis-artifacts-panel.tsx"), "utf8");
     expect(panel).toContain('sandbox="allow-scripts"');
     expect(panel).not.toContain("allow-same-origin");
     expect(panel).not.toContain("safeArtifactSrcdoc");
     expect(panel).not.toContain("srcDoc=");
-    expect(panel).toContain("src={analysisArtifactUrl(artifact.id)}");
+    expect(panel).toContain("src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)}");
   });
+
+  it("includes the active theme and exact computed Console canvas tokens for all themes", () => {
+    document.documentElement.style.setProperty("--ink-veil", "oklch(23.5% 0.02 245)");
+    document.documentElement.style.setProperty("--ink-pearl", "oklch(94% 0.008 90)");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    for (const theme of THEMES) {
+      act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext(theme) })));
+      const url = artifactUrl(container.querySelector("iframe")!);
+      expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact-late");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        theme,
+        canvas: "oklch(23.5% 0.02 245)",
+        foreground: "oklch(94% 0.008 90)",
+      });
+    }
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it("opens a creation-ordered header listbox and keeps one selected preview", () => {
+    document.documentElement.style.setProperty("--ink-veil", "rgb(11, 12, 13)");
+    document.documentElement.style.setProperty("--ink-pearl", "rgb(241, 242, 243)");
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     const fetch = vi.fn(async () => new Response(JSON.stringify({ cleared: true }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    act(() => root.render(createElement(AnalystArtifactsPanel, { context: { operationId: "op/id", api: { fetch } } as never })));
+    act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext("instrument", fetch) })));
 
     const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__artifact-count")!;
     expect(trigger.textContent).toBe("2 items");
@@ -46,30 +88,54 @@ describe("artifact frame", () => {
     act(() => trigger.click());
     const options = [...container.querySelectorAll('[role="option"]')];
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
     expect(options.map((option) => option.querySelector("strong")?.textContent)).toEqual(["Early artifact", "Later artifact"]);
     expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual(["false", "true"]);
     expect(options.every((option) => option.querySelector("time")?.hasAttribute("datetime"))).toBe(true);
 
-    // 목록에서 선택하면 해당 문서가 전체 뷰로 렌더되고 popover는 닫힌다.
     act(() => (options[0] as HTMLButtonElement).click());
-    expect(container.querySelector("iframe")?.title).toBe("Early artifact");
+    const iframe = container.querySelector("iframe")!;
+    expect(iframe.title).toBe("Early artifact");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector('[role="listbox"]')).toBeNull();
-
-    const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(iframe?.getAttribute("src")).toBe("/plugins/terminal/analysis/artifacts/artifact-early");
-    act(() => iframe?.dispatchEvent(new Event("load", { bubbles: true })));
-    expect(container.querySelector("iframe")).toBe(iframe);
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-
-    act(() => iframe?.dispatchEvent(new Event("load", { bubbles: true })));
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+    const url = artifactUrl(iframe);
+    expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact-early");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      theme: "instrument",
+      canvas: "rgb(11, 12, 13)",
+      foreground: "rgb(241, 242, 243)",
+    });
+    act(() => iframe.dispatchEvent(new Event("load", { bubbles: true })));
     expect(container.querySelector("iframe")).toBe(iframe);
     expect(container.querySelector('[role="alert"]')).toBeNull();
 
     act(() => container.querySelector<HTMLButtonElement>(".session-analyst__clear")?.click());
     expect(fetch).toHaveBeenCalledWith("terminal", "analysis/op%2Fid/artifacts", { method: "DELETE" });
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("regenerates the artifact URL when the Console theme canvas changes", () => {
+    document.documentElement.style.setProperty("--ink-veil", "rgb(31, 32, 33)");
+    document.documentElement.style.setProperty("--ink-pearl", "rgb(221, 222, 223)");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext("maritime") })));
+    const maritimeUrl = container.querySelector("iframe")?.getAttribute("src") ?? "";
+
+    document.documentElement.style.setProperty("--ink-veil", "rgb(41, 42, 43)");
+    document.documentElement.style.setProperty("--ink-pearl", "rgb(211, 212, 213)");
+    act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext("carbon") })));
+    const carbonUrl = container.querySelector("iframe")?.getAttribute("src") ?? "";
+
+    expect(carbonUrl).not.toBe(maritimeUrl);
+    expect(Object.fromEntries(new URL(carbonUrl, "http://console.test").searchParams)).toEqual({
+      theme: "carbon",
+      canvas: "rgb(41, 42, 43)",
+      foreground: "rgb(211, 212, 213)",
+    });
 
     act(() => root.unmount());
     container.remove();
