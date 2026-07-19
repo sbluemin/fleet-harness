@@ -25,20 +25,17 @@ export const CHRONICLE_DEFAULTS: CarrierPersonaDefaults = {
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Chief Knowledge Officer",
-  summary:
-    "Documentation steward across two surfaces: codebase markdown (AGENTS.md/README/CHANGELOG/inline docs) and Fleet Wiki entries proposed via the wiki patch queue.",
+  summary: "Documentation and governed knowledge stewardship.",
   category: "operations",
   whenToUse: [
     "[Codebase Doc] documentation creation, update, or post-change .md audit (including AGENTS.md, README, CHANGELOG)",
     "[Codebase Doc] PR summaries, release notes, API specs (OpenAPI/Swagger), change-impact summaries, breaking-change reports, migration guides",
-    "[Fleet Wiki] new Fleet Wiki entry proposal or revision via the wiki patch queue",
-    "[Fleet Wiki] orientation, lookup, or schema lint of existing Fleet Wiki entries",
+    "[Governed Knowledge] structured knowledge entry proposal or revision",
   ],
   whenNotToUse: [
     "before implementation and verification are complete",
     "code modification (→genesis) or code review (→sentinel)",
     "architectural judgment (→nimitz) or release-scope planning decisions (→kirov)",
-    "Fleet Wiki patch approval — host agent retains the wiki_patch_queue approve/reject gate",
   ],
   requestBlocks: [
     {
