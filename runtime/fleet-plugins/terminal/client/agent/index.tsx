@@ -89,6 +89,12 @@ export const agentOperationKind = defineOperationKind({
   ],
 });
 
+export const generalSettingsSection = defineSettingsSection({
+  id: "general",
+  title: "General",
+  render: () => <GeneralSection />,
+});
+
 export const agentSettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: "Agent CLI",
@@ -110,7 +116,7 @@ export const agentEndedNotification = defineNotificationKind({
 export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
-  settingsSections: [agentSettingsSection],
+  settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification],
   install: (ctx) => installAgentPlugin(ctx),
   closeOperation: async (operationId) => {
@@ -595,10 +601,23 @@ function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
   );
 }
 
+function GeneralSection() {
+  const { renderer: terminalRenderer, font: terminalFont } = useTerminalPrefs();
+
+  // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
+  // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
+  return (
+    <>
+      <SystemPromptSettingsBlock />
+      <TerminalFontSettingsCard terminalFont={terminalFont} />
+      <TerminalRendererCard terminalRenderer={terminalRenderer} />
+    </>
+  );
+}
+
 function AgentCliSection() {
   const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
   const [error, setError] = React.useState<string | null>(null);
-  const { renderer: terminalRenderer, font: terminalFont } = useTerminalPrefs();
   const settings = useSystemPromptSettingsStore();
 
   React.useEffect(() => {
@@ -611,12 +630,18 @@ function AgentCliSection() {
     return () => abort.abort();
   }, []);
 
+  // Codex launch mode 토글은 system prompt 설정(codexLaunchMode)에 의존하므로, Metaphor 카드가
+  // General 섹션으로 분리된 지금은 이 섹션에서도 설정을 로드해야 토글이 채워진다.
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
   // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
-      <SystemPromptSettingsBlock />
-      <ModelAuthBlock />
       <section className="global-settings-card" aria-label="Agent CLI Available">
         <div className="agent-cli-head">
           <p className="global-settings-resp-title">Agent CLI Available</p>
@@ -638,8 +663,7 @@ function AgentCliSection() {
         <p className="global-settings-help">Codex launch mode controls the unified-agent carrier protocol for new Codex sessions; it does not affect the interactive Codex TUI in terminal panels.</p>
         <p className="global-settings-foot">Install or update a CLI, then reopen this page to re-check availability.</p>
       </section>
-      <TerminalFontSettingsCard terminalFont={terminalFont} />
-      <TerminalRendererCard terminalRenderer={terminalRenderer} />
+      <ModelAuthBlock />
     </>
   );
 }
@@ -656,7 +680,7 @@ function ModelAuthBlock() {
   return (
     <section className="global-settings-card" aria-label="Model sign-in">
       <div className="model-auth-head">
-        <p className="global-settings-resp-title">Kimi Sign-in</p>
+        <p className="global-settings-resp-title">Settings for Kimi</p>
         <p className="global-settings-help">
           Register a Kimi API key to run carriers and terminal sessions through Claude Code against the Kimi endpoint.
           The key is validated and stored locally, and is never returned to the browser.
