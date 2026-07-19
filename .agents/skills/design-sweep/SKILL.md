@@ -25,7 +25,7 @@ Living sources — always re-read these in Phase 1; the numbers below are exampl
 
 **Control grammar.** The dominant control pattern is mono 10px 700 uppercase · min-height 34px · `--radius-xs` · brass-mix hover. Heights snap to {24, 28, 34, 44}; radius vocabulary is {`--radius-xs`, `--radius-md`, `--radius-pill` for dots/pills only}. Raw px radii and off-snap heights are drift.
 
-**Envelopes.** The skeleton sits at very low chroma (C≈0.012–0.02); identity tones live in a per-theme chroma envelope (instrument≈0.06 / maritime≈0.085 / carbon≈0.05). Any raw color literal outside `theme.css` breaks two rules at once: it jumps the envelope and it cannot retune per theme.
+**Envelopes.** The skeleton sits at very low chroma (C≈0.012–0.02); identity tones live in a per-theme chroma envelope (instrument≈0.06 / maritime≈0.085 / carbon≈0.05). Any chromatic raw literal outside `theme.css` breaks two rules at once: it jumps the envelope and it cannot retune per theme; near-achromatic shadow/scrim/sheen depth literals are the sanctioned exception (console AGENTS.md Design invariants).
 
 **Defect taxonomy** — classify every finding as one of:
 
