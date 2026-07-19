@@ -634,12 +634,12 @@
 .history-root {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
   container-type: inline-size;
-  transition: grid-template-columns var(--duration-base) var(--ease-spring);
+  transition: grid-template-rows var(--duration-base) var(--ease-spring);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -851,7 +851,6 @@
   grid-column: 1;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  border-right: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
 }
 
@@ -904,11 +903,11 @@
   }
 }
 
-/* Segmented Commit Inspector — master graph/list remains left of the detail. */
-.history-root { grid-template-columns: minmax(0, 1fr); }
-.history-list-pane { grid-column: 1; border-right: 1px solid var(--surface-rim); }
-.history-detail-pane { grid-row: 1; grid-column: 3; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--ink-deep) 70%, transparent); }
-.history-root > .history-divider { grid-column: 2; grid-row: 1; touch-action: none; }
+/* Segmented Commit Inspector — master graph/list remains above the detail. */
+.history-root { grid-template-rows: minmax(0, 1fr); }
+.history-list-pane { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--surface-rim); }
+.history-detail-pane { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--ink-deep) 70%, transparent); }
+.history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
 .history-divider { touch-action: none; }
 .history-commit-row { grid-template-columns: auto minmax(96px, 1fr) 7ch auto auto; gap: 0 7px; }
 /* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해

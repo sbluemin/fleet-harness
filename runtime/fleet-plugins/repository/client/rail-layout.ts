@@ -24,7 +24,8 @@ interface PointerDragLifecycleInput {
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
 export const HUNK_PANE_MIN_WIDTH = 140;
-export const HISTORY_DETAIL_PANE_MIN_WIDTH = 140;
+export const HISTORY_LOG_PANE_MIN_HEIGHT = 120;
+export const HISTORY_DETAIL_PANE_MIN_HEIGHT = 160;
 export const DIFF_DIVIDER_WIDTH = 4;
 
 const NO_OP_SENTINEL = null;
@@ -49,9 +50,9 @@ export function buildDiffGridTemplate(listPaneWidth: number): string {
   return `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedLeftWidth}px)))`;
 }
 
-export function buildHistoryGridTemplate(listPaneWidth: number): string {
-  const preservedDetailWidth = HISTORY_DETAIL_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
-  return `minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedDetailWidth}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`;
+export function buildHistoryStackTemplate(logPaneHeight: number): string {
+  const preservedDetailHeight = HISTORY_DETAIL_PANE_MIN_HEIGHT + DIFF_DIVIDER_WIDTH;
+  return `minmax(0, min(${logPaneHeight}px, calc(100% - ${preservedDetailHeight}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`;
 }
 
 export function clampSplitPaneSize(startSize: number, delta: number, containerSize: number, firstPaneMinSize: number, secondPaneMinSize: number, dividerWidth = DIFF_DIVIDER_WIDTH): number | null {
