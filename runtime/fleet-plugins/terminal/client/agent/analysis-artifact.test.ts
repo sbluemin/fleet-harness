@@ -20,18 +20,20 @@ vi.mock("./analysis-store.js", () => ({
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 
 describe("artifact frame", () => {
-  it("renders raw artifact HTML with scripts in an opaque-origin sandbox", () => {
+  it("loads the artifact route with scripts in an opaque-origin sandbox", () => {
     const panel = readFileSync(resolve("client/agent/analysis-artifacts-panel.tsx"), "utf8");
     expect(panel).toContain('sandbox="allow-scripts"');
     expect(panel).not.toContain("allow-same-origin");
     expect(panel).not.toContain("safeArtifactSrcdoc");
-    expect(panel).toContain("srcDoc={artifact.html}");
+    expect(panel).not.toContain("srcDoc=");
+    expect(panel).toContain("src={analysisArtifactUrl(artifact.id)}");
   });
   it("opens a creation-ordered header listbox and keeps one selected preview", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
-    act(() => root.render(createElement(AnalystArtifactsPanel, { context: {} as never })));
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ cleared: true }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    act(() => root.render(createElement(AnalystArtifactsPanel, { context: { operationId: "op/id", api: { fetch } } as never })));
 
     const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__artifact-count")!;
     expect(trigger.textContent).toBe("2 items");
@@ -57,6 +59,7 @@ describe("artifact frame", () => {
 
     const iframe = container.querySelector("iframe");
     expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(iframe?.getAttribute("src")).toBe("/plugins/terminal/analysis/artifacts/artifact-early");
     act(() => iframe?.dispatchEvent(new Event("load", { bubbles: true })));
     expect(container.querySelector("iframe")).toBe(iframe);
     expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -64,6 +67,9 @@ describe("artifact frame", () => {
     act(() => iframe?.dispatchEvent(new Event("load", { bubbles: true })));
     expect(container.querySelector("iframe")).toBe(iframe);
     expect(container.querySelector('[role="alert"]')).toBeNull();
+
+    act(() => container.querySelector<HTMLButtonElement>(".session-analyst__clear")?.click());
+    expect(fetch).toHaveBeenCalledWith("terminal", "analysis/op%2Fid/artifacts", { method: "DELETE" });
 
     act(() => root.unmount());
     container.remove();

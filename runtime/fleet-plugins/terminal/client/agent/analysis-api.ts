@@ -4,6 +4,7 @@ import { parseAnalysisCatalog, parseAnalysisError, parseAnalysisEvent, type Anal
 
 export class AnalysisApiError extends Error { constructor(readonly code: string, message: string) { super(message); } }
 const base = (operationId: string) => `analysis/${encodeURIComponent(operationId)}`;
+export const analysisArtifactUrl = (artifactId: string): string => `/plugins/terminal/analysis/artifacts/${encodeURIComponent(artifactId)}`;
 
 export async function fetchAnalysisCatalog(api: ClientApiCapability): Promise<AnalysisCatalog> {
   const response = await fetchOrThrow(api, "analysis/catalog");
@@ -25,6 +26,10 @@ export async function fetchAnalysisReady(api: ClientApiCapability, operationId: 
 export async function startAnalysis(api: ClientApiCapability, operationId: string, input: { readonly cliId: string; readonly model: string; readonly effort: string }): Promise<void> { await request(api, `${base(operationId)}/start`, input); }
 export async function sendAnalysisMessage(api: ClientApiCapability, operationId: string, text: string): Promise<void> { await request(api, `${base(operationId)}/message`, { text }); }
 export async function stopAnalysis(api: ClientApiCapability, operationId: string): Promise<void> { await request(api, `${base(operationId)}/stop`, {}); }
+export async function clearAnalysisArtifacts(api: ClientApiCapability, operationId: string): Promise<void> {
+  const response = await fetchOrThrow(api, `${base(operationId)}/artifacts`, { method: "DELETE" });
+  if (!response.ok) throw errorFrom(response.status, await response.json().catch(() => null));
+}
 export function subscribeAnalysis(api: ClientApiCapability, operationId: string, onEvent: (event: AnalysisEvent) => void): () => void {
   return api.subscribe("terminal", `${base(operationId)}/stream`, (message) => { try { const event = parseAnalysisEvent(JSON.parse(message.data)); if (event) onEvent(event); } catch {} });
 }
