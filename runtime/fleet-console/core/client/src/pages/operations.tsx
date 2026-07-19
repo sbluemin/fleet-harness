@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
+import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, forgetTheater, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError } from "../api.js";
 import { animateViewportTo, claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -14,7 +14,7 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -243,6 +243,20 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       .catch(() => {});
   }, []);
 
+  const handleReorderTheaters = useCallback((orderedTheaterIds: readonly string[]) => {
+    const theaterById = new Map(stateRef.current.theaters.map((theater) => [theater.id, theater]));
+    const patches = orderedTheaterIds.flatMap((theaterId, order) => {
+      const theater = theaterById.get(theaterId);
+      if (!theater || theater.order === order) return [];
+      return [patchTheaterOrder(theaterId, order)];
+    });
+    if (patches.length === 0) return;
+    void Promise.allSettled(patches)
+      .then(() => fetchTheaters(null))
+      .then(hydrateTheaters)
+      .catch(() => {});
+  }, []);
+
   const handleUngroupAll = useCallback((groupId: string) => {
     void deleteGroup(groupId)
       .then(() => Promise.all([
@@ -267,6 +281,10 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const folderGrantId = await issueTheaterFolderGrant(path);
       const result = await addTheater(folderGrantId);
       completeAddTheater(result);
+      // 서버 register()는 기존 order를 보존하므로, 이미 수동 정렬된 Theater를 재-오픈하면
+      // completeAddTheater의 낙관적 prepend가 저장된 위치와 어긋난다(Codex P2). 서버 순서로 재수화해
+      // "열어도 위치 고정" 계약을 지킨다. hydrate는 방금 활성화한 result.id 선택을 유지한다.
+      void fetchTheaters(null).then(hydrateTheaters).catch(() => {});
     } catch (error) {
       failAddTheater(error instanceof Error ? error.message : String(error));
     }
@@ -320,6 +338,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
         onSetGroupColor={handleSetGroupColor}
         onRenameGroup={handleRenameGroup}
         onReorderGroups={handleReorderGroups}
+        onReorderTheaters={handleReorderTheaters}
         onUngroupAll={handleUngroupAll}
         onSelectTheater={setActiveTheater}
         onAddTheater={handleAddTheater}

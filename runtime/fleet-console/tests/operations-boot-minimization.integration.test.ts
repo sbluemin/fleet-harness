@@ -12,6 +12,7 @@ import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.j
 
 const apiMocks = vi.hoisted(() => ({
   fetchTheaterBootstrap: vi.fn(),
+  fetchTheaters: vi.fn(),
   fetchOperations: vi.fn(),
   fetchGroups: vi.fn(),
 }));
@@ -47,6 +48,7 @@ vi.mock("../core/client/src/api.js", () => ({
   forgetTheater: vi.fn(),
   issueTheaterFolderGrant: vi.fn(),
   patchOperation: vi.fn(),
+  patchTheaterOrder: vi.fn(),
   renameOperation: vi.fn(),
   updateGroup: vi.fn(),
 }));

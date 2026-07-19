@@ -152,7 +152,16 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
   const registeredAt = readNonEmptyString(value.registeredAt);
   const lastOpenedAt = readNonEmptyString(value.lastOpenedAt);
   if (!id || !theaterPath || !realpath || !label || !registeredAt || !lastOpenedAt) return null;
-  return { id, path: theaterPath, realpath, label, registeredAt, lastOpenedAt };
+  const order = readNonNegativeInteger(value.order);
+  return {
+    id,
+    path: theaterPath,
+    realpath,
+    label,
+    registeredAt,
+    lastOpenedAt,
+    ...(order !== null ? { order } : {}),
+  };
 }
 
 function sanitizeOperationNode(value: unknown): OperationNode | null {

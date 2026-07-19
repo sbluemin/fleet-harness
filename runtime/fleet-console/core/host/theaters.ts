@@ -9,6 +9,7 @@ export interface TheaterRegistration {
   readonly label: string;
   readonly registeredAt: string;
   readonly lastOpenedAt: string;
+  readonly order?: number;
 }
 
 export class TheaterRegistry {
@@ -31,6 +32,7 @@ export class TheaterRegistry {
       label: theaterLabel(resolved),
       registeredAt: existing?.registeredAt ?? now,
       lastOpenedAt: now,
+      order: existing?.order,
     };
     this.#items.set(id, item);
     this.#mruId = id;
@@ -68,12 +70,27 @@ export class TheaterRegistry {
   }
 
   list(): readonly TheaterRegistration[] {
-    return [...this.#items.values()].sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt));
+    return [...this.#items.values()].sort((left, right) => {
+      if (left.order !== undefined && right.order !== undefined) return left.order - right.order;
+      if (left.order === undefined && right.order === undefined) return right.lastOpenedAt.localeCompare(left.lastOpenedAt);
+      return left.order === undefined ? -1 : 1;
+    });
+  }
+
+  setOrder(id: string, order: number): TheaterRegistration | null {
+    const existing = this.#items.get(id);
+    if (!existing) return null;
+    const updated: TheaterRegistration = { ...existing, order };
+    this.#items.set(id, updated);
+    return updated;
   }
 
   remove(id: string): boolean {
     const removed = this.#items.delete(id);
-    if (this.#mruId === id) this.#mruId = this.list()[0]?.id ?? null;
+    if (this.#mruId === id) {
+      this.#mruId = [...this.#items.values()]
+        .sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt))[0]?.id ?? null;
+    }
     return removed;
   }
 }

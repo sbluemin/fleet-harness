@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { dropIndexFromPoint, groupDropIndexFromPoint, reorderGroupIds } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
+import { dropIndexFromPoint, groupDropIndexFromPoint, reorderGroupIds, reorderTheaterIds, theaterDropIndexFromPoint } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
 
 describe("operations side bar reorder hit testing", () => {
   it("ignores the dragged source chip when resolving the drop index", () => {
@@ -78,6 +78,42 @@ describe("reorderGroupIds", () => {
   });
 });
 
+describe("theaterDropIndexFromPoint", () => {
+  it("uses Theater section midpoints and skips the dragged source Theater", () => {
+    const sections = document.createElement("ol");
+    sections.append(
+      createTheaterSection("t-a", 0, 40),
+      createTheaterSection("t-b", 40, 100),
+      createTheaterSection("t-c", 100, 150),
+    );
+
+    expect(theaterDropIndexFromPoint(70, ["t-a", "t-b", "t-c"], sections, "t-b")).toBe(2);
+  });
+
+  it("returns the final slot below all Theater sections", () => {
+    const sections = document.createElement("ol");
+    sections.append(createTheaterSection("t-a", 0, 40));
+
+    expect(theaterDropIndexFromPoint(100, ["t-a"], sections)).toBe(1);
+  });
+});
+
+describe("reorderTheaterIds", () => {
+  it("moves a Theater upward", () => {
+    expect(reorderTheaterIds(["t-a", "t-b", "t-c"], "t-c", 0)).toEqual(["t-c", "t-a", "t-b"]);
+  });
+
+  it("moves a Theater downward with source-inclusive drop index adjustment", () => {
+    expect(reorderTheaterIds(["t-a", "t-b", "t-c"], "t-a", 3)).toEqual(["t-b", "t-c", "t-a"]);
+  });
+
+  it("keeps a self-drop stable and clamps out-of-range slots", () => {
+    expect(reorderTheaterIds(["t-a", "t-b", "t-c"], "t-b", 1)).toEqual(["t-a", "t-b", "t-c"]);
+    expect(reorderTheaterIds(["t-a", "t-b", "t-c"], "t-b", -10)).toEqual(["t-b", "t-a", "t-c"]);
+    expect(reorderTheaterIds(["t-a", "t-b", "t-c"], "t-b", 99)).toEqual(["t-a", "t-c", "t-b"]);
+  });
+});
+
 function createChip(id: string, top: number, bottom: number): HTMLElement {
   const chip = document.createElement("li");
   chip.dataset.sideBarChipId = id;
@@ -98,6 +134,23 @@ function createChip(id: string, top: number, bottom: number): HTMLElement {
 function createGroupSection(id: string, top: number, bottom: number): HTMLElement {
   const section = document.createElement("li");
   section.dataset.dropZoneGroupId = id;
+  section.getBoundingClientRect = () => ({
+    x: 0,
+    y: top,
+    top,
+    left: 0,
+    right: 200,
+    bottom,
+    width: 200,
+    height: bottom - top,
+    toJSON: () => ({}),
+  });
+  return section;
+}
+
+function createTheaterSection(id: string, top: number, bottom: number): HTMLElement {
+  const section = document.createElement("li");
+  section.dataset.theaterId = id;
   section.getBoundingClientRect = () => ({
     x: 0,
     y: top,

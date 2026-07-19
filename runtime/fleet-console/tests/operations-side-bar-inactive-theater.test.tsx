@@ -110,6 +110,7 @@ function renderSideBar(onFocus = vi.fn()): void {
     onSetGroupColor: () => {},
     onRenameGroup: () => {},
     onReorderGroups: () => {},
+    onReorderTheaters: () => {},
     onUngroupAll: () => {},
     onSelectTheater: () => {},
     onAddTheater: () => {},

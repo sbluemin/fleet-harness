@@ -27,6 +27,23 @@ describe("durable console state", () => {
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 2, theaters: [base] });
   });
 
+  it("round-trips optional Theater order without changing durable version", () => {
+    const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
+
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 3 }], operations: [] })).toMatchObject({
+      version: 2,
+      theaters: [{ ...base, order: 3 }],
+    });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: -1 }], operations: [] })).toMatchObject({
+      version: 2,
+      theaters: [base],
+    });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 1.5 }], operations: [] })).toMatchObject({
+      version: 2,
+      theaters: [base],
+    });
+  });
+
   it("migrates v1 flat session records into v2 OperationNodes", () => {
     const migrated = sanitizeDurableConsoleState({
       version: 1,

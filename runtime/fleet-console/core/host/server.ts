@@ -74,6 +74,7 @@ export interface ConsoleServer {
 type TheaterFolderListBody = { readonly path?: unknown };
 type TheaterFolderGrantBody = { readonly path?: unknown };
 type CreateTheaterBody = { readonly folderGrantId?: unknown };
+type PatchTheaterBody = { readonly order?: unknown };
 type UpdateApplyBody = Record<string, unknown>;
 
 interface ConsolePortRuntimeState {
@@ -151,6 +152,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "POST",
     path: "/api/v1/theaters",
     summary: "새 Theater를 등록합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "PATCH",
+    path: "/api/v1/theaters/:theaterId",
+    summary: "Theater 표시 순서를 변경합니다.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -796,12 +804,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function handleObserverTheaterItem(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "DELETE") {
+    if (req.method !== "PATCH" && req.method !== "DELETE") {
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
     if (!isTerminalAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (req.method === "PATCH") {
+      const body = await readJsonBody<PatchTheaterBody>(req);
+      if (!isPlainObject(body) || typeof body.order !== "number" || !Number.isInteger(body.order) || body.order < 0) {
+        writeJson(res, 400, { error: "invalid_theater_order" });
+        return;
+      }
+      const theater = theaters.setOrder(theaterId, body.order);
+      if (!theater) {
+        writeJson(res, 404, { error: "theater_not_found" });
+        return;
+      }
+      persistDurableState();
+      writeJson(res, 200, toTheaterInfo(theater, true));
       return;
     }
     // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
@@ -985,6 +1008,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       label: theater.label,
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
+      ...(theater.order !== undefined ? { order: theater.order } : {}),
       hasWiki,
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === "terminal" && operation.type === "agent").length,
     };

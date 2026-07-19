@@ -78,6 +78,25 @@ export function groupDropIndexFromPoint(
   return orderedGroupIds.length;
 }
 
+export function theaterDropIndexFromPoint(
+  clientY: number,
+  orderedTheaterIds: readonly string[],
+  container: HTMLOListElement | null,
+  sourceTheaterId?: string,
+): number {
+  if (!container) return 0;
+  const theaterElements = Array.from(container.querySelectorAll<HTMLElement>("[data-theater-id]"));
+  for (const theaterEl of theaterElements) {
+    const id = theaterEl.dataset.theaterId;
+    if (!id || id === sourceTheaterId) continue;
+    const index = orderedTheaterIds.indexOf(id);
+    if (index === -1) continue;
+    const rect = theaterEl.getBoundingClientRect();
+    if (clientY <= rect.top + rect.height / 2) return index;
+  }
+  return orderedTheaterIds.length;
+}
+
 // cross-group 드롭용: sourceId를 allIds에서 제거하고 대상 segment의 dropIndex 위치에 삽입한다.
 // dropIndex = source가 없는 대상 entryIds 기준 타깃 슬롯; 보정 없음(source가 segment에 없음).
 // sourceId는 segment에 속하지 않으며, segment의 기존 순서는 allIds 내에서의 순서를 따른다.
@@ -152,6 +171,20 @@ export function reorderGroupIds(
   const adjusted = dropIndex > sourceIndex ? dropIndex - 1 : dropIndex;
   const bounded = Math.max(0, Math.min(adjusted, next.length));
   next.splice(bounded, 0, sourceGroupId);
+  return next;
+}
+
+export function reorderTheaterIds(
+  orderedTheaterIds: readonly string[],
+  sourceTheaterId: string,
+  dropIndex: number,
+): string[] {
+  const sourceIndex = orderedTheaterIds.indexOf(sourceTheaterId);
+  if (sourceIndex === -1) return [...orderedTheaterIds];
+  const next = orderedTheaterIds.filter((id) => id !== sourceTheaterId);
+  const adjusted = dropIndex > sourceIndex ? dropIndex - 1 : dropIndex;
+  const bounded = Math.max(0, Math.min(adjusted, next.length));
+  next.splice(bounded, 0, sourceTheaterId);
   return next;
 }
 
