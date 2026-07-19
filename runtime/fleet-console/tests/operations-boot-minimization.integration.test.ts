@@ -376,6 +376,7 @@ describe("Operations boot minimization", () => {
     registryMocks.operationKinds = [companionKind(canOpenCompanions)];
     await bootApp([operation("first"), operation("second")]);
     await act(async () => {
+      toggleFormationView();
       setCompanionOperationId("first");
       minimizeOperation("second");
       await Promise.resolve();
@@ -389,6 +390,7 @@ describe("Operations boot minimization", () => {
 
     expect(canOpenCompanions).toHaveBeenCalledOnce();
     expect(getCompanionOperationId()).toBe("second");
+    expect(getFormationView()).toBe(true);
     expect(getState().activeOperationId).toBe("second");
     expect(getSnapshot().minimized).not.toContain("second");
   });
@@ -414,7 +416,7 @@ describe("Operations boot minimization", () => {
     expect(getFormationView()).toBe(true);
   });
 
-  it("falls back to Map when an Analyze retarget is not ready", async () => {
+  it("exits Analyze and keeps Formation when an Analyze retarget is not ready", async () => {
     const canOpenCompanions = vi.fn().mockResolvedValue(false);
     registryMocks.operationKinds = [companionKind(canOpenCompanions)];
     await bootApp([operation("first"), operation("second")]);
@@ -433,12 +435,12 @@ describe("Operations boot minimization", () => {
 
     expect(canOpenCompanions).toHaveBeenCalledOnce();
     expect(getCompanionOperationId()).toBeNull();
-    expect(getFormationView()).toBe(false);
+    expect(getFormationView()).toBe(true);
     expect(getState().activeOperationId).toBe("second");
     expect(getSnapshot().minimized).not.toContain("second");
   });
 
-  it("falls back to Map when an Analyze retarget has no registered descriptor", async () => {
+  it("exits Analyze and keeps Formation when the retarget has no registered descriptor", async () => {
     await bootApp([operation("first"), operation("second")]);
     await act(async () => {
       toggleFormationView();
@@ -452,6 +454,29 @@ describe("Operations boot minimization", () => {
       await Promise.resolve();
     });
 
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(true);
+    expect(getState().activeOperationId).toBe("second");
+    expect(getSnapshot().minimized).not.toContain("second");
+  });
+
+  it("falls back to Map when an Analyze retarget is not ready outside Formation", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(false);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      minimizeOperation("second");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
     expect(getCompanionOperationId()).toBeNull();
     expect(getFormationView()).toBe(false);
     expect(getState().activeOperationId).toBe("second");
