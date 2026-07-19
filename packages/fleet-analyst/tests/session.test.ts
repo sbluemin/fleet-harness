@@ -35,9 +35,9 @@ it.each([
 
   expect(build).toHaveBeenCalledWith({ cli: cliId });
   expect(client.connect).toHaveBeenCalledWith(expect.objectContaining({
-    autoApprove: false,
+    autoApprove: true,
     fsAccess: false,
-    yoloMode: false,
+    yoloMode: true,
     strictMcp,
   }));
   await session.dispose();
@@ -146,9 +146,9 @@ it("registers a client before connect so concurrent disposal owns a pending conn
   void session.start();
   await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
   expect(connect).toHaveBeenCalledWith(expect.objectContaining({
-    autoApprove: false,
+    autoApprove: true,
     fsAccess: false,
-    yoloMode: false,
+    yoloMode: true,
     strictMcp: true,
   }));
 

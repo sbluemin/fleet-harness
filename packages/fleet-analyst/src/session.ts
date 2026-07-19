@@ -63,7 +63,7 @@ export class AnalystSession {
     }
     this.bridge(client);
     try {
-      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: false, fsAccess: false, yoloMode: false, strictMcp: this.options.cliId === "claude" || this.options.cliId === "claude-kimi", systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: ANALYST_MCP_SERVER, url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
+      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: true, fsAccess: false, yoloMode: true, strictMcp: this.options.cliId === "claude" || this.options.cliId === "claude-kimi", systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: ANALYST_MCP_SERVER, url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
     } catch (error) {
       if (this.disposed) await (this.disposeFlight ?? Promise.resolve());
       else await client.disconnect().catch(() => undefined);
