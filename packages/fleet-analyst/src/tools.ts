@@ -16,6 +16,7 @@ const STATIC_ARTIFACT_ELEMENTS = new Set([
   "header", "hr", "i", "img", "kbd", "li", "main", "mark", "meter", "ol", "p", "pre", "progress", "q", "s", "samp", "section",
   "small", "span", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var",
 ]);
+const TRANSPARENT_DOCUMENT_ELEMENTS = new Set(["html", "head", "body"]);
 const VOID_HTML_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
 
 export const ANALYST_TOOL_IDS = {
@@ -190,7 +191,10 @@ function hasVisibleStaticContent(html: string): boolean {
     }
 
     const parentKeepsText = openElements.at(-1)?.keepsText ?? true;
-    const keepsText = parentKeepsText && STATIC_ARTIFACT_ELEMENTS.has(tag) && tag !== "style" && !hasHtmlAttribute(match[0], "hidden");
+    const keepsText = parentKeepsText
+      && (STATIC_ARTIFACT_ELEMENTS.has(tag) || TRANSPARENT_DOCUMENT_ELEMENTS.has(tag))
+      && tag !== "style"
+      && !hasHtmlAttribute(match[0], "hidden");
     if (!VOID_HTML_ELEMENTS.has(tag)) openElements.push({ tag, keepsText });
   }
 

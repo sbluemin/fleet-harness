@@ -118,6 +118,22 @@ describe("AnalystTools", () => {
     await expect(publish.execute({ title: "Visible sibling", html: "<div hidden><p>Hidden</p></div><p>Visible</p>" }, {} as never)).resolves.toMatchObject({ artifact: { title: "Visible sibling" } });
   });
 
+  it("treats full-document wrappers as transparent without making hidden or unsupported content visible", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    await writeFile(file, "");
+    const tools = new AnalystTools({ capturePath: file, cwd: process.cwd() });
+    const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
+
+    await expect(publish.execute({
+      title: "Full document",
+      html: "<!doctype html><html><body><article>Evidence [e1]</article></body></html>",
+    }, {} as never)).resolves.toMatchObject({ artifact: { title: "Full document" } });
+    await expect(publish.execute({
+      title: "Non-renderable document",
+      html: "<!doctype html><html><head><title>Report [e1]</title><style>body { color: black }</style></head><body><nav>Navigation</nav><article hidden>Hidden evidence [e1]</article></body></html>",
+    }, {} as never)).rejects.toThrow("visible static content");
+  });
+
   it("keeps only the 20 newest in-memory artifacts", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
     await writeFile(file, "");
