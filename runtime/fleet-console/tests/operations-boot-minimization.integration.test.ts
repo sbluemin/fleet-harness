@@ -485,6 +485,31 @@ describe("Operations boot minimization", () => {
     expect(getCompanionOperationId()).toBe("first");
   });
 
+  it("discards an asynchronous Analyze retarget after its destination closes", async () => {
+    const secondReady = deferred<boolean>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    apiMocks.fetchOperations.mockResolvedValue([operation("first")]);
+    await act(async () => {
+      sideBarMocks.onClose?.("second");
+      await vi.waitFor(() => expect(getState().operations.some((candidate) => candidate.id === "second")).toBe(false));
+    });
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+    expect(getState().activeOperationId).not.toBe("second");
+  });
+
   it("force-drops Analyze immediately when Sidebar closes its target", async () => {
     await bootApp([operation("first")]);
     await act(async () => {
