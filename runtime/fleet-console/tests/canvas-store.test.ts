@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setCompanionOperationId, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, forceDropCompanionOperationId, getCompanionOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setCompanionOperationId, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -37,19 +37,17 @@ afterEach(() => {
 });
 
 describe("canvas store", () => {
-  it("enters companion layout without mutating Map state and restores a minimized target", () => {
+  it("captures Map underlay once, retargets without mutating it, and exits to Map", () => {
     setOperationGeometry("op-a", { ...GEOMETRY, x: 48, y: 72 });
     setOperationGeometry("op-b", { ...GEOMETRY });
     minimizeOperation("op-a");
     const viewport = { x: 24, y: 36, zoom: 0.75 };
     setState({ viewport });
     const operations = getSnapshot().operations;
-    toggleFormationView();
-    setMaximizedOperationId("op-b");
-
     setCompanionOperationId("op-a");
+    setCompanionOperationId("op-b");
 
-    expect(getCompanionOperationId()).toBe("op-a");
+    expect(getCompanionOperationId()).toBe("op-b");
     expect(getMaximizedOperationId()).toBeNull();
     expect(getFormationView()).toBe(false);
     expect(getSnapshot().minimized).toEqual([]);
@@ -59,6 +57,86 @@ describe("canvas store", () => {
     clearCompanionOperationId();
     expect(getSnapshot().viewport).toEqual(viewport);
     expect(getSnapshot().operations).toEqual(operations);
+  });
+
+  it("preserves Formation as the underlay across retarget and normal Exit", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 120 });
+    const operations = getSnapshot().operations;
+    toggleFormationView();
+
+    setCompanionOperationId("op-a");
+    setCompanionOperationId("op-b");
+
+    expect(getFormationView()).toBe(true);
+    expect(getCompanionOperationId()).toBe("op-b");
+    clearCompanionOperationId();
+    expect(getFormationView()).toBe(true);
+    expect(getSnapshot().operations).toEqual(operations);
+  });
+
+  it("restores Maximized around the latest valid retarget on normal Exit", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    setMaximizedOperationId("op-a");
+
+    setCompanionOperationId("op-a");
+    setCompanionOperationId("op-b");
+    clearCompanionOperationId();
+
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getMaximizedOperationId()).toBe("op-b");
+  });
+
+  it("does not restore Maximized after minimize, removal, or an explicit replacement", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    setMaximizedOperationId("op-a");
+    setCompanionOperationId("op-a");
+    setCompanionOperationId("op-b");
+    minimizeOperation("op-b");
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getMaximizedOperationId()).toBeNull();
+
+    setMaximizedOperationId("op-a");
+    setCompanionOperationId("op-a");
+    pruneOperations([]);
+    clearCompanionOperationId();
+    expect(getMaximizedOperationId()).toBeNull();
+
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setMaximizedOperationId("op-a");
+    setCompanionOperationId("op-a");
+    setMaximizedOperationId("op-b");
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getMaximizedOperationId()).toBe("op-b");
+  });
+
+  it("force-drops Analyze without restoring", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setMaximizedOperationId("op-a");
+    setCompanionOperationId("op-a");
+    forceDropCompanionOperationId();
+    expect(getMaximizedOperationId()).toBeNull();
+
+  });
+
+  it("keeps Formation active when same or different layout explicitly replaces Analyze", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    toggleFormationView();
+    expect(getFormationLayout()).toBe("grid");
+
+    setCompanionOperationId("op-a");
+    selectFormationLayout("grid");
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(true);
+    expect(getFormationLayout()).toBe("grid");
+
+    setCompanionOperationId("op-a");
+    selectFormationLayout("columns");
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(true);
+    expect(getFormationLayout()).toBe("columns");
   });
 
   it("clears companion layout when maximize or Formation takes ownership", () => {
@@ -85,7 +163,9 @@ describe("canvas store", () => {
     expect(getCompanionOperationId()).toBeNull();
   });
 
-  it("keeps companionOperationId through a same-theater reload and restores it per Theater", () => {
+  it("keeps companion target and return mode scoped independently per Theater", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY });
+    setMaximizedOperationId("op-a");
     setCompanionOperationId("op-a");
     // ops 동기화가 loadForTheater를 같은 Theater로 다시 불러도 열린 분석 레이아웃은 보존되어야 한다.
     loadForTheater("theater-a");
@@ -93,13 +173,19 @@ describe("canvas store", () => {
 
     loadForTheater("theater-b");
     expect(getCompanionOperationId()).toBeNull();
+    setOperationGeometry("op-b", { ...GEOMETRY });
+    toggleFormationView();
+    setCompanionOperationId("op-b");
 
     loadForTheater("theater-a");
     expect(getCompanionOperationId()).toBe("op-a");
-
     clearCompanionOperationId();
-    loadForTheater("theater-a");
-    expect(getCompanionOperationId()).toBeNull();
+    expect(getMaximizedOperationId()).toBe("op-a");
+
+    loadForTheater("theater-b");
+    expect(getCompanionOperationId()).toBe("op-b");
+    clearCompanionOperationId();
+    expect(getFormationView()).toBe(true);
   });
 
   it("restores maximizedOperationId independently for each Theater", () => {

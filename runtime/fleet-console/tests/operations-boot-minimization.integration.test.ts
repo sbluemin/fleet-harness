@@ -3,9 +3,10 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearFormationView, clearMaximizedOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import { focusOperation, getState, hydrateOperations, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -19,6 +20,15 @@ const keyboardShortcutMocks = vi.hoisted(() => ({
 }));
 const sideBarMocks = vi.hoisted(() => ({
   onFocus: null as null | ((operationId: string) => void),
+  onClose: null as null | ((operationId: string) => void),
+  onMinimize: null as null | ((operationId: string) => void),
+}));
+const canvasMocks = vi.hoisted(() => ({
+  onLaunchAtGeometry: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly zIndex: number }) => void),
+}));
+const registryMocks = vi.hoisted(() => ({
+  plugins: [] as Array<Record<string, unknown>>,
+  operationKinds: [] as OperationKindDescriptor[],
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -42,7 +52,12 @@ vi.mock("../core/client/src/api.js", () => ({
 }));
 
 vi.mock("@fleet-console/sdk/operations/browser", () => ({ fetchOperationCatalog: vi.fn().mockResolvedValue([]) }));
-vi.mock("../core/client/src/canvas/canvas.js", () => ({ OperationsCanvas: () => null }));
+vi.mock("../core/client/src/canvas/canvas.js", () => ({
+  OperationsCanvas: ({ onLaunchAtGeometry }: { readonly onLaunchAtGeometry: NonNullable<typeof canvasMocks.onLaunchAtGeometry> }) => {
+    canvasMocks.onLaunchAtGeometry = onLaunchAtGeometry;
+    return null;
+  },
+}));
 vi.mock("../core/client/src/components/codex-reading-sheet.js", () => ({ CodexReadingSheet: () => null }));
 vi.mock("../core/client/src/components/command-band.js", () => ({ CommandBand: () => null }));
 vi.mock("../core/client/src/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
@@ -54,14 +69,16 @@ vi.mock("../core/client/src/global-settings-store.js", () => ({ useGlobalSetting
 vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
 vi.mock("../core/client/src/pages/global-settings.js", () => ({ GlobalSettings: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }) }));
+vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [] }) }));
 vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({ getSideBarState: () => ({ collapsed: false }), setSideBarCollapsed: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
-  OperationsSideBar: ({ onFocus }: { readonly onFocus: (operationId: string) => void }) => {
+  OperationsSideBar: ({ onClose, onFocus, onMinimize }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
+    sideBarMocks.onClose = onClose;
+    sideBarMocks.onMinimize = onMinimize;
     return null;
   },
 }));
@@ -78,6 +95,7 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/operations");
   loadForTheater("theater-a");
   clearMaximizedOperationId();
+  clearCompanionOperationId();
   clearFormationView();
   loadForTheater(null);
   setState({ activeOperationId: null, activeTheaterId: null, groups: [], operations: [], operationsHydrated: false, theaters: [] });
@@ -87,14 +105,21 @@ beforeEach(() => {
   apiMocks.fetchGroups.mockResolvedValue([]);
   keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(false);
   sideBarMocks.onFocus = null;
+  sideBarMocks.onClose = null;
+  sideBarMocks.onMinimize = null;
+  canvasMocks.onLaunchAtGeometry = null;
+  registryMocks.plugins = [];
+  registryMocks.operationKinds = [];
 });
 
 afterEach(() => {
   act(() => root?.unmount());
   loadForTheater("theater-a");
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   clearFormationView();
   loadForTheater("theater-b");
+  clearCompanionOperationId();
   clearMaximizedOperationId();
   clearFormationView();
   loadForTheater(null);
@@ -346,6 +371,384 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().operations.b1).toEqual(destinationGeometry);
   });
 
+  it("retargets Analyze through sidebar focus and surfaces a minimized target", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(true);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      minimizeOperation("second");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
+    expect(getCompanionOperationId()).toBe("second");
+    expect(getState().activeOperationId).toBe("second");
+    expect(getSnapshot().minimized).not.toContain("second");
+  });
+
+  it("keeps the current Analyze target without revalidating readiness", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(false);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first")]);
+    await act(async () => {
+      toggleFormationView();
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("first");
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).not.toHaveBeenCalled();
+    expect(getCompanionOperationId()).toBe("first");
+    clearCompanionOperationId();
+    expect(getFormationView()).toBe(true);
+  });
+
+  it("falls back to Map when an Analyze retarget is not ready", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(false);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      toggleFormationView();
+      setCompanionOperationId("first");
+      minimizeOperation("second");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(false);
+    expect(getState().activeOperationId).toBe("second");
+    expect(getSnapshot().minimized).not.toContain("second");
+  });
+
+  it("falls back to Map when an Analyze retarget has no registered descriptor", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      toggleFormationView();
+      setCompanionOperationId("first");
+      minimizeOperation("second");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(false);
+    expect(getState().activeOperationId).toBe("second");
+    expect(getSnapshot().minimized).not.toContain("second");
+  });
+
+  it("applies only the latest asynchronous Analyze retarget", async () => {
+    const secondReady = deferred<boolean>();
+    const thirdReady = deferred<boolean>();
+    const canOpenCompanions = vi.fn(({ operation: target }: { readonly operation: OperationNode }) => target.id === "second" ? secondReady.promise : thirdReady.promise);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second"), operation("third")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => {
+      sideBarMocks.onFocus?.("second");
+      sideBarMocks.onFocus?.("third");
+    });
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getCompanionOperationId()).toBe("first");
+
+    await act(async () => {
+      thirdReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getCompanionOperationId()).toBe("third");
+  });
+
+  it("discards an asynchronous retarget after Analyze exits and reopens", async () => {
+    const secondReady = deferred<boolean>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    await act(async () => {
+      clearCompanionOperationId();
+      setCompanionOperationId("first");
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+  });
+
+  it("discards an asynchronous Analyze retarget after its destination closes", async () => {
+    const secondReady = deferred<boolean>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    apiMocks.fetchOperations.mockResolvedValue([operation("first")]);
+    await act(async () => {
+      sideBarMocks.onClose?.("second");
+      await vi.waitFor(() => expect(getState().operations.some((candidate) => candidate.id === "second")).toBe(false));
+    });
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+    expect(getState().activeOperationId).not.toBe("second");
+  });
+
+  it("discards an asynchronous Analyze retarget while its destination is closing", async () => {
+    const secondReady = deferred<boolean>();
+    const closeRefresh = deferred<readonly OperationNode[]>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    apiMocks.fetchOperations.mockReturnValueOnce(closeRefresh.promise);
+    act(() => sideBarMocks.onClose?.("second"));
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getState().operations.some((candidate) => candidate.id === "second")).toBe(true);
+    expect(getCompanionOperationId()).toBe("first");
+
+    await act(async () => {
+      closeRefresh.resolve([operation("first")]);
+      await vi.waitFor(() => expect(getState().operations.some((candidate) => candidate.id === "second")).toBe(false));
+    });
+  });
+
+  it("discards an asynchronous Analyze retarget after its destination is minimized", async () => {
+    const secondReady = deferred<boolean>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      restoreOperation("second");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    act(() => sideBarMocks.onMinimize?.("second"));
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+    expect(getSnapshot().minimized).toContain("second");
+  });
+
+  it("force-drops Analyze immediately when Sidebar closes its target", async () => {
+    await bootApp([operation("first")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+    apiMocks.fetchOperations.mockResolvedValue([]);
+
+    act(() => sideBarMocks.onClose?.("first"));
+
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
+  it("retargets Analyze with Alt+Arrow before Maximized and Formation", async () => {
+    registryMocks.operationKinds = [companionKind(() => true)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      toggleFormationView();
+      setMaximizedOperationId("first");
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getCompanionOperationId()).toBe("second");
+    expect(getMaximizedOperationId()).toBeNull();
+    expect(getFormationView()).toBe(true);
+  });
+
+  it("retargets Analyze through pending focus using the destination Theater's layer", async () => {
+    registryMocks.operationKinds = [companionKind(() => true)];
+    await bootApp(
+      [operation("a1", 1, "theater-a"), operation("b1", 1, "theater-b"), operation("b2", 2, "theater-b")],
+      [theater(), theater("theater-b", "Theater B")],
+    );
+    await act(async () => {
+      loadForTheater("theater-b");
+      setOperationGeometry("b1", { x: 0, y: 0, width: 640, height: 400, zIndex: 1 });
+      setOperationGeometry("b2", { x: 40, y: 40, width: 640, height: 400, zIndex: 2 });
+      setMaximizedOperationId("b1");
+      setCompanionOperationId("b1");
+      loadForTheater("theater-a");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      focusOperation("b2");
+      await Promise.resolve();
+    });
+
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getCompanionOperationId()).toBe("b2");
+    clearCompanionOperationId();
+    expect(getMaximizedOperationId()).toBe("b2");
+  });
+
+  it("discards an asynchronous Analyze retarget when a newer focus changes Theater", async () => {
+    const secondReady = deferred<boolean>();
+    const canOpenCompanions = vi.fn(() => secondReady.promise);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp(
+      [operation("first"), operation("second"), operation("b1", 1, "theater-b")],
+      [theater(), theater("theater-b", "Theater B")],
+    );
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+      sideBarMocks.onFocus?.("b1");
+      expect(getState().activeTheaterId).toBe("theater-b");
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getTheaterCompanionOperationId("theater-a")).toBe("first");
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
+  it("does not retarget Analyze when launch starts with it open", async () => {
+    const launch = deferred<{ readonly id: string }>();
+    registryMocks.plugins = [{ id: "terminal", launch: vi.fn(() => launch.promise) }];
+    await bootApp([operation("first")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+    apiMocks.fetchOperations.mockResolvedValue([operation("first"), operation("launched", 2)]);
+
+    await act(async () => {
+      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
+      launch.resolve({ id: "launched" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+  });
+
+  it("uses live completion state when Analyze opens during an in-flight launch", async () => {
+    const launch = deferred<{ readonly id: string }>();
+    registryMocks.plugins = [{ id: "terminal", launch: vi.fn(() => launch.promise) }];
+    await bootApp([operation("first")]);
+    apiMocks.fetchOperations.mockResolvedValue([operation("first"), operation("launched", 2)]);
+
+    await act(async () => {
+      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      setCompanionOperationId("first");
+      launch.resolve({ id: "launched" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBe("first");
+  });
+
+  it("keeps the destination Theater active and preserves the launch Theater Analyze target", async () => {
+    const launch = deferred<{ readonly id: string }>();
+    registryMocks.plugins = [{ id: "terminal", launch: vi.fn(() => launch.promise) }];
+    await bootApp(
+      [operation("a1", 1, "theater-a"), operation("b1", 1, "theater-b")],
+      [theater(), theater("theater-b", "Theater B")],
+    );
+    await act(async () => {
+      setCompanionOperationId("a1");
+      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      focusOperation("b1");
+      await Promise.resolve();
+    });
+    apiMocks.fetchOperations.mockResolvedValue([
+      operation("a1", 1, "theater-a"),
+      operation("launched", 2, "theater-a"),
+      operation("b1", 1, "theater-b"),
+    ]);
+
+    await act(async () => {
+      launch.resolve({ id: "launched" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getTheaterCompanionOperationId("theater-a")).toBe("a1");
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
   it("minimizes a second Theater's existing panels on first in-session view, surfacing only the selected panel", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
@@ -397,12 +800,38 @@ async function navigateTo(pathname: string): Promise<void> {
   });
 }
 
+async function bootApp(operationsList: readonly OperationNode[], theaterList = [theater()]): Promise<void> {
+  const operations = deferred<readonly OperationNode[]>();
+  const theaters = deferred<TheaterBootstrap>();
+  apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+  apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+  const { App } = await import("../core/client/src/app.js");
+  await act(async () => {
+    root!.render(createElement(BrowserRouter, null, createElement(App)));
+  });
+  await act(async () => {
+    operations.resolve(operationsList);
+    theaters.resolve({ theaters: theaterList });
+    await Promise.resolve();
+  });
+}
+
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
   const promise = new Promise<Value>((next) => {
     resolve = next;
   });
   return { promise, resolve };
+}
+
+function companionKind(canOpenCompanions: NonNullable<OperationKindDescriptor["canOpenCompanions"]>): OperationKindDescriptor {
+  return {
+    pluginId: "terminal",
+    type: "shell",
+    title: "Shell",
+    companions: [{ id: "analysis", title: "Analysis", render: () => null }],
+    canOpenCompanions,
+  };
 }
 
 function theater(id = "theater-a", label = "Theater A") {

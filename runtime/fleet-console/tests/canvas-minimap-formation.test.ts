@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getSnapshot, loadForTheater, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
@@ -246,12 +246,47 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(getCompanionOperationId()).toBeNull();
   });
 
+  it("renders Analyze over Formation and restores the preserved Formation layout on Exit", () => {
+    renderOperationsCanvas();
+    const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+    act(() => toggleFormationView());
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-view")).toBe(true);
+
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBe("operation");
+    expect(getFormationView()).toBe(true);
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(true);
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-view")).toBe(true);
+  });
+
+  it("restores Maximized on explicit Exit but force-drops it when the target is minimized", () => {
+    renderOperationsCanvas();
+    const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+    act(() => setMaximizedOperationId("operation"));
+    act(() => targetBody?.click());
+    expect(getCompanionOperationId()).toBe("operation");
+
+    act(() => targetBody?.click());
+    expect(getMaximizedOperationId()).toBe("operation");
+    expect(document.querySelector(".operations-canvas")?.classList.contains("is-panel-maximized")).toBe(true);
+
+    act(() => targetBody?.click());
+    act(() => minimizeOperation("operation"));
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getMaximizedOperationId()).toBeNull();
+  });
+
   it("keeps the companion layout and frames during the missing-operation grace period", () => {
     vi.useFakeTimers();
     try {
       renderOperationsCanvas();
       const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
       const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
+      act(() => setMaximizedOperationId("operation"));
       act(() => targetBody?.click());
 
       renderOperationsCanvas({ ...CANVAS_STATE, operations: [PEER_OPERATION] });
@@ -268,6 +303,7 @@ describe("CanvasMinimap collapse behavior", () => {
 
       act(() => vi.advanceTimersByTime(1));
       expect(getCompanionOperationId()).toBeNull();
+      expect(getMaximizedOperationId()).toBeNull();
       expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(false);
       expect(document.querySelector('[aria-label="Operation Minimap boundary"]')).toBeNull();
       expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(0);

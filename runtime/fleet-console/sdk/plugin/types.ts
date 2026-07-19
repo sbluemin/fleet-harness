@@ -93,6 +93,12 @@ export interface OperationKindDescriptor {
   readonly subtitle?: (operation: OperationNode) => string | undefined;
   readonly render?: (context: OperationRenderContext) => ReactNode;
   readonly companions?: readonly CompanionPanelDescriptor[];
+  readonly canOpenCompanions?: (context: OperationCompanionAvailabilityContext) => boolean | Promise<boolean>;
+}
+
+export interface OperationCompanionAvailabilityContext {
+  readonly api: ClientApiCapability;
+  readonly operation: OperationNode;
 }
 
 export interface CompanionPanelDescriptor {
