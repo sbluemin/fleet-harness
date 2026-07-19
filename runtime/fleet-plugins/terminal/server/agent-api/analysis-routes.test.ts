@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { EventEmitter } from "node:events";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -331,6 +332,9 @@ describe("Session Analyst server contract", () => {
     expect(response.body).toContain('<html data-theme="carbon" style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;">');
     expect(response.body).toContain(`<body style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;margin:0!important;">${html}</body>`);
     expect(response.body).toContain("<script>globalThis.__artifactRan = true</script>");
+    const fragmentDocument = new DOMParser().parseFromString(response.body, "text/html");
+    expect(fragmentDocument.documentElement.getAttribute("data-theme")).toBe("carbon");
+    expect(fragmentDocument.body.querySelector("main")?.textContent).toBe("ArtifactglobalThis.__artifactRan = true");
     expect(response.headers).toMatchObject({
       "Content-Type": "text/html; charset=utf-8",
       "Content-Security-Policy": ANALYSIS_ARTIFACT_CSP,
@@ -377,16 +381,39 @@ describe("Session Analyst server contract", () => {
       }) as never,
     });
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
-    const hostileHtml = '<!doctype html><html style="background:white!important"><head><style>html,body{background:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important}</style></head><body><script>globalThis.__artifactRan=true</script><main>Artifact</main></body></html>';
+    const hostileHtml = `<!doctype html><html lang="en" class='artifact-root' data-note="quoted > value" data-theme="artifact" style='scrollbar-gutter:stable;background-color:white!important'><head><style>html,body{background:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important}</style></head><body class="artifact-body" aria-label='Artifact > body' data-layout="report" style='display:grid;padding:24px;font-family:"Artifact Serif";--artifact-label:"alpha;beta";letter-spacing:.1em;margin:40px;background-color:hotpink!important;background-image:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important'><script>globalThis.__artifactRan=true</script><main>Artifact</main></body></html>`;
     emit?.({ type: "artifact", artifact: { id: "hostile", title: "Hostile", html: hostileHtml, createdAt: new Date(0).toISOString() } });
 
     for (const theme of ["instrument", "maritime", "carbon"] as const) {
-      const path = `/api/v1/plugins/terminal/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("oklch(23.5% 0.02 245)")}&foreground=${encodeURIComponent("oklch(94% 0.008 90)")}`;
+      const path = `/api/v1/plugins/terminal/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("#123456")}&foreground=${encodeURIComponent("#f0f0f0")}`;
       const response = await router.call("GET", path);
       expect(response.status).toBe(200);
-      expect(response.body).toContain(`<html data-theme="${theme}" style="background-color:oklch(23.5% 0.02 245)!important;background-image:none!important;color:oklch(94% 0.008 90)!important;min-height:100%!important;color-scheme:dark!important;">`);
-      expect(response.body).toContain(hostileHtml);
-      expect(response.body.indexOf("background-image:none!important")).toBeLessThan(response.body.indexOf("linear-gradient"));
+      const document = new DOMParser().parseFromString(response.body, "text/html");
+      expect(document.documentElement.getAttribute("data-theme")).toBe(theme);
+      expect(document.documentElement).toMatchObject({ lang: "en", className: "artifact-root" });
+      expect(document.documentElement.getAttribute("data-note")).toBe("quoted > value");
+      expect(document.body).toMatchObject({ className: "artifact-body" });
+      expect(document.body.getAttribute("aria-label")).toBe("Artifact > body");
+      expect(document.body.getAttribute("data-layout")).toBe("report");
+      expect(document.documentElement.style.scrollbarGutter).toBe("stable");
+      expect(document.body.style.display).toBe("grid");
+      expect(document.body.style.padding).toBe("24px");
+      expect(document.body.style.fontFamily).toBe('"Artifact Serif"');
+      expect(document.body.style.getPropertyValue("--artifact-label")).toBe('"alpha;beta"');
+      expect(document.body.style.letterSpacing).toBe("0.1em");
+      expect(document.documentElement.style.getPropertyValue("background-color")).toBe("rgb(18, 52, 86)");
+      expect(document.body.style.getPropertyValue("background-color")).toBe("rgb(18, 52, 86)");
+      expect(document.body.style.getPropertyValue("background-image")).toBe("none");
+      expect(document.body.style.getPropertyValue("color")).toBe("rgb(240, 240, 240)");
+      expect(document.body.style.getPropertyValue("min-height")).toBe("100%");
+      expect(document.body.style.getPropertyValue("color-scheme")).toBe("dark");
+      expect(document.body.style.getPropertyValue("margin")).toBe("0px");
+      for (const property of ["background-color", "background-image", "color", "min-height", "color-scheme", "margin"]) {
+        expect(document.body.style.getPropertyPriority(property)).toBe("important");
+      }
+      expect(document.querySelector("script")?.textContent).toContain("globalThis.__artifactRan=true");
+      expect(response.body.match(/<html\b/gi)).toHaveLength(1);
+      expect(response.body.match(/<body\b/gi)).toHaveLength(1);
     }
   });
 
@@ -413,9 +440,12 @@ describe("Session Analyst server contract", () => {
     const response = await router.call("GET", path);
 
     expect(response.status).toBe(200);
-    expect(response.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;background-image:none!important;color:CanvasText!important;');
+    const document = new DOMParser().parseFromString(response.body, "text/html");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("instrument");
+    expect(document.documentElement.style.getPropertyValue("background-color")).toBe("canvas");
+    expect(document.documentElement.style.getPropertyValue("color")).toBe("canvastext");
     expect(response.body).not.toContain("globalThis.injected");
-    expect(response.body).not.toContain("onload=");
+    expect(document.documentElement.hasAttribute("onload")).toBe(false);
   });
 
   it("host-gates artifact documents and returns 404 for unknown ids", async () => {
