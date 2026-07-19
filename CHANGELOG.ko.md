@@ -5,6 +5,45 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-07-19
+
+### fleet-console
+
+#### Added
+- [fleet-console] 사이드바 Theater 헤더를 드래그하여 순서를 바꾸고, 수동 정렬을 서버에 영속화합니다.
+
+#### Changed
+- [fleet-console] Fleet Wiki Cowork 어시스턴트 응답을 스트리밍 업데이트, 코드 블록, 다이어그램을 지원하는 compact Markdown으로 렌더링합니다.
+- [fleet-console] Cowork 주석의 편집 지시를 신뢰할 수 없는 Wiki 선택 텍스트와 구조적으로 분리합니다.
+
+#### Fixed
+- [fleet-console] 최소화된 사이드바 Operation 이름이 흐린 색에 55% 불투명도를 겹쳐 WCAG 대비 아래로 떨어지던 문제를 수정합니다. 이제 전용 판독 잉크 티어를 사용해 세 테마 모두 WCAG AA를 충족합니다.
+- [fleet-console] Session Analyze에서 Operation을 전환해도 분석 화면을 유지하고, 종료하면 이전 Map, Formation 또는 패널 최대화 화면을 복원합니다.
+
+#### Removed
+- [fleet-console] Command Band와 Activity Rail에서 Context Chip 및 Theater 하위 경로 컨텍스트 제어를 제거합니다.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] 세션 분석가 아티팩트를 일반 웹페이지처럼 렌더링하여 SVG·인라인 CSS·canvas·인라인 JavaScript가 축소된 정적 서브셋 대신 브라우저처럼 실제로 동작합니다.
+- [fleet-console] Session Analyst 어시스턴트 응답을 선택 가능한 compact Markdown으로 렌더링하면서 사용자 프롬프트는 일반 텍스트로 유지합니다.
+- [fleet-console] 모든 Activity Rail 플러그인을 활성 Theater 루트에서 동작시키고 Theater별 Shell 세션을 유지합니다.
+
+#### Fixed
+- [fleet-console] Kimi (Claude Code) 실행 항목에 Claude와 공유하던 아이콘 대신 전용 Kimi 심볼을 부여했습니다.
+- [fleet-console] Session Analyst 아티팩트 캔버스가 활성 Console 테마를 따르도록 수정했습니다.
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] 기본 Admiral 프롬프트를 간결하게 유지하면서 Fleet Wiki 운영 정책을 필요할 때 로드합니다.
+- [fleet-carriers] Chronicle 라우팅 메타데이터를 간결하게 유지하고 온디맨드 스킬에서 Wiki 권한 경계를 보존합니다.
+- [fleet-analyst] Session Analyst가 의도 드리프트를 판정할 때 확정된 사용자 의도와 충돌 행동을 모두 인용하고, 증거가 부족하면 기권하며, 비구속적 조언으로만 보고하도록 합니다.
+- [fleet-admiral] 새 worktree 내부에 고정된 의존성을 설치하고 Carrier 위임 전에 패키지 typecheck와 build 사전 검증을 요구합니다.
+- [fleet-analyst] Session Analyst가 정체성과 기능 질문에는 세션 히스토리를 읽지 않고 답변하며, 세션 질문에는 증거 기반 분석을 유지합니다.
+- [fleet-wiki] Fleet Wiki Cowork가 직접 질문에는 초안을 읽지 않고 답변하며, 요청된 초안 작업에 필요한 도구만 사용합니다.
+
 ## [1.28.0] - 2026-07-19
 
 ### fleet-cli

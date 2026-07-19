@@ -5,6 +5,45 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-07-19
+
+### fleet-console
+
+#### Added
+- [fleet-console] Reorder Theaters by dragging their sidebar headers, persisting the manual order on the server.
+
+#### Changed
+- [fleet-console] Render Fleet Wiki Cowork assistant replies as compact Markdown with streamed updates, code blocks, and diagrams.
+- [fleet-console] Keep Cowork annotation instructions structurally separate from untrusted selected Wiki text.
+
+#### Fixed
+- [fleet-console] Restore legibility of minimized sidebar Operation names, which stacked a dim color with 55% opacity and fell below WCAG contrast; minimized names now use a dedicated readable ink tier and clear WCAG AA across all three themes.
+- [fleet-console] Keep Session Analyze active while switching Operations and restore the previous Map, Formation, or maximized view on exit.
+
+#### Removed
+- [fleet-console] Remove the Context Chip and Theater sub-path context controls from the Command Band and Activity Rail.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Session Analyst artifacts now render as full web pages, so SVG, inline CSS, canvas, and inline JavaScript all run like a normal browser page instead of a stripped-down static subset.
+- [fleet-console] Render Session Analyst assistant replies as selectable compact Markdown while keeping user prompts plain.
+- [fleet-console] Run every Activity Rail plugin at the active Theater root with Theater-specific Shell sessions.
+
+#### Fixed
+- [fleet-console] Give the Kimi (Claude Code) launch entry its own Kimi symbol instead of the Claude icon it shared.
+- [fleet-console] Keep Session Analyst artifact canvases aligned with the active Console theme.
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] Load Fleet Wiki operating policy on demand while keeping the default Admiral prompt focused.
+- [fleet-carriers] Keep Chronicle routing metadata concise while preserving Wiki authority boundaries in the on-demand skill.
+- [fleet-analyst] Require Session Analyst intent-drift reviews to cite both settled user intent and conflicting agent behavior, abstain on incomplete evidence, and remain non-binding.
+- [fleet-admiral] Install frozen dependencies inside new worktrees and require package typecheck and build preflight before Carrier dispatch.
+- [fleet-analyst] Let Session Analyst answer identity and capability questions without reading session history, while retaining evidence-backed analysis for session questions.
+- [fleet-wiki] Let Fleet Wiki Cowork answer direct questions without reading the draft and use only the tools required by the requested draft task.
+
 ## [1.28.0] - 2026-07-19
 
 ### fleet-cli
