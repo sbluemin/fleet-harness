@@ -13,6 +13,8 @@
   --ink-veil: oklch(23.5% 0.02 245);
   --ink-rim: oklch(29% 0.018 245);
   --ink-fog: oklch(52% 0.012 245);
+  /* --ink-muted: minimized 등 "치워둔" 항목의 이름 티어 — ink-fog보다 밝아 판독 하한을 넘고, ink-spectral보다 어두워 기본 비활성과 구분된다. */
+  --ink-muted: oklch(64% 0.012 245);
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
 
@@ -142,6 +144,7 @@
   --ink-veil: oklch(36% 0.035 248);
   --ink-rim: oklch(48% 0.03 248);
   --ink-fog: oklch(70% 0.02 248);
+  --ink-muted: oklch(75% 0.02 248);
   --ink-spectral: oklch(82% 0.018 90);
   --ink-pearl: oklch(96% 0.012 88);
 
@@ -194,6 +197,7 @@
   --ink-veil: oklch(33% 0.006 252);
   --ink-rim: oklch(45% 0.005 252);
   --ink-fog: oklch(67% 0.005 250);
+  --ink-muted: oklch(72% 0.005 250);
   --ink-spectral: oklch(81% 0.004 250);
   --ink-pearl: oklch(95% 0.003 250);
 
