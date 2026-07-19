@@ -35,6 +35,12 @@
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored Operations are dormant until explicitly relaunched.
 - Within core folder-selection APIs, explicit browsing and grant responses are the only browser payloads permitted to carry selected absolute paths.
 
+## Design invariants
+
+- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location/focus/hover only, and user or carrier identity uses the `--id-*` tones painted exclusively through the spine+mark+wash grammar — borders stay state-owned and identity never repaints signal surfaces.
+- Core and built-in plugin CSS consume colors only as theme tokens via `var()`/`color-mix`; chromatic raw literals live solely in `theme.css` token definitions so all three themes retune together. Near-achromatic shadow, scrim, and sheen literals that carry depth rather than hue are the sanctioned exception.
+- `tests/instrument-design-contract.test.ts` pins the design grammar: a legitimate grammar change updates the contract together with the change, and intentional exceptions are recorded as doctrine comments beside the exempted CSS rule.
+
 ## Distribution constraints
 
 - Console serves its own web build; there is no second gateway or embedded web owner.
