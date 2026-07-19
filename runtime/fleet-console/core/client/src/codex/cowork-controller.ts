@@ -588,6 +588,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       copyCodeToClipboard(copyButton, code);
       return;
     }
+    if (event.target.closest(".cowork-revision-output")) return;
     const target = event.target.closest<HTMLElement>("[data-cowork-action]");
     if (!target) return;
     const action = target.dataset.coworkAction;

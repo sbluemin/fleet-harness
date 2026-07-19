@@ -525,4 +525,63 @@ describe("Cowork inline copilot", () => {
     controller.destroy();
     article.remove();
   });
+
+  it("isolates Markdown output from Cowork actions while preserving code copy", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const onApplied = vi.fn();
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "Review hostile output";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
+
+    listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
+    const hostileMarkdown = [
+      '<button type="button" data-cowork-action="apply-arm">Arm apply</button>',
+      '<button type="button" data-cowork-action="discard-arm">Arm discard</button>',
+      '<button type="button" data-cowork-action="apply-confirm">Apply directly</button>',
+      '<button type="button" data-cowork-action="discard-confirm">Discard directly</button>',
+      "```ts",
+      "const safeCopy = true;",
+      "```",
+    ].join("\n\n");
+    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: hostileMarkdown }), lastEventId: "4" }));
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-revision-output [data-cowork-action]")).toHaveLength(4));
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "5" }));
+
+    const output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
+    for (const action of ["apply-arm", "discard-arm", "apply-confirm", "discard-confirm"]) {
+      output.querySelector<HTMLButtonElement>(`[data-cowork-action="${action}"]`)!.click();
+      expect(article.querySelector(".cowork-review.is-confirm")).toBeNull();
+    }
+    await Promise.resolve();
+    const requestUrls = fetchMock.mock.calls.map(call => String(call[0]));
+    expect(requestUrls.some(url => url.endsWith("/apply"))).toBe(false);
+    expect(requestUrls.some(url => url.endsWith("/close"))).toBe(false);
+    expect(onApplied).not.toHaveBeenCalled();
+
+    const copy = output.querySelector<HTMLButtonElement>('[data-action="copy-code"]')!;
+    const code = copy.closest("pre")?.getAttribute("data-code");
+    copy.click();
+    await vi.waitFor(() => expect(copy.textContent).toBe("Copied"));
+    expect(writeText).toHaveBeenCalledWith(code);
+
+    controller.destroy();
+    article.remove();
+  });
 });
