@@ -1,6 +1,6 @@
 ---
 name: pr-workflow
-description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work, open a PR, add its PR-number changelog fragment in a second commit, await Codex review, apply feedback under an Admiral judgment gate, and auto-merge the approved PR. Supersedes the former pr-creates and pr-review-fixes skills.
+description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work, open a PR, add its PR-number changelog fragment in a second commit, await Codex review, adversarially adjudicate context-incomplete feedback against frozen product intent, roll back review-driven scope drift, and auto-merge only after a final context audit. Supersedes the former pr-creates and pr-review-fixes skills.
 ---
 
 # PR Workflow
@@ -31,7 +31,7 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 
 ## Goal
 
-Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and — once Codex signals approval — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
+Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and — after Codex signals approval and the cumulative review-driven diff passes a final product-context audit — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
 
 ## Changelog Fragment Requirement
 
@@ -41,25 +41,31 @@ The fragment body groups entries under `### <product>` and `#### <section>` head
 
 ## Admiral Judgment Policy
 
-Review comments are not accepted unconditionally. Every item must pass an Admiral-of-the-Navy judgment gate before being applied.
+Treat GitHub Codex review as code-local, context-incomplete evidence, never authority. Codex sees the code tree and diff but may not know the product background, cognitive-debt decisions, original user intent, or intended trade-offs. Codex approval is not proof of product correctness.
 
-Classify an item as **decline-with-rationale** when any of the following hold:
+Treat every finding as an adversarial hypothesis. Severity is not disposition. First classify it as either **code-local correctness / security / data-loss** or **product policy / behavior / trade-off / hypothetical hardening**; then decide **FIX / DECLINE / DEFER** from evidence.
 
-1. **Context-blind** — The comment was written without awareness of the PR's background, intent, prior decisions, persistent memory feedback, or an in-flight staged refactor.
-2. **Overfitting** — Defensive changes that exceed PR scope, overgeneralization from a single incident, or asks whose change cost is clearly disproportionate to the value. Meta-suggestions targeting prompt / doctrine / `AGENTS.md` content carry the highest overfitting risk.
-3. **No user-visible value** — Items that produce no behavioral change for users or operators. Pure stylistic preference, theatrical safety, or micro-optimization fall here.
+- **FIX** only after verifying all four gates: the defect occurs on a supported execution path; the change aligns with the original scope; no supported functionality regresses or narrows; and change cost is proportional to user/operator value. Code correctness is necessary, not sufficient.
+- **DECLINE** with cited Product Context Record or repository evidence when the finding is context-blind, hypothetical or overfit, outside scope, conflicts with an intended trade-off, narrows supported behavior, or lacks user/operator value. Record and courteously post every decline; never silently skip it.
+- **DEFER** a real architectural or product-policy issue that is outside the PR scope. State why it is real and why this PR must not absorb it.
+- **STOP and ask the user** when product intent is genuinely ambiguous and the Product Context Record plus cited evidence cannot resolve it. Never let the reviewer decide product policy.
 
-**Decline is not avoidance.** Every decline must cite at least one piece of evidence:
-
-- A PR context fact the comment missed (commit message, prior decision, or memory feedback — one line).
-- A stated mismatch between the PR's intent and the comment's ask.
-- A user-stated "right-approach" principle.
-
-**Decline ≠ silence.** When an item is declined: list it with reason and cited evidence in the final report, and post a short courteous decline note in the `## Notes` section of the `@codex` follow-up comment.
-
-**Decline is inappropriate** (classify as fix or defer instead) when the comment correctly identifies a real user-visible regression, consistency break, security flaw, or potential data loss; when it aligns with the PR's stated intent; or when verification confirms an ambiguous concern is real — escalate ambiguous cases to the user.
+Do not treat re-review comments as new scope. After every review pass, audit the cumulative review-fix diff from `REVIEW_BASE_HEAD` against the frozen Product Context Record. Roll back drifted review-fix hunks to the base behavior; do not stack compensating fixes on top of scope drift.
 
 This policy governs Phase 4 (classification / verification) and Phase 5 (self-verification audit).
+
+## Product Context Record
+
+Before the first review-fix, freeze one Product Context Record for the entire PR. Do not rewrite it to justify later feedback. Only an explicit later user or release-owner directive may append a cited context amendment; preserve the original record, and never treat reviewer feedback as authority to amend it. Record:
+
+- Original request and acceptance criteria.
+- Explicit exclusions.
+- Intended trade-offs.
+- Supported behavior that must not regress or narrow.
+- Cited issue, PRD, Fleet Wiki, and decision evidence when available.
+- `REVIEW_BASE_HEAD`: the pushed PR head SHA after the PR-number changelog commit and before any review-fix.
+
+If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_BASE_HEAD` cannot be reconstructed from the PR history and cited evidence, stop and ask the user before applying more feedback or merging.
 
 ## Required Workflow
 
@@ -105,7 +111,7 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
 
 The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **waits with a deterministic background poll that wakes you only when something real changes** — never ask the Admiral to run `/loop` by hand, and prefer this over a fixed-interval cron that re-invokes the model every tick whether or not anything happened. A cheap `gh` loop runs in the background (no model tokens) and re-invokes you on the first genuine signal.
 
-0. **Ensure PR metadata, changelog completion, and the right branch.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. For release-impacting work, require `.changelog.d/pr-<pr_number>.md` on the remote head; if it is missing, return to Phase 2 step 6 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit.
+0. **Ensure PR metadata, changelog completion, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. For release-impacting work, require `.changelog.d/pr-<pr_number>.md` on the remote head; if it is missing, return to Phase 2 step 6 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
 1. **Activate the initial review before waiting.** Apply this gate once per PR, before the first long-running poll. Skip it after Codex has already reacted, reviewed, commented, or been explicitly requested.
    1. Check PR-body reactions, reviews, and Codex top-level comments. Any `chatgpt-codex-connector[bot]` reaction, review, or comment means the reviewer is active; continue to step 2.
    2. If no Codex signal exists, post `@codex Please review this PR.` as a PR comment and record its comment ID, URL, and creation time. Do not start the 40-minute poll yet.
@@ -136,7 +142,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
      ```
      Do **not** wrap the loop in `nohup … &` — that detaches it from the harness, so its exit never re-invokes you. The `run_in_background` call itself is the only backgrounding needed.
 4. **On wake, read the full state and route.** When the poll exits, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; PR-body reactions `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`. Then:
-   - **Approval = merge trigger.** A fresh `chatgpt-codex-connector[bot]` `+1` on the PR body (`created_at` newer than both the latest pushed head commit and the most recent `@codex` re-review comment) **and** no new actionable comments → approval is final, go to Phase 6 (auto-merge). A `+1` predating the latest push is stale (GitHub keeps the old reaction) — ignore it. A bare `eyes` reaction means the review is still in progress (pending), not approval.
+   - **Approval = final-audit trigger.** A fresh `chatgpt-codex-connector[bot]` `+1` on the PR body (`created_at` newer than both the latest pushed head commit and the most recent `@codex` re-review comment) **and** no new actionable comments → go to Phase 6. Treat the signal as code-review completion, not product-correctness proof. A `+1` predating the latest push is stale (GitHub keeps the old reaction) — ignore it. A bare `eyes` reaction means the review is still in progress (pending), not approval.
    - **New actionable feedback** → Phase 4.
    - **Spurious wake or timeout** (only `eyes`, a re-anchored old comment, or nothing genuinely new) → relaunch the background poll (step 3) and keep waiting.
 
@@ -144,15 +150,18 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 
 ### Phase 4 — Judge & apply feedback
 
-1. Collect and group review items by author/severity (Codex P1/P2/P3, human asks, nits). Filter to `<scope_hint>`.
-2. For each item, **verify the underlying claim against the current code/docs before editing** — review comments may be stale, speculative, or based on assumptions the repo does not hold.
-3. Decide one of **fix / decline-with-rationale / defer** per item under the **Admiral Judgment Policy** above. Do not default to fix — default to review-then-decide. Record each decision and its evidence; never silently skip.
-4. Apply changes narrowly — restrict edits to the files/lines the verified items demand. No opportunistic refactors, renames, or formatting churn. Prefer `Edit` over full-file rewrite; re-read each file immediately before editing. New code comments in Korean.
-5. Delegate to **Genesis** (`carrier_dispatch`, `carrier_id: "genesis"`) for multi-file or non-trivial fixes with `<objective>`/`<scope>`/`<constraints>`/`<references>` blocks; apply trivial single-file edits directly.
+1. Require the frozen Product Context Record and trustworthy `REVIEW_BASE_HEAD`; stop if either is missing.
+2. Before considering new feedback, audit existing cumulative review-driven changes with `git diff REVIEW_BASE_HEAD` plus staged/untracked-file inventory. Compare every hunk to the frozen record and cited user-directed amendments. Roll back only drifted review-driven intent to `REVIEW_BASE_HEAD` behavior; preserve later user-directed and concurrent changes.
+3. Collect and group review items by author/severity (Codex P1/P2/P3, human asks, nits). Filter to `<scope_hint>`. Severity never determines disposition and no comment grants new scope.
+4. For each item, verify the claim against current code/docs and classify it as code-local correctness/security/data-loss or product policy/behavior/trade-off/hypothetical hardening.
+5. Decide **FIX / DECLINE / DEFER** under the Admiral Judgment Policy. For FIX, record evidence for all four gates before editing. Record cited evidence for every disposition; never silently skip.
+6. Delegate to **Genesis** (`carrier_dispatch`, `carrier_id: "genesis"`) for multi-file or non-trivial FIX items with the frozen Product Context Record in `<references>` plus explicit `<objective>`/`<scope>`/`<constraints>` blocks; apply trivial single-file edits directly.
+7. Apply FIX items narrowly — restrict edits to the verified defect and preserve all supported behavior named in the record. No opportunistic refactors, renames, formatting churn, or speculative hardening. Prefer `Edit` over full-file rewrite; re-read each file immediately before editing. New code comments in Korean.
+8. Repeat the cumulative audit after applying the pass. Roll back drifted review-driven hunks before continuing while preserving cited user-directed amendments; never add a compensating fix for review-created drift.
 
 ### Phase 5 — Re-validate, commit, push, request re-review
 
-1. Self-verification (before external checks): walk the diff hunk by hunk — every hunk maps to a recorded item (else revert as scope creep); every fix-item is reflected; decline/defer rationale is evidence-backed, not speculation; no boundary/scope breach; no unverified runtime assumption; new comments Korean; files re-read before edit; no single-call-site abstraction; replay each original comment ("does this concern still hold?").
+1. Self-verification (before external checks): walk `git diff REVIEW_BASE_HEAD` hunk by hunk — every review-driven hunk maps to a FIX item and passes all four gates (else roll it back); every fix-item is reflected; decline/defer rationale is cited; supported behavior is preserved; no boundary/scope breach; no unverified runtime assumption; new comments Korean; files re-read before edit; no single-call-site abstraction; replay each original comment ("does this concern still hold?").
 2. External checks: `git status --short` + `git diff --stat` (only intended files); run available checks for touched workspaces — `pnpm --filter <pkg> typecheck`, `build` (tsc — vitest alone does NOT typecheck), `test`. State explicitly if a script is absent.
 3. Commit the fixes (Conventional Commits, HEREDOC, no amend/bypass) staging only the fix files.
 4. Confirm the current branch is `<headRefName>` (the recorded PR head); if it is not, stop and ask — do not push fixes from a non-head branch. Push the current commit explicitly with an `HEAD:<headRefName>` refspec so the actual fix commit lands on the PR branch (a bare `git push origin <headRefName>` pushes the like-named local ref, not necessarily current HEAD): `git push origin HEAD:<headRefName>`; then verify the local branch is up-to-date with the remote.
@@ -174,21 +183,22 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 
 ### Phase 6 — Auto-merge
 
-Reached after Phase 3 confirms either final approval (a fresh Codex `+1` with no open actionable comments) or `REVIEW_BYPASS_REASON=codex_activation_timeout` from the bounded explicit activation gate. The timeout fallback authorizes normal merge checks only; it never bypasses branch protection or required checks. When `<auto_merge>` is `false`, skip this phase and report the PR as approved-but-unmerged or review-unavailable-and-unmerged.
+Reached after Phase 3 confirms either review completion (a fresh Codex `+1` with no open actionable comments) or `REVIEW_BYPASS_REASON=codex_activation_timeout` from the bounded explicit activation gate. Neither signal proves product correctness. The timeout fallback authorizes normal merge checks only; it never bypasses branch protection or required checks. When `<auto_merge>` is `false`, skip merging and report the PR as review-complete-but-unmerged or review-unavailable-and-unmerged.
 
 1. **Stop the wait loop.** If Phase 3 started a background poll, stop it with `TaskStop` (or `CronDelete` for the cron fallback). Under `codex_activation_timeout`, no long-running poll exists; continue directly. No more review polling occurs after this point.
-2. **Check mergeability.** `gh pr view <pr_number> --repo <repo> --json mergeable,mergeStateStatus,baseRefName,headRefName`.
-   - `mergeable: MERGEABLE` with `mergeStateStatus` `CLEAN` / `UNSTABLE` / `BEHIND` (no conflict) → go to step 4 (merge directly).
-   - `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY` → the head conflicts with `<base>`; go to step 3 (rebase path).
+2. **Run the final context audit.** Compare the cumulative review-driven diff from `REVIEW_BASE_HEAD` to the frozen Product Context Record. Confirm every hunk remains in original scope, preserves supported behavior and intended trade-offs, and has proportional user/operator value. On drift, roll back the drift and return to Phase 5 for validation/re-review; if rollback or product intent is ambiguous, stop and ask the user. Never merge merely because Codex approved.
+3. **Check mergeability.** `gh pr view <pr_number> --repo <repo> --json mergeable,mergeStateStatus,baseRefName,headRefName`.
+   - `mergeable: MERGEABLE` with `mergeStateStatus` `CLEAN` / `UNSTABLE` / `BEHIND` (no conflict) → go to step 5 (merge directly).
+   - `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY` → the head conflicts with `<base>`; go to step 4 (rebase path).
    - `mergeable: UNKNOWN` → GitHub is still computing mergeability; wait briefly and re-check before deciding.
-3. **Conflict path — rebase the head onto `<base>`, then force-push.**
+4. **Conflict path — rebase the head onto `<base>`, then force-push.**
    1. Invoke the **rebase-on-canary** skill against the PR head (current-branch mode in the head's worktree, or its explicit `<worktree_path>`) with base = `<base>`. By default that skill auto-resolves conflicts by integrating both sides and validates the result.
    2. rebase-on-canary escalates only a genuinely ambiguous/unsafe conflict or a post-rebase validation failure. If it escalates, **halt auto-merge** and surface its report to the Admiral of the Navy — do not merge.
    3. On a successful rebase (clean or auto-resolved), confirm the current branch is `<headRefName>`, then publish the rewritten history with a lease: `git push --force-with-lease origin HEAD:<headRefName>`. Never `--force`; never force-push `<base>`.
-   4. Re-check mergeability (step 2). The rebase preserves the approved change reconciled with the new base; if `mergeable` is still not `MERGEABLE`, halt and escalate.
-4. **Merge.** `gh pr merge <pr_number> --repo <repo> --<merge_method>` (default `--squash`, matching the repo convention). Do not pass `--admin` or otherwise bypass branch protection or a required check — if the merge is rejected, halt and escalate.
-5. **Verify the merge.** `gh pr view <pr_number> --repo <repo> --json state,mergedAt,mergeCommit` — confirm `state: MERGED` and record the merge commit SHA.
-6. Go to Phase 7.
+   4. Re-check mergeability (step 3), then repeat the final context audit (step 2) against the rebased diff. If mergeability or context validation fails, halt and escalate; never merge a conflict resolution that changed product intent or supported behavior.
+5. **Merge.** `gh pr merge <pr_number> --repo <repo> --<merge_method>` (default `--squash`, matching the repo convention). Do not pass `--admin` or otherwise bypass branch protection or a required check — if the merge is rejected, halt and escalate.
+6. **Verify the merge.** `gh pr view <pr_number> --repo <repo> --json state,mergedAt,mergeCommit` — confirm `state: MERGED` and record the merge commit SHA.
+7. Go to Phase 7.
 
 ### Phase 7 — Cleanup & completion
 
@@ -200,6 +210,7 @@ Reached after Phase 3 confirms either final approval (a fresh Codex `+1` with no
 
 Then report in Korean:
 - PR number, title, head/base, URL, draft flag.
+- Frozen Product Context Record evidence, `REVIEW_BASE_HEAD`, and the final cumulative context-audit outcome.
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
 - Files changed, the initial product commit SHA, the PR-number fragment commit SHA when applicable, later fix commit SHA(s), and push target(s).
 - Validation commands and pass/fail status; note any check not run.
@@ -219,6 +230,7 @@ Then report in Korean:
 
 - Do not push commits directly to `main` / `master` / `<base>` or any protected branch — local pushes target only the PR's `headRefName`. Phase 6 integrates into `<base>` exclusively through the server-side `gh pr merge`, never a local push to the base.
 - Do not address review items outside `<scope_hint>` that the user did not ask for.
+- Do not treat reviewer severity, re-review comments, or approval as scope or product-policy authority; the frozen Product Context Record governs every pass and the final merge audit.
 - Do not silently expand scope: no opportunistic refactors, formatting-only churn, or dependency bumps.
 - Do not create a new branch mid-flow, amend, or close/reopen the PR. Do not rebase or force-push **except** the Phase 6 auto-merge conflict path: it rebases the head onto `<base>` via the rebase-on-canary skill and force-pushes the result to `<headRefName>` with `--force-with-lease` only — never `--force`, never to `<base>`.
 - Phase 6 merges only via `gh pr merge` with `<merge_method>` (default `squash`); never pass `--admin` or bypass branch protection or a required check — halt and escalate if the merge is rejected.
