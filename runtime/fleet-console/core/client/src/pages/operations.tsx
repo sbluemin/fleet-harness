@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, forgetTheater, issueTheaterFolderGrant, patchOperation, renameOperation, updateGroup, ApiError } from "../api.js";
-import { animateViewportTo, claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearFormationView, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -351,6 +351,7 @@ function routeOperationFocus(operationId: string, operationKinds: readonly Opera
     const descriptor = operation && operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
     if (descriptor && !descriptor.companions?.length) {
       forceDropCompanionOperationId();
+      clearFormationView();
       focusMap();
       return;
     }
