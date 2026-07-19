@@ -9,15 +9,6 @@ import type { AnalystArtifact, SessionToolOptions } from "./types.js";
 const exec = promisify(execFile);
 const MAX_ARTIFACT_BYTES = 50 * 1024;
 const MAX_ARTIFACTS = 20;
-// 서버 검사는 클라이언트 렌더러가 유지하는 양의 요소 목록과 같은 구조적 경계를 사용한다.
-const STATIC_ARTIFACT_ELEMENTS = new Set([
-  "abbr", "address", "article", "aside", "b", "bdi", "bdo", "blockquote", "br", "caption", "cite", "code", "col", "colgroup",
-  "data", "dd", "details", "div", "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
-  "header", "hr", "i", "img", "kbd", "li", "main", "mark", "meter", "ol", "p", "pre", "progress", "q", "s", "samp", "section",
-  "small", "span", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var",
-]);
-const TRANSPARENT_DOCUMENT_ELEMENTS = new Set(["html", "head", "body"]);
-const VOID_HTML_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
 
 export const ANALYST_TOOL_IDS = {
   sessionOutline: "session_outline",
@@ -90,8 +81,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     promptSnippet: "Use publish_artifact with the exact title and html parameters for a self-contained structured explanation with evidence citations.",
     whenToUse: ["When a timeline, comparison, risk review, or visual brief is clearer than chat alone.", "After collecting cited evidence for the artifact."],
     whenNotToUse: ["Do not use it for raw transcript dumps, secrets, external resources, or oversized HTML."],
-    usageGuidelines: ["Pass exactly title and html; never use content as an alias for html.", "html must contain visible static content and is capped at 50KiB UTF-8."],
-    parameters: { type: "object", additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 120, description: "Searchable artifact title, maximum 120 characters." }, html: { type: "string", minLength: 1, description: "Self-contained HTML with visible static content, maximum 50KiB UTF-8. This property is named html, not content." } }, required: ["title", "html"] },
+    usageGuidelines: ["Pass exactly title and html; never use content as an alias for html.", "html must be non-empty and is capped at 50KiB UTF-8."],
+    parameters: { type: "object", additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 120, description: "Searchable artifact title, maximum 120 characters." }, html: { type: "string", minLength: 1, description: "Self-contained non-empty HTML, maximum 50KiB UTF-8. This property is named html, not content." } }, required: ["title", "html"] },
   },
 };
 
@@ -157,7 +148,6 @@ export class AnalystTools {
     if (!html.trim()) throw new Error("Invalid artifact HTML: provide a non-empty 'html' parameter (not 'content')");
     const unexpected = Object.keys(args).filter((key) => key !== "title" && key !== "html");
     if (unexpected.length) throw new Error(`Invalid artifact parameters: expected only 'title' and 'html'; received ${unexpected.join(", ")}`);
-    if (!hasVisibleStaticContent(html)) throw new Error("Artifact HTML must include visible static content");
     const artifact = { id: crypto.randomUUID(), title, html, createdAt: new Date().toISOString() };
     this.artifacts.unshift(artifact);
     if (this.artifacts.length > MAX_ARTIFACTS) this.artifacts.splice(MAX_ARTIFACTS);
@@ -168,52 +158,3 @@ export class AnalystTools {
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function integer(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : undefined; }
-
-function hasVisibleStaticContent(html: string): boolean {
-  const openElements: { readonly tag: string; readonly keepsText: boolean }[] = [];
-  const tagPattern = /<!--[\s\S]*?-->|<![^>]*>|<\/?([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = tagPattern.exec(html)) !== null) {
-    if ((openElements.at(-1)?.keepsText ?? true) && hasVisibleText(html.slice(cursor, match.index))) return true;
-    cursor = tagPattern.lastIndex;
-    const tag = match[1]?.toLowerCase();
-    if (!tag) continue;
-
-    if (/^<\//.test(match[0])) {
-      for (let index = openElements.length - 1; index >= 0; index -= 1) {
-        if (openElements[index]?.tag !== tag) continue;
-        openElements.length = index;
-        break;
-      }
-      continue;
-    }
-
-    const parentKeepsText = openElements.at(-1)?.keepsText ?? true;
-    const keepsText = parentKeepsText
-      && (STATIC_ARTIFACT_ELEMENTS.has(tag) || TRANSPARENT_DOCUMENT_ELEMENTS.has(tag))
-      && tag !== "style"
-      && !hasHtmlAttribute(match[0], "hidden");
-    if (!VOID_HTML_ELEMENTS.has(tag)) openElements.push({ tag, keepsText });
-  }
-
-  return (openElements.at(-1)?.keepsText ?? true) && hasVisibleText(html.slice(cursor));
-}
-
-function hasHtmlAttribute(openingTag: string, expectedName: string): boolean {
-  const attributePattern = /(?:^|[\t\n\f\r ])([^\t\n\f\r "'=<>`/]+)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"|'[^']*'|[^\t\n\f\r "'=<>`]+))?/g;
-  let match: RegExpExecArray | null;
-  while ((match = attributePattern.exec(openingTag)) !== null) {
-    if (match[1]?.toLowerCase() === expectedName) return true;
-  }
-  return false;
-}
-
-function hasVisibleText(value: string): boolean {
-  const visible = value
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/&(?:nbsp|#160|#x0*a0);/gi, " ")
-    .replace(/&(?:[a-z][a-z0-9]+|#\d+|#x[a-f0-9]+);/gi, "x");
-  return visible.trim().length > 0;
-}

@@ -80,7 +80,7 @@ describe("AnalystTools", () => {
     expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ html }) })]);
   });
 
-  it("rejects missing or non-renderable artifact HTML before publishing", async () => {
+  it("enforces the exact publish_artifact parameter contract", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
     await writeFile(file, "");
     const emitted: unknown[] = [];
@@ -94,44 +94,9 @@ describe("AnalystTools", () => {
     });
     await expect(publish.execute({ title: "Wrong parameter", content: "<p>Hidden</p>" }, {} as never)).rejects.toThrow("'html' parameter");
     await expect(publish.execute({ title: "Extra parameter", html: "<p>Visible</p>", content: "duplicate" }, {} as never)).rejects.toThrow("expected only 'title' and 'html'");
-    await expect(publish.execute({ title: "Empty document", html: "  <style>body { color: black }</style>  " }, {} as never)).rejects.toThrow("visible static content");
-    await expect(publish.execute({ title: "Head only", html: "<head><title>Report [e1]</title></head>" }, {} as never)).rejects.toThrow("visible static content");
-    await expect(publish.execute({ title: "Navigation only", html: "<nav>Report [e1]</nav>" }, {} as never)).rejects.toThrow("visible static content");
-    await expect(publish.execute({ title: "Visible paragraph", html: "<p>Visible [e1]</p>" }, {} as never)).resolves.toMatchObject({ artifact: { title: "Visible paragraph" } });
-    expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ title: "Visible paragraph" }) })]);
-  });
-
-  it("rejects content in hidden subtrees while accepting a visible sibling", async () => {
-    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
-    await writeFile(file, "");
-    const tools = new AnalystTools({ capturePath: file, cwd: process.cwd() });
-    const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
-
-    for (const html of [
-      "<div hidden><p>Hidden</p></div>",
-      "<DIV HIDDEN=\"\"><p>Hidden</p></DIV>",
-      "<section hidden=\"hidden\"><p>Hidden</p></section>",
-      "<article HiDdEn='HiDdEn'><p>Hidden</p></article>",
-    ]) {
-      await expect(publish.execute({ title: "Hidden only", html }, {} as never)).rejects.toThrow("visible static content");
-    }
-    await expect(publish.execute({ title: "Visible sibling", html: "<div hidden><p>Hidden</p></div><p>Visible</p>" }, {} as never)).resolves.toMatchObject({ artifact: { title: "Visible sibling" } });
-  });
-
-  it("treats full-document wrappers as transparent without making hidden or unsupported content visible", async () => {
-    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
-    await writeFile(file, "");
-    const tools = new AnalystTools({ capturePath: file, cwd: process.cwd() });
-    const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
-
-    await expect(publish.execute({
-      title: "Full document",
-      html: "<!doctype html><html><body><article>Evidence [e1]</article></body></html>",
-    }, {} as never)).resolves.toMatchObject({ artifact: { title: "Full document" } });
-    await expect(publish.execute({
-      title: "Non-renderable document",
-      html: "<!doctype html><html><head><title>Report [e1]</title><style>body { color: black }</style></head><body><nav>Navigation</nav><article hidden>Hidden evidence [e1]</article></body></html>",
-    }, {} as never)).rejects.toThrow("visible static content");
+    await expect(publish.execute({ title: "Empty document", html: "" }, {} as never)).rejects.toThrow("non-empty 'html' parameter");
+    await expect(publish.execute({ title: "Whitespace document", html: " \n\t " }, {} as never)).rejects.toThrow("non-empty 'html' parameter");
+    expect(emitted).toEqual([]);
   });
 
   it("keeps only the 20 newest in-memory artifacts", async () => {
