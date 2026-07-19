@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 
-import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_ANALYSIS_SESSIONS } from "./analysis-registry.js";
+import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_ANALYSIS_SESSIONS, MAX_TOTAL_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
 import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalystCliId } from "./analysis-types.js";
 
@@ -153,6 +153,52 @@ describe("Session Analyst server contract", () => {
     await registry.dispose();
     expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBeNull();
     expect(registry.artifactHtml("other-artifact")).toBeNull();
+  });
+
+  it("bounds stopped artifact history process-wide by evicting the oldest inactive artifacts", async () => {
+    const registry = new AnalysisRegistry();
+    const artifactIds: string[] = [];
+    const operationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+
+    for (let operationIndex = 0; operationIndex < operationCount; operationIndex += 1) {
+      const emit = await startArtifactSession(registry, `stopped-op-${operationIndex}`);
+      for (let artifactIndex = 0; artifactIndex < MAX_ANALYSIS_ARTIFACTS; artifactIndex += 1) {
+        const artifactId = `stopped-${operationIndex}-${artifactIndex}`;
+        artifactIds.push(artifactId);
+        emitArtifact(emit, artifactId);
+      }
+      await registry.stop(`stopped-op-${operationIndex}`);
+    }
+
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(registry.artifactHtml("stopped-0-0")).toBeNull();
+    expect(registry.artifactHtml(`stopped-0-${MAX_ANALYSIS_ARTIFACTS - 1}`)).toBeNull();
+    expect(registry.artifactHtml("stopped-1-0")).toBe("<p>stopped-1-0</p>");
+    await registry.dispose();
+  });
+
+  it("never evicts active operation artifacts when enforcing the process-wide cap", async () => {
+    const registry = new AnalysisRegistry();
+    const artifactIds = ["active-artifact"];
+    const emitActive = await startArtifactSession(registry, "active-op");
+    emitArtifact(emitActive, "active-artifact");
+    const stoppedOperationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+
+    for (let operationIndex = 0; operationIndex < stoppedOperationCount; operationIndex += 1) {
+      const operationId = `history-op-${operationIndex}`;
+      const emit = await startArtifactSession(registry, operationId);
+      for (let artifactIndex = 0; artifactIndex < MAX_ANALYSIS_ARTIFACTS; artifactIndex += 1) {
+        const artifactId = `history-${operationIndex}-${artifactIndex}`;
+        artifactIds.push(artifactId);
+        emitArtifact(emit, artifactId);
+      }
+      await registry.stop(operationId);
+    }
+
+    expect(registry.artifactHtml("active-artifact")).toBe("<p>active-artifact</p>");
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(registry.artifactHtml("history-0-0")).toBeNull();
+    await registry.dispose();
   });
 
   it("normalizes absent effort to undefined when creating an unsupported-effort session", async () => {
@@ -405,4 +451,20 @@ function createRouterHarness(initialHostAllowance: boolean) {
       return { writes, get ended() { return ended; }, get status() { return responseStatus; }, get headers() { return responseHeaders; }, get body() { return responseBody; } };
     },
   };
+}
+
+type ArtifactEmitter = (event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: number } }) => void;
+
+async function startArtifactSession(registry: AnalysisRegistry, operationId: string): Promise<ArtifactEmitter> {
+  let emit: ArtifactEmitter | undefined;
+  await registry.start(operationId, (onEvent) => {
+    emit = onEvent as ArtifactEmitter;
+    return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never;
+  });
+  if (!emit) throw new Error("artifact emitter was not created");
+  return emit;
+}
+
+function emitArtifact(emit: ArtifactEmitter, artifactId: string): void {
+  emit({ type: "artifact", artifact: { id: artifactId, title: artifactId, html: `<p>${artifactId}</p>`, createdAt: 0 } });
 }
