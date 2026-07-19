@@ -541,6 +541,13 @@ describe("Cowork inline copilot", () => {
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     const onApplied = vi.fn();
     const { article, body } = host();
+    const reader = document.createElement("div");
+    article.replaceWith(reader);
+    reader.append(article);
+    const ancestorRouter = vi.fn((event: MouseEvent) => event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-drydock-action]")?.dataset.drydockAction
+      : undefined);
+    reader.addEventListener("click", ancestorRouter);
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied });
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
@@ -556,6 +563,8 @@ describe("Cowork inline copilot", () => {
       '<button type="button" data-cowork-action="discard-arm">Arm discard</button>',
       '<button type="button" data-cowork-action="apply-confirm">Apply directly</button>',
       '<button type="button" data-cowork-action="discard-confirm">Discard directly</button>',
+      '<button type="button" data-drydock-action="approve">Approve through reader</button>',
+      '<a href="#reader-link">Open safe link</a>',
       "```ts",
       "const safeCopy = true;",
       "```",
@@ -565,10 +574,15 @@ describe("Cowork inline copilot", () => {
     listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "5" }));
 
     const output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
+    ancestorRouter.mockClear();
     for (const action of ["apply-arm", "discard-arm", "apply-confirm", "discard-confirm"]) {
       output.querySelector<HTMLButtonElement>(`[data-cowork-action="${action}"]`)!.click();
       expect(article.querySelector(".cowork-review.is-confirm")).toBeNull();
     }
+    output.querySelector<HTMLButtonElement>('[data-drydock-action="approve"]')!.click();
+    const link = output.querySelector<HTMLAnchorElement>('a[href="#reader-link"]')!;
+    expect(link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))).toBe(true);
+    expect(ancestorRouter).not.toHaveBeenCalled();
     await Promise.resolve();
     const requestUrls = fetchMock.mock.calls.map(call => String(call[0]));
     expect(requestUrls.some(url => url.endsWith("/apply"))).toBe(false);
@@ -580,8 +594,9 @@ describe("Cowork inline copilot", () => {
     copy.click();
     await vi.waitFor(() => expect(copy.textContent).toBe("Copied"));
     expect(writeText).toHaveBeenCalledWith(code);
+    expect(ancestorRouter).not.toHaveBeenCalled();
 
     controller.destroy();
-    article.remove();
+    reader.remove();
   });
 });

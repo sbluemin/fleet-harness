@@ -581,6 +581,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const onClick = (event: MouseEvent) => {
     if (!(event.target instanceof Element)) return;
+    const revisionOutput = event.target.closest(".cowork-revision-output");
+    if (revisionOutput) event.stopPropagation();
     const copyButton = event.target.closest<HTMLElement>('[data-action="copy-code"]');
     if (copyButton) {
       const code = copyButton.closest("pre")?.getAttribute("data-code");
@@ -588,7 +590,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       copyCodeToClipboard(copyButton, code);
       return;
     }
-    if (event.target.closest(".cowork-revision-output")) return;
+    if (revisionOutput) return;
     const target = event.target.closest<HTMLElement>("[data-cowork-action]");
     if (!target) return;
     const action = target.dataset.coworkAction;
