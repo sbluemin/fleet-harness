@@ -3,7 +3,6 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
-import { ARTIFACT_CSP, safeArtifactSrcdoc } from "./analysis-types.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -21,61 +20,12 @@ vi.mock("./analysis-store.js", () => ({
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 
 describe("artifact frame", () => {
-  it("regenerates a CSP-first static document from positive element and attribute allowlists", () => {
-    const raw = `<!doctype html><html><head>
-      <meta http-equiv="refresh" content="0;url=https://attacker.example/meta">
-      <base href="https://attacker.example/"><link rel="preload" href="https://attacker.example/leak">
-      <style>.safe { color: red; background: url(https://attacker.example/css) } @import "https://attacker.example/import";</style>
-    </head><body onload="location='https://attacker.example/event'">
-      <article id="safe" class="safe" style="display:grid;background:url(https://attacker.example/inline)">
-        <details open><summary>Evidence</summary><table><tbody><tr><th scope="row">Ref</th><td><code>[e1]</code></td></tr></tbody></table></details>
-        <img id="raster" alt="Chart" src="data:image/png;base64,iVBORw0KGgo=">
-        <img id="svg-image" src="data:image/svg+xml,%3Csvg%3E%3C/svg%3E">
-        <img id="remote-image" src="https://attacker.example/image.png" onerror="alert(1)">
-      </article>
-      <script>location='https://attacker.example/script'</script><noscript>fallback</noscript>
-      <a href="https://attacker.example/link" ping="https://attacker.example/ping">link</a><area href="https://attacker.example/area">
-      <form action="https://attacker.example/form"><input><button formaction="https://attacker.example/button">Go</button></form>
-      <iframe src="https://attacker.example/frame"></iframe><object data="https://attacker.example/object"></object><embed src="https://attacker.example/embed">
-      <video poster="https://attacker.example/poster"><source src="https://attacker.example/media"></video>
-      <svg><a href="https://attacker.example/svg"><animate attributeName="href" values="https://attacker.example/smil"></animate></a></svg>
-      <math><a href="https://attacker.example/math">math</a></math>
-      <template shadowrootmode="open"><script>location='https://attacker.example/shadow'</script></template>
-    </body></html>`;
-    const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
-    const createElement = vi.spyOn(document, "createElement");
-    const srcdoc = safeArtifactSrcdoc(raw)!;
-
-    expect(createElement).toHaveBeenCalledWith("template");
-    expect(parse).toHaveBeenCalledTimes(1);
-    expect(parse.mock.calls[0]?.[0]).not.toBe(raw);
-    parse.mockRestore();
-    createElement.mockRestore();
-    const sanitizedDocument = new DOMParser().parseFromString(srcdoc, "text/html");
-    const csp = sanitizedDocument.head.firstElementChild;
-
-    expect(csp?.outerHTML).toBe(ARTIFACT_CSP);
-    expect(sanitizedDocument.querySelector("article#safe.safe")).not.toBeNull();
-    expect(sanitizedDocument.querySelector("details[open] summary")?.textContent).toBe("Evidence");
-    expect(sanitizedDocument.querySelector("table code")?.textContent).toBe("[e1]");
-    expect(sanitizedDocument.querySelector("style")?.textContent).toContain("color: red");
-    expect(sanitizedDocument.querySelector("article")?.getAttribute("style")).toContain("display:grid");
-    expect(sanitizedDocument.querySelector("img#raster")?.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
-    expect(sanitizedDocument.querySelector("img#svg-image")?.hasAttribute("src")).toBe(false);
-    expect(sanitizedDocument.querySelector("img#remote-image")?.hasAttribute("src")).toBe(false);
-    expect(sanitizedDocument.querySelector("[onload], [onerror], [href], [ping], [action], [formaction], [srcdoc], [srcset], [poster]")).toBeNull();
-    expect(sanitizedDocument.querySelector("script, noscript, template, svg, math, animate, a, area, form, input, button, iframe, frame, object, embed, video, audio, source, link, base")).toBeNull();
-    expect(sanitizedDocument.querySelectorAll("meta")).toHaveLength(1);
-    expect(srcdoc).not.toContain("attacker.example");
-    expect(safeArtifactSrcdoc("x".repeat(50 * 1024 + 1))).toBeNull();
-  });
-  it("uses an empty sandbox without a post-navigation load detector", () => {
+  it("renders raw artifact HTML with scripts in an opaque-origin sandbox", () => {
     const panel = readFileSync(resolve("client/agent/analysis-artifacts-panel.tsx"), "utf8");
-    expect(panel).toContain('sandbox=""');
-    expect(panel).not.toContain("allow-scripts");
-    expect(panel).not.toContain("onLoad=");
-    expect(panel).not.toContain("loadCount");
-    expect(panel).toContain('type: "clear-artifacts"');
+    expect(panel).toContain('sandbox="allow-scripts"');
+    expect(panel).not.toContain("allow-same-origin");
+    expect(panel).not.toContain("safeArtifactSrcdoc");
+    expect(panel).toContain("srcDoc={artifact.html}");
   });
   it("opens a creation-ordered header listbox and keeps one selected preview", () => {
     const container = document.createElement("div");
@@ -106,7 +56,7 @@ describe("artifact frame", () => {
     expect(container.querySelector('[role="listbox"]')).toBeNull();
 
     const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("sandbox")).toBe("");
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
     act(() => iframe?.dispatchEvent(new Event("load", { bubbles: true })));
     expect(container.querySelector("iframe")).toBe(iframe);
     expect(container.querySelector('[role="alert"]')).toBeNull();

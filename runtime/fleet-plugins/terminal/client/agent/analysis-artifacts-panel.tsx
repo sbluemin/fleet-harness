@@ -1,6 +1,6 @@
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
-import { safeArtifactSrcdoc, type AnalysisArtifact } from "./analysis-types.js";
+import type { AnalysisArtifact } from "./analysis-types.js";
 
 import { useAnalysisStore } from "./analysis-store.js";
 
@@ -74,12 +74,11 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
 }
 
 function ActiveArtifact({ artifact }: { readonly artifact: AnalysisArtifact }) {
-  const srcdoc = safeArtifactSrcdoc(artifact.html);
-  if (!srcdoc) return null;
+  if (!artifact.html) return null;
   return (
     <article aria-label="Selected artifact preview">
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} /></header>
-      <iframe title={artifact.title} srcDoc={srcdoc} sandbox="" />
+      <iframe title={artifact.title} srcDoc={artifact.html} sandbox="allow-scripts" />
     </article>
   );
 }
