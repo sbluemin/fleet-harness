@@ -323,6 +323,7 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain(':root[data-theme="instrument"]');
     expect(base).toContain("--ink-abyss: oklch(13% 0.014 245);");
     expect(base).toContain("--brass: oklch(80% 0.085 78);");
+    expect(base).toContain("--ink-muted: oklch(64% 0.012 245);");
     expect(base).toContain("--aurora: oklch(77% 0.085 200);");
     expect(base).toContain("--coral: oklch(68% 0.13 25);");
     expect(base).toContain("--warn: oklch(75% 0.08 90);");
@@ -333,6 +334,8 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain(':root[data-theme="maritime"]');
     expect(theme).toContain(':root[data-theme="carbon"]');
     expect(theme).toContain("--brass: oklch(78% 0.13 75);");
+    expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
+    expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
     // Legacy 테마 블록은 팔레트 토큰만 — 모든 선언이 승인된 색 토큰 화이트리스트에 속해야 하며
     // 형상(radius/space)·배경 연출(grain/pseudo)·타이포(font) 오버라이드는 진입 불가.
@@ -389,6 +392,9 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
+    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");
+    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-op-icon {\n  opacity: 0.62;");
+    expect(components).not.toMatch(/\.side-bar-chip--minimized \{[^}]*opacity/);
 
     expect(minimap).not.toContain("is-plugin");
     expect(components).not.toContain(".canvas-minimap-operation.is-plugin");
