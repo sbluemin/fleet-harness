@@ -647,6 +647,35 @@ describe("Operations boot minimization", () => {
     expect(getMaximizedOperationId()).toBe("b2");
   });
 
+  it("discards an asynchronous Analyze retarget when a newer focus changes Theater", async () => {
+    const secondReady = deferred<boolean>();
+    const canOpenCompanions = vi.fn(() => secondReady.promise);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp(
+      [operation("first"), operation("second"), operation("b1", 1, "theater-b")],
+      [theater(), theater("theater-b", "Theater B")],
+    );
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+      sideBarMocks.onFocus?.("b1");
+      expect(getState().activeTheaterId).toBe("theater-b");
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getTheaterCompanionOperationId("theater-a")).toBe("first");
+    expect(getCompanionOperationId()).toBeNull();
+  });
+
   it("does not retarget Analyze when launch starts with it open", async () => {
     const launch = deferred<{ readonly id: string }>();
     registryMocks.plugins = [{ id: "terminal", launch: vi.fn(() => launch.promise) }];
