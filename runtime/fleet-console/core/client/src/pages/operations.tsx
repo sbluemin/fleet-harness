@@ -364,7 +364,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
       // readiness 확인 중 사용자가 Exit·다른 Operation·다른 Theater로 이동하거나 대상을 새로 숨겼으면 오래된 결과를 버린다.
       const liveOperation = getState().operations.find((candidate) => candidate.id === operationId);
       const operationWasHidden = !operationWasMinimized && getCanvasSnapshot().minimized.includes(operationId);
-      if (requestEpochRef.current !== requestEpoch || getFocusLayerRevision() !== focusLayerRevision || getCompanionOperationId() !== currentCompanionOperationId || getLoadedTheaterId() !== operation.theaterId || operationWasHidden || !liveOperation || liveOperation.pluginId !== operation.pluginId || liveOperation.type !== operation.type || liveOperation.theaterId !== operation.theaterId) return;
+      if (requestEpochRef.current !== requestEpoch || getFocusLayerRevision() !== focusLayerRevision || getCompanionOperationId() !== currentCompanionOperationId || getLoadedTheaterId() !== operation.theaterId || operationWasHidden || closingOperationIds.has(operationId) || !liveOperation || liveOperation.pluginId !== operation.pluginId || liveOperation.type !== operation.type || liveOperation.theaterId !== operation.theaterId) return;
     }
     if (operation && (!descriptor || !descriptor.companions?.length || !canOpenCompanions)) {
       forceDropCompanionOperationId();

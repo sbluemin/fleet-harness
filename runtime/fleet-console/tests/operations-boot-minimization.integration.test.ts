@@ -513,6 +513,34 @@ describe("Operations boot minimization", () => {
     expect(getState().activeOperationId).not.toBe("second");
   });
 
+  it("discards an asynchronous Analyze retarget while its destination is closing", async () => {
+    const secondReady = deferred<boolean>();
+    const closeRefresh = deferred<readonly OperationNode[]>();
+    registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => sideBarMocks.onFocus?.("second"));
+    apiMocks.fetchOperations.mockReturnValueOnce(closeRefresh.promise);
+    act(() => sideBarMocks.onClose?.("second"));
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getState().operations.some((candidate) => candidate.id === "second")).toBe(true);
+    expect(getCompanionOperationId()).toBe("first");
+
+    await act(async () => {
+      closeRefresh.resolve([operation("first")]);
+      await vi.waitFor(() => expect(getState().operations.some((candidate) => candidate.id === "second")).toBe(false));
+    });
+  });
+
   it("discards an asynchronous Analyze retarget after its destination is minimized", async () => {
     const secondReady = deferred<boolean>();
     registryMocks.operationKinds = [companionKind(() => secondReady.promise)];
