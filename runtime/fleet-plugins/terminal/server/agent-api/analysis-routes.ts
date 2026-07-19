@@ -14,6 +14,7 @@ import { readProviderSessionCapture } from "./session-capture.js";
 
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
 
 type AnalysisRouteDeps = {
   readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
@@ -39,6 +40,10 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
     }
     const path = pathname.slice(`${ctx.basePath}/analysis`.length) || "/";
     if (path === "/catalog") return handleCatalog(ctx, req, res, catalog);
+    const artifactMatch = path.match(/^\/artifacts\/([^/]+)$/);
+    if (artifactMatch) return handleArtifact(ctx, req, res, decodeURIComponent(artifactMatch[1] ?? ""), registry);
+    const clearArtifactsMatch = path.match(/^\/([^/]+)\/artifacts$/);
+    if (clearArtifactsMatch) return handleClearArtifacts(ctx, req, res, decodeURIComponent(clearArtifactsMatch[1] ?? ""), registry);
     const match = path.match(/^\/([^/]+)\/(ready|start|message|stream|stop)$/);
     if (!match) return false;
     const operationId = decodeURIComponent(match[1] ?? "");
@@ -56,7 +61,10 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
   });
 
   const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
-    if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) void registry.stop(payload.operationId);
+    if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) {
+      registry.clearArtifacts(payload.operationId);
+      void registry.stop(payload.operationId);
+    }
   });
   ctx.host.lifecycle.registerCleanup(async () => { unsubscribeDelete(); await registry.dispose(); });
 }
@@ -64,6 +72,29 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
 async function handleCatalog(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, catalog: () => Promise<AnalysisCatalog>): Promise<boolean> {
   if (req.method !== "GET") return methodNotAllowed(ctx, res);
   ctx.host.http.writeJson(res, 200, await catalog());
+  return true;
+}
+
+function handleArtifact(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, artifactId: string, registry: AnalysisRegistry): boolean {
+  if (req.method !== "GET") return methodNotAllowed(ctx, res);
+  const html = registry.artifactHtml(artifactId);
+  if (html === null) {
+    writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis artifact was not found.");
+    return true;
+  }
+  res.writeHead(200, artifactHeaders());
+  res.end(html);
+  return true;
+}
+
+function handleClearArtifacts(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operationId: string, registry: AnalysisRegistry): boolean {
+  if (req.method !== "DELETE") return methodNotAllowed(ctx, res);
+  if (!getAgentOperation(ctx, operationId)) {
+    writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
+    return true;
+  }
+  registry.clearArtifacts(operationId);
+  ctx.host.http.writeJson(res, 200, { cleared: true });
   return true;
 }
 
@@ -205,3 +236,4 @@ function writeError(ctx: FleetPluginServerContext, res: http.ServerResponse, sta
 function isJsonRequest(req: http.IncomingMessage): boolean { return req.headers["content-type"]?.split(";", 1)[0] === "application/json"; }
 function isOperationDeletedEvent(value: unknown): value is { readonly operationId: string; readonly pluginId: string } { return !!value && typeof value === "object" && typeof (value as { operationId?: unknown }).operationId === "string" && typeof (value as { pluginId?: unknown }).pluginId === "string"; }
 function securityHeaders(headers: Record<string, string>): Record<string, string> { return { ...headers, "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Resource-Policy": "same-origin", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff" }; }
+function artifactHeaders(): Record<string, string> { return { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": ANALYSIS_ARTIFACT_CSP, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff" }; }

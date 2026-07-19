@@ -1,5 +1,8 @@
 import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent } from "./analysis-types.js";
 
+// Must match the server's MAX_ANALYSIS_ARTIFACTS per-operation cap.
+export const MAX_ANALYSIS_ARTIFACTS = 32;
+
 export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; }
 export type AnalysisPhase = "idle" | "starting" | "reasoning" | "tool" | "writing" | "complete" | "stopped" | "error";
 export type AnalysisActivity =
@@ -108,7 +111,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     latestActivity: { kind: "tool", title: event.title, status: event.status },
     tools: [...state.tools.filter((tool) => tool.title !== event.title), { title: event.title, status: event.status }],
   };
-  if (event.type === "artifact") return { ...state, artifacts: [event.artifact, ...state.artifacts.filter((artifact) => artifact.id !== event.artifact.id)] };
+  if (event.type === "artifact") return { ...state, artifacts: [event.artifact, ...state.artifacts.filter((artifact) => artifact.id !== event.artifact.id)].slice(0, MAX_ANALYSIS_ARTIFACTS) };
   if (event.type === "complete") return { ...state, busy: false, phase: "complete", runEndedAt: action.now, error: null };
   return endWithError(state, event.error.message, action.now);
 }

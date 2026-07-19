@@ -26,8 +26,10 @@ describe("Session Analyst contract", () => {
     expect(artifacts).not.toContain("SANDBOXED HTML");
     expect(artifacts).not.toContain("Sandboxed");
     expect(artifacts).toContain("Artifacts the analyst publishes will appear here.");
-    expect(artifacts).toContain('sandbox=""');
-    expect(artifacts).not.toContain("allow-scripts");
+    expect(artifacts).toContain('sandbox="allow-scripts"');
+    expect(artifacts).not.toContain("allow-same-origin");
+    expect(artifacts).not.toContain("srcDoc=");
+    expect(artifacts).toContain("src={analysisArtifactUrl(artifact.id)}");
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toContain("var(--aurora)");
     expect(css).toContain("var(--positive)");

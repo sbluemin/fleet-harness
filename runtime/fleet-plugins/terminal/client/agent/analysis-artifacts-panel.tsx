@@ -1,7 +1,8 @@
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
-import { safeArtifactSrcdoc, type AnalysisArtifact } from "./analysis-types.js";
+import type { AnalysisArtifact } from "./analysis-types.js";
 
+import { analysisArtifactUrl, clearAnalysisArtifacts } from "./analysis-api.js";
 import { useAnalysisStore } from "./analysis-store.js";
 
 export function AnalystArtifactsPanel({ context }: { readonly context: OperationRenderContext }) {
@@ -60,7 +61,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
             </div>
           ) : null}
         </div>
-        <button type="button" className="session-analyst__clear" onClick={() => { setListOpen(false); dispatch({ type: "clear-artifacts" }); }} disabled={!count}>Clear</button>
+        <button type="button" className="session-analyst__clear" onClick={() => { setListOpen(false); dispatch({ type: "clear-artifacts" }); void clearAnalysisArtifacts(context.api, context.operationId).catch(() => {}); }} disabled={!count}>Clear</button>
       </header>
       {count === 0 ? (
         <div className="session-analyst__artifacts-empty"><strong>No artifacts yet</strong>Artifacts the analyst publishes will appear here.</div>
@@ -74,12 +75,11 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
 }
 
 function ActiveArtifact({ artifact }: { readonly artifact: AnalysisArtifact }) {
-  const srcdoc = safeArtifactSrcdoc(artifact.html);
-  if (!srcdoc) return null;
+  if (!artifact.id) return null;
   return (
     <article aria-label="Selected artifact preview">
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} /></header>
-      <iframe title={artifact.title} srcDoc={srcdoc} sandbox="" />
+      <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id)} sandbox="allow-scripts" />
     </article>
   );
 }

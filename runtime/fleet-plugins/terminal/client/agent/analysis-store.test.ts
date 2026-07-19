@@ -184,7 +184,10 @@ describe("per-operation analysis store", () => {
     harness.emit({ type: "complete" });
 
     await store.reset();
-    expect(harness.fetch.mock.calls.map((call) => call[1])).toContain("analysis/operation-store-reset/stop");
+    const resetPaths = harness.fetch.mock.calls.map((call) => call[1]);
+    expect(resetPaths).toContain("analysis/operation-store-reset/stop");
+    expect(resetPaths).toContain("analysis/operation-store-reset/artifacts");
+    expect(resetPaths.indexOf("analysis/operation-store-reset/artifacts")).toBeGreaterThan(resetPaths.indexOf("analysis/operation-store-reset/stop"));
     expect(store.getSnapshot()).toMatchObject({
       cliId: "claude",
       model: "sonnet",
@@ -202,6 +205,21 @@ describe("per-operation analysis store", () => {
     harness.emitLate({ type: "artifact", artifact: { id: "late", title: "Late", html: "<p>late</p>", createdAt: 2 } });
     expect(store.getSnapshot()).toMatchObject({ phase: "idle", entries: [], artifacts: [] });
     disposeAnalysisStore("operation-store-reset");
+  });
+
+  it("clears server artifacts on idle reset and completes when the clear fails", async () => {
+    const harness = createHarness((path) => path.endsWith("/artifacts")
+      ? new Response(JSON.stringify({ error: { code: "analysis_clear_failed", message: "Artifacts did not clear." } }), { status: 500, headers: { "Content-Type": "application/json" } })
+      : null);
+    const store = getAnalysisStore("operation-store-idle-reset", harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+
+    await expect(store.reset()).resolves.toBeUndefined();
+    const paths = harness.fetch.mock.calls.map((call) => call[1]);
+    expect(paths).toContain("analysis/operation-store-idle-reset/artifacts");
+    expect(paths.some((path) => path.endsWith("/stop"))).toBe(false);
+    expect(store.getSnapshot()).toMatchObject({ phase: "idle", entries: [], artifacts: [], error: null });
+    disposeAnalysisStore("operation-store-idle-reset");
   });
 
   it("preserves history and artifacts when reset cannot stop the server", async () => {

@@ -1,11 +1,16 @@
 import type { AnalysisEvent, AnalysisSession } from "./analysis-types.js";
 
 export const MAX_ANALYSIS_SESSIONS = 4;
+export const MAX_ANALYSIS_ARTIFACTS = 32;
+// Keep twice the maximum active working set (4 sessions × 32 artifacts) while bounding stopped history.
+export const MAX_TOTAL_ARTIFACTS = MAX_ANALYSIS_SESSIONS * MAX_ANALYSIS_ARTIFACTS * 2;
 type Subscriber = (event: AnalysisEvent) => void;
 type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; starting: boolean; messaging: boolean; stopped: boolean; disposePromise?: Promise<void> };
+type StoredArtifact = { readonly operationId: string; readonly html: string };
 
 export class AnalysisRegistry {
   private readonly entries = new Map<string, Entry>();
+  private readonly artifacts = new Map<string, StoredArtifact>();
 
   async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession): Promise<"started" | "stopped" | "exists" | "limit"> {
     if (this.entries.has(operationId)) return "exists";
@@ -13,6 +18,7 @@ export class AnalysisRegistry {
     let entry: Entry | undefined;
     const session = create((event) => {
       if (!entry || entry.stopped) return;
+      if (event.type === "artifact") this.storeArtifact(operationId, event.artifact.id, event.artifact.html);
       for (const subscriber of entry.subscribers) subscriber(event);
       if (event.type === "error" && event.error.code === "analysis_exited") void this.stopEntry(operationId, entry);
     });
@@ -60,6 +66,16 @@ export class AnalysisRegistry {
     return this.stopEntry(operationId, entry);
   }
 
+  artifactHtml(artifactId: string): string | null {
+    return this.artifacts.get(artifactId)?.html ?? null;
+  }
+
+  clearArtifacts(operationId: string): void {
+    for (const [artifactId, artifact] of this.artifacts) {
+      if (artifact.operationId === operationId) this.artifacts.delete(artifactId);
+    }
+  }
+
   private async stopEntry(operationId: string, entry: Entry): Promise<boolean> {
     if (this.entries.get(operationId) !== entry) return false;
     this.entries.delete(operationId);
@@ -69,10 +85,40 @@ export class AnalysisRegistry {
     return true;
   }
 
+  private storeArtifact(operationId: string, artifactId: string, html: string): void {
+    this.artifacts.delete(artifactId);
+    this.artifacts.set(artifactId, { operationId, html });
+    let operationSize = 0;
+    let oldestOperationArtifactId: string | undefined;
+    for (const [storedArtifactId, artifact] of this.artifacts) {
+      if (artifact.operationId !== operationId) continue;
+      oldestOperationArtifactId ??= storedArtifactId;
+      operationSize += 1;
+      if (operationSize > MAX_ANALYSIS_ARTIFACTS) {
+        this.artifacts.delete(oldestOperationArtifactId);
+        break;
+      }
+    }
+    while (this.artifacts.size > MAX_TOTAL_ARTIFACTS) {
+      let oldestInactiveArtifactId: string | undefined;
+      for (const [storedArtifactId, artifact] of this.artifacts) {
+        if (!this.entries.has(artifact.operationId)) {
+          oldestInactiveArtifactId = storedArtifactId;
+          break;
+        }
+      }
+      if (!oldestInactiveArtifactId) break;
+      this.artifacts.delete(oldestInactiveArtifactId);
+    }
+  }
+
   private disposeEntry(entry: Entry): Promise<void> {
     entry.disposePromise ??= entry.session.dispose().catch(() => undefined);
     return entry.disposePromise;
   }
 
-  async dispose(): Promise<void> { await Promise.all([...this.entries.keys()].map((operationId) => this.stop(operationId))); }
+  async dispose(): Promise<void> {
+    await Promise.all([...this.entries.keys()].map((operationId) => this.stop(operationId)));
+    this.artifacts.clear();
+  }
 }

@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 
-import { AnalysisRegistry, MAX_ANALYSIS_SESSIONS } from "./analysis-registry.js";
-import { registerAnalysisRoutes } from "./analysis-routes.js";
+import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_ANALYSIS_SESSIONS, MAX_TOTAL_ARTIFACTS } from "./analysis-registry.js";
+import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
 import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalystCliId } from "./analysis-types.js";
 
 describe("Session Analyst server contract", () => {
@@ -125,6 +125,82 @@ describe("Session Analyst server contract", () => {
     await expect(registry.message("op", "hello")).resolves.toBe("not_found");
   });
 
+  it("bounds process-memory artifacts per operation without evicting another operation", async () => {
+    const registry = new AnalysisRegistry();
+    type ArtifactEmitter = (event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: number } }) => void;
+    let emitPrimary: ArtifactEmitter | undefined;
+    let emitOther: ArtifactEmitter | undefined;
+    await registry.start("op-primary", (onEvent) => {
+      emitPrimary = onEvent as ArtifactEmitter;
+      return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never;
+    });
+    await registry.start("op-other", (onEvent) => {
+      emitOther = onEvent as ArtifactEmitter;
+      return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never;
+    });
+
+    emitOther?.({ type: "artifact", artifact: { id: "other-artifact", title: "Other", html: "<p>other</p>", createdAt: 0 } });
+    for (let index = 0; index <= MAX_ANALYSIS_ARTIFACTS; index += 1) {
+      emitPrimary?.({ type: "artifact", artifact: { id: `primary-artifact-${index}`, title: `Artifact ${index}`, html: `<p>${index}</p>`, createdAt: index } });
+    }
+
+    expect(registry.artifactHtml("primary-artifact-0")).toBeNull();
+    expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
+    expect(registry.artifactHtml("other-artifact")).toBe("<p>other</p>");
+    await registry.stop("op-primary");
+    expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBe(`<p>${MAX_ANALYSIS_ARTIFACTS}</p>`);
+    expect(registry.artifactHtml("other-artifact")).toBe("<p>other</p>");
+    await registry.dispose();
+    expect(registry.artifactHtml(`primary-artifact-${MAX_ANALYSIS_ARTIFACTS}`)).toBeNull();
+    expect(registry.artifactHtml("other-artifact")).toBeNull();
+  });
+
+  it("bounds stopped artifact history process-wide by evicting the oldest inactive artifacts", async () => {
+    const registry = new AnalysisRegistry();
+    const artifactIds: string[] = [];
+    const operationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+
+    for (let operationIndex = 0; operationIndex < operationCount; operationIndex += 1) {
+      const emit = await startArtifactSession(registry, `stopped-op-${operationIndex}`);
+      for (let artifactIndex = 0; artifactIndex < MAX_ANALYSIS_ARTIFACTS; artifactIndex += 1) {
+        const artifactId = `stopped-${operationIndex}-${artifactIndex}`;
+        artifactIds.push(artifactId);
+        emitArtifact(emit, artifactId);
+      }
+      await registry.stop(`stopped-op-${operationIndex}`);
+    }
+
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(registry.artifactHtml("stopped-0-0")).toBeNull();
+    expect(registry.artifactHtml(`stopped-0-${MAX_ANALYSIS_ARTIFACTS - 1}`)).toBeNull();
+    expect(registry.artifactHtml("stopped-1-0")).toBe("<p>stopped-1-0</p>");
+    await registry.dispose();
+  });
+
+  it("never evicts active operation artifacts when enforcing the process-wide cap", async () => {
+    const registry = new AnalysisRegistry();
+    const artifactIds = ["active-artifact"];
+    const emitActive = await startArtifactSession(registry, "active-op");
+    emitArtifact(emitActive, "active-artifact");
+    const stoppedOperationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+
+    for (let operationIndex = 0; operationIndex < stoppedOperationCount; operationIndex += 1) {
+      const operationId = `history-op-${operationIndex}`;
+      const emit = await startArtifactSession(registry, operationId);
+      for (let artifactIndex = 0; artifactIndex < MAX_ANALYSIS_ARTIFACTS; artifactIndex += 1) {
+        const artifactId = `history-${operationIndex}-${artifactIndex}`;
+        artifactIds.push(artifactId);
+        emitArtifact(emit, artifactId);
+      }
+      await registry.stop(operationId);
+    }
+
+    expect(registry.artifactHtml("active-artifact")).toBe("<p>active-artifact</p>");
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(registry.artifactHtml("history-0-0")).toBeNull();
+    await registry.dispose();
+  });
+
   it("normalizes absent effort to undefined when creating an unsupported-effort session", async () => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-transcripts-"));
     const transcriptPath = join(dir, "captured.jsonl");
@@ -230,6 +306,68 @@ describe("Session Analyst server contract", () => {
     expect(response.ended).toBe(true);
   });
 
+  it("serves stored artifact HTML with a permissive CSP and clears it from process memory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-artifact-route-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: ((options: { onEvent: typeof emit }) => {
+        emit = options.onEvent;
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const html = "<main>Artifact<script>globalThis.__artifactRan = true</script></main>";
+    emit?.({ type: "artifact", artifact: { id: "artifact/id", title: "Artifact", html, createdAt: new Date(0).toISOString() } });
+
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
+
+    expect(response).toMatchObject({ status: 200, body: html, ended: true });
+    expect(response.headers).toMatchObject({
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": ANALYSIS_ARTIFACT_CSP,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    expect(response.headers["Content-Security-Policy"]).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+    expect(response.headers["Content-Security-Policy"]).toContain("sandbox allow-scripts");
+    expect(response.headers["Content-Security-Policy"]).not.toContain("allow-same-origin");
+    expect(response.headers["Content-Security-Policy"]).toContain("frame-ancestors 'self'");
+    expect(response.headers).not.toHaveProperty("Cross-Origin-Opener-Policy");
+    expect(response.headers).not.toHaveProperty("Cross-Origin-Resource-Policy");
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/stop", {});
+    const afterStop = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    expect(afterStop).toMatchObject({ status: 200, body: html, ended: true });
+
+    await router.call("DELETE", "/api/v1/plugins/terminal/analysis/op/artifacts");
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    emit?.({ type: "artifact", artifact: { id: "deleted-artifact", title: "Deleted artifact", html, createdAt: new Date(0).toISOString() } });
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
+  });
+
+  it("host-gates artifact documents and returns 404 for unknown ids", async () => {
+    const router = createRouterHarness(false);
+    registerAnalysisRoutes(router.ctx as never);
+
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/missing");
+    expect(router.responses.at(-1)).toMatchObject({ status: 403 });
+
+    router.allowHost = true;
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/missing");
+    expect(router.responses.at(-1)).toMatchObject({ status: 404 });
+  });
+
   it("validates Host before route work and never reveals unavailable capture paths", async () => {
     const router = createRouterHarness(false);
     registerAnalysisRoutes(router.ctx as never, {
@@ -257,6 +395,8 @@ describe("Session Analyst server contract", () => {
       ["POST", "/api/v1/plugins/terminal/analysis/op/message"],
       ["GET", "/api/v1/plugins/terminal/analysis/op/stream"],
       ["POST", "/api/v1/plugins/terminal/analysis/op/stop"],
+      ["GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact"],
+      ["DELETE", "/api/v1/plugins/terminal/analysis/op/artifacts"],
     ] as const;
 
     for (const [method, pathname] of requests) {
@@ -271,6 +411,7 @@ describe("Session Analyst server contract", () => {
 
 function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
+  let operationDeletedHandler: ((payload: unknown) => void) | undefined;
   const responses: Array<{ status: number; body: unknown }> = [];
   const state = { allowHost: initialHostAllowance };
   const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
@@ -285,19 +426,45 @@ function createRouterHarness(initialHostAllowance: boolean) {
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
       operations: { get: (id: string) => id === "op" ? operation : null },
       paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
-      events: { subscribe: () => () => undefined }, lifecycle: { registerCleanup: () => () => undefined },
+      events: { subscribe: (_channel: string, subscriber: (payload: unknown) => void) => { operationDeletedHandler = subscriber; return () => { operationDeletedHandler = undefined; }; } }, lifecycle: { registerCleanup: () => () => undefined },
     },
   };
   return {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
+    emitOperationDeleted(payload: unknown) { operationDeletedHandler?.(payload); },
     async call(method: string, pathname: string, body?: unknown, headers: Record<string, string> = {}) {
       const writes: string[] = [];
       let ended = false;
+      let responseStatus: number | undefined;
+      let responseHeaders: Record<string, string> = {};
+      let responseBody = "";
       const req = Object.assign(new EventEmitter(), { method, headers: { "content-type": "application/json", ...headers }, socket: { localPort: 4444 }, body });
-      const res = Object.assign(new EventEmitter(), { writableEnded: false, destroyed: false, writeHead: () => undefined, write: (data: string) => { writes.push(data); }, end: () => { ended = true; } });
+      const res = Object.assign(new EventEmitter(), {
+        writableEnded: false,
+        destroyed: false,
+        writeHead: (status: number, responseHead: Record<string, string> = {}) => { responseStatus = status; responseHeaders = responseHead; },
+        write: (data: string) => { writes.push(data); },
+        end: (data?: string) => { if (data) responseBody += data; ended = true; },
+      });
       await handler?.({ req, res, pathname });
-      return { writes, get ended() { return ended; } };
+      return { writes, get ended() { return ended; }, get status() { return responseStatus; }, get headers() { return responseHeaders; }, get body() { return responseBody; } };
     },
   };
+}
+
+type ArtifactEmitter = (event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: number } }) => void;
+
+async function startArtifactSession(registry: AnalysisRegistry, operationId: string): Promise<ArtifactEmitter> {
+  let emit: ArtifactEmitter | undefined;
+  await registry.start(operationId, (onEvent) => {
+    emit = onEvent as ArtifactEmitter;
+    return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never;
+  });
+  if (!emit) throw new Error("artifact emitter was not created");
+  return emit;
+}
+
+function emitArtifact(emit: ArtifactEmitter, artifactId: string): void {
+  emit({ type: "artifact", artifact: { id: artifactId, title: artifactId, html: `<p>${artifactId}</p>`, createdAt: 0 } });
 }
