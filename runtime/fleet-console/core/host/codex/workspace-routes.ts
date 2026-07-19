@@ -3,9 +3,7 @@ import type http from "node:http";
 import type { TheaterRegistration } from "../theaters.js";
 import type { CodexWorkspaceResolution } from "./gateway.js";
 
-// ─── types ─────────────────────────────────────────────────────────────────
-
-export interface CodexWorkspaceContextRouteDeps {
+export interface CodexWorkspaceRouteDeps {
   readonly getTheater: (theaterId: string) => TheaterRegistration | null;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
@@ -13,18 +11,16 @@ export interface CodexWorkspaceContextRouteDeps {
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
 }
 
-export interface CodexWorkspaceContextRouteContext {
+export interface CodexWorkspaceRouteContext {
   readonly req: http.IncomingMessage;
   readonly res: http.ServerResponse;
   readonly pathname: string;
 }
 
-// ─── functions ─────────────────────────────────────────────────────────────
-
-export function createCodexWorkspaceContextRouter(
-  deps: CodexWorkspaceContextRouteDeps,
-): (context: CodexWorkspaceContextRouteContext) => Promise<boolean> {
-  return async function handleCodexWorkspaceContextRoute({ req, res, pathname }: CodexWorkspaceContextRouteContext): Promise<boolean> {
+export function createCodexWorkspaceRouter(
+  deps: CodexWorkspaceRouteDeps,
+): (context: CodexWorkspaceRouteContext) => Promise<boolean> {
+  return async function handleCodexWorkspaceRoute({ req, res, pathname }: CodexWorkspaceRouteContext): Promise<boolean> {
     const match = pathname.match(/^\/api\/v1\/theaters\/([^/]+)\/codex-workspace$/u);
     if (!match) return false;
     const theater = deps.getTheater(decodeURIComponent(match[1] ?? ""));
@@ -47,7 +43,7 @@ export function createCodexWorkspaceContextRouter(
     }
     try {
       deps.writeJson(res, 200, await deps.resolveWorkspace(theater.id, theater.realpath));
-    } catch (error) {
+    } catch {
       deps.writeJson(res, 500, { error: "internal_error" });
     }
     return true;

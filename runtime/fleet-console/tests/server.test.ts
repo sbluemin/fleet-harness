@@ -14,7 +14,7 @@ import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-theme.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
-import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
+import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { workspaceHash } from "../core/host/theater.js";
 import { TheaterRegistry } from "../core/host/theaters.js";
@@ -91,6 +91,12 @@ afterEach(async () => {
 });
 
 describe("console terminal observability", () => {
+  it("publishes only the Theater-root Codex route and no path-context catalog surface", () => {
+    const paths = SERVER_API_CATALOG.map((entry) => entry.path);
+    expect(paths).toContain("/api/v1/theaters/:theaterId/codex-workspace");
+    expect(paths.some((entry) => entry.includes("path-context"))).toBe(false);
+  });
+
   it("serves local environment diagnostics only through the loopback Host and allowed Origin", async () => {
     const fixture = await startFixture({ release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } });
     const url = new URL("api/v1/environment", fixture.endpoint);
@@ -2221,15 +2227,14 @@ describe("console static and terminal ticket boundary", () => {
       label: path.basename(dir),
       registeredAt: "2026-06-16T00:00:00.000Z",
       lastOpenedAt: "2026-06-16T00:00:01.000Z",
-      pathContext: null,
     }]);
 
     expect(theaters.get(id)?.path).toBe(dir);
     expect(theaters.remove(id)).toBe(true);
     expect(theaters.get(id)).toBeNull();
     expect(() => theaters.restore([
-      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1", pathContext: null },
-      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2", pathContext: null },
+      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1" },
+      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2" },
     ])).toThrow("theater_id_collision");
   });
 

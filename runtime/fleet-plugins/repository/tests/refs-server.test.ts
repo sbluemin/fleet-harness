@@ -54,6 +54,7 @@ describe("handleRepositoryRefs", () => {
     expect(writes[0]?.status).toBe(200);
     const payload = writes[0]?.payload as { readonly branches: readonly { readonly ref: string; readonly current: boolean }[] };
     expect(payload.branches).toContainEqual(expect.objectContaining({ ref: expect.stringMatching(/^refs\/heads\//), current: true }));
+    expect(payload).not.toHaveProperty("worktrees");
     expect(JSON.stringify(payload)).not.toContain(bareDir);
   });
 });

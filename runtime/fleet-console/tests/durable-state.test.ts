@@ -21,10 +21,10 @@ describe("durable console state", () => {
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], groups: [] });
   });
 
-  it("keeps only normalized durable pathContext values", () => {
+  it("drops legacy pathContext values without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] }).theaters[0]?.pathContext).toBe("packages/core");
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] }).theaters[0]?.pathContext).toBeNull();
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 2, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 2, theaters: [base] });
   });
 
   it("migrates v1 flat session records into v2 OperationNodes", () => {

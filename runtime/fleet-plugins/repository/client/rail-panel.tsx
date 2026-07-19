@@ -5,7 +5,6 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { DiffFileEntry, DiffFileMode, DiffListResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
-import { pathContextKey } from "./context-key.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
 import { HistoryPanel } from "./history-panel.js";
@@ -35,7 +34,7 @@ function readViewMode(): ViewMode {
 export function readRepositorySource(): Source {
   try {
     const value = localStorage.getItem(PREFS_SOURCE);
-    if (value === "changes" || value === "history" || value === "branches" || value === "tags" || value === "stashes" || value === "worktrees") return value;
+    if (value === "changes" || value === "history" || value === "branches" || value === "tags" || value === "stashes") return value;
   } catch { /* ignore */ }
   return "changes";
 }
@@ -58,18 +57,15 @@ function getHunkMode(selected: SelectedFile): DiffFileMode {
 }
 
 function RepositoryPanel({ ctx }: RepositoryPanelProps) {
-  const contextKey = pathContextKey(ctx.theaterId, ctx.pathContext.relPath);
-
-  return <RepositoryPanelBody key={contextKey} ctx={ctx} />;
+  return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
-type Source = "changes" | "history" | "branches" | "tags" | "stashes" | "worktrees";
+type Source = "changes" | "history" | "branches" | "tags" | "stashes";
 type RefSource = Exclude<Source, "changes" | "history">;
-export type RepositoryWorktree = { name: string; branch: string | null; current: boolean; contextRelPath: string | null };
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
-export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[]; worktrees: RepositoryWorktree[] };
-export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean; contextRelPath?: string | null };
+export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[] };
+export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean };
 export type RepositoryRefGroup = { label?: "LOCAL" | "REMOTES"; rows: RepositoryRefRow[] };
 type Refs = RepositoryRefs;
 
@@ -86,29 +82,19 @@ export function buildRefListGroups(source: RefSource, refs: RepositoryRefs): Rep
     ];
   }
   if (source === "tags") return [{ rows: refRows(refs.tags, "tags") }];
-  if (source === "stashes") return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false })) }];
-  return [{ rows: refs.worktrees.map((item) => ({ key: item.name, source, primary: item.branch ?? item.name, ...(item.branch && item.branch !== item.name ? { sub: item.name } : {}), ref: null, current: item.current, contextRelPath: item.contextRelPath })) }];
-}
-
-export function isWorktreePathContextSelectable(selectPathContext: RailPanelContext["selectPathContext"], contextRelPath: string | null | undefined): boolean {
-  return selectPathContext !== undefined && contextRelPath !== null && contextRelPath !== undefined;
-}
-
-export function worktreePathContextRelPath(contextRelPath: string): string | null {
-  return contextRelPath === "" ? null : contextRelPath;
+  return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false })) }];
 }
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [refFilter, setRefFilter] = useState<string | null>(null);
-  const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [], worktrees: [] });
+  const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
   const [historyInspectorOpen, setHistoryInspectorOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState("");
-  const subPath = ctx.pathContext.relPath ?? "";
-  const selectedFile = useSelectedFile(ctx.theaterId ?? null, subPath);
+  const selectedFile = useSelectedFile(ctx.theaterId ?? null);
   const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
   const listPaneWidthRef = useRef(listPaneWidth);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -117,7 +103,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setSourceState(next);
     saveRepositorySource(next);
   }, []);
-  useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setRefsError(false); ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject()).then((value) => { if (!cancelled) setRefs(value); }).catch(() => { if (!cancelled) setRefsError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, subPath, refsRetry]);
+  useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setRefsError(false); ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) }).then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject()).then((value) => { if (!cancelled) setRefs(value); }).catch(() => { if (!cancelled) setRefsError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, refsRetry]);
   useEffect(() => {
     if (!ctx.theaterId) {
       setChangedFiles({ kind: "error", message: "no_theater" });
@@ -127,7 +113,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setChangedFiles({ kind: "loading" });
     // api.fetch(assertSafeResponse)는 non-2xx에서 payload를 버리고 throw하므로,
     // no_git_repo/git_unavailable 안내 매핑을 위해 원래의 raw fetch 경로를 유지한다
-    fetch("/plugins/repository/changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, subPath }) }).then(async (response) => {
+    fetch("/plugins/repository/changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) }).then(async (response) => {
       if (!response.ok) {
         const payload = await response.json() as { readonly error?: string };
         const code = payload.error ?? "git_failed";
@@ -140,13 +126,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       if (!cancelled) setChangedFiles({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [changedFilesRetry, ctx.theaterId, subPath]);
+  }, [changedFilesRetry, ctx.theaterId]);
 
   useLayoutEffect(() => () => clearSelectedFile(), []);
 
   const handleSelectFile = useCallback((entry: DiffFileEntry) => {
-    if (ctx.theaterId) setSelectedFile(entry, subPath, ctx.theaterId);
-  }, [ctx.theaterId, subPath]);
+    if (ctx.theaterId) setSelectedFile(entry, ctx.theaterId);
+  }, [ctx.theaterId]);
   const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
   const handleViewMode = useCallback((next: ViewMode) => {
     setViewMode(next);
@@ -188,9 +174,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   return (
     <div className="repository-unified"><SourceNav source={source} refs={refs} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /><div className="repository-source-content">
       <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel ctx={ctx} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
-      {source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} selectPathContext={ctx.selectPathContext} /> : null}
+      {source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
       <div hidden={source !== "changes"} ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
-      {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} subPath={selectedFile.subPath} /></div> : null}
+      {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} file={selectedFile.entry} mode={hunkMode} /></div> : null}
       {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
       <div className="repository-list-pane">
         <div className="repository-toolbar"><div className="repository-filter"><input type="text" className="repository-filter-input" placeholder="Filter…" aria-label="Filter changed files" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="repository-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div><div className="repository-view-toggle"><button type="button" className={`repository-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title="List view" aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`repository-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title="Tree view" aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
@@ -200,15 +186,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   );
 }
 
-function SourceIcon({ source }: { readonly source: Source }) { const path = source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : source === "stashes" ? "M4 5h10v9H4zM6 3h6" : "M3 5h5l1 2h6v7H3z"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function SourceNav({ source, refs, onSource }: { readonly source: Source; readonly refs: Refs; readonly onSource: (source: Source) => void; readonly onRef: (ref: string) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}{button("worktrees", "Worktrees", refs.worktrees.length)}</nav>; }
-function RefList({ source, refs, onRef, selectPathContext }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void; readonly selectPathContext: RailPanelContext["selectPathContext"] }) {
+function SourceIcon({ source }: { readonly source: Source }) { const path = source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
+function SourceNav({ source, refs, onSource }: { readonly source: Source; readonly refs: Refs; readonly onSource: (source: Source) => void; readonly onRef: (ref: string) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
+function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
   if (source === "changes" || source === "history") return null;
   return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => {
-    const worktreeSelectable = row.source === "worktrees" && isWorktreePathContextSelectable(selectPathContext, row.contextRelPath);
-    return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.source === "worktrees" ? !worktreeSelectable : row.ref === null} onClick={() => {
+    return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => {
       if (row.ref) onRef(row.ref);
-      else if (worktreeSelectable && selectPathContext && typeof row.contextRelPath === "string") selectPathContext(worktreePathContextRelPath(row.contextRelPath));
     }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}{row.current && " ✓"}</span>{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>;
   })}</div>)}</div>;
 }
@@ -221,6 +205,5 @@ export const repositoryPanel: RailPanelDescriptor = {
   id: "repository",
   title: "Repository",
   icon: () => <RepositoryIcon />,
-  pathAware: true,
   render: (ctx: RailPanelContext) => <RepositoryPanel ctx={ctx} />,
 };

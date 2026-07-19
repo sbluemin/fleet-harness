@@ -79,34 +79,8 @@ function isNoHeadError(error: unknown): boolean {
   return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
 }
 
-// subPath 포함·realpath 이중 containment 검증 후 gitCwd 반환.
-// 검증 실패 시 null 반환 — 호출자가 적절한 HTTP 오류를 반환한다.
-export async function resolveGitCwd(
-  theaterPath: string,
-  rawSubPath: string,
-): Promise<{ gitCwd: string } | null> {
-  if (rawSubPath === "") return { gitCwd: theaterPath };
-
-  const resolvedSub = path.resolve(theaterPath, rawSubPath);
-  // 렉시컬 containment: theaterPath 밖 이탈 거부
-  if (!resolvedSub.startsWith(theaterPath + path.sep) && resolvedSub !== theaterPath) return null;
-  if (path.normalize(rawSubPath).startsWith("..")) return null;
-
-  // realpath containment: 심링크 이탈 거부
-  let realTheater: string;
-  let realSub: string;
-  try {
-    [realTheater, realSub] = await Promise.all([
-      fs.realpath(theaterPath),
-      fs.realpath(resolvedSub),
-    ]);
-  } catch {
-    return null;
-  }
-  const norm = realTheater.endsWith(path.sep) ? realTheater : realTheater + path.sep;
-  if (realSub !== realTheater && !realSub.startsWith(norm)) return null;
-
-  return { gitCwd: resolvedSub };
+export function resolveGitCwd(theaterPath: string): { gitCwd: string } {
+  return { gitCwd: theaterPath };
 }
 
 // ─── handlers ────────────────────────────────────────────────────────────────
@@ -120,7 +94,7 @@ export async function handleRepositoryChanged(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown }>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
@@ -128,9 +102,7 @@ export async function handleRepositoryChanged(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const rawSubPath = typeof body.subPath === "string" ? body.subPath : "";
-  const cwdResult = await resolveGitCwd(theaterPath, rawSubPath);
-  if (!cwdResult) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
+  const cwdResult = resolveGitCwd(theaterPath);
   const { gitCwd } = cwdResult;
 
   try {
@@ -192,7 +164,7 @@ export async function handleRepositoryFile(
     readonly mode?: unknown;
     readonly subPath?: unknown;
   }>(req);
-  if (!isPlainObject(body) || typeof body.filePath !== "string") {
+  if (!isPlainObject(body) || "subPath" in body || typeof body.filePath !== "string") {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
@@ -209,9 +181,7 @@ export async function handleRepositoryFile(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const rawSubPath = typeof body.subPath === "string" ? body.subPath : "";
-  const cwdResult = await resolveGitCwd(theaterPath, rawSubPath);
-  if (!cwdResult) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
+  const cwdResult = resolveGitCwd(theaterPath);
   const { gitCwd } = cwdResult;
 
   // filePath를 gitCwd 기준으로 containment 검증 (이중 containment의 두 번째 단계)

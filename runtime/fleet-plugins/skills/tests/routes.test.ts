@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { CliExecutor } from "../server/cli.js";
 import {
@@ -143,12 +143,11 @@ describe("handleRemove CLI 인자", () => {
 });
 
 describe("project scope cwd", () => {
-  it("resolves list's project command cwd from relPath", async () => {
+  it("resolves list's project command cwd from the canonical Theater root", async () => {
     const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-routes-"));
     const theaterRoot = path.join(temporaryDirectory, "theater");
-    const selectedDirectory = path.join(theaterRoot, "nested");
     const calls: string[] = [];
-    await fs.mkdir(selectedDirectory, { recursive: true });
+    await fs.mkdir(theaterRoot, { recursive: true });
 
     try {
       const ctx = {
@@ -170,13 +169,48 @@ describe("project scope cwd", () => {
       };
       const res = makeRes();
 
-      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1&relPath=nested"), res, ctx, executor);
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1"), res, ctx, executor);
 
       expect(res._status).toBe(200);
-      expect(calls).toContain(await fs.realpath(selectedDirectory));
+      expect(calls).toContain(await fs.realpath(theaterRoot));
     } finally {
       await fs.rm(temporaryDirectory, { force: true, recursive: true });
     }
+  });
+});
+
+describe("legacy relPath rejection", () => {
+  it("rejects every legacy query/body before Theater or CLI work", async () => {
+    const resolveTheaterPath = vi.fn(() => "/theater");
+    const executor = vi.fn<CliExecutor>(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+    const ctx = {
+      host: {
+        security: { isTerminalAuthorized: () => true },
+        http: {
+          writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+            (res as unknown as { _status: number; _body: unknown })._status = status;
+            (res as unknown as { _status: number; _body: unknown })._body = body;
+          },
+          readJsonBody: async () => ({ relPath: "nested" }),
+        },
+        paths: { resolveTheaterPath },
+      },
+    } as unknown as FleetPluginServerContext;
+
+    const calls: Array<() => Promise<void>> = [
+      () => handleList(makeReq("GET", "/plugins/skills/list?relPath=nested"), makeRes(), ctx, executor),
+      () => handleSearch(makeReq("GET", "/plugins/skills/search?q=ts&relPath=nested"), makeRes(), ctx),
+      () => handleGetJob(makeReq("GET", "/plugins/skills/jobs?jobId=x&relPath=nested"), makeRes(), ctx),
+      () => handleInstall(makeReq("POST", "/plugins/skills/install"), makeRes(), ctx, executor),
+      () => handleUpdate(makeReq("POST", "/plugins/skills/update"), makeRes(), ctx, executor),
+      () => handleRemove(makeReq("POST", "/plugins/skills/remove"), makeRes(), ctx, executor),
+      () => handlePreview(makeReq("POST", "/plugins/skills/preview"), makeRes(), ctx, executor),
+      () => handleInstalledFile(makeReq("POST", "/plugins/skills/installed-file"), makeRes(), ctx, executor),
+    ];
+
+    for (const call of calls) await call();
+    expect(resolveTheaterPath).not.toHaveBeenCalled();
+    expect(executor).not.toHaveBeenCalled();
   });
 });
 

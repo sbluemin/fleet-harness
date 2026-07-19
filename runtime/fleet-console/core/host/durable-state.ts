@@ -152,12 +152,7 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
   const registeredAt = readNonEmptyString(value.registeredAt);
   const lastOpenedAt = readNonEmptyString(value.lastOpenedAt);
   if (!id || !theaterPath || !realpath || !label || !registeredAt || !lastOpenedAt) return null;
-  const pathContext = typeof value.pathContext === "string" && isSafeDurableRelPath(value.pathContext) ? value.pathContext : null;
-  return { id, path: theaterPath, realpath, label, registeredAt, lastOpenedAt, pathContext };
-}
-
-function isSafeDurableRelPath(value: string): boolean {
-  return value.length > 0 && !value.includes("\0") && !value.startsWith("/") && !value.startsWith("\\") && !/^[A-Za-z]:/.test(value) && !value.split("/").some((part) => part === "" || part === "." || part === "..");
+  return { id, path: theaterPath, realpath, label, registeredAt, lastOpenedAt };
 }
 
 function sanitizeOperationNode(value: unknown): OperationNode | null {

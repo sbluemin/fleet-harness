@@ -143,17 +143,15 @@ describe("legacy active Repository panel migration", () => {
 
 describe("rail chrome state", () => {
   it("collapses and reopens chrome without changing panel or extra-width state", async () => {
-    const { getRailStoreSnapshot, requestRailPanelExtraWidth, setActiveRailPanel, setRailChromeExpanded, setRailPathContextDeckOpen } = await freshStore();
+    const { getRailStoreSnapshot, requestRailPanelExtraWidth, setActiveRailPanel, setRailChromeExpanded } = await freshStore();
     setActiveRailPanel("panel-a");
     requestRailPanelExtraWidth("panel-a", 240);
-    setRailPathContextDeckOpen(true);
     setRailChromeExpanded(false);
 
     expect(getRailStoreSnapshot()).toMatchObject({
       activeRailPanelId: "panel-a",
       panelExtraWidth: 240,
       railChromeExpanded: false,
-      isPathContextDeckOpen: false,
     });
 
     setRailChromeExpanded(true);
@@ -167,123 +165,5 @@ describe("rail chrome state", () => {
     toggleRailPanel("panel-a");
 
     expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: null, railChromeExpanded: true });
-  });
-});
-
-describe("path context state", () => {
-  it("isolates contexts per Theater and never writes a path selection preference", async () => {
-    const { getRailStoreSnapshot, hydrateRailPathContext, selectRailPathContextTheater } = await freshStore();
-    await hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "packages/a", label: "a" }));
-    selectRailPathContextTheater("b");
-    expect(getRailStoreSnapshot().pathContext).toBeNull();
-    await hydrateRailPathContext("b", async () => ({ kind: "worktree", relPath: "wt", label: "wt" }));
-    selectRailPathContextTheater("a");
-    expect(getRailStoreSnapshot().pathContext?.relPath).toBe("packages/a");
-  });
-
-  it("suppresses stale hydration responses", async () => {
-    const { getRailStoreSnapshot, hydrateRailPathContext } = await freshStore();
-    let resolveFirst!: (value: { kind: "directory"; relPath: string; label: string }) => void;
-    const first = hydrateRailPathContext("a", async () => new Promise((resolve) => { resolveFirst = resolve; }));
-    await Promise.resolve();
-    const second = hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "new", label: "new" }));
-    await second;
-    resolveFirst({ kind: "directory", relPath: "old", label: "old" });
-    await first;
-    expect(getRailStoreSnapshot().pathContext?.relPath).toBe("new");
-  });
-
-  it("marks a Theater context unhydrated until its matching response arrives", async () => {
-    const { getRailStoreSnapshot, hydrateRailPathContext, selectRailPathContextTheater } = await freshStore();
-    await hydrateRailPathContext("a", async () => ({ kind: "directory", relPath: "packages/a", label: "a" }));
-    selectRailPathContextTheater("b");
-    expect(getRailStoreSnapshot()).toMatchObject({ pathContextTheaterId: "b", pathContext: null, pathContextHydrated: false });
-    await hydrateRailPathContext("b", async () => ({ kind: "root", relPath: null, label: "B" }));
-    expect(getRailStoreSnapshot()).toMatchObject({ pathContextTheaterId: "b", pathContextHydrated: true, pathContext: { kind: "root", relPath: null } });
-  });
-
-  it("serializes per-Theater mutations and exposes the pending mutation state", async () => {
-    const { getRailStoreSnapshot, hydrateRailPathContext, mutateRailPathContext } = await freshStore();
-    await hydrateRailPathContext("a", async () => ({ kind: "root", relPath: null, label: "A" }));
-    let resolveFirst!: (value: { kind: "directory"; relPath: string; label: string }) => void;
-    const calls: string[] = [];
-    const first = mutateRailPathContext("a", async () => new Promise((resolve) => {
-      calls.push("first");
-      resolveFirst = resolve;
-    }));
-    const second = mutateRailPathContext("a", async () => {
-      calls.push("second");
-      return { kind: "directory", relPath: "second", label: "second" };
-    });
-    expect(getRailStoreSnapshot().pathContextMutationInProgress).toBe(true);
-    await Promise.resolve();
-    expect(calls).toEqual(["first"]);
-    resolveFirst({ kind: "directory", relPath: "first", label: "first" });
-    await Promise.all([first, second]);
-    expect(calls).toEqual(["first", "second"]);
-    expect(getRailStoreSnapshot()).toMatchObject({ pathContextMutationInProgress: false, pathContext: { relPath: "second" } });
-  });
-
-  it("waits for A's pending PUT before applying a delayed A → B → A hydrate", async () => {
-    const { getRailStoreSnapshot, hydrateRailPathContext, mutateRailPathContext, selectRailPathContextTheater } = await freshStore();
-    const oldContext = { kind: "directory" as const, relPath: "old", label: "old" };
-    const newContext = { kind: "directory" as const, relPath: "new", label: "new" };
-    let serverContext = oldContext;
-    let resolvePut!: (value: typeof newContext) => void;
-    let resolveReturnedGet!: () => void;
-    let returnedGetStarted = false;
-
-    await hydrateRailPathContext("a", async () => oldContext);
-    const mutation = mutateRailPathContext("a", async () => new Promise((resolve) => {
-      resolvePut = (context) => {
-        serverContext = context;
-        resolve(context);
-      };
-    }));
-    await Promise.resolve();
-
-    selectRailPathContextTheater("b");
-    await hydrateRailPathContext("b", async () => ({ kind: "root", relPath: null, label: "B" }));
-    selectRailPathContextTheater("a");
-    const returnedHydrate = hydrateRailPathContext("a", async () => {
-      returnedGetStarted = true;
-      const snapshot = serverContext;
-      await new Promise<void>((resolve) => { resolveReturnedGet = resolve; });
-      return snapshot;
-    });
-    await Promise.resolve();
-    expect(returnedGetStarted).toBe(false);
-
-    resolvePut(newContext);
-    await mutation;
-    await Promise.resolve();
-    expect(returnedGetStarted).toBe(true);
-    resolveReturnedGet();
-    await returnedHydrate;
-
-    expect(getRailStoreSnapshot()).toMatchObject({
-      pathContextTheaterId: "a",
-      pathContext: newContext,
-      pathContextHydrated: true,
-    });
-  });
-});
-
-describe("canRenderPathAwarePanelBody", () => {
-  it("renders non-aware panels regardless of hydration", async () => {
-    const { canRenderPathAwarePanelBody } = await freshStore();
-    expect(canRenderPathAwarePanelBody(false, null, false)).toBe(true);
-    expect(canRenderPathAwarePanelBody(false, "t1", false)).toBe(true);
-  });
-
-  it("renders path-aware panels without a Theater so no-Theater empty states stay reachable", async () => {
-    const { canRenderPathAwarePanelBody } = await freshStore();
-    expect(canRenderPathAwarePanelBody(true, null, false)).toBe(true);
-  });
-
-  it("gates path-aware panels on hydration only while a Theater is selected", async () => {
-    const { canRenderPathAwarePanelBody } = await freshStore();
-    expect(canRenderPathAwarePanelBody(true, "t1", false)).toBe(false);
-    expect(canRenderPathAwarePanelBody(true, "t1", true)).toBe(true);
   });
 });

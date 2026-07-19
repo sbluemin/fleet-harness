@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { pathContextKey } from "../client/context-key.js";
 import { findDetachedCheckout } from "../client/history-panel.js";
 import type { LogCommitEntry, WorktreeCheckout } from "../server/types.js";
 
@@ -28,15 +27,5 @@ describe("History checkout markers", () => {
     ];
 
     expect(findDetachedCheckout(COMMIT, checkouts)).toEqual(checkouts[0]);
-  });
-});
-
-describe("History context identity", () => {
-  it("uses Theater and relative path together as the remount identity", () => {
-    const root = pathContextKey("theater-a", null);
-
-    expect(pathContextKey("theater-a", null)).toBe(root);
-    expect(pathContextKey("theater-a", "src")).not.toBe(root);
-    expect(pathContextKey("theater-b", null)).not.toBe(root);
   });
 });

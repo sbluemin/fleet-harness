@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { commandBandRenameCommitTarget, railPathContextDeckOpenAfterCommandBandToggle, shouldCloseCommandBandContextDeck } from "../core/client/src/components/command-band-guards.js";
+import { commandBandRenameCommitTarget } from "../core/client/src/components/command-band-guards.js";
 
 describe("Command Band v2 guards", () => {
   it("does not commit a previous Operation draft after another panel becomes active", () => {
@@ -12,11 +12,5 @@ describe("Command Band v2 guards", () => {
 
     expect(draft).toBe("previous-operation draft");
     expect(commandBandRenameCommitTarget(capturedOperationId, activeOperationId)).toBeNull();
-  });
-
-  it("keeps the band and rail context decks mutually exclusive in both directions", () => {
-    expect(railPathContextDeckOpenAfterCommandBandToggle(true, true)).toBe(false);
-    expect(shouldCloseCommandBandContextDeck(true, true)).toBe(true);
-    expect(shouldCloseCommandBandContextDeck(true, false)).toBe(false);
   });
 });

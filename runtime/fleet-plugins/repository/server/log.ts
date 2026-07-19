@@ -183,7 +183,7 @@ export async function handleRepositoryLog(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown; readonly ref?: unknown }>(req);
-  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
@@ -191,9 +191,7 @@ export async function handleRepositoryLog(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const rawSubPath = typeof body.subPath === "string" ? body.subPath : "";
-  const cwdResult = await resolveGitCwd(theaterPath, rawSubPath);
-  if (!cwdResult) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
+  const cwdResult = resolveGitCwd(theaterPath);
   const { gitCwd } = cwdResult;
 
   const requestedRef = body.ref;

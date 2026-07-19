@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aggregateWip, shouldShowWip } from "../client/history-panel.js";
-import { parseRefItems, parseWorktrees } from "../server/refs.js";
+import { parseRefItems } from "../server/refs.js";
 
 describe("Repository panel state contracts", () => {
   it("aggregates WIP exclusively from the supplied changed-files snapshot", () => {
@@ -26,25 +26,6 @@ describe("Repository panel state contracts", () => {
   it("uses the canonical current ref when an ambiguous short label includes its namespace", () => {
     expect(parseRefItems("refs/heads/collision\0heads/collision\n", "refs/heads/collision")).toEqual([
       { label: "heads/collision", ref: "refs/heads/collision", current: true },
-    ]);
-  });
-
-  it("renders browser-safe worktree names, current marker, and theater-relative context", async () => {
-    const realpaths = new Map([
-      ["/private/repo", "/real/repo"],
-      ["/private/repo/.fleet/worktrees/topic", "/real/repo/.fleet/worktrees/topic"],
-      ["/private/other", "/real/other"],
-    ]);
-    const realpath = async (value: string): Promise<string> => {
-      const resolved = realpaths.get(value);
-      if (!resolved) throw new Error("missing");
-      return resolved;
-    };
-
-    expect(await parseWorktrees("worktree /private/repo\nHEAD 123\nbranch refs/heads/main\n\nworktree /private/repo/.fleet/worktrees/topic\nHEAD 456\nbranch refs/heads/topic\n\nworktree /private/other\nHEAD 789\n", "/private/repo", "/private/repo", { realpath })).toEqual([
-      { name: "repo", branch: "main", current: true, contextRelPath: "" },
-      { name: "topic", branch: "topic", current: false, contextRelPath: ".fleet/worktrees/topic" },
-      { name: "other", branch: null, current: false, contextRelPath: null },
     ]);
   });
 });

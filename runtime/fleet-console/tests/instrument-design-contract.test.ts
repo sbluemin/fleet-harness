@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const CLIENT_ROOT = new URL("../core/client/src/", import.meta.url);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
+const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
+const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
   "app.tsx",
   "canvas/canvas-store.ts",
@@ -35,6 +37,22 @@ function externalSource(path: URL): string {
 }
 
 describe("Instrument core design contract", () => {
+  it("keeps SDK v1 rail compatibility as a deprecated root-only facade", () => {
+    const types = externalSource(SDK_RAIL_TYPES_PATH);
+    const version = externalSource(SDK_VERSION_PATH);
+    const rightRail = source("rail/right-rail.tsx");
+    expect(version).toContain("SDK_API_VERSION = 1");
+    for (const field of ["RailPathContext", "pathContext", "selectPathContext", "pathAware"]) expect(types).toContain(field);
+    expect(types.match(/@deprecated/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(rightRail).toContain("useSyncExternalStore(");
+    expect(rightRail).toContain("getState().theaters.find");
+    expect(rightRail).toContain("theater.id === theaterId");
+    expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, activeId]");
+    expect(rightRail).not.toContain("selectPathContext");
+    expect(rightRail).not.toContain(".pathAware");
+  });
+
   it("removes ambient radar, panel pulse, perimeter wake, and anchor surfaces", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
   });
@@ -209,9 +227,9 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain('html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-left {');
     expect(commandBand).toContain("onDoubleClick={beginRename}");
     expect(commandBand).toContain("commandBandRenameCommitTarget");
-    expect(commandBand).toContain("shouldCloseCommandBandContextDeck");
+    expect(commandBand).not.toContain("shouldCloseCommandBandContextDeck");
     expect(commandBand).not.toContain("data-carrier");
-    expect(commandBand).toContain("<PathContextDeck");
+    expect(commandBand).not.toContain("<PathContextDeck");
     expect(layout).toContain("padding-inline-start: 88px;");
     expect(layout).toContain("max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))");
     expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
@@ -220,7 +238,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
-    expect(layout).toContain(".command-band-context-separator {");
+    expect(layout).not.toContain(".command-band-context-separator {");
     expect(layout).toContain(".command-band-theater-cluster {");
     expect(layout).not.toContain("--command-band-carrier");
     expect(commandBand).toContain("useFullscreenCommandBand");

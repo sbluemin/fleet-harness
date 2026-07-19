@@ -4,7 +4,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import { TerminalSurface } from "../shared/index.js";
 
-const GLOBAL_SHELL_OPERATION_ID = "global-shell";
+const GLOBAL_SHELL_OPERATION_PREFIX = "global-shell:theater:";
 const GLOBAL_SHELL_TICKET_PATH = "/plugins/terminal/global/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
 const GLOBAL_SHELL_EXTRA_WIDTH = 168;
@@ -24,10 +24,10 @@ export const globalShellPanel: RailPanelDescriptor = {
   title: "Shell",
   icon: TerminalGlyphIcon,
   preferredExtraWidth: GLOBAL_SHELL_EXTRA_WIDTH,
-  render: (_ctx: RailPanelContext) => (
+  render: (ctx: RailPanelContext) => (
     <div style={PANEL_ROOT_STYLE}>
       <TerminalSurface
-        operationId={GLOBAL_SHELL_OPERATION_ID}
+        operationId={`${GLOBAL_SHELL_OPERATION_PREFIX}${encodeURIComponent(ctx.theaterId ?? "")}`}
         ticketPath={GLOBAL_SHELL_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
         theme="instrument"

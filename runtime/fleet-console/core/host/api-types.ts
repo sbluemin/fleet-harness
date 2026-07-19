@@ -53,18 +53,6 @@ export interface ConsoleTheaterInfo {
   readonly activeAdmiralCount: number;
 }
 
-export interface ConsoleRailPathContext {
-  readonly kind: "root" | "worktree" | "directory";
-  readonly relPath: string | null;
-  readonly label: string;
-}
-
-export interface ConsoleTheaterWorktree {
-  readonly relPath: string;
-  readonly branch: string | null;
-  readonly isCurrent: boolean;
-}
-
 export interface ConsoleAgentCliMetadata {
   readonly id: string;
   readonly label: string;
