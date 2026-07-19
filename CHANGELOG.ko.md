@@ -5,6 +5,78 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-07-19
+
+### fleet-cli
+
+#### Changed
+- [fleet-cli] 소스에서 허용된 캐리어에만 Task Force 구성을 표시합니다.
+
+#### Fixed
+- [fleet-cli] 캐리어가 워크트리에서 실행되어도 Fleet Plan 저장소를 최초 실행 워크스페이스에 유지합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Plans 패널이 실시간으로 갱신됩니다. 플랜 파일이 바뀌면 목록·진행률·열린 리더가 자동 새로고침되고 변경된 행이 1회 펄스합니다.
+- [fleet-console] Plans 웨이브·레인 칩을 누르면 문서의 해당 섹션으로 이동하며, 플랜 목록이 ArrowUp/ArrowDown·Enter·Escape 키보드 탐색을 지원합니다.
+- [fleet-console] Plans 목록에 검색, ALL/IN PROGRESS/COMPLETE 상태 필터, REFRESH 동작, 플랜별 상대 경로 복사가 추가됩니다.
+- [fleet-console] Codex 위키 엔트리를 리딩 화면 안에서 바로 AI로 편집합니다: 텍스트를 드래그해 플로팅 코멘트 어노테이션을 추가하고, CLI·모델·effort 선택기를 갖춘 플로팅 도크에서 일괄 전송한 뒤, AI 변경을 하이라이트·삭제 블록이 표시된 렌더 문서 diff로 확인해 그 자리에서 반영하거나 폐기합니다.
+- [fleet-console] Cowork 편집을 터미널 없는 원샷 에이전트 실행으로 수행하고, 변경을 엔트리별 인메모리 초안 하나에 누적한 뒤 base 버전·리비전 검증을 거쳐 감사되는 위키 패치 파이프라인으로 한 번에 반영합니다.
+- [fleet-console] Stream Deck Details에 Request와 Activity 탭을 추가하고 브라우저 보안 경계를 지키며 Request Block을 표시합니다.
+- [fleet-console] 컴패니언 패널 레이아웃을 추가합니다. 에이전트 Operation이 터미널 옆에 전용 패널들을 열 수 있고, 다른 패널 상태는 보존되며 레이아웃을 닫으면 Map 상태가 완전히 복원됩니다.
+- [fleet-console] Codex 사이드바에서 Wiki 스키마 카탈로그를 탐색할 수 있습니다.
+
+#### Changed
+- [fleet-console] 영속된 diff·history 활성 패널 선택을 통합 repository 패널로 마이그레이션합니다.
+- [fleet-console] Cowork 수정 피드백을 접고 펼칠 수 있는 스트리밍 활동 패널, 통일된 입력 컨트롤, 명확한 진행 및 정지 상태로 개선합니다.
+- [fleet-console] Operation 정체성 색을 패널 보더에서 좌측 스파인과 명판 마크로 옮기고 보더·글로우는 상태 신호 전용으로 되돌립니다. 테마별로 재조율되는 8톤 팔레트, 악센트 팝오버·컨텍스트 메뉴가 공유하는 이름 있는 톤 피커, 미니맵 정체성 도트를 도입하고 기존에 저장된 악센트·그룹 색 키는 자동 매핑합니다.
+- [fleet-console] 크롬 색 언어를 침묵시킵니다: 환경·정보 뱃지가 신호색 대신 중립 잉크를 쓰고, 스트림 팔로우 버튼은 brass 윤곽 액션으로 바뀌며, 미니맵의 상시 brass 발광·레이더 링이 사라지고, 캐리어 captain 색은 캡틴별로 구분되는 테마 연동 정체성 팔레트로 편입되며, 설정·What's New·메뉴의 버튼이 토큰화된 높이·radius의 단일 컨트롤 문법으로 수렴합니다.
+
+#### Fixed
+- [fleet-console] 인패널 닫기 버튼의 포커스 링이 우측에서 잘리지 않고 완전히 보이도록 합니다.
+- [fleet-console] 에이전트가 캐리어 워크트리에서 실행되어도 Fleet Plan을 활성 Theater에서 계속 확인할 수 있습니다.
+- [fleet-console] 패널 안에서 이름을 편집할 때 입력 중인 내용을 정상적으로 표시합니다.
+- [fleet-console] Activity Rail 크기를 조절해도 Command Band의 progressive 동작이 화면 폭만 따르도록 유지합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] 로컬·원격 브랜치, 태그, 스태시, 워크트리를 current 마커와 함께 나열하는 읽기 전용 refs 엔드포인트를 추가합니다.
+- [fleet-console] Repository 패널의 워크트리 행을 선택해 theater path context를 전환합니다.
+- [fleet-console] Terminal Agent 스냅샷과 다시 불러오기를 거쳐도 Carrier 요청 관찰 정보를 보존합니다.
+- [fleet-console] 터미널 플러그인에 Session Analyst를 추가합니다. 인-패널 ANALYZE 핸들로 트랜스크립트 기반 분석 채팅을 열고 Claude, Kimi, Codex, OpenCode, Cursor 선택, 컴팩트한 모델·effort 설정, 스트리밍 진행 피드백, 초기화 가능한 히스토리, 이벤트 인용, 샌드박스된 정적 HTML 아티팩트를 제공합니다.
+
+#### Changed
+- [fleet-console] Diff·History rail 패널을 WORKING·REFS 소스 내비게이션을 갖춘 읽기 전용 Repository 단일 패널로 통합합니다.
+- [fleet-console] History 최상단에 미커밋 변경 행을 고정하고, 검증된 브랜치·태그 ref로 이력을 필터하는 제거 가능한 칩을 제공합니다.
+- [fleet-console] Console의 Task Force 설정을 Nimitz, Vanguard, Tempest로 제한하고 지원하지 않는 변경을 거부합니다.
+- [fleet-console] repository·skills·terminal carrier 표면을 중립 뱃지·통일 컨트롤 문법에 정합합니다: 브랜치·워크트리 뱃지가 신호색을 내려놓고, captain 도트의 글로우가 제거되며, 플러그인 버튼이 공용 mono 대문자 컨트롤 스타일을 따릅니다.
+- [fleet-console] Terminal 플러그인 설정을 새 General 섹션으로 묶어 Metaphor, Terminal Font, Terminal Renderer를 담고, Kimi 로그인 카드를 Settings for Kimi로 개칭해 Agent CLI Available 아래로 옮깁니다.
+
+#### Fixed
+- [fleet-console] 파일시스템 경로를 브라우저에 노출하지 않고 Terminal Agent의 Plan 저장소를 서버가 해석한 Theater에 바인딩합니다.
+- [fleet-console] Session Analyst 채팅이 최신 스트리밍 메시지와 활동 업데이트를 자동으로 따라가도록 합니다.
+
+### fleet-core
+
+#### Added
+- [fleet-wiki] 터미널 없는 AI 초안 편집 엔진을 담는 cowork 서브패키지를 추가합니다 — 인메모리 세션 store, 원샷 에이전트 서비스, 스코프드 MCP 런타임, 전역 위키 도구 레지스트리에 등록되지 않는 세션 한정 draft 도구로 구성되며 Fleet Console은 HTTP 어댑터로 이를 소비합니다.
+- [fleet-carriers] 실행기 입력이나 모델 사용량을 변경하지 않고 구조화된 요청 관찰 정보를 전달합니다.
+- [fleet-analyst] fleet-analyst 패키지를 추가합니다. 방어적 트랜스크립트 인덱싱, 자격증명 마스킹, 경계 있는 MCP 분석 도구, 인메모리 멀티턴 분석 세션을 갖춘 세션 분석 런타임입니다.
+- [fleet-wiki] 스키마 목록, 조회, 신규 템플릿 생성 전용 MCP 도구를 추가합니다.
+- [fleet-admiral] 스키마 조회는 Chronicle에, 템플릿 생성은 Admiral에 배정합니다.
+
+#### Changed
+- [fleet-carriers] Task Force 구성, 상태, 출격에 명시적인 캐리어 기능 정책을 강제합니다.
+- [fleet-admiral] Codex 리뷰 피드백을 고정된 제품 맥락에 따라 판정하고 머지 전에 리뷰로 인한 범위 이탈을 롤백합니다.
+
+#### Fixed
+- [core-agent] 불변 서버 전용 바인딩을 전용 MCP 세션과 일회성 MCP 세션 모두에 전달합니다.
+- [fleet-plans] Plan 저장소를 실행 디렉터리에서 추론하지 않고 호스트가 명시적으로 바인딩하도록 합니다.
+- [fleet-admiral] Claude Console 패널 이름을 첫 프롬프트로 자동 지정한 뒤 provider summary로 갱신합니다.
+- [fleet-analyst] 누락되거나 예상하지 못한 publish_artifact 인자를 거부하고 비어 있지 않은 html을 요구하며 정확한 HTML 및 대비 계약을 명확히 합니다.
+
 ## [1.27.0] - 2026-07-18
 
 ### fleet-cli

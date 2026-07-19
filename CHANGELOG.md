@@ -5,6 +5,78 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-07-19
+
+### fleet-cli
+
+#### Changed
+- [fleet-cli] Show Task Force configuration only for source-enabled Carriers.
+
+#### Fixed
+- [fleet-cli] Keep Fleet Plan storage bound to the invocation workspace while Carriers run in worktrees.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Plans panel updates live: the list, progress bars, and the open plan reader refresh automatically when plan files change, with a one-shot pulse on changed rows.
+- [fleet-console] Plans wave and lane chips jump to their section in the plan document, and the plan list supports ArrowUp/ArrowDown, Enter, and Escape keyboard navigation.
+- [fleet-console] Plans list gains search, ALL/IN PROGRESS/COMPLETE status filters, a REFRESH action, and per-plan relative-path copy.
+- [fleet-console] Let Codex wiki entries be edited with AI directly inside the reading view: drag-select text to add floating comment annotations, batch-send them from a floating dock with CLI, model, and effort selectors, then review AI changes as a rendered document diff with highlighted and removed blocks before applying or discarding the draft in place.
+- [fleet-console] Run Cowork editing through terminal-free one-shot agent runs whose edits accumulate in one in-memory draft per entry, then apply them once through the audited wiki patch pipeline with base version and revision checks.
+- [fleet-console] Add Request and Activity tabs to Stream Deck Details with browser-safe Request Block rendering.
+- [fleet-console] Add a companion panel layout: an agent operation can open dedicated side panels next to its terminal while peers stay preserved, and closing the layout fully restores the Map state.
+- [fleet-console] Add Wiki schema catalog browsing to the Codex sidebar.
+
+#### Changed
+- [fleet-console] Migrate persisted diff or history active panel selections to the unified repository panel.
+- [fleet-console] Refresh Cowork revision feedback with a collapsible streaming activity panel, unified composer controls, and clearer progress and stop states.
+- [fleet-console] Move operation identity color from the panel border to a left spine and nameplate mark, reserving borders and glows for status signals, with an 8-tone palette that retunes per theme, a named tone picker shared across the accent popover and context menus, identity dots on the minimap, and automatic mapping of previously saved accent and group color keys.
+- [fleet-console] Quiet the chrome color language: environment and info badges drop signal colors for neutral ink, the stream follow button becomes a brass outline action, the minimap loses its always-on brass glow and radar rings, carrier captain colors join the theme-tuned identity palette with distinct tones per captain, and buttons across settings, What's New, and menus converge on one control grammar with tokenized heights and radii.
+
+#### Fixed
+- [fleet-console] Keep the in-panel Close button focus ring fully visible.
+- [fleet-console] Keep Fleet Plans visible in the active Theater when Agents run from Carrier worktrees.
+- [fleet-console] Keep in-panel names visible while editing them.
+- [fleet-console] Keep Command Band progressive behavior tied to the viewport when resizing the Activity Rail.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Add a read-only refs endpoint listing local and remote branches, tags, stashes, and worktrees with current markers.
+- [fleet-console] Switch the theater path context by selecting a worktree row in the Repository panel.
+- [fleet-console] Preserve Carrier request observations through Terminal Agent snapshots and reloads.
+- [fleet-console] Add Session Analyst to the terminal plugin: an in-panel ANALYZE handle opens a transcript-grounded analysis chat with Claude, Kimi, Codex, OpenCode, or Cursor selection, compact model and effort setup, streaming progress, resettable history, event citations, and sandboxed static HTML artifacts.
+
+#### Changed
+- [fleet-console] Unify the Diff and History rail panels into one read-only Repository panel with WORKING and REFS source navigation.
+- [fleet-console] Pin an uncommitted-changes row atop History and filter history by validated branch or tag refs with a clearable chip.
+- [fleet-console] Limit Console Task Force settings to Nimitz, Vanguard, and Tempest, and reject unsupported updates.
+- [fleet-console] Conform repository, skills, and terminal carrier surfaces to the neutral badge and unified control grammar: branch and worktree badges drop signal colors, captain dots lose their glow, and plugin buttons adopt the shared mono uppercase control style.
+- [fleet-console] Group the Terminal plugin settings into a new General section holding Metaphor, Terminal Font, and Terminal Renderer, and rename the Kimi sign-in card to Settings for Kimi, moving it below Agent CLI Available.
+
+#### Fixed
+- [fleet-console] Bind Terminal Agent Plan storage to its server-resolved Theater without exposing filesystem paths to the browser.
+- [fleet-console] Keep Session Analyst chat pinned to the latest streamed message and activity update.
+
+### fleet-core
+
+#### Added
+- [fleet-wiki] Add a cowork subpackage housing the terminal-free AI draft-editing engine: an in-memory session store, a one-shot agent service, a scoped MCP runtime, and session-scoped draft tools kept out of the global wiki tool registry, consumed by Fleet Console through its HTTP adapter.
+- [fleet-carriers] Emit structured request observations without changing executor input or model usage.
+- [fleet-analyst] Add the fleet-analyst package: a session analysis runtime with defensive transcript indexing, credential redaction, bounded MCP analysis tools, and an in-memory multi-turn analyst session.
+- [fleet-wiki] Add schema list, read, and create-only template MCP tools.
+- [fleet-admiral] Assign schema lookup to Chronicle and template creation to Admiral.
+
+#### Changed
+- [fleet-carriers] Enforce an explicit Carrier capability for Task Force configuration, status, and launch.
+- [fleet-admiral] Adjudicate Codex review feedback against frozen product context and roll back review-driven scope drift before merge.
+
+#### Fixed
+- [core-agent] Carry immutable server-only bindings through dedicated and one-shot MCP sessions.
+- [fleet-plans] Require hosts to bind Plan storage explicitly instead of deriving it from the execution directory.
+- [fleet-admiral] Auto-name Claude Console panels from the first prompt before provider summaries refresh them.
+- [fleet-analyst] Reject missing or unexpected publish_artifact parameters, require non-empty html, and clarify the exact HTML and contrast contract.
+
 ## [1.27.0] - 2026-07-18
 
 ### fleet-cli
