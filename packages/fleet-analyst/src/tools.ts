@@ -78,11 +78,11 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
   [ANALYST_TOOL_IDS.publishArtifact]: {
     id: ANALYST_TOOL_IDS.publishArtifact,
     description: "Publishes one newest-first, in-memory analysis artifact and emits it to the client event stream.",
-    promptSnippet: "Use publish_artifact for a self-contained structured explanation with evidence citations.",
+    promptSnippet: "Use publish_artifact with the exact title and html parameters for a self-contained structured explanation with evidence citations.",
     whenToUse: ["When a timeline, comparison, risk review, or visual brief is clearer than chat alone.", "After collecting cited evidence for the artifact."],
     whenNotToUse: ["Do not use it for raw transcript dumps, secrets, external resources, or oversized HTML."],
-    usageGuidelines: ["title is a searchable non-empty title up to 120 characters; html is self-contained UTF-8 HTML capped at 50KiB."],
-    parameters: { type: "object", properties: { title: { type: "string", description: "Searchable artifact title, maximum 120 characters." }, html: { type: "string", description: "Self-contained HTML, maximum 50KiB UTF-8." } }, required: ["title", "html"] },
+    usageGuidelines: ["Pass exactly title and html; never use content as an alias for html.", "html must contain visible static content and is capped at 50KiB UTF-8."],
+    parameters: { type: "object", additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 120, description: "Searchable artifact title, maximum 120 characters." }, html: { type: "string", minLength: 1, description: "Self-contained HTML with visible static content, maximum 50KiB UTF-8. This property is named html, not content." } }, required: ["title", "html"] },
   },
 };
 
@@ -145,6 +145,10 @@ export class AnalystTools {
     const html = typeof args.html === "string" ? args.html : "";
     if (!title || title.length > 120) throw new Error("Invalid artifact title");
     if (Buffer.byteLength(html, "utf8") > MAX_ARTIFACT_BYTES) throw new Error("Artifact exceeds 50 KiB");
+    if (!html.trim()) throw new Error("Invalid artifact HTML: provide a non-empty 'html' parameter (not 'content')");
+    const unexpected = Object.keys(args).filter((key) => key !== "title" && key !== "html");
+    if (unexpected.length) throw new Error(`Invalid artifact parameters: expected only 'title' and 'html'; received ${unexpected.join(", ")}`);
+    if (!hasVisibleStaticContent(html)) throw new Error("Artifact HTML must include visible static content");
     const artifact = { id: crypto.randomUUID(), title, html, createdAt: new Date().toISOString() };
     this.artifacts.unshift(artifact);
     if (this.artifacts.length > MAX_ARTIFACTS) this.artifacts.splice(MAX_ARTIFACTS);
@@ -155,3 +159,17 @@ export class AnalystTools {
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function integer(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : undefined; }
+
+function hasVisibleStaticContent(html: string): boolean {
+  const blockedContainers = /<(script|style|noscript|template|svg|math|a|area|form|button|iframe|frame|object|embed|video|audio|source|link|base)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
+  let visible = html;
+  // A small fixed pass count handles ordinary nested blocked containers without
+  // turning this structural guard into an HTML parser or sanitizer.
+  for (let pass = 0; pass < 3; pass += 1) visible = visible.replace(blockedContainers, " ");
+  visible = visible
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(?:nbsp|#160|#x0*a0);/gi, " ")
+    .replace(/&(?:[a-z][a-z0-9]+|#\d+|#x[a-f0-9]+);/gi, "x");
+  return visible.trim().length > 0;
+}

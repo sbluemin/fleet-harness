@@ -131,6 +131,40 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
+  it("follows the latest streamed analyst content when chat overflows", () => {
+    storeState = {
+      ...initialAnalysisState,
+      started: true,
+      busy: true,
+      phase: "writing",
+      latestActivity: { kind: "writing" },
+      entries: [
+        { role: "user", text: "Summarize this" },
+        { role: "analyst", text: "First chunk" },
+      ],
+    };
+    const { container, root } = renderPanel();
+    const chat = container.querySelector<HTMLElement>(".session-analyst__chat")!;
+    Object.defineProperties(chat, {
+      scrollHeight: { configurable: true, value: 640 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+
+    storeState = {
+      ...storeState,
+      entries: [
+        storeState.entries[0]!,
+        { role: "analyst", text: "First chunk and a streamed follow-up" },
+      ],
+    };
+    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+
+    expect(chat.scrollTop).toBe(640);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it("omits completion receipts while keeping truthful stopped receipts", () => {
     storeState = {
       ...initialAnalysisState,

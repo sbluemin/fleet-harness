@@ -17,10 +17,17 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const cli = state.catalog?.clis.find((item) => item.cliId === state.cliId);
   const model = cli?.models.find((item) => item.id === state.model);
   const hasInteracted = state.entries.length > 0;
+  const chatRef = React.useRef<HTMLElement>(null);
+  const latestEntry = state.entries.at(-1);
   // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
   // 유지하면 뒤따르는 connected/chunk 렌더가 진행 중인 CSS 애니메이션을 끊지 않는다.
   const interactedAtMount = React.useRef(hasInteracted).current;
   const animateDock = hasInteracted && !interactedAtMount;
+  React.useLayoutEffect(() => {
+    const chat = chatRef.current;
+    if (!chat || !hasInteracted) return;
+    chat.scrollTop = chat.scrollHeight;
+  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase]);
   const submit = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || state.busy) return;
@@ -32,7 +39,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label="Session Analyst chat" data-phase={state.phase}>
       <PanelHeader state={state} onReset={() => { void reset().then(() => setDraft("")).catch(() => {}); }} />
       <div className="session-analyst__workspace">
-        <section className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
+        <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
           {hasInteracted ? (
             <ol className={state.busy ? "is-dimmed" : undefined}>
               {state.entries.map((entry, index) => (

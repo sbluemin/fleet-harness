@@ -9,10 +9,13 @@ it("snapshots the approved observer, evidence, and artifact contract", () => {
     citation: ANALYST_SYSTEM_PROMPT.includes("[e#]"),
     likely: ANALYST_SYSTEM_PROMPT.includes("Likely:"),
     artifact: ANALYST_SYSTEM_PROMPT.includes("publish_artifact"),
+    artifactArguments: ANALYST_SYSTEM_PROMPT.includes('"html"') && ANALYST_SYSTEM_PROMPT.includes("not `content`"),
+    visibleArtifact: ANALYST_SYSTEM_PROMPT.includes("explicit high-contrast foreground and background colors"),
     size: ANALYST_SYSTEM_PROMPT.includes("50KiB"),
   }).toMatchInlineSnapshot(`
     {
       "artifact": true,
+      "artifactArguments": true,
       "citation": true,
       "likely": true,
       "sections": [
@@ -24,6 +27,7 @@ it("snapshots the approved observer, evidence, and artifact contract", () => {
       ],
       "size": true,
       "thirdPerson": true,
+      "visibleArtifact": true,
     }
   `);
 });
