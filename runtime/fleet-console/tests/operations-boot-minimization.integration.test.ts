@@ -414,6 +414,36 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).not.toContain("second");
   });
 
+  it("applies only the latest asynchronous Analyze retarget", async () => {
+    const secondReady = deferred<boolean>();
+    const thirdReady = deferred<boolean>();
+    const canOpenCompanions = vi.fn(({ operation: target }: { readonly operation: OperationNode }) => target.id === "second" ? secondReady.promise : thirdReady.promise);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second"), operation("third")]);
+    await act(async () => {
+      setCompanionOperationId("first");
+      await Promise.resolve();
+    });
+
+    act(() => {
+      sideBarMocks.onFocus?.("second");
+      sideBarMocks.onFocus?.("third");
+    });
+    await act(async () => {
+      secondReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getCompanionOperationId()).toBe("first");
+
+    await act(async () => {
+      thirdReady.resolve(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getCompanionOperationId()).toBe("third");
+  });
+
   it("force-drops Analyze immediately when Sidebar closes its target", async () => {
     await bootApp([operation("first")]);
     await act(async () => {

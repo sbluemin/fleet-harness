@@ -43,6 +43,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     [state.operations, state.activeTheaterId],
   );
   const stateRef = useRef(state);
+  const focusRequestEpochRef = useRef(0);
   stateRef.current = state;
 
   useEffect(() => {
@@ -85,7 +86,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, event.key === "ArrowRight" ? 1 : -1);
       if (!nextId) return;
-      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, () => {
+      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
         // 모두 최소화된 부팅 상태의 폴백 대상은 store 포커스보다 먼저 복원한다. 그렇지 않으면 Canvas의
         // "최소화된 active id 제거" effect가 pending focus 복원보다 앞서 실행되어 활성 표시를 지운다.
         if (canvas.minimized.includes(nextId)) restoreOperation(nextId);
@@ -120,7 +121,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, () => {
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
       const viewportSize = viewportSizeFor(bodyRef.current);
       if (viewportSize) focusCanvasOperation(operationId, viewportSize);
     });
@@ -163,7 +164,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       focusOperation(operationId);
       return;
     }
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, () => {
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
       const snapshot = getCanvasSnapshot();
       const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
       if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
@@ -345,7 +346,8 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
 }
 
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.
-async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, focusMap: () => void): Promise<void> {
+async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void): Promise<void> {
+  const requestEpoch = ++requestEpochRef.current;
   const currentCompanionOperationId = getCompanionOperationId();
   if (currentCompanionOperationId !== null) {
     const operation = getState().operations.find((candidate) => candidate.id === operationId);
@@ -358,7 +360,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
         canOpenCompanions = false;
       }
       // readiness 확인 중 사용자가 Exit·다른 Operation·다른 Theater로 이동했으면 오래된 결과를 버린다.
-      if (getCompanionOperationId() !== currentCompanionOperationId || getLoadedTheaterId() !== operation.theaterId) return;
+      if (requestEpochRef.current !== requestEpoch || getCompanionOperationId() !== currentCompanionOperationId || getLoadedTheaterId() !== operation.theaterId) return;
     }
     if (descriptor && (!descriptor.companions?.length || !canOpenCompanions)) {
       forceDropCompanionOperationId();
