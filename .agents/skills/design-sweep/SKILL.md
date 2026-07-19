@@ -57,7 +57,7 @@ Re-read the living sources above. The contract test tells you what is **already 
 
 Run the detectors over `<scope>` — dispatch `vanguard` per surface for `full` depth (parallel, one dispatch per surface family), or run directly for `quick`:
 
-- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Plugins (`runtime/fleet-plugins/*`) are the historical drift reservoir — always include them.
+- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console AGENTS.md Design invariants) — classify them out instead of reporting them. Plugins (`runtime/fleet-plugins/*`) are the historical drift reservoir — always include them.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
 - **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location, focus, hover).
 - **Identity leaks**: `--user-accent` placements — count them and compare against the contract test's pinned count; any `border-color`/glow usage is a violation.
