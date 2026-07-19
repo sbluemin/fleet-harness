@@ -414,6 +414,26 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).not.toContain("second");
   });
 
+  it("falls back to Map when an Analyze retarget has no registered descriptor", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      toggleFormationView();
+      setCompanionOperationId("first");
+      minimizeOperation("second");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+    });
+
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(false);
+    expect(getState().activeOperationId).toBe("second");
+    expect(getSnapshot().minimized).not.toContain("second");
+  });
+
   it("applies only the latest asynchronous Analyze retarget", async () => {
     const secondReady = deferred<boolean>();
     const thirdReady = deferred<boolean>();
@@ -479,6 +499,7 @@ describe("Operations boot minimization", () => {
   });
 
   it("retargets Analyze with Alt+Arrow before Maximized and Formation", async () => {
+    registryMocks.operationKinds = [companionKind(() => true)];
     await bootApp([operation("first"), operation("second")]);
     await act(async () => {
       toggleFormationView();
@@ -501,6 +522,7 @@ describe("Operations boot minimization", () => {
   });
 
   it("retargets Analyze through pending focus using the destination Theater's layer", async () => {
+    registryMocks.operationKinds = [companionKind(() => true)];
     await bootApp(
       [operation("a1", 1, "theater-a"), operation("b1", 1, "theater-b"), operation("b2", 2, "theater-b")],
       [theater(), theater("theater-b", "Theater B")],
