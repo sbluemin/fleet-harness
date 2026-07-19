@@ -80,6 +80,25 @@ describe("AnalystTools", () => {
     expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ html }) })]);
   });
 
+  it("enforces the exact publish_artifact parameter contract", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
+    await writeFile(file, "");
+    const emitted: unknown[] = [];
+    const tools = new AnalystTools({ capturePath: file, cwd: process.cwd(), onEvent: event => emitted.push(event) });
+    const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
+
+    expect(publish.parameters).toMatchObject({
+      additionalProperties: false,
+      properties: { html: { minLength: 1 } },
+      required: ["title", "html"],
+    });
+    await expect(publish.execute({ title: "Wrong parameter", content: "<p>Hidden</p>" }, {} as never)).rejects.toThrow("'html' parameter");
+    await expect(publish.execute({ title: "Extra parameter", html: "<p>Visible</p>", content: "duplicate" }, {} as never)).rejects.toThrow("expected only 'title' and 'html'");
+    await expect(publish.execute({ title: "Empty document", html: "" }, {} as never)).rejects.toThrow("non-empty 'html' parameter");
+    await expect(publish.execute({ title: "Whitespace document", html: " \n\t " }, {} as never)).rejects.toThrow("non-empty 'html' parameter");
+    expect(emitted).toEqual([]);
+  });
+
   it("keeps only the 20 newest in-memory artifacts", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl");
     await writeFile(file, "");
