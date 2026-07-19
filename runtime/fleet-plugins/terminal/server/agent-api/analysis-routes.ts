@@ -15,6 +15,10 @@ import { readProviderSessionCapture } from "./session-capture.js";
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
+const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon"]);
+const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\([\d.e%+\-/, ]{1,96}\)|Canvas|CanvasText)$/i;
+const ARTIFACT_CANVAS_STYLE_PROPERTIES = new Set(["background-color", "background-image", "color", "min-height", "color-scheme"]);
+const ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES = new Set([...ARTIFACT_CANVAS_STYLE_PROPERTIES, "margin"]);
 
 type AnalysisRouteDeps = {
   readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
@@ -83,8 +87,215 @@ function handleArtifact(ctx: FleetPluginServerContext, req: http.IncomingMessage
     return true;
   }
   res.writeHead(200, artifactHeaders());
-  res.end(html);
+  res.end(artifactDocument(html, req.url));
   return true;
+}
+
+function artifactDocument(html: string, requestUrl: string | undefined): string {
+  const query = new URL(requestUrl ?? "/", "http://fleet.invalid").searchParams;
+  const theme = safeArtifactTheme(query.get("theme"));
+  const canvas = safeArtifactColor(query.get("canvas"), "Canvas");
+  const foreground = safeArtifactColor(query.get("foreground"), "CanvasText");
+  const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:dark!important;`;
+  const documentTags = findArtifactDocumentTags(html);
+  if (documentTags) {
+    const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
+    const bodyTag = withArtifactAttribute(documentTags.bodyTag.source, "style", `${canvasStyle}margin:0!important;`, ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES);
+    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
+  }
+  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head></head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+}
+
+type HtmlStartTag = { readonly start: number; readonly end: number; readonly source: string };
+
+function findArtifactDocumentTags(html: string): { readonly htmlTag: HtmlStartTag; readonly bodyTag: HtmlStartTag } | null {
+  let index = html.charCodeAt(0) === 0xfeff ? 1 : 0;
+  while (index < html.length) {
+    while (/\s/.test(html[index] ?? "")) index += 1;
+    if (html.startsWith("<!--", index)) {
+      const commentEnd = html.indexOf("-->", index + 4);
+      if (commentEnd < 0) return null;
+      index = commentEnd + 3;
+      continue;
+    }
+    if (html[index] === "<" && (html[index + 1] === "!" || html[index + 1] === "?")) {
+      const declarationEnd = findHtmlTagEnd(html, index + 2);
+      if (declarationEnd < 0) return null;
+      index = declarationEnd;
+      continue;
+    }
+    break;
+  }
+
+  const htmlTag = readHtmlStartTag(html, index);
+  if (!htmlTag || htmlTag.name !== "html") return null;
+  index = htmlTag.tag.end;
+  while (index < html.length) {
+    const tagStart = html.indexOf("<", index);
+    if (tagStart < 0) return null;
+    if (html.startsWith("<!--", tagStart)) {
+      const commentEnd = html.indexOf("-->", tagStart + 4);
+      if (commentEnd < 0) return null;
+      index = commentEnd + 3;
+      continue;
+    }
+    const tag = readHtmlStartTag(html, tagStart);
+    if (!tag) {
+      const tagEnd = findHtmlTagEnd(html, tagStart + 1);
+      if (tagEnd < 0) return null;
+      index = tagEnd;
+      continue;
+    }
+    if (tag.name === "body") return { htmlTag: htmlTag.tag, bodyTag: tag.tag };
+    index = tag.tag.end;
+    if (tag.name === "script" || tag.name === "style" || tag.name === "title" || tag.name === "textarea") {
+      const closeStart = html.toLowerCase().indexOf(`</${tag.name}`, index);
+      if (closeStart < 0) return null;
+      const closeEnd = findHtmlTagEnd(html, closeStart + tag.name.length + 2);
+      if (closeEnd < 0) return null;
+      index = closeEnd;
+    }
+  }
+  return null;
+}
+
+function readHtmlStartTag(html: string, start: number): { readonly name: string; readonly tag: HtmlStartTag } | null {
+  if (html[start] !== "<" || html[start + 1] === "/" || html[start + 1] === "!" || html[start + 1] === "?") return null;
+  let nameEnd = start + 1;
+  while (/[A-Za-z0-9:-]/.test(html[nameEnd] ?? "")) nameEnd += 1;
+  if (nameEnd === start + 1 || !/[\s/>]/.test(html[nameEnd] ?? "")) return null;
+  const end = findHtmlTagEnd(html, nameEnd);
+  if (end < 0) return null;
+  return { name: html.slice(start + 1, nameEnd).toLowerCase(), tag: { start, end, source: html.slice(start, end) } };
+}
+
+function findHtmlTagEnd(html: string, from: number): number {
+  let quote = "";
+  for (let index = from; index < html.length; index += 1) {
+    const character = html[index] ?? "";
+    if (quote) {
+      if (character === quote) quote = "";
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return index + 1;
+    }
+  }
+  return -1;
+}
+
+function withArtifactAttribute(tag: string, attributeName: "data-theme" | "style", value: string, replacedStyleProperties?: ReadonlySet<string>): string {
+  const replacements: Array<{ start: number; end: number; value: string }> = [];
+  let index = 1;
+  while (/[A-Za-z0-9:-]/.test(tag[index] ?? "")) index += 1;
+  while (index < tag.length - 1) {
+    while (/\s/.test(tag[index] ?? "")) index += 1;
+    if (tag[index] === "/" || tag[index] === ">") break;
+    const nameStart = index;
+    while (!/[\s=/>]/.test(tag[index] ?? ">")) index += 1;
+    const nameEnd = index;
+    while (/\s/.test(tag[index] ?? "")) index += 1;
+    let attributeEnd = nameEnd;
+    let currentValue = "";
+    if (tag[index] === "=") {
+      index += 1;
+      while (/\s/.test(tag[index] ?? "")) index += 1;
+      const quote = tag[index] === '"' || tag[index] === "'" ? tag[index++] : "";
+      const valueStart = index;
+      if (quote) {
+        while (index < tag.length - 1 && tag[index] !== quote) index += 1;
+        currentValue = tag.slice(valueStart, index);
+        if (tag[index] === quote) index += 1;
+      } else {
+        while (!/[\s>]/.test(tag[index] ?? ">")) index += 1;
+        currentValue = tag.slice(valueStart, index);
+      }
+      attributeEnd = index;
+    }
+    if (tag.slice(nameStart, nameEnd).toLowerCase() === attributeName) {
+      const preservedStyle = replacedStyleProperties ? withoutArtifactCanvasDeclarations(currentValue, replacedStyleProperties) : "";
+      const nextValue = replacedStyleProperties && preservedStyle.length > 0
+        ? `${preservedStyle}${preservedStyle.trimEnd().endsWith(";") ? "" : ";"}${value}`
+        : value;
+      replacements.push({ start: nameStart, end: attributeEnd, value: `${tag.slice(nameStart, nameEnd)}="${nextValue.replaceAll('"', "&quot;")}"` });
+    }
+  }
+  if (replacements.length === 0) {
+    const insertAt = tag.search(/\s*\/?\s*>$/);
+    return `${tag.slice(0, insertAt)} ${attributeName}="${value}"${tag.slice(insertAt)}`;
+  }
+  let result = tag;
+  for (const replacement of replacements.reverse()) {
+    result = `${result.slice(0, replacement.start)}${replacement.value}${result.slice(replacement.end)}`;
+  }
+  return result;
+}
+
+function withoutArtifactCanvasDeclarations(style: string, replacedProperties: ReadonlySet<string>): string {
+  let result = "";
+  let segmentStart = 0;
+  let quote = "";
+  let escaped = false;
+  let comment = false;
+  let nesting = 0;
+  for (let index = 0; index <= style.length; index += 1) {
+    const character = style[index] ?? "";
+    const next = style[index + 1] ?? "";
+    const encodedQuote = readHtmlEncodedQuote(style, index);
+    if (comment) {
+      if (character === "*" && next === "/") { comment = false; index += 1; }
+      continue;
+    }
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = "";
+      else if (encodedQuote?.quote === quote) { quote = ""; index += encodedQuote.length - 1; }
+      continue;
+    }
+    if (character === "/" && next === "*") { comment = true; index += 1; continue; }
+    if (character === '"' || character === "'") { quote = character; continue; }
+    if (encodedQuote) { quote = encodedQuote.quote; index += encodedQuote.length - 1; continue; }
+    if (character === "(" || character === "[" || character === "{") { nesting += 1; continue; }
+    if (character === ")" || character === "]" || character === "}") { nesting = Math.max(0, nesting - 1); continue; }
+    if ((character === ";" && nesting === 0) || index === style.length) {
+      const segmentEnd = character === ";" ? index + 1 : index;
+      const segment = style.slice(segmentStart, segmentEnd);
+      if (!replacedProperties.has(cssDeclarationName(segment))) result += segment;
+      segmentStart = segmentEnd;
+    }
+  }
+  return result;
+}
+
+function cssDeclarationName(declaration: string): string {
+  let comment = false;
+  for (let index = 0; index < declaration.length; index += 1) {
+    if (comment) {
+      if (declaration[index] === "*" && declaration[index + 1] === "/") { comment = false; index += 1; }
+    } else if (declaration[index] === "/" && declaration[index + 1] === "*") {
+      comment = true;
+      index += 1;
+    } else if (declaration[index] === ":") {
+      return declaration.slice(0, index).replace(/\/\*[\s\S]*?\*\//g, "").trim().toLowerCase();
+    }
+  }
+  return "";
+}
+
+function readHtmlEncodedQuote(value: string, index: number): { readonly quote: string; readonly length: number } | null {
+  const match = value.slice(index).match(/^&(?:quot|#0*34|#x0*22);/i);
+  if (match) return { quote: '"', length: match[0].length };
+  const apostropheMatch = value.slice(index).match(/^&(?:apos|#0*39|#x0*27);/i);
+  return apostropheMatch ? { quote: "'", length: apostropheMatch[0].length } : null;
+}
+
+function safeArtifactTheme(value: string | null): string {
+  return value !== null && ANALYSIS_ARTIFACT_THEMES.has(value) ? value : "instrument";
+}
+
+function safeArtifactColor(value: string | null, fallback: "Canvas" | "CanvasText"): string {
+  return value !== null && value.length <= 100 && SAFE_ARTIFACT_COLOR.test(value) ? value : fallback;
 }
 
 function handleClearArtifacts(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operationId: string, registry: AnalysisRegistry): boolean {
