@@ -634,6 +634,10 @@
 .history-root {
   position: relative;
   display: grid;
+  /* 자식은 grid-column:1에 세로로 쌓인다. 단일 열을 minmax(0,1fr)로 명시해야
+     암시적 auto 열이 긴 subject/badge를 max-content로 키워 overflow:hidden으로
+     우측을 자르는 일을 막고 내용이 ellipsize되도록 보장한다. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
