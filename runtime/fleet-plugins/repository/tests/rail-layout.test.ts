@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   DIFF_DIVIDER_WIDTH,
-  HISTORY_DETAIL_PANE_MIN_WIDTH,
+  HISTORY_DETAIL_PANE_MIN_HEIGHT,
   HUNK_PANE_MIN_WIDTH,
   buildDiffGridTemplate,
-  buildHistoryGridTemplate,
+  buildHistoryStackTemplate,
   buildInspectorChangesGridTemplate,
   buildInspectorDetailsGridTemplate,
   clampSplitPaneSize,
@@ -90,23 +90,23 @@ describe("buildDiffGridTemplate", () => {
   });
 });
 
-describe("History detail/list layout", () => {
-  it("grows the History panel's left master pane when dragging right", () => {
+describe("History log/detail layout", () => {
+  it("grows the History panel's top log pane when dragging down", () => {
     expect(clampSplitPaneSize(
       360,
       40,
       712,
       220,
-      HISTORY_DETAIL_PANE_MIN_WIDTH,
+      HISTORY_DETAIL_PANE_MIN_HEIGHT,
       DIFF_DIVIDER_WIDTH,
     )).toBe(400);
-    expect(clampSplitPaneSize(360, 600, 712, 220, HISTORY_DETAIL_PANE_MIN_WIDTH, DIFF_DIVIDER_WIDTH)).toBe(568);
+    expect(clampSplitPaneSize(360, 600, 712, 220, HISTORY_DETAIL_PANE_MIN_HEIGHT, DIFF_DIVIDER_WIDTH)).toBe(548);
   });
 
-  it("builds a history grid that preserves the detail pane while honoring the stored list width", () => {
-    const preservedDetailWidth = HISTORY_DETAIL_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
-    expect(buildHistoryGridTemplate(360)).toBe(
-      `minmax(0, min(360px, calc(100% - ${preservedDetailWidth}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`,
+  it("builds a history stack that preserves the detail pane while honoring the stored log height", () => {
+    const preservedDetailHeight = HISTORY_DETAIL_PANE_MIN_HEIGHT + DIFF_DIVIDER_WIDTH;
+    expect(buildHistoryStackTemplate(240)).toBe(
+      `minmax(0, min(240px, calc(100% - ${preservedDetailHeight}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`,
     );
   });
 });
