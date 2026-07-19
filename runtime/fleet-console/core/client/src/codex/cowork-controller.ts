@@ -557,6 +557,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.target instanceof Element && event.target.closest(".cowork-revision-output")) {
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape") {
       if (selection || composerOpen) { selection = null; composerOpen = false; renderAnchor(); }
       else if (panelOpen || configOpen || confirmAction) { panelOpen = false; configOpen = false; confirmAction = null; renderDock(); }
@@ -646,6 +650,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const onInput = (event: Event) => {
     const target = event.target;
+    if (target instanceof Element && target.closest(".cowork-revision-output")) {
+      event.stopPropagation();
+      return;
+    }
     if (target instanceof HTMLInputElement && target.name === "prompt") { promptText = target.value; return; }
     if (target instanceof HTMLTextAreaElement && target.dataset.coworkComment) {
       const id = target.dataset.coworkComment;
@@ -655,6 +663,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const onChange = (event: Event) => {
     const target = event.target;
+    if (target instanceof Element && target.closest(".cowork-revision-output")) {
+      event.stopPropagation();
+      return;
+    }
     if (target instanceof HTMLSelectElement && ["cli", "model", "effort"].includes(target.name)) {
       // CLI가 바뀌면 이전 CLI의 model/effort는 무효 — 리셋해야 새 CLI의 기본 목록을 받는다.
       settings = target.name === "cli"

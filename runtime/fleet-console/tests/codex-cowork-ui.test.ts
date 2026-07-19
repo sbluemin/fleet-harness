@@ -544,10 +544,10 @@ describe("Cowork inline copilot", () => {
     const reader = document.createElement("div");
     article.replaceWith(reader);
     reader.append(article);
-    const ancestorRouter = vi.fn((event: MouseEvent) => event.target instanceof Element
+    const ancestorRouter = vi.fn((event: Event) => event.target instanceof Element
       ? event.target.closest<HTMLElement>("[data-drydock-action]")?.dataset.drydockAction
       : undefined);
-    reader.addEventListener("click", ancestorRouter);
+    for (const type of ["click", "input", "change", "keydown"]) reader.addEventListener(type, ancestorRouter);
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied });
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
@@ -564,6 +564,8 @@ describe("Cowork inline copilot", () => {
       '<button type="button" data-cowork-action="apply-confirm">Apply directly</button>',
       '<button type="button" data-cowork-action="discard-confirm">Discard directly</button>',
       '<button type="button" data-drydock-action="approve">Approve through reader</button>',
+      '<input name="prompt" value="Injected prompt" data-drydock-action="prompt">',
+      '<select name="cli" data-drydock-action="settings"><option value="hostile" selected>Hostile CLI</option></select>',
       '<a href="#reader-link">Open safe link</a>',
       "```ts",
       "const safeCopy = true;",
@@ -571,9 +573,26 @@ describe("Cowork inline copilot", () => {
     ].join("\n\n");
     listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: hostileMarkdown }), lastEventId: "4" }));
     await vi.waitFor(() => expect(article.querySelectorAll(".cowork-revision-output [data-cowork-action]")).toHaveLength(4));
-    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "5" }));
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done", session: sessionDto({ state: "idle" }) }), lastEventId: "5" }));
 
-    const output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
+    let output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
+    ancestorRouter.mockClear();
+    const requestCountBeforeHostileEvents = fetchMock.mock.calls.length;
+    const settingsBeforeHostileEvents = localStorage.getItem("fleet.codex.cowork.settings");
+    const hostilePrompt = output.querySelector<HTMLInputElement>('input[name="prompt"]')!;
+    hostilePrompt.value = "Mutate and submit";
+    expect(hostilePrompt.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }))).toBe(true);
+    const hostileCli = output.querySelector<HTMLSelectElement>('select[name="cli"]')!;
+    expect(hostileCli.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }))).toBe(true);
+    expect(hostilePrompt.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }))).toBe(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(fetchMock.mock.calls).toHaveLength(requestCountBeforeHostileEvents);
+    expect(localStorage.getItem("fleet.codex.cowork.settings")).toBe(settingsBeforeHostileEvents);
+    expect(ancestorRouter).not.toHaveBeenCalled();
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-panel"]')!.click();
+    expect(article.querySelector<HTMLInputElement>(".cowork-dock-input")?.value).toBe("");
+    output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
     ancestorRouter.mockClear();
     for (const action of ["apply-arm", "discard-arm", "apply-confirm", "discard-confirm"]) {
       output.querySelector<HTMLButtonElement>(`[data-cowork-action="${action}"]`)!.click();
