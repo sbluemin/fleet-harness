@@ -1,7 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { ClientApiCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
-import { AnalysisApiError, fetchAnalysisCatalog, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
+import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 
 export interface AnalysisStore {
@@ -201,6 +201,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
         if (stopFlight) await stopFlight;
         if (startFlight) await startFlight.catch(() => {});
         if (shouldStopServer) await stopAnalysis(api, operationId);
+        await clearAnalysisArtifacts(api, operationId).catch(() => {});
         dispatch({ type: "reset" });
       })().catch((error: unknown) => {
         dispatch({ type: "error", message: `Reset failed: ${failureMessage(error)}`, now: Date.now() });
