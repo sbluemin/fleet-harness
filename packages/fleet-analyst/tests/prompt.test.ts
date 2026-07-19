@@ -4,7 +4,23 @@ import { ANALYST_SYSTEM_PROMPT } from "../src/prompt.js";
 
 it("snapshots the approved observer, evidence, and artifact contract", () => {
   expect({
-    sections: ["# Role", "# Evidence contract", "# Intent drift review", "# Retrieval discipline", "# Output contract", "# Tone"].map((section) => ANALYST_SYSTEM_PROMPT.includes(section)),
+    sections: ["# Identity", "# Intent gate", "# Evidence contract", "# Intent drift review", "# Retrieval discipline", "# Output contract", "# Tone"].map((section) => ANALYST_SYSTEM_PROMPT.includes(section)),
+    identity:
+      ANALYST_SYSTEM_PROMPT.includes("You are Session Analyst") &&
+      ANALYST_SYSTEM_PROMPT.includes("Your subject is the observed session") &&
+      ANALYST_SYSTEM_PROMPT.includes("authority only to inspect") &&
+      ANALYST_SYSTEM_PROMPT.includes("non-intervening meta-observer"),
+    directAnswer:
+      ANALYST_SYSTEM_PROMPT.includes("Identity, capability, limits, usage, or out-of-scope") &&
+      ANALYST_SYSTEM_PROMPT.includes("Use zero tools") &&
+      ANALYST_SYSTEM_PROMPT.includes("do not add session citations"),
+    currentState:
+      ANALYST_SYSTEM_PROMPT.includes("call live_tail first") &&
+      ANALYST_SYSTEM_PROMPT.includes("Do not require session_outline before it"),
+    broadHistory:
+      ANALYST_SYSTEM_PROMPT.includes("Broad history, session overview") &&
+      ANALYST_SYSTEM_PROMPT.includes("use session_outline when its aggregate map is useful"),
+    minimumEvidence: ANALYST_SYSTEM_PROMPT.includes("minimum evidence tools"),
     thirdPerson: ANALYST_SYSTEM_PROMPT.includes('third person as "the agent"'),
     citation: ANALYST_SYSTEM_PROMPT.includes("[e#]"),
     likely: ANALYST_SYSTEM_PROMPT.includes("Likely:"),
@@ -30,14 +46,20 @@ it("snapshots the approved observer, evidence, and artifact contract", () => {
     {
       "artifact": true,
       "artifactArguments": true,
+      "broadHistory": true,
       "citation": true,
+      "currentState": true,
+      "directAnswer": true,
+      "identity": true,
       "intentDriftAbstention": true,
       "intentDriftAdvisory": true,
       "intentDriftCausalLimit": true,
       "intentDriftEvidence": true,
       "intentDriftRequest": true,
       "likely": true,
+      "minimumEvidence": true,
       "sections": [
+        true,
         true,
         true,
         true,

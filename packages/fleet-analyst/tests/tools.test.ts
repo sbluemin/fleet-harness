@@ -10,8 +10,13 @@ describe("AnalystTools", () => {
     const events: string[] = []; const tools = new AnalystTools({ capturePath: file, cwd: process.cwd(), onEvent: event => events.push(event.type) }); await tools.refresh();
     const byId = new Map(tools.specs().map(spec => [spec.id, spec]));
     expect(byId.get("session_outline")).toMatchObject({
-      description: expect.stringContaining("Call this first"),
-      whenToUse: expect.arrayContaining([expect.stringContaining("beginning")]),
+      description: expect.not.stringContaining("Call this first"),
+      promptSnippet: expect.stringContaining("broad historical or session overview"),
+      whenToUse: expect.arrayContaining([expect.stringContaining("broad historical")]),
+      whenNotToUse: expect.arrayContaining([
+        expect.stringContaining("direct-answer questions"),
+        expect.stringContaining("before live_tail"),
+      ]),
     });
     expect(byId.get("live_tail")).toMatchObject({
       description: expect.stringContaining("Required before answering any question about current work"),

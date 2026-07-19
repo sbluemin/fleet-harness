@@ -18,7 +18,7 @@ export interface CoworkSessionDto {
   effort?: string;
 }
 
-export interface CoworkAnnotationDto { id: string; text: string; start?: number; end?: number; }
+export interface CoworkAnnotationDto { id: string; quote: string; comment: string; start?: number; end?: number; }
 export interface CoworkEventDto { type: "session" | "transcript" | "tool" | "done" | "error"; session?: CoworkSessionDto; text?: string; }
 
 export interface CoworkSessionRecord extends CoworkSessionDto {
