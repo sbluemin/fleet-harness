@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
@@ -24,7 +25,10 @@ const sideBarMocks = vi.hoisted(() => ({
 const canvasMocks = vi.hoisted(() => ({
   onLaunchAtGeometry: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly zIndex: number }) => void),
 }));
-const registryMocks = vi.hoisted(() => ({ plugins: [] as Array<Record<string, unknown>> }));
+const registryMocks = vi.hoisted(() => ({
+  plugins: [] as Array<Record<string, unknown>>,
+  operationKinds: [] as OperationKindDescriptor[],
+}));
 
 vi.mock("../core/client/src/api.js", () => ({
   ...apiMocks,
@@ -64,7 +68,7 @@ vi.mock("../core/client/src/global-settings-store.js", () => ({ useGlobalSetting
 vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
 vi.mock("../core/client/src/pages/global-settings.js", () => ({ GlobalSettings: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }) }));
+vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [] }) }));
 vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
@@ -102,6 +106,7 @@ beforeEach(() => {
   sideBarMocks.onClose = null;
   canvasMocks.onLaunchAtGeometry = null;
   registryMocks.plugins = [];
+  registryMocks.operationKinds = [];
 });
 
 afterEach(() => {
@@ -364,6 +369,8 @@ describe("Operations boot minimization", () => {
   });
 
   it("retargets Analyze through sidebar focus and surfaces a minimized target", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(true);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
     await bootApp([operation("first"), operation("second")]);
     await act(async () => {
       setCompanionOperationId("first");
@@ -374,9 +381,35 @@ describe("Operations boot minimization", () => {
     await act(async () => {
       sideBarMocks.onFocus?.("second");
       await Promise.resolve();
+      await Promise.resolve();
     });
 
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
     expect(getCompanionOperationId()).toBe("second");
+    expect(getState().activeOperationId).toBe("second");
+    expect(getSnapshot().minimized).not.toContain("second");
+  });
+
+  it("falls back to Map when an Analyze retarget is not ready", async () => {
+    const canOpenCompanions = vi.fn().mockResolvedValue(false);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      toggleFormationView();
+      setCompanionOperationId("first");
+      minimizeOperation("second");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("second");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getFormationView()).toBe(false);
     expect(getState().activeOperationId).toBe("second");
     expect(getSnapshot().minimized).not.toContain("second");
   });
@@ -588,6 +621,16 @@ function deferred<Value>() {
     resolve = next;
   });
   return { promise, resolve };
+}
+
+function companionKind(canOpenCompanions: NonNullable<OperationKindDescriptor["canOpenCompanions"]>): OperationKindDescriptor {
+  return {
+    pluginId: "terminal",
+    type: "shell",
+    title: "Shell",
+    companions: [{ id: "analysis", title: "Analysis", render: () => null }],
+    canOpenCompanions,
+  };
 }
 
 function theater(id = "theater-a", label = "Theater A") {

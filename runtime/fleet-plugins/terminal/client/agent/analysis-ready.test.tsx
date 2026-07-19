@@ -86,6 +86,16 @@ describe("Session Analyst readiness handle", () => {
     const api = createApi(vi.fn().mockRejectedValue(new Error("offline")));
     await expect(fetchAnalysisReady(api, OPERATION_ID)).resolves.toBe(false);
   });
+
+  it("exposes transcript readiness to host companion retargets", async () => {
+    const fetch = vi.fn().mockResolvedValue(readyResponse(false));
+    const canOpenCompanions = agentOperationKind.canOpenCompanions;
+    if (!canOpenCompanions) throw new Error("Agent companion readiness gate must exist.");
+
+    await expect(Promise.resolve(canOpenCompanions({ api: createApi(fetch), operation: operation() }))).resolves.toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]?.[1]).toBe(`analysis/${OPERATION_ID}/ready`);
+  });
 });
 
 async function renderLiveOperation(fetch: ReturnType<typeof vi.fn>): Promise<void> {
@@ -121,7 +131,23 @@ function createApi(fetch: ReturnType<typeof vi.fn>): ClientApiCapability {
 }
 
 function createContext(api: ClientApiCapability, onRequestCompanions = vi.fn()): OperationRenderContext {
-  const operation = {
+  return {
+    operationId: OPERATION_ID,
+    theaterId: "theater",
+    pluginId: "terminal",
+    type: "agent",
+    operation: operation(),
+    api,
+    active: true,
+    zoom: 1,
+    theme: "instrument",
+    companionsOpen: false,
+    onRequestCompanions,
+  } as unknown as OperationRenderContext;
+}
+
+function operation() {
+  return {
     id: OPERATION_ID,
     pluginId: "terminal",
     type: "agent",
@@ -130,19 +156,6 @@ function createContext(api: ClientApiCapability, onRequestCompanions = vi.fn()):
     payload: {},
     ts: { createdAt: 1, updatedAt: 1 },
   };
-  return {
-    operationId: OPERATION_ID,
-    theaterId: "theater",
-    pluginId: "terminal",
-    type: "agent",
-    operation,
-    api,
-    active: true,
-    zoom: 1,
-    theme: "instrument",
-    companionsOpen: false,
-    onRequestCompanions,
-  } as unknown as OperationRenderContext;
 }
 
 function readyResponse(ready: boolean): Response {
