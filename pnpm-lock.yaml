@@ -638,6 +638,9 @@ importers:
       '@fleet-console/font-picker':
         specifier: workspace:*
         version: link:../../fleet-console/font-picker
+      '@fleet-console/markdown':
+        specifier: workspace:*
+        version: link:../../fleet-console/markdown
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk

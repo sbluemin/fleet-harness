@@ -1,5 +1,8 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import "@fleet-console/markdown/styles.css";
 
 import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
 import { useAnalysisStore } from "./analysis-store.js";
@@ -10,6 +13,7 @@ const SUGGESTIONS = [
   { icon: "▲", tone: "coral", text: "Flag anything I should review" },
   { icon: "≡", tone: "brass", text: "Draft a handoff brief" },
 ] as const;
+const STREAM_RENDER_DELAY_MS = 32;
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
   const { state, dispatch, send, stop, reset } = useAnalysisStore(context);
@@ -28,12 +32,23 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     if (!chat || !hasInteracted) return;
     chat.scrollTop = chat.scrollHeight;
   }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase]);
+  React.useEffect(() => {
+    const chat = chatRef.current;
+    if (chat) installDiagramHydrator(chat);
+  }, []);
   const submit = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || state.busy) return;
     setDraft("");
     await send(trimmed);
   };
+  const handleTranscriptClick = React.useCallback((event: React.MouseEvent<HTMLOListElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+    if (!button) return;
+    const code = button.closest("pre")?.getAttribute("data-code");
+    if (!code) return;
+    copyCodeToClipboard(button, code);
+  }, []);
 
   return (
     <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label="Session Analyst chat" data-phase={state.phase}>
@@ -41,9 +56,13 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
       <div className="session-analyst__workspace">
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
           {hasInteracted ? (
-            <ol className={state.busy ? "is-dimmed" : undefined}>
+            <ol className="session-analyst__transcript" onClick={handleTranscriptClick}>
               {state.entries.map((entry, index) => (
-                <li className={`session-analyst__message session-analyst__message--${entry.role}`} key={`${entry.role}-${index}`}>{entry.text}</li>
+                <li className={`session-analyst__message session-analyst__message--${entry.role}`} key={`${entry.role}-${index}`}>
+                  {entry.role === "analyst"
+                    ? <AnalystMarkdownResponse text={entry.text} streaming={state.busy && index === state.entries.length - 1} />
+                    : entry.text}
+                </li>
               ))}
             </ol>
           ) : (
@@ -100,6 +119,51 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
       </div>
     </section>
   );
+}
+
+const AnalystMarkdownResponse = React.memo(function AnalystMarkdownResponse({ text, streaming }: { readonly text: string; readonly streaming: boolean }) {
+  const latestText = React.useRef(text);
+  const renderedText = React.useRef(streaming ? text : "");
+  const renderTimer = React.useRef<number | null>(null);
+  const [streamedHtml, setStreamedHtml] = React.useState(() => streaming ? renderMarkdown(text).html : "");
+  latestText.current = text;
+
+  const completedHtml = React.useMemo(() => streaming ? null : renderMarkdown(text).html, [streaming, text]);
+
+  React.useEffect(() => {
+    if (!streaming) {
+      if (renderTimer.current !== null) window.clearTimeout(renderTimer.current);
+      renderTimer.current = null;
+      return;
+    }
+    if (renderedText.current === text || renderTimer.current !== null) return;
+    renderTimer.current = window.setTimeout(() => {
+      renderTimer.current = null;
+      const nextText = latestText.current;
+      if (nextText === renderedText.current) return;
+      renderedText.current = nextText;
+      setStreamedHtml(renderMarkdown(nextText).html);
+    }, STREAM_RENDER_DELAY_MS);
+  }, [streaming, text]);
+
+  React.useEffect(() => () => {
+    if (renderTimer.current !== null) window.clearTimeout(renderTimer.current);
+  }, []);
+
+  return <div className="session-analyst__response markdown-body" dangerouslySetInnerHTML={{ __html: completedHtml ?? streamedHtml }} />;
+});
+
+function copyCodeToClipboard(button: HTMLElement, code: string): void {
+  const clipboard = navigator.clipboard;
+  if (!clipboard) return;
+  let write: Promise<void>;
+  try { write = clipboard.writeText(code); } catch { return; }
+  const original = button.textContent;
+  void write.then(() => {
+    if (!button.isConnected) return;
+    button.textContent = "Copied";
+    window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1_200);
+  }).catch(() => undefined);
 }
 
 function PanelHeader({ state, onReset }: { readonly state: AnalysisState; readonly onReset: () => void }) {

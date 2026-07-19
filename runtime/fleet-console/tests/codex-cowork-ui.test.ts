@@ -1,10 +1,26 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { diffDraftLines } from "../core/client/src/codex/cowork-diff.js";
 import { mountCoworkInline } from "../core/client/src/codex/cowork-controller.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 
-afterEach(() => vi.unstubAllGlobals());
+const { renderMarkdownSpy } = vi.hoisted(() => ({ renderMarkdownSpy: vi.fn() }));
+vi.mock("@fleet-console/markdown/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@fleet-console/markdown/core")>();
+  return {
+    ...actual,
+    renderMarkdown: (...args: Parameters<typeof actual.renderMarkdown>) => {
+      renderMarkdownSpy(...args);
+      return actual.renderMarkdown(...args);
+    },
+  };
+});
+
+beforeEach(() => renderMarkdownSpy.mockClear());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 const DRAFT = "---\nid: entry\ntitle: Entry\ntags: [\"test\"]\ncreated: now\nupdated: now\nversion: 1\n---\n# Entry\n\nReadable text.";
 const BASE_DRAFT = "---\nid: entry\ntitle: Entry\ntags: [\"test\"]\ncreated: now\nupdated: now\nversion: 1\n---\n# Entry\n\nOriginal text.";
@@ -392,7 +408,7 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
-  it("keeps an escaped live revision stream visible through completion", async () => {
+  it("coalesces a sanitized Markdown revision stream and reports code copy truthfully through completion", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
     vi.stubGlobal("EventSource", FakeEventSource);
@@ -403,6 +419,9 @@ describe("Cowork inline copilot", () => {
       return new Response(JSON.stringify(sessionDto()));
     });
     vi.stubGlobal("fetch", fetchMock);
+    let resolveCopy!: () => void;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { resolveCopy = resolve; }));
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
     const { article, body } = host();
 
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
@@ -416,7 +435,9 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
 
     listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
-    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: "<img src=x onerror=alert(1)>Visible & safe" }), lastEventId: "4" }));
+    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: "<img src=x onerror=alert(1)>\n\n**Visible & safe**\n\n```ts\nconst answer = 42;\n```\n\n```js\nconst missing = true;\n```\n\n```sh\nfalse\n```" }), lastEventId: "4" }));
+
+    await vi.waitFor(() => expect(article.querySelector(".cowork-revision-output strong")?.textContent).toBe("Visible & safe"));
 
     const stream = article.querySelector<HTMLElement>(".cowork-revision-stream")!;
     const output = stream.querySelector<HTMLElement>(".cowork-revision-output")!;
@@ -431,8 +452,28 @@ describe("Cowork inline copilot", () => {
     expect(stream.querySelector(".cowork-revision-instruction strong")).toBeNull();
     expect(outputScroll).not.toBeNull();
     expect(outputScroll?.contains(instruction)).toBe(false);
-    expect(output.textContent).toBe("<img src=x onerror=alert(1)>Visible & safe");
-    expect(output.querySelector("img")).toBeNull();
+    expect(output.classList.contains("markdown-body")).toBe(true);
+    expect(output.querySelector("strong")?.textContent).toBe("Visible & safe");
+    expect(output.querySelector("img")?.getAttribute("src")).toBe("x");
+    expect(output.querySelector("img")?.hasAttribute("onerror")).toBe(false);
+    const responseRenderCount = () => renderMarkdownSpy.mock.calls.filter(([text]) => String(text).includes("Visible & safe")).length;
+    expect(responseRenderCount()).toBe(1);
+    const [copy, missing, rejecting] = [...output.querySelectorAll<HTMLButtonElement>('[data-action="copy-code"]')];
+    const code = copy!.closest("pre")?.getAttribute("data-code");
+    copy!.click();
+    expect(writeText).toHaveBeenCalledWith(code);
+    expect(copy!.textContent).toBe("Copy");
+    resolveCopy();
+    await vi.waitFor(() => expect(copy!.textContent).toBe("Copied"));
+
+    vi.stubGlobal("navigator", {});
+    missing!.click();
+    expect(missing!.textContent).toBe("Copy");
+
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(() => Promise.reject(new Error("denied"))) } });
+    rejecting!.click();
+    await Promise.resolve();
+    expect(rejecting!.textContent).toBe("Copy");
     expect(body.classList.contains("is-cowork-running")).toBe(true);
     expect(article.querySelectorAll(".cowork-stop")).toHaveLength(1);
     expect(article.querySelectorAll(".cowork-send")).toHaveLength(1);
@@ -454,27 +495,127 @@ describe("Cowork inline copilot", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(stream.querySelector(".cowork-revision-content")?.getAttribute("aria-hidden")).toBe("false");
 
-    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: " continuation" }), lastEventId: "5" }));
+    for (let index = 0; index < 12; index += 1) {
+      listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: ` part-${index}` }), lastEventId: String(5 + index) }));
+    }
     expect(article.querySelector(".cowork-revision-stream")).toBe(stream);
-    expect(output.textContent).toBe("<img src=x onerror=alert(1)>Visible & safe continuation");
+    expect(output.textContent).toContain("Visible & safe");
+    expect(responseRenderCount()).toBe(1);
 
-    listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "6" }));
+    listeners.get("tool")?.(new MessageEvent("tool", { data: JSON.stringify({ type: "tool", text: "wiki_draft_read · running" }), lastEventId: "17" }));
     expect(article.querySelector(".cowork-revision-stream")?.textContent).not.toContain("wiki_draft_read");
 
     article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-revision"]')!.click();
-    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "7" }));
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "18" }));
     const completed = article.querySelector<HTMLElement>(".cowork-revision-stream")!;
     expect(completed.classList.contains("is-complete")).toBe(true);
     expect(completed.classList.contains("is-collapsed")).toBe(true);
     expect(completed.textContent).toContain("Revision complete");
     expect(completed.querySelector(".cowork-revision-status")).toBeNull();
     expect(completed.querySelector('[data-cowork-action="toggle-revision"]')?.getAttribute("aria-expanded")).toBe("false");
-    expect(completed.querySelector(".cowork-revision-output")?.textContent).toBe("<img src=x onerror=alert(1)>Visible & safe continuation");
+    expect(completed.querySelector(".cowork-revision-output strong")?.textContent).toBe("Visible & safe");
+    expect(completed.querySelector(".cowork-revision-output")?.textContent).toContain("part-11");
+    expect(responseRenderCount()).toBe(2);
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+    expect(responseRenderCount()).toBe(2);
     expect(body.classList.contains("is-cowork-running")).toBe(false);
     expect(article.querySelector(".cowork-stop")).toBeNull();
     expect(article.querySelector('[data-cowork-action="send"]')).not.toBeNull();
 
     controller.destroy();
     article.remove();
+  });
+
+  it("isolates Markdown output from Cowork actions while preserving code copy", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const onApplied = vi.fn();
+    const { article, body } = host();
+    const reader = document.createElement("div");
+    article.replaceWith(reader);
+    reader.append(article);
+    const ancestorRouter = vi.fn((event: Event) => event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-drydock-action]")?.dataset.drydockAction
+      : undefined);
+    for (const type of ["click", "input", "change", "keydown"]) reader.addEventListener(type, ancestorRouter);
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "Review hostile output";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
+
+    listeners.get("session")?.(new MessageEvent("session", { data: JSON.stringify({ type: "session", session: sessionDto({ state: "running" }) }), lastEventId: "3" }));
+    const hostileMarkdown = [
+      '<button type="button" data-cowork-action="apply-arm">Arm apply</button>',
+      '<button type="button" data-cowork-action="discard-arm">Arm discard</button>',
+      '<button type="button" data-cowork-action="apply-confirm">Apply directly</button>',
+      '<button type="button" data-cowork-action="discard-confirm">Discard directly</button>',
+      '<button type="button" data-drydock-action="approve">Approve through reader</button>',
+      '<input name="prompt" value="Injected prompt" data-drydock-action="prompt">',
+      '<select name="cli" data-drydock-action="settings"><option value="hostile" selected>Hostile CLI</option></select>',
+      '<a href="#reader-link">Open safe link</a>',
+      "```ts",
+      "const safeCopy = true;",
+      "```",
+    ].join("\n\n");
+    listeners.get("transcript")?.(new MessageEvent("transcript", { data: JSON.stringify({ type: "transcript", text: hostileMarkdown }), lastEventId: "4" }));
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-revision-output [data-cowork-action]")).toHaveLength(4));
+    listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done", session: sessionDto({ state: "idle" }) }), lastEventId: "5" }));
+
+    let output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
+    ancestorRouter.mockClear();
+    const requestCountBeforeHostileEvents = fetchMock.mock.calls.length;
+    const settingsBeforeHostileEvents = localStorage.getItem("fleet.codex.cowork.settings");
+    const hostilePrompt = output.querySelector<HTMLInputElement>('input[name="prompt"]')!;
+    hostilePrompt.value = "Mutate and submit";
+    expect(hostilePrompt.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }))).toBe(true);
+    const hostileCli = output.querySelector<HTMLSelectElement>('select[name="cli"]')!;
+    expect(hostileCli.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }))).toBe(true);
+    expect(hostilePrompt.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }))).toBe(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(fetchMock.mock.calls).toHaveLength(requestCountBeforeHostileEvents);
+    expect(localStorage.getItem("fleet.codex.cowork.settings")).toBe(settingsBeforeHostileEvents);
+    expect(ancestorRouter).not.toHaveBeenCalled();
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-panel"]')!.click();
+    expect(article.querySelector<HTMLInputElement>(".cowork-dock-input")?.value).toBe("");
+    output = article.querySelector<HTMLElement>(".cowork-revision-output")!;
+    ancestorRouter.mockClear();
+    for (const action of ["apply-arm", "discard-arm", "apply-confirm", "discard-confirm"]) {
+      output.querySelector<HTMLButtonElement>(`[data-cowork-action="${action}"]`)!.click();
+      expect(article.querySelector(".cowork-review.is-confirm")).toBeNull();
+    }
+    output.querySelector<HTMLButtonElement>('[data-drydock-action="approve"]')!.click();
+    const link = output.querySelector<HTMLAnchorElement>('a[href="#reader-link"]')!;
+    expect(link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))).toBe(true);
+    expect(ancestorRouter).not.toHaveBeenCalled();
+    await Promise.resolve();
+    const requestUrls = fetchMock.mock.calls.map(call => String(call[0]));
+    expect(requestUrls.some(url => url.endsWith("/apply"))).toBe(false);
+    expect(requestUrls.some(url => url.endsWith("/close"))).toBe(false);
+    expect(onApplied).not.toHaveBeenCalled();
+
+    const copy = output.querySelector<HTMLButtonElement>('[data-action="copy-code"]')!;
+    const code = copy.closest("pre")?.getAttribute("data-code");
+    copy.click();
+    await vi.waitFor(() => expect(copy.textContent).toBe("Copied"));
+    expect(writeText).toHaveBeenCalledWith(code);
+    expect(ancestorRouter).not.toHaveBeenCalled();
+
+    controller.destroy();
+    reader.remove();
   });
 });
