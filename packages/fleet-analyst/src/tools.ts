@@ -9,6 +9,14 @@ import type { AnalystArtifact, SessionToolOptions } from "./types.js";
 const exec = promisify(execFile);
 const MAX_ARTIFACT_BYTES = 50 * 1024;
 const MAX_ARTIFACTS = 20;
+// 서버 검사는 클라이언트 렌더러가 유지하는 양의 요소 목록과 같은 구조적 경계를 사용한다.
+const STATIC_ARTIFACT_ELEMENTS = new Set([
+  "abbr", "address", "article", "aside", "b", "bdi", "bdo", "blockquote", "br", "caption", "cite", "code", "col", "colgroup",
+  "data", "dd", "details", "div", "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
+  "header", "hr", "i", "img", "kbd", "li", "main", "mark", "meter", "ol", "p", "pre", "progress", "q", "s", "samp", "section",
+  "small", "span", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var",
+]);
+const VOID_HTML_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
 
 export const ANALYST_TOOL_IDS = {
   sessionOutline: "session_outline",
@@ -161,14 +169,37 @@ function record(value: unknown): Record<string, unknown> { return value && typeo
 function integer(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : undefined; }
 
 function hasVisibleStaticContent(html: string): boolean {
-  const blockedContainers = /<(script|style|noscript|template|svg|math|a|area|form|button|iframe|frame|object|embed|video|audio|source|link|base)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
-  let visible = html;
-  // A small fixed pass count handles ordinary nested blocked containers without
-  // turning this structural guard into an HTML parser or sanitizer.
-  for (let pass = 0; pass < 3; pass += 1) visible = visible.replace(blockedContainers, " ");
-  visible = visible
+  const openElements: { readonly tag: string; readonly keepsText: boolean }[] = [];
+  const tagPattern = /<!--[\s\S]*?-->|<![^>]*>|<\/?([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagPattern.exec(html)) !== null) {
+    if ((openElements.at(-1)?.keepsText ?? true) && hasVisibleText(html.slice(cursor, match.index))) return true;
+    cursor = tagPattern.lastIndex;
+    const tag = match[1]?.toLowerCase();
+    if (!tag) continue;
+
+    if (/^<\//.test(match[0])) {
+      for (let index = openElements.length - 1; index >= 0; index -= 1) {
+        if (openElements[index]?.tag !== tag) continue;
+        openElements.length = index;
+        break;
+      }
+      continue;
+    }
+
+    const parentKeepsText = openElements.at(-1)?.keepsText ?? true;
+    const keepsText = parentKeepsText && STATIC_ARTIFACT_ELEMENTS.has(tag) && tag !== "style";
+    if (!VOID_HTML_ELEMENTS.has(tag)) openElements.push({ tag, keepsText });
+  }
+
+  return (openElements.at(-1)?.keepsText ?? true) && hasVisibleText(html.slice(cursor));
+}
+
+function hasVisibleText(value: string): boolean {
+  const visible = value
     .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]*>/g, " ")
     .replace(/&(?:nbsp|#160|#x0*a0);/gi, " ")
     .replace(/&(?:[a-z][a-z0-9]+|#\d+|#x[a-f0-9]+);/gi, "x");
   return visible.trim().length > 0;

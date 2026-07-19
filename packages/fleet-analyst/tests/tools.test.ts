@@ -95,7 +95,10 @@ describe("AnalystTools", () => {
     await expect(publish.execute({ title: "Wrong parameter", content: "<p>Hidden</p>" }, {} as never)).rejects.toThrow("'html' parameter");
     await expect(publish.execute({ title: "Extra parameter", html: "<p>Visible</p>", content: "duplicate" }, {} as never)).rejects.toThrow("expected only 'title' and 'html'");
     await expect(publish.execute({ title: "Empty document", html: "  <style>body { color: black }</style>  " }, {} as never)).rejects.toThrow("visible static content");
-    expect(emitted).toEqual([]);
+    await expect(publish.execute({ title: "Head only", html: "<head><title>Report [e1]</title></head>" }, {} as never)).rejects.toThrow("visible static content");
+    await expect(publish.execute({ title: "Navigation only", html: "<nav>Report [e1]</nav>" }, {} as never)).rejects.toThrow("visible static content");
+    await expect(publish.execute({ title: "Visible paragraph", html: "<p>Visible [e1]</p>" }, {} as never)).resolves.toMatchObject({ artifact: { title: "Visible paragraph" } });
+    expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ title: "Visible paragraph" }) })]);
   });
 
   it("keeps only the 20 newest in-memory artifacts", async () => {
