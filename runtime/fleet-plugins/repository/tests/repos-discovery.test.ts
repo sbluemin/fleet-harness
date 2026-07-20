@@ -145,6 +145,16 @@ describe("Repository discovery route", () => {
     expect(result.repos.map(({ relPath, kind }) => ({ relPath, kind }))).toEqual([{ relPath: "", kind: "root" }]);
   });
 
+  it("hides option-like repository rows the routes would reject", async () => {
+    await initGitRepo(theaterPath, true);
+    await initGitRepo(path.join(theaterPath, "-dash-repo"), true);
+    await initGitRepo(path.join(theaterPath, "plain-repo"), true);
+    await runGit(["worktree", "add", "-b", "dash-worktree", path.join(theaterPath, "-dash-worktree")], { cwd: theaterPath });
+
+    const result = await discover(theaterPath);
+    expect(result.repos.map((repo) => repo.relPath)).toEqual(["", "plain-repo"]);
+  });
+
   it("includes the default context when the Theater is a subdirectory of a worktree", async () => {
     await initGitRepo(theaterPath, true);
     const subTheater = path.join(theaterPath, "sub");

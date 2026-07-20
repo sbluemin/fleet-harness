@@ -6,7 +6,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
 import { resolveContainedGitDir } from "./git-marker.js";
-import { isPathContained } from "./path-containment.js";
+import { isPathContained, isSelectableRepoRel } from "./path-containment.js";
 import type { DiffFileEntry, DiffFileMode } from "./types.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -88,13 +88,9 @@ export class InvalidRepoError extends Error {
 export async function resolveGitCwd(theaterPath: string, repoRel: unknown = ""): Promise<{ gitCwd: string }> {
   if (repoRel === undefined || repoRel === "") return { gitCwd: theaterPath };
   if (typeof repoRel !== "string" || path.isAbsolute(repoRel)) throw new InvalidRepoError("Repository path must be relative");
+  if (!isSelectableRepoRel(repoRel)) throw new InvalidRepoError("Repository path is invalid");
 
-  const normalized = path.normalize(repoRel);
-  if (normalized.startsWith("-") || normalized === ".." || normalized.startsWith(`..${path.sep}`)) {
-    throw new InvalidRepoError("Repository path is invalid");
-  }
-
-  const resolved = path.resolve(theaterPath, normalized);
+  const resolved = path.resolve(theaterPath, path.normalize(repoRel));
   if (!isPathContained(theaterPath, resolved)) throw new InvalidRepoError("Repository path escapes Theater");
 
   let realTheater: string;
