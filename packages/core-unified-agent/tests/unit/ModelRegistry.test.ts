@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getProviderModels, resolveCursorSpawnModel } from '../../src/models/ModelRegistry.js';
+import { getModelContextWindow, getProviderModels, resolveCursorSpawnModel } from '../../src/models/ModelRegistry.js';
 import { ModelsRegistrySchema } from '../../src/models/schemas.js';
 
 describe('ModelRegistry', () => {
@@ -30,8 +30,16 @@ describe('ModelRegistry', () => {
     ]);
     expect(efforts['kimi-for-coding']).toEqual({ supported: false });
     expect(efforts['kimi-for-coding-highspeed']).toEqual({ supported: false });
-    expect(efforts.k3).toEqual({ supported: true, levels: ['max'], default: 'max' });
-    expect(efforts['k3[1m]']).toEqual({ supported: true, levels: ['max'], default: 'max' });
+    expect(efforts.k3).toEqual({ supported: true, levels: ['low', 'high', 'max'], default: 'high' });
+    expect(efforts['k3[1m]']).toEqual({ supported: true, levels: ['low', 'high', 'max'], default: 'high' });
+  });
+
+  it('Kimi via Claude Code 모델들은 컨텍스트 윈도우 크기를 노출한다', () => {
+    expect(getModelContextWindow('claude-kimi', 'kimi-for-coding')).toBe(262144);
+    expect(getModelContextWindow('claude-kimi', 'k3')).toBe(262144);
+    expect(getModelContextWindow('claude-kimi', 'k3[1m]')).toBe(1048576);
+    expect(getModelContextWindow('claude-kimi', 'kimi-for-coding-highspeed')).toBe(262144);
+    expect(getModelContextWindow('claude', 'opus')).toBeNull();
   });
 
   it('Codex 정적 모델 목록에 GPT-5.6 모델들과 기존 모델들을 포함한다', () => {

@@ -57,19 +57,37 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
     return { data: createEmptyGlobalOptionsData(), changed: true };
   }
 
+  const kimiModel = sanitizeKimiModel(value.kimiModel);
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
     ...(value.codexLaunchMode === "acp" || value.codexLaunchMode === "app-server"
       ? { codexLaunchMode: value.codexLaunchMode }
       : {}),
+    ...(kimiModel ? { kimiModel } : {}),
   };
-  const allowedKeys = new Set(["version", "enableMetaphor", "codexLaunchMode"]);
+  const allowedKeys = new Set(["version", "enableMetaphor", "codexLaunchMode", "kimiModel"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean") ||
-    ("codexLaunchMode" in value && value.codexLaunchMode !== "acp" && value.codexLaunchMode !== "app-server");
+    ("codexLaunchMode" in value && value.codexLaunchMode !== "acp" && value.codexLaunchMode !== "app-server") ||
+    ("kimiModel" in value && kimiModel === undefined);
 
   return { data, changed };
+}
+
+function sanitizeKimiModel(
+  value: unknown,
+): { readonly model: string; readonly effort?: string } | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (typeof value.model !== "string" || value.model.length === 0) {
+    return undefined;
+  }
+  return {
+    model: value.model,
+    ...(typeof value.effort === "string" ? { effort: value.effort } : {}),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

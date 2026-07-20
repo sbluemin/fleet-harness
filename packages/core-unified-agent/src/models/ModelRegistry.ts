@@ -143,6 +143,18 @@ export function getProviderModelsMapping(cli: CliType): ModelsMapping | null {
   return provider.modelsMapping ? structuredClone(provider.modelsMapping) : null;
 }
 
+/**
+ * 특정 CLI/모델의 컨텍스트 윈도우 크기를 반환합니다.
+ *
+ * @param cli - CLI 타입
+ * @param modelId - 모델 ID
+ * @returns 컨텍스트 윈도우 크기 (토큰, 미설정 시 null)
+ */
+export function getModelContextWindow(cli: CliType, modelId: string): number | null {
+  const model = findProviderModel(cli, modelId);
+  return model.contextWindow ?? null;
+}
+
 function findProviderModel(cli: CliType, modelId: string): ModelEntry {
   const provider = registry.providers[cli];
   if (!provider) {

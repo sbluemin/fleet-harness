@@ -39,6 +39,8 @@ export const ModelEntrySchema = z.object({
   description: z.string().optional(),
   /** spawn 시 실제 CLI 모델 ID를 조립해야 하는 경우의 템플릿 */
   spawnModelTemplate: z.string().optional(),
+  /** 모델의 컨텍스트 윈도우 크기 (토큰) */
+  contextWindow: z.number().int().positive().optional(),
   /** 모델별 effort 설정 */
   effort: EffortSchema,
 }).check((ctx) => {

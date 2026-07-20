@@ -36,6 +36,7 @@ export {
   getProviderModelIds,
   getEffort,
   getEffortLevels,
+  getModelContextWindow,
 } from './models/ModelRegistry.js';
 
 export type {

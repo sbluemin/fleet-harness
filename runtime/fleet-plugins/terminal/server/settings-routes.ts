@@ -1,6 +1,7 @@
 import type http from "node:http";
 
 import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
+import { getEffortLevels, getProviderModelIds } from "@dotobokuri/core-unified-agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
@@ -11,15 +12,18 @@ interface TerminalSettingsRouteDeps {
 interface TerminalSettingsBody {
   readonly enableMetaphor?: unknown;
   readonly codexLaunchMode?: unknown;
+  readonly kimiModel?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly codexLaunchMode: "acp" | "app-server" };
+  | { readonly codexLaunchMode: "acp" | "app-server" }
+  | { readonly kimiModel: { readonly model: string; readonly effort?: string } };
 
 export interface TerminalSettingsState {
   readonly enableMetaphor: boolean;
   readonly codexLaunchMode: "acp" | "app-server";
+  readonly kimiModel: { readonly model: string; readonly effort?: string } | null;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -59,6 +63,7 @@ export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettin
   return {
     enableMetaphor: data.enableMetaphor ?? false,
     codexLaunchMode: data.codexLaunchMode ?? "app-server",
+    kimiModel: data.kimiModel ?? null,
   };
 }
 
@@ -69,7 +74,20 @@ function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate
   if (keys.length !== 1) return false;
   const body = value as TerminalSettingsBody;
   if (keys[0] === "enableMetaphor") return typeof body.enableMetaphor === "boolean";
-  return keys[0] === "codexLaunchMode" && (body.codexLaunchMode === "acp" || body.codexLaunchMode === "app-server");
+  if (keys[0] === "codexLaunchMode") return body.codexLaunchMode === "acp" || body.codexLaunchMode === "app-server";
+  return keys[0] === "kimiModel" && isKimiModelSetting(body.kimiModel);
+}
+
+// Kimi 프로바이더 기본 모델 설정 검증: 모델은 레지스트리 ID여야 하고,
+// effort는 모델이 effort를 지원할 때만 허용 레벨 내 값이어야 한다.
+function isKimiModelSetting(value: unknown): value is { readonly model: string; readonly effort?: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as { model?: unknown; effort?: unknown };
+  if (typeof record.model !== "string" || !getProviderModelIds("claude-kimi").includes(record.model)) return false;
+  const levels = getEffortLevels("claude-kimi", record.model);
+  if (record.effort === undefined) return true;
+  if (!levels || typeof record.effort !== "string") return false;
+  return levels.includes(record.effort);
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {

@@ -10,6 +10,12 @@ import {
   type AuthValidationFailureStatus,
 } from "@dotobokuri/core-infra";
 
+import {
+  buildKimiModelEnv,
+  resolveKimiModelSelection,
+  type KimiModelSelection,
+} from "./kimi-model.js";
+
 export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 
 export const CLI_TO_AUTH_PROVIDER_ID: Partial<Record<CliType, string>> = {
@@ -24,6 +30,7 @@ export interface AgentCliAuthStatus {
 export async function resolveAgentCliAuthEnv(
   cli: CliType,
   authService: Pick<AuthService, "getApiKey"> | undefined,
+  selection?: KimiModelSelection,
 ): Promise<Record<string, string>> {
   if (cli !== "claude-kimi") return {};
   const token = await authService?.getApiKey(KIMI_AUTH_PROVIDER_ID);
@@ -34,6 +41,7 @@ export async function resolveAgentCliAuthEnv(
   }
   return {
     ...CLI_BACKENDS[cli].defaultEnv,
+    ...buildKimiModelEnv(selection ?? resolveKimiModelSelection(undefined)),
     ANTHROPIC_API_KEY: token,
   };
 }

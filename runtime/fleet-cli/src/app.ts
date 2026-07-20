@@ -34,7 +34,7 @@ import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
 import type { SessionOptions } from "./mission-control/options/types.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
-import type { AuthService } from "@dotobokuri/core-infra";
+import type { AuthService, GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createMissionBridgeController } from "./mission-bridge/controller.js";
 import { readFleetCliRelease } from "./release.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
@@ -53,6 +53,7 @@ type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
 export interface CreateMissionControlProfileConfigOptions {
   readonly authService?: AuthService;
   readonly env: NodeJS.ProcessEnv;
+  readonly globalOptionsService?: GlobalOptionsService;
   readonly invocationCwd: string;
 }
 
@@ -68,6 +69,7 @@ export function createMissionControlProfileConfig(
       resolveAgentCliProfile(options.env, options.invocationCwd, {
         authService: options.authService,
         cliId: selectedCliId,
+        globalOptionsService: options.globalOptionsService,
         model: launchOptions?.model,
       }),
   };
@@ -107,6 +109,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const missionControlProfileConfig = createMissionControlProfileConfig({
     authService: runtime.infraServices.authService,
     env: process.env,
+    globalOptionsService: runtime.infraServices.globalOptionsService,
     invocationCwd,
   });
   const release = readFleetCliRelease();

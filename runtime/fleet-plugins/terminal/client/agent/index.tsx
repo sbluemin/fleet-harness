@@ -16,6 +16,8 @@ import { fetchAnalysisReady } from "./analysis-api.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts } from "./analysis-store.js";
 import "./analysis.css";
 
+import { fetchCarrierSettingsOptions } from "../carriers/api.js";
+import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
 import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
@@ -683,12 +685,40 @@ function AgentCliSection() {
 
 function ModelAuthBlock() {
   const store = useModelAuthStore();
+  const settings = useSystemPromptSettingsStore();
+  const [kimiOptions, setKimiOptions] = React.useState<CarrierSettingsCliOption | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
     void loadModelAuth(controller.signal);
     return () => controller.abort();
   }, []);
+
+  // 프로바이더 기본 모델 카탈로그는 Carriers 섹션과 같은 options 엔드포인트에서 가져온다.
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void fetchCarrierSettingsOptions(controller.signal)
+      .then((options) => setKimiOptions(options.cliTypes.find((cli) => cli.id === "claude-kimi") ?? null))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  // 현재 저장값은 terminal settings 스토어의 kimiModel 필드에서 읽는다.
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  const storedKimiModel = settings.state?.kimiModel ?? null;
+  const selectedModelId = storedKimiModel?.model ?? kimiOptions?.defaultModel;
+  const selectedModel = kimiOptions?.models.find((model) => model.modelId === selectedModelId);
+  const selectedEffort = storedKimiModel?.effort ?? selectedModel?.effort?.default;
+  const saving = settings.savingField !== null;
+
+  const saveKimiModel = (model: string, effort?: string) => {
+    void setSystemPromptSettingsField("kimiModel", effort ? { model, effort } : { model });
+  };
 
   return (
     <section className="global-settings-card" aria-label="Model sign-in">
@@ -704,6 +734,43 @@ function ModelAuthBlock() {
       {store.state?.providers.map((provider) => (
         <ProviderRow key={provider.cli} provider={provider} busy={store.busyCli === provider.cli} />
       ))}
+      {kimiOptions && selectedModelId ? (
+        <div className="model-auth-row">
+          <div className="terminal-carriers-runtime-row">
+            <div className="terminal-carriers-field">
+              <label className="terminal-carriers-label" htmlFor="kimi-default-model">Default model</label>
+              <select
+                id="kimi-default-model"
+                className="terminal-carriers-select"
+                value={selectedModelId}
+                disabled={saving || !settings.state}
+                onChange={(event) => {
+                  const nextModel = kimiOptions.models.find((model) => model.modelId === event.target.value);
+                  if (!nextModel) return;
+                  saveKimiModel(nextModel.modelId, nextModel.effort ? (storedKimiModel?.effort ?? nextModel.effort.default) : undefined);
+                }}
+              >
+                {kimiOptions.models.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
+              </select>
+            </div>
+            {selectedModel?.effort ? (
+              <div className="terminal-carriers-field">
+                <label className="terminal-carriers-label" htmlFor="kimi-default-effort">Default effort</label>
+                <select
+                  id="kimi-default-effort"
+                  className="terminal-carriers-select"
+                  value={selectedEffort ?? selectedModel.effort.default}
+                  disabled={saving || !settings.state}
+                  onChange={(event) => saveKimiModel(selectedModel.modelId, event.target.value)}
+                >
+                  {selectedModel.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+              </div>
+            ) : null}
+          </div>
+          <p className="global-settings-help">Used for Kimi sessions without an explicit carrier model. Applies to newly launched sessions.</p>
+        </div>
+      ) : null}
       <p className="global-settings-foot">Sign-in changes apply to newly launched sessions. Running sessions keep their current credentials until relaunched.</p>
     </section>
   );

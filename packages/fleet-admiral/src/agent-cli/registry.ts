@@ -1,3 +1,5 @@
+import type { GlobalOptionsData } from "@dotobokuri/core-infra";
+
 import { claudeCli } from "./claude/claude.js";
 import { claudeKimiCli } from "./claude/claude-kimi.js";
 import { codexCli } from "./codex/codex.js";
@@ -6,6 +8,7 @@ import type { AgentCliDefinition, AgentCliId, AgentCliProfile, AuthServiceLike }
 export interface ResolveAgentCliProfileOptions {
   readonly authService?: AuthServiceLike;
   readonly cliId?: string;
+  readonly globalOptionsService?: { load(): GlobalOptionsData };
   readonly model?: string;
   readonly resumeSessionId?: string;
 }
@@ -32,6 +35,7 @@ export async function resolveAgentCliProfile(
     authService: options.authService,
     cwd,
     env,
+    globalOptionsService: options.globalOptionsService,
     model: options.model,
     resumeSessionId: options.resumeSessionId,
   });
