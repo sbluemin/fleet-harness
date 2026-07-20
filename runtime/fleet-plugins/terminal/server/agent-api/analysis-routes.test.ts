@@ -250,6 +250,35 @@ describe("Session Analyst server contract", () => {
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
   });
 
+  it("reports deletion-owned 404 when disposal rejects a pending start", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-pending-delete-rejection-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let rejectStart!: (error: Error) => void;
+    const dispose = vi.fn(async () => { rejectStart(new Error("disposed during start")); });
+    const createSession = vi.fn(() => ({
+      start: () => new Promise<void>((_resolve, reject) => { rejectStart = reject; }),
+      send: async () => undefined,
+      dispose,
+    }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
+    await starting;
+
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+  });
+
   it("does not register a session when its Operation is deleted before the final start check", async () => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-pre-registration-delete-"));
     const transcriptPath = join(dir, "captured.jsonl");
