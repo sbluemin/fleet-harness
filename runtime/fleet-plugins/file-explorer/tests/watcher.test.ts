@@ -429,6 +429,41 @@ describe("createWatcherRegistry", () => {
     }
   });
 
+  it("Linux 하위 디렉터리 rename 후 다음 조회에서 watcher를 재등록한다", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+    const childPath = path.join(tempRoot, "src");
+    fs.mkdirSync(childPath);
+    const callbacks: Array<(event: string, filename: string | null) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_watchPath, _options, callback) => {
+      const close = vi.fn();
+      callbacks.push(callback);
+      closes.push(close);
+      return { close, on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50, "linux");
+    const onChange = vi.fn();
+
+    try {
+      const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
+      await registry.trackDirectory("t1", tempRoot, "src");
+      fs.rmSync(childPath, { recursive: true });
+      callbacks[1]!("rename", "src");
+
+      expect(closes[0]).not.toHaveBeenCalled();
+      expect(closes[1]).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith("src");
+
+      fs.mkdirSync(childPath);
+      await registry.trackDirectory("t1", tempRoot, "src");
+      expect(mockFactory).toHaveBeenCalledTimes(3);
+      unsub();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("재귀 watcher 플랫폼에서는 하위 디렉터리 조회가 watcher를 늘리지 않는다", async () => {
     const mockFactory: WatcherFactory = vi.fn().mockReturnValue({ close: vi.fn(), on: vi.fn() });
     const registry = createNativeWatcherRegistry(mockFactory);

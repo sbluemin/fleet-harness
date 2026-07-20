@@ -78,9 +78,20 @@ export function createWatcherRegistry(
     watchKey: string,
     watchPath: string,
   ): void {
-    const watcher = watcherFactory(watchPath, { recursive: entry.recursive }, (_, filename) => {
+    let activeWatcher: WatcherHandle | null = null;
+    const watcher = watcherFactory(watchPath, { recursive: entry.recursive }, (event, filename) => {
+      const currentWatcher = activeWatcher;
+      if (!currentWatcher || entry.watchers.get(watchKey) !== currentWatcher) return;
       scheduleChange(entry, entry.recursive ? computeRelDir(filename) : watchKey);
+
+      // Linux watcher는 inode를 추적하므로 디렉터리 교체 후 새 inode를 보지 못한다.
+      // rename 시 등록을 비워 다음 성공적인 folder list가 새 watcher를 만들게 한다.
+      if (!entry.recursive && watchKey !== "" && event === "rename") {
+        entry.watchers.delete(watchKey);
+        try { currentWatcher.close(); } catch { /* already closed */ }
+      }
     });
+    activeWatcher = watcher;
     entry.watchers.set(watchKey, watcher);
 
     watcher.on("error", () => {
