@@ -5,10 +5,15 @@ import { handleRepositoryCommitFile } from "./server/commit-file.js";
 import { handleRepositoryChanged, handleRepositoryFile } from "./server/diff.js";
 import { handleRepositoryLog } from "./server/log.js";
 import { handleRepositoryRefs } from "./server/refs.js";
+import { handleRepositoryRepos } from "./server/repos.js";
 
 export default definePlugin({
   id: "repository",
   register(ctx) {
+    registerRouter(ctx, "repos", async ({ req, res }) => {
+      await handleRepositoryRepos(req, res, ctx);
+      return true;
+    });
     registerRouter(ctx, "changed", async ({ req, res }) => {
       await handleRepositoryChanged(req, res, ctx);
       return true;

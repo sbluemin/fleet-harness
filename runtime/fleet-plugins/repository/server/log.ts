@@ -5,11 +5,11 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
 import type { LogCommitEntry, WorktreeCheckout } from "./types.js";
-import { resolveGitCwd } from "./diff.js";
+import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
-interface ParsedWorktree {
+export interface ParsedWorktree {
   readonly sha: string;
   readonly branch: string | null;
   readonly worktreePath: string;
@@ -84,7 +84,7 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
   return commits;
 }
 
-export async function parseWorktreePorcelain(stdout: string, currentWorktreePath: string): Promise<WorktreeCheckout[]> {
+export function parseWorktreePorcelainEntries(stdout: string): ParsedWorktree[] {
   const worktrees: ParsedWorktree[] = [];
   let worktreePath: string | null = null;
   let sha = "";
@@ -119,6 +119,12 @@ export async function parseWorktreePorcelain(stdout: string, currentWorktreePath
     }
   }
   pushCurrent();
+
+  return worktrees;
+}
+
+export async function parseWorktreePorcelain(stdout: string, currentWorktreePath: string): Promise<WorktreeCheckout[]> {
+  const worktrees = parseWorktreePorcelainEntries(stdout);
 
   const normalizedCurrentWorktreePath = await normalizeWorktreePath(currentWorktreePath);
   return Promise.all(worktrees.map(async ({ worktreePath, ...checkout }) => ({
@@ -182,7 +188,7 @@ export async function handleRepositoryLog(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown; readonly ref?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown }>(req);
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
@@ -191,7 +197,12 @@ export async function handleRepositoryLog(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const cwdResult = resolveGitCwd(theaterPath);
+  let cwdResult: { gitCwd: string };
+  try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
   const { gitCwd } = cwdResult;
 
   const requestedRef = body.ref;

@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
-import { parseDiffFileList, resolveGitCwd } from "./diff.js";
+import { InvalidRepoError, parseDiffFileList, resolveGitCwd } from "./diff.js";
 import type { CommitMeta } from "./types.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ export async function handleRepositoryCommit(
 
   const body = await ctx.host.http.readJsonBody<{
     readonly theaterId?: unknown;
+    readonly repoRel?: unknown;
     readonly subPath?: unknown;
     readonly ref?: unknown;
   }>(req);
@@ -62,7 +63,12 @@ export async function handleRepositoryCommit(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const cwdResult = resolveGitCwd(theaterPath);
+  let cwdResult: { gitCwd: string };
+  try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
   const { gitCwd } = cwdResult;
 
   try {

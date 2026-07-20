@@ -19,6 +19,18 @@ export interface DiffHunkResult {
   readonly truncated?: boolean;
 }
 
+export interface RepoCandidate {
+  readonly relPath: string;
+  readonly name: string;
+  readonly branch: string;
+  readonly kind: "root" | "worktree" | "nested";
+}
+
+export interface ReposResult {
+  readonly repos: readonly RepoCandidate[];
+  readonly truncated?: boolean;
+}
+
 export interface LogCommitEntry {
   readonly shortHash: string;
   readonly fullHash: string;
