@@ -14,7 +14,7 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -373,6 +373,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   if (currentCompanionOperationId !== null) {
     if (currentCompanionOperationId === operationId) {
       setActiveOperation(operationId);
+      requestOperationKeyboardFocus(operationId);
       return;
     }
     const operation = getState().operations.find((candidate) => candidate.id === operationId);
@@ -396,26 +397,32 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
       if (getFormationView()) {
         restoreOperation(operationId);
         setActiveOperation(operationId);
+        requestOperationKeyboardFocus(operationId);
         return;
       }
       focusMap();
+      requestOperationKeyboardFocus(operationId);
       return;
     }
     setActiveOperation(operationId);
     setCompanionOperationId(operationId);
+    requestOperationKeyboardFocus(operationId);
     return;
   }
   if (getMaximizedOperationId() !== null) {
     setActiveOperation(operationId);
     setMaximizedOperationId(operationId);
+    requestOperationKeyboardFocus(operationId);
     return;
   }
   if (getFormationView()) {
     restoreOperation(operationId);
     setActiveOperation(operationId);
+    requestOperationKeyboardFocus(operationId);
     return;
   }
   focusMap();
+  requestOperationKeyboardFocus(operationId);
 }
 
 function sortedTheaterOperations(state: ConsoleState): readonly OperationNode[] {

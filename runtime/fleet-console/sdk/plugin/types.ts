@@ -117,6 +117,13 @@ export interface OperationContext {
 
 export interface OperationRenderContext extends OperationContext {
   readonly active: boolean;
+  /**
+   * Requests DOM keyboard focus for the current Operation's primary body.
+   * This is not canvas position, active state, or persistent state: a changed value means a new focus request.
+   * `undefined` denotes an older host and `0` denotes no request; consumers must only detect change, not compare order.
+   * Plugins cannot increment this host-owned value themselves.
+   */
+  readonly keyboardFocusRequestId?: number;
   readonly geometry: OperationGeometry;
   readonly operation: OperationNode;
   readonly zoom: number;

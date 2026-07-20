@@ -100,7 +100,7 @@ beforeEach(() => {
   clearCompanionOperationId();
   clearFormationView();
   loadForTheater(null);
-  setState({ activeOperationId: null, activeTheaterId: null, groups: [], operations: [], operationsHydrated: false, theaters: [] });
+  setState({ activeOperationId: null, activeTheaterId: null, groups: [], keyboardFocusRequest: null, operations: [], operationsHydrated: false, theaters: [] });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -506,6 +506,7 @@ describe("Operations boot minimization", () => {
       await Promise.resolve();
     });
     expect(getCompanionOperationId()).toBe("first");
+    expect(getState().keyboardFocusRequest).toBeNull();
 
     await act(async () => {
       thirdReady.resolve(true);
@@ -513,6 +514,7 @@ describe("Operations boot minimization", () => {
       await Promise.resolve();
     });
     expect(getCompanionOperationId()).toBe("third");
+    expect(getState().keyboardFocusRequest).toEqual({ operationId: "third", requestId: 1 });
   });
 
   it("discards an asynchronous retarget after Analyze exits and reopens", async () => {

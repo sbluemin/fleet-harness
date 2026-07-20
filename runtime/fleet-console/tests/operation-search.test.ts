@@ -56,6 +56,7 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     onboardingOpen: false,
     bootstrapped: false,
     pendingOperationFocus: null,
+    keyboardFocusRequest: null,
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     codexReader: null,

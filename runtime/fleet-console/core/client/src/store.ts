@@ -75,6 +75,7 @@ let state: ConsoleState = {
   onboardingOpen: false,
   bootstrapped: false,
   pendingOperationFocus: null,
+  keyboardFocusRequest: null,
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
   codexReader: null,
@@ -302,12 +303,20 @@ export function focusOperation(operationId: string): void {
     pendingOperationFocus: operationId,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
   });
-  window.dispatchEvent(new CustomEvent("fleet-console:focus-operation", { detail: { operationId } }));
 }
 
 export function consumeOperationFocus(): void {
   if (state.pendingOperationFocus === null) return;
   setState({ pendingOperationFocus: null });
+}
+
+export function requestOperationKeyboardFocus(operationId: string): void {
+  setState({
+    keyboardFocusRequest: {
+      operationId,
+      requestId: (state.keyboardFocusRequest?.requestId ?? 0) + 1,
+    },
+  });
 }
 
 export function nextOperationId(order: readonly string[], currentId: string | null, delta: number): string | null {

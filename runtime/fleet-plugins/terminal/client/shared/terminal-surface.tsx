@@ -23,6 +23,7 @@ export interface TerminalSurfaceProps {
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
+  readonly keyboardFocusRequestId?: number;
   // 맵 캔버스의 줌 배율(viewport.zoom). 캔버스 외 셸 패널 사용처는 기본 1.
   // 캔버스가 부모에 transform:scale(zoom)을 걸면 xterm의 마우스 셀 좌표 계산이 scale을 보정하지 못해
   // zoom≠1에서 커서/선택 위치가 어긋난다(분자=scale 반영 화면거리, 분모=scale 미반영 cellWidth). 이를
@@ -114,7 +115,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(95% 0.003 250)",
 };
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, zoom = 1 }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1 }: TerminalSurfaceProps) {
   const activeTheme = theme;
   const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -138,6 +139,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 터미널 인스턴스는 심볼 폰트 선대기 때문에 비동기로 생성된다. 같은 커밋에서 이미 실행된
   // WebGL/테마/폰트 effect는 null 터미널을 보고 건너뛰므로, 생성 완료를 epoch로 알려 재실행시킨다.
   const [mountedTerminalEpoch, setMountedTerminalEpoch] = useState(0);
+  // 포커스 요청은 xterm 생성만으로는 충분하지 않고 입력 transport가 시작된 뒤에 처리해야 한다.
+  const [inputReadyEpoch, setInputReadyEpoch] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -250,6 +253,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         if (disposed) return;
         fitResizeAndRefresh();
         connection.start();
+        setInputReadyEpoch((epoch) => epoch + 1);
         // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
         // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
         // 단일 셸 터미널(active===undefined)은 기존대로 포커스한다.
@@ -301,14 +305,15 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     };
   }, [operationId, ticketPath, wsPath]);
 
-  // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 주고
-  // 기존 contract대로 bottom following을 명시적으로 재개한다. 비활성 전환에서는 scheduler 속도만 낮춘다.
+  // 활성 전환 시 이미 마운트된 xterm에 포커스를 다시 주고 기존 contract대로 bottom following을 재개한다.
+  // keyboard request는 동일 Operation 재선택 시 active 불변을, input-ready epoch는 비동기 마운트 갭을 대응한다.
+  // 비활성 전환에서는 scheduler 속도만 낮추며 focus 요청도 소비하지 않는다.
   useEffect(() => {
     outputSchedulerRef.current?.setActive(active !== false);
     if (!active) return;
     terminalRef.current?.focus();
     scrollFollowRef.current?.resumeFollowing();
-  }, [active]);
+  }, [active, keyboardFocusRequestId, inputReadyEpoch]);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
   useEffect(() => {
