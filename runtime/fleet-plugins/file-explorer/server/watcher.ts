@@ -124,6 +124,17 @@ export function createWatcherRegistry(
     }
   }
 
+  function invalidateWatcherTree(entry: WatcherEntry, watchKey: string): void {
+    const descendantPrefix = watchKey + path.sep;
+    for (const [candidateKey, candidateWatcher] of entry.watchers) {
+      if (candidateKey !== watchKey && !candidateKey.startsWith(descendantPrefix)) continue;
+      entry.watchers.delete(candidateKey);
+      entry.identityChecks.delete(candidateKey);
+      entry.pendingDirectories.add(candidateKey);
+      try { candidateWatcher.close(); } catch { /* already closed */ }
+    }
+  }
+
   function startWatcher(
     theaterId: string,
     entry: WatcherEntry,
@@ -158,10 +169,8 @@ export function createWatcherRegistry(
           if (entry.watchers.get(watchKey) !== expectedWatcher) return;
           if (!replaced) continue;
 
-          entry.watchers.delete(watchKey);
-          entry.identityChecks.delete(watchKey);
-          entry.pendingDirectories.add(watchKey);
-          try { expectedWatcher.close(); } catch { /* already closed */ }
+          // 부모가 교체되면 이전 inode를 보는 하위 watcher도 함께 무효화한다.
+          invalidateWatcherTree(entry, watchKey);
           await rearmPendingDirectories(theaterId, entry);
           return;
         }

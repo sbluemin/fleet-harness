@@ -740,6 +740,52 @@ describe("createWatcherRegistry", () => {
     }
   });
 
+  it("Linux 부모 디렉터리가 교체되면 하위 watcher도 함께 rearm한다", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+    const childPath = path.join(tempRoot, "src");
+    const nestedPath = path.join(childPath, "nested");
+    const movedPath = path.join(tempRoot, "moved");
+    fs.mkdirSync(nestedPath, { recursive: true });
+    const callbacks: Array<(event: string, filename: string | null) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_watchPath, _options, callback) => {
+      const close = vi.fn();
+      callbacks.push(callback);
+      closes.push(close);
+      return { close, on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50, "linux");
+    const onChange = vi.fn();
+
+    try {
+      const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
+      await registry.trackDirectory("t1", tempRoot, "src");
+      await registry.trackDirectory("t1", tempRoot, path.join("src", "nested"));
+      const staleNestedCallback = callbacks[2]!;
+
+      fs.renameSync(childPath, movedPath);
+      fs.mkdirSync(nestedPath, { recursive: true });
+      callbacks[1]!("rename", "src");
+
+      await vi.waitFor(() => expect(closes[1]).toHaveBeenCalledOnce());
+      expect(closes[2]).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(mockFactory).toHaveBeenCalledTimes(5));
+
+      vi.advanceTimersByTime(100);
+      onChange.mockClear();
+      staleNestedCallback("change", "stale.ts");
+      vi.advanceTimersByTime(100);
+      expect(onChange).not.toHaveBeenCalled();
+
+      callbacks[4]!("change", "fresh.ts");
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith(path.join("src", "nested"));
+      unsub();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("재귀 watcher 플랫폼에서는 하위 디렉터리 조회가 watcher를 늘리지 않는다", async () => {
     const mockFactory: WatcherFactory = vi.fn().mockReturnValue({ close: vi.fn(), on: vi.fn() });
     const registry = createNativeWatcherRegistry(mockFactory);
