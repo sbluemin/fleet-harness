@@ -16,6 +16,7 @@ describe("createWatcherRegistry", () => {
     vi.useFakeTimers();
   });
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -487,7 +488,7 @@ describe("createWatcherRegistry", () => {
       callbacks[1]!("rename", "src");
 
       expect(closes[0]).not.toHaveBeenCalled();
-      expect(closes[1]).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(closes[1]).toHaveBeenCalledOnce());
       vi.advanceTimersByTime(100);
       expect(onChange).toHaveBeenCalledWith("src");
 
@@ -503,6 +504,129 @@ describe("createWatcherRegistry", () => {
       callbacks[2]!("change", "file.ts");
       vi.advanceTimersByTime(100);
       expect(onChange).toHaveBeenCalledWith("src");
+      unsub();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("Linux 하위 watcher에서 일반 파일 rename은 watcher를 닫지 않는다", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+    const childPath = path.join(tempRoot, "src");
+    fs.mkdirSync(childPath);
+    const callbacks: Array<(event: string, filename: string | null) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_watchPath, _options, callback) => {
+      const close = vi.fn();
+      callbacks.push(callback);
+      closes.push(close);
+      return { close, on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50, "linux");
+    const onChange = vi.fn();
+
+    try {
+      const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
+      await registry.trackDirectory("t1", tempRoot, "src");
+      const directoryStats = await fs.promises.stat(childPath);
+      let resolveFirstStat: (stats: fs.Stats) => void = () => {};
+      const firstStat = new Promise<fs.Stats>((resolve) => { resolveFirstStat = resolve; });
+      const statSpy = vi.spyOn(fs.promises, "stat")
+        .mockImplementationOnce(() => firstStat)
+        .mockResolvedValue(directoryStats);
+
+      // src 내부 rename 폭주는 검사를 직렬화하고 src watcher를 유지해야 한다.
+      callbacks[1]!("rename", "file.ts");
+      callbacks[1]!("rename", "other.ts");
+      callbacks[1]!("rename", "third.ts");
+
+      expect(statSpy).toHaveBeenCalledOnce();
+      resolveFirstStat(directoryStats);
+      await vi.waitFor(() => expect(statSpy).toHaveBeenCalledTimes(2));
+      await statSpy.mock.results[1]!.value;
+      await Promise.resolve();
+      expect(closes[1]).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith("src");
+
+      statSpy.mockRestore();
+      unsub();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("Linux identity 확인이 ENOENT 외 오류로 실패하면 watcher를 유지한다", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+    const childPath = path.join(tempRoot, "src");
+    fs.mkdirSync(childPath);
+    const callbacks: Array<(event: string, filename: string | null) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_watchPath, _options, callback) => {
+      const close = vi.fn();
+      callbacks.push(callback);
+      closes.push(close);
+      return { close, on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50, "linux");
+
+    try {
+      const unsub = registry.subscribe("t1", tempRoot, () => {}, () => {});
+      await registry.trackDirectory("t1", tempRoot, "src");
+      const accessError = Object.assign(new Error("denied"), { code: "EACCES" });
+      const statSpy = vi.spyOn(fs.promises, "stat").mockRejectedValueOnce(accessError);
+
+      callbacks[1]!("rename", "file.ts");
+
+      expect(statSpy).toHaveBeenCalledOnce();
+      await statSpy.mock.results[0]!.value.catch(() => undefined);
+      await Promise.resolve();
+      expect(closes[1]).not.toHaveBeenCalled();
+
+      statSpy.mockRestore();
+      unsub();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("Linux 하위 디렉터리가 다른 inode로 교체되면 watcher를 rearm한다", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+    const childPath = path.join(tempRoot, "src");
+    const replacementPath = path.join(tempRoot, "replacement");
+    fs.mkdirSync(childPath);
+    fs.mkdirSync(replacementPath);
+    const callbacks: Array<(event: string, filename: string | null) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_watchPath, _options, callback) => {
+      const close = vi.fn();
+      callbacks.push(callback);
+      closes.push(close);
+      return { close, on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50, "linux");
+    const onChange = vi.fn();
+
+    try {
+      const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
+      await registry.trackDirectory("t1", tempRoot, "src");
+
+      // 경로는 계속 존재하지만 다른 inode로 교체되면 기존 watcher는 무효하다.
+      fs.renameSync(replacementPath, childPath);
+      callbacks[1]!("rename", "src");
+
+      expect(closes[0]).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(closes[1]).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(mockFactory).toHaveBeenCalledTimes(3));
+
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith("src");
+
+      onChange.mockClear();
+      callbacks[2]!("change", "file.ts");
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith("src");
+
       unsub();
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });

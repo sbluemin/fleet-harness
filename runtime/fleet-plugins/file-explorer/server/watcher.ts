@@ -38,6 +38,16 @@ interface WatcherEntry {
   readonly debounceTimers: Map<string, ReturnType<typeof setTimeout>>;
 }
 
+interface DirectoryIdentity {
+  readonly device: number;
+  readonly inode: number;
+}
+
+interface TrackedDirectory {
+  readonly path: string;
+  readonly identity: DirectoryIdentity;
+}
+
 // 서버 측 debounce 간격 — 이벤트 폭풍 흡수
 const DEBOUNCE_MS = 200;
 const LINUX_DIRECTORY_WATCH_CAP = 1_024;
@@ -77,8 +87,8 @@ export function createWatcherRegistry(
 
   async function rearmPendingDirectories(theaterId: string, entry: WatcherEntry): Promise<void> {
     for (const relativePath of entry.pendingDirectories) {
-      const targetPath = await resolveTrackedDirectory(entry.theaterPath, relativePath);
-      if (!targetPath) continue;
+      const target = await resolveTrackedDirectory(entry.theaterPath, relativePath);
+      if (!target) continue;
 
       // resolve 대기 중 구독이 끝났거나 다른 이벤트가 먼저 watcher를 복구했을 수 있다.
       if (
@@ -89,7 +99,7 @@ export function createWatcherRegistry(
       ) continue;
 
       try {
-        startWatcher(theaterId, entry, relativePath, targetPath);
+        startWatcher(theaterId, entry, relativePath, target.path, target.identity);
         entry.pendingDirectories.delete(relativePath);
         // 재생성 자체는 상위 watcher가 감지하므로 새 디렉터리 내용을 다시 조회하도록 알린다.
         scheduleChange(entry, relativePath);
@@ -104,19 +114,53 @@ export function createWatcherRegistry(
     entry: WatcherEntry,
     watchKey: string,
     watchPath: string,
+    watchIdentity?: DirectoryIdentity,
   ): void {
+    let identityCheckRunning = false;
+    let identityCheckRequested = false;
     let activeWatcher: WatcherHandle | null = null;
+
+    const checkDirectoryIdentity = async (expectedWatcher: WatcherHandle): Promise<void> => {
+      identityCheckRequested = true;
+      if (identityCheckRunning || !watchIdentity) return;
+      identityCheckRunning = true;
+
+      try {
+        while (identityCheckRequested) {
+          identityCheckRequested = false;
+          let replaced = false;
+          try {
+            const stats = await fs.promises.stat(watchPath);
+            replaced = stats.dev !== watchIdentity.device || stats.ino !== watchIdentity.inode;
+          } catch (error) {
+            // ENOENT만 감시 경로 소멸의 확실한 증거로 취급한다.
+            replaced = (error as NodeJS.ErrnoException).code === "ENOENT";
+          }
+
+          // stat 대기 중 구독이 끝났거나 watcher가 이미 교체될 수 있다.
+          if (entry.watchers.get(watchKey) !== expectedWatcher) return;
+          if (!replaced) continue;
+
+          entry.watchers.delete(watchKey);
+          entry.pendingDirectories.add(watchKey);
+          try { expectedWatcher.close(); } catch { /* already closed */ }
+          await rearmPendingDirectories(theaterId, entry);
+          return;
+        }
+      } finally {
+        identityCheckRunning = false;
+      }
+    };
+
     const watcher = watcherFactory(watchPath, { recursive: entry.recursive }, (event, filename) => {
       const currentWatcher = activeWatcher;
       if (!currentWatcher || entry.watchers.get(watchKey) !== currentWatcher) return;
       scheduleChange(entry, entry.recursive ? computeRelDir(filename) : watchKey);
 
-      // Linux watcher는 inode를 추적하므로 디렉터리 교체 후 새 inode를 보지 못한다.
-      // rename 시 등록을 비우고 상위 watcher 이벤트에서 새 inode를 다시 찾는다.
-      if (!entry.recursive && watchKey !== "" && event === "rename") {
-        entry.watchers.delete(watchKey);
-        entry.pendingDirectories.add(watchKey);
-        try { currentWatcher.close(); } catch { /* already closed */ }
+      // Linux fs.watch는 내부 항목 변경에도 "rename" 이벤트를 발생시킨다.
+      // 동기 I/O 없이 경로가 소멸되었거나 identity가 교체된 경우에만 rearm한다.
+      if (!entry.recursive && watchKey !== "" && event === "rename" && watchIdentity) {
+        void checkDirectoryIdentity(currentWatcher);
       }
       if (!entry.recursive && entry.pendingDirectories.size > 0) {
         void rearmPendingDirectories(theaterId, entry);
@@ -212,8 +256,8 @@ export function createWatcherRegistry(
       return;
     }
 
-    const targetPath = await resolveTrackedDirectory(theaterPath, relativePath);
-    if (!targetPath) return;
+    const target = await resolveTrackedDirectory(theaterPath, relativePath);
+    if (!target) return;
 
     // realpath 대기 중 구독이 끝났거나 같은 디렉터리가 먼저 등록됐을 수 있다.
     if (
@@ -222,7 +266,7 @@ export function createWatcherRegistry(
       || entry.watchers.size >= LINUX_DIRECTORY_WATCH_CAP
     ) return;
     try {
-      startWatcher(theaterId, entry, relativePath, targetPath);
+      startWatcher(theaterId, entry, relativePath, target.path, target.identity);
       entry.pendingDirectories.delete(relativePath);
     } catch {
       for (const notify of entry.stateSubscribers) notify("degraded");
@@ -232,7 +276,10 @@ export function createWatcherRegistry(
   return { subscribe, trackDirectory };
 }
 
-async function resolveTrackedDirectory(theaterPath: string, relativePath: string): Promise<string | null> {
+async function resolveTrackedDirectory(
+  theaterPath: string,
+  relativePath: string,
+): Promise<TrackedDirectory | null> {
   const resolvedRoot = path.resolve(theaterPath);
   const targetPath = path.resolve(resolvedRoot, relativePath);
   if (!isWithinRoot(targetPath, resolvedRoot)) return null;
@@ -242,7 +289,13 @@ async function resolveTrackedDirectory(theaterPath: string, relativePath: string
       fs.promises.realpath(theaterPath),
       fs.promises.realpath(targetPath),
     ]);
-    return isWithinRoot(realTarget, realRoot) ? realTarget : null;
+    if (!isWithinRoot(realTarget, realRoot)) return null;
+    const stats = await fs.promises.stat(realTarget);
+    if (!stats.isDirectory()) return null;
+    return {
+      path: realTarget,
+      identity: { device: stats.dev, inode: stats.ino },
+    };
   } catch {
     return null;
   }
