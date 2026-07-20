@@ -46,11 +46,15 @@ Treat GitHub Codex review as code-local, context-incomplete evidence, never auth
 Treat every finding as an adversarial hypothesis. Severity is not disposition. First classify it as either **code-local correctness / security / data-loss** or **product policy / behavior / trade-off / hypothetical hardening**; then decide **FIX / DECLINE / DEFER** from evidence.
 
 - **FIX** only after verifying all four gates: the defect occurs on a supported execution path; the change aligns with the original scope; no supported functionality regresses or narrows; and change cost is proportional to user/operator value. Code correctness is necessary, not sufficient.
+  - **Reproduce before you edit, and record how.** An unreproduced finding is a hypothesis, and a hypothesis is a DECLINE — never a cheap defensive fix "while we are here". If the reviewer claims a defect you cannot make happen, say so and decline it; do not harden against it to close the comment.
+  - **A supported execution path is one a real workflow reaches.** For a security finding, an attacker-constructed state counts. For everything else, a state that exists only because you hand-built an exotic fixture to satisfy the reviewer does not. "The predicate should be consistent", "it is only a few lines", and "the tests are green anyway" are not user value.
 - **DECLINE** with cited Product Context Record or repository evidence when the finding is context-blind, hypothetical or overfit, outside scope, conflicts with an intended trade-off, narrows supported behavior, or lacks user/operator value. Record and courteously post every decline; never silently skip it.
 - **DEFER** a real architectural or product-policy issue that is outside the PR scope. State why it is real and why this PR must not absorb it.
 - **STOP and ask the user** when product intent is genuinely ambiguous and the Product Context Record plus cited evidence cannot resolve it. Never let the reviewer decide product policy.
 
 Do not treat re-review comments as new scope. After every review pass, audit the cumulative review-fix diff from `REVIEW_BASE_HEAD` against the frozen Product Context Record. Roll back drifted review-fix hunks to the base behavior; do not stack compensating fixes on top of scope drift.
+
+**A fix that breeds the next finding was over-scoped.** When a pass reports problems that exist only because the previous pass's fix created them, that is evidence against the previous fix, not a request for another one. Prefer rolling it back over widening it again.
 
 This policy governs Phase 4 (classification / verification) and Phase 5 (self-verification audit).
 
@@ -146,6 +150,8 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
    - **New actionable feedback** → Phase 4.
    - **Spurious wake or timeout** (only `eyes`, a re-anchored old comment, or nothing genuinely new) → relaunch the background poll (step 3) and keep waiting.
 
+   **Stop rule — the loop must terminate on your judgment, not on the reviewer running out of ideas.** Count review passes. Go to Phase 6 as soon as a pass yields no FIX-class finding under the Admiral Judgment Policy, and by default stop after the third pass; post the declines first either way. A clean approval is not a merge requirement — Codex can always produce another suggestion, so waiting for silence is an unbounded loop. Continuing past the third pass requires naming the specific reproduced defect that justifies it. If the Admiral of the Navy has to interrupt to end the loop, the stop rule was already breached.
+
 **Fallback — cron.** If the harness cannot re-invoke you when a background task completes, fall back to a recurring `CronCreate` (`*/1 * * * *`, `recurring: true`, prompt re-entering Phase 3 with `<pr_number>`/`<repo>`), armed exactly once; the same baseline, freshness, and re-anchor rules apply on each tick. Stop it with `CronDelete` at Phase 6 (instead of `TaskStop`).
 
 ### Phase 4 — Judge & apply feedback
@@ -183,7 +189,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 
 ### Phase 6 — Auto-merge
 
-Reached after Phase 3 confirms either review completion (a fresh Codex `+1` with no open actionable comments) or `REVIEW_BYPASS_REASON=codex_activation_timeout` from the bounded explicit activation gate. Neither signal proves product correctness. The timeout fallback authorizes normal merge checks only; it never bypasses branch protection or required checks. When `<auto_merge>` is `false`, skip merging and report the PR as review-complete-but-unmerged or review-unavailable-and-unmerged.
+Reached after Phase 3 confirms review completion (a fresh Codex `+1` with no open actionable comments), the Phase 3 stop rule (a pass with no FIX-class finding, or the third pass), or `REVIEW_BYPASS_REASON=codex_activation_timeout` from the bounded explicit activation gate. None of these signals proves product correctness, and the final context audit below is what gates the merge in every case. The timeout fallback authorizes normal merge checks only; it never bypasses branch protection or required checks. When `<auto_merge>` is `false`, skip merging and report the PR as review-complete-but-unmerged or review-unavailable-and-unmerged.
 
 1. **Stop the wait loop.** If Phase 3 started a background poll, stop it with `TaskStop` (or `CronDelete` for the cron fallback). Under `codex_activation_timeout`, no long-running poll exists; continue directly. No more review polling occurs after this point.
 2. **Run the final context audit.** Compare the cumulative review-driven diff from `REVIEW_BASE_HEAD` to the frozen Product Context Record. Confirm every hunk remains in original scope, preserves supported behavior and intended trade-offs, and has proportional user/operator value. On drift, roll back the drift and return to Phase 5 for validation/re-review; if rollback or product intent is ambiguous, stop and ask the user. Never merge merely because Codex approved.
