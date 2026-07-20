@@ -5,7 +5,6 @@ export const ANALYSIS_ERROR_CODES = {
   captureMissing: "analysis_capture_missing",
   transcriptMissing: "analysis_transcript_missing",
   catalogInvalid: "analysis_catalog_invalid",
-  sessionLimit: "analysis_session_limit",
   sessionExists: "analysis_session_exists",
   sessionNotFound: "analysis_session_not_found",
   sessionBusy: "analysis_session_busy",

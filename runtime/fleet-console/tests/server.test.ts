@@ -596,6 +596,81 @@ describe("console static and terminal ticket boundary", () => {
     expect(await response.json()).toEqual({ terminal: false });
   });
 
+  it("publishes one authoritative deletion event for plugin, Core, and Theater deletion paths", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-operation-delete-events-"));
+    tempDirs.push(dir);
+    const pluginPackage = createPluginPackageRoot({
+      demoRoutes: [
+        "export function register(ctx) {",
+        "  const events = [];",
+        "  ctx.host.events.subscribe('operation:deleted', (payload) => {",
+        "    events.push({ payload, operationPresent: ctx.host.operations.get(payload.operationId) !== null });",
+        "  });",
+        "  ctx.registerRouter('delete-operation', async ({ req, res }) => {",
+        "    const body = await ctx.host.http.readJsonBody(req);",
+        "    const deleted = typeof body?.operationId === 'string' && ctx.host.operations.delete(body.operationId);",
+        "    ctx.host.http.writeJson(res, 200, { deleted });",
+        "    return true;",
+        "  });",
+        "  ctx.registerRouter('deletion-events', async ({ res }) => {",
+        "    ctx.host.http.writeJson(res, 200, { events });",
+        "    return true;",
+        "  });",
+        "}",
+      ].join("\n"),
+    });
+    const fixture = await startFixture({ release: pluginPackage.release });
+    const theater = await createTheater(fixture, dir);
+    const pluginDeleted = await createOperation(fixture, theater.id, { type: "demo", pluginId: "demo" });
+
+    const pluginDelete = await fetch(`${fixture.endpoint}plugins/demo/delete-operation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationId: pluginDeleted.id }),
+    });
+    const pluginRepeat = await fetch(`${fixture.endpoint}plugins/demo/delete-operation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationId: pluginDeleted.id }),
+    });
+    const pluginMissing = await fetch(`${fixture.endpoint}plugins/demo/delete-operation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationId: "missing-operation" }),
+    });
+    expect(await pluginDelete.json()).toEqual({ deleted: true });
+    expect(await pluginRepeat.json()).toEqual({ deleted: false });
+    expect(await pluginMissing.json()).toEqual({ deleted: false });
+
+    const coreDeleted = await createOperation(fixture, theater.id, { type: "agent", pluginId: "terminal" });
+    const coreDelete = await fetch(`${fixture.endpoint}api/v1/operations/${encodeURIComponent(coreDeleted.id)}`, { method: "DELETE" });
+    const coreRepeat = await fetch(`${fixture.endpoint}api/v1/operations/${encodeURIComponent(coreDeleted.id)}`, { method: "DELETE" });
+    const coreMissing = await fetch(`${fixture.endpoint}api/v1/operations/missing-operation`, { method: "DELETE" });
+    expect(coreDelete.status).toBe(200);
+    expect(coreRepeat.status).toBe(404);
+    expect(coreMissing.status).toBe(404);
+
+    const theaterDeletedA = await createOperation(fixture, theater.id, { type: "demo-a", pluginId: "demo" });
+    const theaterDeletedB = await createOperation(fixture, theater.id, { type: "demo-b", pluginId: "demo" });
+    const theaterDelete = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    const theaterRepeat = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    expect(theaterDelete.status).toBe(200);
+    expect(theaterRepeat.status).toBe(200);
+
+    const response = await fetch(`${fixture.endpoint}plugins/demo/deletion-events`);
+    const body = await response.json() as { readonly events: ReadonlyArray<{ readonly payload: { readonly operationId: string; readonly pluginId: string; readonly type: string }; readonly operationPresent: boolean }> };
+    expect(body.events).toHaveLength(4);
+    expect(body.events).toEqual(expect.arrayContaining([
+      { payload: { operationId: pluginDeleted.id, pluginId: "demo", type: "demo" }, operationPresent: false },
+      { payload: { operationId: coreDeleted.id, pluginId: "terminal", type: "agent" }, operationPresent: false },
+      { payload: { operationId: theaterDeletedA.id, pluginId: "demo", type: "demo-a" }, operationPresent: false },
+      { payload: { operationId: theaterDeletedB.id, pluginId: "demo", type: "demo-b" }, operationPresent: false },
+    ]));
+    for (const operationId of [pluginDeleted.id, coreDeleted.id, theaterDeletedA.id, theaterDeletedB.id]) {
+      expect(body.events.filter((event) => event.payload.operationId === operationId)).toHaveLength(1);
+    }
+  });
+
   it("serves plugin runtime manifest and shims through core routes", async () => {
     const fixture = await startFixture();
 

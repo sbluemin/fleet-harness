@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 
-import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_ANALYSIS_SESSIONS, MAX_TOTAL_ARTIFACTS } from "./analysis-registry.js";
+import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
 import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalystCliId } from "./analysis-types.js";
 
@@ -47,24 +47,24 @@ describe("Session Analyst server contract", () => {
     expect(ANALYSIS_ERROR_CODES.transcriptMissing).toBe("analysis_transcript_missing");
   });
 
-  it("caps sessions, serializes messages, and disposes idempotently", async () => {
+  it("starts more than four distinct sessions, serializes messages, and disposes idempotently", async () => {
     const registry = new AnalysisRegistry();
     let resolveTurn: (() => void) | undefined;
-    const sessions = Array.from({ length: MAX_ANALYSIS_SESSIONS }, () => ({
+    const sessions = Array.from({ length: 6 }, () => ({
       start: async () => undefined,
       send: () => new Promise<void>((resolve) => { resolveTurn = resolve; }),
       dispose: async () => undefined,
     }));
-    for (let index = 0; index < MAX_ANALYSIS_SESSIONS; index += 1) {
+    for (let index = 0; index < sessions.length; index += 1) {
       await expect(registry.start(`op-${index}`, () => sessions[index]! as never)).resolves.toBe("started");
     }
-    await expect(registry.start("overflow", () => sessions[0]! as never)).resolves.toBe("limit");
     await expect(registry.message("op-0", "hello")).resolves.toBe("accepted");
     await expect(registry.message("op-0", "again")).resolves.toBe("busy");
     resolveTurn?.();
     await Promise.resolve();
     await expect(registry.stop("op-0")).resolves.toBe(true);
     await expect(registry.stop("op-0")).resolves.toBe(false);
+    await registry.dispose();
   });
 
   it("streams a generic analysis_error without exposing send rejection details", async () => {
@@ -159,7 +159,7 @@ describe("Session Analyst server contract", () => {
   it("bounds stopped artifact history process-wide by evicting the oldest inactive artifacts", async () => {
     const registry = new AnalysisRegistry();
     const artifactIds: string[] = [];
-    const operationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+    const operationCount = Math.floor(MAX_STOPPED_ANALYSIS_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
 
     for (let operationIndex = 0; operationIndex < operationCount; operationIndex += 1) {
       const emit = await startArtifactSession(registry, `stopped-op-${operationIndex}`);
@@ -171,7 +171,7 @@ describe("Session Analyst server contract", () => {
       await registry.stop(`stopped-op-${operationIndex}`);
     }
 
-    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_STOPPED_ANALYSIS_ARTIFACTS);
     expect(registry.artifactHtml("stopped-0-0")).toBeNull();
     expect(registry.artifactHtml(`stopped-0-${MAX_ANALYSIS_ARTIFACTS - 1}`)).toBeNull();
     expect(registry.artifactHtml("stopped-1-0")).toBe("<p>stopped-1-0</p>");
@@ -183,7 +183,7 @@ describe("Session Analyst server contract", () => {
     const artifactIds = ["active-artifact"];
     const emitActive = await startArtifactSession(registry, "active-op");
     emitArtifact(emitActive, "active-artifact");
-    const stoppedOperationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+    const stoppedOperationCount = Math.floor(MAX_STOPPED_ANALYSIS_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
 
     for (let operationIndex = 0; operationIndex < stoppedOperationCount; operationIndex += 1) {
       const operationId = `history-op-${operationIndex}`;
@@ -197,7 +197,7 @@ describe("Session Analyst server contract", () => {
     }
 
     expect(registry.artifactHtml("active-artifact")).toBe("<p>active-artifact</p>");
-    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_STOPPED_ANALYSIS_ARTIFACTS + 1);
     expect(registry.artifactHtml("history-0-0")).toBeNull();
     await registry.dispose();
   });
@@ -218,6 +218,121 @@ describe("Session Analyst server contract", () => {
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined }));
+  });
+
+  it("disposes a registry entry when its Operation is deleted during pending start", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-pending-delete-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let resolveStart!: () => void;
+    const dispose = vi.fn(async () => undefined);
+    const createSession = vi.fn(() => ({
+      start: () => new Promise<void>((resolve) => { resolveStart = resolve; }),
+      send: async () => undefined,
+      dispose,
+    }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    resolveStart();
+    await starting;
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+  });
+
+  it("reports deletion-owned 404 when disposal rejects a pending start", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-pending-delete-rejection-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let rejectStart!: (error: Error) => void;
+    const dispose = vi.fn(async () => { rejectStart(new Error("disposed during start")); });
+    const createSession = vi.fn(() => ({
+      start: () => new Promise<void>((_resolve, reject) => { rejectStart = reject; }),
+      send: async () => undefined,
+      dispose,
+    }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
+    await starting;
+
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+  });
+
+  it("does not register a session when its Operation is deleted before the final start check", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-pre-registration-delete-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const statuses = [{ id: "claude", displayName: "Claude Code", available: true, version: null }] as const;
+    let resolveDetect!: (value: typeof statuses) => void;
+    const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
+    const detect = vi.fn(() => detection);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect,
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    resolveDetect(statuses);
+    await starting;
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("does not register a session when its Operation is deleted and recreated with the same id during start preparation", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-same-id-recreation-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const statuses = [{ id: "claude", displayName: "Claude Code", available: true, version: null }] as const;
+    let resolveDetect!: (value: typeof statuses) => void;
+    const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
+    const detect = vi.fn(() => detection);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect,
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
+    router.recreateOperation();
+    resolveDetect(statuses);
+    await starting;
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("reports analysis as not ready when no provider capture exists", async () => {
@@ -313,13 +428,14 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    const dispose = vi.fn(async () => undefined);
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
       readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
-        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+        return { start: async () => undefined, send: async () => undefined, dispose };
       }) as never,
     });
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
@@ -353,6 +469,8 @@ describe("Session Analyst server contract", () => {
     expect(afterStop).toMatchObject({ status: 200, ended: true });
     expect(afterStop.body).toContain(html);
     expect(afterStop.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;');
+    expect(dispose).toHaveBeenCalledOnce();
+    dispose.mockClear();
 
     await router.call("DELETE", "/api/v1/plugins/terminal/analysis/op/artifacts");
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
@@ -361,6 +479,7 @@ describe("Session Analyst server contract", () => {
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
     emit?.({ type: "artifact", artifact: { id: "deleted-artifact", title: "Deleted artifact", html, createdAt: new Date(0).toISOString() } });
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
   });
@@ -505,8 +624,8 @@ function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
   let operationDeletedHandler: ((payload: unknown) => void) | undefined;
   const responses: Array<{ status: number; body: unknown }> = [];
-  const state = { allowHost: initialHostAllowance };
   const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
+  const state = { allowHost: initialHostAllowance, operationPresent: true, operation };
   const ctx = {
     pluginId: "terminal", basePath: "/api/v1/plugins/terminal",
     registerRouter: (_path: string, registered: typeof handler) => { handler = registered; },
@@ -516,7 +635,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
         isTerminalAuthorized: (req: { headers: Record<string, string> }) => req.headers.origin !== "https://evil.example",
       },
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
-      operations: { get: (id: string) => id === "op" ? operation : null },
+      operations: { get: (id: string) => state.operationPresent && id === "op" ? state.operation : null },
       paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
       events: { subscribe: (_channel: string, subscriber: (payload: unknown) => void) => { operationDeletedHandler = subscriber; return () => { operationDeletedHandler = undefined; }; } }, lifecycle: { registerCleanup: () => () => undefined },
     },
@@ -524,6 +643,11 @@ function createRouterHarness(initialHostAllowance: boolean) {
   return {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
+    deleteOperation() { state.operationPresent = false; },
+    recreateOperation() {
+      state.operation = { ...operation, theaterId: "replacement-theater", ts: { createdAt: 1, updatedAt: 1 } };
+      state.operationPresent = true;
+    },
     emitOperationDeleted(payload: unknown) { operationDeletedHandler?.(payload); },
     async call(method: string, pathname: string, body?: unknown, headers: Record<string, string> = {}) {
       const writes: string[] = [];

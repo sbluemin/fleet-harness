@@ -26,7 +26,7 @@ export async function fetchAnalysisReady(api: ClientApiCapability, operationId: 
     return false;
   }
 }
-export async function startAnalysis(api: ClientApiCapability, operationId: string, input: { readonly cliId: string; readonly model: string; readonly effort: string }): Promise<void> { await request(api, `${base(operationId)}/start`, input); }
+export async function startAnalysis(api: ClientApiCapability, operationId: string, input: { readonly cliId: string; readonly model: string; readonly effort: string }, signal?: AbortSignal): Promise<void> { await request(api, `${base(operationId)}/start`, input, signal); }
 export async function sendAnalysisMessage(api: ClientApiCapability, operationId: string, text: string): Promise<void> { await request(api, `${base(operationId)}/message`, { text }); }
 export async function stopAnalysis(api: ClientApiCapability, operationId: string): Promise<void> { await request(api, `${base(operationId)}/stop`, {}); }
 export async function clearAnalysisArtifacts(api: ClientApiCapability, operationId: string): Promise<void> {
@@ -36,8 +36,8 @@ export async function clearAnalysisArtifacts(api: ClientApiCapability, operation
 export function subscribeAnalysis(api: ClientApiCapability, operationId: string, onEvent: (event: AnalysisEvent) => void): () => void {
   return api.subscribe("terminal", `${base(operationId)}/stream`, (message) => { try { const event = parseAnalysisEvent(JSON.parse(message.data)); if (event) onEvent(event); } catch {} });
 }
-async function request(api: ClientApiCapability, path: string, body: Record<string, string>): Promise<void> {
-  const response = await fetchOrThrow(api, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+async function request(api: ClientApiCapability, path: string, body: Record<string, string>, signal?: AbortSignal): Promise<void> {
+  const response = await fetchOrThrow(api, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), ...(signal ? { signal } : {}) });
   if (!response.ok) throw errorFrom(response.status, await response.json().catch(() => null));
 }
 // SDK api.fetch는 non-2xx에서 본문을 ApiError.body로 실어 throw한다 — 동결 오류 DTO를 복원해 코드 기반 분기를 가능하게 한다.

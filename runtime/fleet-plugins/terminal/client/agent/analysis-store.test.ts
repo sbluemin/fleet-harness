@@ -14,12 +14,12 @@ interface StreamHarness {
   readonly unsubscribeCount: () => number;
 }
 
-function createHarness(onPath?: (path: string) => Response | Promise<Response> | null): StreamHarness {
+function createHarness(onPath?: (path: string, init?: RequestInit) => Response | Promise<Response> | null): StreamHarness {
   let stream: ((event: MessageEvent<string>) => void) | null = null;
   let lastStream: ((event: MessageEvent<string>) => void) | null = null;
   let unsubscribeCount = 0;
-  const fetch = vi.fn(async (_pluginId: string, path: string) => {
-    const override = onPath?.(path);
+  const fetch = vi.fn(async (_pluginId: string, path: string, init?: RequestInit) => {
+    const override = onPath?.(path, init);
     if (override) return override;
     return new Response(path === "analysis/catalog" ? CATALOG_BODY : "{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
@@ -71,13 +71,13 @@ describe("per-operation analysis store", () => {
     harness.emit({ type: "complete" });
     expect(first.getSnapshot().busy).toBe(false);
 
-    // EXIT(모든 companion unmount)은 store를 건드리지 않으므로 대화·서버 세션을 보존해야 한다.
+    // EXIT only unmounts companions, so the shared conversation and server session remain alive.
     await Promise.resolve();
     expect(getAnalysisStore("operation-store-share", harness.api)).toBe(first);
     expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(false);
     expect(first.getSnapshot().entries.length).toBeGreaterThan(0);
 
-    // Operation 종료 경로만 서버 세션을 정리한다.
+    // Operation close owns disposal and server-session cleanup.
     disposeAnalysisStore("operation-store-share");
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(true));
   });
@@ -265,6 +265,57 @@ describe("per-operation analysis store", () => {
     expect(paths.some((path) => path.endsWith("/message"))).toBe(false);
     expect(store.getSnapshot()).toMatchObject({ started: false, busy: false, phase: "idle", entries: [], artifacts: [] });
     disposeAnalysisStore("operation-store-reset-during-start");
+  });
+
+  it("aborts a stalled start before disposal stops it and orders a replacement start after teardown", async () => {
+    let startCount = 0;
+    let firstStartSignal: AbortSignal | undefined;
+    const requestOrder: string[] = [];
+    const harness = createHarness((path, init) => {
+      if (path.endsWith("/stop")) {
+        requestOrder.push("stop");
+        return null;
+      }
+      if (!path.endsWith("/start")) return null;
+      startCount += 1;
+      if (startCount > 1) {
+        requestOrder.push("start-2");
+        return null;
+      }
+      requestOrder.push("start-1");
+      firstStartSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        firstStartSignal?.addEventListener("abort", () => {
+          requestOrder.push("abort-1");
+          reject(new DOMException("Analysis start aborted.", "AbortError"));
+        }, { once: true });
+      });
+    });
+    const first = getAnalysisStore("operation-store-dispose-during-start", harness.api);
+    await vi.waitFor(() => expect(first.getSnapshot().cliId).toBe("claude"));
+
+    const firstSend = first.send("Review this session");
+    await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1].endsWith("/start"))).toBe(true));
+    disposeAnalysisStore("operation-store-dispose-during-start");
+    expect(firstStartSignal?.aborted).toBe(true);
+    const replacement = getAnalysisStore("operation-store-dispose-during-start", harness.api);
+    expect(replacement).not.toBe(first);
+    await vi.waitFor(() => expect(replacement.getSnapshot().cliId).toBe("claude"));
+    const replacementSend = replacement.send("Start fresh");
+    await firstSend;
+    await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
+    harness.emit({ type: "connected" });
+    await replacementSend;
+
+    const paths = harness.fetch.mock.calls.map((call) => call[1]);
+    const stopIndex = paths.indexOf("analysis/operation-store-dispose-during-start/stop");
+    expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(2);
+    expect(stopIndex).toBeGreaterThan(paths.indexOf("analysis/operation-store-dispose-during-start/start"));
+    expect(stopIndex).toBeLessThan(paths.lastIndexOf("analysis/operation-store-dispose-during-start/start"));
+    expect(paths.filter((path) => path.endsWith("/message"))).toHaveLength(1);
+    expect(requestOrder).toEqual(["start-1", "abort-1", "stop", "start-2"]);
+    harness.emit({ type: "complete" });
+    disposeAnalysisStore("operation-store-dispose-during-start");
   });
 
   it("reports stop failure without leaving the store busy or subscribed", async () => {

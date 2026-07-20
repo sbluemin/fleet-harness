@@ -27,6 +27,11 @@ type AnalysisRouteDeps = {
   readonly readCapture?: typeof readProviderSessionCapture;
 };
 
+type InFlightStartDeletionMarker = {
+  readonly operationId: string;
+  deleted: boolean;
+};
+
 export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: AnalysisRouteDeps = {}): void {
   const registry = new AnalysisRegistry();
   const detect = deps.detect ?? createDefaultAgentCliDetector().detect;
@@ -34,6 +39,7 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
   const readCapture = deps.readCapture ?? readProviderSessionCapture;
   const createSession = deps.createSession ?? ((options) => new AnalystSession(options));
   const catalog = async (): Promise<AnalysisCatalog> => buildAnalysisCatalog(await detect(), modelsFor);
+  const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
 
   registerRouter(ctx, "analysis", async ({ req, res, pathname }) => {
     // The socket's bound local port is the only trustworthy expected Host port.
@@ -58,7 +64,15 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
       return true;
     }
     if (action === "ready") return handleReady(ctx, req, res, operation, readCapture);
-    if (action === "start") return handleStart(ctx, req, res, operation, registry, catalog, readCapture, createSession);
+    if (action === "start") {
+      const deletionMarker: InFlightStartDeletionMarker = { operationId, deleted: false };
+      inFlightStartDeletionMarkers.add(deletionMarker);
+      try {
+        return await handleStart(ctx, req, res, operation, registry, catalog, readCapture, createSession, deletionMarker);
+      } finally {
+        inFlightStartDeletionMarkers.delete(deletionMarker);
+      }
+    }
     if (action === "message") return handleMessage(ctx, req, res, operationId, registry);
     if (action === "stream") return handleStream(ctx, req, res, operationId, registry);
     return handleStop(ctx, req, res, operationId, registry);
@@ -66,6 +80,9 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
 
   const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
     if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) {
+      for (const marker of inFlightStartDeletionMarkers) {
+        if (marker.operationId === payload.operationId) marker.deleted = true;
+      }
       registry.clearArtifacts(payload.operationId);
       void registry.stop(payload.operationId);
     }
@@ -320,7 +337,7 @@ async function handleReady(ctx: FleetPluginServerContext, req: http.IncomingMess
   return true;
 }
 
-async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode, registry: AnalysisRegistry, catalog: () => Promise<AnalysisCatalog>, readCapture: typeof readProviderSessionCapture, createSession: (options: ConstructorParameters<typeof AnalystSession>[0]) => AnalystSession): Promise<boolean> {
+async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode, registry: AnalysisRegistry, catalog: () => Promise<AnalysisCatalog>, readCapture: typeof readProviderSessionCapture, createSession: (options: ConstructorParameters<typeof AnalystSession>[0]) => AnalystSession, deletionMarker: InFlightStartDeletionMarker): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
   const body = await ctx.host.http.readJsonBody(req);
@@ -344,14 +361,18 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
     return true;
   }
+  if (deletionMarker.deleted || !getAgentOperation(ctx, operation.id)) {
+    writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
+    return true;
+  }
   try {
     const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort || undefined, cwd, capturePath: transcriptPath, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
-    else if (result === "limit") writeError(ctx, res, 429, ANALYSIS_ERROR_CODES.sessionLimit, "Analysis session limit reached.");
     else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
     else ctx.host.http.writeJson(res, 200, { started: true });
   } catch {
-    writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");
+    if (deletionMarker.deleted) writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
+    else writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");
   }
   return true;
 }

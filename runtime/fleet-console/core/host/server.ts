@@ -303,6 +303,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const operationSseSubscribers = new Set<http.ServerResponse>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
+  function publishPluginEvent(channel: string, payload: unknown): void {
+    for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
+  }
+  // 모든 호스트 삭제 진입점은 삭제 성공 뒤 영속화와 단일 수명주기 발행을 이 경계에서 완료한다.
+  function deleteOperation(operationId: string): boolean {
+    const operation = operations.get(operationId);
+    if (!operation || !operations.delete(operationId)) return false;
+    persistDurableState();
+    publishPluginEvent(OPERATION_DELETED_EVENT_CHANNEL, {
+      operationId: operation.id,
+      pluginId: operation.pluginId,
+      type: operation.type,
+    });
+    return true;
+  }
   let desktopFullscreen = false;
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
@@ -327,11 +342,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }
         return operation;
       },
-      delete: (id) => {
-        const deleted = operations.delete(id);
-        if (deleted) persistDurableState();
-        return deleted;
-      },
+      delete: deleteOperation,
       registerOperationType: (type) => {
         pluginOperationTypes.add(type);
         return () => {
@@ -363,9 +374,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
     events: {
-      publish: (channel, payload) => {
-        for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
-      },
+      publish: publishPluginEvent,
       subscribe: (channel, listener) => {
         const listeners = pluginEventListeners.get(channel) ?? new Set<(payload: unknown) => void>();
         listeners.add(listener);
@@ -551,13 +560,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     persist: persistDurableState,
+    deleteOperation,
     getPluginSensitiveFields: (pluginId) => [
       ...(pluginHost.sensitiveFieldsByPluginId.get(pluginId) ?? []),
       ...(pluginPayloadSanitizers.get(pluginId) ?? []),
     ],
     resolveLaunchCatalog: resolveOperationCatalog,
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
-    publishDeleteEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, event),
     broadcastOperationChanged,
     subscribeOperationSse: (res) => {
       res.writeHead(200, withSecurityHeaders({
@@ -833,14 +842,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // Theater를 잊을 때 그 Theater가 소유한 root·nested Codex 워크스페이스를 모두 해제한다.
     // 다른 Theater가 같은 workspace id를 소유하면 등록을 유지한다.
     codex.unregisterTheaterWorkspaces(theaterId);
-    for (const operation of operations.listByTheater(theaterId)) {
-      pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, {
-        operationId: operation.id,
-        pluginId: operation.pluginId,
-        type: operation.type,
-      });
-    }
-    operations.deleteByTheater(theaterId);
+    for (const operation of operations.listByTheater(theaterId)) deleteOperation(operation.id);
+    operations.deleteGroupsByTheater(theaterId);
     persistDurableState();
     writeJson(res, 200, { ok: true });
   }
