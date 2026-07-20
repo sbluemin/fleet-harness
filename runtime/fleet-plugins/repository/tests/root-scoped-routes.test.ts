@@ -231,6 +231,44 @@ describe("Repository Theater-root Git routes", () => {
     expect(writes).toEqual([{ status: 400, payload: { error: "invalid_repo" } }]);
   });
 
+  it("rejects a repoRel whose gitfile points to a gitdir outside the Theater", async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-route-outside-"));
+    await runGit(["init"], { cwd: outsideRoot });
+    const impostor = path.join(fixture.theaterPath, "impostor-gitfile");
+    await fs.mkdir(impostor, { recursive: true });
+    await fs.writeFile(path.join(impostor, ".git"), `gitdir: ${path.join(outsideRoot, ".git")}\n`);
+    try {
+      const writes: JsonWrite[] = [];
+      await handleRepositoryChanged(
+        { method: "POST" } as never,
+        {} as never,
+        makeContext(fixture.theaterPath, { theaterId: "theater", repoRel: "impostor-gitfile" }, writes),
+      );
+      expect(writes).toEqual([{ status: 400, payload: { error: "invalid_repo" } }]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a repoRel whose .git symlink points outside the Theater", async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-route-symlink-"));
+    await runGit(["init"], { cwd: outsideRoot });
+    const impostor = path.join(fixture.theaterPath, "impostor-symlink");
+    await fs.mkdir(impostor, { recursive: true });
+    await fs.symlink(path.join(outsideRoot, ".git"), path.join(impostor, ".git"));
+    try {
+      const writes: JsonWrite[] = [];
+      await handleRepositoryChanged(
+        { method: "POST" } as never,
+        {} as never,
+        makeContext(fixture.theaterPath, { theaterId: "theater", repoRel: "impostor-symlink" }, writes),
+      );
+      expect(writes).toEqual([{ status: 400, payload: { error: "invalid_repo" } }]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
   it("changed returns Theater-root-relative paths and file opens the matching hunk", async () => {
     const changedWrites: JsonWrite[] = [];
     await handleRepositoryChanged(

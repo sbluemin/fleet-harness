@@ -6,6 +6,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "./git-executor.js";
+import { resolveContainedGitDir } from "./git-marker.js";
 import { parseWorktreePorcelainEntries } from "./log.js";
 import { isPathContained } from "./path-containment.js";
 import type { RepoCandidate, ReposResult } from "./types.js";
@@ -49,13 +50,11 @@ export async function scanRepos(
 ): Promise<boolean> {
   if (repos.length >= cap) return true;
 
-  try {
-    await fs.stat(path.join(dir, ".git"));
+  // gitdir까지 containment를 확인한다 — Theater 밖을 가리키는 마커는 후보로도 올리지 않는다.
+  if ((await resolveContainedGitDir(dir, realTheaterPath)) !== null) {
     const relPath = path.relative(realTheaterPath, dir);
     repos.push({ relPath, name: relPath === "" ? path.basename(realTheaterPath) : path.basename(dir), repoDir: dir });
     if (repos.length >= cap) return true;
-  } catch {
-    // Not a repository candidate.
   }
 
   if (currentDepth >= maxDepth) return false;
@@ -130,9 +129,15 @@ export async function handleRepositoryRepos(
   const seen = new Set<string>();
   let truncated = false;
 
-  let rootIsRepo = false;
-  try { await fs.stat(path.join(theaterPath, ".git")); rootIsRepo = true; }
-  catch { /* Theater root is not required to be a repository. */ }
+  let rootIsRepo = (await resolveContainedGitDir(realTheaterPath, realTheaterPath)) !== null;
+  if (!rootIsRepo) {
+    // Theater가 저장소 루트가 아니어도 상위 워크트리 안이면 기존 라우트는 그 cwd에서 계속 동작한다.
+    // 기본 컨텍스트 행을 빼면 중첩 저장소를 고른 뒤 원래 컨텍스트로 되돌아올 방법이 사라진다.
+    try {
+      const inside = await runGit(["rev-parse", "--is-inside-work-tree"], { cwd: theaterPath });
+      rootIsRepo = inside.stdout.trim() === "true";
+    } catch { /* Theater root is not required to be a repository. */ }
+  }
 
   if (rootIsRepo) {
     repos.push({ relPath: "", name: path.basename(theaterPath), branch: await resolveRepoBranch(theaterPath), kind: "root" });

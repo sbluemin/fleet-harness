@@ -5,6 +5,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
+import { resolveContainedGitDir } from "./git-marker.js";
 import { isPathContained } from "./path-containment.js";
 import type { DiffFileEntry, DiffFileMode } from "./types.js";
 
@@ -106,9 +107,8 @@ export async function resolveGitCwd(theaterPath: string, repoRel: unknown = ""):
   if (!isPathContained(realTheater, realRepo)) {
     throw new InvalidRepoError("Repository path escapes Theater");
   }
-  try {
-    await fs.stat(path.join(realRepo, ".git"));
-  } catch {
+  // 마커 존재만 확인하면 Theater 밖 gitdir을 가리키는 gitfile·심링크가 통과한다.
+  if ((await resolveContainedGitDir(realRepo, realTheater)) === null) {
     throw new InvalidRepoError("Repository marker does not exist");
   }
   return { gitCwd: realRepo };

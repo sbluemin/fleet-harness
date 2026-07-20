@@ -71,6 +71,49 @@ describe("Repository discovery route", () => {
     }
   });
 
+  it("excludes a nested repository whose gitfile points outside the Theater", async () => {
+    await initGitRepo(theaterPath, true);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-outside-gitdir-"));
+    await initGitRepo(outsideRoot, true);
+    const impostor = path.join(theaterPath, "impostor");
+    await fs.mkdir(impostor, { recursive: true });
+    await fs.writeFile(path.join(impostor, ".git"), `gitdir: ${path.join(outsideRoot, ".git")}\n`);
+    try {
+      const result = await discover(theaterPath);
+      expect(result.repos.map((repo) => repo.relPath)).toEqual([""]);
+      expect(JSON.stringify(result)).not.toContain(outsideRoot);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes a nested repository whose .git symlink points outside the Theater", async () => {
+    await initGitRepo(theaterPath, true);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-outside-symlink-"));
+    await initGitRepo(outsideRoot, true);
+    const impostor = path.join(theaterPath, "impostor");
+    await fs.mkdir(impostor, { recursive: true });
+    await fs.symlink(path.join(outsideRoot, ".git"), path.join(impostor, ".git"));
+    try {
+      expect((await discover(theaterPath)).repos.map((repo) => repo.relPath)).toEqual([""]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("includes the default context when the Theater is a subdirectory of a worktree", async () => {
+    await initGitRepo(theaterPath, true);
+    const subTheater = path.join(theaterPath, "sub");
+    await fs.mkdir(subTheater, { recursive: true });
+    await initGitRepo(path.join(subTheater, "nested"), true);
+
+    const result = await discover(subTheater);
+    expect(result.repos.map(({ relPath, kind }) => ({ relPath, kind }))).toEqual([
+      { relPath: "", kind: "root" },
+      { relPath: "nested", kind: "nested" },
+    ]);
+  });
+
   it("canonicalizes a symlinked Theater so a worktree is not duplicated as nested", async () => {
     await initGitRepo(theaterPath, true);
     const worktree = path.join(theaterPath, "linked-worktree");
