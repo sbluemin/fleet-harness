@@ -6,8 +6,8 @@ import { BrowserRouter } from "react-router-dom";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
-import { focusOperation, getState, hydrateOperations, setState } from "../core/client/src/store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
 const apiMocks = vi.hoisted(() => ({
@@ -234,6 +234,32 @@ describe("Operations boot minimization", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(getState().activeOperationId).toBe("initial");
     expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("restores and activates a minimized Operation before pending Map focus moves the viewport", async () => {
+    await bootApp([operation("initial")]);
+    expect(getSnapshot().minimized).toEqual(["initial"]);
+
+    const initialViewport = getSnapshot().viewport;
+    const activeIdsAtViewportChange: Array<string | null> = [];
+    const unsubscribe = subscribeCanvas(() => {
+      if (getSnapshot().viewport !== initialViewport) activeIdsAtViewportChange.push(getState().activeOperationId);
+    });
+    try {
+      await act(async () => {
+        focusOperation("initial");
+        // 자식 Canvas effect가 부모의 pending focus effect보다 먼저 활성 ID를 지우는 실제 순서를 재현한다.
+        setActiveOperation(null);
+        await Promise.resolve();
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getState().activeOperationId).toBe("initial");
+    expect(activeIdsAtViewportChange.at(-1)).toBe("initial");
+    expect(getState().keyboardFocusRequest).toEqual({ operationId: "initial", requestId: 1 });
   });
 
   it("advances the focus layer with Alt+Arrow while preserving Formation", async () => {

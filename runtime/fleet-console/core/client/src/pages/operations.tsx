@@ -116,17 +116,27 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     minimizeOperations(bootOperationIds.filter((id) => !protectedIds.has(id)));
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated]);
 
+  const focusMapOperation = useCallback((operationId: string) => {
+    const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
+    if (!operation) return;
+    const snapshot = getCanvasSnapshot();
+    const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
+    if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
+    // 복원과 활성화를 같은 동기 실행에서 끝내 Canvas의 최소화-active 정리 effect보다 먼저 상태를 확정한다.
+    restoreOperation(operationId);
+    setActiveOperation(operationId);
+    const viewportSize = viewportSizeFor(bodyRef.current);
+    if (viewportSize) focusCanvasOperation(operationId, viewportSize);
+  }, []);
+
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
   useEffect(() => {
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
-      const viewportSize = viewportSizeFor(bodyRef.current);
-      if (viewportSize) focusCanvasOperation(operationId, viewportSize);
-    });
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
     consumeOperationFocus();
-  }, [registry.operationKinds, state.pendingOperationFocus]);
+  }, [focusMapOperation, registry.operationKinds, state.pendingOperationFocus]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -165,16 +175,8 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       focusOperation(operationId);
       return;
     }
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
-      const snapshot = getCanvasSnapshot();
-      const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
-      if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
-      restoreOperation(operationId);
-      setActiveOperation(operationId);
-      const viewportSize = viewportSizeFor(bodyRef.current);
-      if (viewportSize) focusCanvasOperation(operationId, viewportSize);
-    });
-  }, [registry.operationKinds]);
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
+  }, [focusMapOperation, registry.operationKinds]);
 
   const handleMinimize = useCallback((operationId: string) => {
     if (stateRef.current.activeOperationId === operationId) setActiveOperation(null);
