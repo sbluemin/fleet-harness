@@ -3,7 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   buildKimiModelEnv,
   resolveKimiModelSelection,
+  resolveKimiModelSelectionFromOverride,
 } from "../src/agent-cli/kimi-model.js";
+
+describe("resolveKimiModelSelectionFromOverride", () => {
+  it("유효한 명시 모델/effort를 그대로 반환한다", () => {
+    expect(resolveKimiModelSelectionFromOverride("k3[1m]", "max")).toEqual({ model: "k3[1m]", effort: "max" });
+  });
+
+  it("레지스트리에 없는 자유 형식 모델은 throw 없이 레지스트리 기본 모델로 폴백한다", () => {
+    expect(resolveKimiModelSelectionFromOverride("kimi-next-gen")).toEqual({ model: "kimi-for-coding" });
+  });
+});
 
 describe("resolveKimiModelSelection", () => {
   it("설정 서비스가 없으면 레지스트리 기본 모델을 반환한다", () => {

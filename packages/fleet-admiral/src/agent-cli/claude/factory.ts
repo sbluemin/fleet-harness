@@ -1,7 +1,7 @@
 import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
 
 import { resolveAgentCliAuthEnv } from "../auth.js";
-import { resolveKimiModelSelection } from "../kimi-model.js";
+import { resolveKimiModelSelection, resolveKimiModelSelectionFromOverride } from "../kimi-model.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
@@ -22,7 +22,9 @@ export function createClaudeFamilyCliDefinition(
         profileOptions.authService,
         options.id === "claude-kimi"
           ? (profileOptions.model
-            ? { model: profileOptions.model }
+            // 명시적 모델이 레지스트리에 없는 자유 형식이면 env는 레지스트리 기본값으로 두고
+            // --model 인자만 전달해 종전 동작을 보존한다(getModelContextWindow throw 방지).
+            ? resolveKimiModelSelectionFromOverride(profileOptions.model)
             : resolveKimiModelSelection(profileOptions.globalOptionsService))
           : undefined,
       );
