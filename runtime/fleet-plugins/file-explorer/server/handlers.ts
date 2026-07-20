@@ -38,6 +38,7 @@ export async function handleFilesList(
 
   try {
     const result = await listTheaterContents(theaterPath, relPath);
+    await watcherRegistry.trackDirectory(rawTheaterId, theaterPath, result.relativePath);
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof FolderBrowserError) {

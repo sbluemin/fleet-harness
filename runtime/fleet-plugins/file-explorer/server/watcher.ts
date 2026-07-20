@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 
 // fs.FSWatcher 중 레지스트리가 실제로 쓰는 최소 계약 — 테스트 mock이 이 형태만 만족하면 된다
 export interface WatcherHandle {
@@ -23,10 +24,12 @@ export interface WatcherRegistry {
     onChange: WatchChangeCallback,
     onState: WatchStateCallback,
   ): () => void;
+  trackDirectory(theaterId: string, theaterPath: string, relativePath: string): Promise<void>;
 }
 
 interface WatcherEntry {
-  readonly watcher: WatcherHandle;
+  readonly recursive: boolean;
+  readonly watchers: Map<string, WatcherHandle>;
   readonly subscribers: Set<WatchChangeCallback>;
   readonly stateSubscribers: Set<WatchStateCallback>;
   subscriberCount: number;
@@ -35,6 +38,7 @@ interface WatcherEntry {
 
 // 서버 측 debounce 간격 — 이벤트 폭풍 흡수
 const DEBOUNCE_MS = 200;
+const LINUX_DIRECTORY_WATCH_CAP = 1_024;
 
 // 기본 싱글턴 레지스트리 — handlers.ts에서 사용 (함수 선언 호이스팅에 의존)
 export const watcherRegistry: WatcherRegistry = createWatcherRegistry();
@@ -43,8 +47,58 @@ export function createWatcherRegistry(
   watcherFactory: WatcherFactory = (p, opts, cb) =>
     fs.watch(p, opts, (ev, fn) => cb(ev, typeof fn === "string" ? fn : null)),
   debounceMs = DEBOUNCE_MS,
+  platform: NodeJS.Platform = process.platform,
 ): WatcherRegistry {
   const entries = new Map<string, WatcherEntry>();
+
+  function scheduleChange(entry: WatcherEntry, relDir: string): void {
+    const pending = entry.debounceTimers.get(relDir);
+    if (pending) clearTimeout(pending);
+    entry.debounceTimers.set(
+      relDir,
+      setTimeout(() => {
+        entry.debounceTimers.delete(relDir);
+        for (const sub of entry.subscribers) sub(relDir);
+      }, debounceMs),
+    );
+  }
+
+  function closeEntry(entry: WatcherEntry): void {
+    for (const timer of entry.debounceTimers.values()) clearTimeout(timer);
+    entry.debounceTimers.clear();
+    for (const watcher of entry.watchers.values()) {
+      try { watcher.close(); } catch { /* already closed */ }
+    }
+    entry.watchers.clear();
+  }
+
+  function startWatcher(
+    theaterId: string,
+    entry: WatcherEntry,
+    watchKey: string,
+    watchPath: string,
+  ): void {
+    const watcher = watcherFactory(watchPath, { recursive: entry.recursive }, (_, filename) => {
+      scheduleChange(entry, entry.recursive ? computeRelDir(filename) : watchKey);
+    });
+    entry.watchers.set(watchKey, watcher);
+
+    watcher.on("error", () => {
+      if (entry.watchers.get(watchKey) !== watcher) return;
+      try { watcher.close(); } catch { /* already closed */ }
+      entry.watchers.delete(watchKey);
+
+      if (watchKey === "") {
+        closeEntry(entry);
+        if (entries.get(theaterId) === entry) entries.delete(theaterId);
+      } else {
+        const pending = entry.debounceTimers.get(watchKey);
+        if (pending) clearTimeout(pending);
+        entry.debounceTimers.delete(watchKey);
+      }
+      for (const notify of entry.stateSubscribers) notify("degraded");
+    });
+  }
 
   function makeUnsubscribe(
     theaterId: string,
@@ -60,8 +114,7 @@ export function createWatcherRegistry(
       entry.stateSubscribers.delete(onState);
       entry.subscriberCount--;
       if (entry.subscriberCount <= 0) {
-        for (const t of entry.debounceTimers.values()) clearTimeout(t);
-        entry.watcher.close();
+        closeEntry(entry);
         // error 이후 교체된 새 entry를 지우지 않도록 동일 entry일 때만 제거한다
         if (entries.get(theaterId) === entry) entries.delete(theaterId);
       }
@@ -83,51 +136,76 @@ export function createWatcherRegistry(
       return makeUnsubscribe(theaterId, onChange, onState, existing);
     }
 
-    const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    const subscribers = new Set<WatchChangeCallback>();
-    const stateSubscribers = new Set<WatchStateCallback>();
+    const entry: WatcherEntry = {
+      // Linux의 recursive fs.watch fallback은 구독 시 전체 트리를 동기 순회한다.
+      // 대신 root와 실제로 조회된 디렉터리만 개별 비재귀 watcher로 추적한다.
+      recursive: platform !== "linux",
+      watchers: new Map(),
+      subscribers: new Set([onChange]),
+      stateSubscribers: new Set([onState]),
+      subscriberCount: 1,
+      debounceTimers: new Map(),
+    };
 
-    let watcher: WatcherHandle;
     try {
-      watcher = watcherFactory(theaterPath, { recursive: true }, (_, filename) => {
-        const relDir = computeRelDir(filename);
-        const pending = debounceTimers.get(relDir);
-        if (pending) clearTimeout(pending);
-        debounceTimers.set(
-          relDir,
-          setTimeout(() => {
-            debounceTimers.delete(relDir);
-            for (const sub of subscribers) sub(relDir);
-          }, debounceMs),
-        );
-      });
+      startWatcher(theaterId, entry, "", theaterPath);
     } catch {
       // fs.watch 미지원 플랫폼: graceful degrade — 감시 불가 상태만 알리고 연결 유지
       onState("degraded");
       return () => {};
     }
 
-    const entry: WatcherEntry = { watcher, subscribers, stateSubscribers, subscriberCount: 1, debounceTimers };
-
-    // 감시 런타임 오류(감시 대상 삭제 등): unhandled 'error'로 프로세스가 죽지 않도록
-    // 구독자 전원에게 degrade를 알리고 watcher를 정리한다. SSE 연결 자체는 유지된다.
-    watcher.on("error", () => {
-      for (const t of debounceTimers.values()) clearTimeout(t);
-      debounceTimers.clear();
-      try { watcher.close(); } catch { /* 이미 닫힌 경우 무시 */ }
-      // 교체된 새 entry를 지우지 않도록 동일 entry일 때만 제거한다
-      if (entries.get(theaterId) === entry) entries.delete(theaterId);
-      for (const notify of stateSubscribers) notify("degraded");
-    });
-
     entries.set(theaterId, entry);
-    subscribers.add(onChange);
-    stateSubscribers.add(onState);
     onState("watching");
     return makeUnsubscribe(theaterId, onChange, onState, entry);
   }
 
-  return { subscribe };
+  async function trackDirectory(theaterId: string, theaterPath: string, relativePath: string): Promise<void> {
+    const entry = entries.get(theaterId);
+    if (!entry || entry.recursive || relativePath === "" || entry.watchers.has(relativePath)) return;
+    if (entry.watchers.size >= LINUX_DIRECTORY_WATCH_CAP) {
+      for (const notify of entry.stateSubscribers) notify("degraded");
+      return;
+    }
+
+    const targetPath = await resolveTrackedDirectory(theaterPath, relativePath);
+    if (!targetPath) return;
+
+    // realpath 대기 중 구독이 끝났거나 같은 디렉터리가 먼저 등록됐을 수 있다.
+    if (
+      entries.get(theaterId) !== entry
+      || entry.watchers.has(relativePath)
+      || entry.watchers.size >= LINUX_DIRECTORY_WATCH_CAP
+    ) return;
+    try {
+      startWatcher(theaterId, entry, relativePath, targetPath);
+    } catch {
+      for (const notify of entry.stateSubscribers) notify("degraded");
+    }
+  }
+
+  return { subscribe, trackDirectory };
+}
+
+async function resolveTrackedDirectory(theaterPath: string, relativePath: string): Promise<string | null> {
+  const resolvedRoot = path.resolve(theaterPath);
+  const targetPath = path.resolve(resolvedRoot, relativePath);
+  if (!isWithinRoot(targetPath, resolvedRoot)) return null;
+
+  try {
+    const [realRoot, realTarget] = await Promise.all([
+      fs.promises.realpath(theaterPath),
+      fs.promises.realpath(targetPath),
+    ]);
+    return isWithinRoot(realTarget, realRoot) ? realTarget : null;
+  } catch {
+    return null;
+  }
+}
+
+function isWithinRoot(candidate: string, root: string): boolean {
+  const normalizedRoot = root.endsWith(path.sep) ? root : root + path.sep;
+  return candidate === root || candidate.startsWith(normalizedRoot);
 }
 
 function computeRelDir(filename: string | null): string {
