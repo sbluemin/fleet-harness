@@ -510,6 +510,57 @@ describe("createWatcherRegistry", () => {
     }
   });
 
+  it("Linux pending 디렉터리 rearm 스캔을 중첩 실행하지 않는다", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+    const childPath = path.join(tempRoot, "src");
+    fs.mkdirSync(childPath);
+    const callbacks: Array<(event: string, filename: string | null) => void> = [];
+    const closes: Array<ReturnType<typeof vi.fn>> = [];
+    const mockFactory: WatcherFactory = vi.fn().mockImplementation((_watchPath, _options, callback) => {
+      const close = vi.fn();
+      callbacks.push(callback);
+      closes.push(close);
+      return { close, on: vi.fn() };
+    });
+    const registry = createWatcherRegistry(mockFactory, 50, "linux");
+
+    try {
+      const unsub = registry.subscribe("t1", tempRoot, () => {}, () => {});
+      await registry.trackDirectory("t1", tempRoot, "src");
+      const nativeRealpath = fs.promises.realpath.bind(fs.promises);
+      let releaseMissingPath: () => void = () => {};
+      const missingPathGate = new Promise<void>((resolve) => { releaseMissingPath = resolve; });
+      let targetAttempts = 0;
+      const missingError = Object.assign(new Error("missing"), { code: "ENOENT" });
+      const realpathSpy = vi.spyOn(fs.promises, "realpath").mockImplementation(async (candidate) => {
+        if (String(candidate) === childPath) {
+          targetAttempts++;
+          if (targetAttempts === 1) await missingPathGate;
+          throw missingError;
+        }
+        return nativeRealpath(candidate);
+      });
+
+      fs.rmSync(childPath, { recursive: true });
+      callbacks[1]!("rename", "src");
+      await vi.waitFor(() => expect(closes[1]).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(targetAttempts).toBe(1));
+
+      // 처음 스캔이 대기 중일 때 이벤트 폭주는 후속 스캔 하나로 합쳐져야 한다.
+      for (let index = 0; index < 10; index++) callbacks[0]!("rename", "src");
+      expect(targetAttempts).toBe(1);
+
+      releaseMissingPath();
+      await vi.waitFor(() => expect(targetAttempts).toBe(2));
+      expect(realpathSpy).toHaveBeenCalledTimes(4);
+
+      realpathSpy.mockRestore();
+      unsub();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("Linux 하위 watcher에서 일반 파일 rename은 watcher를 닫지 않는다", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
     const childPath = path.join(tempRoot, "src");

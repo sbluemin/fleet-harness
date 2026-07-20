@@ -36,6 +36,8 @@ interface WatcherEntry {
   readonly stateSubscribers: Set<WatchStateCallback>;
   subscriberCount: number;
   readonly debounceTimers: Map<string, ReturnType<typeof setTimeout>>;
+  rearmRunning: boolean;
+  rearmRequested: boolean;
 }
 
 interface DirectoryIdentity {
@@ -86,26 +88,37 @@ export function createWatcherRegistry(
   }
 
   async function rearmPendingDirectories(theaterId: string, entry: WatcherEntry): Promise<void> {
-    for (const relativePath of entry.pendingDirectories) {
-      const target = await resolveTrackedDirectory(entry.theaterPath, relativePath);
-      if (!target) continue;
+    entry.rearmRequested = true;
+    if (entry.rearmRunning) return;
+    entry.rearmRunning = true;
 
-      // resolve 대기 중 구독이 끝났거나 다른 이벤트가 먼저 watcher를 복구했을 수 있다.
-      if (
-        entries.get(theaterId) !== entry
-        || !entry.pendingDirectories.has(relativePath)
-        || entry.watchers.has(relativePath)
-        || entry.watchers.size >= LINUX_DIRECTORY_WATCH_CAP
-      ) continue;
+    try {
+      while (entry.rearmRequested) {
+        entry.rearmRequested = false;
+        for (const relativePath of entry.pendingDirectories) {
+          const target = await resolveTrackedDirectory(entry.theaterPath, relativePath);
+          if (!target) continue;
 
-      try {
-        startWatcher(theaterId, entry, relativePath, target.path, target.identity);
-        entry.pendingDirectories.delete(relativePath);
-        // 재생성 자체는 상위 watcher가 감지하므로 새 디렉터리 내용을 다시 조회하도록 알린다.
-        scheduleChange(entry, relativePath);
-      } catch {
-        for (const notify of entry.stateSubscribers) notify("degraded");
+          // resolve 대기 중 구독이 끝났거나 다른 이벤트가 먼저 watcher를 복구했을 수 있다.
+          if (
+            entries.get(theaterId) !== entry
+            || !entry.pendingDirectories.has(relativePath)
+            || entry.watchers.has(relativePath)
+            || entry.watchers.size >= LINUX_DIRECTORY_WATCH_CAP
+          ) continue;
+
+          try {
+            startWatcher(theaterId, entry, relativePath, target.path, target.identity);
+            entry.pendingDirectories.delete(relativePath);
+            // 재생성 자체는 상위 watcher가 감지하므로 새 디렉터리 내용을 다시 조회하도록 알린다.
+            scheduleChange(entry, relativePath);
+          } catch {
+            for (const notify of entry.stateSubscribers) notify("degraded");
+          }
+        }
       }
+    } finally {
+      entry.rearmRunning = false;
     }
   }
 
@@ -233,6 +246,8 @@ export function createWatcherRegistry(
       stateSubscribers: new Set([onState]),
       subscriberCount: 1,
       debounceTimers: new Map(),
+      rearmRunning: false,
+      rearmRequested: false,
     };
 
     try {
