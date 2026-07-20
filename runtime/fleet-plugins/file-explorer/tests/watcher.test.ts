@@ -394,6 +394,42 @@ describe("createWatcherRegistry", () => {
     },
   );
 
+  it.runIf(process.platform !== "win32")(
+    "Linux에서는 내부 심볼릭 링크의 client path로 변경을 알린다",
+    async () => {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+      const targetPath = path.join(tempRoot, "packages", "app");
+      const linkPath = path.join(tempRoot, "link");
+      fs.mkdirSync(targetPath, { recursive: true });
+      fs.symlinkSync(targetPath, linkPath);
+      const callbacks = new Map<string, (event: string, filename: string | null) => void>();
+      const mockFactory: WatcherFactory = vi.fn().mockImplementation((watchPath, _options, callback) => {
+        callbacks.set(watchPath, callback);
+        return { close: vi.fn(), on: vi.fn() };
+      });
+      const registry = createWatcherRegistry(mockFactory, 50, "linux");
+      const onChange = vi.fn();
+
+      try {
+        const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
+        await registry.trackDirectory("t1", tempRoot, "link");
+
+        const realTargetPath = fs.realpathSync(targetPath);
+        expect(mockFactory).toHaveBeenLastCalledWith(
+          realTargetPath,
+          { recursive: false },
+          expect.any(Function),
+        );
+        callbacks.get(realTargetPath)!("change", "file.ts");
+        vi.advanceTimersByTime(100);
+        expect(onChange).toHaveBeenCalledWith("link");
+        unsub();
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("Linux 하위 watcher error는 root 감시를 유지하고 다음 조회에서 복구한다", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
     fs.mkdirSync(path.join(tempRoot, "src"));
