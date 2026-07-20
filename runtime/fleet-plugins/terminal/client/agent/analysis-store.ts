@@ -23,6 +23,7 @@ interface AnalysisStoreBinding {
 }
 
 const stores = new Map<string, AnalysisStore>();
+const disposalFlights = new Map<string, Promise<void>>();
 
 export function useAnalysisStore(context: OperationRenderContext): AnalysisStoreBinding {
   const store = getAnalysisStore(context.operationId, context.api);
@@ -121,11 +122,25 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
 
   const dispose = () => {
     if (disposed) return;
+    const previousDisposal = disposalFlights.get(operationId);
+    const pendingReset = resetFlight;
+    const pendingStop = stopFlight;
+    const pendingStart = startFlight;
     disposed = true;
     stores.delete(operationId);
     invalidateRun();
     listeners.clear();
-    if (state.started) void stopAnalysis(api, operationId).catch(() => {});
+    const flight = (async () => {
+      if (previousDisposal) await previousDisposal;
+      if (pendingReset) await pendingReset.catch(() => {});
+      if (pendingStop) await pendingStop.catch(() => {});
+      if (pendingStart) await pendingStart.catch(() => {});
+      await stopAnalysis(api, operationId);
+    })().catch(() => {});
+    disposalFlights.set(operationId, flight);
+    void flight.finally(() => {
+      if (disposalFlights.get(operationId) === flight) disposalFlights.delete(operationId);
+    });
   };
 
   const store: AnalysisStore = {
@@ -136,6 +151,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     },
     dispatch,
     send: async (text) => {
+      const previousDisposal = disposalFlights.get(operationId);
+      if (previousDisposal) await previousDisposal;
       if (resetFlight) {
         try { await resetFlight; } catch { return; }
       }

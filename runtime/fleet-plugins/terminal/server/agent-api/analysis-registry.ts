@@ -1,9 +1,8 @@
 import type { AnalysisEvent, AnalysisSession } from "./analysis-types.js";
 
-export const MAX_ANALYSIS_SESSIONS = 4;
 export const MAX_ANALYSIS_ARTIFACTS = 32;
-// Keep twice the maximum active working set (4 sessions × 32 artifacts) while bounding stopped history.
-export const MAX_TOTAL_ARTIFACTS = MAX_ANALYSIS_SESSIONS * MAX_ANALYSIS_ARTIFACTS * 2;
+// Active artifacts remain available; stopped-session history is bounded process-wide.
+export const MAX_STOPPED_ANALYSIS_ARTIFACTS = 256;
 type Subscriber = (event: AnalysisEvent) => void;
 type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; starting: boolean; messaging: boolean; stopped: boolean; disposePromise?: Promise<void> };
 type StoredArtifact = { readonly operationId: string; readonly html: string };
@@ -12,9 +11,8 @@ export class AnalysisRegistry {
   private readonly entries = new Map<string, Entry>();
   private readonly artifacts = new Map<string, StoredArtifact>();
 
-  async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession): Promise<"started" | "stopped" | "exists" | "limit"> {
+  async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession): Promise<"started" | "stopped" | "exists"> {
     if (this.entries.has(operationId)) return "exists";
-    if (this.entries.size >= MAX_ANALYSIS_SESSIONS) return "limit";
     let entry: Entry | undefined;
     const session = create((event) => {
       if (!entry || entry.stopped) return;
@@ -81,6 +79,7 @@ export class AnalysisRegistry {
     this.entries.delete(operationId);
     entry.stopped = true;
     entry.subscribers.clear();
+    this.pruneStoppedArtifacts();
     await this.disposeEntry(entry);
     return true;
   }
@@ -99,16 +98,19 @@ export class AnalysisRegistry {
         break;
       }
     }
-    while (this.artifacts.size > MAX_TOTAL_ARTIFACTS) {
-      let oldestInactiveArtifactId: string | undefined;
-      for (const [storedArtifactId, artifact] of this.artifacts) {
-        if (!this.entries.has(artifact.operationId)) {
-          oldestInactiveArtifactId = storedArtifactId;
-          break;
-        }
-      }
-      if (!oldestInactiveArtifactId) break;
-      this.artifacts.delete(oldestInactiveArtifactId);
+    this.pruneStoppedArtifacts();
+  }
+
+  private pruneStoppedArtifacts(): void {
+    let stoppedArtifactCount = 0;
+    for (const artifact of this.artifacts.values()) {
+      if (!this.entries.has(artifact.operationId)) stoppedArtifactCount += 1;
+    }
+    for (const [artifactId, artifact] of this.artifacts) {
+      if (stoppedArtifactCount <= MAX_STOPPED_ANALYSIS_ARTIFACTS) break;
+      if (this.entries.has(artifact.operationId)) continue;
+      this.artifacts.delete(artifactId);
+      stoppedArtifactCount -= 1;
     }
   }
 

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 
-import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_ANALYSIS_SESSIONS, MAX_TOTAL_ARTIFACTS } from "./analysis-registry.js";
+import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
 import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalystCliId } from "./analysis-types.js";
 
@@ -47,24 +47,24 @@ describe("Session Analyst server contract", () => {
     expect(ANALYSIS_ERROR_CODES.transcriptMissing).toBe("analysis_transcript_missing");
   });
 
-  it("caps sessions, serializes messages, and disposes idempotently", async () => {
+  it("starts more than four distinct sessions, serializes messages, and disposes idempotently", async () => {
     const registry = new AnalysisRegistry();
     let resolveTurn: (() => void) | undefined;
-    const sessions = Array.from({ length: MAX_ANALYSIS_SESSIONS }, () => ({
+    const sessions = Array.from({ length: 6 }, () => ({
       start: async () => undefined,
       send: () => new Promise<void>((resolve) => { resolveTurn = resolve; }),
       dispose: async () => undefined,
     }));
-    for (let index = 0; index < MAX_ANALYSIS_SESSIONS; index += 1) {
+    for (let index = 0; index < sessions.length; index += 1) {
       await expect(registry.start(`op-${index}`, () => sessions[index]! as never)).resolves.toBe("started");
     }
-    await expect(registry.start("overflow", () => sessions[0]! as never)).resolves.toBe("limit");
     await expect(registry.message("op-0", "hello")).resolves.toBe("accepted");
     await expect(registry.message("op-0", "again")).resolves.toBe("busy");
     resolveTurn?.();
     await Promise.resolve();
     await expect(registry.stop("op-0")).resolves.toBe(true);
     await expect(registry.stop("op-0")).resolves.toBe(false);
+    await registry.dispose();
   });
 
   it("streams a generic analysis_error without exposing send rejection details", async () => {
@@ -159,7 +159,7 @@ describe("Session Analyst server contract", () => {
   it("bounds stopped artifact history process-wide by evicting the oldest inactive artifacts", async () => {
     const registry = new AnalysisRegistry();
     const artifactIds: string[] = [];
-    const operationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+    const operationCount = Math.floor(MAX_STOPPED_ANALYSIS_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
 
     for (let operationIndex = 0; operationIndex < operationCount; operationIndex += 1) {
       const emit = await startArtifactSession(registry, `stopped-op-${operationIndex}`);
@@ -171,7 +171,7 @@ describe("Session Analyst server contract", () => {
       await registry.stop(`stopped-op-${operationIndex}`);
     }
 
-    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_STOPPED_ANALYSIS_ARTIFACTS);
     expect(registry.artifactHtml("stopped-0-0")).toBeNull();
     expect(registry.artifactHtml(`stopped-0-${MAX_ANALYSIS_ARTIFACTS - 1}`)).toBeNull();
     expect(registry.artifactHtml("stopped-1-0")).toBe("<p>stopped-1-0</p>");
@@ -183,7 +183,7 @@ describe("Session Analyst server contract", () => {
     const artifactIds = ["active-artifact"];
     const emitActive = await startArtifactSession(registry, "active-op");
     emitArtifact(emitActive, "active-artifact");
-    const stoppedOperationCount = Math.floor(MAX_TOTAL_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
+    const stoppedOperationCount = Math.floor(MAX_STOPPED_ANALYSIS_ARTIFACTS / MAX_ANALYSIS_ARTIFACTS) + 1;
 
     for (let operationIndex = 0; operationIndex < stoppedOperationCount; operationIndex += 1) {
       const operationId = `history-op-${operationIndex}`;
@@ -197,7 +197,7 @@ describe("Session Analyst server contract", () => {
     }
 
     expect(registry.artifactHtml("active-artifact")).toBe("<p>active-artifact</p>");
-    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_TOTAL_ARTIFACTS);
+    expect(artifactIds.filter((artifactId) => registry.artifactHtml(artifactId) !== null)).toHaveLength(MAX_STOPPED_ANALYSIS_ARTIFACTS + 1);
     expect(registry.artifactHtml("history-0-0")).toBeNull();
     await registry.dispose();
   });
@@ -313,13 +313,14 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    const dispose = vi.fn(async () => undefined);
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
       readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
-        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+        return { start: async () => undefined, send: async () => undefined, dispose };
       }) as never,
     });
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
@@ -353,6 +354,8 @@ describe("Session Analyst server contract", () => {
     expect(afterStop).toMatchObject({ status: 200, ended: true });
     expect(afterStop.body).toContain(html);
     expect(afterStop.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;');
+    expect(dispose).toHaveBeenCalledOnce();
+    dispose.mockClear();
 
     await router.call("DELETE", "/api/v1/plugins/terminal/analysis/op/artifacts");
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
@@ -361,6 +364,7 @@ describe("Session Analyst server contract", () => {
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
     emit?.({ type: "artifact", artifact: { id: "deleted-artifact", title: "Deleted artifact", html, createdAt: new Date(0).toISOString() } });
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
   });
