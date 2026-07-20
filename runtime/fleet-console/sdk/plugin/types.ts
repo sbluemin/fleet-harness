@@ -105,6 +105,7 @@ export interface CompanionPanelDescriptor {
   readonly id: string;
   readonly title: string;
   readonly hideCaption?: boolean;
+  readonly defaultHidden?: boolean;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 
@@ -142,6 +143,10 @@ export interface OperationRenderContext extends OperationContext {
   /** Requests host-owned companion panels without exposing Canvas implementation to plugins. */
   readonly onRequestCompanions?: (open: boolean) => void;
   readonly companionsOpen?: boolean;
+  /** Host-owned effective companion visibility; `undefined` denotes a host without per-panel visibility support. */
+  readonly hiddenCompanionPanelIds?: readonly string[];
+  /** Requests a volatile host-owned visibility override for one companion panel. */
+  readonly onSetCompanionPanelVisible?: (companionPanelId: string, visible: boolean) => void;
 }
 
 export interface FleetPluginManifest {

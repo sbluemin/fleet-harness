@@ -43,6 +43,11 @@ export function disposeAnalysisStore(operationId: string): void {
   stores.get(operationId)?.dispose();
 }
 
+// re-arm 전용 조회 API — dispose된 Operation의 store를 재생성하지 않아야 한다(orphan 방지).
+export function rearmAnalysisArtifacts(operationId: string): void {
+  stores.get(operationId)?.dispatch({ type: "artifacts-chip-rearm" });
+}
+
 const CONNECT_WAIT_MS = 2_000;
 const RESPONSE_TIMEOUT_MS = 120_000;
 

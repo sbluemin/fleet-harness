@@ -1970,6 +1970,13 @@
   min-height: 0;
 }
 
+/* companion 슬롯 수 변경만 부드럽게 재배치한다 — 일반 Map 드래그에는 위치 transition을 노출하지 않는다. */
+.operations-canvas.is-companion-layout .canvas-operation {
+  transition:
+    left var(--duration-slow) var(--ease-glide),
+    width var(--duration-slow) var(--ease-glide);
+}
+
 .canvas-operation.is-minimized {
   visibility: hidden;
   pointer-events: none;
@@ -2010,6 +2017,22 @@
 .canvas-companion-frame {
   display: flex;
   flex-direction: column;
+  animation: companion-frame-enter var(--duration-slow) var(--ease-glide) both;
+}
+
+@keyframes companion-frame-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operations-canvas.is-companion-layout .canvas-operation {
+    transition: none;
+  }
+
+  .canvas-companion-frame {
+    animation: none;
+  }
 }
 
 .canvas-companion-caption {
