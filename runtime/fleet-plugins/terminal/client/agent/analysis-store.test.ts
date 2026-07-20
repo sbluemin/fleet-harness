@@ -14,12 +14,12 @@ interface StreamHarness {
   readonly unsubscribeCount: () => number;
 }
 
-function createHarness(onPath?: (path: string) => Response | Promise<Response> | null): StreamHarness {
+function createHarness(onPath?: (path: string, init?: RequestInit) => Response | Promise<Response> | null): StreamHarness {
   let stream: ((event: MessageEvent<string>) => void) | null = null;
   let lastStream: ((event: MessageEvent<string>) => void) | null = null;
   let unsubscribeCount = 0;
-  const fetch = vi.fn(async (_pluginId: string, path: string) => {
-    const override = onPath?.(path);
+  const fetch = vi.fn(async (_pluginId: string, path: string, init?: RequestInit) => {
+    const override = onPath?.(path, init);
     if (override) return override;
     return new Response(path === "analysis/catalog" ? CATALOG_BODY : "{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
@@ -267,14 +267,29 @@ describe("per-operation analysis store", () => {
     disposeAnalysisStore("operation-store-reset-during-start");
   });
 
-  it("waits for an in-flight start before disposal stops it and lets a fresh store restart", async () => {
-    let resolveStart!: (response: Response) => void;
+  it("aborts a stalled start before disposal stops it and orders a replacement start after teardown", async () => {
     let startCount = 0;
-    const firstStartResponse = new Promise<Response>((resolve) => { resolveStart = resolve; });
-    const harness = createHarness((path) => {
+    let firstStartSignal: AbortSignal | undefined;
+    const requestOrder: string[] = [];
+    const harness = createHarness((path, init) => {
+      if (path.endsWith("/stop")) {
+        requestOrder.push("stop");
+        return null;
+      }
       if (!path.endsWith("/start")) return null;
       startCount += 1;
-      return startCount === 1 ? firstStartResponse : null;
+      if (startCount > 1) {
+        requestOrder.push("start-2");
+        return null;
+      }
+      requestOrder.push("start-1");
+      firstStartSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        firstStartSignal?.addEventListener("abort", () => {
+          requestOrder.push("abort-1");
+          reject(new DOMException("Analysis start aborted.", "AbortError"));
+        }, { once: true });
+      });
     });
     const first = getAnalysisStore("operation-store-dispose-during-start", harness.api);
     await vi.waitFor(() => expect(first.getSnapshot().cliId).toBe("claude"));
@@ -282,28 +297,23 @@ describe("per-operation analysis store", () => {
     const firstSend = first.send("Review this session");
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1].endsWith("/start"))).toBe(true));
     disposeAnalysisStore("operation-store-dispose-during-start");
+    expect(firstStartSignal?.aborted).toBe(true);
     const replacement = getAnalysisStore("operation-store-dispose-during-start", harness.api);
     expect(replacement).not.toBe(first);
     await vi.waitFor(() => expect(replacement.getSnapshot().cliId).toBe("claude"));
     const replacementSend = replacement.send("Start fresh");
-    await Promise.resolve();
-
-    let paths = harness.fetch.mock.calls.map((call) => call[1]);
-    expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(1);
-    expect(paths.some((path) => path.endsWith("/stop"))).toBe(false);
-
-    resolveStart(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
     await firstSend;
     await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
     harness.emit({ type: "connected" });
     await replacementSend;
 
-    paths = harness.fetch.mock.calls.map((call) => call[1]);
+    const paths = harness.fetch.mock.calls.map((call) => call[1]);
     const stopIndex = paths.indexOf("analysis/operation-store-dispose-during-start/stop");
     expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(2);
     expect(stopIndex).toBeGreaterThan(paths.indexOf("analysis/operation-store-dispose-during-start/start"));
     expect(stopIndex).toBeLessThan(paths.lastIndexOf("analysis/operation-store-dispose-during-start/start"));
     expect(paths.filter((path) => path.endsWith("/message"))).toHaveLength(1);
+    expect(requestOrder).toEqual(["start-1", "abort-1", "stop", "start-2"]);
     harness.emit({ type: "complete" });
     disposeAnalysisStore("operation-store-dispose-during-start");
   });

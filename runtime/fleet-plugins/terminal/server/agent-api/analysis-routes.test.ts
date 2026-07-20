@@ -220,6 +220,63 @@ describe("Session Analyst server contract", () => {
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined }));
   });
 
+  it("disposes a registry entry when its Operation is deleted during pending start", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-pending-delete-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let resolveStart!: () => void;
+    const dispose = vi.fn(async () => undefined);
+    const createSession = vi.fn(() => ({
+      start: () => new Promise<void>((resolve) => { resolveStart = resolve; }),
+      send: async () => undefined,
+      dispose,
+    }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    resolveStart();
+    await starting;
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+  });
+
+  it("does not register a session when its Operation is deleted before the final start check", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-pre-registration-delete-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const statuses = [{ id: "claude", displayName: "Claude Code", available: true, version: null }] as const;
+    let resolveDetect!: (value: typeof statuses) => void;
+    const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
+    const detect = vi.fn(() => detection);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      detect,
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledOnce());
+    router.deleteOperation();
+    resolveDetect(statuses);
+    await starting;
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
   it("reports analysis as not ready when no provider capture exists", async () => {
     const router = createRouterHarness(true);
     registerAnalysisRoutes(router.ctx as never, { readCapture: () => null });
@@ -509,7 +566,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
   let operationDeletedHandler: ((payload: unknown) => void) | undefined;
   const responses: Array<{ status: number; body: unknown }> = [];
-  const state = { allowHost: initialHostAllowance };
+  const state = { allowHost: initialHostAllowance, operationPresent: true };
   const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
   const ctx = {
     pluginId: "terminal", basePath: "/api/v1/plugins/terminal",
@@ -520,7 +577,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
         isTerminalAuthorized: (req: { headers: Record<string, string> }) => req.headers.origin !== "https://evil.example",
       },
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
-      operations: { get: (id: string) => id === "op" ? operation : null },
+      operations: { get: (id: string) => state.operationPresent && id === "op" ? operation : null },
       paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
       events: { subscribe: (_channel: string, subscriber: (payload: unknown) => void) => { operationDeletedHandler = subscriber; return () => { operationDeletedHandler = undefined; }; } }, lifecycle: { registerCleanup: () => () => undefined },
     },
@@ -528,6 +585,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
   return {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
+    deleteOperation() { state.operationPresent = false; },
     emitOperationDeleted(payload: unknown) { operationDeletedHandler?.(payload); },
     async call(method: string, pathname: string, body?: unknown, headers: Record<string, string> = {}) {
       const writes: string[] = [];

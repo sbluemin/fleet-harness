@@ -52,6 +52,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
   let unsubscribe: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
   let startFlight: Promise<void> | null = null;
+  let startController: AbortController | null = null;
   let stopFlight: Promise<void> | null = null;
   let resetFlight: Promise<void> | null = null;
   let streamGeneration = 0;
@@ -126,15 +127,17 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     const pendingReset = resetFlight;
     const pendingStop = stopFlight;
     const pendingStart = startFlight;
+    const pendingStartController = startController;
     disposed = true;
     stores.delete(operationId);
     invalidateRun();
     listeners.clear();
+    pendingStartController?.abort();
     const flight = (async () => {
       if (previousDisposal) await previousDisposal;
+      if (pendingStart) await pendingStart.catch(() => {});
       if (pendingReset) await pendingReset.catch(() => {});
       if (pendingStop) await pendingStop.catch(() => {});
-      if (pendingStart) await pendingStart.catch(() => {});
       await stopAnalysis(api, operationId);
     })().catch(() => {});
     disposalFlights.set(operationId, flight);
@@ -164,7 +167,9 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       const selection = { cliId: state.cliId, model: state.model, effort: state.effort };
       dispatch({ type: "sending", started: starting, text: trimmed, now: Date.now() });
       if (starting) {
-        const flight = startAnalysis(api, operationId, selection);
+        const controller = new AbortController();
+        const flight = startAnalysis(api, operationId, selection, controller.signal);
+        startController = controller;
         startFlight = flight;
         try {
           await flight;
@@ -177,6 +182,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
             return;
           }
         } finally {
+          if (startController === controller) startController = null;
           if (startFlight === flight) startFlight = null;
         }
         if (disposed || generation !== runGeneration || !state.started) return;

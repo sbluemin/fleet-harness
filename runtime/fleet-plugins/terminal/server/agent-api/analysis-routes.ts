@@ -344,6 +344,10 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
     return true;
   }
+  if (!getAgentOperation(ctx, operation.id)) {
+    writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
+    return true;
+  }
   try {
     const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort || undefined, cwd, capturePath: transcriptPath, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");

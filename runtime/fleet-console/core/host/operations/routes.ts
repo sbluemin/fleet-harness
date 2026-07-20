@@ -10,8 +10,8 @@ export interface OperationsRouterDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, payload: unknown) => void;
   readonly persist: () => void;
+  readonly deleteOperation: (id: string) => boolean;
   readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
-  readonly publishDeleteEvent?: (event: OperationDeleteEvent) => void;
   readonly broadcastOperationChanged?: (node: OperationNode) => void;
   readonly subscribeOperationSse?: (res: http.ServerResponse) => void;
   readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
@@ -26,12 +26,6 @@ type OperationRenameEvent = {
   readonly type: string;
   readonly title: string;
   readonly previousTitle: string;
-};
-
-type OperationDeleteEvent = {
-  readonly operationId: string;
-  readonly pluginId: string;
-  readonly type: string;
 };
 
 type CreateOperationBody = Partial<OperationCreateInput>;
@@ -142,18 +136,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     return;
   }
   if (req.method === "DELETE") {
-    const existing = deps.store.get(id);
-    const deleted = deps.store.delete(id);
-    if (deleted) {
-      deps.persist();
-      if (existing) {
-        deps.publishDeleteEvent?.({
-          operationId: existing.id,
-          pluginId: existing.pluginId,
-          type: existing.type,
-        });
-      }
-    }
+    const deleted = deps.deleteOperation(id);
     deps.writeJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "operation_not_found" });
     return;
   }

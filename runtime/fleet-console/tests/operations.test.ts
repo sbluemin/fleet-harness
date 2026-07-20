@@ -92,6 +92,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
+      deleteOperation: (id) => store.delete(id),
       getPluginSensitiveFields: (pluginId) => (pluginId === "terminal" ? ["pluginSecret", "providerTitle"] : []),
     });
 
@@ -136,6 +137,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
+      deleteOperation: (id) => store.delete(id),
     });
 
     requestBody = { accent: "blue" };
@@ -169,6 +171,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
+      deleteOperation: (id) => store.delete(id),
       resolveLaunchCatalog: async () => ({
         plugins: [
           {
