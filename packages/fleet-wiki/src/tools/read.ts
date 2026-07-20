@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import { wrapWikiEntryBoundary, wrapWikiRawSourceBoundary, FLEET_WIKI_BOUNDARY_GUIDELINES } from "../boundaries.js";
 import { dedupeStrings, estimateTokens } from "../internal-utils.js";
 import { extractWikiLinks } from "../links.js";
@@ -184,7 +182,7 @@ async function buildReadEntryResult(
     rawSourceRef: entry.rawSourceRef,
     rawSourceRefs,
     source: {
-      path: path.join("wiki", `${entry.id}.md`),
+      path: `wiki/${entry.id}.md`,
       rawSourceRef: entry.rawSourceRef,
       rawSourceRefs,
     },
@@ -323,7 +321,7 @@ function buildRelatedEntries(entry: WikiEntry, graph: LinkGraph): WikiReadRelate
     deduped.set(candidate.id, {
       id: relatedEntry.id,
       title: relatedEntry.title,
-      path: path.join("wiki", `${relatedEntry.id}.md`),
+      path: `wiki/${relatedEntry.id}.md`,
       reason: candidate.reason,
     });
   }

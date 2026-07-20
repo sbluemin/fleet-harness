@@ -495,8 +495,8 @@ describe("wiki drydock", () => {
 
     const report = await runDryDock(paths);
 
-    expect(report.issues.some((issue) => issue.code === "conflict_unresolved" && issue.path.endsWith(`${created.meta.id}/meta.json`))).toBe(true);
-    expect(report.issues.some((issue) => issue.code === "unresolved_conflict" && issue.path.endsWith("broken/meta.json"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "conflict_unresolved" && issue.path.endsWith(path.join(created.meta.id, "meta.json")))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "unresolved_conflict" && issue.path.endsWith(path.join("broken", "meta.json")))).toBe(true);
   });
 
   it("emits semantic warning and info codes without failing ok when no error exists", async () => {
