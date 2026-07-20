@@ -16,10 +16,10 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
       pluginId: "test-plugin",
       type: "shell",
       title: "Test",
-      render: ({ operationId, companionsOpen, onRequestCompanions }: { readonly operationId: string; readonly companionsOpen?: boolean; readonly onRequestCompanions?: (open: boolean) => void }) => createElement("button", { "data-plugin-operation": operationId, "data-companions-open": String(companionsOpen), onClick: () => onRequestCompanions?.(!companionsOpen) }, "Toggle companions"),
+      render: ({ operationId, companionsOpen, keyboardFocusRequestId, onRequestCompanions }: { readonly operationId: string; readonly companionsOpen?: boolean; readonly keyboardFocusRequestId?: number; readonly onRequestCompanions?: (open: boolean) => void }) => createElement("button", { "data-plugin-operation": operationId, "data-companions-open": String(companionsOpen), "data-keyboard-focus-request": keyboardFocusRequestId, onClick: () => onRequestCompanions?.(!companionsOpen) }, "Toggle companions"),
       companions: [
-        { id: "chat", title: "Chat", render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "chat", "data-companions-open": String(companionsOpen) }) },
-        { id: "artifacts", title: "Artifacts", hideCaption: true, render: ({ companionsOpen }: { readonly companionsOpen?: boolean }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen) }) },
+        { id: "chat", title: "Chat", render: ({ companionsOpen, keyboardFocusRequestId }: { readonly companionsOpen?: boolean; readonly keyboardFocusRequestId?: number }) => createElement("div", { "data-test-companion": "chat", "data-companions-open": String(companionsOpen), "data-keyboard-focus-request": keyboardFocusRequestId }) },
+        { id: "artifacts", title: "Artifacts", hideCaption: true, render: ({ companionsOpen, keyboardFocusRequestId }: { readonly companionsOpen?: boolean; readonly keyboardFocusRequestId?: number }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen), "data-keyboard-focus-request": keyboardFocusRequestId }) },
       ],
     }],
     settingsSections: [],
@@ -211,10 +211,16 @@ describe("CanvasMinimap collapse behavior", () => {
   });
 
   it("passes the companion callback through render context and restores Map geometry on exit", () => {
-    renderOperationsCanvas();
+    renderOperationsCanvas({
+      ...CANVAS_STATE,
+      keyboardFocusRequest: { operationId: "operation", requestId: 7 },
+    });
     const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
     const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
     const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
+
+    expect(targetBody?.getAttribute("data-keyboard-focus-request")).toBe("7");
+    expect(document.querySelector('[data-plugin-operation="peer"]')?.getAttribute("data-keyboard-focus-request")).toBe("0");
 
     act(() => targetBody?.click());
 
@@ -222,6 +228,7 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
     expect(document.querySelectorAll(".canvas-companion-frame")).toHaveLength(2);
     expect(document.querySelectorAll('[data-test-companion][data-companions-open="true"]')).toHaveLength(2);
+    expect([...document.querySelectorAll('[data-test-companion]')].every((element) => !element.hasAttribute("data-keyboard-focus-request"))).toBe(true);
     expect(document.querySelector('[data-plugin-operation="operation"]')).toBe(targetBody);
     expect(getComputedStyle(peer!).visibility).toBe("hidden");
     expect(Number.parseFloat(targetFrame?.style.width ?? "0")).toBeCloseTo((900 - 16) / 3, 0);
@@ -406,6 +413,7 @@ const CANVAS_STATE: ConsoleState = {
   onboardingOpen: false,
   bootstrapped: true,
   pendingOperationFocus: null,
+  keyboardFocusRequest: null,
   operationNotifications: {},
   notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
   codexReader: null,

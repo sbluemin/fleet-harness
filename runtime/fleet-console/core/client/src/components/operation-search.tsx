@@ -59,6 +59,8 @@ export function OperationSearch({ state }: OperationSearchProps) {
   if (!state.operationSearchOpen) return null;
 
   const selectEntry = (operationId: string) => {
+    // 선택은 대상 Operation으로 키보드 포커스를 넘기므로 닫힘 cleanup이 이전 UI 포커스를 되찾지 않게 한다.
+    previousFocusRef.current = null;
     // 최대화 해제는 이동 경로(operations.tsx의 pendingOperationFocus 소비)에 위임한다 — 최대화 중이면 유지·교체.
     focusOperation(operationId);
     navigate("/operations");

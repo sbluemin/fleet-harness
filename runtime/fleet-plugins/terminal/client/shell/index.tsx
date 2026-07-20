@@ -42,6 +42,7 @@ function ShellOperationView({ context }: { readonly context: OperationRenderCont
     <TerminalSurface
       operationId={context.operationId}
       active={context.active}
+      keyboardFocusRequestId={context.keyboardFocusRequestId}
       zoom={context.zoom}
       ticketPath={SHELL_TICKET_PATH}
       wsPath={SHELL_WS_PATH}

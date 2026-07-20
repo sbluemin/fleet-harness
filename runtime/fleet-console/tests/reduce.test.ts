@@ -70,6 +70,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     onboardingOpen: false,
     bootstrapped: true,
     pendingOperationFocus: null,
+    keyboardFocusRequest: null,
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     ...patch,

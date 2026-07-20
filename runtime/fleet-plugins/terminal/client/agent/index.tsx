@@ -427,6 +427,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         ticketPath={AGENT_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
         active={context.active}
+        keyboardFocusRequestId={context.keyboardFocusRequestId}
         zoom={context.zoom}
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}

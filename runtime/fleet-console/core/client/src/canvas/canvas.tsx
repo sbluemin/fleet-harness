@@ -39,6 +39,7 @@ interface ContextMenuRequest {
 
 interface PluginOperationRendererProps {
   readonly active: boolean;
+  readonly keyboardFocusRequestId?: number;
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly geometry: OperationGeometry;
   readonly operation: OperationNode;
@@ -225,6 +226,9 @@ export function OperationsCanvas({
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
+            keyboardFocusRequestId: state.keyboardFocusRequest?.operationId === operation.id
+              ? state.keyboardFocusRequest.requestId
+              : 0,
             geometry: frameGeometry,
             topEdge,
             operationKindRegistry,
@@ -437,6 +441,7 @@ function operationAccentFromNode(operation: OperationNode): string | null {
 
 function renderPluginOperation(operation: OperationNode, options: {
   readonly active: boolean;
+  readonly keyboardFocusRequestId: number;
   readonly geometry: OperationGeometry;
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
   readonly status?: OperationActivity;
@@ -501,6 +506,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
           <PluginOperationRenderer
             active={options.active}
+            keyboardFocusRequestId={options.keyboardFocusRequestId}
             capabilities={capabilities}
             geometry={geometry}
             operation={operation}
@@ -541,6 +547,7 @@ function renderPluginOperation(operation: OperationNode, options: {
 
 function PluginOperationRenderer({
   active,
+  keyboardFocusRequestId,
   capabilities,
   geometry,
   operation,
@@ -561,6 +568,7 @@ function PluginOperationRenderer({
     operation,
     geometry,
     active,
+    ...(keyboardFocusRequestId === undefined ? {} : { keyboardFocusRequestId }),
     zoom: viewportZoom,
     theme,
     api: capabilities.api,

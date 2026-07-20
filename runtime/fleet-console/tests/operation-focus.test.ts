@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { focusCycleOperationIds, nextOperationId } from "../core/client/src/store.js";
+import { focusCycleOperationIds, getState, nextOperationId, requestOperationKeyboardFocus, setState } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 function makeOperation(id: string, groupId: string | null = null, createdAt = 1): OperationNode {
@@ -87,4 +87,19 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(nextOperationId(order, null, -1)).toBe("ungrouped");
   });
 
+});
+
+describe("Operation keyboard focus requests", () => {
+  it("increments exactly once per request, including repeated requests for the same Operation", () => {
+    setState({ keyboardFocusRequest: null });
+
+    requestOperationKeyboardFocus("same-operation");
+    expect(getState().keyboardFocusRequest).toEqual({ operationId: "same-operation", requestId: 1 });
+
+    requestOperationKeyboardFocus("same-operation");
+    expect(getState().keyboardFocusRequest).toEqual({ operationId: "same-operation", requestId: 2 });
+
+    requestOperationKeyboardFocus("other-operation");
+    expect(getState().keyboardFocusRequest).toEqual({ operationId: "other-operation", requestId: 3 });
+  });
 });
