@@ -50,6 +50,7 @@ type Listener = () => void;
 type FocusLayerState =
   | { readonly mode: "maximized"; readonly operationId: string }
   | { readonly mode: "companion"; readonly operationId: string; readonly returnTo: "underlay" | "maximized" };
+type CompanionPanelVisibilityOverrides = Record<string, Readonly<Record<string, boolean>>>;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
 const FORMATION_LAYOUT_STORAGE_KEY = "fleet-console.formation-layout";
@@ -74,6 +75,7 @@ const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, o
 
 const listeners = new Set<Listener>();
 const focusLayerListeners = new Set<Listener>();
+const companionPanelVisibilityListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
 const formationLayoutListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
@@ -83,6 +85,7 @@ let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let focusLayer: FocusLayerState | null = null;
 let focusLayerRevision = 0;
+let companionPanelVisibilityOverrides: CompanionPanelVisibilityOverrides = {};
 let formationView = false;
 let formationLayout = readStoredFormationLayout();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
@@ -150,6 +153,25 @@ export function useMaximizedOperationId(): string | null {
 
 export function useCompanionOperationId(): string | null {
   return useSyncExternalStore(subscribeFocusLayer, getCompanionOperationId, getCompanionOperationId);
+}
+
+export function getCompanionPanelVisibilityOverrides(operationId: string): Readonly<Record<string, boolean>> {
+  return companionPanelVisibilityOverrides[operationId] ?? {};
+}
+
+export function useCompanionPanelVisibilityOverrides(operationId: string | null): Readonly<Record<string, boolean>> {
+  const snapshot = useSyncExternalStore(subscribeCompanionPanelVisibility, getCompanionPanelVisibilitySnapshot, getCompanionPanelVisibilitySnapshot);
+  return operationId === null ? {} : snapshot[operationId] ?? {};
+}
+
+export function setCompanionPanelVisible(operationId: string, companionPanelId: string, visible: boolean): void {
+  const current = companionPanelVisibilityOverrides[operationId] ?? {};
+  if (current[companionPanelId] === visible) return;
+  companionPanelVisibilityOverrides = {
+    ...companionPanelVisibilityOverrides,
+    [operationId]: { ...current, [companionPanelId]: visible },
+  };
+  emitCompanionPanelVisibility();
 }
 
 export function useFormationView(): boolean {
@@ -499,6 +521,8 @@ export function clearMaximizedOperationId(): void {
 }
 
 export function setCompanionOperationId(operationId: string): void {
+  // ANALYZE 진입마다 descriptor 기본 가시성에서 다시 시작하고, 플러그인이 현재 artifact 상태로 보정한다.
+  clearCompanionPanelVisibilityOverrides(operationId);
   const returnTo = focusLayer?.mode === "companion"
     ? focusLayer.returnTo
     : focusLayer?.mode === "maximized" ? "maximized" : "underlay";
@@ -507,6 +531,11 @@ export function setCompanionOperationId(operationId: string): void {
 }
 
 function setFocusLayer(nextFocusLayer: FocusLayerState): void {
+  // companion 대상이 다른 레이어로 교체되는 전이(retarget·maximize)도 이전 대상의
+  // 가시성 오버라이드를 정리한다 — Theater 전환 보존은 이 함수를 타지 않는다.
+  if (focusLayer?.mode === "companion" && !(nextFocusLayer.mode === "companion" && nextFocusLayer.operationId === focusLayer.operationId)) {
+    clearCompanionPanelVisibilityOverrides(focusLayer.operationId);
+  }
   const minimized = state.minimized.filter((sessionId) => sessionId !== nextFocusLayer.operationId);
   const minimizedChanged = !stringArraysEqual(state.minimized, minimized);
   const focusLayerChanged = !focusLayersEqual(focusLayer, nextFocusLayer);
@@ -529,13 +558,16 @@ export function clearCompanionOperationId(): void {
     if (focusLayer) focusLayersByTheater.set(activeTheaterId, focusLayer);
     else focusLayersByTheater.delete(activeTheaterId);
   }
+  clearCompanionPanelVisibilityOverrides(closingLayer.operationId);
   emitFocusLayer();
 }
 
 export function forceDropCompanionOperationId(): void {
   if (focusLayer?.mode !== "companion") return;
+  const closingOperationId = focusLayer.operationId;
   focusLayer = null;
   if (activeTheaterId) focusLayersByTheater.delete(activeTheaterId);
+  clearCompanionPanelVisibilityOverrides(closingOperationId);
   emitFocusLayer();
 }
 
@@ -623,6 +655,29 @@ function subscribeFocusLayer(listener: Listener): () => void {
   return () => {
     focusLayerListeners.delete(listener);
   };
+}
+
+function subscribeCompanionPanelVisibility(listener: Listener): () => void {
+  companionPanelVisibilityListeners.add(listener);
+  return () => {
+    companionPanelVisibilityListeners.delete(listener);
+  };
+}
+
+function getCompanionPanelVisibilitySnapshot(): CompanionPanelVisibilityOverrides {
+  return companionPanelVisibilityOverrides;
+}
+
+function emitCompanionPanelVisibility(): void {
+  for (const listener of companionPanelVisibilityListeners) listener();
+}
+
+function clearCompanionPanelVisibilityOverrides(operationId: string): void {
+  if (!(operationId in companionPanelVisibilityOverrides)) return;
+  const remaining = { ...companionPanelVisibilityOverrides };
+  delete remaining[operationId];
+  companionPanelVisibilityOverrides = remaining;
+  emitCompanionPanelVisibility();
 }
 
 function emitFormationView(): void {

@@ -9,7 +9,7 @@ import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../s
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -50,6 +50,8 @@ interface PluginOperationRendererProps {
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onRequestCompanions: (open: boolean) => void;
   readonly companionsOpen: boolean;
+  readonly hiddenCompanionPanelIds: readonly string[];
+  readonly onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 
@@ -77,6 +79,7 @@ export function OperationsCanvas({
   const formationView = useFormationView();
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
+  const companionPanelVisibilityOverrides = useCompanionPanelVisibilityOverrides(companionOperationId);
   const lastValidCompanionRef = useRef<{ readonly operation: OperationNode; readonly descriptor: OperationKindDescriptor } | null>(null);
   const minimized = useMinimized();
   const activePluginOperationId = state.activeOperationId;
@@ -157,6 +160,8 @@ export function OperationsCanvas({
   const companionOperation = currentCompanionOperation ?? preservedCompanion?.operation;
   const companionDescriptor = currentCompanionDescriptor ?? preservedCompanion?.descriptor;
   const companionPanels = companionDescriptor?.companions ?? [];
+  const visibleCompanionPanels = companionPanels.filter((panel) => companionPanelVisibilityOverrides[panel.id] ?? !panel.defaultHidden);
+  const hiddenCompanionPanelIds = companionPanels.filter((panel) => !visibleCompanionPanels.includes(panel)).map((panel) => panel.id);
   const panelCompanion = companionOperation && companionPanels.length > 0 ? companionOperation.id : null;
   const currentPanelCompanion = currentCompanionOperation && currentCompanionDescriptor?.companions?.length ? currentCompanionOperation.id : null;
   const pluginOperations = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
@@ -184,7 +189,7 @@ export function OperationsCanvas({
   // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
   const effectiveZoom = panelMaximized || panelCompanion || formationView ? 1 : canvas.viewport.zoom;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
-  const companionSlotCount = companionPanels.length + 1;
+  const companionSlotCount = visibleCompanionPanels.length + 1;
 
   return (
     <main
@@ -238,8 +243,9 @@ export function OperationsCanvas({
             minimized: minimizedSet.has(operation.id),
             maximized: operationMaximized,
             companion: operationCompanion,
-            companions: operationCompanion ? companionPanels : [],
-            companionGeometries: operationCompanion ? companionPanels.map((_, index) => companionGeometryFor(canvasSize, index + 1, companionSlotCount, topPanelZIndex)) : [],
+            companions: operationCompanion ? visibleCompanionPanels : [],
+            companionGeometries: operationCompanion ? visibleCompanionPanels.map((_, index) => companionGeometryFor(canvasSize, index + 1, companionSlotCount, topPanelZIndex)) : [],
+            hiddenCompanionPanelIds: operationCompanion ? hiddenCompanionPanelIds : [],
             formation: formationView,
             focusLayerHidden,
             onRenderHiddenFocus: () => {
@@ -452,6 +458,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly companion: boolean;
   readonly companions: readonly CompanionPanelDescriptor[];
   readonly companionGeometries: readonly OperationGeometry[];
+  readonly hiddenCompanionPanelIds: readonly string[];
   readonly formation: boolean;
   readonly focusLayerHidden: boolean;
   readonly onRenderHiddenFocus: () => void;
@@ -477,6 +484,9 @@ function renderPluginOperation(operation: OperationNode, options: {
       setActiveOperation(operation.id);
       setCompanionOperationId(operation.id);
     } else clearCompanionOperationId();
+  };
+  const onSetCompanionPanelVisible = (companionPanelId: string, visible: boolean) => {
+    setCompanionPanelVisible(operation.id, companionPanelId, visible);
   };
   return (
     <Fragment key={operation.id}>
@@ -517,6 +527,8 @@ function renderPluginOperation(operation: OperationNode, options: {
             onGeometryChange={options.onGeometryChange}
             onRequestCompanions={onRequestCompanions}
             companionsOpen={options.companion}
+            hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
+            onSetCompanionPanelVisible={onSetCompanionPanelVisible}
             render={descriptor.render}
           />
         </PluginErrorBoundary>
@@ -536,6 +548,8 @@ function renderPluginOperation(operation: OperationNode, options: {
               onGeometryChange={options.onGeometryChange}
               onRequestCompanions={onRequestCompanions}
               companionsOpen={options.companion}
+              hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
+              onSetCompanionPanelVisible={onSetCompanionPanelVisible}
               render={companion.render}
             />
           </PluginErrorBoundary>
@@ -558,6 +572,8 @@ function PluginOperationRenderer({
   onGeometryChange,
   onRequestCompanions,
   companionsOpen,
+  hiddenCompanionPanelIds,
+  onSetCompanionPanelVisible,
   render,
 }: PluginOperationRendererProps) {
   return render({
@@ -584,6 +600,8 @@ function PluginOperationRenderer({
     onGeometryChange,
     onRequestCompanions,
     companionsOpen,
+    hiddenCompanionPanelIds,
+    onSetCompanionPanelVisible,
   }) as ReactNode;
 }
 

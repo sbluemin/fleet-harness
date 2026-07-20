@@ -14,6 +14,7 @@ const SUGGESTIONS = [
   { icon: "≡", tone: "brass", text: "Draft a handoff brief" },
 ] as const;
 const STREAM_RENDER_DELAY_MS = 32;
+export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
   const { state, dispatch, send, stop, reset } = useAnalysisStore(context);
@@ -21,6 +22,15 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const cli = state.catalog?.clis.find((item) => item.cliId === state.cliId);
   const model = cli?.models.find((item) => item.id === state.model);
   const hasInteracted = state.entries.length > 0;
+  const artifactCount = state.artifacts.length;
+  const hiddenCompanionPanelIds = context.hiddenCompanionPanelIds;
+  const setCompanionPanelVisible = context.onSetCompanionPanelVisible;
+  const supportsCompanionVisibility = hiddenCompanionPanelIds !== undefined && setCompanionPanelVisible !== undefined;
+  const artifactsHidden = hiddenCompanionPanelIds?.includes(ANALYST_ARTIFACTS_COMPANION_ID) ?? false;
+  const artifactsVisible = artifactCount > 0 && !artifactsHidden;
+  const previousArtifactCountRef = React.useRef(0);
+  const [countPulseRevision, setCountPulseRevision] = React.useState(0);
+  const artifactsChipRef = React.useRef<HTMLButtonElement>(null);
   const chatRef = React.useRef<HTMLElement>(null);
   const latestEntry = state.entries.at(-1);
   // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
@@ -36,6 +46,26 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     const chat = chatRef.current;
     if (chat) installDiagramHydrator(chat);
   }, []);
+  React.useEffect(() => {
+    const previousCount = previousArtifactCountRef.current;
+    previousArtifactCountRef.current = artifactCount;
+    if (!supportsCompanionVisibility || !setCompanionPanelVisible) return;
+    if (artifactCount === 0) {
+      if (!state.artifactsAutoOpenArmed) dispatch({ type: "artifacts-chip-rearm" });
+      if (!artifactsHidden) {
+        const returnFocusToChip = document.activeElement instanceof Element
+          && document.activeElement.closest(".session-analyst__artifacts") !== null;
+        setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, false);
+        if (returnFocusToChip) window.requestAnimationFrame(() => artifactsChipRef.current?.focus());
+      }
+      return;
+    }
+    if (previousCount === 0 && artifactsHidden && state.artifactsAutoOpenArmed) {
+      setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, true);
+      return;
+    }
+    if (artifactCount > previousCount && artifactsHidden) setCountPulseRevision((revision) => revision + 1);
+  }, [artifactCount, artifactsHidden, dispatch, setCompanionPanelVisible, state.artifactsAutoOpenArmed, supportsCompanionVisibility]);
   const submit = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || state.busy) return;
@@ -52,6 +82,27 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
 
   return (
     <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label="Session Analyst chat" data-phase={state.phase}>
+      {supportsCompanionVisibility ? (
+        <button
+          ref={artifactsChipRef}
+          type="button"
+          className={`session-analyst-handle session-analyst-handle--artifacts${artifactCount === 0 ? " is-waiting" : ""}`}
+          aria-label={artifactsVisible ? "Hide Artifacts" : "Open Artifacts"}
+          aria-pressed={artifactsVisible}
+          aria-disabled={artifactCount === 0}
+          tabIndex={artifactCount === 0 ? -1 : undefined}
+          title={artifactCount === 0 ? "Artifacts the analyst publishes appear here" : undefined}
+          onClick={() => {
+            if (!setCompanionPanelVisible || artifactCount === 0) return;
+            if (artifactsVisible) dispatch({ type: "artifacts-chip-disarm" });
+            setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, !artifactsVisible);
+          }}
+        >
+          <span className="session-analyst-handle__chev" aria-hidden="true">{artifactsVisible ? "«" : "»"}</span>
+          {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst-handle__count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
+          <span className="session-analyst-handle__label">ARTIFACTS</span>
+        </button>
+      ) : null}
       <PanelHeader state={state} onReset={() => { void reset().then(() => setDraft("")).catch(() => {}); }} />
       <div className="session-analyst__workspace">
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>

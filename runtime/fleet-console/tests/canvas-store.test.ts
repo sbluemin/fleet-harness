@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, forceDropCompanionOperationId, getCompanionOperationId, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setCompanionOperationId, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setCompanionOperationId, setCompanionPanelVisible, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -37,6 +37,41 @@ afterEach(() => {
 });
 
 describe("canvas store", () => {
+  it("keeps companion visibility overrides per Operation and resets them on Analyze entry", () => {
+    setCompanionPanelVisible("op-a", "artifacts", true);
+    setCompanionPanelVisible("op-b", "artifacts", false);
+
+    expect(getCompanionPanelVisibilityOverrides("op-a")).toEqual({ artifacts: true });
+    expect(getCompanionPanelVisibilityOverrides("op-b")).toEqual({ artifacts: false });
+
+    setCompanionOperationId("op-a");
+    expect(getCompanionPanelVisibilityOverrides("op-a")).toEqual({});
+    expect(getCompanionPanelVisibilityOverrides("op-b")).toEqual({ artifacts: false });
+  });
+
+  it("clears companion visibility overrides on normal Exit and force-drop", () => {
+    setCompanionOperationId("op-a");
+    setCompanionPanelVisible("op-a", "artifacts", true);
+    clearCompanionOperationId();
+    expect(getCompanionPanelVisibilityOverrides("op-a")).toEqual({});
+
+    setCompanionOperationId("op-b");
+    setCompanionPanelVisible("op-b", "artifacts", false);
+    forceDropCompanionOperationId();
+    expect(getCompanionPanelVisibilityOverrides("op-b")).toEqual({});
+  });
+
+  it("clears the previous companion target's overrides on retarget and maximize replacement", () => {
+    setCompanionOperationId("op-a");
+    setCompanionPanelVisible("op-a", "artifacts", true);
+    setCompanionOperationId("op-b");
+    expect(getCompanionPanelVisibilityOverrides("op-a")).toEqual({});
+
+    setCompanionPanelVisible("op-b", "artifacts", true);
+    setMaximizedOperationId("op-c");
+    expect(getCompanionPanelVisibilityOverrides("op-b")).toEqual({});
+  });
+
   it("captures Map underlay once, retargets without mutating it, and exits to Map", () => {
     setOperationGeometry("op-a", { ...GEOMETRY, x: 48, y: 72 });
     setOperationGeometry("op-b", { ...GEOMETRY });

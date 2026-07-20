@@ -25,6 +25,7 @@ export interface AnalysisState {
   readonly entries: readonly AnalysisEntry[];
   readonly tools: readonly { readonly title: string; readonly status: string }[];
   readonly artifacts: readonly AnalysisArtifact[];
+  readonly artifactsAutoOpenArmed: boolean;
   readonly error: string | null;
 }
 
@@ -42,6 +43,7 @@ export const initialAnalysisState: AnalysisState = {
   entries: [],
   tools: [],
   artifacts: [],
+  artifactsAutoOpenArmed: true,
   error: null,
 };
 
@@ -58,7 +60,9 @@ export type AnalysisAction =
   | { readonly type: "stopped"; readonly now: number }
   | { readonly type: "stop-failed"; readonly message: string; readonly now: number }
   | { readonly type: "reset" }
-  | { readonly type: "clear-artifacts" };
+  | { readonly type: "clear-artifacts" }
+  | { readonly type: "artifacts-chip-disarm" }
+  | { readonly type: "artifacts-chip-rearm" };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   if (action.type === "catalog") {
@@ -95,7 +99,9 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     const catalog = state.catalog;
     return catalog ? { ...initialAnalysisState, catalog, ...resolveInitialSelection(catalog) } : initialAnalysisState;
   }
-  if (action.type === "clear-artifacts") return { ...state, artifacts: [] };
+  if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactsAutoOpenArmed: true };
+  if (action.type === "artifacts-chip-disarm") return state.artifactsAutoOpenArmed ? { ...state, artifactsAutoOpenArmed: false } : state;
+  if (action.type === "artifacts-chip-rearm") return state.artifactsAutoOpenArmed ? state : { ...state, artifactsAutoOpenArmed: true };
   if (action.type !== "event") return state;
 
   const event = action.event;

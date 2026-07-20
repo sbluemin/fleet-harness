@@ -52,20 +52,18 @@ describe("Session Analyst contract", () => {
   });
   it("registers the two companion chips on the Agent operation kind", () => {
     const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
-    const companions = [...source.matchAll(/\{ id: "([^"]+)", title: "([^"]+)"/g)].map((match) => ({ id: match[1], title: match[2] }));
-    expect(companions).toMatchInlineSnapshot(`
-      [
-        {
-          "id": "session-analyst-chat",
-          "title": "Session Analyst",
-        },
-        {
-          "id": "session-analyst-artifacts",
-          "title": "Artifacts",
-        },
-      ]
-    `);
+    const chat = readFileSync(new URL("./analysis-chat-panel.tsx", import.meta.url), "utf8");
+    expect(source).toContain('{ id: "session-analyst-chat", title: "Session Analyst"');
+    expect(source).toContain('{ id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true');
+    expect(chat).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
     expect(source.match(/hideCaption: true/g)).toHaveLength(2);
+    expect(source.match(/defaultHidden: true/g)).toHaveLength(1);
     expect(source).toContain("context.onRequestCompanions?.(!context.companionsOpen)");
+    expect(source).toContain("previousCompanionsOpenRef");
+    // dispose 경합에서 orphan store를 만들지 않도록 re-arm은 조회 전용 API만 사용한다.
+    expect(source).toContain("rearmAnalysisArtifacts(context.operationId)");
+    expect(source).not.toContain("getAnalysisStore");
+    const storeSource = readFileSync(new URL("./analysis-store.ts", import.meta.url), "utf8");
+    expect(storeSource).toContain('stores.get(operationId)?.dispatch({ type: "artifacts-chip-rearm" });');
   });
 });

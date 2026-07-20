@@ -11,9 +11,9 @@ import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
 import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
-import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
-import { disposeAnalysisStore } from "./analysis-store.js";
+import { disposeAnalysisStore, rearmAnalysisArtifacts } from "./analysis-store.js";
 import "./analysis.css";
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
@@ -86,7 +86,7 @@ export const agentOperationKind = defineOperationKind({
   canOpenCompanions: ({ api, operation }) => fetchAnalysisReady(api, operation.id),
   companions: [
     { id: "session-analyst-chat", title: "Session Analyst", hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
-    { id: "session-analyst-artifacts", title: "Artifacts", hideCaption: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
+    { id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
 });
 
@@ -305,7 +305,17 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
+  // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
+  const previousCompanionsOpenRef = React.useRef(true);
   const analysisReady = useAnalysisReady(context);
+
+  React.useEffect(() => {
+    const companionsOpen = context.companionsOpen ?? false;
+    const wasOpen = previousCompanionsOpenRef.current;
+    previousCompanionsOpenRef.current = companionsOpen;
+    if (wasOpen && !companionsOpen) rearmAnalysisArtifacts(context.operationId);
+  }, [context.companionsOpen, context.operationId]);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
