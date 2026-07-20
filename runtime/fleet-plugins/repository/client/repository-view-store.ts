@@ -7,6 +7,7 @@ import type { DiffFileEntry } from "../server/types.js";
 export interface SelectedFile {
   readonly entry: DiffFileEntry;
   readonly theaterId: string;
+  readonly repoRel: string;
 }
 
 interface DiffViewState {
@@ -36,14 +37,19 @@ function getSnapshot(): DiffViewState {
   return state;
 }
 
-export function useSelectedFile(theaterId: string | null): SelectedFile | null {
+export function getSelectedFile(theaterId: string | null, repoRel: string): SelectedFile | null {
+  if (!state.file || state.file.theaterId !== theaterId || state.file.repoRel !== repoRel) return null;
+  return state.file;
+}
+
+export function useSelectedFile(theaterId: string | null, repoRel: string): SelectedFile | null {
   const s = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  if (!s.file || s.file.theaterId !== theaterId) return null;
+  if (!s.file || s.file.theaterId !== theaterId || s.file.repoRel !== repoRel) return null;
   return s.file;
 }
 
-export function setSelectedFile(entry: DiffFileEntry, theaterId: string): void {
-  state = { file: { entry, theaterId } };
+export function setSelectedFile(entry: DiffFileEntry, theaterId: string, repoRel: string): void {
+  state = { file: { entry, theaterId, repoRel } };
   emit();
 }
 

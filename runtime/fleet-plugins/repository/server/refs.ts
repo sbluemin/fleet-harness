@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { GitExecutorError, runGit } from "./git-executor.js";
-import { resolveGitCwd } from "./diff.js";
+import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function lines(stdout: string): string[] { return stdout.split("\n").map((line) => line.trim()).filter(Boolean); }
@@ -18,11 +18,16 @@ async function readStashes(gitCwd: string): Promise<string> {
 export async function handleRepositoryRefs(req: http.IncomingMessage, res: http.ServerResponse, ctx: FleetPluginServerContext): Promise<void> {
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
-  const body = await ctx.host.http.readJsonBody<{ theaterId?: unknown; subPath?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ theaterId?: unknown; repoRel?: unknown; subPath?: unknown }>(req);
   if (!isObject(body) || "subPath" in body || typeof body.theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
-  const resolved = resolveGitCwd(theaterPath);
+  let resolved: { gitCwd: string };
+  try { resolved = await resolveGitCwd(theaterPath, body.repoRel); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
   try {
     const [head, local, remote, tags, stashes] = await Promise.all([
       runGit(["symbolic-ref", "--quiet", "HEAD"], { cwd: resolved.gitCwd, allowExitCodes: [1] }),

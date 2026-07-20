@@ -79,8 +79,38 @@ function isNoHeadError(error: unknown): boolean {
   return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
 }
 
-export function resolveGitCwd(theaterPath: string): { gitCwd: string } {
-  return { gitCwd: theaterPath };
+export class InvalidRepoError extends Error {
+  readonly code = "invalid_repo";
+}
+
+export async function resolveGitCwd(theaterPath: string, repoRel: unknown = ""): Promise<{ gitCwd: string }> {
+  if (repoRel === undefined || repoRel === "") return { gitCwd: theaterPath };
+  if (typeof repoRel !== "string" || path.isAbsolute(repoRel)) throw new InvalidRepoError("Repository path must be relative");
+
+  const normalized = path.normalize(repoRel);
+  if (normalized.startsWith("-") || normalized === ".." || normalized.startsWith(`..${path.sep}`)) {
+    throw new InvalidRepoError("Repository path is invalid");
+  }
+
+  const resolved = path.resolve(theaterPath, normalized);
+  if (!resolved.startsWith(`${theaterPath}${path.sep}`)) throw new InvalidRepoError("Repository path escapes Theater");
+
+  let realTheater: string;
+  let realRepo: string;
+  try {
+    [realTheater, realRepo] = await Promise.all([fs.realpath(theaterPath), fs.realpath(resolved)]);
+  } catch {
+    throw new InvalidRepoError("Repository path does not exist");
+  }
+  if (realRepo !== realTheater && !realRepo.startsWith(`${realTheater}${path.sep}`)) {
+    throw new InvalidRepoError("Repository path escapes Theater");
+  }
+  try {
+    await fs.stat(path.join(realRepo, ".git"));
+  } catch {
+    throw new InvalidRepoError("Repository marker does not exist");
+  }
+  return { gitCwd: realRepo };
 }
 
 // ─── handlers ────────────────────────────────────────────────────────────────
@@ -93,7 +123,8 @@ export async function handleRepositoryChanged(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly subPath?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown }>(req);
+  // subPath는 저장소 내부 스코핑이라 계속 금지한다. repoRel은 검증된 저장소 루트 선택만 담당한다.
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
@@ -102,7 +133,12 @@ export async function handleRepositoryChanged(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const cwdResult = resolveGitCwd(theaterPath);
+  let cwdResult: { gitCwd: string };
+  try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
   const { gitCwd } = cwdResult;
 
   try {
@@ -160,6 +196,7 @@ export async function handleRepositoryFile(
 
   const body = await ctx.host.http.readJsonBody<{
     readonly theaterId?: unknown;
+    readonly repoRel?: unknown;
     readonly filePath?: unknown;
     readonly mode?: unknown;
     readonly subPath?: unknown;
@@ -181,7 +218,12 @@ export async function handleRepositoryFile(
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
-  const cwdResult = resolveGitCwd(theaterPath);
+  let cwdResult: { gitCwd: string };
+  try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
   const { gitCwd } = cwdResult;
 
   // filePath를 gitCwd 기준으로 containment 검증 (이중 containment의 두 번째 단계)

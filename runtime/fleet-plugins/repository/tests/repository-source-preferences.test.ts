@@ -12,6 +12,11 @@ describe("Repository source preference", () => {
     expect(readRepositorySource()).toBe("history");
   });
 
+  it("keeps the repository context source", () => {
+    vi.stubGlobal("localStorage", { getItem: () => "repositories" });
+    expect(readRepositorySource()).toBe("repositories");
+  });
+
   it.each(["diff", "unknown", "", null])( "falls back to Changes for an invalid persisted source", (value) => {
     vi.stubGlobal("localStorage", { getItem: () => value });
     expect(readRepositorySource()).toBe("changes");

@@ -171,6 +171,66 @@ describe("Repository Theater-root Git routes", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it("selects a nested repository with repoRel", async () => {
+    const nested = path.join(fixture.theaterPath, "nested-repository");
+    await fs.mkdir(nested);
+    await initGitRepo(nested);
+    await fs.writeFile(path.join(nested, "tracked.txt"), "before\n");
+    await runGit(["add", "."], { cwd: nested });
+    await runGit(["commit", "-m", "nested base"], { cwd: nested });
+    await fs.writeFile(path.join(nested, "tracked.txt"), "after\n");
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryChanged(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", repoRel: "nested-repository" }, writes),
+    );
+
+    expect(readPayload<ChangedPayload>(writes).files).toEqual([
+      expect.objectContaining({ path: "tracked.txt", status: "M" }),
+    ]);
+  });
+
+  it.each([
+    ["parent traversal", "../outside"],
+    ["absolute path", path.resolve(path.sep, "outside-repository")],
+    ["option-like path", "-repository"],
+  ])("rejects %s repoRel", async (_label, repoRel) => {
+    const writes: JsonWrite[] = [];
+    await handleRepositoryChanged(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", repoRel }, writes),
+    );
+    expect(writes).toEqual([{ status: 400, payload: { error: "invalid_repo" } }]);
+  });
+
+  it("rejects repoRel symlinks that escape the Theater", async () => {
+    const outside = path.join(tmpDir, "outside-repository");
+    await fs.mkdir(outside);
+    await initGitRepo(outside);
+    await fs.symlink(outside, path.join(fixture.theaterPath, "escaped-repository"));
+    const writes: JsonWrite[] = [];
+    await handleRepositoryChanged(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", repoRel: "escaped-repository" }, writes),
+    );
+    expect(writes).toEqual([{ status: 400, payload: { error: "invalid_repo" } }]);
+  });
+
+  it("rejects repoRel directories without a .git marker", async () => {
+    await fs.mkdir(path.join(fixture.theaterPath, "plain-directory"));
+    const writes: JsonWrite[] = [];
+    await handleRepositoryChanged(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", repoRel: "plain-directory" }, writes),
+    );
+    expect(writes).toEqual([{ status: 400, payload: { error: "invalid_repo" } }]);
+  });
+
   it("changed returns Theater-root-relative paths and file opens the matching hunk", async () => {
     const changedWrites: JsonWrite[] = [];
     await handleRepositoryChanged(

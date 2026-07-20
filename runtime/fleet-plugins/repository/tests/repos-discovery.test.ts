@@ -1,0 +1,123 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+
+import { runGit } from "../server/git-executor.js";
+import { HARD_CAP_DEPTH, NESTED_BRANCH_CAP, REPOS_CAP, handleRepositoryRepos, resolveNestedRepoCandidates, resolveRepoBranch } from "../server/repos.js";
+import type { ReposResult } from "../server/types.js";
+
+interface JsonWrite { readonly status: number; readonly payload: unknown }
+
+async function initGitRepo(dir: string, commit = false): Promise<void> {
+  await fs.mkdir(dir, { recursive: true });
+  await runGit(["init"], { cwd: dir });
+  await runGit(["config", "user.email", "test@test.com"], { cwd: dir });
+  await runGit(["config", "user.name", "Test"], { cwd: dir });
+  if (commit) {
+    await fs.writeFile(path.join(dir, "base.txt"), "base\n");
+    await runGit(["add", "."], { cwd: dir });
+    await runGit(["commit", "-m", "base"], { cwd: dir });
+  }
+}
+
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
+  return { host: { http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }) }, security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath } } } as unknown as FleetPluginServerContext;
+}
+
+async function discover(theaterPath: string, body: Record<string, unknown> = { theaterId: "theater" }): Promise<ReposResult> {
+  const writes: JsonWrite[] = [];
+  await handleRepositoryRepos({ method: "POST" } as never, {} as never, makeContext(theaterPath, body, writes));
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.status).toBe(200);
+  return writes[0]?.payload as ReposResult;
+}
+
+describe("Repository discovery route", () => {
+  let theaterPath: string;
+
+  beforeEach(async () => { theaterPath = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-repos-")); });
+  afterEach(async () => { await fs.rm(theaterPath, { recursive: true, force: true }); });
+
+  it("discovers the root, contained worktrees, and nested repositories in authority order", async () => {
+    await initGitRepo(theaterPath, true);
+    const worktree = path.join(theaterPath, "linked-worktree");
+    await runGit(["worktree", "add", "-b", "linked-branch", worktree], { cwd: theaterPath });
+    await initGitRepo(path.join(theaterPath, "nested"), true);
+
+    const result = await discover(theaterPath);
+    expect(result.repos.map(({ relPath, kind }) => ({ relPath, kind }))).toEqual([
+      { relPath: "", kind: "root" },
+      { relPath: "linked-worktree", kind: "worktree" },
+      { relPath: "nested", kind: "nested" },
+    ]);
+    expect(result.repos[1]?.branch).toBe("linked-branch");
+  });
+
+  it("excludes worktrees outside the Theater", async () => {
+    await initGitRepo(theaterPath, true);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-outside-worktree-"));
+    const outsideWorktree = path.join(outsideRoot, "worktree");
+    try {
+      await runGit(["worktree", "add", "-b", "outside-branch", outsideWorktree], { cwd: theaterPath });
+      const result = await discover(theaterPath);
+      expect(result.repos).toHaveLength(1);
+      expect(JSON.stringify(result)).not.toContain(outsideWorktree);
+    } finally {
+      await runGit(["worktree", "remove", "--force", outsideWorktree], { cwd: theaterPath });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("clamps depth to [1, 8]", async () => {
+    await initGitRepo(path.join(theaterPath, "one"));
+    await initGitRepo(path.join(theaterPath, "one", "two"));
+    expect((await discover(theaterPath, { theaterId: "theater", maxDepth: 0 })).repos.map((repo) => repo.relPath)).toEqual(["one"]);
+
+    const deep = path.join(theaterPath, ...Array.from({ length: HARD_CAP_DEPTH }, (_, index) => `d${index}`));
+    await initGitRepo(deep);
+    expect((await discover(theaterPath, { theaterId: "theater", maxDepth: 99 })).repos.some((repo) => repo.relPath === path.relative(theaterPath, deep))).toBe(true);
+  });
+
+  it("caps the full result and marks it truncated", async () => {
+    await Promise.all(Array.from({ length: REPOS_CAP + 1 }, async (_, index) => {
+      await fs.mkdir(path.join(theaterPath, `repo-${String(index).padStart(3, "0")}`, ".git"), { recursive: true });
+    }));
+    const result = await discover(theaterPath);
+    expect(result.repos).toHaveLength(REPOS_CAP);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("never traverses node_modules", async () => {
+    await initGitRepo(path.join(theaterPath, "node_modules", "hidden"));
+    expect((await discover(theaterPath, { theaterId: "theater", maxDepth: 8 })).repos).toEqual([]);
+  });
+
+  it("never exposes absolute filesystem paths in its DTO", async () => {
+    await initGitRepo(theaterPath, true);
+    await initGitRepo(path.join(theaterPath, "nested"), true);
+    const result = await discover(theaterPath);
+    const payload = JSON.stringify(result);
+    expect(payload).not.toContain(theaterPath);
+    expect(Object.keys(result.repos[0] ?? {})).toEqual(["relPath", "name", "branch", "kind"]);
+    expect(result.repos.every((repo) => !path.isAbsolute(repo.relPath))).toBe(true);
+  });
+
+  it("uses a short SHA for detached repositories", async () => {
+    await initGitRepo(theaterPath, true);
+    const head = (await runGit(["rev-parse", "HEAD"], { cwd: theaterPath })).stdout.trim();
+    await runGit(["checkout", "--detach", head], { cwd: theaterPath });
+    expect(await resolveRepoBranch(theaterPath)).toBe(head.slice(0, 7));
+  });
+
+  it("limits nested branch resolution to 64 Git processes", async () => {
+    const resolver = vi.fn(async (repoDir: string) => path.basename(repoDir));
+    const candidates = Array.from({ length: NESTED_BRANCH_CAP + 2 }, (_, index) => ({ relPath: `r${index}`, name: `r${index}`, repoDir: path.join(theaterPath, `r${index}`) }));
+    const resolved = await resolveNestedRepoCandidates(candidates, NESTED_BRANCH_CAP, resolver);
+    expect(resolver).toHaveBeenCalledTimes(NESTED_BRANCH_CAP);
+    expect(resolved[NESTED_BRANCH_CAP]?.branch).toBe("");
+    expect(resolved[NESTED_BRANCH_CAP + 1]?.branch).toBe("");
+  });
+});

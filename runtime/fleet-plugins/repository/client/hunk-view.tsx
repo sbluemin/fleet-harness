@@ -9,6 +9,7 @@ import { highlightEscapedDiffCode, parseHunk } from "./hunk-parse.js";
 
 interface HunkViewProps {
   readonly ctx: RailPanelContext;
+  readonly repoRel: string;
   readonly file: DiffFileEntry;
   readonly mode: DiffFileMode;
   readonly commit?: CommitSelection | null;
@@ -17,6 +18,7 @@ interface HunkViewProps {
 export interface CommitSelection {
   readonly fullHash: string;
   readonly theaterId: string;
+  readonly repoRel: string;
   readonly oldPath?: string;
 }
 
@@ -36,7 +38,7 @@ function escapeHtml(s: string): string {
 
 // ─── HunkView ────────────────────────────────────────────────────────────────
 
-export function HunkView({ ctx, file, mode, commit }: HunkViewProps) {
+export function HunkView({ ctx, repoRel, file, mode, commit }: HunkViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function HunkView({ ctx, file, mode, commit }: HunkViewProps) {
       ctx.api.fetch("repository", "commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: commit.theaterId, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}) }),
+        body: JSON.stringify({ theaterId: commit.theaterId, repoRel: commit.repoRel, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}) }),
       }).then(async (res) => {
         if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;
@@ -63,7 +65,7 @@ export function HunkView({ ctx, file, mode, commit }: HunkViewProps) {
       ctx.api.fetch("repository", "file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode }),
+        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, filePath: file.path, mode }),
       }).then(async (res) => {
         if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;
@@ -74,7 +76,7 @@ export function HunkView({ ctx, file, mode, commit }: HunkViewProps) {
     }
 
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, commit]);
+  }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, commit, repoRel]);
 
   if (state.kind === "loading") {
     return <div className="repository-hunk-loading">Loading…</div>;

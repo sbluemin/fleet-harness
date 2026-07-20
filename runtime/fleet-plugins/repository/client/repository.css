@@ -952,15 +952,25 @@
 @container (max-width: 430px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
-.repository-unified { display: flex; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
-.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--hairline); background: var(--surface-deep); }
+.repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
+.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--hairline); background: var(--ink-deep); color: var(--text-secondary); }
+.repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
+.repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
+.repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* 브랜치는 정체의 일부라 이름 옆에 붙인다 — margin-left:auto로 밀면 넓은 레일에서 이름과의 연관이 끊긴다.
+   brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
+.repository-identity span { min-width: 0; overflow: hidden; color: var(--brass); flex: 0 1 auto; font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.repository-unified-body { display: flex; min-width: 0; min-height: 0; flex: 1; }
+/* --surface-deep은 어느 테마에도 정의된 적 없는 토큰이라 이 선언은 계속 무효였다(배경 투명).
+   정체 스트립과 같은 표면이어야 하므로 의도됐던 값인 --ink-deep으로 확정한다. */
+.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--hairline); background: var(--ink-deep); }
 .repository-source-nav button, .repository-source-nav span { min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
 .repository-source-nav button[aria-current="page"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
 .repository-source-nav b { padding: 8px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; }
 .repository-source-nav svg { width: 14px; height: 14px; flex: none; }
 .repository-source-nav i { float: right; color: var(--text-tertiary); font-style: normal; }
-.repository-source-content, .repository-unified > .repository-root { flex: 1; min-width: 0; }
+.repository-source-content { flex: 1; min-width: 0; min-height: 0; }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
 .repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
