@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../server/git-executor.js";
-import { HARD_CAP_DEPTH, NESTED_BRANCH_CAP, REPOS_CAP, handleRepositoryRepos, resolveNestedRepoCandidates, resolveRepoBranch } from "../server/repos.js";
+import { HARD_CAP_DEPTH, NESTED_BRANCH_CAP, REPOS_CAP, handleRepositoryRepos, resolveNestedRepoCandidates, resolveRepoBranch, scanRepos, type ScannedRepo } from "../server/repos.js";
 import type { ReposResult } from "../server/types.js";
 
 interface JsonWrite { readonly status: number; readonly payload: unknown }
@@ -71,6 +71,28 @@ describe("Repository discovery route", () => {
     }
   });
 
+  it("canonicalizes a symlinked Theater so a worktree is not duplicated as nested", async () => {
+    await initGitRepo(theaterPath, true);
+    const worktree = path.join(theaterPath, "linked-worktree");
+    await runGit(["worktree", "add", "-b", "canonical-worktree", worktree], { cwd: theaterPath });
+    const aliasParent = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-alias-"));
+    const theaterAlias = path.join(aliasParent, "theater-alias");
+    await fs.symlink(theaterPath, theaterAlias);
+    try {
+      const realTheater = await fs.realpath(theaterAlias);
+      const scanned: ScannedRepo[] = [];
+      await scanRepos(theaterAlias, realTheater, realTheater, 0, 3, scanned);
+      expect(scanned.find((repo) => repo.relPath === "linked-worktree")?.repoDir).toBe(await fs.realpath(worktree));
+
+      const result = await discover(theaterAlias);
+      expect(result.repos.filter((repo) => repo.relPath === "linked-worktree")).toEqual([
+        expect.objectContaining({ kind: "worktree" }),
+      ]);
+    } finally {
+      await fs.rm(aliasParent, { recursive: true, force: true });
+    }
+  });
+
   it("clamps depth to [1, 8]", async () => {
     await initGitRepo(path.join(theaterPath, "one"));
     await initGitRepo(path.join(theaterPath, "one", "two"));
@@ -115,9 +137,16 @@ describe("Repository discovery route", () => {
   it("limits nested branch resolution to 64 Git processes", async () => {
     const resolver = vi.fn(async (repoDir: string) => path.basename(repoDir));
     const candidates = Array.from({ length: NESTED_BRANCH_CAP + 2 }, (_, index) => ({ relPath: `r${index}`, name: `r${index}`, repoDir: path.join(theaterPath, `r${index}`) }));
-    const resolved = await resolveNestedRepoCandidates(candidates, NESTED_BRANCH_CAP, resolver);
+    const resolved = await resolveNestedRepoCandidates(candidates, candidates.length, resolver);
     expect(resolver).toHaveBeenCalledTimes(NESTED_BRANCH_CAP);
     expect(resolved[NESTED_BRANCH_CAP]?.branch).toBe("");
     expect(resolved[NESTED_BRANCH_CAP + 1]?.branch).toBe("");
+  });
+
+  it("does not resolve nested branches after the result cap is full", async () => {
+    const resolver = vi.fn(async () => "unused");
+    const candidates = [{ relPath: "nested", name: "nested", repoDir: path.join(theaterPath, "nested") }];
+    expect(await resolveNestedRepoCandidates(candidates, 0, resolver)).toEqual([]);
+    expect(resolver).not.toHaveBeenCalled();
   });
 });

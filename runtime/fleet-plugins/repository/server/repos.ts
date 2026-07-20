@@ -7,6 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "./git-executor.js";
 import { parseWorktreePorcelainEntries } from "./log.js";
+import { isPathContained } from "./path-containment.js";
 import type { RepoCandidate, ReposResult } from "./types.js";
 
 export const REPOS_CAP = 200;
@@ -22,10 +23,6 @@ export interface ScannedRepo {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isContained(realTheaterPath: string, realPath: string): boolean {
-  return realPath === realTheaterPath || realPath.startsWith(`${realTheaterPath}${path.sep}`);
 }
 
 export async function resolveRepoBranch(repoDir: string): Promise<string> {
@@ -54,8 +51,8 @@ export async function scanRepos(
 
   try {
     await fs.stat(path.join(dir, ".git"));
-    const relPath = path.relative(theaterPath, dir);
-    repos.push({ relPath, name: relPath === "" ? path.basename(theaterPath) : path.basename(dir), repoDir: dir });
+    const relPath = path.relative(realTheaterPath, dir);
+    repos.push({ relPath, name: relPath === "" ? path.basename(realTheaterPath) : path.basename(dir), repoDir: dir });
     if (repos.length >= cap) return true;
   } catch {
     // Not a repository candidate.
@@ -74,8 +71,8 @@ export async function scanRepos(
         let realChildPath: string;
         try { realChildPath = await fs.realpath(childPath); }
         catch { dirent = await dirHandle.read(); continue; }
-        if (isContained(realTheaterPath, realChildPath)) {
-          const truncated = await scanRepos(theaterPath, realTheaterPath, childPath, currentDepth + 1, maxDepth, repos, cap);
+        if (isPathContained(realTheaterPath, realChildPath)) {
+          const truncated = await scanRepos(realTheaterPath, realTheaterPath, realChildPath, currentDepth + 1, maxDepth, repos, cap);
           if (truncated) return true;
         }
       }
@@ -93,15 +90,16 @@ export async function scanRepos(
 
 export async function resolveNestedRepoCandidates(
   candidates: readonly ScannedRepo[],
-  cap = NESTED_BRANCH_CAP,
+  availableSlots: number,
   resolver: (repoDir: string) => Promise<string> = resolveRepoBranch,
 ): Promise<RepoCandidate[]> {
   const resolved: RepoCandidate[] = [];
-  for (const [index, candidate] of candidates.entries()) {
+  const selected = candidates.slice(0, Math.max(0, availableSlots));
+  for (const [index, candidate] of selected.entries()) {
     resolved.push({
       relPath: candidate.relPath,
       name: candidate.name,
-      branch: index < cap ? await resolver(candidate.repoDir) : "",
+      branch: index < NESTED_BRANCH_CAP ? await resolver(candidate.repoDir) : "",
       kind: "nested",
     });
   }
@@ -146,7 +144,7 @@ export async function handleRepositoryRepos(
         let realWorktree: string;
         try { realWorktree = await fs.realpath(worktree.worktreePath); }
         catch { continue; }
-        if (!isContained(realTheaterPath, realWorktree)) continue;
+        if (!isPathContained(realTheaterPath, realWorktree)) continue;
         const relPath = path.relative(realTheaterPath, realWorktree);
         if (seen.has(relPath)) continue;
         if (repos.length >= REPOS_CAP) { truncated = true; break; }
@@ -164,9 +162,12 @@ export async function handleRepositoryRepos(
   }
 
   const scanned: ScannedRepo[] = [];
-  truncated = (await scanRepos(theaterPath, realTheaterPath, theaterPath, 0, maxDepth, scanned)) || truncated;
+  const scanCap = Math.max(0, REPOS_CAP - repos.length);
+  truncated = (await scanRepos(realTheaterPath, realTheaterPath, realTheaterPath, 0, maxDepth, scanned, scanCap)) || truncated;
   const unseenNested = scanned.filter((candidate) => !seen.has(candidate.relPath));
-  const nestedCandidates = await resolveNestedRepoCandidates(unseenNested);
+  const remainingSlots = Math.max(0, REPOS_CAP - repos.length);
+  if (unseenNested.length > remainingSlots) truncated = true;
+  const nestedCandidates = await resolveNestedRepoCandidates(unseenNested, remainingSlots);
   for (const candidate of nestedCandidates) {
     if (repos.length >= REPOS_CAP) { truncated = true; break; }
     repos.push(candidate);

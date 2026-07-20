@@ -105,6 +105,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [reposError, setReposError] = useState(false);
   const [reposRetry, setReposRetry] = useState(0);
   const [repoRel, setRepoRel] = useState("");
+  const repoRelRef = useRef("");
   const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [refFilter, setRefFilter] = useState<string | null>(null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
@@ -123,7 +124,20 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setSourceState(next);
     saveRepositorySource(next);
   }, []);
-  useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setReposError(false); ctx.api.fetch("repository", "repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) }).then((response) => response.ok ? response.json() as Promise<ReposResult> : Promise.reject()).then((value) => { if (!cancelled) { setRepos(value.repos); setRepoRel(readRepositoryRel(ctx.theaterId!, value.repos)); } }).catch(() => { if (!cancelled) setReposError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, reposRetry]);
+  const transitionRepository = useCallback((nextRepoRel: string, persist: boolean) => {
+    if (!ctx.theaterId) return;
+    if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
+    clearSelectedFile();
+    setRefFilter(null);
+    setFilterText("");
+    setHistoryInspectorOpen(false);
+    setChangedFiles({ kind: "loading" });
+    setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
+    repoRelRef.current = nextRepoRel;
+    setRepoRel(nextRepoRel);
+    setSource("changes");
+  }, [ctx.theaterId, setSource]);
+  useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setReposError(false); ctx.api.fetch("repository", "repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) }).then((response) => response.ok ? response.json() as Promise<ReposResult> : Promise.reject()).then((value) => { if (!cancelled) { setRepos(value.repos); const restoredRepoRel = readRepositoryRel(ctx.theaterId!, value.repos); if (restoredRepoRel !== repoRelRef.current) transitionRepository(restoredRepoRel, false); } }).catch(() => { if (!cancelled) setReposError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, reposRetry, transitionRepository]);
   useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setRefs({ branches: [], remotes: [], tags: [], stashes: [] }); setRefsError(false); ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) }).then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject()).then((value) => { if (!cancelled) setRefs(value); }).catch(() => { if (!cancelled) setRefsError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, repoRel, refsRetry]);
   useEffect(() => {
     if (!ctx.theaterId) {
@@ -156,16 +170,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, [ctx.theaterId, repoRel]);
   const handleSelectRepository = useCallback((next: RepoCandidate) => {
     if (!ctx.theaterId || next.relPath === repoRel) { setSource("changes"); return; }
-    saveRepositoryRel(ctx.theaterId, next.relPath);
-    clearSelectedFile();
-    setRefFilter(null);
-    setFilterText("");
-    setHistoryInspectorOpen(false);
-    setChangedFiles({ kind: "loading" });
-    setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
-    setRepoRel(next.relPath);
-    setSource("changes");
-  }, [ctx.theaterId, repoRel, setSource]);
+    transitionRepository(next.relPath, true);
+  }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
   const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
   const handleViewMode = useCallback((next: ViewMode) => {
     setViewMode(next);

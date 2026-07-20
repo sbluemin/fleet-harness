@@ -5,6 +5,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
+import { isPathContained } from "./path-containment.js";
 import type { DiffFileEntry, DiffFileMode } from "./types.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ export async function resolveGitCwd(theaterPath: string, repoRel: unknown = ""):
   }
 
   const resolved = path.resolve(theaterPath, normalized);
-  if (!resolved.startsWith(`${theaterPath}${path.sep}`)) throw new InvalidRepoError("Repository path escapes Theater");
+  if (!isPathContained(theaterPath, resolved)) throw new InvalidRepoError("Repository path escapes Theater");
 
   let realTheater: string;
   let realRepo: string;
@@ -102,7 +103,7 @@ export async function resolveGitCwd(theaterPath: string, repoRel: unknown = ""):
   } catch {
     throw new InvalidRepoError("Repository path does not exist");
   }
-  if (realRepo !== realTheater && !realRepo.startsWith(`${realTheater}${path.sep}`)) {
+  if (!isPathContained(realTheater, realRepo)) {
     throw new InvalidRepoError("Repository path escapes Theater");
   }
   try {
