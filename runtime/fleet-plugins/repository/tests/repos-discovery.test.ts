@@ -101,6 +101,50 @@ describe("Repository discovery route", () => {
     }
   });
 
+  it("excludes a nested repository whose .git symlink resolves to a gitfile pointing outside", async () => {
+    await initGitRepo(theaterPath, true);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-outside-chain-"));
+    await initGitRepo(outsideRoot, true);
+    const innerGitfile = path.join(theaterPath, "inner-gitfile");
+    await fs.writeFile(innerGitfile, `gitdir: ${path.join(outsideRoot, ".git")}\n`);
+    const impostor = path.join(theaterPath, "impostor");
+    await fs.mkdir(impostor, { recursive: true });
+    await fs.symlink(innerGitfile, path.join(impostor, ".git"));
+    try {
+      expect((await discover(theaterPath)).repos.map((repo) => repo.relPath)).toEqual([""]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes a nested repository whose gitdir commondir points outside the Theater", async () => {
+    await initGitRepo(theaterPath, true);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-outside-common-"));
+    await initGitRepo(outsideRoot, true);
+    const impostor = path.join(theaterPath, "impostor");
+    const impostorGitDir = path.join(impostor, "fake-gitdir");
+    await fs.mkdir(impostorGitDir, { recursive: true });
+    await fs.writeFile(path.join(impostorGitDir, "commondir"), `${path.join(outsideRoot, ".git")}\n`);
+    await fs.writeFile(path.join(impostor, ".git"), "gitdir: fake-gitdir\n");
+    try {
+      expect((await discover(theaterPath)).repos.map((repo) => repo.relPath)).toEqual([""]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("hides worktrees whose gitdir escapes a subdirectory Theater", async () => {
+    await initGitRepo(theaterPath, true);
+    const subTheater = path.join(theaterPath, "sub");
+    await fs.mkdir(subTheater, { recursive: true });
+    // 상위 저장소의 워크트리가 하위 Theater 안에 놓이면 경로상으로는 포함되지만
+    // gitdir은 <parent>/.git/worktrees/... 라서 라우트가 거부한다.
+    await runGit(["worktree", "add", "-b", "inner-branch", path.join(subTheater, "inner-worktree")], { cwd: theaterPath });
+
+    const result = await discover(subTheater);
+    expect(result.repos.map(({ relPath, kind }) => ({ relPath, kind }))).toEqual([{ relPath: "", kind: "root" }]);
+  });
+
   it("includes the default context when the Theater is a subdirectory of a worktree", async () => {
     await initGitRepo(theaterPath, true);
     const subTheater = path.join(theaterPath, "sub");

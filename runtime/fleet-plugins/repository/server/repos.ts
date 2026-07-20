@@ -150,6 +150,10 @@ export async function handleRepositoryRepos(
         try { realWorktree = await fs.realpath(worktree.worktreePath); }
         catch { continue; }
         if (!isPathContained(realTheaterPath, realWorktree)) continue;
+        // 발견과 검증은 같은 술어를 써야 한다. 하위 디렉터리 Theater에서는 상위 저장소의
+        // 워크트리가 경로상으로는 Theater 안이어도 gitdir이 밖을 가리켜 라우트가 거부한다 —
+        // 그런 행을 목록에 올리면 선택 시 400만 돌려주는 죽은 항목이 된다.
+        if ((await resolveContainedGitDir(realWorktree, realTheaterPath)) === null) continue;
         const relPath = path.relative(realTheaterPath, realWorktree);
         if (seen.has(relPath)) continue;
         if (repos.length >= REPOS_CAP) { truncated = true; break; }
