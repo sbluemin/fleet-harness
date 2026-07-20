@@ -732,7 +732,7 @@ function ModelAuthBlock() {
                 id="kimi-default-model"
                 className="terminal-carriers-select"
                 value={selectedModelId}
-                disabled={saving}
+                disabled={saving || !settings.state}
                 onChange={(event) => {
                   const nextModel = kimiOptions.models.find((model) => model.modelId === event.target.value);
                   if (!nextModel) return;
@@ -749,7 +749,7 @@ function ModelAuthBlock() {
                   id="kimi-default-effort"
                   className="terminal-carriers-select"
                   value={selectedEffort ?? selectedModel.effort.default}
-                  disabled={saving}
+                  disabled={saving || !settings.state}
                   onChange={(event) => saveKimiModel(selectedModel.modelId, event.target.value)}
                 >
                   {selectedModel.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}

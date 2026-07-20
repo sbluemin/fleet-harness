@@ -152,6 +152,7 @@ async function createAgentCliLaunchSpec(options: {
     const profile = await options.resolveProfile(options.env, options.cwd, {
       authService: options.infraServices.authService,
       cliId: options.cliId,
+      globalOptionsService: options.infraServices.globalOptionsService,
       resumeSessionId: options.resumeSessionId,
     });
     const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
