@@ -41,7 +41,7 @@ describe("Repository discovery route", () => {
   beforeEach(async () => { theaterPath = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-repos-")); });
   afterEach(async () => { await fs.rm(theaterPath, { recursive: true, force: true }); });
 
-  it("discovers the root, contained worktrees, and nested repositories in authority order", async () => {
+  it("discovers the root and nested repositories without linked worktrees", async () => {
     await initGitRepo(theaterPath, true);
     const worktree = path.join(theaterPath, "linked-worktree");
     await runGit(["worktree", "add", "-b", "linked-branch", worktree], { cwd: theaterPath });
@@ -50,10 +50,9 @@ describe("Repository discovery route", () => {
     const result = await discover(theaterPath);
     expect(result.repos.map(({ relPath, kind }) => ({ relPath, kind }))).toEqual([
       { relPath: "", kind: "root" },
-      { relPath: "linked-worktree", kind: "worktree" },
       { relPath: "nested", kind: "nested" },
     ]);
-    expect(result.repos[1]?.branch).toBe("linked-branch");
+    expect(result.repos[1]?.branch).not.toBe("");
   });
 
   it("excludes worktrees outside the Theater", async () => {
@@ -168,7 +167,7 @@ describe("Repository discovery route", () => {
     ]);
   });
 
-  it("canonicalizes a symlinked Theater so a worktree is not duplicated as nested", async () => {
+  it("canonicalizes a symlinked Theater without reclassifying a worktree as nested", async () => {
     await initGitRepo(theaterPath, true);
     const worktree = path.join(theaterPath, "linked-worktree");
     await runGit(["worktree", "add", "-b", "canonical-worktree", worktree], { cwd: theaterPath });
@@ -179,12 +178,10 @@ describe("Repository discovery route", () => {
       const realTheater = await fs.realpath(theaterAlias);
       const scanned: ScannedRepo[] = [];
       await scanRepos(theaterAlias, realTheater, realTheater, 0, 3, scanned);
-      expect(scanned.find((repo) => repo.relPath === "linked-worktree")?.repoDir).toBe(await fs.realpath(worktree));
+      expect(scanned.find((repo) => repo.relPath === "linked-worktree")).toBeUndefined();
 
       const result = await discover(theaterAlias);
-      expect(result.repos.filter((repo) => repo.relPath === "linked-worktree")).toEqual([
-        expect.objectContaining({ kind: "worktree" }),
-      ]);
+      expect(result.repos.filter((repo) => repo.relPath === "linked-worktree")).toEqual([]);
     } finally {
       await fs.rm(aliasParent, { recursive: true, force: true });
     }

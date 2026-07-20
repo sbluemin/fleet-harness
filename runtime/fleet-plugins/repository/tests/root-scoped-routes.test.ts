@@ -11,6 +11,7 @@ import { handleRepositoryChanged, handleRepositoryFile } from "../server/diff.js
 import { runGit } from "../server/git-executor.js";
 import { handleRepositoryLog } from "../server/log.js";
 import { handleRepositoryRefs } from "../server/refs.js";
+import { handleRepositoryWorktrees } from "../server/worktrees.js";
 
 interface JsonWrite {
   readonly status: number;
@@ -43,6 +44,7 @@ interface LogPayload {
 }
 
 const handlers = [
+  ["worktrees", handleRepositoryWorktrees, { theaterId: "theater" }],
   ["changed", handleRepositoryChanged, { theaterId: "theater" }],
   ["file", handleRepositoryFile, { theaterId: "theater", filePath: "file", mode: "unified" }],
   ["commit", handleRepositoryCommit, { theaterId: "theater", ref: "1234567" }],

@@ -6,12 +6,17 @@ import { handleRepositoryChanged, handleRepositoryFile } from "./server/diff.js"
 import { handleRepositoryLog } from "./server/log.js";
 import { handleRepositoryRefs } from "./server/refs.js";
 import { handleRepositoryRepos } from "./server/repos.js";
+import { handleRepositoryWorktrees } from "./server/worktrees.js";
 
 export default definePlugin({
   id: "repository",
   register(ctx) {
     registerRouter(ctx, "repos", async ({ req, res }) => {
       await handleRepositoryRepos(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "worktrees", async ({ req, res }) => {
+      await handleRepositoryWorktrees(req, res, ctx);
       return true;
     });
     registerRouter(ctx, "changed", async ({ req, res }) => {

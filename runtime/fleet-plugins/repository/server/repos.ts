@@ -7,7 +7,6 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "./git-executor.js";
 import { resolveContainedGitDir } from "./git-marker.js";
-import { parseWorktreePorcelainEntries } from "./log.js";
 import { isPathContained, isSelectableRepoRel } from "./path-containment.js";
 import type { RepoCandidate, ReposResult } from "./types.js";
 
@@ -53,7 +52,15 @@ export async function scanRepos(
   // gitdir까지 containment를 확인한다 — Theater 밖을 가리키는 마커는 후보로도 올리지 않는다.
   // 라우트의 어휘 술어도 함께 적용한다(예: `-repo`처럼 선행 대시 이름은 라우트가 거부한다).
   const relPath = path.relative(realTheaterPath, dir);
-  if (isSelectableRepoRel(relPath) && (await resolveContainedGitDir(dir, realTheaterPath)) !== null) {
+  const gitDir = isSelectableRepoRel(relPath) ? await resolveContainedGitDir(dir, realTheaterPath) : null;
+  let linkedWorktree = false;
+  if (gitDir !== null) {
+    try {
+      await fs.access(path.join(gitDir, "commondir"));
+      linkedWorktree = true;
+    } catch { /* Independent repositories do not have a commondir marker. */ }
+  }
+  if (gitDir !== null && !linkedWorktree) {
     repos.push({ relPath, name: relPath === "" ? path.basename(realTheaterPath) : path.basename(dir), repoDir: dir });
     if (repos.length >= cap) return true;
   }
@@ -143,33 +150,6 @@ export async function handleRepositoryRepos(
   if (rootIsRepo) {
     repos.push({ relPath: "", name: path.basename(theaterPath), branch: await resolveRepoBranch(theaterPath), kind: "root" });
     seen.add("");
-
-    try {
-      const result = await runGit(["worktree", "list", "--porcelain"], { cwd: theaterPath });
-      for (const worktree of parseWorktreePorcelainEntries(result.stdout)) {
-        let realWorktree: string;
-        try { realWorktree = await fs.realpath(worktree.worktreePath); }
-        catch { continue; }
-        if (!isPathContained(realTheaterPath, realWorktree)) continue;
-        // 발견과 검증은 같은 술어를 써야 한다. 하위 디렉터리 Theater에서는 상위 저장소의
-        // 워크트리가 경로상으로는 Theater 안이어도 gitdir이 밖을 가리켜 라우트가 거부한다 —
-        // 그런 행을 목록에 올리면 선택 시 400만 돌려주는 죽은 항목이 된다.
-        const relPath = path.relative(realTheaterPath, realWorktree);
-        if (!isSelectableRepoRel(relPath)) continue;
-        if ((await resolveContainedGitDir(realWorktree, realTheaterPath)) === null) continue;
-        if (seen.has(relPath)) continue;
-        if (repos.length >= REPOS_CAP) { truncated = true; break; }
-        repos.push({
-          relPath,
-          name: path.basename(realWorktree),
-          branch: worktree.branch ?? worktree.sha.slice(0, 7),
-          kind: "worktree",
-        });
-        seen.add(relPath);
-      }
-    } catch {
-      // Root repository remains useful even when worktree enumeration fails.
-    }
   }
 
   const scanned: ScannedRepo[] = [];

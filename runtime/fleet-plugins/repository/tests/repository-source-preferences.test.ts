@@ -17,6 +17,11 @@ describe("Repository source preference", () => {
     expect(readRepositorySource()).toBe("repositories");
   });
 
+  it("keeps the worktree context source", () => {
+    vi.stubGlobal("localStorage", { getItem: () => "worktrees" });
+    expect(readRepositorySource()).toBe("worktrees");
+  });
+
   it.each(["diff", "unknown", "", null])( "falls back to Changes for an invalid persisted source", (value) => {
     vi.stubGlobal("localStorage", { getItem: () => value });
     expect(readRepositorySource()).toBe("changes");

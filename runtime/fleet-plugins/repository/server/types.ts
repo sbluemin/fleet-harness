@@ -23,12 +23,23 @@ export interface RepoCandidate {
   readonly relPath: string;
   readonly name: string;
   readonly branch: string;
-  readonly kind: "root" | "worktree" | "nested";
+  readonly kind: "root" | "nested";
 }
 
 export interface ReposResult {
   readonly repos: readonly RepoCandidate[];
   readonly truncated?: boolean;
+}
+
+export interface WorktreeCandidate {
+  readonly relPath: string;
+  readonly name: string;
+  readonly branch: string;
+  readonly current: boolean;
+}
+
+export interface WorktreesResult {
+  readonly worktrees: readonly WorktreeCandidate[];
 }
 
 export interface LogCommitEntry {

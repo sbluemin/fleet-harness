@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposResult } from "../server/types.js";
+import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
@@ -35,17 +35,22 @@ function readViewMode(): ViewMode {
 export function readRepositorySource(): Source {
   try {
     const value = localStorage.getItem(PREFS_SOURCE);
-    if (value === "repositories" || value === "changes" || value === "history" || value === "branches" || value === "tags" || value === "stashes") return value;
+    if (value === "repositories" || value === "worktrees" || value === "changes" || value === "history" || value === "branches" || value === "tags" || value === "stashes") return value;
   } catch { /* ignore */ }
   return "changes";
 }
 
-export function readRepositoryRel(theaterId: string, repos: readonly RepoCandidate[]): string {
+export function readStoredRepositoryRel(theaterId: string): string {
+  try { return localStorage.getItem(`${PREFS_REPO_PREFIX}${theaterId}`) ?? ""; }
+  catch { return ""; }
+}
+
+export function readRepositoryRel(theaterId: string, repos: readonly RepoCandidate[], worktrees: readonly WorktreeCandidate[]): string {
   try {
     const key = `${PREFS_REPO_PREFIX}${theaterId}`;
     const stored = localStorage.getItem(key);
     if (stored === null) return "";
-    if (repos.some((repo) => repo.relPath === stored)) return stored;
+    if (repos.some((repo) => repo.relPath === stored) || worktrees.some((worktree) => worktree.relPath === stored)) return stored;
     localStorage.removeItem(key);
   } catch { /* ignore */ }
   return "";
@@ -53,6 +58,10 @@ export function readRepositoryRel(theaterId: string, repos: readonly RepoCandida
 
 export function saveRepositoryRel(theaterId: string, repoRel: string): void {
   try { localStorage.setItem(`${PREFS_REPO_PREFIX}${theaterId}`, repoRel); } catch { /* ignore */ }
+}
+
+function clearRepositoryRel(theaterId: string): void {
+  try { localStorage.removeItem(`${PREFS_REPO_PREFIX}${theaterId}`); } catch { /* ignore */ }
 }
 
 function saveRepositorySource(source: Source): void {
@@ -76,8 +85,8 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
   return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
-type Source = "repositories" | "changes" | "history" | "branches" | "tags" | "stashes";
-type RefSource = Exclude<Source, "repositories" | "changes" | "history">;
+type Source = "repositories" | "worktrees" | "changes" | "history" | "branches" | "tags" | "stashes";
+type RefSource = Exclude<Source, "repositories" | "worktrees" | "changes" | "history">;
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
 export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[] };
@@ -104,8 +113,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [repos, setRepos] = useState<readonly RepoCandidate[]>([]);
   const [reposError, setReposError] = useState(false);
   const [reposRetry, setReposRetry] = useState(0);
-  const [repoRel, setRepoRel] = useState("");
-  const repoRelRef = useRef("");
+  const [reposLoaded, setReposLoaded] = useState(false);
+  const [worktrees, setWorktrees] = useState<readonly WorktreeCandidate[]>([]);
+  const [worktreesError, setWorktreesError] = useState(false);
+  const [worktreesRetry, setWorktreesRetry] = useState(0);
+  const [worktreesForRepoRel, setWorktreesForRepoRel] = useState<string | null>(null);
+  const [repoRel, setRepoRel] = useState(() => ctx.theaterId ? readStoredRepositoryRel(ctx.theaterId) : "");
+  const repoRelRef = useRef(repoRel);
   const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [refFilter, setRefFilter] = useState<string | null>(null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
@@ -137,7 +151,49 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setRepoRel(nextRepoRel);
     setSource("changes");
   }, [ctx.theaterId, setSource]);
-  useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setReposError(false); ctx.api.fetch("repository", "repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) }).then((response) => response.ok ? response.json() as Promise<ReposResult> : Promise.reject()).then((value) => { if (!cancelled) { setRepos(value.repos); const restoredRepoRel = readRepositoryRel(ctx.theaterId!, value.repos); if (restoredRepoRel !== repoRelRef.current) transitionRepository(restoredRepoRel, false); } }).catch(() => { if (!cancelled) setReposError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, reposRetry, transitionRepository]);
+  useEffect(() => {
+    if (!ctx.theaterId) return;
+    let cancelled = false;
+    setReposError(false);
+    setReposLoaded(false);
+    ctx.api.fetch("repository", "repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) })
+      .then((response) => response.json() as Promise<ReposResult>)
+      .then((value) => { if (!cancelled) { setRepos(value.repos); setReposLoaded(true); } })
+      .catch(() => { if (!cancelled) setReposError(true); });
+    return () => { cancelled = true; };
+  }, [ctx.api, ctx.theaterId, reposRetry]);
+  useEffect(() => {
+    if (!ctx.theaterId) return;
+    let cancelled = false;
+    const requestedRepoRel = repoRel;
+    setWorktrees([]);
+    setWorktreesError(false);
+    setWorktreesForRepoRel(null);
+    ctx.api.fetch("repository", "worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel: requestedRepoRel }) })
+      .then((response) => response.json() as Promise<WorktreesResult>)
+      .then((value) => {
+        if (!cancelled) {
+          setWorktrees(value.worktrees);
+          setWorktreesForRepoRel(requestedRepoRel);
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const status = typeof error === "object" && error !== null && "status" in error ? (error as { readonly status?: unknown }).status : null;
+        if (status === 400 && requestedRepoRel !== "") {
+          clearRepositoryRel(ctx.theaterId!);
+          transitionRepository("", false);
+          return;
+        }
+        setWorktreesError(true);
+      });
+    return () => { cancelled = true; };
+  }, [ctx.api, ctx.theaterId, repoRel, transitionRepository, worktreesRetry]);
+  useEffect(() => {
+    if (!ctx.theaterId || !reposLoaded || worktreesForRepoRel !== repoRel) return;
+    const restoredRepoRel = readRepositoryRel(ctx.theaterId, repos, worktrees);
+    if (restoredRepoRel !== repoRelRef.current) transitionRepository(restoredRepoRel, false);
+  }, [ctx.theaterId, repoRel, repos, reposLoaded, transitionRepository, worktrees, worktreesForRepoRel]);
   useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setRefs({ branches: [], remotes: [], tags: [], stashes: [] }); setRefsError(false); ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) }).then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject()).then((value) => { if (!cancelled) setRefs(value); }).catch(() => { if (!cancelled) setRefsError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, repoRel, refsRetry]);
   useEffect(() => {
     if (!ctx.theaterId) {
@@ -168,7 +224,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const handleSelectFile = useCallback((entry: DiffFileEntry) => {
     if (ctx.theaterId) setSelectedFile(entry, ctx.theaterId, repoRel);
   }, [ctx.theaterId, repoRel]);
-  const handleSelectRepository = useCallback((next: RepoCandidate) => {
+  const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
     if (!ctx.theaterId || next.relPath === repoRel) { setSource("changes"); return; }
     transitionRepository(next.relPath, true);
   }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
@@ -210,12 +266,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
   const retryChangedFiles = useCallback(() => setChangedFilesRetry((value) => value + 1), []);
   const wipFiles = changedFiles.kind === "ok" ? changedFiles.files : [];
-  const selectedRepo = repos.find((repo) => repo.relPath === repoRel);
+  const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
   return (
-    <div className="repository-unified"><div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div><div className="repository-unified-body"><SourceNav source={source} refs={refs} repos={repos} onSource={setSource} /><div className="repository-source-content">
+    <div className="repository-unified"><div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div><div className="repository-unified-body"><SourceNav source={source} refs={refs} repos={repos} worktrees={worktrees} onSource={setSource} /><div className="repository-source-content">
       {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} /> : null}
+      {source === "worktrees" ? worktreesError ? <div className="history-error">Unable to load worktrees<button type="button" className="repository-refresh-btn" onClick={() => setWorktreesRetry((value) => value + 1)}>Retry</button></div> : <WorktreeList worktrees={worktrees} onWorktree={handleSelectRepository} /> : null}
       <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
-      {source !== "repositories" && source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
+      {source !== "repositories" && source !== "worktrees" && source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
       <div hidden={source !== "changes"} ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
       {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile.entry} mode={hunkMode} /></div> : null}
       {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
@@ -227,11 +284,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   );
 }
 
-function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function SourceNav({ source, refs, repos, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
-function RepoList({ repos, selectedRel, onRepository }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void }) { const groups = (["root", "worktree", "nested"] as const).map((kind) => ({ kind, label: kind === "root" ? "THIS THEATER" : kind === "worktree" ? "WORKTREES" : "NESTED", repos: repos.filter((repo) => repo.kind === kind) })).filter((group) => group.repos.length > 0); return <div className="repository-ref-list">{groups.map((group) => <div key={group.kind} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.repos.map((repo) => <button type="button" key={repo.relPath} title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} onClick={() => onRepository(repo)}><SourceIcon source="repositories" /><span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>{repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}</button>)}</div>)}</div>; }
+function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
+function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
+function RepoList({ repos, selectedRel, onRepository }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void }) { const groups = (["root", "nested"] as const).map((kind) => ({ kind, label: kind === "root" ? "THIS THEATER" : "NESTED", repos: repos.filter((repo) => repo.kind === kind) })).filter((group) => group.repos.length > 0); return <div className="repository-ref-list">{groups.map((group) => <div key={group.kind} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.repos.map((repo) => <button type="button" key={repo.relPath} title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} onClick={() => onRepository(repo)}><SourceIcon source="repositories" /><span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>{repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}</button>)}</div>)}</div>; }
+function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}{worktree.current && " ✓"}</span>{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
 function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
-  if (source === "repositories" || source === "changes" || source === "history") return null;
+  if (source === "repositories" || source === "worktrees" || source === "changes" || source === "history") return null;
   return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => {
     return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => {
       if (row.ref) onRef(row.ref);

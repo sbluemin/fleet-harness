@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readRepositoryRel, saveRepositoryRel } from "../client/rail-panel.js";
 import { clearSelectedFile, getSelectedFile, setSelectedFile } from "../client/repository-view-store.js";
-import type { RepoCandidate } from "../server/types.js";
+import type { RepoCandidate, WorktreeCandidate } from "../server/types.js";
 
 const repos: readonly RepoCandidate[] = [
   { relPath: "", name: "theater", branch: "main", kind: "root" },
-  { relPath: "worktrees/feature", name: "feature", branch: "feature", kind: "worktree" },
+];
+const worktrees: readonly WorktreeCandidate[] = [
+  { relPath: "", name: "theater", branch: "main", current: false },
+  { relPath: "worktrees/feature", name: "feature", branch: "feature", current: true },
 ];
 
 afterEach(() => {
@@ -25,7 +28,7 @@ describe("Repository context persistence", () => {
 
     saveRepositoryRel("theater-1", "worktrees/feature");
     expect(values).toEqual(new Map([["fleet-console.repository.repo.theater-1", "worktrees/feature"]]));
-    expect(readRepositoryRel("theater-1", repos)).toBe("worktrees/feature");
+    expect(readRepositoryRel("theater-1", repos, worktrees)).toBe("worktrees/feature");
   });
 
   it("heals a stale persisted worktree to root and removes the key", () => {
@@ -36,7 +39,7 @@ describe("Repository context persistence", () => {
       removeItem,
     });
 
-    expect(readRepositoryRel("theater-1", repos)).toBe("");
+    expect(readRepositoryRel("theater-1", repos, worktrees)).toBe("");
     expect(removeItem).toHaveBeenCalledWith("fleet-console.repository.repo.theater-1");
   });
 });
