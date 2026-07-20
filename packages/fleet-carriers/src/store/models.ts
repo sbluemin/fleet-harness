@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import {
   getEffort,
   getProviderModels,
@@ -12,7 +14,7 @@ import {
   sanitizeGeneration,
   sanitizeTaskforce,
 } from "./sanitize.js";
-import { readRawCarriers, readRawCarriersOrDefaultStore, updateCarriers } from "./state-io.js";
+import { getCarriersFilePath, readRawCarriers, readRawCarriersOrDefaultStore, updateCarriers } from "./state-io.js";
 import type {
   AgentCliSelection,
   CarrierModelDefaults,
@@ -209,14 +211,15 @@ function resolveSelectionForCliType(
   return { model, effort };
 }
 
-/** 전역 설정(~/.fleet/settings.json)의 Kimi 프로바이더 기본 모델을 읽습니다. 오류/무효값은 undefined로 폴백합니다. */
+/** 활성 store 디렉터리의 전역 설정(settings.json)에서 Kimi 프로바이더 기본 모델을 읽습니다. 오류/무효값은 undefined로 폴백합니다. */
 function readKimiProviderDefaultSelection(
   cliType: CliType,
   allowedModels: ReadonlySet<string>,
 ): { readonly model: string; readonly effort?: string } | undefined {
   if (cliType !== "claude-kimi") return undefined;
   try {
-    const kimiModel = createGlobalOptionsStore().load().kimiModel;
+    // initStore(dir)로 재배치된 활성 데이터 디렉터리를 따라가도록 carriers store 경로에서 유도한다.
+    const kimiModel = createGlobalOptionsStore({ dataDir: path.dirname(getCarriersFilePath()) }).load().kimiModel;
     if (!kimiModel || !allowedModels.has(kimiModel.model)) return undefined;
     return {
       model: kimiModel.model,

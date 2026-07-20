@@ -4,12 +4,13 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  initStore,
   loadCarrierStates,
   resetStoreForTests,
 } from "../../src/index.js";
 
 // resolveSelectionForCliType의 Kimi 프로바이더 기본 모델 폴백 체인 검증.
-// 전역 설정(~/.fleet/settings.json)은 getFleetDataDir() 기준이라 HOME을 임시 디렉터리로 격리한다.
+// 전역 설정(settings.json)은 활성 store 디렉터리 기준이라 HOME을 임시 디렉터리로 격리한다.
 describe("Kimi 프로바이더 기본 모델 폴백", () => {
   let tempHome: string | null = null;
   let savedHome: string | undefined;
@@ -104,6 +105,27 @@ describe("Kimi 프로바이더 기본 모델 폴백", () => {
     const states = loadCarrierStates({ ohio: { cliType: "codex" } });
 
     expect(states.ohio?.agentCli.codex).toEqual({ model: "gpt-5.6-sol", effort: "low" });
+  });
+
+  it("initStore로 재배치된 store 디렉터리의 전역 설정을 사용한다", () => {
+    const customDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-kimi-custom-"));
+    try {
+      initStore(customDir);
+      // 기본 디렉터리(HOME)에는 다른 값을 두고, 재배치된 디렉터리에 k3를 둔다.
+      writeSettingsJson({ version: 1, kimiModel: { model: "kimi-for-coding-highspeed" } });
+      fs.writeFileSync(
+        path.join(customDir, "settings.json"),
+        JSON.stringify({ version: 1, kimiModel: { model: "k3", effort: "low" } }),
+        "utf-8",
+      );
+
+      const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+
+      expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "k3", effort: "low" });
+    } finally {
+      resetStoreForTests();
+      fs.rmSync(customDir, { recursive: true, force: true });
+    }
   });
 
   function writeSettingsJson(value: unknown): void {
