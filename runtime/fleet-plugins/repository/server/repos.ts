@@ -13,6 +13,7 @@ import type { RepoCandidate, ReposResult } from "./types.js";
 export const REPOS_CAP = 200;
 export const HARD_CAP_DEPTH = 8;
 export const NESTED_BRANCH_CAP = 64;
+export const SCAN_VISIT_BUDGET = 10_000;
 const DEFAULT_DEPTH = 3;
 
 export interface ScannedRepo {
@@ -46,8 +47,14 @@ export async function scanRepos(
   maxDepth: number,
   repos: ScannedRepo[],
   cap = REPOS_CAP,
+  // 깊이와 개수와 무관한 세 번째 제동. 깊이를 사용자가 고를 수 있게 되면서, 저장소가 거의 없고
+  // 폭만 넓은 트리에서는 개수 상한이 영원히 걸리지 않아 스캔이 끝없이 넓어질 수 있다.
+  // 재귀 전체가 하나의 카운터를 공유해야 하므로 가변 객체로 넘긴다.
+  visits: { remaining: number } = { remaining: SCAN_VISIT_BUDGET },
 ): Promise<boolean> {
   if (repos.length >= cap) return true;
+  if (visits.remaining <= 0) return true;
+  visits.remaining -= 1;
 
   // gitdir까지 containment를 확인한다 — Theater 밖을 가리키는 마커는 후보로도 올리지 않는다.
   // 라우트의 어휘 술어도 함께 적용한다(예: `-repo`처럼 선행 대시 이름은 라우트가 거부한다).
@@ -72,14 +79,14 @@ export async function scanRepos(
     dirHandle = await fs.opendir(dir);
     let dirent = await dirHandle.read();
     while (dirent !== null) {
-      if (repos.length >= cap) return true;
+      if (repos.length >= cap || visits.remaining <= 0) return true;
       if (dirent.isDirectory() && dirent.name !== "node_modules" && dirent.name !== ".git") {
         const childPath = path.join(dir, dirent.name);
         let realChildPath: string;
         try { realChildPath = await fs.realpath(childPath); }
         catch { dirent = await dirHandle.read(); continue; }
         if (isPathContained(realTheaterPath, realChildPath)) {
-          const truncated = await scanRepos(realTheaterPath, realTheaterPath, realChildPath, currentDepth + 1, maxDepth, repos, cap);
+          const truncated = await scanRepos(realTheaterPath, realTheaterPath, realChildPath, currentDepth + 1, maxDepth, repos, cap, visits);
           if (truncated) return true;
         }
       }

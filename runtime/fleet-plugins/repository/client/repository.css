@@ -973,6 +973,16 @@
 .repository-source-content { flex: 1; min-width: 0; min-height: 0; }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
+/* 목록은 스크롤되고 스캔 푸터는 하단에 고정된다 */
+.repository-scan-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.repository-scan-pane > .repository-ref-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
+.repository-scan-foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 7px 10px; border-top: 1px solid var(--hairline); background: var(--ink-deep); }
+.repository-scan-foot label { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+/* appearance:none으로 UA 기본 select 크롬을 걷어내고 필터 입력과 같은 시각 등급으로 맞춘다 */
+.repository-scan-depth { appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-deep) 30%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 2px 6px; outline: none; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-glide); }
+.repository-scan-depth:hover { border-color: var(--surface-rim-strong); }
+.repository-scan-depth:focus-visible { border-color: var(--brass); }
+.repository-scan-count { margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
 .repository-ref-group { display: grid; gap: 2px; }
 .repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; font-weight: 400; letter-spacing: .18em; text-transform: uppercase; }

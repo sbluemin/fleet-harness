@@ -20,6 +20,10 @@ const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
 const PREFS_LIST_PANE_WIDTH = "fleet-console.diff.listPaneWidth";
 const PREFS_SOURCE = "fleet-console.repository.source";
 const PREFS_REPO_PREFIX = "fleet-console.repository.repo.";
+const PREFS_SCAN_DEPTH = "fleet-console.repository.scanDepth";
+const SCAN_DEPTH_MIN = 1;
+const SCAN_DEPTH_MAX = 8;
+const SCAN_DEPTH_DEFAULT = 3;
 const EXTENDED_EXTRA_WIDTH = 400;
 const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
@@ -54,6 +58,18 @@ export function readRepositoryRel(theaterId: string, repos: readonly RepoCandida
     localStorage.removeItem(key);
   } catch { /* ignore */ }
   return "";
+}
+
+export function readScanDepth(): number {
+  try {
+    const value = Number.parseInt(localStorage.getItem(PREFS_SCAN_DEPTH) ?? "", 10);
+    if (Number.isInteger(value) && value >= SCAN_DEPTH_MIN && value <= SCAN_DEPTH_MAX) return value;
+  } catch { /* ignore */ }
+  return SCAN_DEPTH_DEFAULT;
+}
+
+export function saveScanDepth(depth: number): void {
+  try { localStorage.setItem(PREFS_SCAN_DEPTH, String(depth)); } catch { /* ignore */ }
 }
 
 export function saveRepositoryRel(theaterId: string, repoRel: string): void {
@@ -113,6 +129,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [repos, setRepos] = useState<readonly RepoCandidate[]>([]);
   const [reposError, setReposError] = useState(false);
   const [reposRetry, setReposRetry] = useState(0);
+  const [reposTruncated, setReposTruncated] = useState(false);
+  const [scanDepth, setScanDepthState] = useState(readScanDepth);
+  // 깊이 변경은 컨텍스트 전환이 아니다 — 선택된 저장소와 하위 상태는 그대로 두고 목록만 다시 받는다.
+  const setScanDepth = useCallback((next: number) => { setScanDepthState(next); saveScanDepth(next); }, []);
   const [reposLoaded, setReposLoaded] = useState(false);
   const [worktrees, setWorktrees] = useState<readonly WorktreeCandidate[]>([]);
   const [worktreesError, setWorktreesError] = useState(false);
@@ -156,12 +176,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     let cancelled = false;
     setReposError(false);
     setReposLoaded(false);
-    ctx.api.fetch("repository", "repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId }) })
+    ctx.api.fetch("repository", "repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, maxDepth: scanDepth }) })
       .then((response) => response.json() as Promise<ReposResult>)
-      .then((value) => { if (!cancelled) { setRepos(value.repos); setReposLoaded(true); } })
+      .then((value) => { if (!cancelled) { setRepos(value.repos); setReposTruncated(value.truncated === true); setReposLoaded(true); } })
       .catch(() => { if (!cancelled) setReposError(true); });
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, reposRetry]);
+  }, [ctx.api, ctx.theaterId, reposRetry, scanDepth]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     let cancelled = false;
@@ -269,7 +289,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
   return (
     <div className="repository-unified"><div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div><div className="repository-unified-body"><SourceNav source={source} refs={refs} repos={repos} worktrees={worktrees} onSource={setSource} /><div className="repository-source-content">
-      {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} /> : null}
+      {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} scanDepth={scanDepth} onScanDepth={setScanDepth} truncated={reposTruncated} /> : null}
       {source === "worktrees" ? worktreesError ? <div className="history-error">Unable to load worktrees<button type="button" className="repository-refresh-btn" onClick={() => setWorktreesRetry((value) => value + 1)}>Retry</button></div> : <WorktreeList worktrees={worktrees} onWorktree={handleSelectRepository} /> : null}
       <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
       {source !== "repositories" && source !== "worktrees" && source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
@@ -286,7 +306,19 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
 function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
-function RepoList({ repos, selectedRel, onRepository }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void }) { const groups = (["root", "nested"] as const).map((kind) => ({ kind, label: kind === "root" ? "THIS THEATER" : "NESTED", repos: repos.filter((repo) => repo.kind === kind) })).filter((group) => group.repos.length > 0); return <div className="repository-ref-list">{groups.map((group) => <div key={group.kind} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.repos.map((repo) => <button type="button" key={repo.relPath} title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} onClick={() => onRepository(repo)}><SourceIcon source="repositories" /><span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>{repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}</button>)}</div>)}</div>; }
+function RepoList({ repos, selectedRel, onRepository, scanDepth, onScanDepth, truncated }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean }) {
+  const groups = (["root", "nested"] as const).map((kind) => ({ kind, label: kind === "root" ? "THIS THEATER" : "NESTED", repos: repos.filter((repo) => repo.kind === kind) })).filter((group) => group.repos.length > 0);
+  return <div className="repository-scan-pane">
+    <div className="repository-ref-list">{groups.map((group) => <div key={group.kind} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.repos.map((repo) => <button type="button" key={repo.relPath} title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} onClick={() => onRepository(repo)}><SourceIcon source="repositories" /><span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>{repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}</button>)}</div>)}</div>
+    <div className="repository-scan-foot">
+      <label htmlFor="repository-scan-depth">Depth</label>
+      <select id="repository-scan-depth" className="repository-scan-depth" value={scanDepth} onChange={(event) => onScanDepth(Number.parseInt(event.target.value, 10))}>
+        {Array.from({ length: SCAN_DEPTH_MAX - SCAN_DEPTH_MIN + 1 }, (_, index) => SCAN_DEPTH_MIN + index).map((depth) => <option key={depth} value={depth}>{depth}</option>)}
+      </select>
+      <span className="repository-scan-count">{repos.length} found{truncated ? " · limit reached" : ""}</span>
+    </div>
+  </div>;
+}
 function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}{worktree.current && " ✓"}</span>{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
 function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
   if (source === "repositories" || source === "worktrees" || source === "changes" || source === "history") return null;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readRepositorySource } from "../client/rail-panel.js";
+import { readRepositorySource, readScanDepth } from "../client/rail-panel.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -20,6 +20,16 @@ describe("Repository source preference", () => {
   it("keeps the worktree context source", () => {
     vi.stubGlobal("localStorage", { getItem: () => "worktrees" });
     expect(readRepositorySource()).toBe("worktrees");
+  });
+
+  it("reads a valid persisted scan depth", () => {
+    vi.stubGlobal("localStorage", { getItem: () => "6" });
+    expect(readScanDepth()).toBe(6);
+  });
+
+  it.each(["0", "9", "3.5", "abc", "", null])("falls back to depth 3 for an invalid persisted scan depth", (value) => {
+    vi.stubGlobal("localStorage", { getItem: () => value });
+    expect(readScanDepth()).toBe(3);
   });
 
   it.each(["diff", "unknown", "", null])( "falls back to Changes for an invalid persisted source", (value) => {

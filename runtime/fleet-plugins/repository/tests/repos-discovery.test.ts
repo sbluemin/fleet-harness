@@ -187,6 +187,30 @@ describe("Repository discovery route", () => {
     }
   });
 
+  it("stops scanning once the visit budget is spent", async () => {
+    // 저장소가 하나도 없고 폭만 넓은 트리 — 개수 상한은 영원히 걸리지 않으므로 방문 예산만이 제동이다.
+    await Promise.all(Array.from({ length: 12 }, (_, index) => fs.mkdir(path.join(theaterPath, `wide-${index}`), { recursive: true })));
+    const realTheater = await fs.realpath(theaterPath);
+    const scanned: ScannedRepo[] = [];
+    const visits = { remaining: 5 };
+    const truncated = await scanRepos(realTheater, realTheater, realTheater, 0, 3, scanned, REPOS_CAP, visits);
+    expect(truncated).toBe(true);
+    expect(visits.remaining).toBe(0);
+  });
+
+  it("shares one visit budget across every recursion branch", async () => {
+    // 분기마다 예산이 리셋되면 이 트리는 예산을 소진하지 못하고 전부 방문된다.
+    await Promise.all(Array.from({ length: 4 }, (_, outer) =>
+      Promise.all(Array.from({ length: 4 }, (_, inner) =>
+        fs.mkdir(path.join(theaterPath, `branch-${outer}`, `leaf-${inner}`), { recursive: true })))));
+    const realTheater = await fs.realpath(theaterPath);
+    const scanned: ScannedRepo[] = [];
+    const visits = { remaining: 6 };
+    const truncated = await scanRepos(realTheater, realTheater, realTheater, 0, 3, scanned, REPOS_CAP, visits);
+    expect(truncated).toBe(true);
+    expect(visits.remaining).toBe(0);
+  });
+
   it("clamps depth to [1, 8]", async () => {
     await initGitRepo(path.join(theaterPath, "one"));
     await initGitRepo(path.join(theaterPath, "one", "two"));
