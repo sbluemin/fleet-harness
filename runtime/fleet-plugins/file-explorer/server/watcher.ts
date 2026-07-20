@@ -28,8 +28,10 @@ export interface WatcherRegistry {
 }
 
 interface WatcherEntry {
+  readonly theaterPath: string;
   readonly recursive: boolean;
   readonly watchers: Map<string, WatcherHandle>;
+  readonly pendingDirectories: Set<string>;
   readonly subscribers: Set<WatchChangeCallback>;
   readonly stateSubscribers: Set<WatchStateCallback>;
   subscriberCount: number;
@@ -70,6 +72,31 @@ export function createWatcherRegistry(
       try { watcher.close(); } catch { /* already closed */ }
     }
     entry.watchers.clear();
+    entry.pendingDirectories.clear();
+  }
+
+  async function rearmPendingDirectories(theaterId: string, entry: WatcherEntry): Promise<void> {
+    for (const relativePath of entry.pendingDirectories) {
+      const targetPath = await resolveTrackedDirectory(entry.theaterPath, relativePath);
+      if (!targetPath) continue;
+
+      // resolve 대기 중 구독이 끝났거나 다른 이벤트가 먼저 watcher를 복구했을 수 있다.
+      if (
+        entries.get(theaterId) !== entry
+        || !entry.pendingDirectories.has(relativePath)
+        || entry.watchers.has(relativePath)
+        || entry.watchers.size >= LINUX_DIRECTORY_WATCH_CAP
+      ) continue;
+
+      try {
+        startWatcher(theaterId, entry, relativePath, targetPath);
+        entry.pendingDirectories.delete(relativePath);
+        // 재생성 자체는 상위 watcher가 감지하므로 새 디렉터리 내용을 다시 조회하도록 알린다.
+        scheduleChange(entry, relativePath);
+      } catch {
+        for (const notify of entry.stateSubscribers) notify("degraded");
+      }
+    }
   }
 
   function startWatcher(
@@ -85,10 +112,14 @@ export function createWatcherRegistry(
       scheduleChange(entry, entry.recursive ? computeRelDir(filename) : watchKey);
 
       // Linux watcher는 inode를 추적하므로 디렉터리 교체 후 새 inode를 보지 못한다.
-      // rename 시 등록을 비워 다음 성공적인 folder list가 새 watcher를 만들게 한다.
+      // rename 시 등록을 비우고 상위 watcher 이벤트에서 새 inode를 다시 찾는다.
       if (!entry.recursive && watchKey !== "" && event === "rename") {
         entry.watchers.delete(watchKey);
+        entry.pendingDirectories.add(watchKey);
         try { currentWatcher.close(); } catch { /* already closed */ }
+      }
+      if (!entry.recursive && entry.pendingDirectories.size > 0) {
+        void rearmPendingDirectories(theaterId, entry);
       }
     });
     activeWatcher = watcher;
@@ -150,8 +181,10 @@ export function createWatcherRegistry(
     const entry: WatcherEntry = {
       // Linux의 recursive fs.watch fallback은 구독 시 전체 트리를 동기 순회한다.
       // 대신 root와 실제로 조회된 디렉터리만 개별 비재귀 watcher로 추적한다.
+      theaterPath,
       recursive: platform !== "linux",
       watchers: new Map(),
+      pendingDirectories: new Set(),
       subscribers: new Set([onChange]),
       stateSubscribers: new Set([onState]),
       subscriberCount: 1,
@@ -190,6 +223,7 @@ export function createWatcherRegistry(
     ) return;
     try {
       startWatcher(theaterId, entry, relativePath, targetPath);
+      entry.pendingDirectories.delete(relativePath);
     } catch {
       for (const notify of entry.stateSubscribers) notify("degraded");
     }

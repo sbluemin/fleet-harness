@@ -465,7 +465,7 @@ describe("createWatcherRegistry", () => {
     }
   });
 
-  it("Linux 하위 디렉터리 rename 후 다음 조회에서 watcher를 재등록한다", async () => {
+  it("Linux 하위 디렉터리가 나중에 재생성되면 상위 이벤트에서 watcher를 복구한다", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
     const childPath = path.join(tempRoot, "src");
     fs.mkdirSync(childPath);
@@ -491,9 +491,18 @@ describe("createWatcherRegistry", () => {
       vi.advanceTimersByTime(100);
       expect(onChange).toHaveBeenCalledWith("src");
 
+      onChange.mockClear();
       fs.mkdirSync(childPath);
-      await registry.trackDirectory("t1", tempRoot, "src");
-      expect(mockFactory).toHaveBeenCalledTimes(3);
+      callbacks[0]!("rename", "src");
+      await vi.waitFor(() => expect(mockFactory).toHaveBeenCalledTimes(3));
+
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith("src");
+
+      onChange.mockClear();
+      callbacks[2]!("change", "file.ts");
+      vi.advanceTimersByTime(100);
+      expect(onChange).toHaveBeenCalledWith("src");
       unsub();
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
