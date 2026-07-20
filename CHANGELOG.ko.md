@@ -5,6 +5,46 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-07-20
+
+### fleet-console
+
+#### Added
+- [fleet-console] Companion 패널이 기본 숨김 슬롯을 선언할 수 있고, 플러그인이 렌더 컨텍스트로 패널별 표시 여부를 전환하며, 캔버스는 슬롯 변화를 모션 최소화 설정을 존중하는 전환으로 애니메이트합니다.
+
+#### Fixed
+- [fleet-console] 커맨드 팔레트로 Operation을 이동하면 대상 터미널이 곧바로 키보드 포커스를 받아, 이전에 눌렀던 컨트롤에 포커스가 남지 않고 즉시 입력할 수 있습니다.
+- [fleet-console] 새로고침 후 커맨드 팔레트로 처음 이동해도 선택한 Operation이 활성화되어, 최소화만 풀린 채 무반응으로 남지 않고 패널이 떠오르며 바로 입력할 수 있습니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Settings for Kimi에 Kimi 프로바이더 기본 모델·effort 선택을 추가하여, 캐리어 모델을 명시하지 않은 새 Kimi 세션에 적용합니다.
+- [fleet-console] Repository 패널을 Repositories 목록의 Theater 하위 저장소나 Worktrees 목록의 활성 저장소 워크트리로 전환하고 선택을 Theater별로 유지합니다.
+- [fleet-console] 활성 저장소와 브랜치를 Repository 패널 상단에 표시하고 하위 컨텍스트 선택 중임을 함께 나타냅니다.
+- [fleet-console] Repositories 목록의 탐색 깊이를 1단계에서 8단계까지 고르고 탐색 상한에 걸렸는지 확인합니다.
+
+#### Changed
+- [fleet-console] Session Analyst가 이제 2개 pane으로 열리고, 항상 비어 있는 세 번째 슬롯을 예약하는 대신 분석가가 첫 artifact를 발행할 때에만 Artifacts pane이 스스로 나타납니다.
+- [fleet-console] 채팅 pane의 ARTIFACTS 엣지 칩으로 Artifacts pane을 여닫을 수 있으며, artifact 개수를 표시하고 숨김 중 새 artifact가 오면 펄스로 알리며, 수동으로 닫은 뒤에는 artifact가 비워질 때까지 자동 오픈하지 않습니다.
+
+#### Fixed
+- [fleet-console] Session Analyst 세션 상한을 제거하고 각 Analyst를 해당 Operation 종료 시까지 유지합니다.
+- [fleet-console] Linux에서 열린 디렉터리만 감시하여 File Explorer가 멈추지 않고 반응하도록 합니다.
+- [fleet-console] 정의되지 않은 테마 토큰 때문에 투명하게 남아 있던 Repository 패널 소스 내비게이션 배경을 복원합니다.
+
+### fleet-core
+
+#### Added
+- [core-agent] [core-infra] [fleet-admiral] [fleet-carriers] 선택한 프로바이더 기본 모델에서 Kimi 런치 환경(fable 포함 모델 슬롯, 서브에이전트 모델, auto-compact 윈도우, effort 레벨)을 파생하며, 캐리어별 모델이 없을 때만 사용합니다.
+
+#### Changed
+- [core-unified-agent] Kimi 모델 레지스트리를 공식 Kimi Code 문서에 맞춥니다 — K3 effort low/high/max(기본 high), fable 티어 매핑, 모델별 컨텍스트 윈도우.
+
+#### Fixed
+- [fleet-wiki] Windows에서 읽기 전용 파일 디스크립터의 fsync가 EPERM으로 실패해 모든 위키 도구를 막던 위키 워크스페이스 마이그레이션 오류를 수정합니다.
+- [fleet-wiki] Windows에서 wiki_read의 source 및 related 항목 경로를 정슬래시로 정규화하여 store 인덱스 규약과 일치시킵니다.
+
 ## [1.29.0] - 2026-07-19
 
 ### fleet-console

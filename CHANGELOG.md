@@ -5,6 +5,46 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-07-20
+
+### fleet-console
+
+#### Added
+- [fleet-console] Companion panels can declare a hidden-by-default slot, and plugins can toggle per-panel visibility through the render context while the canvas animates slot changes with a reduced-motion cutoff.
+
+#### Fixed
+- [fleet-console] Move keyboard focus to the target Operation terminal after command palette navigation, so it accepts typing right away instead of leaving focus on the previously focused control.
+- [fleet-console] Activate the selected Operation on the first command palette navigation after a reload, so its panel surfaces and accepts typing instead of only leaving the minimized state.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Add a Kimi provider default model and effort selection to Settings for Kimi, applied to newly launched Kimi sessions that carry no explicit carrier model.
+- [fleet-console] Point the Repository panel at a repository under the Theater from the Repositories list, or at a worktree of the active repository from the Worktrees list, and keep the selection per Theater.
+- [fleet-console] Show the active repository and its branch above the Repository panel, marked while a sub-context is selected.
+- [fleet-console] Choose how deep the Repositories list scans, from one to eight levels, and see when a scan limit was reached.
+
+#### Changed
+- [fleet-console] Session Analyst now opens with two panes and reveals the Artifacts pane on its own only when the analyst publishes the first artifact, instead of always reserving a third empty slot.
+- [fleet-console] An ARTIFACTS edge chip on the chat pane opens or hides the Artifacts pane, shows the artifact count, pulses on new arrivals while hidden, and stops auto-opening after a manual close until the artifacts are cleared.
+
+#### Fixed
+- [fleet-console] Remove the Session Analyst session cap while preserving each Analyst until its Operation closes.
+- [fleet-console] Keep File Explorer responsive on Linux by watching only opened directories.
+- [fleet-console] Restore the Repository panel source navigation background that an undefined theme token left transparent.
+
+### fleet-core
+
+#### Added
+- [core-agent] [core-infra] [fleet-admiral] [fleet-carriers] Derive the Kimi launch environment (model slots including fable, subagent model, auto-compact window, and effort level) from the selected provider default model, used only when no per-carrier model is set.
+
+#### Changed
+- [core-unified-agent] Align the Kimi model registry with the official Kimi Code docs: K3 effort levels low/high/max with a high default, the fable tier mapping, and per-model context windows.
+
+#### Fixed
+- [fleet-wiki] Fix the wiki workspace migration failing on Windows with an EPERM fsync error on a read-only file descriptor, which blocked every wiki tool.
+- [fleet-wiki] Normalize wiki_read source and related entry paths to forward slashes on Windows, matching the store index convention.
+
 ## [1.29.0] - 2026-07-19
 
 ### fleet-console
