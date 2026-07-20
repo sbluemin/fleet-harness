@@ -20,6 +20,7 @@ interface MigrationMarker { version: 1; outcome: "copied"; transactionId: string
 const STAGING_PREFIX = "knowledge.migrating-";
 const MARKER_NAME = "knowledge.migrated.json";
 const MARKER_TEMP_REGEXP = /^knowledge\.migrated\.json\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i;
+const IGNORED_FSYNC_ERROR_CODES = new Set(["EPERM", "EINVAL", "ENOSYS"]);
 
 /** Host-injected canonical-workspace gate; fleet-wiki intentionally knows no host package. */
 export function createWikiWorkspaceResolver(deps: WikiWorkspaceResolverDependencies): WikiWorkspaceResolver {
@@ -223,10 +224,19 @@ function writeAtomic(target: string, contents: string): void {
   syncFile(temporary);
   fs.renameSync(temporary, target);
 }
-function syncFile(target: string): void { const fd = fs.openSync(target, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
+function fsyncBestEffort(fd: number): void {
+  try {
+    fs.fsyncSync(fd);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (typeof code !== "string" || !IGNORED_FSYNC_ERROR_CODES.has(code)) throw error;
+  }
+}
+
+function syncFile(target: string): void { const fd = fs.openSync(target, "r"); try { fsyncBestEffort(fd); } finally { fs.closeSync(fd); } }
 function syncDirectory(target: string): void {
   if (!shouldSyncDirectoryForTest(process.platform)) return;
-  const fd = fs.openSync(target, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  const fd = fs.openSync(target, "r"); try { fsyncBestEffort(fd); } finally { fs.closeSync(fd); }
 }
 
 /** Test-only direct-module seam for the platform-specific directory fsync policy; absent from the package-root barrel. */

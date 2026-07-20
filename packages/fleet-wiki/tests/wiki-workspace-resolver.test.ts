@@ -4,7 +4,15 @@ import { execFileSync } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    fsyncSync: vi.fn(actual.fsyncSync),
+  };
+});
 
 import {
   createWikiWorkspaceResolver,
@@ -39,6 +47,25 @@ async function fixture(hooks?: TestHooks) {
 }
 
 describe("createWikiWorkspaceResolver", () => {
+  it("tolerates EPERM from fsync during migration (Windows read-only handle)", async () => {
+    const { cwd, workspace, resolver } = await fixture();
+    const sourceFile = path.join(cwd, ".fleet", "knowledge", "wiki", "entry.md");
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await writeFile(sourceFile, "legacy\n");
+    const spy = vi.mocked(fs.fsyncSync).mockImplementation(() => {
+      const error = new Error("EPERM: operation not permitted, fsync") as NodeJS.ErrnoException;
+      error.code = "EPERM";
+      throw error;
+    });
+    try {
+      const paths = resolver.resolve(cwd);
+      await expect(readFile(path.join(paths.wikiDir, "entry.md"), "utf8")).resolves.toBe("legacy\n");
+      expect(JSON.parse(await readFile(path.join(workspace, "knowledge.migrated.json"), "utf8")).outcome).toBe("copied");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("copies root legacy content once through durable sibling storage without changing the source", async () => {
     const { cwd, workspace, resolver } = await fixture();
     const sourceFile = path.join(cwd, ".fleet", "knowledge", "wiki", "entry.md");

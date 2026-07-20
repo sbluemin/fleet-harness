@@ -74,7 +74,7 @@ describe("wiki store", () => {
       { ref: "raw/2026-04-26-alpha-source-aaaaaaaa.md", title: "Alpha Source", hash: "aaaaaaaa" },
       { ref: "raw/2026-04-26-alpha-source-bbbbbbbb.md", title: undefined, hash: undefined },
     ]);
-    expect(index.alpha?.path).toBe(path.join("wiki", "alpha.md"));
+    expect(index.alpha?.path).toBe("wiki/alpha.md");
     expect(index.alpha?.type).toBe("decision");
     expect(index.alpha?.status).toBe("current");
     expect(index.alpha?.confidence).toBe("high");
