@@ -1,13 +1,20 @@
 export type CodexLaunchMode = "acp" | "app-server";
 
+export interface KimiModelSetting {
+  readonly model: string;
+  readonly effort?: string;
+}
+
 export interface SystemPromptSettingsState {
   readonly enableMetaphor: boolean;
   readonly codexLaunchMode: CodexLaunchMode;
+  readonly kimiModel: KimiModelSetting | null;
 }
 
 export type SystemPromptSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly codexLaunchMode: CodexLaunchMode };
+  | { readonly codexLaunchMode: CodexLaunchMode }
+  | { readonly kimiModel: KimiModelSetting };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -60,5 +67,18 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   return {
     enableMetaphor: payload.enableMetaphor,
     codexLaunchMode: payload.codexLaunchMode,
+    kimiModel: assertKimiModelSetting(payload.kimiModel),
+  };
+}
+
+// kimiModel은 선택 필드다. null/부재는 null로, 형태가 깨진 값은 서버 계약 위반이지만
+// 읽기 경로에서는 설정 미저장과 동일하게 null로 폴백한다.
+function assertKimiModelSetting(value: unknown): KimiModelSetting | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as { model?: unknown; effort?: unknown };
+  if (typeof record.model !== "string" || record.model.length === 0) return null;
+  return {
+    model: record.model,
+    ...(typeof record.effort === "string" ? { effort: record.effort } : {}),
   };
 }

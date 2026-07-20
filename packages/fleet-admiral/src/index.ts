@@ -33,6 +33,13 @@ export {
   type AgentCliAuthStatus,
 } from "./agent-cli/auth.js";
 
+// Kimi 프로바이더 기본 모델 선택 해석
+export {
+  buildKimiModelEnv,
+  resolveKimiModelSelection,
+  type KimiModelSelection,
+} from "./agent-cli/kimi-model.js";
+
 // Agent CLI 프로파일/레지스트리 해석기
 export {
   type AgentCliMetadata,

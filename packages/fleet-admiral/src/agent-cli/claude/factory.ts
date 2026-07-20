@@ -1,6 +1,7 @@
 import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
 
 import { resolveAgentCliAuthEnv } from "../auth.js";
+import { resolveKimiModelSelection } from "../kimi-model.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
@@ -16,7 +17,15 @@ export function createClaudeFamilyCliDefinition(
     label: options.label,
     async createProfile(profileOptions: AgentCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
-      const authEnv = await resolveAgentCliAuthEnv(options.id, profileOptions.authService);
+      const authEnv = await resolveAgentCliAuthEnv(
+        options.id,
+        profileOptions.authService,
+        options.id === "claude-kimi"
+          ? (profileOptions.model
+            ? { model: profileOptions.model }
+            : resolveKimiModelSelection(profileOptions.globalOptionsService))
+          : undefined,
+      );
       const childEnv = createChildEnv(profileOptions.env, authEnv);
       if (options.id === "claude-kimi") {
         // Never forward an inherited Anthropic bearer token to Moonshot's endpoint.

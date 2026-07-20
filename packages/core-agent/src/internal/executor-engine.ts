@@ -45,7 +45,7 @@ export interface ExecuteOptions {
   readonly reservedExternalMcpServerIds?: readonly string[];
 }
 
-export type AuthEnvResolver = (cli: CliType) => Promise<Record<string, string>>;
+export type AuthEnvResolver = (cli: CliType, context?: { readonly model?: string; readonly effort?: string }) => Promise<Record<string, string>>;
 
 export type ExecResult = {
   responseText: string;
@@ -353,7 +353,10 @@ async function buildConnectOptions(cli: CliType, cwd: string, overrides: { model
   if (overrides.promptIdleTimeout !== undefined) options.promptIdleTimeout = overrides.promptIdleTimeout;
   if (systemPrompt) options.systemPrompt = systemPrompt;
   if (mcpServers) options.mcpServers = mcpServers;
-  const env = await authEnvResolver(cli);
+  const env = await authEnvResolver(cli, {
+    ...(overrides.model ? { model: overrides.model } : {}),
+    ...(overrides.effort ? { effort: overrides.effort } : {}),
+  });
   if (Object.keys(env).length) options.env = env;
   return options;
 }
