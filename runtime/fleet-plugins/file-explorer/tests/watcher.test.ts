@@ -431,6 +431,62 @@ describe("createWatcherRegistry", () => {
     },
   );
 
+  it.runIf(process.platform !== "win32")(
+    "Linux 내부 심볼릭 링크가 retarget되면 새 target으로 watcher를 rearm한다",
+    async () => {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
+      const firstTarget = path.join(tempRoot, "packages", "first");
+      const secondTarget = path.join(tempRoot, "packages", "second");
+      const linkPath = path.join(tempRoot, "link");
+      fs.mkdirSync(firstTarget, { recursive: true });
+      fs.mkdirSync(secondTarget, { recursive: true });
+      fs.symlinkSync(firstTarget, linkPath);
+      const callbacks = new Map<string, (event: string, filename: string | null) => void>();
+      const closes = new Map<string, ReturnType<typeof vi.fn>>();
+      const mockFactory: WatcherFactory = vi.fn().mockImplementation((watchPath, _options, callback) => {
+        const close = vi.fn();
+        callbacks.set(watchPath, callback);
+        closes.set(watchPath, close);
+        return { close, on: vi.fn() };
+      });
+      const registry = createWatcherRegistry(mockFactory, 50, "linux");
+      const onChange = vi.fn();
+
+      try {
+        const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
+        await registry.trackDirectory("t1", tempRoot, "link");
+        const realFirstTarget = fs.realpathSync(firstTarget);
+        const realSecondTarget = fs.realpathSync(secondTarget);
+        const staleCallback = callbacks.get(realFirstTarget)!;
+
+        fs.unlinkSync(linkPath);
+        fs.symlinkSync(secondTarget, linkPath);
+        callbacks.get(tempRoot)!("rename", "link");
+
+        await vi.waitFor(() => expect(closes.get(realFirstTarget)).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(mockFactory).toHaveBeenCalledTimes(3));
+        expect(mockFactory).toHaveBeenLastCalledWith(
+          realSecondTarget,
+          { recursive: false },
+          expect.any(Function),
+        );
+
+        vi.advanceTimersByTime(100);
+        onChange.mockClear();
+        staleCallback("change", "stale.ts");
+        vi.advanceTimersByTime(100);
+        expect(onChange).not.toHaveBeenCalled();
+
+        callbacks.get(realSecondTarget)!("change", "fresh.ts");
+        vi.advanceTimersByTime(100);
+        expect(onChange).toHaveBeenCalledWith("link");
+        unsub();
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("Linux 하위 watcher error는 root 감시를 유지하고 다음 조회에서 복구한다", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-file-watch-"));
     fs.mkdirSync(path.join(tempRoot, "src"));

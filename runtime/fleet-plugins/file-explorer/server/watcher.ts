@@ -31,6 +31,7 @@ interface WatcherEntry {
   readonly theaterPath: string;
   readonly recursive: boolean;
   readonly watchers: Map<string, WatcherHandle>;
+  readonly identityChecks: Map<string, () => void>;
   readonly pendingDirectories: Set<string>;
   readonly subscribers: Set<WatchChangeCallback>;
   readonly stateSubscribers: Set<WatchStateCallback>;
@@ -84,6 +85,7 @@ export function createWatcherRegistry(
       try { watcher.close(); } catch { /* already closed */ }
     }
     entry.watchers.clear();
+    entry.identityChecks.clear();
     entry.pendingDirectories.clear();
   }
 
@@ -132,6 +134,7 @@ export function createWatcherRegistry(
     let identityCheckRunning = false;
     let identityCheckRequested = false;
     let activeWatcher: WatcherHandle | null = null;
+    const lexicalWatchPath = path.resolve(entry.theaterPath, watchKey);
 
     const checkDirectoryIdentity = async (expectedWatcher: WatcherHandle): Promise<void> => {
       identityCheckRequested = true;
@@ -143,7 +146,8 @@ export function createWatcherRegistry(
           identityCheckRequested = false;
           let replaced = false;
           try {
-            const stats = await fs.promises.stat(watchPath);
+            // lexical path를 따라가야 symlink 삭제·retarget도 검출한다.
+            const stats = await fs.promises.stat(lexicalWatchPath);
             replaced = stats.dev !== watchIdentity.device || stats.ino !== watchIdentity.inode;
           } catch (error) {
             // ENOENT만 감시 경로 소멸의 확실한 증거로 취급한다.
@@ -155,6 +159,7 @@ export function createWatcherRegistry(
           if (!replaced) continue;
 
           entry.watchers.delete(watchKey);
+          entry.identityChecks.delete(watchKey);
           entry.pendingDirectories.add(watchKey);
           try { expectedWatcher.close(); } catch { /* already closed */ }
           await rearmPendingDirectories(theaterId, entry);
@@ -172,8 +177,12 @@ export function createWatcherRegistry(
 
       // Linux fs.watch는 내부 항목 변경에도 "rename" 이벤트를 발생시킨다.
       // 동기 I/O 없이 경로가 소멸되었거나 identity가 교체된 경우에만 rearm한다.
-      if (!entry.recursive && watchKey !== "" && event === "rename" && watchIdentity) {
-        void checkDirectoryIdentity(currentWatcher);
+      if (!entry.recursive && event === "rename") {
+        if (watchKey !== "" && watchIdentity) void checkDirectoryIdentity(currentWatcher);
+        if (filename) {
+          const changedChildKey = path.join(watchKey, filename);
+          entry.identityChecks.get(changedChildKey)?.();
+        }
       }
       if (!entry.recursive && entry.pendingDirectories.size > 0) {
         void rearmPendingDirectories(theaterId, entry);
@@ -181,11 +190,18 @@ export function createWatcherRegistry(
     });
     activeWatcher = watcher;
     entry.watchers.set(watchKey, watcher);
+    if (watchIdentity) {
+      entry.identityChecks.set(watchKey, () => {
+        const currentWatcher = activeWatcher;
+        if (currentWatcher) void checkDirectoryIdentity(currentWatcher);
+      });
+    }
 
     watcher.on("error", () => {
       if (entry.watchers.get(watchKey) !== watcher) return;
       try { watcher.close(); } catch { /* already closed */ }
       entry.watchers.delete(watchKey);
+      entry.identityChecks.delete(watchKey);
 
       if (watchKey === "") {
         closeEntry(entry);
@@ -241,6 +257,7 @@ export function createWatcherRegistry(
       theaterPath,
       recursive: platform !== "linux",
       watchers: new Map(),
+      identityChecks: new Map(),
       pendingDirectories: new Set(),
       subscribers: new Set([onChange]),
       stateSubscribers: new Set([onState]),
