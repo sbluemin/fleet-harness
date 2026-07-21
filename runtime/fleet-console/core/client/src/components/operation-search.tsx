@@ -11,6 +11,7 @@ import {
   type PaletteCommandEntry,
   type PaletteRailPanelInfo,
 } from "../palette-commands.js";
+import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
 import {
@@ -153,6 +154,10 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         break;
       }
       case "open-keyboard-shortcuts": {
+        // 팔레트가 닫히면서 다이얼로그가 열리므로, App 캡처 시점의 activeElement는 제거 중인 팔레트 내부다.
+        // 팔레트를 연 시점의 요소를 채널로 넘겨 다이얼로그 닫힘 시 그 요소로 복원되게 한다.
+        stashKeyboardShortcutsReturnFocus(previousFocusRef.current);
+        previousFocusRef.current = null;
         openKeyboardShortcuts();
         break;
       }

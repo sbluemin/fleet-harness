@@ -5,6 +5,7 @@ import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
+import { takeKeyboardShortcutsReturnFocus } from "./keyboard-shortcuts-return-focus.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
@@ -109,7 +110,9 @@ export function App() {
   // 다이얼로그 자체의 focus effect(passive)보다 먼저 돌도록 layout effect로 캡처한다.
   useLayoutEffect(() => {
     if (state.keyboardShortcutsOpen) {
-      shortcutsReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // 팔레트처럼 자신이 닫히며 여는 표면은 opener를 채널로 넘긴다 — 그 경우 activeElement는 이미 제거 중이다.
+      shortcutsReturnFocusRef.current = takeKeyboardShortcutsReturnFocus()
+        ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
       return;
     }
     const target = shortcutsReturnFocusRef.current;

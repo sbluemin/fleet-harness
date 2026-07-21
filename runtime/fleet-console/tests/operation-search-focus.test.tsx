@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
+import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/keyboard-shortcuts-return-focus.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
 import { setState } from "../core/client/src/store.js";
 
@@ -110,6 +111,25 @@ describe("Operation search focus handoff", () => {
     act(() => commandOption!.click());
 
     expect(observedPathname).toBe("/operations");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("hands the palette opener to the keyboard shortcuts return-focus channel", () => {
+    // 팔레트 경유로 다이얼로그를 열면 App 캡처 시점의 activeElement가 제거 중인 팔레트 내부라,
+    // 팔레트를 연 시점의 요소를 채널로 전달해야 닫힘 시 그 요소로 복원된다.
+    const input = document.querySelector<HTMLInputElement>("#operation-search-input");
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(input, ">keyboard");
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const commandOption = document.querySelector<HTMLButtonElement>('[role="option"]');
+    expect(commandOption?.textContent).toContain("Open keyboard shortcuts");
+
+    act(() => commandOption!.click());
+
+    expect(takeKeyboardShortcutsReturnFocus()).toBe(previousFocus);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
