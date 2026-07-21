@@ -410,7 +410,7 @@
 .repository-folder-icon {
   width: 15px;
   height: 15px;
-  color: var(--brass-deep);
+  color: var(--ink-fog);
 }
 
 .repository-folder-name {
@@ -420,6 +420,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.repository-folder-count {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-tertiary);
+  padding-left: 8px;
 }
 
 /* ── 기타 공통 ── */
@@ -569,10 +576,11 @@
   color: var(--coral);
 }
 
-.repository-token-keyword { color: var(--aurora); }
-.repository-token-string,
-.repository-token-number { color: var(--warn); }
-.repository-token-type { color: var(--brass); }
+/* 구문강조도 장식적 구분 — --id-* 정체성 봉투에서만 가져와 상태 신호(warn/positive)와 격리한다 */
+.repository-token-keyword { color: var(--id-cerulean); }
+.repository-token-string { color: var(--id-moss); }
+.repository-token-number { color: var(--id-amber); }
+.repository-token-type { color: var(--id-plum); }
 .repository-token-comment { color: var(--ink-fog); font-style: italic; }
 .repository-token-punctuation { color: var(--ink-fog); }
 
@@ -605,7 +613,7 @@
 
 /* ── @@ 요약 라벨 행 ── */
 .repository-line-hunk-label {
-  background: color-mix(in oklch, var(--aurora) 8%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
 }
 
 .repository-line-label {
@@ -924,7 +932,7 @@
 .history-commit-badges { grid-column: 5; max-width: 168px; }
 .history-inspector { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .history-segmented { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--surface-rim); }
-.history-segmented button { flex: 1; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; padding: 6px; transition: color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard); }
+.history-segmented button { flex: 1; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--ink-spectral); }
 .history-segmented span { color: var(--ink-fog); font-size: 9px; }
 .history-segmented .history-inspector-close { flex: 0 0 auto; width: 28px; min-width: 28px; height: 28px; padding: 0; border-color: transparent; }
@@ -937,7 +945,7 @@
 .history-author > span:nth-child(2) { display: grid; gap: 1px; }
 .history-author b { font-weight: 500; }.history-author small, .history-author time { color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; }
 .history-author time { margin-left: auto; }
-.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--brass) 32%, var(--ink-veil)); color: var(--ink-pearl); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
+.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
 .history-inspector-ids, .history-ref-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .history-sha-copy, .history-parent { border-radius: var(--radius-sm); background: none; cursor: pointer; font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; }
 .history-sha-copy { border: 1px solid var(--surface-rim); color: var(--ink-spectral); }.history-sha-copy span { color: var(--ink-fog); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive); }
@@ -946,14 +954,14 @@
 .history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive); font-style: normal; }.history-files-title em { color: var(--coral); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--aurora); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 22px; height: 22px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 22px; height: 22px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 12px; }.history-inspector-error { color: var(--coral); }
 @container (max-width: 610px) { .history-commit-badges, .history-commit-time { display: none; } }
 @container (max-width: 430px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
-.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--hairline); background: var(--ink-deep); color: var(--text-secondary); }
+.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: var(--ink-deep); color: var(--text-secondary); }
 .repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
 .repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
 .repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -963,7 +971,7 @@
 .repository-unified-body { display: flex; min-width: 0; min-height: 0; flex: 1; }
 /* --surface-deep은 어느 테마에도 정의된 적 없는 토큰이라 이 선언은 계속 무효였다(배경 투명).
    정체 스트립과 같은 표면이어야 하므로 의도됐던 값인 --ink-deep으로 확정한다. */
-.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--hairline); background: var(--ink-deep); }
+.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--surface-rim); background: var(--ink-deep); }
 .repository-source-nav button, .repository-source-nav span { min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
 .repository-source-nav button[aria-current="page"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
@@ -976,7 +984,7 @@
 /* 목록은 스크롤되고 스캔 푸터는 하단에 고정된다 */
 .repository-scan-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .repository-scan-pane > .repository-ref-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
-.repository-scan-foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 7px 10px; border-top: 1px solid var(--hairline); background: var(--ink-deep); }
+.repository-scan-foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 7px 10px; border-top: 1px solid var(--surface-rim); background: var(--ink-deep); }
 .repository-scan-foot label { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
 /* appearance:none으로 UA 기본 select 크롬을 걷어내고 필터 입력과 같은 시각 등급으로 맞춘다 */
 .repository-scan-depth { appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-deep) 30%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 2px 6px; outline: none; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-glide); }
@@ -987,7 +995,7 @@
 .repository-ref-group { display: grid; gap: 2px; }
 .repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; font-weight: 400; letter-spacing: .18em; text-transform: uppercase; }
 .repository-ref-row { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; text-align: left; padding: 7px 10px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
-.repository-ref-row:hover { background: var(--ink-mid); color: var(--text-primary); }
+.repository-ref-row:hover { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
 .repository-ref-row:disabled { cursor: default; }
 .repository-ref-row.is-current { color: var(--brass); }
 .repository-ref-row.is-current:hover { color: var(--brass); }
@@ -996,7 +1004,7 @@
 .repository-ref-sub { margin-left: auto; color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 10px; }
 .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
 .repository-wip-row { color: var(--brass); }
-.repository-wip-row { width: 100%; border-bottom: 1px dashed var(--hairline); }
+.repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
 @container (max-width: 420px) { .repository-source-nav { width: 44px; } .repository-source-nav button { display: grid; place-items: center; padding: 5px; } .repository-source-nav button span, .repository-source-nav button i, .repository-source-nav b { display: none; } }
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */

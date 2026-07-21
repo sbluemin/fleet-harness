@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
+import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
 import { HistoryPanel } from "./history-panel.js";
@@ -307,9 +308,17 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
 function RepoList({ repos, selectedRel, onRepository, scanDepth, onScanDepth, truncated }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean }) {
-  const groups = (["root", "nested"] as const).map((kind) => ({ kind, label: kind === "root" ? "THIS THEATER" : "NESTED", repos: repos.filter((repo) => repo.kind === kind) })).filter((group) => group.repos.length > 0);
+  // 루트 저장소는 컨텍스트 복귀 affordance이므로 트리 밖 THIS THEATER 그룹에 고정한다.
+  // (repos.ts 주석의 의도 — nested 저장소로 진입해도 루트로 되돌아오는 진입점이 필요.)
+  const rootRepos = repos.filter((repo) => repo.kind === "root").sort((a, b) => a.name.localeCompare(b.name));
+  const nestedRepos = repos.filter((repo) => repo.kind === "nested");
+  const nestedTree = buildRepoTree(nestedRepos);
+  const groups: readonly { readonly key: string; readonly label: "THIS THEATER" | "NESTED"; readonly render: () => ReactNode }[] = [
+    ...(rootRepos.length > 0 ? [{ key: "root", label: "THIS THEATER" as const, render: () => <>{rootRepos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />)}</> }] : []),
+    ...(nestedRepos.length > 0 ? [{ key: "nested", label: "NESTED" as const, render: () => <RepoTreeChildren node={nestedTree} depth={0} selectedRel={selectedRel} onRepository={onRepository} /> }] : []),
+  ];
   return <div className="repository-scan-pane">
-    <div className="repository-ref-list">{groups.map((group) => <div key={group.kind} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.repos.map((repo) => <button type="button" key={repo.relPath} title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} onClick={() => onRepository(repo)}><SourceIcon source="repositories" /><span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>{repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}</button>)}</div>)}</div>
+    <div className="repository-ref-list">{groups.map((group) => <div key={group.key} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.render()}</div>)}</div>
     <div className="repository-scan-foot">
       <label htmlFor="repository-scan-depth">Depth</label>
       <select id="repository-scan-depth" className="repository-scan-depth" value={scanDepth} onChange={(event) => onScanDepth(Number.parseInt(event.target.value, 10))}>
@@ -318,6 +327,49 @@ function RepoList({ repos, selectedRel, onRepository, scanDepth, onScanDepth, tr
       <span className="repository-scan-count">{repos.length} found{truncated ? " · limit reached" : ""}</span>
     </div>
   </div>;
+}
+
+interface RepoTreeCommonProps {
+  readonly selectedRel: string;
+  readonly onRepository: (repo: RepoCandidate) => void;
+}
+
+function RepoTreeChildren({ node, depth, selectedRel, onRepository }: { readonly node: RepoTreeNode; readonly depth: number } & RepoTreeCommonProps) {
+  return <>
+    {Object.entries(node.dirs).map(([key, child]) => <RepoTreeFolder key={key} dirKey={key} node={child} depth={depth} selectedRel={selectedRel} onRepository={onRepository} />)}
+    {node.repos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={depth} selectedRel={selectedRel} onRepository={onRepository} />)}
+  </>;
+}
+
+function RepoTreeFolder({ dirKey, node, depth, selectedRel, onRepository }: { readonly dirKey: string; readonly node: RepoTreeNode; readonly depth: number } & RepoTreeCommonProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const handleToggle = useCallback(() => setCollapsed((value) => !value), []);
+  const { label, node: resolvedNode } = compressRepoFolder(dirKey, node);
+  const indent = depth * 16 + 12;
+  const total = countRepos(resolvedNode);
+  return <div className={`repository-folder${collapsed ? " is-collapsed" : ""}`}>
+    <button type="button" className="repository-folder-row" style={{ paddingLeft: `${indent}px`, gridTemplateColumns: "12px 15px 1fr auto" }} onClick={handleToggle} aria-expanded={!collapsed}>
+      <svg className="repository-folder-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <svg className="repository-folder-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M2 4a1 1 0 011-1h3l1.2 1.2H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      </svg>
+      <span className="repository-folder-name">{label}</span>
+      <span className="repository-folder-count">{total}</span>
+    </button>
+    {!collapsed && <RepoTreeChildren node={resolvedNode} depth={depth + 1} selectedRel={selectedRel} onRepository={onRepository} />}
+  </div>;
+}
+
+function RepoLeafRow({ repo, depth, selectedRel, onRepository }: { readonly repo: RepoCandidate; readonly depth: number } & RepoTreeCommonProps) {
+  // 저장소 리프 아이콘을 폴더 아이콘 컬럼(padding-left 12 + chevron 12 + gap 6 = 30) 아래에 정렬한다.
+  const indent = depth * 16 + 30;
+  return <button type="button" title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} style={{ paddingLeft: `${indent}px` }} onClick={() => onRepository(repo)}>
+    <SourceIcon source="repositories" />
+    <span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>
+    {repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}
+  </button>;
 }
 function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}{worktree.current && " ✓"}</span>{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
 function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
