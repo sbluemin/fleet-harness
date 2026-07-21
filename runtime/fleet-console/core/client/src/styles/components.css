@@ -1961,6 +1961,23 @@
   border-radius: var(--radius-lg);
   background: var(--ink-mid);
   box-shadow: var(--shadow-soft);
+  /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
+     visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.
+     --panel-stagger-delay는 formation stagger 전용 채널로 geometry 4속성에만 걸린다 —
+     inline transition-delay는 존재 전환(opacity/visibility)의 per-property 지연까지 덮어쓰므로 금지. */
+  transition:
+    left var(--duration-slow) var(--ease-glide) var(--panel-stagger-delay, 0s),
+    top var(--duration-slow) var(--ease-glide) var(--panel-stagger-delay, 0s),
+    width var(--duration-slow) var(--ease-glide) var(--panel-stagger-delay, 0s),
+    height var(--duration-slow) var(--ease-glide) var(--panel-stagger-delay, 0s),
+    opacity var(--duration-base) var(--ease-glide),
+    transform var(--duration-base) var(--ease-glide),
+    visibility 0s linear 0s;
+}
+
+/* 드래그·리사이즈 조작 중에는 포인터 추적이 즉답해야 한다 — rail.css is-dragging 선례. */
+.canvas-operation.is-dragging {
+  transition: none;
 }
 
 /* Formation 슬롯은 계산값이 규약이다 — 320×200 CSS 최소값이 슬롯을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
@@ -1970,16 +1987,22 @@
   min-height: 0;
 }
 
-/* companion 슬롯 수 변경만 부드럽게 재배치한다 — 일반 Map 드래그에는 위치 transition을 노출하지 않는다. */
-.operations-canvas.is-companion-layout .canvas-operation {
-  transition:
-    left var(--duration-slow) var(--ease-glide),
-    width var(--duration-slow) var(--ease-glide);
-}
-
+/* 최소화 = fade+scale 존재 전환. visibility만 duration-base 뒤로 지연해(사이드바 is-closed 선례)
+   페이드아웃이 끝난 뒤 히트테스트에서 빠진다. 복원은 베이스 규칙의 visibility 0s로 즉시 나타나
+   opacity/transform이 페이드인한다. PTY 보존(visibility 기반 DOM 유지) 시맨틱은 그대로다. */
 .canvas-operation.is-minimized {
+  opacity: 0;
+  transform: scale(0.96);
   visibility: hidden;
   pointer-events: none;
+  transition:
+    left var(--duration-slow) var(--ease-glide),
+    top var(--duration-slow) var(--ease-glide),
+    width var(--duration-slow) var(--ease-glide),
+    height var(--duration-slow) var(--ease-glide),
+    opacity var(--duration-base) var(--ease-glide),
+    transform var(--duration-base) var(--ease-glide),
+    visibility 0s linear var(--duration-base);
 }
 
 /* 최대화: 패널이 캔버스(col2)를 가장자리까지 채운다.
@@ -2017,20 +2040,64 @@
 .canvas-companion-frame {
   display: flex;
   flex-direction: column;
-  animation: companion-frame-enter var(--duration-slow) var(--ease-glide) both;
+  animation: panel-enter var(--duration-slow) var(--ease-glide) both;
 }
 
-@keyframes companion-frame-enter {
+@keyframes panel-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
+/* 고스트 오버레이 — 최소화/복원 flight의 콘텐츠 없는 대역. transient overlay 계층(40):
+   캔버스 위·모달 오버레이(60) 아래, toast/dropup과 같은 층. */
+.panel-motion-ghost {
+  position: fixed;
+  z-index: 40;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-glass);
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+
+/* 최소화 flight 도착 맥동 — brass(위치/포커스 채널) 1회. 칩 루트 한정:
+   accent(::before)·spine에는 animation 금지(정체성 채널 계약). */
+.side-bar-chip.is-arrival-pulse {
+  animation: side-bar-chip-arrival-pulse 0.6s var(--ease-glide) 1;
+}
+
+@keyframes side-bar-chip-arrival-pulse {
+  0% {
+    border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--brass) 40%, transparent);
+  }
+  55% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--brass) 12%, transparent);
+  }
+  100% {
+    border-color: transparent;
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .operations-canvas.is-companion-layout .canvas-operation {
+  /* is-minimized(0,2,0)는 .canvas-operation(0,1,0)보다 특이도가 높아 별도 명시가 필요하다 —
+     글로벌 캐치올은 transition-duration만 줄이고 visibility의 transition-delay는 못 끊는다. */
+  .canvas-operation,
+  .canvas-operation.is-minimized {
     transition: none;
   }
 
   .canvas-companion-frame {
+    animation: none;
+  }
+
+  .side-bar-chip.is-arrival-pulse {
+    animation: none;
+  }
+
+  .panel-motion-ghost {
     animation: none;
   }
 }

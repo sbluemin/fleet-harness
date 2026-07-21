@@ -58,9 +58,11 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const closeArmTimeoutRef = useRef<number | null>(null);
+  const lastVisibleGeometryRef = useRef(geometry);
   const restoreIdentityFocusRef = useRef(false);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const displayTitle = operation.title;
   const rename = useInlineRename({
     currentTitle: operation.title,
@@ -81,6 +83,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
     topEdge ? "is-top-edge" : "",
+    dragging ? "is-dragging" : "",
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
 
@@ -125,6 +128,22 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     }, CLOSE_ARM_DURATION_MS);
   };
 
+  // 드래그/리사이즈 도중 캡처 대상(드래그 에지·리사이즈 핸들)이 언마운트되는 상태 전환에서는
+  // pointerup/pointercancel이 도달하지 않아 is-dragging이 잔존하고 공통 모션 transition이 영구 차단된다.
+  useEffect(() => {
+    if (!maximized && !interactionDisabled && !minimized) return;
+    dragRef.current = null;
+    resizeRef.current = null;
+    setDragging(false);
+  }, [maximized, interactionDisabled, minimized]);
+
+  const abortPointerManipulation = () => {
+    if (!dragRef.current && !resizeRef.current) return;
+    dragRef.current = null;
+    resizeRef.current = null;
+    setDragging(false);
+  };
+
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     disarmClose();
     if (maximized || interactionDisabled) return;
@@ -133,6 +152,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.stopPropagation();
     onActivate();
     dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry };
+    setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -154,6 +174,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) {
       dragRef.current = null;
+      setDragging(false);
       return;
     }
     const drag = dragRef.current;
@@ -161,6 +182,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.preventDefault();
     event.stopPropagation();
     dragRef.current = null;
+    setDragging(false);
     event.currentTarget.releasePointerCapture(event.pointerId);
     onGeometryCommit(drag.latest);
   };
@@ -171,6 +193,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.stopPropagation();
     onActivate();
     resizeRef.current = { direction, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry };
+    setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -188,6 +211,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) {
       resizeRef.current = null;
+      setDragging(false);
       return;
     }
     const resize = resizeRef.current;
@@ -195,6 +219,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.preventDefault();
     event.stopPropagation();
     resizeRef.current = null;
+    setDragging(false);
     event.currentTarget.releasePointerCapture(event.pointerId);
     onGeometryCommit(resize.latest);
   };
@@ -267,13 +292,19 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     rename.handleKeyDown(event);
   };
 
+  // 최소화 커밋과 동시에 formation slot·maximize·companion 레이아웃이 해제되면 라이브 geometry가
+  // 저장된 map 좌표로 회귀해, 페이드로 가시가 유지되는 동안 패널이 엉뚱한 위치에서 사라진다 —
+  // 마지막 가시 geometry를 동결해 사라진 자리에서 페이드하고, 복원은 그 자리에서 목표 슬롯으로 미끄러진다.
+  if (!minimized) lastVisibleGeometryRef.current = geometry;
+  const effectiveGeometry = minimized ? lastVisibleGeometryRef.current : geometry;
+
   // 패널 좌표·크기를 정수 픽셀로 스냅해 패널·내부 xterm 캔버스 원점을 정수 픽셀에 정렬한다(서브픽셀 번짐 제거).
   const frameStyle = {
-    left: Math.round(geometry.x),
-    top: Math.round(geometry.y),
-    width: Math.round(geometry.width),
-    height: Math.round(geometry.height),
-    zIndex: geometry.zIndex,
+    left: Math.round(effectiveGeometry.x),
+    top: Math.round(effectiveGeometry.y),
+    width: Math.round(effectiveGeometry.width),
+    height: Math.round(effectiveGeometry.height),
+    zIndex: effectiveGeometry.zIndex,
     // Focus Layer peer는 xterm ResizeObserver가 기존 컨테이너 크기를 계속 보게 레이아웃을 보존한다.
     ...(renderHidden ? { visibility: "hidden", pointerEvents: "none" } : {}),
     ...(accentColor ? { "--user-accent": accentColor } : {}),
@@ -286,6 +317,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       style={frameStyle}
       onPointerDown={onActivate}
       data-canvas-operation
+      data-operation-id={operation.id}
       data-focus-layer-target={focusLayerTarget ? "true" : undefined}
       aria-label={`Operation ${displayTitle}`}
       aria-hidden={renderHidden || undefined}
@@ -300,6 +332,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
           onPointerMove={updateDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onLostPointerCapture={abortPointerManipulation}
           data-canvas-blocker
           aria-hidden="true"
         />
@@ -310,6 +343,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         onPointerMove={updateDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onLostPointerCapture={abortPointerManipulation}
         data-canvas-blocker
       >
         {accentColor ? <span className="canvas-operation-id-mark" aria-hidden="true" /> : null}
@@ -382,6 +416,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
           onPointerMove={updateResize}
           onPointerUp={endResize}
           onPointerCancel={endResize}
+          onLostPointerCapture={abortPointerManipulation}
           data-canvas-blocker
           aria-hidden="true"
         />
