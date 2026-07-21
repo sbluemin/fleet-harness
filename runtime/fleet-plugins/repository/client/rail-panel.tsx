@@ -5,7 +5,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
-import { buildRepoTree, countRepos, type RepoTreeNode } from "./repo-tree.js";
+import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
 import { HistoryPanel } from "./history-panel.js";
@@ -344,14 +344,7 @@ function RepoTreeChildren({ node, depth, selectedRel, onRepository }: { readonly
 function RepoTreeFolder({ dirKey, node, depth, selectedRel, onRepository }: { readonly dirKey: string; readonly node: RepoTreeNode; readonly depth: number } & RepoTreeCommonProps) {
   const [collapsed, setCollapsed] = useState(false);
   const handleToggle = useCallback(() => setCollapsed((value) => !value), []);
-  // VS Code 스타일: 자식 디렉터리 하나 + 저장소 없음 체인을 "a/b" 한 노드로 압축한다 (DiffTreeFolder 미러).
-  let label = dirKey;
-  let resolvedNode = node;
-  while (Object.keys(resolvedNode.dirs).length === 1 && resolvedNode.repos.length === 0) {
-    const onlyKey = Object.keys(resolvedNode.dirs)[0]!;
-    label += "/" + onlyKey;
-    resolvedNode = resolvedNode.dirs[onlyKey]!;
-  }
+  const { label, node: resolvedNode } = compressRepoFolder(dirKey, node);
   const indent = depth * 16 + 12;
   const total = countRepos(resolvedNode);
   return <div className={`repository-folder${collapsed ? " is-collapsed" : ""}`}>

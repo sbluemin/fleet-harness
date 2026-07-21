@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRepoTree, countRepos } from "../client/repo-tree.js";
+import { buildRepoTree, compressRepoFolder, countRepos } from "../client/repo-tree.js";
 import type { RepoCandidate } from "../server/types.js";
 
 function repo(relPath: string, name?: string): RepoCandidate {
@@ -65,5 +65,59 @@ describe("buildRepoTree", () => {
     // "bar/" → after filter=["bar"], pop→[], repo at root name ""
     expect(Object.keys(tree.dirs)).toEqual([]);
     expect(tree.repos.map((item) => item.relPath).sort()).toEqual(["/foo", "bar/"]);
+  });
+
+  it("splits Windows-style backslash relPaths into segments without mutating the original relPath", () => {
+    const tree = buildRepoTree([repo("packages\\foo", "foo"), repo("packages\\deep\\bar", "bar")]);
+    expect(Object.keys(tree.dirs)).toEqual(["packages"]);
+    expect(tree.dirs.packages!.repos.map((item) => item.relPath)).toEqual(["packages\\foo"]);
+    expect(Object.keys(tree.dirs.packages!.dirs)).toEqual(["deep"]);
+    expect(tree.dirs.packages!.dirs.deep!.repos.map((item) => item.relPath)).toEqual(["packages\\deep\\bar"]);
+  });
+
+  it("handles reserved property names as directory segments", () => {
+    const tree = buildRepoTree([repo("__proto__/one"), repo("constructor/two"), repo("toString/three")]);
+    expect(Object.keys(tree.dirs)).toEqual(["__proto__", "constructor", "toString"]);
+    expect(tree.dirs["__proto__"]!.repos.map((item) => item.relPath)).toEqual(["__proto__/one"]);
+    expect(tree.dirs["constructor"]!.repos.map((item) => item.relPath)).toEqual(["constructor/two"]);
+    expect(tree.dirs["toString"]!.repos.map((item) => item.relPath)).toEqual(["toString/three"]);
+    expect(countRepos(tree)).toBe(3);
+  });
+
+  it("does not pollute Object.prototype when a segment is __proto__", () => {
+    const tree = buildRepoTree([repo("__proto__/one")]);
+    expect(({} as Record<string, unknown>)["one"]).toBeUndefined();
+    expect(Object.getPrototypeOf(tree.dirs)).toBeNull();
+  });
+});
+
+describe("compressRepoFolder", () => {
+  it("returns the folder unchanged when it holds repos or multiple child dirs", () => {
+    const tree = buildRepoTree([repo("packages/foo"), repo("packages/nested/bar")]);
+    const { label, node } = compressRepoFolder("packages", tree.dirs.packages!);
+    expect(label).toBe("packages");
+    expect(node).toBe(tree.dirs.packages!);
+  });
+
+  it("compresses a single-child repo-less chain into one label", () => {
+    const tree = buildRepoTree([repo("a/b/c/leaf")]);
+    const { label, node } = compressRepoFolder("a", tree.dirs.a!);
+    expect(label).toBe("a/b/c");
+    expect(node).toBe(tree.dirs.a!.dirs.b!.dirs.c!);
+    expect(node.repos.map((item) => item.relPath)).toEqual(["a/b/c/leaf"]);
+  });
+
+  it("stops compressing at a node that owns repos", () => {
+    const tree = buildRepoTree([repo("a/b/mid"), repo("a/b/c/leaf")]);
+    const { label, node } = compressRepoFolder("a", tree.dirs.a!);
+    expect(label).toBe("a/b");
+    expect(node).toBe(tree.dirs.a!.dirs.b!);
+    expect(countRepos(node)).toBe(2);
+  });
+
+  it("compresses deep chains across many levels", () => {
+    const tree = buildRepoTree([repo("v/w/x/y/z/leaf")]);
+    const { label } = compressRepoFolder("v", tree.dirs.v!);
+    expect(label).toBe("v/w/x/y/z");
   });
 });

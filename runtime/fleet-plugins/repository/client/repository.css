@@ -613,7 +613,7 @@
 
 /* ── @@ 요약 라벨 행 ── */
 .repository-line-hunk-label {
-  background: color-mix(in oklch, var(--aurora) 8%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
 }
 
 .repository-line-label {
