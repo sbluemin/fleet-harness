@@ -30,6 +30,7 @@ export function OperationsSideBarGroupHeader({
   const grpColor = resolveAccentColor(group.color);
   const headerClassName = [
     "side-bar-group-header",
+    collapsed ? "side-bar-group-header--collapsed" : "",
     dragging ? "side-bar-group-header--dragging" : "",
     dropTarget ? "side-bar-group-header--drop-target" : "",
   ].filter(Boolean).join(" ");
@@ -77,6 +78,7 @@ export function OperationsSideBarGroupHeader({
       >
         <CollapseArrow collapsed={collapsed} />
       </button>
+      <span className="side-bar-group-header__dot" aria-hidden="true" />
       <span className="side-bar-group-header__name">{group.name}</span>
       <span className="side-bar-group-header__count" aria-label={`${count} operations`}>{count}</span>
     </div>
