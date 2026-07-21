@@ -90,14 +90,34 @@ describe('ModelRegistry', () => {
     expect(provider.defaultModel).toBe('auto');
     expect(modelIds).toEqual([
       'auto',
-      'composer-2.5-fast',
       'composer-2.5',
+      'composer-2.5-fast',
+      'gpt-5.6-sol',
+      'gpt-5.6-sol-fast',
+      'gpt-5.6-sol-none',
+      'gpt-5.6-sol-none-fast',
+      'gpt-5.6-luna',
+      'gpt-5.6-luna-fast',
+      'gpt-5.6-luna-none',
+      'gpt-5.6-luna-none-fast',
+      'gpt-5.6-terra',
+      'gpt-5.6-terra-fast',
+      'gpt-5.6-terra-none',
+      'gpt-5.6-terra-none-fast',
+      'cursor-grok-4.5',
+      'cursor-grok-4.5-fast',
+      'claude-opus-4-8',
+      'claude-opus-4-8-fast',
+      'claude-opus-4-8-thinking',
+      'claude-opus-4-8-thinking-fast',
+      'claude-sonnet-5',
+      'claude-sonnet-5-thinking',
+      'claude-fable-5',
+      'claude-fable-5-thinking',
       'gemini-3.1-pro',
-      'gemini-3-flash',
       'gemini-3.5-flash',
       'kimi-k2.7-code',
       'glm-5.2',
-      'claude-opus-4-8-thinking',
     ]);
   });
 
@@ -105,6 +125,13 @@ describe('ModelRegistry', () => {
     expect(resolveCursorSpawnModel('glm-5.2')).toBe('glm-5.2-max');
     expect(resolveCursorSpawnModel('glm-5.2', 'high')).toBe('glm-5.2-high');
     expect(resolveCursorSpawnModel('glm-5.2', 'invalid')).toBe('glm-5.2-max');
+  });
+
+  it('Cursor spawnModelTemplate은 effort로 실제 cursor-agent CLI 모델 ID를 조립한다', () => {
+    expect(resolveCursorSpawnModel('gpt-5.6-sol')).toBe('gpt-5.6-sol-medium');
+    expect(resolveCursorSpawnModel('gpt-5.6-sol', 'max')).toBe('gpt-5.6-sol-max');
+    expect(resolveCursorSpawnModel('claude-opus-4-8-thinking-fast', 'low')).toBe('claude-opus-4-8-thinking-low-fast');
+    expect(resolveCursorSpawnModel('cursor-grok-4.5-fast')).toBe('cursor-grok-4.5-high-fast');
   });
 
   it('effort 지원 spawnModelTemplate은 {effort} 플레이스홀더를 포함해야 한다', () => {

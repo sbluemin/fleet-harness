@@ -21,7 +21,7 @@ import type { CliType } from '../../src/config/CliConfigs.js';
 const CLI = 'opencode';
 const installed = isCliInstalled(CLI);
 const OPEN_CODE_PROVIDERS = [
-  { cli: 'opencode-go', label: 'OpenCode Go', defaultModel: 'opencode-go/glm-5.1' },
+  { cli: 'opencode-go', label: 'OpenCode Go', defaultModel: 'opencode-go/deepseek-v4-flash' },
 ] as const satisfies readonly { cli: CliType; label: string; defaultModel: string }[];
 const defaultModelProbes = Object.fromEntries(
   OPEN_CODE_PROVIDERS.map((provider) => [

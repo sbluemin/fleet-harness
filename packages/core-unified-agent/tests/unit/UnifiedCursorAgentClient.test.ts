@@ -49,13 +49,13 @@ describe('UnifiedCursorAgentClient', () => {
       };
     };
 
-    await client.setModel('gemini-3-flash');
+    await client.setModel('gemini-3.5-flash');
 
     expect(capturedOptions).toHaveLength(1);
     expect(capturedOptions[0]).toMatchObject({
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'gemini-3-flash',
+      model: 'gemini-3.5-flash',
       systemPrompt: '시스템 지침',
       env: { CURSOR_TEST_ENV: '1' },
       clientInfo: { name: 'unit-test', version: '1.0.0' },
@@ -78,7 +78,7 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'gemini-3-flash',
+      model: 'gemini-3.5-flash',
       effort: 'high',
     };
 
@@ -111,7 +111,7 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'gemini-3-flash',
+      model: 'gemini-3.5-flash',
       effort: 'invalid',
     };
 
@@ -156,9 +156,9 @@ describe('UnifiedCursorAgentClient', () => {
       };
     };
 
-    await client.setConfigOption('model', 'gemini-3-flash');
+    await client.setConfigOption('model', 'gemini-3.5-flash');
 
-    expect(capturedModels).toEqual(['gemini-3-flash']);
+    expect(capturedModels).toEqual(['gemini-3.5-flash']);
   });
 
   it('setConfigOption("model")은 Composer 2.5 모델로 재연결한다', async () => {
@@ -270,7 +270,7 @@ describe('UnifiedCursorAgentClient', () => {
     internals.currentConnectOptions = {
       cli: 'cursor',
       cwd: '/tmp/workspace',
-      model: 'gemini-3-flash',
+      model: 'gemini-3.5-flash',
     };
 
     client.connect = async (): Promise<ConnectResult> => {
@@ -333,7 +333,7 @@ describe('UnifiedCursorAgentClient', () => {
 
     client.connect = async (options: UnifiedClientOptions): Promise<ConnectResult> => {
       capturedOptions.push(options);
-      if (options.model === 'gemini-3-flash') {
+      if (options.model === 'gemini-3.5-flash') {
         throw new Error('spawn failed');
       }
       return {
@@ -343,12 +343,12 @@ describe('UnifiedCursorAgentClient', () => {
       };
     };
 
-    await expect(client.setModel('gemini-3-flash')).rejects.toThrow(
+    await expect(client.setModel('gemini-3.5-flash')).rejects.toThrow(
       '[cursor] 모델 변경 실패로 이전 연결을 복구했습니다. 모델 변경 오류: spawn failed',
     );
 
     expect(capturedOptions).toHaveLength(2);
-    expect(capturedOptions[0]).toMatchObject({ model: 'gemini-3-flash' });
+    expect(capturedOptions[0]).toMatchObject({ model: 'gemini-3.5-flash' });
     expect(capturedOptions[1]).toMatchObject({
       model: 'glm-5.2',
       effort: 'high',
