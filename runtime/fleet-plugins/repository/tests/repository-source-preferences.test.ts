@@ -22,6 +22,11 @@ describe("Repository source preference", () => {
     expect(readRepositorySource()).toBe("worktrees");
   });
 
+  it("keeps the compare source", () => {
+    vi.stubGlobal("localStorage", { getItem: () => "compare" });
+    expect(readRepositorySource()).toBe("compare");
+  });
+
   it("reads a valid persisted scan depth", () => {
     vi.stubGlobal("localStorage", { getItem: () => "6" });
     expect(readScanDepth()).toBe(6);

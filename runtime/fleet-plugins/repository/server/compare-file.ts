@@ -1,0 +1,60 @@
+import path from "node:path";
+import type http from "node:http";
+
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+
+import { InvalidRepoError, resolveGitCwd } from "./diff.js";
+import { GitExecutorError, runGit } from "./git-executor.js";
+import { isSafeCompareRef, isUnknownRevisionError } from "./compare.js";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveLiteralFilePath(gitCwd: string, rawPath: string): string | null {
+  const relativePath = path.normalize(rawPath);
+  const resolved = path.resolve(gitCwd, relativePath);
+  if (relativePath === ".." || relativePath.startsWith(".." + path.sep) || !resolved.startsWith(gitCwd + path.sep)) return null;
+  return relativePath;
+}
+
+function literalPathspec(relativePath: string): string {
+  return `:(literal)${relativePath}`;
+}
+
+export async function handleRepositoryCompareFile(req: http.IncomingMessage, res: http.ServerResponse, ctx: FleetPluginServerContext): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly base?: unknown; readonly head?: unknown; readonly filePath?: unknown; readonly oldPath?: unknown }>(req);
+  if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string" || typeof body.base !== "string" || typeof body.head !== "string" || typeof body.filePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  if (!isSafeCompareRef(body.base) || !isSafeCompareRef(body.head)) { ctx.host.http.writeJson(res, 400, { error: "invalid_ref" }); return; }
+  // 옵션 주입은 아래 git 호출의 `--` 구분자 + `:(literal)` pathspec으로 이미 차단되므로,
+  // `-`로 시작하는 정당한 파일명(예: `-dash.txt`)까지 막지 않도록 leading-dash는 거부하지 않는다.
+  if (!body.filePath) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
+  if (body.oldPath !== undefined && (typeof body.oldPath !== "string" || !body.oldPath)) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
+  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  let cwdResult: { gitCwd: string };
+  try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
+  const relativePath = resolveLiteralFilePath(cwdResult.gitCwd, body.filePath);
+  const oldPath = typeof body.oldPath === "string" ? resolveLiteralFilePath(cwdResult.gitCwd, body.oldPath) : undefined;
+  if (!relativePath || (body.oldPath !== undefined && !oldPath)) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
+  const range = `${body.base}...${body.head}`;
+  try {
+    const result = await runGit(oldPath
+      ? ["diff", "--unified=3", "-M", "--end-of-options", range, "--", literalPathspec(oldPath), literalPathspec(relativePath)]
+      : ["diff", "--unified=3", "-M", "--end-of-options", range, "--", literalPathspec(relativePath)], { cwd: cwdResult.gitCwd });
+    ctx.host.http.writeJson(res, 200, { content: result.stdout, ...(result.truncated ? { truncated: true } : {}) });
+  } catch (error) {
+    if (error instanceof GitExecutorError) {
+      if (error.code === "no_git_repo" || error.code === "git_unavailable") { ctx.host.http.writeJson(res, 422, { error: error.code }); return; }
+      if (isUnknownRevisionError(error)) { ctx.host.http.writeJson(res, 400, { error: "unknown_ref" }); return; }
+      ctx.host.http.writeJson(res, 500, { error: "git_failed" }); return;
+    }
+    throw error;
+  }
+}

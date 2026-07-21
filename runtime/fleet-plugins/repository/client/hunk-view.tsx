@@ -13,6 +13,7 @@ interface HunkViewProps {
   readonly file: DiffFileEntry;
   readonly mode: DiffFileMode;
   readonly commit?: CommitSelection | null;
+  readonly compare?: CompareSelection | null;
 }
 
 export interface CommitSelection {
@@ -20,6 +21,13 @@ export interface CommitSelection {
   readonly theaterId: string;
   readonly repoRel: string;
   readonly oldPath?: string;
+}
+
+export interface CompareSelection {
+  readonly base: string;
+  readonly head: string;
+  readonly theaterId: string;
+  readonly repoRel: string;
 }
 
 type LoadState =
@@ -38,7 +46,7 @@ function escapeHtml(s: string): string {
 
 // ─── HunkView ────────────────────────────────────────────────────────────────
 
-export function HunkView({ ctx, repoRel, file, mode, commit }: HunkViewProps) {
+export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
@@ -49,7 +57,19 @@ export function HunkView({ ctx, repoRel, file, mode, commit }: HunkViewProps) {
     let cancelled = false;
     setState({ kind: "loading" });
 
-    if (commit) {
+    if (compare) {
+      ctx.api.fetch("repository", "compare-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId: compare.theaterId, repoRel: compare.repoRel, base: compare.base, head: compare.head, filePath: file.path, ...(file.oldPath ? { oldPath: file.oldPath } : {}) }),
+      }).then(async (res) => {
+        if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
+        const result = await res.json() as DiffHunkResult;
+        if (!cancelled) setState({ kind: "ok", result });
+      }).catch((err: unknown) => {
+        if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
+      });
+    } else if (commit) {
       ctx.api.fetch("repository", "commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,7 +96,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit }: HunkViewProps) {
     }
 
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, commit, repoRel]);
+  }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, commit, compare, repoRel]);
 
   if (state.kind === "loading") {
     return <div className="repository-hunk-loading">Loading…</div>;

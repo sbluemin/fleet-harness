@@ -5,6 +5,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
+import { CompareView } from "./compare-view.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
@@ -40,7 +41,7 @@ function readViewMode(): ViewMode {
 export function readRepositorySource(): Source {
   try {
     const value = localStorage.getItem(PREFS_SOURCE);
-    if (value === "repositories" || value === "worktrees" || value === "changes" || value === "history" || value === "branches" || value === "tags" || value === "stashes") return value;
+    if (value === "repositories" || value === "worktrees" || value === "changes" || value === "history" || value === "compare" || value === "branches" || value === "tags" || value === "stashes") return value;
   } catch { /* ignore */ }
   return "changes";
 }
@@ -102,8 +103,8 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
   return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
-type Source = "repositories" | "worktrees" | "changes" | "history" | "branches" | "tags" | "stashes";
-type RefSource = Exclude<Source, "repositories" | "worktrees" | "changes" | "history">;
+type Source = "repositories" | "worktrees" | "changes" | "history" | "compare" | "branches" | "tags" | "stashes";
+type RefSource = Exclude<Source, "repositories" | "worktrees" | "changes" | "history" | "compare">;
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
 export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[] };
@@ -148,6 +149,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
   const [historyInspectorOpen, setHistoryInspectorOpen] = useState(false);
+  const [compareFileOpen, setCompareFileOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState("");
   const selectedFile = useSelectedFile(ctx.theaterId ?? null, repoRel);
@@ -166,6 +168,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setRefFilter(null);
     setFilterText("");
     setHistoryInspectorOpen(false);
+    setCompareFileOpen(false);
     setChangedFiles({ kind: "loading" });
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
@@ -280,9 +283,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, []);
 
   useLayoutEffect(() => {
-    ctx.requestExtraWidth?.((source === "changes" && selectedFile) || (source === "history" && historyInspectorOpen) ? EXTENDED_EXTRA_WIDTH : null);
+    ctx.requestExtraWidth?.((source === "changes" && selectedFile) || (source === "history" && historyInspectorOpen) || (source === "compare" && compareFileOpen) ? EXTENDED_EXTRA_WIDTH : null);
     return () => ctx.requestExtraWidth?.(null);
-  }, [ctx.requestExtraWidth, selectedFile, source, historyInspectorOpen]);
+  }, [ctx.requestExtraWidth, selectedFile, source, historyInspectorOpen, compareFileOpen]);
 
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
   const retryChangedFiles = useCallback(() => setChangedFilesRetry((value) => value + 1), []);
@@ -293,7 +296,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} scanDepth={scanDepth} onScanDepth={setScanDepth} truncated={reposTruncated} /> : null}
       {source === "worktrees" ? worktreesError ? <div className="history-error">Unable to load worktrees<button type="button" className="repository-refresh-btn" onClick={() => setWorktreesRetry((value) => value + 1)}>Retry</button></div> : <WorktreeList worktrees={worktrees} onWorktree={handleSelectRepository} /> : null}
       <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
-      {source !== "repositories" && source !== "worktrees" && source !== "changes" && source !== "history" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
+      <div className="repository-source-fill" hidden={source !== "compare"}><CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} onFileOpenChange={setCompareFileOpen} /></div>
+      {source !== "repositories" && source !== "worktrees" && source !== "changes" && source !== "history" && source !== "compare" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
       <div hidden={source !== "changes"} ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
       {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile.entry} mode={hunkMode} /></div> : null}
       {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
@@ -305,8 +309,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   );
 }
 
-function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
+function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "compare" ? "M5.5 3v9M3 9.5l2.5 2.5L8 9.5M12.5 15V6M10 8.5L12.5 6L15 8.5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
+function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}{button("compare", "Compare")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
 function RepoList({ repos, selectedRel, onRepository, scanDepth, onScanDepth, truncated }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean }) {
   // 루트 저장소는 컨텍스트 복귀 affordance이므로 트리 밖 THIS THEATER 그룹에 고정한다.
   // (repos.ts 주석의 의도 — nested 저장소로 진입해도 루트로 되돌아오는 진입점이 필요.)
@@ -373,7 +377,7 @@ function RepoLeafRow({ repo, depth, selectedRel, onRepository }: { readonly repo
 }
 function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}{worktree.current && " ✓"}</span>{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
 function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
-  if (source === "repositories" || source === "worktrees" || source === "changes" || source === "history") return null;
+  if (source === "repositories" || source === "worktrees" || source === "changes" || source === "history" || source === "compare") return null;
   return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => {
     return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => {
       if (row.ref) onRef(row.ref);
