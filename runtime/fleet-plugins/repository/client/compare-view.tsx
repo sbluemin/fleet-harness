@@ -14,6 +14,8 @@ interface CompareViewProps {
   readonly ctx: RailPanelContext;
   readonly repoRel: string;
   readonly refs: RepositoryRefs;
+  readonly refsError?: boolean;
+  readonly onRetryRefs?: () => void;
   readonly onFileOpenChange?: (open: boolean) => void;
 }
 
@@ -60,7 +62,7 @@ function saveCompareSelection(theaterId: string, repoRel: string, base: string, 
 
 // ─── CompareView ─────────────────────────────────────────────────────────────
 
-export function CompareView({ ctx, repoRel, refs, onFileOpenChange }: CompareViewProps) {
+export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs, onFileOpenChange }: CompareViewProps) {
   const [base, setBase] = useState("");
   const [head, setHead] = useState("");
   const [result, setResult] = useState<CompareState>({ kind: "idle" });
@@ -118,11 +120,14 @@ export function CompareView({ ctx, repoRel, refs, onFileOpenChange }: CompareVie
       if (seq !== requestSeqRef.current) return;
       if (!response.ok) {
         const payload = await response.json() as { readonly error?: string };
+        // json() await 사이에 새 요청이 시작됐으면 stale 응답을 무시한다
+        if (seq !== requestSeqRef.current) return;
         const code = payload.error ?? "git_failed";
         setResult(code === "no_git_repo" || code === "git_unavailable" ? { kind: "notice", reason: code } : { kind: "error", message: code });
         return;
       }
       const data = await response.json() as CompareResult;
+      if (seq !== requestSeqRef.current) return;
       setResult({ kind: "ok", base, head, files: data.files, ...(data.mergeBase ? { mergeBase: data.mergeBase } : {}), ...(data.truncated ? { truncated: true } : {}) });
     }).catch((error: unknown) => {
       if (seq === requestSeqRef.current) setResult({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
@@ -165,16 +170,22 @@ export function CompareView({ ctx, repoRel, refs, onFileOpenChange }: CompareVie
   );
 
   const canCompare = base !== "" && head !== "" && base !== head;
-  const compareSelection = result.kind === "ok" && ctx.theaterId ? { base: result.base, head: result.head, theaterId: ctx.theaterId, repoRel } : null;
+  // primitive 기준으로만 재생성 — 객체 identity가 매 렌더 바뀌면 HunkView effect가 드래그마다 재fetch한다 (history-panel commit selection 선례 미러)
+  const okBase = result.kind === "ok" ? result.base : null;
+  const okHead = result.kind === "ok" ? result.head : null;
+  const compareSelection = useMemo(
+    () => okBase && okHead && ctx.theaterId ? { base: okBase, head: okHead, theaterId: ctx.theaterId, repoRel } : null,
+    [okBase, okHead, ctx.theaterId, repoRel],
+  );
 
   return (
     <div className="repository-compare">
-      <div className="repository-compare-controls">
+      {refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={onRetryRefs}>Retry</button></div> : <div className="repository-compare-controls">
         {refSelect("base", base)}
         <span className="repository-compare-arrow" aria-hidden="true">…</span>
         {refSelect("head", head)}
         <button type="button" className="repository-refresh-btn repository-compare-run" disabled={!canCompare} onClick={runCompare}>Compare</button>
-      </div>
+      </div>}
       <div ref={rootRef} className={`repository-root${selected ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selected ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
         {selected && compareSelection ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selected.path}</span><button type="button" onClick={() => setSelected(null)}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selected} mode="unified" compare={compareSelection} /></div> : null}
         {selected ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
