@@ -58,6 +58,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const closeArmTimeoutRef = useRef<number | null>(null);
+  const lastVisibleGeometryRef = useRef(geometry);
   const restoreIdentityFocusRef = useRef(false);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
@@ -291,13 +292,19 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     rename.handleKeyDown(event);
   };
 
+  // 최소화 커밋과 동시에 formation slot·maximize·companion 레이아웃이 해제되면 라이브 geometry가
+  // 저장된 map 좌표로 회귀해, 페이드로 가시가 유지되는 동안 패널이 엉뚱한 위치에서 사라진다 —
+  // 마지막 가시 geometry를 동결해 사라진 자리에서 페이드하고, 복원은 그 자리에서 목표 슬롯으로 미끄러진다.
+  if (!minimized) lastVisibleGeometryRef.current = geometry;
+  const effectiveGeometry = minimized ? lastVisibleGeometryRef.current : geometry;
+
   // 패널 좌표·크기를 정수 픽셀로 스냅해 패널·내부 xterm 캔버스 원점을 정수 픽셀에 정렬한다(서브픽셀 번짐 제거).
   const frameStyle = {
-    left: Math.round(geometry.x),
-    top: Math.round(geometry.y),
-    width: Math.round(geometry.width),
-    height: Math.round(geometry.height),
-    zIndex: geometry.zIndex,
+    left: Math.round(effectiveGeometry.x),
+    top: Math.round(effectiveGeometry.y),
+    width: Math.round(effectiveGeometry.width),
+    height: Math.round(effectiveGeometry.height),
+    zIndex: effectiveGeometry.zIndex,
     // Focus Layer peer는 xterm ResizeObserver가 기존 컨테이너 크기를 계속 보게 레이아웃을 보존한다.
     ...(renderHidden ? { visibility: "hidden", pointerEvents: "none" } : {}),
     ...(accentColor ? { "--user-accent": accentColor } : {}),
