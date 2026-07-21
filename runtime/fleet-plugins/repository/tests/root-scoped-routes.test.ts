@@ -7,6 +7,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { handleRepositoryCommit } from "../server/commit.js";
 import { handleRepositoryCommitFile } from "../server/commit-file.js";
+import { handleRepositoryCompare } from "../server/compare.js";
+import { handleRepositoryCompareFile } from "../server/compare-file.js";
 import { handleRepositoryChanged, handleRepositoryFile } from "../server/diff.js";
 import { runGit } from "../server/git-executor.js";
 import { handleRepositoryLog } from "../server/log.js";
@@ -49,6 +51,8 @@ const handlers = [
   ["file", handleRepositoryFile, { theaterId: "theater", filePath: "file", mode: "unified" }],
   ["commit", handleRepositoryCommit, { theaterId: "theater", ref: "1234567" }],
   ["commit-file", handleRepositoryCommitFile, { theaterId: "theater", ref: "1234567", filePath: "file" }],
+  ["compare", handleRepositoryCompare, { theaterId: "theater", base: "refs/heads/main", head: "HEAD" }],
+  ["compare-file", handleRepositoryCompareFile, { theaterId: "theater", base: "refs/heads/main", head: "HEAD", filePath: "file" }],
   ["log", handleRepositoryLog, { theaterId: "theater" }],
   ["refs", handleRepositoryRefs, { theaterId: "theater" }],
 ] as const;

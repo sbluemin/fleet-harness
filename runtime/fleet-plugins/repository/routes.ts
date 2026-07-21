@@ -2,6 +2,8 @@ import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { handleRepositoryCommit } from "./server/commit.js";
 import { handleRepositoryCommitFile } from "./server/commit-file.js";
+import { handleRepositoryCompare } from "./server/compare.js";
+import { handleRepositoryCompareFile } from "./server/compare-file.js";
 import { handleRepositoryChanged, handleRepositoryFile } from "./server/diff.js";
 import { handleRepositoryLog } from "./server/log.js";
 import { handleRepositoryRefs } from "./server/refs.js";
@@ -38,6 +40,14 @@ export default definePlugin({
     });
     registerRouter(ctx, "commit-file", async ({ req, res }) => {
       await handleRepositoryCommitFile(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "compare", async ({ req, res }) => {
+      await handleRepositoryCompare(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "compare-file", async ({ req, res }) => {
+      await handleRepositoryCompareFile(req, res, ctx);
       return true;
     });
   },

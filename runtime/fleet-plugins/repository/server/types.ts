@@ -86,3 +86,9 @@ export interface CommitResult {
   readonly files: readonly DiffFileEntry[];
   readonly truncated?: boolean;
 }
+
+export interface CompareResult {
+  readonly files: readonly DiffFileEntry[];
+  readonly mergeBase?: string;
+  readonly truncated?: boolean;
+}
