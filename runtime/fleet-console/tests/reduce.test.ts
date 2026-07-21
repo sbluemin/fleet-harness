@@ -71,6 +71,8 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     bootstrapped: true,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,
+    pendingSideBarAddTheater: false,
+    pendingSideBarTheaterLaunch: null,
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     ...patch,

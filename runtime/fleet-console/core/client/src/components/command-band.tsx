@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
-import { commandBandRenameCommitTarget } from "./command-band-guards.js";
+import { useCanvasState } from "../canvas/canvas-store.js";
+import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
+import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
-import { hydrateOperations, toggleOperationSearch } from "../store.js";
+import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
@@ -31,8 +33,9 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const modLabel = resolveModLabel();
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
+  const canvas = useCanvasState();
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
-  const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId) ?? null;
+  const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
   const activeCliId = typeof activeOperation?.payload.cliId === "string" ? activeOperation.payload.cliId : null;
   const activeCliLabel = typeof activeOperation?.payload.cliLabel === "string" ? activeOperation.payload.cliLabel : activeCliId;
@@ -44,6 +47,12 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const edgeRevealRef = useRef<HTMLButtonElement>(null);
   const pointerWithinRef = useRef({ edge: false, band: false });
   const renameTargetOperationIdRef = useRef<string | null>(null);
+  const theaterTriggerRef = useRef<HTMLButtonElement>(null);
+  const operationTriggerRef = useRef<HTMLButtonElement>(null);
+  const switcherRef = useRef<HTMLDivElement>(null);
+  const switcherMenuRef = useRef<HTMLDivElement>(null);
+  const [switcherMenu, setSwitcherMenu] = useState<CommandBandSwitcherMenu | null>(null);
+  const [switcherMenuLeft, setSwitcherMenuLeft] = useState(0);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
@@ -70,10 +79,17 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     return !focusWithin && !pointerWithinRef.current.edge && !pointerWithinRef.current.band;
   }, []);
   const fullscreen = useFullscreenCommandBand(canAutoHide);
+  // 브레드크럼 표시 대상(P0 가드 결과) 기준으로 판정한다 — activeOperationId가 그대로여도
+  // Theater 전환으로 Operation 세그먼트가 숨으면 숨은 rename이 살아남아 복귀 시 스테일 draft가 부활한다.
+  const displayedOperationId = activeOperation?.id ?? null;
+  // 커밋 판정은 ref로 읽는다 — Theater 전환 렌더가 input을 언마운트하며 동기로 blur 커밋을
+  // 쏘는데, 이때 클로저의 이전 렌더 state는 여전히 일치해 스테일 draft가 커밋된다(실브라우저 재현).
+  const displayedOperationIdRef = useRef<string | null>(null);
+  displayedOperationIdRef.current = displayedOperationId;
   const rename = useInlineRename({
     currentTitle: activeOperation?.title ?? "",
     onCommit: (title) => {
-      const operationId = commandBandRenameCommitTarget(renameTargetOperationIdRef.current, state.activeOperationId);
+      const operationId = commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationIdRef.current);
       renameTargetOperationIdRef.current = null;
       if (!operationId) return;
       void renameOperation(operationId, title).then(() => fetchOperations(null)).then(hydrateOperations).catch(() => {});
@@ -81,11 +97,11 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   });
 
   useEffect(() => {
-    if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, state.activeOperationId)) return;
-    // 활성 패널이 바뀌면 이전 초안을 버려 다른 Operation으로 이름이 넘어가지 않게 한다.
+    if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationId)) return;
+    // 표시 대상이 어긋나면(패널 전환·Theater 전환 포함) 이전 초안을 버려 이름이 넘어가지 않게 한다.
     renameTargetOperationIdRef.current = null;
     rename.cancel();
-  }, [rename, state.activeOperationId]);
+  }, [rename, displayedOperationId]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -128,6 +144,49 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   }, [environmentOpen]);
 
   useEffect(() => {
+    if (switcherMenu === null) return;
+    const triggerRef = switcherMenu === "theater" ? theaterTriggerRef : operationTriggerRef;
+    const closeOnPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || triggerRef.current?.contains(target) || switcherMenuRef.current?.contains(target)) return;
+      setSwitcherMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSwitcherMenu(null);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnPointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [switcherMenu]);
+
+  // 메뉴 열림 중 사이드바 등 외부 경로로 활성 Theater/Operation이 바뀌면 메뉴를 닫는다.
+  // (메뉴 내 선택은 상태 변경 전에 동기적으로 닫으므로 여기서는 no-op이다.)
+  useEffect(() => {
+    setSwitcherMenu(null);
+  }, [state.activeTheaterId, state.activeOperationId]);
+
+  // Operation 메뉴는 자기 트리거 아래 정렬(래퍼 offsetLeft), Theater 메뉴는 좌단 기준 —
+  // 어느 쪽이든 좁은 viewport에서 우측이 화면을 넘지 않도록 실측 clamp하고 resize 시 재측정한다.
+  useLayoutEffect(() => {
+    if (switcherMenu === null) return;
+    const measure = () => {
+      const wrapper = switcherRef.current;
+      const menu = switcherMenuRef.current;
+      if (!wrapper || !menu) return;
+      const desiredLeft = switcherMenu === "operation" ? operationTriggerRef.current?.offsetLeft ?? 0 : 0;
+      setSwitcherMenuLeft(commandBandMenuClampedLeft(desiredLeft, wrapper.getBoundingClientRect().left, menu.getBoundingClientRect().width, window.innerWidth));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [switcherMenu]);
+
+  useEffect(() => {
     if (state.channel === "local") return;
     setEnvironmentOpen(false);
     setEnvironment(null);
@@ -147,9 +206,50 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
 
   const beginRename = () => {
     if (!activeOperation) return;
+    setSwitcherMenu(null);
     renameTargetOperationIdRef.current = activeOperation.id;
     rename.begin();
   };
+
+  const toggleSwitcherMenu = (menu: CommandBandSwitcherMenu) => {
+    setEnvironmentOpen(false);
+    discardEnvironmentState();
+    setSwitcherMenu((open) => (open === menu ? null : menu));
+  };
+
+  // Tab 등으로 포커스가 스위처 밖으로 나가면 메뉴를 닫는다 — 포커스는 자연 Tab 대상에 남기고
+  // 트리거 복귀는 Escape 전용으로 유지한다.
+  const handleSwitcherFocusOut = (event: FocusEvent<HTMLDivElement>) => {
+    if (switcherMenu === null || !commandBandSwitcherFocusLeft(event.currentTarget, event.relatedTarget)) return;
+    setSwitcherMenu(null);
+  };
+
+  const selectTheaterFromMenu = (theaterId: string) => {
+    setSwitcherMenu(null);
+    theaterTriggerRef.current?.focus();
+    if (theaterId !== state.activeTheaterId) setActiveTheater(theaterId);
+  };
+
+  const selectOperationFromMenu = (operationId: string) => {
+    setSwitcherMenu(null);
+    operationTriggerRef.current?.focus();
+    focusOperation(operationId);
+  };
+
+  const addTheaterFromMenu = () => {
+    setSwitcherMenu(null);
+    theaterTriggerRef.current?.focus();
+    requestSideBarAddTheater();
+  };
+
+  const launchOperationFromMenu = () => {
+    if (!activeTheater) return;
+    setSwitcherMenu(null);
+    operationTriggerRef.current?.focus();
+    requestSideBarTheaterLaunch(activeTheater.id);
+  };
+
+  const theaterOperations = commandBandTheaterOperations(state.operations, state.groups, state.activeTheaterId, canvas.operationOrder);
 
   const hideAfterInteractionLeaves = () => {
     if (canAutoHide()) fullscreen.hideAfterLeave();
@@ -211,7 +311,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
         {state.channel === "local" ? <div className="command-band-environment">
-          <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
+          <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
           <span className="command-band-local-dot" aria-hidden="true" />
           <span className="command-band-local-chip-label">{desktopShell ? desktopChipLabel : "Local"}</span>
           </button>
@@ -225,13 +325,70 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         </button>
       </div>
       <div className="command-band-center">
-        {operationsViewVisible && activeTheater ? <div className="command-band-theater-cluster" aria-label={`Active Theater: ${activeTheater.label}`}>
-          <span className="command-band-theater-segment"><span className="command-band-theater-mark">{theaterInitials(activeTheater.label)}</span>{activeTheater.label}</span>
-          {activeOperation ? <>
+        {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
+          <div className="command-band-theater-cluster" aria-label={`Active Theater: ${activeTheater.label}`}>
+            <button
+              ref={theaterTriggerRef}
+              type="button"
+              className={`command-band-theater-segment command-band-segment-trigger${switcherMenu === "theater" ? " is-open" : ""}`}
+              aria-haspopup="menu"
+              aria-expanded={switcherMenu === "theater"}
+              title="Switch Theater"
+              onClick={() => toggleSwitcherMenu("theater")}
+            >
+              <span className="command-band-theater-mark">{theaterInitials(activeTheater.label)}</span>
+              <span className="command-band-segment-label">{activeTheater.label}</span>
+              <CommandBandTriggerCaret />
+            </button>
             <span className="command-band-theater-separator" aria-hidden="true">›</span>
-            {rename.renaming ? <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={`${activeOperation.title} 이름 변경`} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} /> : <button type="button" className="command-band-operation-name" onDoubleClick={beginRename} title="Double-click to rename">{activeOperation.title}</button>}
-            {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKind?.title ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
-          </> : null}
+            {activeOperation ? <>
+              {rename.renaming ? <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={`${activeOperation.title} 이름 변경`} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} /> : <button
+                ref={operationTriggerRef}
+                type="button"
+                className={`command-band-operation-name command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
+                aria-haspopup="menu"
+                aria-expanded={switcherMenu === "operation"}
+                title="Switch operation — double-click to rename"
+                onClick={() => toggleSwitcherMenu("operation")}
+                onDoubleClick={beginRename}
+              >
+                <span className="command-band-segment-label">{activeOperation.title}</span>
+                <CommandBandTriggerCaret />
+              </button>}
+              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKind?.title ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
+            </> : <button
+              ref={operationTriggerRef}
+              type="button"
+              className={`command-band-operation-placeholder command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
+              aria-haspopup="menu"
+              aria-expanded={switcherMenu === "operation"}
+              title="Select operation"
+              onClick={() => toggleSwitcherMenu("operation")}
+            >
+              <span className="command-band-segment-label">Select operation…</span>
+              <CommandBandTriggerCaret />
+            </button>}
+          </div>
+          {switcherMenu === "theater" ? <CommandBandTheaterMenu
+            theaters={state.theaters}
+            operations={state.operations}
+            activeTheaterId={state.activeTheaterId}
+            addingTheater={state.addingTheater}
+            onSelectTheater={selectTheaterFromMenu}
+            onAddTheater={addTheaterFromMenu}
+            style={{ left: switcherMenuLeft }}
+            containerRef={switcherMenuRef}
+          /> : null}
+          {switcherMenu === "operation" ? <CommandBandOperationMenu
+            operations={theaterOperations}
+            activeOperationId={activeOperation?.id ?? null}
+            theaterLabel={activeTheater.label}
+            onSelectOperation={selectOperationFromMenu}
+            onRenameOperation={activeOperation ? beginRename : null}
+            onNewOperation={launchOperationFromMenu}
+            style={{ left: switcherMenuLeft }}
+            containerRef={switcherMenuRef}
+          /> : null}
         </div> : null}
       </div>
       <div className="command-band-right">

@@ -76,6 +76,8 @@ let state: ConsoleState = {
   bootstrapped: false,
   pendingOperationFocus: null,
   keyboardFocusRequest: null,
+  pendingSideBarAddTheater: false,
+  pendingSideBarTheaterLaunch: null,
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
   codexReader: null,
@@ -308,6 +310,26 @@ export function focusOperation(operationId: string): void {
 export function consumeOperationFocus(): void {
   if (state.pendingOperationFocus === null) return;
   setState({ pendingOperationFocus: null });
+}
+
+// 커맨드 밴드 → 사이드바 단방향 요청 신호 — 사이드바가 effect로 소비(consume)한다.
+// pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약.
+export function requestSideBarAddTheater(): void {
+  setState({ pendingSideBarAddTheater: true });
+}
+
+export function consumeSideBarAddTheater(): void {
+  if (!state.pendingSideBarAddTheater) return;
+  setState({ pendingSideBarAddTheater: false });
+}
+
+export function requestSideBarTheaterLaunch(theaterId: string): void {
+  setState({ pendingSideBarTheaterLaunch: theaterId });
+}
+
+export function consumeSideBarTheaterLaunch(): void {
+  if (state.pendingSideBarTheaterLaunch === null) return;
+  setState({ pendingSideBarTheaterLaunch: null });
 }
 
 export function requestOperationKeyboardFocus(operationId: string): void {
