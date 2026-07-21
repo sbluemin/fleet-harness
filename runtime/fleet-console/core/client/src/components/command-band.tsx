@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { useCanvasState } from "../canvas/canvas-store.js";
-import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft } from "./command-band-guards.js";
+import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -10,7 +10,7 @@ import { toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
-import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, sortOperationsByOrder, toggleOperationSearch } from "../store.js";
+import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
@@ -249,10 +249,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     requestSideBarTheaterLaunch(activeTheater.id);
   };
 
-  const theaterOperations = sortOperationsByOrder(
-    state.operations.filter((operation) => operation.theaterId === state.activeTheaterId),
-    canvas.operationOrder,
-  );
+  const theaterOperations = commandBandTheaterOperations(state.operations, state.groups, state.activeTheaterId, canvas.operationOrder);
 
   const hideAfterInteractionLeaves = () => {
     if (canAutoHide()) fullscreen.hideAfterLeave();

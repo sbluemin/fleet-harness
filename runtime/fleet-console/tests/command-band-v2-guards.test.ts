@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft } from "../core/client/src/components/command-band-guards.js";
-import type { OperationNode } from "../core/client/src/types.js";
+import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
+import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 describe("Command Band v2 guards", () => {
   it("does not commit a previous Operation draft after another panel becomes active", () => {
@@ -87,6 +87,36 @@ describe("Command Band menu viewport clamp", () => {
 
   it("prioritizes the left gutter when the menu is wider than the viewport", () => {
     expect(commandBandMenuClampedLeft(0, 20, 500, 480)).toBe(12 - 20);
+  });
+});
+
+describe("Command Band operation menu ordering", () => {
+  const grouped = (id: string, theaterId: string, groupId: string | null): OperationNode => ({
+    ...makeOperation(id, theaterId),
+    ...(groupId !== null ? { groupId } : {}),
+  });
+  const makeGroup = (id: string, theaterId: string, order: number): OperationGroup => ({
+    id,
+    theaterId,
+    name: id,
+    color: "crimson",
+    order,
+    createdAt: order,
+  });
+
+  it("mirrors the grouped sidebar order, not the flat operationOrder", () => {
+    // flat 순서상 g2 소속 op-b가 앞서지만, 사이드바는 그룹 순서(g1 먼저)로 평탄화한다.
+    const operations = [grouped("op-b", "t1", "g2"), grouped("op-a", "t1", "g1"), grouped("op-c", "t1", null)];
+    const groups = [makeGroup("g1", "t1", 0), makeGroup("g2", "t1", 1)];
+    const ids = commandBandTheaterOperations(operations, groups, "t1", ["op-b", "op-a", "op-c"]).map((op) => op.id);
+    expect(ids).toEqual(["op-a", "op-b", "op-c"]);
+  });
+
+  it("keeps every active-theater operation reachable and excludes other theaters", () => {
+    const operations = [grouped("op-a", "t1", "g1"), grouped("op-x", "t2", null)];
+    const groups = [makeGroup("g1", "t1", 0), makeGroup("g9", "t2", 0)];
+    const ids = commandBandTheaterOperations(operations, groups, "t1", []).map((op) => op.id);
+    expect(ids).toEqual(["op-a"]);
   });
 });
 

@@ -1,7 +1,23 @@
-import type { OperationNode } from "../types.js";
+import { flattenGroupedOrder } from "../store.js";
+import type { OperationGroup, OperationNode } from "../types.js";
 
 export function commandBandRenameCommitTarget(capturedOperationId: string | null, activeOperationId: string | null): string | null {
   return capturedOperationId !== null && capturedOperationId === activeOperationId ? capturedOperationId : null;
+}
+
+// Operation 메뉴는 사이드바·Alt+←/→와 동일한 그룹 인식 순서를 미러한다. collapsedGroups는
+// 넘기지 않는다 — 스위처 메뉴는 접힌 그룹의 Operation도 도달 가능해야 한다(순서만 미러, 가시성 미러 아님).
+export function commandBandTheaterOperations(
+  operations: readonly OperationNode[],
+  groups: readonly OperationGroup[],
+  activeTheaterId: string | null,
+  operationOrder: readonly string[],
+): readonly OperationNode[] {
+  return flattenGroupedOrder(
+    operations.filter((operation) => operation.theaterId === activeTheaterId),
+    groups.filter((group) => group.theaterId === activeTheaterId),
+    operationOrder,
+  );
 }
 
 // Theater만 전환하면(setActiveTheater) activeOperationId가 남는다 — 브레드크럼은
