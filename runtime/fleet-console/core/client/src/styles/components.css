@@ -2748,7 +2748,8 @@
   flex-direction: column;
 }
 
-/* 연속 좌측 레일 — group section 전체 관통 (ungrouped 제외) */
+/* 연속 좌측 레일 + 존 워시 — group section 전체 관통 (ungrouped 제외).
+   레일(3px 직사각형)은 불변 계약: 우측 모서리만 둥글려 워시가 레일 형상을 건드리지 않는다. */
 .side-bar-group-section {
   position: relative;
   list-style: none;
@@ -2756,7 +2757,10 @@
   flex-direction: column;
   margin-left: var(--space-1);
   padding-left: var(--space-1);
+  padding-bottom: 4px;
   border-left: 3px solid var(--grp-color, transparent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: color-mix(in oklch, var(--grp-color, transparent) 4%, transparent);
 }
 
 .side-bar-group-section--drop-before::before,
@@ -2804,14 +2808,20 @@
   margin: 2px var(--space-1) 0 0;
   border-radius: var(--radius-md);
   user-select: none;
-  /* 그룹 정체성은 도트+레일만 소유한다 — 헤더 배경·글자는 중립 잉크로 침묵. */
-  background: transparent;
+  /* 그룹 정체성 = 스파인(레일) + 마크(도트) + 워시 — 헤더는 --grp-color 9% 워시(접힘 시 12%),
+     카운트만 정체성 틴트를 받고 보더는 상태 채널 소유로 남는다. 색 없는 그룹은 transparent 폴백으로 중립. */
+  background: color-mix(in oklch, var(--grp-color, transparent) 9%, transparent);
   cursor: grab;
   transition:
     background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     box-shadow var(--duration-fast) var(--ease-spring),
     transform var(--duration-fast) var(--ease-spring);
+}
+
+/* 접힌 그룹은 헤더가 유일한 신호면이므로 워시를 강화한다. */
+.side-bar-group-header--collapsed {
+  background: color-mix(in oklch, var(--grp-color, transparent) 12%, transparent);
 }
 
 .side-bar-group-header--drop-target,
@@ -2899,18 +2909,16 @@
   text-align: right;
 }
 
-/* two-state 그룹 헤더: 색상 dot만 표시 */
-.side-bar-group-header--rail {
-  justify-content: center;
-  padding: 4px 0;
-  margin: 2px 0 0;
-  cursor: pointer;
+.side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
+  color: color-mix(in oklch, var(--grp-color) 65%, var(--ink-pearl));
 }
 
+/* 그룹 마크 — 헤더 화살표와 이름 사이의 정체성 도트. */
 .side-bar-group-header__dot {
   display: block;
-  width: 6px;
-  height: 6px;
+  flex: none;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--grp-color, var(--ink-fog));
 }
