@@ -158,6 +158,22 @@ describe("compare route", () => {
     expect(writes).toEqual([{ status: 400, payload: { error: "invalid_ref" } }]);
   });
 
+  it("무관 히스토리 ref 쌍(orphan 브랜치)은 400 no_merge_base", async () => {
+    await runGit(["checkout", "--orphan", "orphan"], { cwd: fixture.theaterPath });
+    await runGit(["rm", "-rq", "--cached", "."], { cwd: fixture.theaterPath });
+    await fs.writeFile(path.join(fixture.theaterPath, "orphan.txt"), "unrelated history\n");
+    await runGit(["add", "orphan.txt"], { cwd: fixture.theaterPath });
+    await runGit(["commit", "-m", "orphan commit"], { cwd: fixture.theaterPath });
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryCompare(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", base: fixture.baseRef, head: "refs/heads/orphan" }, writes),
+    );
+    expect(writes).toEqual([{ status: 400, payload: { error: "no_merge_base" } }]);
+  });
+
   it("문법은 유효하나 존재하지 않는 ref는 400 unknown_ref", async () => {
     const writes: JsonWrite[] = [];
     await handleRepositoryCompare(

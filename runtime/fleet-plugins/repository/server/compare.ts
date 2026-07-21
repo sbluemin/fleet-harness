@@ -50,6 +50,13 @@ export function isUnknownRevisionError(error: unknown): boolean {
   return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
 }
 
+// 무관 히스토리 ref 쌍의 triple-dot diff는 exit 128 + stderr "no merge base"로 실패한다
+export function isNoMergeBaseError(error: unknown): boolean {
+  if (!(error instanceof GitExecutorError)) return false;
+  if (error.code !== "non_zero_exit") return false;
+  return error.stderr.includes("no merge base");
+}
+
 // ─── handlers ────────────────────────────────────────────────────────────────
 
 export async function handleRepositoryCompare(
@@ -108,6 +115,10 @@ export async function handleRepositoryCompare(
     if (error instanceof GitExecutorError) {
       if (error.code === "no_git_repo" || error.code === "git_unavailable") {
         ctx.host.http.writeJson(res, 422, { error: error.code });
+        return;
+      }
+      if (isNoMergeBaseError(error)) {
+        ctx.host.http.writeJson(res, 400, { error: "no_merge_base" });
         return;
       }
       if (isUnknownRevisionError(error)) {

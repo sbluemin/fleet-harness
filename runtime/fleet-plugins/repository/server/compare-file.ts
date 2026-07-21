@@ -5,7 +5,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
-import { isSafeCompareRef, isUnknownRevisionError } from "./compare.js";
+import { isNoMergeBaseError, isSafeCompareRef, isUnknownRevisionError } from "./compare.js";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,6 +52,7 @@ export async function handleRepositoryCompareFile(req: http.IncomingMessage, res
   } catch (error) {
     if (error instanceof GitExecutorError) {
       if (error.code === "no_git_repo" || error.code === "git_unavailable") { ctx.host.http.writeJson(res, 422, { error: error.code }); return; }
+      if (isNoMergeBaseError(error)) { ctx.host.http.writeJson(res, 400, { error: "no_merge_base" }); return; }
       if (isUnknownRevisionError(error)) { ctx.host.http.writeJson(res, 400, { error: "unknown_ref" }); return; }
       ctx.host.http.writeJson(res, 500, { error: "git_failed" }); return;
     }

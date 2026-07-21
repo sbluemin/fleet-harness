@@ -193,7 +193,9 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
           {result.kind === "idle" && <div className="history-empty">Select base and head refs, then run Compare.</div>}
           {result.kind === "loading" && <div className="history-empty">Comparing…</div>}
           {result.kind === "ok" && result.files.length === 0 && <div className="history-empty">No differences between the selected refs.</div>}
-          {(result.kind === "notice" || result.kind === "error" || (result.kind === "ok" && result.files.length > 0)) && (
+          {/* 무관 히스토리 ref 쌍은 오류가 아니라 안내로 표면화한다 */}
+          {result.kind === "error" && result.message === "no_merge_base" && <div className="history-empty">The selected refs share no common history.</div>}
+          {(result.kind === "notice" || (result.kind === "error" && result.message !== "no_merge_base") || (result.kind === "ok" && result.files.length > 0)) && (
             <>
               {result.kind === "ok" && result.mergeBase && <div className="repository-compare-meta">merge-base <span>{result.mergeBase}</span></div>}
               <ChangedFiles
