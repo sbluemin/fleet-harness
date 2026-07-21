@@ -2,7 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
@@ -86,6 +86,33 @@ describe("Operation search focus handoff", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it("navigates to /operations before opening a rail panel command from another route", () => {
+    // 커맨드 모드의 open-rail-panel은 rail이 operations 페이지에만 마운트되므로 다른 경로에서 먼저 이동해야 한다.
+    act(() => root!.render(createElement(
+      MemoryRouter,
+      { key: "settings-route", initialEntries: ["/settings"] },
+      createElement(SearchHarness),
+      createElement(LocationProbe),
+    )));
+    expect(observedPathname).toBe("/settings");
+
+    const input = document.querySelector<HTMLInputElement>("#operation-search-input");
+    expect(input).not.toBeNull();
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(input, ">open panel alerts");
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const commandOption = document.querySelector<HTMLButtonElement>('[role="option"]');
+    expect(commandOption?.textContent).toContain("Open panel: Alerts");
+
+    act(() => commandOption!.click());
+
+    expect(observedPathname).toBe("/operations");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
   it("restores the previous focus after Escape cancellation", () => {
     const restoreFocus = vi.spyOn(previousFocus!, "focus");
     const input = document.querySelector<HTMLInputElement>("#operation-search-input");
@@ -100,5 +127,12 @@ describe("Operation search focus handoff", () => {
 });
 
 function SearchHarness() {
-  return createElement(OperationSearch, { state: useConsoleState(), railPanels: [] });
+  return createElement(OperationSearch, { state: useConsoleState(), railPanels: [{ id: "alerts", title: "Alerts" }] });
+}
+
+let observedPathname = "";
+
+function LocationProbe() {
+  observedPathname = useLocation().pathname;
+  return null;
 }

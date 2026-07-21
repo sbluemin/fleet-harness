@@ -118,15 +118,22 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         break;
       }
       case "open-rail-panel": {
+        // rail·사이드바는 operations 페이지에만 마운트되므로 다른 경로에서는 먼저 이동한다.
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
         openRailPanel(action.panelId);
         setRailChromeExpanded(true);
         break;
       }
       case "toggle-rail": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        // 닫힘 cleanup의 포커스 복원 타깃을 command-band의 rail 토글로 재지정한다(미발견 시 복원 억제).
+        previousFocusRef.current = document.querySelector<HTMLElement>(".command-band-rail-toggle");
         toggleRailChrome();
         break;
       }
       case "toggle-sidebar": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        previousFocusRef.current = document.querySelector<HTMLElement>(".command-band-sidebar-toggle");
         setSideBarCollapsed(!getSideBarState().collapsed);
         break;
       }
@@ -140,6 +147,8 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         break;
       }
       case "open-settings": {
+        // 라우트 전환으로 이전 포커스 요소가 unmount되므로 복원을 억제한다(switch-theater와 동일).
+        previousFocusRef.current = null;
         navigate("/settings");
         break;
       }

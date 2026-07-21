@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
@@ -102,6 +102,20 @@ export function App() {
     void requestReleaseNotes({ locale: releaseNotesLocale });
     return abortReleaseNotesFetch;
   }, [releaseNotesLocale]);
+
+  const shortcutsReturnFocusRef = useRef<HTMLElement | null>(null);
+
+  // 단축키 다이얼로그가 열리는 시점의 포커스 요소를 캡처해 닫힐 때 복원한다(Help 메뉴 trigger 복원과 등가).
+  // 다이얼로그 자체의 focus effect(passive)보다 먼저 돌도록 layout effect로 캡처한다.
+  useLayoutEffect(() => {
+    if (state.keyboardShortcutsOpen) {
+      shortcutsReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      return;
+    }
+    const target = shortcutsReturnFocusRef.current;
+    shortcutsReturnFocusRef.current = null;
+    if (target?.isConnected) target.focus();
+  }, [state.keyboardShortcutsOpen]);
 
   useEffect(() => {
     return installConsoleGlobalShortcuts({
