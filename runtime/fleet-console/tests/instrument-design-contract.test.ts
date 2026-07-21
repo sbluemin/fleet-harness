@@ -151,15 +151,15 @@ describe("Instrument core design contract", () => {
     const draggingBlock = components.match(/\.canvas-operation\.is-dragging \{[^}]*\}/)?.[0] ?? "";
     expect(draggingBlock).toContain("transition: none;");
     // (c) components.css의 reduced-motion 통합 블록이 캔버스 패널·companion 프레임을 커버한다.
-    expect(components).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s*\.canvas-operation \{\s*transition: none;\s*\}\s*\.canvas-companion-frame \{\s*animation: none;\s*\}/,
-    );
+    // is-minimized(0,2,0)는 .canvas-operation(0,1,0)을 이기므로 반드시 블록 안에 함께 명시된다.
+    const reducedMotionBlock = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotionBlock).toMatch(/\.canvas-operation,\s*\.canvas-operation\.is-minimized \{\s*transition: none;\s*\}/);
+    expect(reducedMotionBlock).toMatch(/\.canvas-companion-frame \{\s*animation: none;\s*\}/);
     // (d) 존재 전환 keyframe은 panel-enter로 일반화 — companion 전용 명칭은 퇴역하고 실제 사용까지 고정한다.
     expect(components).toContain("@keyframes panel-enter");
     expect(components).toContain("animation: panel-enter var(--duration-slow) var(--ease-glide) both;");
     expect(components).not.toContain("companion-frame-enter");
     // (e) 안무 표면(칩 도착 맥동·고스트)도 reduced-motion 블록 안에서 무효화된다.
-    const reducedMotionBlock = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotionBlock).toContain(".side-bar-chip.is-arrival-pulse {");
     expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
   });

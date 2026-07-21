@@ -2082,7 +2082,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-operation {
+  /* is-minimized(0,2,0)는 .canvas-operation(0,1,0)보다 특이도가 높아 별도 명시가 필요하다 —
+     글로벌 캐치올은 transition-duration만 줄이고 visibility의 transition-delay는 못 끊는다. */
+  .canvas-operation,
+  .canvas-operation.is-minimized {
     transition: none;
   }
 
