@@ -202,6 +202,16 @@ describe("Instrument core design contract", () => {
     expect(store).toContain("setMaximizedOperationId");
   });
 
+  it("pins the selectable Right Rail panel behavior contract", () => {
+    const rail = source("styles/rail.css");
+    const rightRail = source("rail/right-rail.tsx");
+    const railStore = source("rail/rail-store.ts");
+    expect(rail).toContain(".right-rail.is-overlay");
+    expect(rightRail).toContain("useRailPanelBehavior");
+    expect(rightRail).toContain("right-rail-float-toggle");
+    expect(railStore).toContain("fleet-console.rail.panelBehavior");
+  });
+
   it("pins the Command Band and closed-chrome contracts", () => {
     const app = source("app.tsx");
     const commandBand = source("components/command-band.tsx");

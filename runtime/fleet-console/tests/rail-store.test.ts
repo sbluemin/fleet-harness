@@ -167,3 +167,48 @@ describe("rail chrome state", () => {
     expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: null, railChromeExpanded: true });
   });
 });
+
+describe("rail panel behavior", () => {
+  function stubPanelBehaviorStorage(initial: string | null = null) {
+    const values = new Map<string, string>();
+    if (initial !== null) values.set("fleet-console.rail.panelBehavior", initial);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    return values;
+  }
+
+  it("defaults to push", async () => {
+    stubPanelBehaviorStorage();
+    const { getRailStoreSnapshot } = await freshStore();
+    expect(getRailStoreSnapshot().panelBehavior).toBe("push");
+  });
+
+  it("toggles from push to overlay and back", async () => {
+    stubPanelBehaviorStorage();
+    const { getRailStoreSnapshot, toggleRailPanelBehavior } = await freshStore();
+    toggleRailPanelBehavior();
+    expect(getRailStoreSnapshot().panelBehavior).toBe("overlay");
+    toggleRailPanelBehavior();
+    expect(getRailStoreSnapshot().panelBehavior).toBe("push");
+  });
+
+  it("persists and restores the selected behavior", async () => {
+    const values = stubPanelBehaviorStorage();
+    const { setRailPanelBehavior } = await freshStore();
+    setRailPanelBehavior("overlay");
+    expect(values.get("fleet-console.rail.panelBehavior")).toBe("overlay");
+
+    vi.resetModules();
+    const restored = await freshStore();
+    expect(restored.getRailStoreSnapshot().panelBehavior).toBe("overlay");
+  });
+
+  it("falls back to push for an unknown stored value", async () => {
+    stubPanelBehaviorStorage("floating");
+    const { getRailStoreSnapshot } = await freshStore();
+    expect(getRailStoreSnapshot().panelBehavior).toBe("push");
+  });
+});

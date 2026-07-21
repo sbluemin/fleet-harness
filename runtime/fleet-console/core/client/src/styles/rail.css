@@ -12,6 +12,7 @@
   width: calc(44px + var(--right-rail-panel-width, 0px));
   height: 100%;
   min-height: 0;
+  position: relative;
   z-index: var(--z-rail);
   /* Glass 부유 카드 — 144df6c 이전 독립 ALERTS 도크의 함교 계기판 질감을 계승한다:
      우상단 brass 코너 조명 + glass 본체, 부유 그림자, 단일 blur 레이어.
@@ -29,6 +30,11 @@
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
+.right-rail.is-overlay {
+  width: 44px;
+  overflow: visible;
+}
+
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
    overflow:hidden + width 전환으로 spring 펼침/접힘을 구현한다.
    min-width는 애니메이션 중 내부 레이아웃 흔들림을 방지한다.        */
@@ -44,7 +50,22 @@
 }
 
 .right-rail.is-open .right-rail-panel-slot {
-  width: 312px;
+  width: var(--right-rail-panel-width, 312px);
+}
+
+.right-rail.is-overlay .right-rail-panel-slot {
+  position: absolute;
+  right: 44px;
+  top: 0;
+  bottom: 0;
+  width: var(--right-rail-panel-width, 0px);
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+  border-left: 1px solid var(--surface-rim);
+  /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
+  box-shadow: -24px 0 48px -24px oklch(0% 0 0 / 70%);
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
 }
 
 .right-rail-panel-head {
@@ -69,6 +90,39 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.right-rail-float-toggle {
+  flex: none;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-rim-strong);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 140ms, background 140ms, border-color 140ms;
+}
+
+.right-rail-float-toggle:hover {
+  color: var(--ink-pearl);
+  background: var(--ink-veil);
+}
+
+.right-rail-float-toggle.is-active {
+  color: var(--brass);
+  background: var(--brass-glow);
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+}
+
+/* 활성 hover는 brass 채널을 유지한 채 테두리만 강화한다(비활성 hover의 veil 덮기 방지). */
+.right-rail-float-toggle.is-active:hover {
+  color: var(--brass);
+  background: var(--brass-glow);
+  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
 }
 
 .right-rail-close-btn {
@@ -229,7 +283,8 @@
     transition: none !important;
   }
 
-  .right-rail-ico {
+  .right-rail-ico,
+  .right-rail-float-toggle {
     transition-duration: 0.01ms !important;
   }
 }
