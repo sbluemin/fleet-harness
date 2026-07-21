@@ -62,13 +62,9 @@ Every section must be written from "**why**" and "**what the user feels at the s
 
 1. Call `wiki_orient` to capture existing PRD section structure, tag vocabulary, and naming patterns.
 2. Identify existing entries in the same feature area (e.g., `coding-agent`, `harness`, `carrier`) and reserve them as `related` candidates.
-3. Dispatch the **Chronicle carrier** via `carrier_dispatch`:
-   - `<doc_type>`: `wiki-create` (new) or `wiki-update` (refine existing)
-   - `<target>`: proposed entry id, format `prd-<area>-<topic>`
-   - `<audience>`: `contributors`
-   - `<scope>`: **Quote the DO / DO NOT rules from this skill verbatim into the request.** Chronicle is also an LLM; without explicit guardrails the output drifts into code-grounded or planning-style writing.
-4. After Chronicle enqueues a patch with `wiki_ingest`, fetch the preview using `wiki_patch_queue(action:"show")` and present it to the Admiral of the Navy.
-5. Walk through the preview line by line, checking each DO / DO NOT rule. If any rule is violated (code detail, planning phrasing, implementation action), reject and re-dispatch Chronicle with a specific correction note.
+3. Compose the entry body directly on the host, obeying the DO / DO NOT rules above and the Output Format. Write from "why" and "what the user feels at the surface"; without explicit adherence the output drifts into code-grounded or planning-style writing. The host performs Fleet Wiki authoring directly — do not dispatch a carrier for it.
+4. Stage the entry with `wiki_ingest` (`mode: "create"` for a new entry, or `"update"` to refine an existing one), targeting id `prd-<area>-<topic>` and providing the raw decision evidence as the `source`. Then fetch the preview with `wiki_patch_queue(action:"show")` and present it to the Admiral of the Navy.
+5. Walk through the preview line by line, checking each DO / DO NOT rule. If any rule is violated (code detail, planning phrasing, implementation action), revise the pending patch with `wiki_patch_edit` (or re-stage with `wiki_ingest`) before proceeding.
 6. Only after explicit Admiral-of-the-Navy approval, register the entry via `wiki_patch_queue(action:"approve")`. **Never auto-approve** — wiki entries are permanent.
 
 ## Pre-Registration Self-Check
