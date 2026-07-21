@@ -18,6 +18,7 @@ export interface ConsoleGeneralSettings {
   readonly consolePortMode?: "dynamic" | "static";
   readonly consoleStaticPort?: number;
   readonly language?: "auto" | "en" | "ko";
+  readonly reducePanelMotion?: boolean;
   readonly theme?: ConsoleThemeId;
   readonly uiFont?: UiFontSettings;
 }
@@ -105,6 +106,9 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const language = value.language === "auto" || value.language === "en" || value.language === "ko"
     ? value.language
     : undefined;
+  const reducePanelMotion = typeof value.reducePanelMotion === "boolean"
+    ? value.reducePanelMotion
+    : undefined;
   const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
     ? value.theme
     : undefined;
@@ -113,6 +117,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(language !== undefined ? { language } : {}),
+    ...(reducePanelMotion !== undefined ? { reducePanelMotion } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
   };

@@ -154,6 +154,11 @@ describe("sanitizeConsoleSettingsData", () => {
     expect(sanitizeConsoleSettingsData({ version: 1, general: { language: "ja" } })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
+  it("accepts boolean reducePanelMotion values and drops invalid values", () => {
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { reducePanelMotion: true } })).toEqual({ version: 1, general: { reducePanelMotion: true }, plugins: {} });
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { reducePanelMotion: "true" } })).toEqual({ version: 1, general: {}, plugins: {} });
+  });
+
   it("accepts minimum valid port boundary", () => {
     expect(sanitizeConsoleSettingsData({
       version: 1,

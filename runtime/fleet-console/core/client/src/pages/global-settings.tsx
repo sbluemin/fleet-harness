@@ -370,6 +370,7 @@ function GeneralSettingsCard({
       {state ? (
         <>
           <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
+          <PanelMotionSettings state={state} saving={saving} />
           <LanguageSettings state={state} saving={saving} />
         </>
       ) : (
@@ -377,6 +378,26 @@ function GeneralSettingsCard({
       )}
       <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
     </section>
+  );
+}
+
+function PanelMotionSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
+  return (
+    <div className="global-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">Panel Motion</p>
+        <p className="global-settings-help">Stop panel animations when panels open, move, minimize, and restore. When off, your operating system's Reduce Motion setting is followed.</p>
+      </div>
+      <button
+        type="button"
+        aria-pressed={state.reducePanelMotion}
+        className={`global-settings-toggle ${state.reducePanelMotion ? "is-on" : ""}`}
+        disabled={saving}
+        onClick={() => void setGlobalSettingsField("reducePanelMotion", !state.reducePanelMotion)}
+      >
+        Reduce panel motion
+      </button>
+    </div>
   );
 }
 
