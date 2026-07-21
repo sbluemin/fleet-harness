@@ -3,7 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initialAnalysisState, type AnalysisState } from "./analysis-state.js";
+import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 
 const { installDiagramHydratorSpy, renderMarkdownSpy } = vi.hoisted(() => ({
   installDiagramHydratorSpy: vi.fn(),
@@ -23,11 +23,16 @@ vi.mock("@fleet-console/markdown/core", async (importOriginal) => {
 vi.mock("@fleet-console/markdown/mermaid", () => ({ installDiagramHydrator: installDiagramHydratorSpy }));
 
 let storeState: AnalysisState;
+let rerenderStore = () => {};
 const send = vi.fn(async () => undefined);
 const stop = vi.fn(async () => undefined);
 const reset = vi.fn(async () => undefined);
+const dispatch = vi.fn((action: AnalysisAction) => {
+  storeState = analysisReducer(storeState, action);
+  rerenderStore();
+});
 vi.mock("./analysis-store.js", () => ({
-  useAnalysisStore: () => ({ state: storeState, dispatch: vi.fn(), send, stop, reset }),
+  useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset }),
 }));
 
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
@@ -39,6 +44,7 @@ describe("Session Analyst Evidence Pulse", () => {
     send.mockClear();
     stop.mockClear();
     reset.mockClear();
+    dispatch.mockClear();
     renderMarkdownSpy.mockClear();
     installDiagramHydratorSpy.mockReset();
   });
@@ -93,10 +99,10 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__pulse")?.textContent).toContain("Using wiki_read");
     expect(container.querySelector(".session-analyst__pulse")?.textContent).toContain("Tool status: running");
     expect(container.querySelector(".session-analyst__chat ol")?.classList.contains("is-dimmed")).toBe(false);
-    expect(container.querySelector("textarea")?.disabled).toBe(true);
+    expect(container.querySelector("textarea")?.disabled).toBe(false);
     expect(container.querySelectorAll("select")).toHaveLength(0);
     expect(container.querySelectorAll(".session-analyst__stop")).toHaveLength(1);
-    expect(container.querySelectorAll(".session-analyst__send")).toHaveLength(1);
+    expect(container.querySelectorAll(".session-analyst__send")).toHaveLength(2);
     expect(container.querySelector(".session-analyst__stop")?.getAttribute("aria-label")).toBe("Stop");
     expect(container.querySelector(".session-analyst__stop")?.textContent).toBe("");
     expect((container.querySelector('[aria-label="Reset Session Analyst"]') as HTMLButtonElement).disabled).toBe(false);
@@ -285,6 +291,132 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
+  it("renders follow-up chips after completion and sends their exact prompts", async () => {
+    storeState = {
+      ...initialAnalysisState,
+      started: true,
+      phase: "complete",
+      entries: [{ role: "analyst", text: "Answer" }],
+    };
+    const { container, root } = renderPanel();
+    const followups = container.querySelector(".session-analyst__followups")!;
+    expect(followups.textContent).toContain("FOLLOW UP");
+    expect(followups.querySelectorAll("button")).toHaveLength(4);
+
+    const deeper = [...followups.querySelectorAll("button")].find((button) => button.textContent?.includes("Go deeper"))!;
+    await act(async () => deeper.click());
+    expect(send).toHaveBeenCalledWith("Go deeper on your previous answer with more evidence citations.");
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("renders cancellable queued questions and keeps the composer enabled while busy", () => {
+    storeState = {
+      ...initialAnalysisState,
+      started: true,
+      busy: true,
+      phase: "reasoning",
+      entries: [{ role: "user", text: "Initial" }],
+      queue: ["First queued", "Second queued"],
+    };
+    const { container, root } = renderPanel();
+    expect(container.querySelector(".session-analyst__queue")?.getAttribute("aria-live")).toBe("polite");
+    expect(container.querySelectorAll(".session-analyst__queue-item")).toHaveLength(2);
+    expect(container.textContent).toContain("Enter queues the question — it fires when the analyst is ready");
+    expect(container.querySelector("textarea")?.disabled).toBe(false);
+
+    const textarea = container.querySelector("textarea")!;
+    setTextareaValue(textarea, "Queued from composer");
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    expect(storeState.queue).toEqual(["First queued", "Second queued", "Queued from composer"]);
+    expect(storeState.draft).toBe("");
+    expect(send).not.toHaveBeenCalled();
+
+    act(() => (container.querySelector('[aria-label="Cancel queued question 1"]') as HTMLButtonElement).click());
+    expect(storeState.queue).toEqual(["Second queued", "Queued from composer"]);
+    expect(container.querySelectorAll(".session-analyst__queue-item")).toHaveLength(2);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("filters slash commands and replaces the draft on keyboard and mouse selection", () => {
+    storeState = { ...initialAnalysisState, draft: "/dr" };
+    const { container, root } = renderPanel();
+    const textarea = container.querySelector("textarea")!;
+    const palette = container.querySelector('[role="listbox"]')!;
+    expect(textarea.getAttribute("role")).toBe("combobox");
+    expect(textarea.getAttribute("aria-expanded")).toBe("true");
+    expect(textarea.getAttribute("aria-controls")).toBe(palette.id);
+    expect(palette.querySelectorAll('[role="option"]')).toHaveLength(1);
+    expect(palette.textContent).toContain("/drift");
+    expect(textarea.getAttribute("aria-activedescendant")).toBe("analysis-chat-test-slash-drift");
+    expect(palette.querySelector('[role="option"]')?.id).toBe("analysis-chat-test-slash-drift");
+
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    expect(storeState.draft).toBe("Review this session for intent drift against my stated goals.");
+    expect(send).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+
+    setTextareaValue(textarea, "/");
+    const timeline = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent?.includes("/timeline"))!;
+    act(() => timeline.click());
+    expect(storeState.draft).toBe("Walk me through how this session unfolded.");
+    expect(send).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("leaves slash navigation and the draft unchanged during IME composition", () => {
+    storeState = { ...initialAnalysisState, draft: "/" };
+    const { container, root } = renderPanel();
+    const textarea = container.querySelector("textarea")!;
+    const initialActiveOption = textarea.getAttribute("aria-activedescendant");
+
+    for (const key of ["ArrowDown", "ArrowUp", "Enter", "Escape"]) {
+      act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", {
+        key,
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      })));
+      expect(storeState.draft).toBe("/");
+      expect(textarea.getAttribute("aria-activedescendant")).toBe(initialActiveOption);
+      expect(textarea.getAttribute("aria-expanded")).toBe("true");
+    }
+    expect(send).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("recalculates composer height when its textarea is resized", () => {
+    let triggerResize = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) {
+        triggerResize = () => callback([], this as unknown as ResizeObserver);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() { disconnect(); }
+    });
+    storeState = { ...initialAnalysisState, draft: "A durable draft that wraps after the panel narrows" };
+    const { container, root } = renderPanel();
+    const textarea = container.querySelector("textarea")!;
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 166 });
+
+    act(() => triggerResize());
+    expect(Number.parseFloat(textarea.style.height)).toBe(112.5);
+    expect(textarea.style.overflowY).toBe("auto");
+
+    act(() => root.unmount());
+    expect(disconnect).toHaveBeenCalledOnce();
+    container.remove();
+  });
+
   it("follows the latest streamed analyst content when chat overflows", () => {
     storeState = {
       ...initialAnalysisState,
@@ -392,7 +524,8 @@ function renderPanel() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+  rerenderStore = () => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never }));
+  act(() => rerenderStore());
   return { container, root };
 }
 

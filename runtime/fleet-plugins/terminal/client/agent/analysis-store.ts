@@ -121,7 +121,12 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
         return;
       }
       if (event.type === "complete" || event.type === "error") disarmWatchdog();
+      const queued = event.type === "complete" ? state.queue[0] : undefined;
       dispatch({ type: "event", event, now: Date.now() });
+      if (queued !== undefined && !state.busy && !disposed && generation === streamGeneration) {
+        dispatch({ type: "queue-cancel", index: 0 });
+        void store.send(queued);
+      }
     });
     await Promise.race([connected, new Promise<void>((resolve) => setTimeout(resolve, CONNECT_WAIT_MS))]);
   };

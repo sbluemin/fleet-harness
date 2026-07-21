@@ -13,12 +13,26 @@ const SUGGESTIONS = [
   { icon: "▲", tone: "coral", text: "Flag anything I should review" },
   { icon: "≡", tone: "brass", text: "Draft a handoff brief" },
 ] as const;
+const FOLLOW_UPS = [
+  { icon: "◈", tone: "aurora", label: "Go deeper on the last answer", text: "Go deeper on your previous answer with more evidence citations." },
+  { icon: "▲", tone: "coral", label: "Check for intent drift", text: "Review this session for intent drift against my stated goals." },
+  { icon: "≡", tone: "brass", label: "Turn this into an artifact", text: "Turn your previous answer into a published artifact." },
+  { icon: "●", tone: "aurora", label: "What is the agent doing now?", text: "What is the agent doing right now?" },
+] as const;
+const SLASH_COMMANDS = [
+  { command: "/now", description: "Current state — what the agent is doing right now", template: "What is the agent doing right now?" },
+  { command: "/drift", description: "Intent drift review against settled goals", template: "Review this session for intent drift against my stated goals." },
+  { command: "/brief", description: "Handoff brief as an artifact", template: "Draft a handoff brief and publish it as an artifact." },
+  { command: "/risks", description: "Flag anything that needs review", template: "Flag anything I should review before this work continues." },
+  { command: "/timeline", description: "How the session unfolded, end to end", template: "Walk me through how this session unfolded." },
+] as const;
 const STREAM_RENDER_DELAY_MS = 32;
 export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
   const { state, dispatch, send, stop, reset } = useAnalysisStore(context);
-  const [draft, setDraft] = React.useState("");
+  const [slashSelection, setSlashSelection] = React.useState(0);
+  const [slashDismissed, setSlashDismissed] = React.useState(false);
   const cli = state.catalog?.clis.find((item) => item.cliId === state.cliId);
   const model = cli?.models.find((item) => item.id === state.model);
   const hasInteracted = state.entries.length > 0;
@@ -32,7 +46,15 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const [countPulseRevision, setCountPulseRevision] = React.useState(0);
   const artifactsChipRef = React.useRef<HTMLButtonElement>(null);
   const chatRef = React.useRef<HTMLElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const latestEntry = state.entries.at(-1);
+  const slashMatches = state.draft.startsWith("/")
+    ? SLASH_COMMANDS.filter((item) => item.command.toLowerCase().startsWith(state.draft.toLowerCase()))
+    : [];
+  const slashOpen = !slashDismissed && slashMatches.length > 0;
+  const slashListboxId = `analysis-${context.operationId}-slash-listbox`;
+  const slashOptionId = (command: string) => `analysis-${context.operationId}-slash-${command.slice(1)}`;
+  const activeSlashOption = slashOpen ? slashMatches[Math.min(slashSelection, slashMatches.length - 1)] : undefined;
   // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
   // 유지하면 뒤따르는 connected/chunk 렌더가 진행 중인 CSS 애니메이션을 끊지 않는다.
   const interactedAtMount = React.useRef(hasInteracted).current;
@@ -42,6 +64,18 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     if (!chat || !hasInteracted) return;
     chat.scrollTop = chat.scrollHeight;
   }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase]);
+  React.useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    resizeAnalysisTextarea(textarea);
+  }, [state.draft]);
+  React.useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => resizeAnalysisTextarea(textarea));
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, []);
   React.useEffect(() => {
     const chat = chatRef.current;
     if (chat) installDiagramHydrator(chat);
@@ -66,11 +100,24 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     }
     if (artifactCount > previousCount && artifactsHidden) setCountPulseRevision((revision) => revision + 1);
   }, [artifactCount, artifactsHidden, dispatch, setCompanionPanelVisible, state.artifactsAutoOpenArmed, supportsCompanionVisibility]);
-  const submit = async (text: string) => {
+  const submit = async (text: string, clearDraft: boolean) => {
     const trimmed = text.trim();
-    if (!trimmed || state.busy) return;
-    setDraft("");
+    if (!trimmed) return;
+    if (state.busy) {
+      dispatch({ type: "queue-push", text: trimmed });
+      if (clearDraft) dispatch({ type: "set-draft", draft: "" });
+      return;
+    }
+    if (clearDraft) dispatch({ type: "set-draft", draft: "" });
     await send(trimmed);
+  };
+  const selectSlashCommand = (index: number) => {
+    const selected = slashMatches[index];
+    if (!selected) return;
+    dispatch({ type: "set-draft", draft: selected.template });
+    setSlashDismissed(true);
+    setSlashSelection(0);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
   const handleTranscriptClick = React.useCallback((event: React.MouseEvent<HTMLOListElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
@@ -103,7 +150,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
           <span className="session-analyst-handle__label">ARTIFACTS</span>
         </button>
       ) : null}
-      <PanelHeader state={state} onReset={() => { void reset().then(() => setDraft("")).catch(() => {}); }} />
+      <PanelHeader state={state} onReset={() => { void reset().catch(() => {}); }} />
       <div className="session-analyst__workspace">
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
           {hasInteracted ? (
@@ -125,7 +172,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               </header>
               <div className="session-analyst__suggestions">
                 {SUGGESTIONS.map((suggestion) => (
-                  <button type="button" key={suggestion.text} onClick={() => void submit(suggestion.text)}>
+                  <button type="button" key={suggestion.text} onClick={() => void submit(suggestion.text, false)}>
                     <span className="session-analyst__suggestion-icon" data-tone={suggestion.tone} aria-hidden="true">{suggestion.icon}</span>
                     {suggestion.text}
                   </button>
@@ -135,7 +182,51 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
           )}
           {state.phase !== "idle" ? <EvidencePulse state={state} /> : null}
         </section>
-        <form className={`session-analyst__composer ${hasInteracted ? "is-docked" : "is-initial"}${animateDock ? " is-docking" : ""}${state.busy ? " is-working" : ""}`} aria-busy={state.busy} onSubmit={(event) => { event.preventDefault(); void submit(draft); }}>
+        {state.queue.length > 0 ? (
+          <div className="session-analyst__queue" aria-live="polite">
+            {state.queue.map((text, index) => (
+              <div className="session-analyst__queue-item" key={`${text}-${index}`}>
+                <span className="session-analyst__queue-tag">QUEUED</span>
+                <span className="session-analyst__queue-text">{text}</span>
+                <button type="button" aria-label={`Cancel queued question ${index + 1}`} onClick={() => dispatch({ type: "queue-cancel", index })}>✕</button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {state.phase === "complete" && !state.busy && hasInteracted ? (
+          <div className="session-analyst__followups">
+            <span className="session-analyst__followups-label">FOLLOW UP</span>
+            <div className="session-analyst__followups-row">
+              {FOLLOW_UPS.map((item) => (
+                <button type="button" key={item.label} onClick={() => void submit(item.text, false)}>
+                  <span className="session-analyst__suggestion-icon" data-tone={item.tone} aria-hidden="true">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <form className={`session-analyst__composer ${hasInteracted ? "is-docked" : "is-initial"}${animateDock ? " is-docking" : ""}${state.busy ? " is-working" : ""}`} aria-busy={state.busy} onSubmit={(event) => { event.preventDefault(); void submit(state.draft, true); }}>
+          {slashOpen ? (
+            <div id={slashListboxId} className="session-analyst__slash" role="listbox" aria-label="Analysis commands">
+              <span className="session-analyst__slash-heading">Analysis commands</span>
+              {slashMatches.map((item, index) => (
+                <button
+                  type="button"
+                  id={slashOptionId(item.command)}
+                  role="option"
+                  aria-selected={index === slashSelection}
+                  className={index === slashSelection ? "is-selected" : undefined}
+                  key={item.command}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => selectSlashCommand(index)}
+                >
+                  <span>{item.command}</span>
+                  <small>{item.description}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="session-analyst__composer-surface">
             {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label="Initial analysis settings">
               <span className="session-analyst__select"><select aria-label="Analysis CLI" disabled={state.started || !state.catalog} value={state.cliId} onChange={(event) => dispatch({ type: "select-cli", cliId: event.target.value })}>{state.catalog?.clis.map((item) => <option key={item.cliId} value={item.cliId} disabled={!item.available}>{item.label}</option>)}</select></span>
@@ -144,32 +235,73 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             </div> : null}
             <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>Ask about this session</label>
             <textarea
+              ref={textareaRef}
               id={`analysis-${context.operationId}`}
+              role="combobox"
+              aria-expanded={slashOpen}
+              aria-controls={slashListboxId}
+              aria-activedescendant={activeSlashOption ? slashOptionId(activeSlashOption.command) : undefined}
               rows={1}
-              placeholder="Ask about the session…"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Ask about the session… (/ for commands)"
+              value={state.draft}
+              onChange={(event) => {
+                dispatch({ type: "set-draft", draft: event.target.value });
+                setSlashSelection(0);
+                setSlashDismissed(false);
+              }}
               onKeyDown={(event) => {
+                if (slashOpen && !event.nativeEvent.isComposing) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setSlashSelection((selection) => (selection + 1) % slashMatches.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSlashSelection((selection) => (selection - 1 + slashMatches.length) % slashMatches.length);
+                    return;
+                  }
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    selectSlashCommand(Math.min(slashSelection, slashMatches.length - 1));
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setSlashDismissed(true);
+                    return;
+                  }
+                }
                 if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
                 event.preventDefault();
-                void submit(draft);
+                void submit(state.draft, true);
               }}
-              disabled={state.busy}
             />
             {state.busy ? (
               <button type="button" className="session-analyst__send session-analyst__stop" aria-label="Stop" onClick={() => void stop()}>
                 <span aria-hidden="true" />
               </button>
-            ) : (
-              <button type="submit" className="session-analyst__send" aria-label="Send" disabled={!draft.trim()}>
-                <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
-              </button>
-            )}
+            ) : null}
+            <button type="submit" className="session-analyst__send" aria-label={state.busy ? "Queue question" : "Send"} disabled={!state.draft.trim()}>
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
+            </button>
           </div>
+          {state.busy ? <div className="session-analyst__composer-hint">Enter queues the question — it fires when the analyst is ready</div> : null}
         </form>
       </div>
     </section>
   );
+}
+
+function resizeAnalysisTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  const style = window.getComputedStyle(textarea);
+  const lineHeight = Number.parseFloat(style.lineHeight) || 18.75;
+  const verticalPadding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+  const maxHeight = (lineHeight * 6) + verticalPadding;
+  const nextHeight = Math.max(36, Math.min(textarea.scrollHeight, maxHeight));
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 }
 
 const AnalystMarkdownResponse = React.memo(function AnalystMarkdownResponse({ text, streaming }: { readonly text: string; readonly streaming: boolean }) {
@@ -218,7 +350,7 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
 }
 
 function PanelHeader({ state, onReset }: { readonly state: AnalysisState; readonly onReset: () => void }) {
-  const canReset = state.started || state.phase !== "idle" || state.entries.length > 0 || state.artifacts.length > 0;
+  const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
   return (
     <header className="session-analyst__panel-head">
       <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
