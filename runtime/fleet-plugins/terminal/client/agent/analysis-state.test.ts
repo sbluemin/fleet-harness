@@ -27,6 +27,8 @@ describe("shared analysis store reducer", () => {
       started: true,
       busy: true,
       phase: "writing" as const,
+      draft: "Unsent question",
+      queue: ["Queued question"],
       entries: [{ role: "user" as const, text: "Review this" }],
       artifacts: [{ id: "artifact", title: "Artifact", html: "<p>artifact</p>", createdAt: 1 }],
       error: "old error",
@@ -39,10 +41,31 @@ describe("shared analysis store reducer", () => {
       started: false,
       busy: false,
       phase: "idle",
+      draft: "",
+      queue: [],
       entries: [],
       artifacts: [],
       error: null,
     });
+  });
+
+  it("persists drafts and supports cancellable FIFO queue state", () => {
+    const drafted = analysisReducer(initialAnalysisState, { type: "set-draft", draft: "Keep this question" });
+    const first = analysisReducer(drafted, { type: "queue-push", text: "First" });
+    const second = analysisReducer(first, { type: "queue-push", text: "Second" });
+    expect(second).toMatchObject({ draft: "Keep this question", queue: ["First", "Second"] });
+
+    const cancelled = analysisReducer(second, { type: "queue-cancel", index: 0 });
+    expect(cancelled.queue).toEqual(["Second"]);
+    expect(analysisReducer(cancelled, { type: "queue-clear" }).queue).toEqual([]);
+  });
+
+  it("clears queued questions on stop and error endings", () => {
+    const queued = { ...initialAnalysisState, started: true, busy: true, queue: ["Do not fire"] };
+    expect(analysisReducer(queued, { type: "stopped", now: 2_000 }).queue).toEqual([]);
+    expect(analysisReducer(queued, { type: "error", message: "Failed", now: 2_000 }).queue).toEqual([]);
+    expect(analysisReducer(queued, { type: "session-lost", now: 2_000 }).queue).toEqual([]);
+    expect(analysisReducer(queued, { type: "start-failed", message: "Failed", now: 2_000 }).queue).toEqual([]);
   });
 
   it("advances activity only from observed events and never stores thought content", () => {

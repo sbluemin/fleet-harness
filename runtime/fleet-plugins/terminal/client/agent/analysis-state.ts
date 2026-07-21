@@ -16,6 +16,8 @@ export interface AnalysisState {
   readonly cliId: string;
   readonly model: string;
   readonly effort: string;
+  readonly draft: string;
+  readonly queue: readonly string[];
   readonly started: boolean;
   readonly busy: boolean;
   readonly phase: AnalysisPhase;
@@ -34,6 +36,8 @@ export const initialAnalysisState: AnalysisState = {
   cliId: "",
   model: "",
   effort: "",
+  draft: "",
+  queue: [],
   started: false,
   busy: false,
   phase: "idle",
@@ -52,6 +56,10 @@ export type AnalysisAction =
   | { readonly type: "select-cli"; readonly cliId: string }
   | { readonly type: "select-model"; readonly model: string }
   | { readonly type: "select-effort"; readonly effort: string }
+  | { readonly type: "set-draft"; readonly draft: string }
+  | { readonly type: "queue-push"; readonly text: string }
+  | { readonly type: "queue-cancel"; readonly index: number }
+  | { readonly type: "queue-clear" }
   | { readonly type: "sending"; readonly started: boolean; readonly text: string; readonly now: number }
   | { readonly type: "event"; readonly event: AnalysisEvent; readonly now: number }
   | { readonly type: "error"; readonly message: string; readonly now: number }
@@ -78,6 +86,13 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     return { ...state, model: action.model, effort: model?.defaultEffort ?? model?.effortLevels[0] ?? "" };
   }
   if (action.type === "select-effort" && !state.started) return { ...state, effort: action.effort };
+  if (action.type === "set-draft") return { ...state, draft: action.draft };
+  if (action.type === "queue-push") return { ...state, queue: [...state.queue, action.text] };
+  if (action.type === "queue-cancel") {
+    if (action.index < 0 || action.index >= state.queue.length) return state;
+    return { ...state, queue: state.queue.filter((_, index) => index !== action.index) };
+  }
+  if (action.type === "queue-clear") return state.queue.length > 0 ? { ...state, queue: [] } : state;
   if (action.type === "sending") return {
     ...state,
     started: state.started || action.started,
@@ -93,7 +108,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (action.type === "error") return endWithError(state, action.message, action.now);
   if (action.type === "session-lost") return { ...endWithError(state, "Analysis session ended — send again to restart.", action.now), started: false };
   if (action.type === "start-failed") return { ...endWithError(state, action.message, action.now), started: false };
-  if (action.type === "stopped") return { ...state, started: false, busy: false, phase: "stopped", runEndedAt: action.now, error: null };
+  if (action.type === "stopped") return { ...state, queue: [], started: false, busy: false, phase: "stopped", runEndedAt: action.now, error: null };
   if (action.type === "stop-failed") return { ...endWithError(state, `Stop failed: ${action.message}`, action.now), started: false };
   if (action.type === "reset") {
     const catalog = state.catalog;
@@ -136,7 +151,7 @@ function resolveInitialSelection(catalog: AnalysisCatalog): Pick<AnalysisState, 
 }
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {
-  return { ...state, busy: false, phase: "error", runEndedAt: now, error: message };
+  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, error: message };
 }
 
 function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string): readonly AnalysisEntry[] {

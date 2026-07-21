@@ -60,6 +60,7 @@ describe("per-operation analysis store", () => {
     await vi.waitFor(() => expect(first.getSnapshot().cliId).toBe("claude"));
 
     expect(second).toBe(first);
+    first.dispatch({ type: "set-draft", draft: "Survives panel collapse" });
     await sendWithConnected(first, harness, "Review this session");
     expect(harness.fetch.mock.calls.map((call) => call[1])).toEqual([
       "analysis/catalog",
@@ -74,12 +75,48 @@ describe("per-operation analysis store", () => {
     // EXIT only unmounts companions, so the shared conversation and server session remain alive.
     await Promise.resolve();
     expect(getAnalysisStore("operation-store-share", harness.api)).toBe(first);
+    expect(first.getSnapshot().draft).toBe("Survives panel collapse");
     expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(false);
     expect(first.getSnapshot().entries.length).toBeGreaterThan(0);
 
     // Operation close owns disposal and server-session cleanup.
     disposeAnalysisStore("operation-store-share");
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(true));
+  });
+
+  it("automatically sends queued questions in FIFO order after each completion", async () => {
+    const harness = createHarness();
+    const store = getAnalysisStore("operation-store-queue", harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+    await sendWithConnected(store, harness, "Initial question");
+    store.dispatch({ type: "queue-push", text: "First queued" });
+    store.dispatch({ type: "queue-push", text: "Second queued" });
+
+    harness.emit({ type: "complete" });
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ busy: true, queue: ["Second queued"] }));
+    expect(messageBodies(harness)).toEqual(["Initial question", "First queued"]);
+
+    harness.emit({ type: "complete" });
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ busy: true, queue: [] }));
+    expect(messageBodies(harness)).toEqual(["Initial question", "First queued", "Second queued"]);
+
+    harness.emit({ type: "complete" });
+    disposeAnalysisStore("operation-store-queue");
+  });
+
+  it("clears queued questions on stop and never fires them from late completion", async () => {
+    const harness = createHarness();
+    const store = getAnalysisStore("operation-store-queue-stop", harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+    await sendWithConnected(store, harness, "Initial question");
+    store.dispatch({ type: "queue-push", text: "Must not fire" });
+
+    await store.stop();
+    expect(store.getSnapshot().queue).toEqual([]);
+    harness.emitLate({ type: "complete" });
+    await Promise.resolve();
+    expect(messageBodies(harness)).toEqual(["Initial question"]);
+    disposeAnalysisStore("operation-store-queue-stop");
   });
 
   it("rolls back started when the start request fails so selectors reopen", async () => {
@@ -377,3 +414,9 @@ describe("per-operation analysis store", () => {
     disposeAnalysisStore("operation-store-stream-lost");
   });
 });
+
+function messageBodies(harness: StreamHarness): string[] {
+  return harness.fetch.mock.calls
+    .filter((call) => String(call[1]).endsWith("/message"))
+    .map((call) => JSON.parse(String((call[2] as RequestInit | undefined)?.body)).text as string);
+}
