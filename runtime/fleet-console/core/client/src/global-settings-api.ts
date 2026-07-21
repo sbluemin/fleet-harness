@@ -41,6 +41,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     !payload
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
+    || typeof payload.reducePanelMotion !== "boolean"
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon")
     || !isConsoleLanguagePreference(payload.language)
   ) {
@@ -49,6 +50,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
   return {
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
+    reducePanelMotion: payload.reducePanelMotion,
     theme: payload.theme,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,

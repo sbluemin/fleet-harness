@@ -125,6 +125,7 @@ export interface OperationNode {
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
+  readonly reducePanelMotion: boolean;
   readonly theme: ThemeId;
   readonly uiFont: UiFontSettings;
   readonly language: ConsoleLanguagePreference;

@@ -21,7 +21,7 @@ import "./styles/layout.css";
 import "./styles/components.css";
 import { App } from "./app.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
-import { hydrateGlobalSettings } from "./global-settings-store.js";
+import { getGlobalSettingsStoreState, hydrateGlobalSettings, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
 import { applyDesktopShellMarker, setActiveTheme, setActiveUiFont } from "./store.js";
@@ -52,6 +52,15 @@ globalThis.__fleetConsoleRuntime__ = {
 
 setActiveTheme("instrument");
 applyDesktopShellMarker();
+
+const syncReducePanelMotionClass = () => {
+  document.documentElement.classList.toggle(
+    "reduce-panel-motion",
+    getGlobalSettingsStoreState().state?.reducePanelMotion === true,
+  );
+};
+subscribeGlobalSettings(syncReducePanelMotionClass);
+syncReducePanelMotionClass();
 
 try {
   const settings = await fetchGlobalSettingsState();

@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { getGlobalSettingsStoreState } from "../global-settings-store.js";
+
 export interface OperationGeometry {
   readonly x: number;
   readonly y: number;
@@ -747,6 +749,10 @@ function cancelZoomTween(): void {
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+export function panelMotionSuppressed(): boolean {
+  return getGlobalSettingsStoreState().state?.reducePanelMotion === true || prefersReducedMotion();
 }
 
 function scheduleSave(): void {
