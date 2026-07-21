@@ -5980,6 +5980,18 @@
   color: var(--brass-bright);
 }
 
+.operation-search-command-glyph {
+  flex: none;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.operation-search-result.is-active .operation-search-command-glyph {
+  color: var(--brass-bright);
+}
+
 .operation-search-empty {
   margin: 0;
   padding: var(--space-5) var(--space-4);

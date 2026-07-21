@@ -100,5 +100,5 @@ describe("Operation search focus handoff", () => {
 });
 
 function SearchHarness() {
-  return createElement(OperationSearch, { state: useConsoleState() });
+  return createElement(OperationSearch, { state: useConsoleState(), railPanels: [] });
 }

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
+import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
@@ -14,9 +15,10 @@ import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
+import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
@@ -35,6 +37,12 @@ export function App() {
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
+  // 팔레트 커맨드 모드의 "Open panel" 목록 — RightRail과 동일한 빌트인+플러그인 합성 순서를 미러한다.
+  const paletteRailPanels = useMemo(
+    () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right")]
+      .map((panel) => ({ id: panel.id, title: panel.title })),
+    [registry.railPanels],
+  );
 
   // 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
   // App boot의 활성 Theater뿐 아니라 이후 선택·전환으로 처음 진입하는 Theater도 깨끗하게 열려, 선택한 패널만 하나씩 표면화된다.
@@ -116,7 +124,8 @@ export function App() {
           <Route path="*" element={<Navigate to="/operations" replace />} />
         </Routes>
       </main>
-      <OperationSearch state={state} />
+      <OperationSearch state={state} railPanels={paletteRailPanels} />
+      {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
       <Toast

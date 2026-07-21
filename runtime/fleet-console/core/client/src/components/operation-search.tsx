@@ -1,32 +1,67 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { setGlobalSettingsField } from "../global-settings-store.js";
 import { filterOperationSearchEntries, groupOperationSearchEntries, searchTokens } from "../operation-search.js";
-import { closeOperationSearch, focusOperation, operationSearchEntries } from "../store.js";
+import {
+  buildPaletteCommands,
+  commandModeQuery,
+  filterPaletteCommands,
+  isCommandModeInput,
+  type PaletteCommandEntry,
+  type PaletteRailPanelInfo,
+} from "../palette-commands.js";
+import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
+import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
+import {
+  closeOperationSearch,
+  focusOperation,
+  openKeyboardShortcuts,
+  openWhatsNew,
+  operationSearchEntries,
+  requestOperationLaunchMenu,
+  setActiveTheater,
+  setActiveTheme,
+} from "../store.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
+  readonly railPanels: readonly PaletteRailPanelInfo[];
 }
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
+const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
-export function OperationSearch({ state }: OperationSearchProps) {
+export function OperationSearch({ state, railPanels }: OperationSearchProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const resultRefs = useRef(new Map<string, HTMLButtonElement>());
+  const commandMode = isCommandModeInput(query);
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
-  const tokens = useMemo(() => searchTokens(query), [query]);
-  const clampedSelectedIndex = clampIndex(selectedIndex, filteredEntries.length);
-  const activeOptionId = filteredEntries[clampedSelectedIndex] ? operationOptionId(filteredEntries[clampedSelectedIndex].operationId) : undefined;
+  const commands = useMemo(() => buildPaletteCommands(state, railPanels), [state, railPanels]);
+  const filteredCommands = useMemo(
+    () => (commandMode ? filterPaletteCommands(commands, commandModeQuery(query)) : commands),
+    [commandMode, commands, query],
+  );
+  const tokens = useMemo(() => searchTokens(commandMode ? commandModeQuery(query) : query), [commandMode, query]);
+  const resultCount = commandMode ? filteredCommands.length : filteredEntries.length;
+  const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
+  const selectedResultKey = commandMode
+    ? filteredCommands[clampedSelectedIndex]?.commandId
+    : filteredEntries[clampedSelectedIndex]?.operationId;
+  const activeOptionId = selectedResultKey === undefined
+    ? undefined
+    : commandMode ? commandOptionId(selectedResultKey) : operationOptionId(selectedResultKey);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;
@@ -50,11 +85,9 @@ export function OperationSearch({ state }: OperationSearchProps) {
   }, [state.operationSearchOpen, query]);
 
   useEffect(() => {
-    if (!state.operationSearchOpen) return;
-    const selected = filteredEntries[clampedSelectedIndex];
-    if (!selected) return;
-    resultRefs.current.get(selected.operationId)?.scrollIntoView({ block: "nearest" });
-  }, [clampedSelectedIndex, filteredEntries, state.operationSearchOpen]);
+    if (!state.operationSearchOpen || selectedResultKey === undefined) return;
+    resultRefs.current.get(selectedResultKey)?.scrollIntoView({ block: "nearest" });
+  }, [selectedResultKey, state.operationSearchOpen]);
 
   if (!state.operationSearchOpen) return null;
 
@@ -67,6 +100,61 @@ export function OperationSearch({ state }: OperationSearchProps) {
     closeOperationSearch();
   };
 
+  const runCommand = (command: PaletteCommandEntry) => {
+    const action = command.action;
+    switch (action.kind) {
+      case "switch-theater": {
+        if (command.current) break;
+        // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
+        previousFocusRef.current = null;
+        setActiveTheater(action.theaterId);
+        navigate("/operations");
+        break;
+      }
+      case "new-operation": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        requestOperationLaunchMenu();
+        break;
+      }
+      case "open-rail-panel": {
+        openRailPanel(action.panelId);
+        setRailChromeExpanded(true);
+        break;
+      }
+      case "toggle-rail": {
+        toggleRailChrome();
+        break;
+      }
+      case "toggle-sidebar": {
+        setSideBarCollapsed(!getSideBarState().collapsed);
+        break;
+      }
+      case "switch-theme": {
+        if (command.current) break;
+        const previousTheme = state.activeTheme;
+        setActiveTheme(action.theme);
+        void setGlobalSettingsField("theme", action.theme).then((saved) => {
+          if (!saved) setActiveTheme(previousTheme);
+        });
+        break;
+      }
+      case "open-settings": {
+        navigate("/settings");
+        break;
+      }
+      case "open-keyboard-shortcuts": {
+        openKeyboardShortcuts();
+        break;
+      }
+      case "whats-new": {
+        openWhatsNew();
+        break;
+      }
+    }
+    closeOperationSearch();
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -75,10 +163,17 @@ export function OperationSearch({ state }: OperationSearchProps) {
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setSelectedIndex((current) => clampIndex(current + (event.key === "ArrowDown" ? 1 : -1), filteredEntries.length));
+      setSelectedIndex((current) => clampIndex(current + (event.key === "ArrowDown" ? 1 : -1), resultCount));
       return;
     }
     if (event.key === "Enter") {
+      if (commandMode) {
+        const selected = filteredCommands[clampedSelectedIndex];
+        if (!selected) return;
+        event.preventDefault();
+        runCommand(selected);
+        return;
+      }
       const selected = filteredEntries[clampedSelectedIndex];
       if (!selected) return;
       event.preventDefault();
@@ -97,7 +192,7 @@ export function OperationSearch({ state }: OperationSearchProps) {
         className="operation-search-card"
         role="dialog"
         aria-modal="true"
-        aria-label="Operation quick search"
+        aria-label={commandMode ? "Console commands" : "Operation quick search"}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
@@ -109,7 +204,7 @@ export function OperationSearch({ state }: OperationSearchProps) {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search Operations across Theaters"
+            placeholder="Search Operations — type > for commands"
             autoComplete="off"
             role="combobox"
             aria-expanded={true}
@@ -120,8 +215,37 @@ export function OperationSearch({ state }: OperationSearchProps) {
           />
           <kbd>esc</kbd>
         </div>
-        <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label="Operation results">
-          {groups.length > 0 ? groups.map((group) => {
+        <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? "Command results" : "Operation results"}>
+          {commandMode ? (filteredCommands.length > 0 ? (
+            <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
+              <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">Commands</h2>
+              {filteredCommands.map((command, index) => {
+                const active = index === clampedSelectedIndex;
+                return (
+                  <button
+                    id={commandOptionId(command.commandId)}
+                    key={command.commandId}
+                    ref={(node) => {
+                      if (node) resultRefs.current.set(command.commandId, node);
+                      else resultRefs.current.delete(command.commandId);
+                    }}
+                    type="button"
+                    className={`operation-search-result ${active ? "is-active" : ""}`}
+                    role="option"
+                    aria-selected={active}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={() => runCommand(command)}
+                  >
+                    <span className="operation-search-command-glyph" aria-hidden="true">›</span>
+                    <span className="operation-search-result-text">
+                      <strong>{highlightText(command.label, tokens)}</strong>
+                    </span>
+                    {command.current ? <span className="operation-search-theater">current</span> : null}
+                  </button>
+                );
+              })}
+            </section>
+          ) : <p className="operation-search-empty">No matching commands.</p>) : groups.length > 0 ? groups.map((group) => {
             const headingId = operationGroupHeadingId(group.theaterId);
             return (
             <section className="operation-search-section" key={group.theaterId ?? UNASSIGNED_GROUP_KEY} role="group" aria-labelledby={headingId}>
@@ -176,6 +300,10 @@ function operationGroupHeadingId(theaterId: string | null): string {
 
 function operationOptionId(operationId: string): string {
   return `operation-search-option-${domIdPart(operationId)}`;
+}
+
+function commandOptionId(commandId: string): string {
+  return `operation-search-command-${domIdPart(commandId)}`;
 }
 
 function domIdPart(value: string): string {
