@@ -4,17 +4,20 @@ interface RailStore {
   readonly activeRailPanelId: string | null;
   readonly railChromeExpanded: boolean;
   readonly panelExtraWidth: number;
+  readonly panelBehavior: "push" | "overlay";
 }
 
 type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
+const PREFS_PANEL_BEHAVIOR = "fleet-console.rail.panelBehavior";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 let store: RailStore = {
   activeRailPanelId: readStoredPanelId(),
   railChromeExpanded: readStoredChromeExpanded(),
   panelExtraWidth: 0,
+  panelBehavior: readStoredPanelBehavior(),
 };
 
 export function subscribeRailStore(listener: Listener): () => void {
@@ -59,6 +62,16 @@ export function toggleRailChrome(): void {
   setRailChromeExpanded(!store.railChromeExpanded);
 }
 
+export function setRailPanelBehavior(behavior: "push" | "overlay"): void {
+  if (store.panelBehavior === behavior) return;
+  setStore({ ...store, panelBehavior: behavior });
+  saveStoredPanelBehavior(behavior);
+}
+
+export function toggleRailPanelBehavior(): void {
+  setRailPanelBehavior(store.panelBehavior === "push" ? "overlay" : "push");
+}
+
 export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
   if (panelId !== store.activeRailPanelId) return;
   const raw = (px === null || !Number.isFinite(px)) ? 0 : px;
@@ -80,6 +93,10 @@ export function useRailPanelExtraWidth(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
 }
 
+export function useRailPanelBehavior(): "push" | "overlay" {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelBehavior;
+}
+
 function readStoredPanelId(): string | null {
   try {
     const stored = localStorage.getItem(PREFS_ACTIVE_PANEL);
@@ -98,6 +115,13 @@ function readStoredChromeExpanded(): boolean {
   try { return localStorage.getItem(PREFS_CHROME_EXPANDED) !== "0"; } catch { return true; }
 }
 
+function readStoredPanelBehavior(): "push" | "overlay" {
+  try {
+    const stored = localStorage.getItem(PREFS_PANEL_BEHAVIOR);
+    return stored === "overlay" || stored === "push" ? stored : "push";
+  } catch { return "push"; }
+}
+
 function saveStoredPanelId(id: string | null): void {
   try {
     if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
@@ -107,6 +131,10 @@ function saveStoredPanelId(id: string | null): void {
 
 function saveStoredChromeExpanded(expanded: boolean): void {
   try { localStorage.setItem(PREFS_CHROME_EXPANDED, expanded ? "1" : "0"); } catch { /* ignore */ }
+}
+
+function saveStoredPanelBehavior(behavior: "push" | "overlay"): void {
+  try { localStorage.setItem(PREFS_PANEL_BEHAVIOR, behavior); } catch { /* ignore */ }
 }
 
 function setStore(next: RailStore): void {

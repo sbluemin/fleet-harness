@@ -7,7 +7,7 @@ import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { getState, subscribe } from "../store.js";
-import { closeRailPanel, requestRailPanelExtraWidth, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailPanelExtraWidth } from "./rail-store.js";
+import { closeRailPanel, requestRailPanelExtraWidth, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailPanelBehavior, useRailPanelExtraWidth } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -41,6 +41,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const activeId = useActiveRailPanelId();
   const railChromeExpanded = useRailChromeExpanded();
+  const panelBehavior = useRailPanelBehavior();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const pluginPanels = useRailPanels();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
@@ -97,17 +98,14 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   return (
     <div
       ref={rootRef}
-      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}${panelBehavior === "overlay" ? " is-overlay" : ""}`}
       data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
       role="complementary"
       aria-label="Activity Rail"
       inert={!railChromeExpanded}
       style={{ "--right-rail-panel-width": `${hasPanel ? panelWidth + extraWidth : 0}px` } as CSSProperties}
     >
-      <div
-        className="right-rail-panel-slot"
-        style={hasPanel ? { width: panelWidth + extraWidth } : undefined}
-      >
+      <div className="right-rail-panel-slot">
         {hasPanel && (
           <div
             className="right-rail-resize-handle"
@@ -116,7 +114,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} />
+          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} />
         )}
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
@@ -140,16 +138,26 @@ interface RailPanelContentProps {
   readonly activePanel: RailPanelDescriptor;
   readonly activeId: string | null;
   readonly ctx: RailPanelContext;
+  readonly panelBehavior: "push" | "overlay";
 }
 
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
 // 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
-// (activePanel·ctx·activeId) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx }: RailPanelContentProps) {
+// (activePanel·ctx·activeId·panelBehavior) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
+const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx, panelBehavior }: RailPanelContentProps) {
   return (
     <>
       <div className="right-rail-panel-head">
         <span className="right-rail-panel-title">{activePanel.title}</span>
+        <button
+          className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
+          type="button"
+          aria-pressed={panelBehavior === "overlay"}
+          aria-label="Float panel over the Map"
+          onClick={toggleRailPanelBehavior}
+        >
+          Float over Map
+        </button>
         <button
           className="right-rail-close-btn"
           type="button"
