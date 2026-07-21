@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { useCanvasState } from "../canvas/canvas-store.js";
-import { commandBandActiveOperation, commandBandRenameCommitTarget } from "./command-band-guards.js";
+import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -49,9 +49,10 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const renameTargetOperationIdRef = useRef<string | null>(null);
   const theaterTriggerRef = useRef<HTMLButtonElement>(null);
   const operationTriggerRef = useRef<HTMLButtonElement>(null);
+  const switcherRef = useRef<HTMLDivElement>(null);
   const switcherMenuRef = useRef<HTMLDivElement>(null);
   const [switcherMenu, setSwitcherMenu] = useState<CommandBandSwitcherMenu | null>(null);
-  const [operationMenuLeft, setOperationMenuLeft] = useState(0);
+  const [switcherMenuLeft, setSwitcherMenuLeft] = useState(0);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
@@ -78,10 +79,17 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     return !focusWithin && !pointerWithinRef.current.edge && !pointerWithinRef.current.band;
   }, []);
   const fullscreen = useFullscreenCommandBand(canAutoHide);
+  // 브레드크럼 표시 대상(P0 가드 결과) 기준으로 판정한다 — activeOperationId가 그대로여도
+  // Theater 전환으로 Operation 세그먼트가 숨으면 숨은 rename이 살아남아 복귀 시 스테일 draft가 부활한다.
+  const displayedOperationId = activeOperation?.id ?? null;
+  // 커밋 판정은 ref로 읽는다 — Theater 전환 렌더가 input을 언마운트하며 동기로 blur 커밋을
+  // 쏘는데, 이때 클로저의 이전 렌더 state는 여전히 일치해 스테일 draft가 커밋된다(실브라우저 재현).
+  const displayedOperationIdRef = useRef<string | null>(null);
+  displayedOperationIdRef.current = displayedOperationId;
   const rename = useInlineRename({
     currentTitle: activeOperation?.title ?? "",
     onCommit: (title) => {
-      const operationId = commandBandRenameCommitTarget(renameTargetOperationIdRef.current, state.activeOperationId);
+      const operationId = commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationIdRef.current);
       renameTargetOperationIdRef.current = null;
       if (!operationId) return;
       void renameOperation(operationId, title).then(() => fetchOperations(null)).then(hydrateOperations).catch(() => {});
@@ -89,11 +97,11 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   });
 
   useEffect(() => {
-    if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, state.activeOperationId)) return;
-    // 활성 패널이 바뀌면 이전 초안을 버려 다른 Operation으로 이름이 넘어가지 않게 한다.
+    if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationId)) return;
+    // 표시 대상이 어긋나면(패널 전환·Theater 전환 포함) 이전 초안을 버려 이름이 넘어가지 않게 한다.
     renameTargetOperationIdRef.current = null;
     rename.cancel();
-  }, [rename, state.activeOperationId]);
+  }, [rename, displayedOperationId]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -162,10 +170,20 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     setSwitcherMenu(null);
   }, [state.activeTheaterId, state.activeOperationId]);
 
-  // Operation 메뉴는 자기 트리거 아래 정렬 — 스위처 래퍼(offsetParent) 기준 좌표를 열림 시점에 실측한다.
+  // Operation 메뉴는 자기 트리거 아래 정렬(래퍼 offsetLeft), Theater 메뉴는 좌단 기준 —
+  // 어느 쪽이든 좁은 viewport에서 우측이 화면을 넘지 않도록 실측 clamp하고 resize 시 재측정한다.
   useLayoutEffect(() => {
-    if (switcherMenu !== "operation") return;
-    setOperationMenuLeft(operationTriggerRef.current?.offsetLeft ?? 0);
+    if (switcherMenu === null) return;
+    const measure = () => {
+      const wrapper = switcherRef.current;
+      const menu = switcherMenuRef.current;
+      if (!wrapper || !menu) return;
+      const desiredLeft = switcherMenu === "operation" ? operationTriggerRef.current?.offsetLeft ?? 0 : 0;
+      setSwitcherMenuLeft(commandBandMenuClampedLeft(desiredLeft, wrapper.getBoundingClientRect().left, menu.getBoundingClientRect().width, window.innerWidth));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
   }, [switcherMenu]);
 
   useEffect(() => {
@@ -197,6 +215,13 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
     setEnvironmentOpen(false);
     discardEnvironmentState();
     setSwitcherMenu((open) => (open === menu ? null : menu));
+  };
+
+  // Tab 등으로 포커스가 스위처 밖으로 나가면 메뉴를 닫는다 — 포커스는 자연 Tab 대상에 남기고
+  // 트리거 복귀는 Escape 전용으로 유지한다.
+  const handleSwitcherFocusOut = (event: FocusEvent<HTMLDivElement>) => {
+    if (switcherMenu === null || !commandBandSwitcherFocusLeft(event.currentTarget, event.relatedTarget)) return;
+    setSwitcherMenu(null);
   };
 
   const selectTheaterFromMenu = (theaterId: string) => {
@@ -303,7 +328,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         </button>
       </div>
       <div className="command-band-center">
-        {operationsViewVisible && activeTheater ? <div className="command-band-switcher">
+        {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={`Active Theater: ${activeTheater.label}`}>
             <button
               ref={theaterTriggerRef}
@@ -354,6 +379,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
             addingTheater={state.addingTheater}
             onSelectTheater={selectTheaterFromMenu}
             onAddTheater={addTheaterFromMenu}
+            style={{ left: switcherMenuLeft }}
             containerRef={switcherMenuRef}
           /> : null}
           {switcherMenu === "operation" ? <CommandBandOperationMenu
@@ -363,7 +389,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
             onSelectOperation={selectOperationFromMenu}
             onRenameOperation={activeOperation ? beginRename : null}
             onNewOperation={launchOperationFromMenu}
-            style={{ left: operationMenuLeft }}
+            style={{ left: switcherMenuLeft }}
             containerRef={switcherMenuRef}
           /> : null}
         </div> : null}

@@ -32,6 +32,7 @@ interface CommandBandTheaterMenuProps {
   readonly addingTheater: boolean;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onAddTheater: () => void;
+  readonly style?: CSSProperties;
   readonly containerRef: RefObject<HTMLDivElement | null>;
 }
 
@@ -47,7 +48,7 @@ interface CommandBandOperationMenuProps {
   readonly containerRef: RefObject<HTMLDivElement | null>;
 }
 
-export function CommandBandTheaterMenu({ theaters, operations, activeTheaterId, addingTheater, onSelectTheater, onAddTheater, containerRef }: CommandBandTheaterMenuProps) {
+export function CommandBandTheaterMenu({ theaters, operations, activeTheaterId, addingTheater, onSelectTheater, onAddTheater, style, containerRef }: CommandBandTheaterMenuProps) {
   const sections: readonly (readonly CommandBandMenuEntry[])[] = [
     theaters.map((theater) => {
       const count = operations.filter((operation) => operation.theaterId === theater.id).length;
@@ -70,7 +71,7 @@ export function CommandBandTheaterMenu({ theaters, operations, activeTheaterId, 
       onSelect: onAddTheater,
     }],
   ];
-  return <CommandBandMenu menuLabel="Switch Theater" sections={sections} containerRef={containerRef} />;
+  return <CommandBandMenu menuLabel="Switch Theater" sections={sections} style={style} containerRef={containerRef} />;
 }
 
 export function CommandBandOperationMenu({ operations, activeOperationId, theaterLabel, onSelectOperation, onRenameOperation, onNewOperation, style, containerRef }: CommandBandOperationMenuProps) {
