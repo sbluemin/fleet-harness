@@ -2,25 +2,23 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 
 import {
+  getCarrierSettingsStoreState,
   loadCarrierSettings,
-  resetCarrierSettingsDraft,
-  saveCarrierAll,
+  removeTaskForceBackend,
+  saveCarrierPatch,
+  saveTaskForceBackend,
   selectCarrierSettingsCarrier,
-  updateCarrierSettingsDraft,
-  updateCarrierSettingsTaskForceDraft,
   useCarrierSettingsStore,
 } from "./store.js";
 import type { CarrierSettingsCarrier, CarrierSettingsCliOption, CarrierSettingsModelOption } from "../../shared/carrier-settings-types.js";
 
 type CaptainColorStyle = CSSProperties & { "--cap-color": string };
 type SaveStatus = "idle" | "saving" | "saved";
-
-interface CarrierSettingsDraftView {
-  readonly cliType: string;
-  readonly model: string;
-  readonly effort: string;
-  readonly displayName: string;
-  readonly taskforce: Readonly<Record<string, { readonly model: string; readonly effort: string }>>;
+interface RuntimePendingSelections {
+  readonly carrierId?: string;
+  readonly cli?: string;
+  readonly model?: string;
+  readonly effort?: string;
 }
 
 const DISPLAY_NAME_MAX_LENGTH = 50;
@@ -45,14 +43,16 @@ export const carrierSettingsSection = defineSettingsSection({
 function CarrierSettingsSection() {
   const settings = useCarrierSettingsStore();
   const activeCarrier = settings.state?.carriers.find((carrier) => carrier.carrierId === settings.activeCarrierId) ?? null;
-  const activeCli = settings.options?.cliTypes.find((cli) => cli.id === settings.draft.cliType) ?? null;
-  const activeModel = activeCli?.models.find((model) => model.modelId === settings.draft.model) ?? null;
   const [editingDisplayName, setEditingDisplayName] = useState(false);
-  const [taskForceRows, setTaskForceRows] = useState<readonly string[]>([]);
+  const [displayName, setDisplayName] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-  const isSavingAll = settings.savingActionId === "save-all";
-  const dirty = activeCarrier ? hasCarrierDraftChanges(activeCarrier, settings.draft, taskForceRows) : false;
-  const taskForceConfigKey = activeCarrier?.taskforce.backends.map((backend) => `${backend.cliType}:${backend.model}:${backend.effort ?? ""}`).join("|") ?? "";
+  const [pendingSelections, setPendingSelections] = useState<RuntimePendingSelections>({});
+  const activePendingSelections = pendingSelections.carrierId === activeCarrier?.carrierId ? pendingSelections : {};
+  const selectedCliType = activePendingSelections.cli ?? activeCarrier?.cliType;
+  const activeCli = settings.options?.cliTypes.find((cli) => cli.id === selectedCliType) ?? null;
+  const selectedModel = activePendingSelections.model ?? activeCarrier?.model;
+  const activeModel = activeCli?.models.find((model) => model.modelId === selectedModel) ?? null;
+  const isSaving = settings.savingActionId !== null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,9 +62,10 @@ function CarrierSettingsSection() {
 
   useEffect(() => {
     setEditingDisplayName(false);
-    setTaskForceRows(activeCarrier?.taskforce.backends.map((backend) => backend.cliType) ?? []);
+    setDisplayName(activeCarrier?.displayName ?? "");
     setSaveStatus("idle");
-  }, [activeCarrier?.carrierId, taskForceConfigKey]);
+    setPendingSelections({});
+  }, [activeCarrier?.carrierId]);
 
   useEffect(() => {
     if (saveStatus !== "saved") return;
@@ -72,24 +73,70 @@ function CarrierSettingsSection() {
     return () => window.clearTimeout(timeout);
   }, [saveStatus]);
 
-  function handleDiscard(): void {
-    if (!activeCarrier) return;
-    resetCarrierSettingsDraft();
-    setTaskForceRows(activeCarrier.taskforce.backends.map((backend) => backend.cliType));
-    setEditingDisplayName(false);
-    setSaveStatus("idle");
+  async function runCarrierSave(operation: () => Promise<boolean>): Promise<boolean> {
+    const carrierId = getCarrierSettingsStoreState().activeCarrierId;
+    setSaveStatus("saving");
+    const saved = await operation();
+    if (getCarrierSettingsStoreState().activeCarrierId === carrierId) {
+      setPendingSelections({});
+      setSaveStatus(saved ? "saved" : "idle");
+    }
+    return saved;
   }
 
-  async function handleSave(): Promise<void> {
-    if (!activeCarrier) return;
-    setSaveStatus("saving");
-    const saved = await saveCarrierAll(buildDesiredTaskForce(taskForceRows, settings.draft.taskforce));
-    if (!saved) {
-      setSaveStatus("idle");
-      return;
-    }
+  async function commitDisplayName(): Promise<void> {
+    if (!activeCarrier || isSaving) return;
     setEditingDisplayName(false);
-    setSaveStatus("saved");
+    if (displayName === activeCarrier.displayName) return;
+    await runCarrierSave(() => saveCarrierPatch({ displayName }));
+  }
+
+  function cancelDisplayName(): void {
+    setDisplayName(activeCarrier?.displayName ?? "");
+    setEditingDisplayName(false);
+  }
+
+  async function handleCliChange(cliType: string): Promise<void> {
+    const cli = settings.options?.cliTypes.find((item) => item.id === cliType);
+    const model = cli?.models.find((item) => item.modelId === cli.defaultModel) ?? cli?.models[0] ?? null;
+    if (!activeCarrier || !cli || !model) return;
+    setPendingSelections({
+      carrierId: activeCarrier.carrierId,
+      cli: cliType,
+      model: model.modelId,
+      effort: model.effort?.default ?? "",
+    });
+    await runCarrierSave(() => saveCarrierPatch({
+      cli: cliType,
+      model: {
+        model: model.modelId,
+        ...(model.effort?.default ? { effort: model.effort.default } : {}),
+      },
+    }));
+  }
+
+  async function handleModelChange(modelId: string): Promise<void> {
+    if (!activeCarrier) return;
+    // 모델 전환 시 effort는 신 모델 기본값으로 리셋한다. 구 effort를 유지하면 effort 미지원/레벨 불일치
+    // 모델에서 서버 readSelection이 400을 반환한다(구 draft 흐름의 리셋 동작과 동일 계약).
+    const nextModel = activeCli?.models.find((model) => model.modelId === modelId) ?? null;
+    setPendingSelections({
+      carrierId: activeCarrier.carrierId,
+      model: modelId,
+      effort: nextModel?.effort?.default ?? "",
+    });
+    await runCarrierSave(() => saveCarrierPatch({
+      model: {
+        model: modelId,
+        ...(nextModel?.effort?.default ? { effort: nextModel.effort.default } : {}),
+      },
+    }));
+  }
+
+  async function handleEffortChange(effort: string): Promise<void> {
+    if (!activeCarrier) return;
+    setPendingSelections({ carrierId: activeCarrier.carrierId, effort });
+    await runCarrierSave(() => saveCarrierPatch({ model: { model: activeCarrier.model, effort } }));
   }
 
   return (
@@ -122,27 +169,37 @@ function CarrierSettingsSection() {
                         id="carrier-display-name"
                         className="terminal-carriers-input terminal-carriers-name-input"
                         aria-label="Display name"
-                        value={settings.draft.displayName}
+                        value={displayName}
                         maxLength={DISPLAY_NAME_MAX_LENGTH}
-                        onChange={(event) => updateCarrierSettingsDraft({ displayName: event.target.value })}
+                        disabled={isSaving}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        onBlur={(event) => {
+                          const next = event.relatedTarget;
+                          if (next instanceof HTMLElement && next.closest("[data-display-name-action]")) return;
+                          void commitDisplayName();
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void commitDisplayName();
+                          } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            cancelDisplayName();
+                          }
+                        }}
                       />
-                      <button type="button" className="terminal-carriers-icon-button" aria-label="Save display name" disabled={isSavingAll} onClick={() => {
-                        setEditingDisplayName(false);
-                      }}>
+                      <button type="button" className="terminal-carriers-icon-button" data-display-name-action aria-label="Save display name" disabled={isSaving} onClick={() => void commitDisplayName()}>
                         <CheckIcon />
                       </button>
-                      <button type="button" className="terminal-carriers-icon-button" aria-label="Cancel display name edit" onClick={() => {
-                        updateCarrierSettingsDraft({ displayName: activeCarrier.displayName });
-                        setEditingDisplayName(false);
-                      }}>
+                      <button type="button" className="terminal-carriers-icon-button" data-display-name-action aria-label="Cancel display name edit" onClick={cancelDisplayName}>
                         <CloseIcon />
                       </button>
                     </>
                   ) : (
                     <>
                       <h3 className="terminal-carriers-captain-name">{activeCarrier.displayName}</h3>
-                      <button type="button" className="terminal-carriers-icon-button" aria-label="Edit display name" onClick={() => {
-                        updateCarrierSettingsDraft({ displayName: activeCarrier.displayName });
+                      <button type="button" className="terminal-carriers-icon-button" aria-label="Edit display name" disabled={isSaving} onClick={() => {
+                        setDisplayName(activeCarrier.displayName);
                         setEditingDisplayName(true);
                       }}>
                         <PencilIcon />
@@ -154,16 +211,10 @@ function CarrierSettingsSection() {
               </div>
               <div className="terminal-carriers-detail-actions">
                 <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
-                  {saveStatus === "saving" || isSavingAll ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
+                  {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
                 </div>
                 <div className="terminal-carriers-save-actions">
-                  <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={() => void handleSave()}>
-                    Save
-                  </button>
-                  <button type="button" className={`terminal-carriers-action-button ${dirty ? "is-dirty" : ""}`} disabled={!dirty || isSavingAll} onClick={handleDiscard}>
-                    Discard
-                  </button>
-                  <button type="button" className="terminal-carriers-action-button terminal-carriers-detail-refresh" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
+                  <button type="button" className="terminal-carriers-action-button terminal-carriers-detail-refresh" disabled={settings.loading || isSaving} onClick={() => void loadCarrierSettings()}>
                     Refresh
                   </button>
                 </div>
@@ -185,8 +236,9 @@ function CarrierSettingsSection() {
                       <select
                         id="carrier-cli"
                         className="terminal-carriers-select"
-                        value={settings.draft.cliType}
-                        onChange={(event) => handleCliDraftChange(event.target.value, settings.options?.cliTypes ?? [])}
+                        value={activePendingSelections.cli ?? activeCarrier.cliType}
+                        disabled={isSaving}
+                        onChange={(event) => void handleCliChange(event.target.value)}
                       >
                         {settings.options.cliTypes.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
                       </select>
@@ -197,14 +249,16 @@ function CarrierSettingsSection() {
                       id="carrier-model"
                       label="Model"
                       models={activeCli.models}
-                      value={settings.draft.model}
-                      onChange={(modelId) => handleModelDraftChange(activeCli, modelId)}
+                      value={activePendingSelections.model ?? activeCarrier.model}
+                      disabled={isSaving}
+                      onChange={(modelId) => void handleModelChange(modelId)}
                     />
                     <EffortSelect
                       id="carrier-effort"
                       model={activeModel}
-                      value={settings.draft.effort}
-                      onChange={(effort) => updateCarrierSettingsDraft({ effort })}
+                      value={activePendingSelections.effort ?? activeCarrier.effort ?? ""}
+                      disabled={isSaving}
+                      onChange={(effort) => void handleEffortChange(effort)}
                     />
                   </div>
                 </div>
@@ -216,8 +270,7 @@ function CarrierSettingsSection() {
                   cliOptions={settings.options.cliTypes}
                   minBackends={settings.options.taskForceConstraints.minBackends}
                   savingActionId={settings.savingActionId}
-                  rows={taskForceRows}
-                  onRowsChange={setTaskForceRows}
+                  stateGeneration={settings.state?.generation ?? 0}
                 />
               ) : null}
             </div>
@@ -281,25 +334,108 @@ function TaskForcePanel({
   cliOptions,
   minBackends,
   savingActionId,
-  rows,
-  onRowsChange,
+  stateGeneration,
 }: {
   readonly carrier: CarrierSettingsCarrier;
   readonly cliOptions: readonly CarrierSettingsCliOption[];
   readonly minBackends: number;
   readonly savingActionId: string | null;
-  readonly rows: readonly string[];
-  readonly onRowsChange: (rows: readonly string[]) => void;
+  readonly stateGeneration: number;
 }) {
-  const settings = useCarrierSettingsStore();
   // 구성된 백엔드가 있으면 기본 펼침, 없으면 접힘. detail이 carrierId로 remount되어 캐리어별로 재초기화된다.
   const configuredCount = carrier.taskforce.backends.length;
   const [expanded, setExpanded] = useState(configuredCount > 0);
   const [addOpen, setAddOpen] = useState(false);
   const [addCliType, setAddCliType] = useState("");
+  const [armedCliType, setArmedCliType] = useState<string | null>(null);
+  const [rowStatuses, setRowStatuses] = useState<Readonly<Record<string, SaveStatus>>>({});
+  const [pendingSelections, setPendingSelections] = useState<Readonly<Record<string, string>>>({});
   const active = carrier.taskforce.backends.length >= minBackends;
-  const availableCliOptions = cliOptions.filter((cli) => !rows.includes(cli.id));
+  const availableCliOptions = cliOptions.filter((cli) => !carrier.taskforce.backends.some((backend) => backend.cliType === cli.id));
   const selectedAddCliType = addCliType || availableCliOptions[0]?.id || "";
+  const isSaving = savingActionId !== null;
+
+  useEffect(() => {
+    setArmedCliType(null);
+  }, [stateGeneration]);
+
+  useEffect(() => {
+    if (!armedCliType) return;
+    const clearArmForDifferentControl = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest(`[data-remove-cli="${armedCliType}"]`)) setArmedCliType(null);
+    };
+    document.addEventListener("click", clearArmForDifferentControl, true);
+    return () => document.removeEventListener("click", clearArmForDifferentControl, true);
+  }, [armedCliType]);
+
+  useEffect(() => {
+    const savedCliTypes = Object.entries(rowStatuses)
+      .filter(([, status]) => status === "saved")
+      .map(([cliType]) => cliType);
+    if (savedCliTypes.length === 0) return;
+    const timeout = window.setTimeout(() => {
+      setRowStatuses((current) => {
+        const next = { ...current };
+        for (const cliType of savedCliTypes) next[cliType] = "idle";
+        return next;
+      });
+    }, SAVE_FEEDBACK_DURATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [rowStatuses]);
+
+  async function saveBackend(
+    cliType: string,
+    model: string,
+    effort: string,
+    pending: Readonly<Record<string, string>> = {},
+  ): Promise<boolean> {
+    const carrierId = carrier.carrierId;
+    setPendingSelections((current) => ({ ...current, ...pending }));
+    setRowStatuses((current) => ({ ...current, [cliType]: "saving" }));
+    const saved = await saveTaskForceBackend(cliType, {
+      model,
+      ...(effort ? { effort } : {}),
+    });
+    if (getCarrierSettingsStoreState().activeCarrierId === carrierId) {
+      setPendingSelections({});
+      setRowStatuses((current) => ({ ...current, [cliType]: saved ? "saved" : "idle" }));
+      if (saved) setArmedCliType(null);
+    }
+    return saved;
+  }
+
+  async function handleBackendModelChange(cli: CarrierSettingsCliOption, modelId: string): Promise<void> {
+    const backend = carrier.taskforce.backends.find((item) => item.cliType === cli.id);
+    if (!backend) return;
+    // Runtime과 동일 계약: 모델 전환 시 effort는 신 모델 기본값으로 리셋(서버 readSelection 400 방지).
+    const nextModel = cli.models.find((item) => item.modelId === modelId) ?? null;
+    const effort = nextModel?.effort?.default ?? "";
+    await saveBackend(cli.id, modelId, effort, {
+      [`tf:${cli.id}:model`]: modelId,
+      [`tf:${cli.id}:effort`]: effort,
+    });
+  }
+
+  async function handleBackendEffortChange(cliType: string, model: string, effort: string): Promise<void> {
+    await saveBackend(cliType, model, effort, { [`tf:${cliType}:effort`]: effort });
+  }
+
+  async function handleRemove(cliType: string): Promise<void> {
+    if (armedCliType !== cliType) {
+      setArmedCliType(cliType);
+      return;
+    }
+    const carrierId = carrier.carrierId;
+    setRowStatuses((current) => ({ ...current, [cliType]: "saving" }));
+    const removed = await removeTaskForceBackend(cliType);
+    if (getCarrierSettingsStoreState().activeCarrierId === carrierId) {
+      setPendingSelections({});
+      setRowStatuses((current) => ({ ...current, [cliType]: removed ? "saved" : "idle" }));
+      if (removed) setArmedCliType(null);
+    }
+  }
+
   return (
     <div className={`terminal-carriers-control-group terminal-carriers-control-group--taskforce ${expanded ? "is-expanded" : ""}`}>
       <div className="terminal-carriers-section-head">
@@ -319,24 +455,39 @@ function TaskForcePanel({
       </div>
       {expanded ? (
       <div className="terminal-carriers-tf-list">
-        {rows.length === 0 ? <p className="terminal-carriers-tf-empty">No Task Force backend drafted.</p> : null}
-        {rows.map((cliType) => {
-          const cli = cliOptions.find((item) => item.id === cliType);
+        {carrier.taskforce.backends.length === 0 ? <p className="terminal-carriers-tf-empty">No Task Force backend configured.</p> : null}
+        {carrier.taskforce.backends.map((backend) => {
+          const cli = cliOptions.find((item) => item.id === backend.cliType);
           if (!cli) return null;
-          const draft = settings.draft.taskforce[cli.id] ?? { model: cli.defaultModel, effort: "" };
-          const model = cli.models.find((item) => item.modelId === draft.model) ?? cli.models[0] ?? null;
-          const active = carrier.taskforce.backends.some((backend) => backend.cliType === cli.id);
+          const modelValue = pendingSelections[`tf:${cli.id}:model`] ?? backend.model;
+          const effortValue = pendingSelections[`tf:${cli.id}:effort`] ?? backend.effort ?? "";
+          const model = cli.models.find((item) => item.modelId === modelValue) ?? cli.models[0] ?? null;
+          const rowStatus = rowStatuses[cli.id] ?? "idle";
+          const armed = armedCliType === cli.id;
+          const removeLabel = carrier.taskforce.backends.length - 1 < minBackends
+            ? "Confirm — TF deactivates"
+            : "Confirm remove";
           return (
-            <div className={`terminal-carriers-tf-item ${active ? "is-active" : ""}`} key={cli.id}>
+            <div className="terminal-carriers-tf-item is-active" key={cli.id}>
               <div className="terminal-carriers-tf-title">
                 <span className={`terminal-carriers-live-dot ${active ? "is-live" : ""}`} aria-hidden="true" />
                 <strong>{cli.displayName}</strong>
+                <span className={`terminal-carriers-tf-status ${rowStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
+                  {rowStatus === "saving" ? "Saving…" : rowStatus === "saved" ? "Saved ✓" : ""}
+                </span>
               </div>
-              <ModelSelect id={`tf-${cli.id}-model`} label="Model" models={cli.models} value={draft.model} onChange={(modelId) => handleTaskForceModelDraftChange(cli, modelId)} />
-              <EffortSelect id={`tf-${cli.id}-effort`} model={model} value={draft.effort} onChange={(effort) => updateCarrierSettingsTaskForceDraft(cli.id, { effort })} />
+              <ModelSelect id={`tf-${cli.id}-model`} label="Model" models={cli.models} value={modelValue} disabled={isSaving} onChange={(modelId) => void handleBackendModelChange(cli, modelId)} />
+              <EffortSelect id={`tf-${cli.id}-effort`} model={model} value={effortValue} disabled={isSaving} onChange={(effort) => void handleBackendEffortChange(cli.id, modelValue, effort)} />
               <div className="terminal-carriers-tf-actions">
-                <button type="button" className="terminal-carriers-ghost-button" disabled={savingActionId === "save-all"} onClick={() => onRowsChange(rows.filter((item) => item !== cli.id))}>
-                  Remove
+                <button
+                  type="button"
+                  className={`terminal-carriers-ghost-button terminal-carriers-tf-remove ${armed ? "is-armed" : ""}`}
+                  data-remove-cli={cli.id}
+                  aria-label={armed ? `Confirm removal of ${cli.displayName} backend` : undefined}
+                  disabled={isSaving}
+                  onClick={() => void handleRemove(cli.id)}
+                >
+                  {armed ? removeLabel : "Remove"}
                 </button>
               </div>
             </div>
@@ -344,11 +495,11 @@ function TaskForcePanel({
         })}
         <div className="terminal-carriers-tf-add-row">
           {addOpen && availableCliOptions.length > 0 ? (
-            <select className="terminal-carriers-select terminal-carriers-tf-add-select" value={selectedAddCliType} onChange={(event) => setAddCliType(event.target.value)} aria-label="Task Force CLI to add">
+            <select className="terminal-carriers-select terminal-carriers-tf-add-select" value={selectedAddCliType} disabled={isSaving} onChange={(event) => setAddCliType(event.target.value)} aria-label="Task Force CLI to add">
               {availableCliOptions.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
             </select>
           ) : null}
-          <button type="button" className="terminal-carriers-ghost-button" disabled={availableCliOptions.length === 0 || savingActionId === "save-all"} onClick={() => {
+          <button type="button" className="terminal-carriers-ghost-button" disabled={availableCliOptions.length === 0 || isSaving} onClick={() => {
             if (!addOpen) {
               setAddOpen(true);
               return;
@@ -357,10 +508,11 @@ function TaskForcePanel({
             const cli = cliOptions.find((item) => item.id === cliType);
             const model = cli?.models.find((item) => item.modelId === cli.defaultModel) ?? cli?.models[0] ?? null;
             if (!cli || !model) return;
-            updateCarrierSettingsTaskForceDraft(cli.id, { model: model.modelId, effort: model.effort?.default ?? "" });
-            onRowsChange(rows.includes(cli.id) ? rows : [...rows, cli.id]);
-            setAddCliType("");
-            setAddOpen(false);
+            void saveBackend(cli.id, model.modelId, model.effort?.default ?? "").then((saved) => {
+              if (!saved) return;
+              setAddCliType("");
+              setAddOpen(false);
+            });
           }}>
             Add
           </button>
@@ -369,66 +521,6 @@ function TaskForcePanel({
       ) : null}
     </div>
   );
-}
-
-function handleCliDraftChange(cliType: string, cliOptions: readonly CarrierSettingsCliOption[]): void {
-  const cli = cliOptions.find((item) => item.id === cliType);
-  const model = cli?.models.find((item) => item.modelId === cli.defaultModel) ?? cli?.models[0] ?? null;
-  updateCarrierSettingsDraft({
-    cliType,
-    model: model?.modelId ?? "",
-    effort: model?.effort?.default ?? "",
-  });
-}
-
-function handleModelDraftChange(cli: CarrierSettingsCliOption, modelId: string): void {
-  const model = cli.models.find((item) => item.modelId === modelId);
-  updateCarrierSettingsDraft({
-    model: modelId,
-    effort: model?.effort?.default ?? "",
-  });
-}
-
-function handleTaskForceModelDraftChange(cli: CarrierSettingsCliOption, modelId: string): void {
-  const model = cli.models.find((item) => item.modelId === modelId);
-  updateCarrierSettingsTaskForceDraft(cli.id, {
-    model: modelId,
-    effort: model?.effort?.default ?? "",
-  });
-}
-
-function hasCarrierDraftChanges(carrier: CarrierSettingsCarrier, draft: CarrierSettingsDraftView, rows: readonly string[]): boolean {
-  if (draft.displayName !== carrier.displayName) return true;
-  if (draft.cliType !== carrier.cliType) return true;
-  if (draft.model !== carrier.model) return true;
-  if ((draft.effort || "") !== (carrier.effort || "")) return true;
-  return hasTaskForceChanges(carrier, rows, draft.taskforce);
-}
-
-function hasTaskForceChanges(carrier: CarrierSettingsCarrier, rows: readonly string[], draft: Readonly<Record<string, { readonly model: string; readonly effort: string }>>): boolean {
-  if (rows.length !== carrier.taskforce.backends.length) return true;
-  const rowSet = new Set(rows);
-  for (const backend of carrier.taskforce.backends) {
-    if (!rowSet.has(backend.cliType)) return true;
-    const selection = draft[backend.cliType];
-    if (!selection) return true;
-    if (selection.model !== backend.model) return true;
-    if ((selection.effort || "") !== (backend.effort || "")) return true;
-  }
-  return false;
-}
-
-function buildDesiredTaskForce(rows: readonly string[], draft: CarrierSettingsDraftView["taskforce"]): readonly { readonly cliType: string; readonly model: string; readonly effort?: string }[] {
-  return rows
-    .map((cliType) => {
-      const selection = draft[cliType];
-      return selection ? {
-        cliType,
-        model: selection.model,
-        ...(selection.effort ? { effort: selection.effort } : {}),
-      } : null;
-    })
-    .filter((backend): backend is { readonly cliType: string; readonly model: string; readonly effort?: string } => backend !== null);
 }
 
 function getCaptainColorStyle(carrierId: string): CaptainColorStyle {

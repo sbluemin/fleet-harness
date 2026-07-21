@@ -28,12 +28,6 @@
   transform: translateY(1px);
 }
 
-/* 변경사항 있을 때(dirty) Save/Discard를 brass로 하이라이트 — GNB active와 동일 어휘. */
-.terminal-carriers-action-button.is-dirty {
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-}
-
 .terminal-carriers-action-button:disabled {
   color: var(--ink-rim);
   cursor: not-allowed;
@@ -118,11 +112,6 @@
   background: var(--aurora);
   box-shadow: 0 0 10px var(--aurora-glow);
   animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-/* 순서: SAVE, DISCARD, (조금 간격) REFRESH */
-.terminal-carriers-detail-refresh {
-  margin-left: var(--space-3);
 }
 
 .terminal-carriers-card {
@@ -507,6 +496,28 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.terminal-carriers-tf-status {
+  margin-left: auto;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.terminal-carriers-tf-status.is-positive {
+  color: var(--positive);
+}
+
+.terminal-carriers-tf-remove {
+  border: 1px solid transparent;
+}
+
+.terminal-carriers-tf-remove.is-armed {
+  border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+  color: var(--coral);
 }
 
 .terminal-carriers-tf-add-row,

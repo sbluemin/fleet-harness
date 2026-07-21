@@ -8,9 +8,8 @@ import { fetchCarrierSettingsState } from "../client/carriers/api.js";
 import {
   getCarrierSettingsStoreState,
   loadCarrierSettings,
-  resetCarrierSettingsDraft,
+  saveCarrierPatch,
   selectCarrierSettingsCarrier,
-  updateCarrierSettingsDraft,
 } from "../client/carriers/store.js";
 import { carrierSettingsSection } from "../client/carriers/section.js";
 
@@ -27,15 +26,26 @@ const options = {
 };
 const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"] as const;
 const interactiveOptions = {
-  cliTypes: [{
-    id: "codex",
-    displayName: "Codex",
-    defaultModel: "gpt-5",
-    models: [
-      { modelId: "gpt-5", name: "GPT-5" },
-      { modelId: "gpt-5-mini", name: "GPT-5 mini" },
-    ],
-  }],
+  cliTypes: [
+    {
+      id: "codex",
+      displayName: "Codex",
+      defaultModel: "gpt-5",
+      models: [
+        { modelId: "gpt-5", name: "GPT-5" },
+        { modelId: "gpt-5-mini", name: "GPT-5 mini" },
+      ],
+    },
+    {
+      id: "claude",
+      displayName: "Claude",
+      defaultModel: "sonnet",
+      models: [
+        { modelId: "sonnet", name: "Sonnet", effort: { levels: ["low", "high"], default: "high" } },
+        { modelId: "haiku", name: "Haiku", effort: { levels: ["low", "high"], default: "low" } },
+      ],
+    },
+  ],
   taskForceConstraints: { minBackends: 2 },
 };
 const interactiveState = {
@@ -85,7 +95,7 @@ describe("Terminal Carrier Settings client", () => {
     await expect(fetchCarrierSettingsState()).rejects.toThrow("restricted field");
   });
 
-  it("loads, selects, drafts, and discards Carrier edits", async () => {
+  it("loads and selects Carrier settings without draft state", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(state), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(options), { status: 200 })));
@@ -93,10 +103,8 @@ describe("Terminal Carrier Settings client", () => {
     await loadCarrierSettings();
     expect(getCarrierSettingsStoreState().activeCarrierId).toBe("kirov");
     selectCarrierSettingsCarrier("kirov");
-    updateCarrierSettingsDraft({ displayName: "Draft Kirov" });
-    expect(getCarrierSettingsStoreState().draft.displayName).toBe("Draft Kirov");
-    resetCarrierSettingsDraft();
-    expect(getCarrierSettingsStoreState().draft.displayName).toBe("Kirov");
+    expect(getCarrierSettingsStoreState().activeCarrierId).toBe("kirov");
+    expect(getCarrierSettingsStoreState()).not.toHaveProperty("draft");
   });
 
   it("exports the reserved Settings section identity", () => {
@@ -138,27 +146,193 @@ describe("Terminal Carrier Settings client", () => {
     if (!cancelNameEdit) throw new Error("Display-name cancel button must render.");
     await act(async () => cancelNameEdit.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
-    const model = container!.querySelector<HTMLSelectElement>("#carrier-model");
-    if (!model) throw new Error("Carrier model select must render.");
-    model.value = "gpt-5-mini";
-    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
-    const save = actionButton("Save");
-    const discard = actionButton("Discard");
-    expect(save.classList.contains("is-dirty")).toBe(true);
-    expect(discard.classList.contains("is-dirty")).toBe(true);
-    expect(save.disabled).toBe(false);
-    expect(discard.disabled).toBe(false);
-
-    await act(async () => discard.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(model.value).toBe("gpt-5");
-    expect(actionButton("Save").disabled).toBe(true);
-    expect(actionButton("Discard").disabled).toBe(true);
+    expect(actionButton("Refresh")).not.toBeNull();
+    expect(container!.textContent).not.toContain("Discard");
+    expect(actionButtonOrNull("Save")).toBeNull();
     expect(container!.querySelector(".terminal-carriers-page, .terminal-carriers-grid, .terminal-carriers-row")).toBeNull();
 
     nextState = emptyState;
     await act(async () => loadCarrierSettings());
     expect(strip?.textContent).toContain("No carriers registered.");
     expect(container!.querySelector(".terminal-carriers-card")?.textContent).toContain("Select a carrier.");
+  });
+
+  it("PATCHes a model change immediately", async () => {
+    const fetch = installInteractiveFetch();
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const model = requiredSelect("#carrier-model");
+    model.value = "gpt-5-mini";
+    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    await waitForRequest(fetch, "PATCH");
+
+    expect(mutationCalls(fetch)).toEqual([
+      expect.objectContaining({
+        url: "/api/v1/plugins/terminal/carriers/nimitz",
+        method: "PATCH",
+        body: { model: { model: "gpt-5-mini" } },
+      }),
+    ]);
+  });
+
+  it("PATCHes CLI with its default model and effort atomically", async () => {
+    const fetch = installInteractiveFetch();
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const cli = requiredSelect("#carrier-cli");
+    cli.value = "claude";
+    await act(async () => cli.dispatchEvent(new Event("change", { bubbles: true })));
+    await waitForRequest(fetch, "PATCH");
+
+    expect(mutationCalls(fetch)).toEqual([
+      expect.objectContaining({
+        method: "PATCH",
+        body: { cli: "claude", model: { model: "sonnet", effort: "high" } },
+      }),
+    ]);
+  });
+
+  it("does not settle CLI feedback onto a carrier selected mid-mutation", async () => {
+    const mutation = deferred<Response>();
+    const fetch = installDelayedMutationFetch(mutation);
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const cli = requiredSelect("#carrier-cli");
+    cli.value = "claude";
+    await act(async () => cli.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(cli.value).toBe("claude");
+
+    const kirov = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")]
+      .find((chip) => chip.textContent?.includes("Kirov"));
+    if (!kirov) throw new Error("Kirov chip must render.");
+    await act(async () => kirov.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(requiredSelect("#carrier-cli").value).toBe("codex");
+
+    await act(async () => {
+      mutation.resolve(jsonResponse({ state: interactiveState }));
+      await vi.waitFor(() => expect(getCarrierSettingsStoreState().savingActionId).toBeNull());
+    });
+
+    expect(mutationCalls(fetch)).toEqual([
+      expect.objectContaining({
+        url: "/api/v1/plugins/terminal/carriers/nimitz",
+        method: "PATCH",
+        body: { cli: "claude", model: { model: "sonnet", effort: "high" } },
+      }),
+    ]);
+    expect(container!.querySelector(".terminal-carriers-save-status")?.textContent).toBe("");
+    expect(requiredSelect("#carrier-cli").value).toBe("codex");
+  });
+
+  it("keeps a pending model selected and reverts it after mutation failure", async () => {
+    const mutation = deferred<Response>();
+    installDelayedMutationFetch(mutation);
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const model = requiredSelect("#carrier-model");
+    model.value = "gpt-5-mini";
+    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(model.value).toBe("gpt-5-mini");
+    expect(model.disabled).toBe(true);
+
+    await act(async () => {
+      mutation.resolve(new Response(JSON.stringify({ error: "mutation failed" }), { status: 500 }));
+      await vi.waitFor(() => expect(getCarrierSettingsStoreState().savingActionId).toBeNull());
+    });
+
+    expect(requiredSelect("#carrier-model").value).toBe("gpt-5");
+    expect(getCarrierSettingsStoreState().error).toBe("mutation failed");
+  });
+
+  it("PUTs a Task Force row model change immediately", async () => {
+    const fetch = installInteractiveFetch();
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const model = requiredSelect("#tf-codex-model");
+    model.value = "gpt-5-mini";
+    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    await waitForRequest(fetch, "PUT");
+
+    expect(mutationCalls(fetch)).toEqual([
+      expect.objectContaining({
+        url: "/api/v1/plugins/terminal/carriers/nimitz/taskforce/codex",
+        method: "PUT",
+        body: { model: "gpt-5-mini" },
+      }),
+    ]);
+  });
+
+  it("resets effort to the new model default on Task Force row model change", async () => {
+    const fetch = installInteractiveFetch();
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const model = requiredSelect("#tf-claude-model");
+    model.value = "haiku";
+    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    await waitForRequest(fetch, "PUT");
+
+    expect(mutationCalls(fetch)).toEqual([
+      expect.objectContaining({
+        url: "/api/v1/plugins/terminal/carriers/nimitz/taskforce/claude",
+        method: "PUT",
+        body: { model: "haiku", effort: "low" },
+      }),
+    ]);
+  });
+
+  it("arms Task Force removal before DELETE and warns at the activation boundary", async () => {
+    const fetch = installInteractiveFetch();
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+
+    const remove = container!.querySelector<HTMLButtonElement>('[data-remove-cli="codex"]');
+    if (!remove) throw new Error("Task Force remove button must render.");
+    await act(async () => remove.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(remove.textContent).toBe("Confirm — TF deactivates");
+    expect(remove.classList.contains("is-armed")).toBe(true);
+    expect(remove.getAttribute("aria-label")).toBe("Confirm removal of Codex backend");
+    expect(mutationCalls(fetch)).toHaveLength(0);
+
+    await act(async () => remove.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await waitForRequest(fetch, "DELETE");
+    expect(mutationCalls(fetch)).toEqual([
+      expect.objectContaining({
+        url: "/api/v1/plugins/terminal/carriers/nimitz/taskforce/codex",
+        method: "DELETE",
+      }),
+    ]);
+  });
+
+  it("surfaces a failed mutation and reloads server state", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(state))
+      .mockResolvedValueOnce(jsonResponse(options))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "mutation failed" }), { status: 500 }))
+      .mockResolvedValueOnce(jsonResponse(state))
+      .mockResolvedValueOnce(jsonResponse(options));
+    vi.stubGlobal("fetch", fetch);
+    await loadCarrierSettings();
+
+    await expect(saveCarrierPatch({ displayName: "Broken" })).resolves.toBe(false);
+    expect(getCarrierSettingsStoreState().error).toBe("mutation failed");
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(fetch.mock.calls.slice(-2).map(([input]) => input)).toEqual([
+      "/api/v1/plugins/terminal/carriers",
+      "/api/v1/plugins/terminal/carriers/options",
+    ]);
   });
 });
 
@@ -176,8 +350,69 @@ async function renderCarrierSettings(): Promise<void> {
 }
 
 function actionButton(label: string): HTMLButtonElement {
-  const button = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-save-actions button")]
-    .find((item) => item.textContent === label);
+  const button = actionButtonOrNull(label);
   if (!button) throw new Error(`${label} action must render.`);
   return button;
+}
+
+function actionButtonOrNull(label: string): HTMLButtonElement | null {
+  return [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-save-actions button")]
+    .find((item) => item.textContent === label) ?? null;
+}
+
+function requiredSelect(selector: string): HTMLSelectElement {
+  const select = container!.querySelector<HTMLSelectElement>(selector);
+  if (!select) throw new Error(`${selector} select must render.`);
+  return select;
+}
+
+function jsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), { status: 200 });
+}
+
+function installInteractiveFetch() {
+  const fetch = vi.fn((input: string, init?: RequestInit) => {
+    if (init?.method && init.method !== "GET") return Promise.resolve(jsonResponse({ state: interactiveState }));
+    return Promise.resolve(jsonResponse(input.endsWith("/options") ? interactiveOptions : interactiveState));
+  });
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+function installDelayedMutationFetch(mutation: Promise<Response>) {
+  const fetch = vi.fn((input: string, init?: RequestInit) => {
+    if (init?.method && init.method !== "GET") return mutation;
+    return Promise.resolve(jsonResponse(input.endsWith("/options") ? interactiveOptions : interactiveState));
+  });
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+function deferred<T>(): Promise<T> & { resolve(value: T): void } {
+  let resolvePromise: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return Object.assign(promise, { resolve: resolvePromise });
+}
+
+function mutationCalls(fetch: ReturnType<typeof vi.fn>): Array<{ readonly url: string; readonly method: string; readonly body: unknown }> {
+  return fetch.mock.calls.flatMap((call) => {
+    const input = call[0] as string;
+    const init = call[1] as RequestInit | undefined;
+    if (!init?.method || init.method === "GET") return [];
+    return [{
+      url: input,
+      method: init.method,
+      body: init.body ? JSON.parse(String(init.body)) as unknown : undefined,
+    }];
+  });
+}
+
+async function waitForRequest(fetch: ReturnType<typeof vi.fn>, method: string, count = 1): Promise<void> {
+  await act(async () => {
+    await vi.waitFor(() => {
+      expect(mutationCalls(fetch).filter((call) => call.method === method)).toHaveLength(count);
+    });
+  });
 }
