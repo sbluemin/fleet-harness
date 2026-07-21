@@ -130,6 +130,40 @@ describe("Instrument core design contract", () => {
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
+  it("pins the shared panel motion layer and existence choreography grammar", () => {
+    const components = source("styles/components.css");
+    // (a) 공통 모션 레이어의 duration/easing은 토큰 표기만 — 리터럴 ms 진입 금지.
+    const baseBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
+    // stagger는 geometry 4속성 전용 CSS 변수 채널로만 흐른다 — inline transition-delay는
+    // 존재 전환(opacity/visibility)의 per-property 지연을 덮어쓰므로 그 진입 자체를 봉인한다.
+    for (const property of ["left", "top", "width", "height"]) {
+      expect(baseBlock).toContain(`${property} var(--duration-slow) var(--ease-glide) var(--panel-stagger-delay, 0s)`);
+    }
+    expect(baseBlock).toContain("opacity var(--duration-base) var(--ease-glide),");
+    expect(baseBlock).toContain("transform var(--duration-base) var(--ease-glide),");
+    expect(baseBlock).not.toContain("opacity var(--duration-base) var(--ease-glide) var(--panel-stagger-delay");
+    expect(baseBlock).toContain("visibility 0s linear 0s");
+    expect(baseBlock).not.toMatch(/\d+ms/);
+    const minimizedBlock = components.match(/\.canvas-operation\.is-minimized \{[^}]*\}/)?.[0] ?? "";
+    expect(minimizedBlock).toContain("visibility 0s linear var(--duration-base)");
+    expect(minimizedBlock).not.toMatch(/\d+ms/);
+    // (b) 드래그·리사이즈 조작 중에는 공통 transition을 통째로 끊는다.
+    const draggingBlock = components.match(/\.canvas-operation\.is-dragging \{[^}]*\}/)?.[0] ?? "";
+    expect(draggingBlock).toContain("transition: none;");
+    // (c) components.css의 reduced-motion 통합 블록이 캔버스 패널·companion 프레임을 커버한다.
+    expect(components).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.canvas-operation \{\s*transition: none;\s*\}\s*\.canvas-companion-frame \{\s*animation: none;\s*\}/,
+    );
+    // (d) 존재 전환 keyframe은 panel-enter로 일반화 — companion 전용 명칭은 퇴역하고 실제 사용까지 고정한다.
+    expect(components).toContain("@keyframes panel-enter");
+    expect(components).toContain("animation: panel-enter var(--duration-slow) var(--ease-glide) both;");
+    expect(components).not.toContain("companion-frame-enter");
+    // (e) 안무 표면(칩 도착 맥동·고스트)도 reduced-motion 블록 안에서 무효화된다.
+    const reducedMotionBlock = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotionBlock).toContain(".side-bar-chip.is-arrival-pulse {");
+    expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
+  });
+
   it("collapses sidebar chip actions out of layout until hover or focus-within", () => {
     const components = source("styles/components.css");
     const restingActions = components.match(/\.side-bar-chip-close,\n\.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";

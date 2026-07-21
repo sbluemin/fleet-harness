@@ -61,6 +61,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const restoreIdentityFocusRef = useRef(false);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const displayTitle = operation.title;
   const rename = useInlineRename({
     currentTitle: operation.title,
@@ -81,6 +82,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
     topEdge ? "is-top-edge" : "",
+    dragging ? "is-dragging" : "",
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
 
@@ -125,6 +127,22 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     }, CLOSE_ARM_DURATION_MS);
   };
 
+  // 드래그/리사이즈 도중 캡처 대상(드래그 에지·리사이즈 핸들)이 언마운트되는 상태 전환에서는
+  // pointerup/pointercancel이 도달하지 않아 is-dragging이 잔존하고 공통 모션 transition이 영구 차단된다.
+  useEffect(() => {
+    if (!maximized && !interactionDisabled && !minimized) return;
+    dragRef.current = null;
+    resizeRef.current = null;
+    setDragging(false);
+  }, [maximized, interactionDisabled, minimized]);
+
+  const abortPointerManipulation = () => {
+    if (!dragRef.current && !resizeRef.current) return;
+    dragRef.current = null;
+    resizeRef.current = null;
+    setDragging(false);
+  };
+
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     disarmClose();
     if (maximized || interactionDisabled) return;
@@ -133,6 +151,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.stopPropagation();
     onActivate();
     dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry };
+    setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -154,6 +173,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) {
       dragRef.current = null;
+      setDragging(false);
       return;
     }
     const drag = dragRef.current;
@@ -161,6 +181,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.preventDefault();
     event.stopPropagation();
     dragRef.current = null;
+    setDragging(false);
     event.currentTarget.releasePointerCapture(event.pointerId);
     onGeometryCommit(drag.latest);
   };
@@ -171,6 +192,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.stopPropagation();
     onActivate();
     resizeRef.current = { direction, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry };
+    setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -188,6 +210,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) {
       resizeRef.current = null;
+      setDragging(false);
       return;
     }
     const resize = resizeRef.current;
@@ -195,6 +218,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
     event.preventDefault();
     event.stopPropagation();
     resizeRef.current = null;
+    setDragging(false);
     event.currentTarget.releasePointerCapture(event.pointerId);
     onGeometryCommit(resize.latest);
   };
@@ -286,6 +310,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       style={frameStyle}
       onPointerDown={onActivate}
       data-canvas-operation
+      data-operation-id={operation.id}
       data-focus-layer-target={focusLayerTarget ? "true" : undefined}
       aria-label={`Operation ${displayTitle}`}
       aria-hidden={renderHidden || undefined}
@@ -300,6 +325,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
           onPointerMove={updateDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onLostPointerCapture={abortPointerManipulation}
           data-canvas-blocker
           aria-hidden="true"
         />
@@ -310,6 +336,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         onPointerMove={updateDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onLostPointerCapture={abortPointerManipulation}
         data-canvas-blocker
       >
         {accentColor ? <span className="canvas-operation-id-mark" aria-hidden="true" /> : null}
@@ -382,6 +409,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
           onPointerMove={updateResize}
           onPointerUp={endResize}
           onPointerCancel={endResize}
+          onLostPointerCapture={abortPointerManipulation}
           data-canvas-blocker
           aria-hidden="true"
         />

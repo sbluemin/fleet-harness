@@ -7,6 +7,7 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, forgetTheater, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError } from "../api.js";
 import { animateViewportTo, claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
+import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -89,7 +90,10 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
         // 모두 최소화된 부팅 상태의 폴백 대상은 store 포커스보다 먼저 복원한다. 그렇지 않으면 Canvas의
         // "최소화된 active id 제거" effect가 pending focus 복원보다 앞서 실행되어 활성 표시를 지운다.
-        if (canvas.minimized.includes(nextId)) restoreOperation(nextId);
+        if (canvas.minimized.includes(nextId)) {
+          playRestoreFlight(nextId);
+          restoreOperation(nextId);
+        }
         focusOperation(nextId);
       });
     };
@@ -122,7 +126,9 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     const snapshot = getCanvasSnapshot();
     const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
     if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
+    const wasMinimized = snapshot.minimized.includes(operationId);
     // 복원과 활성화를 같은 동기 실행에서 끝내 Canvas의 최소화-active 정리 effect보다 먼저 상태를 확정한다.
+    if (wasMinimized) playRestoreFlight(operationId);
     restoreOperation(operationId);
     setActiveOperation(operationId);
     const viewportSize = viewportSizeFor(bodyRef.current);
@@ -180,6 +186,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
 
   const handleMinimize = useCallback((operationId: string) => {
     if (stateRef.current.activeOperationId === operationId) setActiveOperation(null);
+    playMinimizeFlight(operationId);
     minimizeOperation(operationId);
   }, []);
 
@@ -397,6 +404,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     if (operation && (!descriptor || !descriptor.companions?.length || !canOpenCompanions)) {
       forceDropCompanionOperationId();
       if (getFormationView()) {
+        if (getCanvasSnapshot().minimized.includes(operationId)) playRestoreFlight(operationId);
         restoreOperation(operationId);
         setActiveOperation(operationId);
         requestOperationKeyboardFocus(operationId);
@@ -418,6 +426,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     return;
   }
   if (getFormationView()) {
+    if (getCanvasSnapshot().minimized.includes(operationId)) playRestoreFlight(operationId);
     restoreOperation(operationId);
     setActiveOperation(operationId);
     requestOperationKeyboardFocus(operationId);
