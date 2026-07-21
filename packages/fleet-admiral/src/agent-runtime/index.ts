@@ -25,6 +25,7 @@ import { getProviderModelIds } from "@dotobokuri/core-unified-agent";
 
 import {
 	FLEET_MCP_SERVER_NAME,
+	GLOBAL_READONLY_WIKI_TOOL_IDS,
 	getExecutorMcpTools,
 	registerAgentToolDefaults,
 } from "../tools.js";
@@ -76,15 +77,6 @@ const DEFAULT_RESERVED_EXTERNAL_MCP_SERVER_IDS = [
 	"fleet-wiki",
 	"fleet-tools",
 ] as const;
-// 모든 캐리어에 글로벌로 노출되는 무조건 읽기 전용 Wiki 도구.
-// 이 화이트리스트에 없는 Wiki 도구(ingest/drydock/patch_edit/compile_source/query/schema_*/patch_queue)는
-// executor에 노출하지 않는 host-only 도구이며, 호스트 에이전트가 Fleet Wiki 작업을 직접 수행한다.
-const GLOBAL_READONLY_WIKI_TOOL_IDS = new Set([
-	"wiki_briefing",
-	"wiki_orient",
-	"wiki_read",
-	"wiki_resolve",
-]);
 
 export function createFleetAgentRuntimeLifecycle(
 	deps: FleetAgentRuntimeLifecycleDeps,
