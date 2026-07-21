@@ -109,12 +109,17 @@ export function App() {
   // 단축키 다이얼로그가 열리는 시점의 포커스 요소를 캡처해 닫힐 때 복원한다(Help 메뉴 trigger 복원과 등가).
   // 다이얼로그 자체의 focus effect(passive)보다 먼저 돌도록 layout effect로 캡처한다.
   useLayoutEffect(() => {
-    if (state.keyboardShortcutsOpen) {
-      // 팔레트처럼 자신이 닫히며 여는 표면은 opener를 채널로 넘긴다 — 그 경우 activeElement는 이미 제거 중이다.
-      shortcutsReturnFocusRef.current = takeKeyboardShortcutsReturnFocus()
-        ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-      return;
-    }
+    if (!state.keyboardShortcutsOpen) return;
+    // 팔레트처럼 자신이 닫히며 여는 표면은 opener를 채널로 넘긴다 — 그 경우 activeElement는 이미 제거 중이다.
+    // 캡처는 다이얼로그의 focus effect보다 선행해야 하므로 layout effect로 남긴다.
+    shortcutsReturnFocusRef.current = takeKeyboardShortcutsReturnFocus()
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  }, [state.keyboardShortcutsOpen]);
+
+  // 복원은 passive effect로 — 다이얼로그의 passive cleanup이 .console-shell inert를 걷어낸 뒤에 돌아야
+  // 실브라우저에서 inert 조상 때문에 focus()가 무시되지 않는다(layout 단계에서는 아직 inert 상태).
+  useEffect(() => {
+    if (state.keyboardShortcutsOpen) return;
     const target = shortcutsReturnFocusRef.current;
     shortcutsReturnFocusRef.current = null;
     if (target?.isConnected) target.focus();
