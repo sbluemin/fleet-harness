@@ -416,6 +416,8 @@ const CANVAS_STATE: ConsoleState = {
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   pendingSideBarTheaterLaunch: null,
+  launchMenuRequest: null,
+  keyboardShortcutsOpen: false,
   operationNotifications: {},
   notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
   codexReader: null,

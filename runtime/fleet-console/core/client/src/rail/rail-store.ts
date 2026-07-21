@@ -38,6 +38,11 @@ export function toggleRailPanel(id: string): void {
   saveStoredPanelId(next);
 }
 
+// Ensure-open: 이미 활성인 패널은 유지하고, 아니면 선택한다(toggleRailPanel과 달리 절대 닫지 않는다).
+export function openRailPanel(id: string): void {
+  setActiveRailPanel(id);
+}
+
 export function closeRailPanel(): void {
   if (store.activeRailPanelId === null) return;
   setStore({ ...store, activeRailPanelId: null, panelExtraWidth: 0 });

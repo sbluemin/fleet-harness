@@ -78,6 +78,8 @@ let state: ConsoleState = {
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   pendingSideBarTheaterLaunch: null,
+  launchMenuRequest: null,
+  keyboardShortcutsOpen: false,
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
   codexReader: null,
@@ -339,6 +341,26 @@ export function requestOperationKeyboardFocus(operationId: string): void {
       requestId: (state.keyboardFocusRequest?.requestId ?? 0) + 1,
     },
   });
+}
+
+// 팔레트 "New Operation" 커맨드가 사이드바의 ＋New launch 오버레이를 열도록 요청한다(keyboardFocusRequest 패턴 미러).
+export function requestOperationLaunchMenu(): void {
+  setState({ launchMenuRequest: { requestId: (state.launchMenuRequest?.requestId ?? 0) + 1 } });
+}
+
+export function consumeOperationLaunchMenu(): void {
+  if (state.launchMenuRequest === null) return;
+  setState({ launchMenuRequest: null });
+}
+
+export function openKeyboardShortcuts(): void {
+  if (state.keyboardShortcutsOpen) return;
+  setState({ keyboardShortcutsOpen: true });
+}
+
+export function closeKeyboardShortcuts(): void {
+  if (!state.keyboardShortcutsOpen) return;
+  setState({ keyboardShortcutsOpen: false });
 }
 
 export function nextOperationId(order: readonly string[], currentId: string | null, delta: number): string | null {

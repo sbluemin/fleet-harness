@@ -12,7 +12,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, selectFormationLayout, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
-import { consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
+import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
@@ -220,7 +220,7 @@ export function OperationsSideBar({
   const [sideBarResizing, setSideBarResizing] = useState(false);
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
-  const { operationStatus, pendingSideBarAddTheater, pendingSideBarTheaterLaunch } = useConsoleState();
+  const { operationStatus, pendingSideBarAddTheater, pendingSideBarTheaterLaunch, launchMenuRequest } = useConsoleState();
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-sidebar-toggle");
@@ -281,6 +281,21 @@ export function OperationsSideBar({
     if (allEntries.some((entry) => entry.operation.id === armedCloseId)) return;
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
+
+  // 팔레트 "New Operation" 커맨드 요청을 소비해 ＋New 버튼과 동일한 launch 오버레이를 그 버튼 앵커 위치에 연다.
+  useEffect(() => {
+    if (!launchMenuRequest) return;
+    consumeOperationLaunchMenu();
+    const launchButton = rootRef.current?.querySelector<HTMLButtonElement>(
+      '.side-bar-theater-section--active .side-bar-theater-row-btn[aria-label^="New Operation in"]',
+    );
+    const rect = launchButton?.getBoundingClientRect();
+    setActiveContextMenu(null);
+    setNewMenu({
+      anchor: rect ? { x: rect.right + 8, y: rect.top } : { x: 16, y: 64 },
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+    });
+  }, [launchMenuRequest]);
 
 
   const contextMenuOperation = activeContextMenu?.kind === "chip"

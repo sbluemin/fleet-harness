@@ -205,6 +205,8 @@ export interface ConsoleState {
   readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: boolean;
   readonly pendingSideBarTheaterLaunch: string | null;
+  readonly launchMenuRequest: { readonly requestId: number } | null;
+  readonly keyboardShortcutsOpen: boolean;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;
   readonly codexReader: CodexReaderRequest | null;

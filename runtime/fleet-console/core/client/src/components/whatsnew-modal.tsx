@@ -71,7 +71,8 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const whatsNewSuppressed =
     !state.bootstrapped ||
     state.onboardingOpen ||
-    state.operationSearchOpen;
+    state.operationSearchOpen ||
+    state.keyboardShortcutsOpen;
   if (state.whatsNewOpen && !whatsNewSuppressed && returnFocusRef.current === null) {
     returnFocusRef.current = document.activeElement as HTMLElement | null;
   }
