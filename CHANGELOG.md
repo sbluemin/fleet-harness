@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-07-21
+
+### fleet-console
+
+#### Added
+- [fleet-console] Typing > in the command palette switches it to a command mode that runs curated Console actions from the keyboard: switch theater, launch a new Operation, open rail panels, toggle the rail or sidebar, switch theme, and open Settings, keyboard shortcuts, or What's new.
+- [fleet-console] Switch the active Theater and Operation directly from the command band breadcrumb: each segment opens an anchored dropdown listing every Theater (with operation counts and Add Theater) or the active Theater's operations (with Rename and New Operation rows), with full keyboard navigation and viewport-aware positioning.
+
+#### Changed
+- [fleet-console] Paint sidebar group identity through the full spine, mark, and wash grammar: a persistent color dot and tinted header (stronger when collapsed) plus a faint group-zone wash, while the 3px left rail stays unchanged.
+- [fleet-console] Panel transitions now share one motion layer: Formation switches, maximize, and restore glide smoothly, minimize fades toward its sidebar chip with a ghost flight and an arrival pulse, and Formation entry staggers panel placement. All motion honors reduced-motion preferences.
+
+#### Fixed
+- [fleet-console] The command band breadcrumb no longer shows an operation from a different Theater after switching Theaters from the sidebar; it now offers a Select operation trigger instead.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] The Repository panel gains a read-only Compare source: pick any two refs (branches, tags, or HEAD) and browse their merge-base diff as a changed-file list with per-file hunks.
+
+#### Changed
+- [fleet-console] Show the Repositories list as a collapsible directory tree of nested repositories, sorted alphabetically with single-child folders compressed, while the Theater root stays pinned on top.
+- [fleet-console] Retune the Repository panel palette to the design channels: history graph lanes and diff syntax highlighting use the theme-tuned identity tones, and decorative signal-color accents are removed.
+
+#### Fixed
+- [fleet-console] Unify Repository panel borders on the rim token so edges keep the same weight in the Maritime and Carbon themes, and restore the history tab transition that an undefined easing token had disabled.
+
+### fleet-core
+
+#### Changed
+- [fleet-wiki] The host now stages and approves Fleet Wiki entries directly; all wiki mutation, staging, lint, and schema tools are host-only, leaving only the read-only tools shared with carriers.
+- [fleet-carriers] The Chronicle carrier no longer handles Fleet Wiki entries and focuses solely on codebase documentation.
+- [fleet-admiral] Require Carrier dispatches to carry settled decisions as literal values.
+- [core-unified-agent] Refresh the OpenCode Go and Cursor Agent model catalogs from the live CLIs: OpenCode Go lists 11 current-generation models with `opencode-go/deepseek-v4-flash` as the default, and Cursor Agent covers 90 models via 29 effort-expanded registry entries; superseded generations are retired.
+
 ## [1.30.0] - 2026-07-20
 
 ### fleet-console

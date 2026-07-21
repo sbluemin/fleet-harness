@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-07-21
+
+### fleet-console
+
+#### Added
+- [fleet-console] 커맨드 팔레트에서 >를 입력하면 커맨드 모드로 전환되어 Theater 전환, 새 Operation 실행, rail 패널 열기, rail·사이드바 토글, 테마 전환, Settings·키보드 단축키·What's new 열기를 키보드로 실행합니다.
+- [fleet-console] command band 브레드크럼에서 활성 Theater와 Operation을 바로 전환합니다: 각 세그먼트가 전체 Theater 목록(Operation 수·Add Theater 포함) 또는 활성 Theater의 Operation 목록(Rename·New Operation 행 포함)을 담은 앵커드 드롭다운을 열며, 키보드 내비게이션과 viewport 인식 배치를 지원합니다.
+
+#### Changed
+- [fleet-console] 사이드바 그룹 정체성을 spine·mark·wash 전체 문법으로 표현합니다. 색상 dot과 헤더 틴트(접힘 시 강화), 은은한 그룹 존 워시를 추가하며 기존 3px 좌측 레일은 그대로 유지합니다.
+- [fleet-console] 패널 전환이 하나의 공통 모션 레이어를 공유합니다. Formation 전환·최대화·복원이 부드럽게 미끄러지고, 최소화는 사이드바 칩을 향한 고스트 비행과 도착 맥동으로 사라지며, Formation 진입은 패널 배치를 순차 등장시킵니다. 모든 모션은 reduced-motion 설정을 존중합니다.
+
+#### Fixed
+- [fleet-console] 사이드바에서 Theater를 전환한 뒤 command band 브레드크럼이 다른 Theater의 Operation을 표시하던 문제를 수정하고, 대신 Select operation 트리거를 제공합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Repository 패널에 읽기 전용 Compare 소스가 추가되었습니다. 두 ref(브랜치·태그·HEAD)를 골라 merge-base 기준 변경 파일 목록과 파일별 hunk를 살펴봅니다.
+
+#### Changed
+- [fleet-console] Repositories 목록을 중첩 저장소의 디렉터리 트리로 표시하고, 알파벳 정렬과 단일 자식 폴터 압축·접힘을 지원하며 Theater 루트는 상단에 고정합니다.
+- [fleet-console] Repository 패널 색상을 디자인 채널에 맞게 재조율합니다. 히스토리 그래프 레인과 diff 구문 강조에 테마별로 조율된 정체성 톤을 쓰고 장식용 신호색을 제거합니다.
+
+#### Fixed
+- [fleet-console] Repository 패널 테두리를 rim 토큰으로 통일해 Maritime·Carbon 테마에서도 같은 굵기를 유지하고, 정의되지 않은 이징 토큰 때문에 꺼져 있던 히스토리 탭 전환 효과를 복원합니다.
+
+### fleet-core
+
+#### Changed
+- [fleet-wiki] 이제 호스트가 Fleet Wiki 항목을 직접 스테이징하고 승인합니다. 모든 위키 변경/스테이징/린트/스키마 도구는 호스트 전용이 되고 읽기 전용 도구만 캐리어에 공유됩니다.
+- [fleet-carriers] Chronicle 캐리어는 더 이상 Fleet Wiki 항목을 처리하지 않고 코드베이스 문서화만 담당합니다.
+- [fleet-admiral] Carrier dispatch가 확정된 결정값을 리터럴 값으로 전달하도록 요구합니다.
+- [core-unified-agent] OpenCode Go와 Cursor Agent 모델 카탈로그를 실제 CLI 기준으로 갱신합니다. OpenCode Go는 `opencode-go/deepseek-v4-flash` 기본 모델과 11개 현세대 모델을 제공하고, Cursor Agent는 effort 확장 레지스트리 29개 엔트리로 90개 모델을 지원하며 구세대 모델은 퇴역합니다.
+
 ## [1.30.0] - 2026-07-20
 
 ### fleet-console
