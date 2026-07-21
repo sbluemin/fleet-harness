@@ -14,15 +14,17 @@ interface FlightTiming {
 
 // 최소화 flight: 상태 커밋 직전에 호출한다 — 패널 rect를 즉시 캡처하고,
 // 커밋 후 다음 프레임에 칩 rect를 조회해 패널→칩으로 고스트를 날린다.
+// 양 끝점이 실제로 보일 때만 난다 — 접힌 사이드바의 칩이나 focus layer 뒤 히든 피어는
+// visibility:hidden이어도 rect가 유효해, 가드 없이는 보이지 않는 지점에서 고스트가 나타난다.
 export function playMinimizeFlight(operationId: string): void {
   if (typeof document === "undefined" || prefersReducedMotion()) return;
-  const from = panelRect(operationId);
-  if (!from) return;
+  const panel = panelElement(operationId);
+  if (!isVisiblyRendered(panel)) return;
+  const from = panel.getBoundingClientRect();
   window.requestAnimationFrame(() => {
     const chip = chipElement(operationId);
-    const to = chip?.getBoundingClientRect();
-    if (!chip || !to) return;
-    flyGhost(from, to, () => pulseChip(chip));
+    if (!isVisiblyRendered(chip)) return;
+    flyGhost(from, chip.getBoundingClientRect(), () => pulseChip(chip));
   });
 }
 
@@ -30,22 +32,29 @@ export function playMinimizeFlight(operationId: string): void {
 // 다음 프레임에 패널 rect를 조회해 칩→패널로 역방향 flight. 패널 본체 페이드인은 CSS 소유.
 export function playRestoreFlight(operationId: string): void {
   if (typeof document === "undefined" || prefersReducedMotion()) return;
-  const from = chipElement(operationId)?.getBoundingClientRect();
-  if (!from) return;
+  const chip = chipElement(operationId);
+  if (!isVisiblyRendered(chip)) return;
+  const from = chip.getBoundingClientRect();
   window.requestAnimationFrame(() => {
-    const to = panelRect(operationId);
-    if (!to) return;
-    flyGhost(from, to);
+    const panel = panelElement(operationId);
+    if (!isVisiblyRendered(panel)) return;
+    flyGhost(from, panel.getBoundingClientRect());
   });
 }
 
-function panelRect(operationId: string): DOMRect | null {
-  const panel = document.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
-  return panel?.getBoundingClientRect() ?? null;
+function panelElement(operationId: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
 }
 
 function chipElement(operationId: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-side-bar-chip-id="${escapeSelectorValue(operationId)}"]`);
+}
+
+function isVisiblyRendered(element: HTMLElement | null): element is HTMLElement {
+  if (!element) return false;
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  return getComputedStyle(element).visibility !== "hidden";
 }
 
 // jsdom 등 CSS 전역이 없는 환경 폴백 — 속성값 셀렉터의 인용부호·역슬래시만 이스케이프하면 충분하다.
