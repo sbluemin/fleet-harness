@@ -9,6 +9,18 @@ This skill owns dispatch composition: request-block contracts, parallel and sequ
 
 All carriers accept an optional `<prior_jobs>` block: Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.
 
+## Decisions Travel as Literals
+
+Before dispatch, close every judgment gap by asking both:
+1. Must the Carrier choose a concrete value?
+2. Does the Carrier lack the doctrine, charter, or established-convention context needed to justify that choice?
+
+If both answers are yes, the host chooses the value before dispatch and passes it verbatim, not as an abstraction. Examples — not an exhaustive domain list — include design tokens (color, mix ratio, easing), API paths, setting keys, protocol tokens, names, error-message text, thresholds, and constants. Never leave these choices behind phrases such as "match the theme", "pick a coherent color", "적절히", "일관되게", or "convention을 따라".
+
+During Artifact Inspection, pass only when every dispatched literal matches verbatim; treat an equivalent-looking substitution as a defect.
+
+When a relevant domain needs detailed pre-dispatch checks, load [the decision-literal checklists](references/decision-literals.md) on demand.
+
 ## Parallel Default
 
 When the same phase or step calls multiple Carriers, invoke them in parallel — one tool call per carrier, same response. Sequence only when:
@@ -21,6 +33,12 @@ Never split a parallel launch into sequential calls.
 ## Dispatch Failure Handling
 
 If the intended Carrier is unavailable or carrier_dispatch rejects the requested Carrier: report to the user, await instructions. Never silently substitute. A missing-required-block rejection is self-correcting — recompose the request per the echoed contract and re-dispatch instead of escalating.
+
+## Gotchas
+
+- **Symptom:** Carrier output diverges from codebase conventions in style, naming, or value selection, such as losing theme cohesion or using undefined tokens.
+  **Action:** Before dispatch, the host finalizes a decision-value table and supplies a verbatim copy, verifies each value exists in its target context (for example, a token is defined in all three themes), and includes prohibited substitutions plus validation greps.
+  **Why:** The Carrier lacks the decision-basis context; a verbatim handoff has been empirically shown to pass review in one cycle without rework.
 
 ## Contracts by carrier
 - **nimitz** (Nimitz · Strategic Command & Judgment) — wrap request content in these blocks (? = optional):
