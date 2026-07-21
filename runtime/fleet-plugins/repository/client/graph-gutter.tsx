@@ -15,15 +15,17 @@ const LANE_WIDTH = 12;
 const ROW_HEIGHT = 28;
 const NODE_R = 3;
 const HEAD_RING_R = 5;
+// 장식적 구분 채도는 --id-* 정체성 봉투에서만 가져온다 — 테마별 재조율·상태 신호와
+// 혼동할 수 없어야 한다. 신호 토큰(warn/positive/aurora) 순환은 상태 채널을 침범하므로 폐기.
 const LANE_COLORS = [
-  "var(--brass)",
-  "var(--aurora)",
-  "var(--warn)",
-  "var(--positive)",
-  "color-mix(in oklch, var(--brass) 70%, var(--aurora))",
-  "color-mix(in oklch, var(--aurora) 70%, var(--positive))",
-  "color-mix(in oklch, var(--warn) 72%, var(--brass))",
-  "color-mix(in oklch, var(--ink-spectral) 76%, var(--aurora))",
+  "var(--id-cerulean)",
+  "var(--id-plum)",
+  "var(--id-amber)",
+  "var(--id-teal)",
+  "var(--id-moss)",
+  "var(--id-indigo)",
+  "var(--id-rose)",
+  "var(--id-crimson)",
 ] as const;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
