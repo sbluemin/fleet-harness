@@ -12,7 +12,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, selectFormationLayout, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
-import { sortOperationsByOrder } from "../store.js";
+import { consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
@@ -220,7 +220,7 @@ export function OperationsSideBar({
   const [sideBarResizing, setSideBarResizing] = useState(false);
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
-  const { operationStatus } = useConsoleState();
+  const { operationStatus, pendingSideBarAddTheater, pendingSideBarTheaterLaunch } = useConsoleState();
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-sidebar-toggle");
@@ -536,16 +536,61 @@ export function OperationsSideBar({
     returnFocus?.focus();
   }, [activeContextMenu]);
 
-  const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
-    event.stopPropagation();
+  const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string) => {
     if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
     setActiveContextMenu(null);
-    const rect = event.currentTarget.getBoundingClientRect();
     setNewMenu({
-      anchor: { x: rect.right + 8, y: rect.top },
+      anchor: { x: anchor.right + 8, y: anchor.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
+
+  const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
+    event.stopPropagation();
+    openTheaterLaunchMenuAt(event.currentTarget.getBoundingClientRect(), theaterId);
+  };
+
+  // 커맨드 밴드 "Add Theater…" 요청 소비 — 접힘을 풀고 Theater 브라우저를 연다.
+  useEffect(() => {
+    if (!pendingSideBarAddTheater) return;
+    consumeSideBarAddTheater();
+    if (collapsed) setSideBarCollapsed(false);
+    openTheaterBrowser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSideBarAddTheater]);
+
+  // 커맨드 밴드 "New Operation in X…" 요청 소비 — 해당 Theater의 New Operation 버튼을 앵커로 launch 메뉴를 연다.
+  useEffect(() => {
+    const theaterId = pendingSideBarTheaterLaunch;
+    if (theaterId === null) return;
+    if (collapsed) {
+      // 신호는 유지한다 — 펼침 재렌더 후 이 effect가 다시 돌며 앵커를 실측한다.
+      setSideBarCollapsed(false);
+      return;
+    }
+    if (!theaters.some((theater) => theater.id === theaterId)) {
+      consumeSideBarTheaterLaunch();
+      return;
+    }
+    // consume은 실측 시점에 한다 — 여기서 먼저 소비하면 deps 변경 cleanup이 아래 타이머를 즉시 취소한다.
+    const openAtLaunchButton = () => {
+      consumeSideBarTheaterLaunch();
+      const section = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-theater-id]") ?? [])
+        .find((candidate) => candidate.dataset.theaterId === theaterId);
+      const button = section?.querySelector<HTMLButtonElement>(".side-bar-theater-launch-btn");
+      if (!button) return;
+      openTheaterLaunchMenuAt(button.getBoundingClientRect(), theaterId);
+    };
+    // 접힘 해제 직후에는 width 200ms 전환이 진행 중이라 즉시 실측하면 앵커가 왼쪽으로 틀어진다 — 전환 종료 후 실측.
+    const settled = rootRef.current !== null && Math.abs(rootRef.current.getBoundingClientRect().width - width) <= 1;
+    if (settled) {
+      openAtLaunchButton();
+      return;
+    }
+    const timer = window.setTimeout(openAtLaunchButton, 220);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSideBarTheaterLaunch, collapsed]);
 
   const toggleTheaterSectionCollapsed = (theaterId: string) => {
     setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
@@ -1013,7 +1058,7 @@ function TheaterSectionHeader({
           </button>
           <button
             type="button"
-            className="side-bar-theater-row-btn"
+            className="side-bar-theater-row-btn side-bar-theater-launch-btn"
             aria-label={`New Operation in ${theater.label}`}
             title={`New Operation in ${theater.label}`}
             onClick={(event) => onOpenLaunch(event, theater.id)}

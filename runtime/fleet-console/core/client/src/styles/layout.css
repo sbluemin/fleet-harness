@@ -339,6 +339,164 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-operation-kind { display: flex; align-items: center; line-height: 0; }
 .command-band-operation-kind svg { display: block; width: 13px; height: 13px; }
 
+/* ===== Command Band 세그먼트 드롭다운 전환기 — 메뉴 문법은 components.css .theater-menu 계열의 밴드 스코프 미러 ===== */
+.command-band-switcher {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.command-band-segment-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.command-band-segment-trigger:hover,
+.command-band-segment-trigger:focus-visible,
+.command-band-segment-trigger.is-open {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  outline: none;
+}
+
+.command-band-segment-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-band-trigger-caret {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--ink-fog);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.command-band-trigger-caret svg { display: block; width: 10px; height: 10px; }
+
+.command-band-segment-trigger:hover .command-band-trigger-caret,
+.command-band-segment-trigger:focus-visible .command-band-trigger-caret,
+.command-band-segment-trigger.is-open .command-band-trigger-caret {
+  opacity: 0.75;
+}
+
+.command-band-operation-placeholder {
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.command-band-menu {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  min-width: 236px;
+  max-width: min(340px, calc(100vw - 24px));
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
+  box-shadow: var(--shadow-floating);
+}
+
+.command-band-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.command-band-menu-item:hover:not(:disabled),
+.command-band-menu-item:focus-visible {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  outline: none;
+}
+
+.command-band-menu-item.is-active {
+  color: var(--brass-bright);
+}
+
+.command-band-menu-action {
+  color: var(--brass-bright);
+}
+
+.command-band-menu-action:disabled {
+  color: color-mix(in oklch, var(--brass-bright) 45%, transparent);
+  background: transparent;
+  cursor: wait;
+}
+
+.command-band-menu-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--brass);
+}
+
+.command-band-menu-check svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+.command-band-menu-item .command-band-theater-mark { flex: none; }
+
+.command-band-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-band-menu-meta {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  flex: none;
+  color: color-mix(in oklch, var(--ink-fog) 70%, transparent);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.command-band-menu-divider {
+  height: 1px;
+  margin: var(--space-2) var(--space-1);
+  background: var(--surface-rim);
+}
+
+.command-band-menu-empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
 /* window-policy.ts와 합의한 44px 밴드/76px 신호등 인셋 — 변경 시 데스크톱 셸과 동기한다. */
 html[data-desktop-shell="true"] .command-band {
   -webkit-app-region: drag;

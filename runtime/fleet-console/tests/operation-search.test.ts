@@ -57,6 +57,8 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     bootstrapped: false,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,
+    pendingSideBarAddTheater: false,
+    pendingSideBarTheaterLaunch: null,
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     codexReader: null,

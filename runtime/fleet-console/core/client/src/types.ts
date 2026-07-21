@@ -203,6 +203,8 @@ export interface ConsoleState {
   readonly bootstrapped: boolean;
   readonly pendingOperationFocus: string | null;
   readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
+  readonly pendingSideBarAddTheater: boolean;
+  readonly pendingSideBarTheaterLaunch: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;
   readonly codexReader: CodexReaderRequest | null;

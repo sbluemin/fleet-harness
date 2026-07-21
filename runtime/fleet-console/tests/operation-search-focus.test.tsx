@@ -52,6 +52,8 @@ beforeEach(() => {
     operationSearchOpen: true,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,
+    pendingSideBarAddTheater: false,
+    pendingSideBarTheaterLaunch: null,
   });
 
   root = createRoot(container);
