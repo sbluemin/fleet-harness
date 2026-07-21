@@ -7,7 +7,7 @@
 - Pure LLM-Wiki domain logic and types under `src/`
 - Public subpaths `./` and `./cowork` — the cowork subpath owns the terminal-free AI draft-editing engine (in-memory session store, one-shot session service, scoped MCP runtime, session DTOs). Provider connectors are structural (`CoworkConnector`) and MUST be injected by hosts; the engine never imports provider packages.
 - LLM-Wiki package-specific validation under `tests/`
-- `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (13종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`와 schema 조회 2종 `schema_list` / `schema_read`는 Chronicle 전용으로 제한, `patch_queue`와 create-only `schema_create`는 executor에 비노출 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님). Cowork의 `wiki_draft_read` / `wiki_draft_edit` / `wiki_draft_write`는 전역 레지스트리에 등록하지 않는 세션 전용 closure-injected 도구이며, 경로 또는 엔트리 ID 인자를 받지 않는다.
+- `@dotobokuri/core-agent` agent registry self-registration via `agent-specs.ts` (13종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 그 외 모든 도구 — 쓰기·stage·lint 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`, schema 3종 `schema_list` / `schema_read` / `schema_create`, 승인 게이트 `patch_queue` — 는 executor에 비노출된 host-only 도구로 어떤 캐리어도 받지 않으며 호스트가 Fleet Wiki 작업을 직접 수행한다 (`wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)). Cowork의 `wiki_draft_read` / `wiki_draft_edit` / `wiki_draft_write`는 전역 레지스트리에 등록하지 않는 세션 전용 closure-injected 도구이며, 경로 또는 엔트리 ID 인자를 받지 않는다.
 
 ## Must Not Own
 
@@ -33,8 +33,8 @@
 - `wiki_resolve` — Context-pack synthesizer combining briefing + read into compact JSON or `markdown_pack` output. Honors `freshness` (`prefer_recent` / `strict_current` / `any`), pulls claim provenance from `.claims/` sidecars when present, and reports `missing_or_uncertain`.
 - `wiki_compile_source` — Multi-page batch ingest from a single source. `mode="preview"` returns proposed patches without mutation; `mode="stage"` enqueues correlated patches under one `patch_set_id` (`queue/_sets/{id}/meta.json`).
 - `wiki_query` — Citation-aware query interface. `mode="answer"` returns context_pack + citations with no mutation; `mode="stage_answer_page"` (or `save_good_answer=true`) stages a wiki page patch under `wiki/queries/` or `wiki/synthesis/`. Claim sidecar auto-staging is deferred until queue auxiliary-file support is introduced; for now sidecars must be written manually via `writeClaims()`.
-- `wiki_schema_list` — Chronicle-scoped catalog of the workspace schema and available templates.
-- `wiki_schema_read` — Chronicle-scoped read of `schema/wiki-schema.md` or one named template.
+- `wiki_schema_list` — Host-only catalog of the workspace schema and available templates.
+- `wiki_schema_read` — Host-only read of `schema/wiki-schema.md` or one named template.
 - `wiki_schema_create` — Host-only direct creation of a new custom schema template; never updates or overwrites an existing template.
 - `wiki_draft_read` — Cowork session-scoped draft snapshot reader; not globally registered and accepts no path or entry ID.
 - `wiki_draft_edit` — Cowork session-scoped CAS draft editor; not globally registered and accepts no path or entry ID.

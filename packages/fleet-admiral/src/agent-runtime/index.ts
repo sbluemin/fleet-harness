@@ -76,14 +76,14 @@ const DEFAULT_RESERVED_EXTERNAL_MCP_SERVER_IDS = [
 	"fleet-wiki",
 	"fleet-tools",
 ] as const;
-const CHRONICLE_WIKI_TOOL_IDS = new Set([
-	"wiki_drydock",
-	"wiki_ingest",
-	"wiki_patch_edit",
-	"wiki_compile_source",
-	"wiki_query",
-	"wiki_schema_list",
-	"wiki_schema_read",
+// 모든 캐리어에 글로벌로 노출되는 무조건 읽기 전용 Wiki 도구.
+// 이 화이트리스트에 없는 Wiki 도구(ingest/drydock/patch_edit/compile_source/query/schema_*/patch_queue)는
+// executor에 노출하지 않는 host-only 도구이며, 호스트 에이전트가 Fleet Wiki 작업을 직접 수행한다.
+const GLOBAL_READONLY_WIKI_TOOL_IDS = new Set([
+	"wiki_briefing",
+	"wiki_orient",
+	"wiki_read",
+	"wiki_resolve",
 ]);
 
 export function createFleetAgentRuntimeLifecycle(
@@ -214,14 +214,11 @@ function registerFleetAgentRuntimeTools(
 
 function registerWikiToolSpec(mcpRegistry: McpToolRegistry, spec: AgentToolSpec): void {
 	mcpRegistry.registerAgentTool(spec);
-	if (spec.id === "wiki_patch_queue" || spec.id === "wiki_schema_create") {
-		return;
+	// 읽기 전용 도구만 executor(캐리어)에 글로벌 노출한다. 그 외 Wiki 도구는 host-only —
+	// 호스트가 orient·구성·ingest·승인까지 직접 수행하므로 어떤 캐리어에도 노출하지 않는다.
+	if (GLOBAL_READONLY_WIKI_TOOL_IDS.has(spec.id)) {
+		mcpRegistry.registerExecutorTool(spec);
 	}
-	if (CHRONICLE_WIKI_TOOL_IDS.has(spec.id)) {
-		mcpRegistry.registerExecutorTool(spec, { allowedScopes: ["chronicle"] });
-		return;
-	}
-	mcpRegistry.registerExecutorTool(spec);
 }
 
 function registerExecutorMcpRuntimeProvider(

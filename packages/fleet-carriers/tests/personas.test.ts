@@ -54,15 +54,6 @@ const EXPECTED_DEFAULTS = {
 } as const;
 
 const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
-  "wiki_briefing",
-  "wiki_drydock",
-  "wiki_ingest",
-  "wiki_orient",
-  "wiki_query",
-  "wiki_read",
-  "wiki_resolve",
-  "wiki_schema_list",
-  "wiki_schema_read",
   "carrier_jobs",
   "plan_read",
 ] as const;
@@ -110,9 +101,11 @@ describe("PRIOR_JOBS_REQUEST_HINT", () => {
 });
 
 describe("allowedExecutorTools", () => {
-  it("chronicle은 schema list/read를 포함한 executor 도구를 정확히 선언", () => {
+  it("chronicle은 Fleet Wiki executor 도구를 선언하지 않는다 (host가 직접 수행)", () => {
     expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
-    expect(CHRONICLE_METADATA.allowedExecutorTools).not.toContain("wiki_schema_create");
+    for (const tool of CHRONICLE_METADATA.allowedExecutorTools) {
+      expect(tool).not.toMatch(/^wiki_/);
+    }
   });
 
   it("모든 기본 persona가 carrier_jobs를 명시 선언", () => {
@@ -123,13 +116,12 @@ describe("allowedExecutorTools", () => {
 });
 
 describe("Chronicle routing metadata", () => {
-  it("keeps governed-knowledge routing Wiki-neutral", () => {
+  it("keeps routing Wiki-neutral", () => {
     expect(CHRONICLE_METADATA.title).toBe("Chief Knowledge Officer");
-    expect(CHRONICLE_METADATA.summary).toBe("Documentation and governed knowledge stewardship.");
+    expect(CHRONICLE_METADATA.summary).toBe("Codebase documentation stewardship.");
     expect(CHRONICLE_METADATA.whenToUse).toEqual([
-      "[Codebase Doc] documentation creation, update, or post-change .md audit (including AGENTS.md, README, CHANGELOG)",
-      "[Codebase Doc] PR summaries, release notes, API specs (OpenAPI/Swagger), change-impact summaries, breaking-change reports, migration guides",
-      "[Governed Knowledge] structured knowledge entry proposal or revision",
+      "documentation creation, update, or post-change .md audit (including AGENTS.md, README, CHANGELOG)",
+      "PR summaries, release notes, API specs (OpenAPI/Swagger), change-impact summaries, breaking-change reports, migration guides",
     ]);
     expect(CHRONICLE_METADATA.whenNotToUse).toEqual([
       "before implementation and verification are complete",

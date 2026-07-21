@@ -62,7 +62,7 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <focus_areas?> optional: Specific directories, files, symbols, or code patterns to prioritize.
   - <constraints?> optional: Time constraints, specific branches/tags, or areas to exclude.
 - **chronicle** (Chronicle · Chief Knowledge Officer) — wrap request content in these blocks (? = optional):
-  - <target> required: [Codebase Doc] which code, module, PR, feature, or release artifact to document. [Fleet Wiki] which feature area or wiki entry slug.
-  - <doc_type> required: [Codebase Doc] README, API spec, PR summary, release notes, changelog, AGENTS.md, '.md-audit', change-impact summary, breaking-change report, migration guide. [Fleet Wiki] 'wiki-create' (new entry) or 'wiki-update' (existing entry revision).
+  - <target> required: which code, module, PR, feature, or release artifact to document.
+  - <doc_type> required: README, API spec, PR summary, release notes, changelog, AGENTS.md, '.md-audit', change-impact summary, breaking-change report, migration guide.
   - <audience> required: developers, end-users, API consumers, operators, or contributors.
-  - <scope?> optional: [Codebase Doc] include/exclude; for changelogs/change-impact/audits: commit range, PR, diff, feature slice, deployment scope. [Fleet Wiki] feature_area, target wiki id (for update), tags.
+  - <scope?> optional: include/exclude; for changelogs/change-impact/audits: commit range, PR, diff, feature slice, deployment scope.
