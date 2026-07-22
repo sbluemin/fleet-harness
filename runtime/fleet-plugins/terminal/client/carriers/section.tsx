@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { Select } from "@fleet-console/sdk/react/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 
 import {
@@ -232,16 +233,14 @@ function CarrierSettingsSection() {
                 <div className="terminal-carriers-runtime">
                   <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--cli">
                     <div className="terminal-carriers-field terminal-carriers-field--wide">
-                      <label className="terminal-carriers-label" htmlFor="carrier-cli">CLI</label>
-                      <select
-                        id="carrier-cli"
-                        className="terminal-carriers-select"
+                      <span className="terminal-carriers-label" id="carrier-cli-label">CLI</span>
+                      <Select
+                        aria-labelledby="carrier-cli-label"
                         value={activePendingSelections.cli ?? activeCarrier.cliType}
                         disabled={isSaving}
-                        onChange={(event) => void handleCliChange(event.target.value)}
-                      >
-                        {settings.options.cliTypes.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
-                      </select>
+                        options={settings.options.cliTypes.map((cli) => ({ value: cli.id, label: cli.displayName }))}
+                        onChange={(cliType) => void handleCliChange(cliType)}
+                      />
                     </div>
                   </div>
                   <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--model">
