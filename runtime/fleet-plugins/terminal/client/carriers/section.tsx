@@ -504,9 +504,14 @@ function TaskForcePanel({
         })}
         <div className="terminal-carriers-tf-add-row">
           {addOpen && availableCliOptions.length > 0 ? (
-            <select className="terminal-carriers-select terminal-carriers-tf-add-select" value={selectedAddCliType} disabled={isSaving} onChange={(event) => setAddCliType(event.target.value)} aria-label="Task Force CLI to add">
-              {availableCliOptions.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
-            </select>
+            <Select
+              className="terminal-carriers-tf-add-select"
+              label="Task Force CLI to add"
+              value={selectedAddCliType}
+              disabled={isSaving}
+              options={availableCliOptions.map((cli) => ({ value: cli.id, label: cli.displayName }))}
+              onChange={(cliId) => setAddCliType(cliId)}
+            />
           ) : null}
           <button type="button" className="terminal-carriers-ghost-button" disabled={availableCliOptions.length === 0 || isSaving} onClick={() => {
             if (!addOpen) {
