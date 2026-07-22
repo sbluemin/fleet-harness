@@ -24,6 +24,8 @@ import { createPluginTerminalUpgradeHandler } from "../../fleet-plugins/terminal
 
 const fleetAdmiralMock = vi.hoisted(() => ({
   agentRuntimeQueue: [] as unknown[],
+  esbuildExternals: [] as string[][],
+  externalizeForReminderFixture: false,
   resolveProfile: null as null | ((...args: readonly unknown[]) => unknown),
 }));
 
@@ -35,6 +37,22 @@ vi.mock("@dotobokuri/fleet-admiral", async (importOriginal) => {
       fleetAdmiralMock.agentRuntimeQueue.shift() ?? actual.createFleetAgentRuntimeLifecycle(deps),
     resolveAgentCliProfile: (...args: Parameters<typeof actual.resolveAgentCliProfile>) =>
       fleetAdmiralMock.resolveProfile?.(...args) ?? actual.resolveAgentCliProfile(...args),
+  };
+});
+
+vi.mock("esbuild", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("esbuild")>();
+  return {
+    ...actual,
+    build: (options: Parameters<typeof actual.build>[0]) => {
+      if (!fleetAdmiralMock.externalizeForReminderFixture) {
+        fleetAdmiralMock.esbuildExternals.push([...(options.external ?? [])]);
+        return actual.build(options);
+      }
+      const external = [...(options.external ?? []), "@dotobokuri/fleet-admiral"];
+      fleetAdmiralMock.esbuildExternals.push(external);
+      return actual.build({ ...options, external });
+    },
   };
 });
 
@@ -80,8 +98,10 @@ let previousStaticIndex: string | null | undefined;
 const CONSOLE_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 afterEach(async () => {
+  fleetAdmiralMock.externalizeForReminderFixture = false;
   for (const server of servers.splice(0)) await server.stop();
   fleetAdmiralMock.agentRuntimeQueue.length = 0;
+  fleetAdmiralMock.esbuildExternals.length = 0;
   fleetAdmiralMock.resolveProfile = null;
   delete (globalThis as { __fleetTerminalLaunch?: unknown }).__fleetTerminalLaunch;
   delete (globalThis as { __fleetTerminalStartShell?: unknown }).__fleetTerminalStartShell;
@@ -728,6 +748,7 @@ describe("console static and terminal ticket boundary", () => {
   });
 
   it("cleans stale plugin bundles on startup and this run's bundles on server stop", async () => {
+    const buildCallOffset = fleetAdmiralMock.esbuildExternals.length;
     const pluginPackage = createPluginPackageRoot({
       demoRoutes: "export function register() {}",
       demoRoutesFile: "routes.ts",
@@ -741,9 +762,12 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const cacheDir = path.join(fixture.carrierStoreDir, "console", "plugin-cache");
+    const fixtureBuildExternals = fleetAdmiralMock.esbuildExternals.slice(buildCallOffset);
 
     expect(fs.existsSync(path.join(cacheDir, "fleet-console-plugin-crashed"))).toBe(false);
     expect(fs.readdirSync(cacheDir).filter((entry) => entry.startsWith("fleet-console-plugin-"))).not.toEqual([]);
+    expect(fixtureBuildExternals).toHaveLength(1);
+    expect(fixtureBuildExternals[0]).not.toContain("@dotobokuri/fleet-admiral");
 
     await fixture.server.stop();
 
@@ -819,13 +843,13 @@ describe("console static and terminal ticket boundary", () => {
     expect(runtime.cleanup).not.toHaveBeenCalled();
   });
 
-  it.skip("injects finalized carrier reminders only into the originating live terminal session", async () => {
+  it("serializes finalized carrier reminders in their originating live terminal session and cancels submit on deletion", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-reminder-"));
     tempDirs.push(dir);
     const runtime = createFakeConsoleRuntime([], []);
+    fleetAdmiralMock.agentRuntimeQueue.push(runtime);
     const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
-    const fixture = await startFixture({
-      agentRuntime: runtime as never,
+    const fixture = await startReminderFixture({
       terminalLaunch: async (cwd, context) => ({
         bin: "mock",
         args: [],
@@ -842,35 +866,57 @@ describe("console static and terminal ticket boundary", () => {
         return pty;
       },
     });
+    expect(fleetAdmiralMock.externalizeForReminderFixture).toBe(false);
     const headers = { "Content-Type": "application/json" };
-    const first = await createTerminalSession(fixture, headers, dir);
-    const second = await createTerminalSession(fixture, headers, dir);
+    const theater = await createTheater(fixture, dir);
+    const first = await createAgentTerminalSession(fixture, theater.id, headers);
+    const second = await createAgentTerminalSession(fixture, theater.id, headers);
+    expect(fleetAdmiralMock.agentRuntimeQueue).toEqual([]);
 
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "progress" });
+    runtime.emit({ type: "track:text", jobId: "job-a2", originSessionId: first.sessionId, trackId: "t1", text: "progress" });
+    runtime.emit({ type: "track:text", jobId: "job-b", originSessionId: second.sessionId, trackId: "t1", text: "progress" });
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "ignored", systemReminder: "not-final" });
     runtime.emit({ type: "job:finalized", jobId: "missing-origin", status: "done", finishedAt: 1, summary: "missing", systemReminder: "drop me" });
-    runtime.emit({ type: "job:finalized", jobId: "job-a", status: "done", finishedAt: 2, summary: "done", systemReminder: "line 1\nline 2\x1b[201~\x07" });
+    runtime.emit({ type: "job:finalized", jobId: "job-a", status: "done", finishedAt: 2, summary: "done", systemReminder: "first\x1b[201~\x07" });
+    runtime.emit({ type: "job:finalized", jobId: "job-a2", status: "done", finishedAt: 3, summary: "done", systemReminder: "second" });
+    runtime.emit({ type: "job:finalized", jobId: "job-b", status: "done", finishedAt: 4, summary: "done", systemReminder: "other" });
 
-    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~\r"]);
-    expect(ptys.get(second.sessionId)?.writes).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~first\x1b[201~"]);
+    expect(ptys.get(second.sessionId)?.writes).toEqual(["\x1b[200~other\x1b[201~"]);
 
-    runtime.emit({ type: "track:text", jobId: "job-b", originSessionId: second.sessionId, trackId: "t1", text: "progress" });
-    const deleted = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(second.sessionId)}`, { method: "DELETE" });
-    runtime.emit({ type: "job:finalized", jobId: "job-b", status: "done", finishedAt: 3, summary: "done", systemReminder: "after delete" });
-    runtime.emit({ type: "job:finalized", jobId: "job-c", originSessionId: "unknown", status: "done", finishedAt: 4, summary: "done", systemReminder: "unknown" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~first\x1b[201~", "\r", "\x1b[200~second\x1b[201~"]);
+    expect(ptys.get(second.sessionId)?.writes).toEqual(["\x1b[200~other\x1b[201~", "\r"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~first\x1b[201~", "\r", "\x1b[200~second\x1b[201~", "\r"]);
+
+    runtime.emit({ type: "track:text", jobId: "job-delete", originSessionId: second.sessionId, trackId: "t1", text: "progress" });
+    runtime.emit({ type: "job:finalized", jobId: "job-delete", status: "done", finishedAt: 5, summary: "done", systemReminder: "delete-before-submit" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const deleted = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions/${encodeURIComponent(second.sessionId)}`, { method: "DELETE" });
+    runtime.emit({ type: "job:finalized", jobId: "job-after-delete", originSessionId: second.sessionId, status: "done", finishedAt: 6, summary: "done", systemReminder: "after delete" });
+    runtime.emit({ type: "job:finalized", jobId: "job-unknown", originSessionId: "unknown", status: "done", finishedAt: 7, summary: "done", systemReminder: "unknown" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     expect(deleted.status).toBe(200);
-    expect(ptys.get(second.sessionId)?.writes).toEqual([]);
-    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~\r"]);
+    expect(ptys.get(second.sessionId)?.writes).toEqual([
+      "\x1b[200~other\x1b[201~",
+      "\r",
+      "\x1b[200~delete-before-submit\x1b[201~",
+    ]);
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~first\x1b[201~", "\r", "\x1b[200~second\x1b[201~", "\r"]);
   });
 
-  it.skip("keeps carrier reminder payloads out of browser snapshots and SSE frames", async () => {
+  it("keeps carrier reminder payloads out of browser snapshots and SSE frames", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-reminder-browser-"));
     tempDirs.push(dir);
     const runtime = createFakeConsoleRuntime([], []);
+    fleetAdmiralMock.agentRuntimeQueue.push(runtime);
     const secret = "server-only-system-reminder-secret";
-    const fixture = await startFixture({
-      agentRuntime: runtime as never,
+    const fixture = await startReminderFixture({
       terminalLaunch: async (cwd, context) => ({
         bin: "mock",
         args: [],
@@ -883,15 +929,19 @@ describe("console static and terminal ticket boundary", () => {
       }),
       terminalStartShell: () => createRecordingPty(),
     });
-    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
+    expect(fleetAdmiralMock.externalizeForReminderFixture).toBe(false);
+    const headers = { "Content-Type": "application/json" };
+    const theater = await createTheater(fixture, dir);
+    const session = await createAgentTerminalSession(fixture, theater.id, headers);
+    expect(fleetAdmiralMock.agentRuntimeQueue).toEqual([]);
 
     runtime.emit({ type: "track:text", jobId: "job-secret", originSessionId: session.sessionId, trackId: "t1", text: "visible" });
     runtime.emit({ type: "job:finalized", jobId: "job-secret", status: "done", finishedAt: 1, summary: "done", systemReminder: secret });
 
-    const terminalSessions = await getJson<unknown>(`${fixture.endpoint}terminal/sessions`);
-    const observerTenants = await getJson<unknown>(`${fixture.endpoint}observer/tenants`);
-    const observerJobs = await getJson<unknown>(`${fixture.endpoint}observer/jobs`);
-    const sse = await readObserverChunk(fixture);
+    const terminalSessions = await getJson<unknown>(`${fixture.endpoint}plugins/terminal/agent/sessions`);
+    const observerTenants = await getJson<unknown>(`${fixture.endpoint}plugins/terminal/agent/tenants`);
+    const observerJobs = await getJson<unknown>(`${fixture.endpoint}plugins/terminal/agent/jobs`);
+    const sse = await readObserverChunk(fixture, "plugins/terminal/agent/events");
     const serialized = JSON.stringify({ terminalSessions, observerTenants, observerJobs, sse });
 
     expect(serialized).not.toContain("systemReminder");
@@ -2602,6 +2652,15 @@ describe("observer theater order", () => {
   });
 });
 
+async function startReminderFixture(options: Parameters<typeof startFixture>[0] = {}): Promise<ServerFixture> {
+  fleetAdmiralMock.externalizeForReminderFixture = true;
+  try {
+    return await startFixture(options);
+  } finally {
+    fleetAdmiralMock.externalizeForReminderFixture = false;
+  }
+}
+
 async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
   readonly agentCliDetector?: ConsoleServerDeps["agentCliDetector"];
@@ -2692,6 +2751,16 @@ async function createTerminalSession(fixture: ServerFixture, headers: Record<str
     method: "POST",
     headers,
     body: JSON.stringify({ folderGrantId: grant.folderGrantId, cliId: "claude" }),
+  });
+  expect(created.status).toBe(200);
+  return created.json() as Promise<{ readonly sessionId: string }>;
+}
+
+async function createAgentTerminalSession(fixture: ServerFixture, theaterId: string, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
+  const created = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ theaterId, cliId: "claude" }),
   });
   expect(created.status).toBe(200);
   return created.json() as Promise<{ readonly sessionId: string }>;
@@ -2812,9 +2881,9 @@ async function getJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function readObserverChunk(fixture: ServerFixture): Promise<string> {
+async function readObserverChunk(fixture: ServerFixture, pathname = "observer/events"): Promise<string> {
   const controller = new AbortController();
-  const response = await fetch(`${fixture.endpoint}observer/events`, { signal: controller.signal });
+  const response = await fetch(`${fixture.endpoint}${pathname}`, { signal: controller.signal });
   const chunk = new TextDecoder().decode((await response.body!.getReader().read()).value);
   controller.abort();
   return chunk;
