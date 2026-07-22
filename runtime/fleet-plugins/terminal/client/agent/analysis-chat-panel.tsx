@@ -1,4 +1,5 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { Select } from "@fleet-console/sdk/react/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
@@ -238,7 +239,16 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             </div>
           ) : null}
           {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label="Initial analysis settings">
-            <span className="session-analyst__select"><select aria-label="Analysis CLI" disabled={state.started || !state.catalog} value={state.cliId} onChange={(event) => dispatch({ type: "select-cli", cliId: event.target.value })}>{state.catalog?.clis.map((item) => <option key={item.cliId} value={item.cliId} disabled={!item.available}>{item.label}</option>)}</select></span>
+            <span className="session-analyst__select">
+              <Select
+                compact
+                label="Analysis CLI"
+                value={state.cliId}
+                disabled={state.started || !state.catalog}
+                options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
+                onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
+              />
+            </span>
             <span className="session-analyst__select"><select aria-label="Analysis model" disabled={state.started || !model} value={state.model} onChange={(event) => dispatch({ type: "select-model", model: event.target.value })}>{cli?.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></span>
             <span className="session-analyst__select"><select aria-label="Analysis effort" disabled={state.started || !model || !model.effortLevels.length} value={state.effort} onChange={(event) => dispatch({ type: "select-effort", effort: event.target.value })}>{model?.effortLevels.length ? model.effortLevels.map((item) => <option key={item} value={item}>{item}</option>) : <option value="">n/a</option>}</select></span>
           </div> : null}
