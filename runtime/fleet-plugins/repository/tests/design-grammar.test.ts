@@ -78,7 +78,11 @@ describe("Repository design grammar", () => {
     const activeNav = blockOf('.repository-source-nav button[aria-current="page"]');
     expect(activeNav).toContain("var(--text-primary)");
     expect(activeNav).toContain("var(--ink-fog) 10%");
-    expect(activeNav).toContain("inset 2px 0 0 var(--brass)");
+    // 활성 마크는 칩 라운드에 말리는 inset shadow가 아니라 identity 스파인과 같은 직선 사각 띠여야 한다.
+    expect(activeNav).not.toContain("inset 2px 0 0 var(--brass)");
+    const activeNavMark = blockOf('.repository-source-nav button[aria-current="page"]::before');
+    expect(activeNavMark).toContain("width: 2px");
+    expect(activeNavMark).toContain("var(--brass)");
 
     expect(blockOf(".history-badge--tag")).not.toContain("var(--brass)");
     expect(blockOf(".history-badge--head")).toContain("var(--brass)");

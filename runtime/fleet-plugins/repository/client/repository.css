@@ -989,8 +989,11 @@
 /* --surface-deep은 어느 테마에도 정의된 적 없는 토큰이라 이 선언은 계속 무효였다(배경 투명).
    정체 스트립과 같은 테마 재질을 이어받도록 --surface-band를 소비한다. */
 .repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); }
-.repository-source-nav button, .repository-source-nav span { min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
-.repository-source-nav button[aria-current="page"] { color: var(--text-primary); background: color-mix(in oklch, var(--ink-fog) 10%, transparent); box-shadow: inset 2px 0 0 var(--brass); }
+.repository-source-nav button, .repository-source-nav span { position: relative; min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
+.repository-source-nav button[aria-current="page"] { color: var(--text-primary); background: color-mix(in oklch, var(--ink-fog) 10%, transparent); }
+/* 활성 마크는 identity 스파인과 동일한 직선 전고 사각 띠 — inset shadow는 칩 라운드를 따라 휘므로
+   ::before를 나브 좌측 에지(패딩 6px 밖)에 그려 형태를 통일한다. */
+.repository-source-nav button[aria-current="page"]::before { content: ""; position: absolute; top: 0; bottom: 0; left: -6px; width: 2px; background: var(--brass); }
 .repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
 .repository-source-nav b { padding: 8px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; }
 .repository-source-nav svg { width: 14px; height: 14px; flex: none; }
