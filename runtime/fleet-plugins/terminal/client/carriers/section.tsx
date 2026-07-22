@@ -299,12 +299,17 @@ function CarrierChip({ carrier, active, minBackends, onSelect }: { readonly carr
 }
 
 function ModelSelect({ id, label, models, value, disabled = false, onChange }: { readonly id: string; readonly label: string; readonly models: readonly CarrierSettingsModelOption[]; readonly value: string; readonly disabled?: boolean; readonly onChange: (modelId: string) => void }) {
+  const labelId = `${id}-label`;
   return (
     <div className="terminal-carriers-field">
-      <label className="terminal-carriers-label" htmlFor={id}>{label}</label>
-      <select id={id} className="terminal-carriers-select" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        {models.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
-      </select>
+      <span className="terminal-carriers-label" id={labelId}>{label}</span>
+      <Select
+        aria-labelledby={labelId}
+        value={value}
+        disabled={disabled}
+        options={models.map((model) => ({ value: model.modelId, label: model.name }))}
+        onChange={onChange}
+      />
     </div>
   );
 }
