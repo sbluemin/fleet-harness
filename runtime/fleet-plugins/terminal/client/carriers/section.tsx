@@ -323,12 +323,17 @@ function EffortSelect({ id, model, value, disabled = false, onChange }: { readon
       </div>
     );
   }
+  const labelId = `${id}-label`;
   return (
     <div className="terminal-carriers-field">
-      <label className="terminal-carriers-label" htmlFor={id}>Effort</label>
-      <select id={id} className="terminal-carriers-select" value={value || model.effort.default} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        {model.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}
-      </select>
+      <span className="terminal-carriers-label" id={labelId}>Effort</span>
+      <Select
+        aria-labelledby={labelId}
+        value={value || model.effort.default}
+        disabled={disabled}
+        options={model.effort.levels.map((level) => ({ value: level, label: level }))}
+        onChange={onChange}
+      />
     </div>
   );
 }
