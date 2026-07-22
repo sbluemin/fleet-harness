@@ -20,13 +20,14 @@ import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { RequestDetails } from "./request-details.js";
+import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
 import type { AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
 
@@ -53,8 +54,6 @@ interface RendererOption {
 interface DockRowProps {
   readonly track: TrackView;
   readonly job: JobView;
-  readonly multiJob: boolean;
-  readonly singleTrack: boolean;
 }
 
 interface PinnedScrollLocal {
@@ -489,7 +488,6 @@ function StreamDock({
   const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
   const tokenLabel = formatTokenEstimate(totalTokens);
 
-  const captain = activeJobs.length === 1 && primaryJob ? resolveCarrierCaptain(primaryJob.ownerCarrierId) : undefined;
   const jobLabel = activeJobs.length === 1 && primaryJob ? primaryJob.label : undefined;
 
   const carrierLabel = activeJobs.length > 1
@@ -513,14 +511,35 @@ function StreamDock({
     job.status === "error" || job.trackOrder.some((trackId) => isTrackError(job.tracks[trackId]?.status ?? ""))
   );
   const dotClassName = hasActiveJob ? "job-dock-dot" : hasError ? "job-dock-dot job-dock-dot--error" : "job-dock-dot job-dock-dot--idle";
+  const stripTone = hasError ? "is-error" : hasActiveJob ? "is-live" : "is-complete";
+  const ownerCaptains = [...new Set(activeJobs.map((job) => resolveCarrierCaptain(job.ownerCarrierId)).filter((id): id is string => Boolean(id)))];
+  const visibleCaptains = ownerCaptains.slice(0, 4);
+  const hiddenCaptainCount = Math.max(0, ownerCaptains.length - visibleCaptains.length);
+  const deckTracks = activeJobs.flatMap((job) => job.trackOrder.flatMap((trackId) => {
+    const track = job.tracks[trackId];
+    return track ? [{ job, track }] : [];
+  }));
+  const visibleDeckTracks = deckTracks.slice(0, 6);
+  const hiddenTrackCount = Math.max(0, deckTracks.length - visibleDeckTracks.length);
 
   return (
     <div className="job-dock">
-      <div className="job-dock-strip">
+      <div className={`job-dock-strip ${stripTone}`}>
         <span className={dotClassName} aria-hidden="true" />
         <span className="job-dock-carrier" title={jobLabel}>
-          {captain ? <span className="job-dock-captain-dot" data-captain={captain} aria-hidden="true" /> : null}
+          {visibleCaptains.length > 0 ? (
+            <span className="job-dock-captain-stack" aria-hidden="true">
+              {visibleCaptains.map((captain) => <span key={captain} className="job-dock-captain-dot" data-captain={captain} />)}
+            </span>
+          ) : null}
           <span className="job-dock-captain-tag">{carrierLabel}</span>
+          {hiddenCaptainCount > 0 ? <span className="job-dock-captain-tag">+{hiddenCaptainCount}</span> : null}
+        </span>
+        <span className="job-dock-seg" aria-hidden="true">
+          {visibleDeckTracks.map(({ job, track }) => (
+            <i key={`${job.jobId}:${track.trackId}`} data-tone={dockSegmentTone(track, job.status)} />
+          ))}
+          {hiddenTrackCount > 0 ? <span>+{hiddenTrackCount}</span> : null}
         </span>
         <span className="job-dock-strip-line" style={expanded ? { display: "none" } : undefined} aria-hidden="true">
           {tail.thinking ? <span className="thinking-chip">thinking…</span> : tail.text}
@@ -550,14 +569,7 @@ function StreamDock({
       </div>
       <div className={`job-dock-body-wrap${expanded ? "" : " is-collapsed"}`}>
         <div ref={containerRef} className="job-dock-body" tabIndex={-1}>
-          {activeJobs.length === 1 && jobLabel ? (
-            <div className="job-dock-row">
-              <span className="job-dock-row-label">{jobLabel}</span>
-            </div>
-          ) : null}
           {activeJobs.map((job) => {
-            const multiJob = activeJobs.length > 1;
-            const singleTrack = !multiJob && job.trackOrder.length === 1;
             return job.trackOrder.map((trackId) => {
               const track = job.tracks[trackId];
               return track ? (
@@ -565,8 +577,6 @@ function StreamDock({
                   key={`${job.jobId}:${trackId}`}
                   track={track}
                   job={job}
-                  multiJob={multiJob}
-                  singleTrack={singleTrack}
                 />
               ) : null;
             });
@@ -582,36 +592,28 @@ function StreamDock({
   );
 }
 
-function DockRow({ track, job, multiJob, singleTrack }: DockRowProps) {
+function DockRow({ track, job }: DockRowProps) {
   const isLive = isDockTrackLive(job.status, track.status);
   const tailOutput = getLastLine(track.text);
   const displayLine = tailOutput;
   const showThinking = !displayLine && isLive && Boolean(track.thought);
-  const activeTool = isLive ? getActiveToolName(track) : undefined;
-  const statusLabel = resolveDockRowStatusLabel(track.status, job.status);
-
-  // 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략
-  const showName = multiJob || !singleTrack;
-  const nameCaptain = multiJob ? resolveCarrierCaptain(job.ownerCarrierId) : undefined;
+  const captain = resolveCarrierCaptain(job.ownerCarrierId);
+  const phase = deriveTrackPhase(track, job.status);
+  const elapsed = useElapsed(track.startedAt ?? job.startedAt, track.finishedAt ?? job.finishedAt);
 
   return (
-    <div className="job-dock-row">
-      {showName ? (
-        <span className="job-dock-row-name">
-          {nameCaptain ? <span className="job-dock-captain-dot" data-captain={nameCaptain} aria-hidden="true" /> : null}
-          <span className="job-dock-captain-tag">{track.displayName}</span>
-        </span>
-      ) : null}
-      <span className={`job-dock-row-status${isLive ? " job-dock-row-status--live" : ""}${isTrackError(statusLabel) ? " job-dock-row-status--error" : ""}`}>
-        {statusLabel}{activeTool ? ` · ${activeTool}` : ""}
+    <div className="job-dock-card" data-captain={captain} data-tone={phase.tone}>
+      <span className="job-dock-card-who">
+        {captain ? <span className="job-dock-captain-dot" data-captain={captain} aria-hidden="true" /> : null}
+        <span className="job-dock-captain-tag">{track.displayName}</span>
       </span>
-      {displayLine ? (
-        <span className="job-dock-row-line">
-          {displayLine}
-          {isLive ? <span className="job-dock-caret" aria-hidden="true" /> : null}
-        </span>
-      ) : null}
-      {showThinking ? <span className="thinking-chip">thinking…</span> : null}
+      <span className="job-dock-card-copy">
+        <span className="job-dock-card-phase">{phase.label}</span>
+        {displayLine ? <span className="job-dock-card-line">{displayLine}</span> : null}
+        {showThinking ? <span className="thinking-chip">thinking…</span> : null}
+      </span>
+      <span className="job-dock-card-meta">{elapsed}</span>
+      <span className="job-dock-card-bar" aria-hidden="true"><i /></span>
     </div>
   );
 }
@@ -943,7 +945,6 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
 
 function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly jobStatus: string }) {
   const modifier = trackCardModifier(track.status, jobStatus);
-  const isLive = modifier === "track-card--live";
   // 칩 텍스트도 modifier와 같은 해석에서 파생 — 종결 잡의 미종결 트랙이 coral 카드에
   // raw "stream" 라벨을 다는 표기 분열을 막는다(라이브 트랙은 자기 상태 그대로).
   const statusLabel = resolveDockRowStatusLabel(track.status, jobStatus);
@@ -962,18 +963,29 @@ function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly j
         </details>
       ) : null}
       {track.text ? (
-        <div className="track-card-text" role="group" aria-label="Output">
-          <span className="track-card-section-label track-card-section-label--output" aria-hidden="true">output</span>
-          <pre>{track.text}{isLive ? <span className="track-card-caret" aria-hidden="true" /> : null}</pre>
-        </div>
+        <StreamedMarkdown className="track-card-output markdown-body" text={track.text} streaming={!isTerminalJobStatus(track.status)} />
       ) : null}
       {track.error ? (
         <div className="track-card-error" role="group" aria-label="Error">{track.error}</div>
       ) : null}
       {track.tools.length > 0 ? (
-        <ul className="track-card-tools">
-          {track.tools.map((tool) => <li key={tool.id}>{tool.name ?? tool.id}</li>)}
-        </ul>
+        <div className="track-card-tools" role="list" aria-label="Tools">
+          {track.tools.map((tool) => {
+            const target = describeToolTarget(tool.input);
+            const tone = tool.status === "done" || tool.status === "completed"
+              ? "is-done"
+              : tool.status === "error" || tool.status === "failed"
+                ? "is-error"
+                : "is-live";
+            return (
+              <span key={tool.id} className={`track-card-tool-chip ${tone}`} role="listitem">
+                <i aria-hidden="true" />
+                <strong>{tool.name ?? tool.id}</strong>
+                {target ? <span>{target}</span> : null}
+              </span>
+            );
+          })}
+        </div>
       ) : null}
     </article>
   );
@@ -1012,18 +1024,18 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function getActiveToolName(track: TrackView): string | undefined {
-  const tool = track.tools.find(
-    (t) => t.status !== "completed" && t.status !== "failed" && t.status !== "error"
-  );
-  return tool ? (tool.name ?? tool.id) : undefined;
-}
-
 function getLastLine(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
   const lines = trimmed.split("\n");
   return lines[lines.length - 1]?.trim() ?? "";
+}
+
+function dockSegmentTone(track: TrackView, jobStatus: string): "live" | "done" | "error" | undefined {
+  const status = resolveDockRowStatusLabel(track.status, jobStatus);
+  if (isTrackError(status) || status === "aborted") return "error";
+  if (status === "done") return "done";
+  return isDockTrackLive(jobStatus, track.status) ? "live" : undefined;
 }
 
 function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {

@@ -1,11 +1,11 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 
 import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
 import { useAnalysisStore } from "./analysis-store.js";
+import { StreamedMarkdown } from "./streamed-markdown.js";
 
 const SUGGESTIONS = [
   { icon: "◈", tone: "aurora", text: "Walk me through how this session unfolded" },
@@ -26,7 +26,6 @@ const SLASH_COMMANDS = [
   { command: "/risks", description: "Flag anything that needs review", template: "Flag anything I should review before this work continues." },
   { command: "/timeline", description: "How the session unfolded, end to end", template: "Walk me through how this session unfolded." },
 ] as const;
-const STREAM_RENDER_DELAY_MS = 32;
 export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
@@ -160,7 +159,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               {state.entries.map((entry, index) => (
                 <li className={`session-analyst__message session-analyst__message--${entry.role}`} key={`${entry.role}-${index}`}>
                   {entry.role === "analyst"
-                    ? <AnalystMarkdownResponse text={entry.text} streaming={state.busy && index === state.entries.length - 1} />
+                    ? <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={state.busy && index === state.entries.length - 1} />
                     : entry.text}
                 </li>
               ))}
@@ -314,38 +313,6 @@ function resizeAnalysisTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = `${nextHeight}px`;
   textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 }
-
-const AnalystMarkdownResponse = React.memo(function AnalystMarkdownResponse({ text, streaming }: { readonly text: string; readonly streaming: boolean }) {
-  const latestText = React.useRef(text);
-  const renderedText = React.useRef(streaming ? text : "");
-  const renderTimer = React.useRef<number | null>(null);
-  const [streamedHtml, setStreamedHtml] = React.useState(() => streaming ? renderMarkdown(text).html : "");
-  latestText.current = text;
-
-  const completedHtml = React.useMemo(() => streaming ? null : renderMarkdown(text).html, [streaming, text]);
-
-  React.useEffect(() => {
-    if (!streaming) {
-      if (renderTimer.current !== null) window.clearTimeout(renderTimer.current);
-      renderTimer.current = null;
-      return;
-    }
-    if (renderedText.current === text || renderTimer.current !== null) return;
-    renderTimer.current = window.setTimeout(() => {
-      renderTimer.current = null;
-      const nextText = latestText.current;
-      if (nextText === renderedText.current) return;
-      renderedText.current = nextText;
-      setStreamedHtml(renderMarkdown(nextText).html);
-    }, STREAM_RENDER_DELAY_MS);
-  }, [streaming, text]);
-
-  React.useEffect(() => () => {
-    if (renderTimer.current !== null) window.clearTimeout(renderTimer.current);
-  }, []);
-
-  return <div className="session-analyst__response markdown-body" dangerouslySetInnerHTML={{ __html: completedHtml ?? streamedHtml }} />;
-});
 
 function copyCodeToClipboard(button: HTMLElement, code: string): void {
   const clipboard = navigator.clipboard;

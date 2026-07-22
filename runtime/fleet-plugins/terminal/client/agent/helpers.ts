@@ -11,6 +11,11 @@ export interface DockTail {
   readonly thinking: boolean;
 }
 
+export interface TrackPhase {
+  readonly label: string;
+  readonly tone: "live" | "done" | "error";
+}
+
 const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"]);
 const BACKEND_CLIS = new Set(["claude", "claude-kimi", "codex", "opencode-go", "cursor"]);
 
@@ -64,6 +69,30 @@ export function isDockTrackLive(jobStatus: string, trackStatus: string): boolean
   // 종결 잡(잔존 표시 포함)의 트랙은 track:finalized가 누락돼 stale 라이브 상태로 남아도
   // 라이브로 취급하지 않는다 — 완료/에러 잡이 잔존 중 라이브 캐럿·aurora 신호를 얻는 것 방지.
   return !isTerminalJobStatus(jobStatus) && isTrackLive(trackStatus);
+}
+
+export function deriveTrackPhase(track: TrackView, jobStatus: string): TrackPhase {
+  if (isTrackError(track.status) || jobStatus === "error") return { label: "Error", tone: "error" };
+  if (track.status === "aborted" || jobStatus === "aborted") return { label: "Aborted", tone: "error" };
+  if (track.status === "done" || jobStatus === "done") return { label: "Done", tone: "done" };
+
+  const lastTool = track.tools.at(-1);
+  if (lastTool && lastTool.status !== "done" && lastTool.status !== "error") {
+    return { label: `Using ${lastTool.name ?? "tool"}`, tone: "live" };
+  }
+  if (track.text.length > 0) return { label: "Writing", tone: "live" };
+  if (track.thought.length > 0) return { label: "Reasoning", tone: "live" };
+  return { label: "Working", tone: "live" };
+}
+
+export function describeToolTarget(input: unknown): string | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  for (const key of ["file_path", "path", "file", "command", "query", "url", "pattern"] as const) {
+    const value = record[key];
+    if (typeof value === "string") return value.slice(0, 60);
+  }
+  return null;
 }
 
 export function resolveDockRowStatusLabel(trackStatus: string, jobStatus: string): string {

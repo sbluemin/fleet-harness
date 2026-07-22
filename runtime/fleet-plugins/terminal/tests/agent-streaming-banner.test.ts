@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -217,6 +217,84 @@ describe("isDockTrackLive (잡 종결 게이트 라이브 판정)", () => {
     expect(isDockTrackLive("done", "stream")).toBe(false);
     expect(isDockTrackLive("error", "active")).toBe(false);
     expect(isDockTrackLive("active", "done")).toBe(false);
+  });
+});
+
+describe("deriveTrackPhase (phase 카드 상태)", () => {
+  function makeTrack(overrides: Partial<JobView["tracks"][string]> = {}): JobView["tracks"][string] {
+    return {
+      trackId: "track-1",
+      displayName: "Carrier",
+      status: "stream",
+      lastEventId: 1,
+      text: "",
+      thought: "",
+      sentTextLength: 0,
+      sentThoughtLength: 0,
+      tools: [],
+      ...overrides,
+    };
+  }
+
+  it.each([
+    ["error", "active", { label: "Error", tone: "error" }],
+    ["stream", "error", { label: "Error", tone: "error" }],
+    ["aborted", "active", { label: "Aborted", tone: "error" }],
+    ["stream", "aborted", { label: "Aborted", tone: "error" }],
+    ["done", "active", { label: "Done", tone: "done" }],
+    ["stream", "done", { label: "Done", tone: "done" }],
+  ] as const)("track=%s job=%s의 종결 phase를 도출한다", (trackStatus, jobStatus, expected) => {
+    expect(deriveTrackPhase(makeTrack({ status: trackStatus }), jobStatus)).toEqual(expected);
+  });
+
+  it("마지막 미종결 도구를 출력보다 우선하고 이름이 없으면 tool로 폴백한다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      text: "partial output",
+      thought: "hidden reasoning",
+      tools: [
+        { id: "done", name: "read", status: "done" },
+        { id: "live", status: "running" },
+      ],
+    }), "active")).toEqual({ label: "Using tool", tone: "live" });
+  });
+
+  it("완료된 마지막 도구는 건너뛰고 Writing을 Reasoning보다 우선한다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      text: "partial output",
+      thought: "hidden reasoning",
+      tools: [{ id: "done", name: "read", status: "done" }],
+    }), "active")).toEqual({ label: "Writing", tone: "live" });
+  });
+
+  it("output 없이 thought가 있으면 Reasoning, 둘 다 없으면 Working이다", () => {
+    expect(deriveTrackPhase(makeTrack({ thought: "hidden reasoning" }), "active")).toEqual({ label: "Reasoning", tone: "live" });
+    expect(deriveTrackPhase(makeTrack(), "active")).toEqual({ label: "Working", tone: "live" });
+  });
+
+  it("종결 상태가 라이브 activity보다 항상 우선한다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      status: "done",
+      text: "output",
+      tools: [{ id: "live", name: "write", status: "running" }],
+    }), "active")).toEqual({ label: "Done", tone: "done" });
+    expect(deriveTrackPhase(makeTrack({ status: "done" }), "error")).toEqual({ label: "Error", tone: "error" });
+  });
+});
+
+describe("describeToolTarget (도구 대상 요약)", () => {
+  it("승인된 키 우선순위에서 첫 string 값을 선택한다", () => {
+    expect(describeToolTarget({ pattern: "later", command: "pnpm test", path: "src/index.ts", file_path: "src/main.ts" })).toBe("src/main.ts");
+    expect(describeToolTarget({ path: 42, file: "fallback.ts" })).toBe("fallback.ts");
+  });
+
+  it("대상을 60자로 절단한다", () => {
+    expect(describeToolTarget({ query: "q".repeat(75) })).toBe("q".repeat(60));
+  });
+
+  it("object가 아니거나 string 대상 키가 없으면 null이다", () => {
+    expect(describeToolTarget(null)).toBeNull();
+    expect(describeToolTarget(["file.ts"])).toBeNull();
+    expect(describeToolTarget({ path: false, other: "ignored" })).toBeNull();
   });
 });
 
