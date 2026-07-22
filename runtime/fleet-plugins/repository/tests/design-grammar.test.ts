@@ -105,9 +105,13 @@ describe("Repository design grammar", () => {
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
     for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
 
-    for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-compare-select", ".repository-view-toggle"]) {
+    for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-scan-depth", ".repository-view-toggle"]) {
       expect(blockOf(selector), selector).toContain("var(--ink-abyss) 35%");
     }
+  });
+
+  it("retires legacy compare ref select chrome", () => {
+    expect(css).not.toMatch(/\.repository-compare-select\b/);
   });
 
   it("keeps added and deleted rows monochromatic", () => {
