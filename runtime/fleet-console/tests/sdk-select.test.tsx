@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Select, type SelectOption } from "@fleet-console/sdk/react/browser";
 import { SettingsSelect } from "@fleet-console/sdk/settings/browser";
+import { isSelectOwnedKeyEvent } from "../core/client/src/components/whatsnew-modal.js";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -396,5 +397,97 @@ describe("SettingsSelect public contract", () => {
     const trigger = container.querySelector<HTMLButtonElement>(".fc-select__trigger");
     expect(trigger?.getAttribute("aria-label")).toBe("Select setting");
     expect(trigger?.disabled).toBe(true);
+  });
+});
+
+describe("WhatsNew modal key capture", () => {
+  it("defers modal capture while Select owns listbox keys and lets Escape close the popup first", () => {
+    const modalStopped = vi.fn();
+    const modalHandler = (event: KeyboardEvent) => {
+      if (isSelectOwnedKeyEvent(event)) return;
+      event.stopImmediatePropagation();
+      modalStopped();
+    };
+    window.addEventListener("keydown", modalHandler, true);
+
+    try {
+      renderSelect();
+      act(() => trigger().click());
+      act(() => {
+        trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      });
+      expect(document.querySelector(".fc-select__popup")).toBeNull();
+      expect(modalStopped).not.toHaveBeenCalled();
+
+      act(() => trigger().click());
+      act(() => {
+        trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      });
+      expect(modalStopped).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", modalHandler, true);
+    }
+  });
+
+  it("lets a second Escape on a closed trigger reach the modal handler", () => {
+    renderSelect();
+    act(() => trigger().click());
+    act(() => {
+      trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(document.querySelector(".fc-select__popup")).toBeNull();
+
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    Object.defineProperty(event, "target", { value: trigger() });
+    expect(isSelectOwnedKeyEvent(event)).toBe(false);
+  });
+
+  it("passes only open keys from a closed trigger and ignores unrelated open popups", () => {
+    const foreignPopup = document.createElement("ul");
+    foreignPopup.className = "fc-select__popup";
+    foreignPopup.dataset.open = "true";
+    document.body.appendChild(foreignPopup);
+
+    renderSelect();
+    const button = trigger();
+    button.focus();
+
+    const arrowDown = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    Object.defineProperty(arrowDown, "target", { value: button });
+    expect(isSelectOwnedKeyEvent(arrowDown)).toBe(true);
+
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    Object.defineProperty(escape, "target", { value: button });
+    expect(isSelectOwnedKeyEvent(escape)).toBe(false);
+
+    foreignPopup.remove();
+  });
+
+  it("does not defer modal capture when focus sits on a closed trigger beside another open popup", () => {
+    const foreignPopup = document.createElement("ul");
+    foreignPopup.className = "fc-select__popup";
+    foreignPopup.dataset.open = "true";
+    document.body.appendChild(foreignPopup);
+
+    const modalStopped = vi.fn();
+    const modalHandler = (event: KeyboardEvent) => {
+      if (isSelectOwnedKeyEvent(event)) return;
+      event.stopImmediatePropagation();
+      modalStopped();
+    };
+    window.addEventListener("keydown", modalHandler, true);
+
+    try {
+      renderSelect();
+      const button = trigger();
+      button.focus();
+      act(() => {
+        button.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      });
+      expect(modalStopped).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("keydown", modalHandler, true);
+      foreignPopup.remove();
+    }
   });
 });

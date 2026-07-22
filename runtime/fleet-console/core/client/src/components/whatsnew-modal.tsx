@@ -275,10 +275,26 @@ function releaseNoteKey(version: string, index: number): string {
   return `${version}:${index}`;
 }
 
+const SELECT_CLOSED_TRIGGER_OPEN_KEYS = new Set(["ArrowDown", "ArrowUp", "Enter", " "]);
+
+function isOpenSelectPopup(popup: Element | null): popup is HTMLElement {
+  return popup instanceof HTMLElement && popup.dataset.open === "true";
+}
+
 export function isSelectOwnedKeyEvent(event: KeyboardEvent): boolean {
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest(".fc-select__trigger, .fc-select__popup")) return true;
-  return document.querySelector(".fc-select__popup[data-open='true']") !== null;
+  if (!target) return false;
+
+  if (target.closest('.fc-select__popup[data-open="true"]')) return true;
+
+  const trigger = target.closest(".fc-select__trigger");
+  if (trigger instanceof HTMLButtonElement) {
+    const controlsId = trigger.getAttribute("aria-controls");
+    if (controlsId && isOpenSelectPopup(document.getElementById(controlsId))) return true;
+    return SELECT_CLOSED_TRIGGER_OPEN_KEYS.has(event.key);
+  }
+
+  return false;
 }
 
 function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {
