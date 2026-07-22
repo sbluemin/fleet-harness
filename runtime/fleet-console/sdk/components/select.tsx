@@ -13,10 +13,12 @@ export interface UseSelectOptions {
   readonly onChange: (next: string) => void;
   readonly disabled?: boolean;
   readonly id?: string;
+  readonly compact?: boolean;
 }
 
 export interface UseSelectResult {
   readonly isOpen: boolean;
+  readonly activeOptionId: string | undefined;
   readonly placement: "up" | "down";
   readonly rootRef: React.RefObject<HTMLDivElement | null>;
   readonly triggerRef: React.RefObject<HTMLButtonElement | null>;
@@ -50,6 +52,7 @@ export interface SelectProps extends UseSelectOptions {
 
 const POPUP_OFFSET_PX = 6;
 const POPUP_MAX_HEIGHT_PX = 232;
+const COMPACT_POPUP_MIN_WIDTH_PX = 160;
 const TYPEAHEAD_MS = 500;
 
 function enabledIndices(options: readonly SelectOption[]): readonly number[] {
@@ -60,13 +63,15 @@ function enabledIndices(options: readonly SelectOption[]): readonly number[] {
   return indices;
 }
 
-function computePopupStyle(trigger: DOMRect, placement: "up" | "down"): React.CSSProperties {
+function computePopupStyle(trigger: DOMRect, placement: "up" | "down", compact: boolean): React.CSSProperties {
+  const width = compact ? Math.max(COMPACT_POPUP_MIN_WIDTH_PX, trigger.width) : trigger.width;
+  const left = compact ? trigger.right - width : trigger.left;
   return placement === "down"
-    ? { position: "fixed", left: trigger.left, width: trigger.width, top: trigger.bottom + POPUP_OFFSET_PX }
+    ? { position: "fixed", left, width, top: trigger.bottom + POPUP_OFFSET_PX }
     : {
         position: "fixed",
-        left: trigger.left,
-        width: trigger.width,
+        left,
+        width,
         bottom: window.innerHeight - trigger.top + POPUP_OFFSET_PX,
       };
 }
@@ -88,6 +93,7 @@ export function useSelect({
   onChange,
   disabled = false,
   id,
+  compact = false,
 }: UseSelectOptions): UseSelectResult {
   const reactId = React.useId();
   const listboxId = id ?? `fc-select-${reactId.replace(/:/g, "")}`;
@@ -138,8 +144,8 @@ export function useSelect({
     const rect = trigger.getBoundingClientRect();
     const nextPlacement = resolvePlacement(rect);
     setPlacement(nextPlacement);
-    setPopupStyle(computePopupStyle(rect, nextPlacement));
-  }, []);
+    setPopupStyle(computePopupStyle(rect, nextPlacement, compact));
+  }, [compact]);
 
   const open = React.useCallback(
     (focusSelected = true) => {
@@ -254,6 +260,16 @@ export function useSelect({
 
   React.useEffect(() => () => clearTypeahead(), [clearTypeahead]);
 
+  React.useEffect(() => {
+    if (!isOpen || activeIndex < 0) return;
+    const optionId = optionIds[activeIndex];
+    if (!optionId) return;
+    const element = document.getElementById(optionId);
+    element?.scrollIntoView?.({ block: "nearest" });
+  }, [activeIndex, isOpen, optionIds]);
+
+  const activeOptionId = isOpen && activeIndex >= 0 ? optionIds[activeIndex] : undefined;
+
   const onTriggerKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLButtonElement>) => {
       if (isOpen) return;
@@ -292,6 +308,7 @@ export function useSelect({
 
   return {
     isOpen,
+    activeOptionId,
     placement,
     rootRef,
     triggerRef,
@@ -304,11 +321,13 @@ export function useSelect({
     triggerProps: {
       ref: triggerRef,
       type: "button",
+      role: "combobox",
       className: "fc-select__trigger",
       disabled,
       "aria-haspopup": "listbox",
       "aria-expanded": isOpen,
       "aria-controls": listboxId,
+      "aria-activedescendant": activeOptionId,
       onClick: onTriggerClick,
       onKeyDown: onTriggerKeyDown,
     },
@@ -316,11 +335,9 @@ export function useSelect({
       ref: popupRef,
       id: listboxId,
       role: "listbox",
-      tabIndex: -1,
-      className: "fc-select__popup",
+      className: compact ? "fc-select__popup fc-select__popup--compact" : "fc-select__popup",
       "data-open": isOpen ? "true" : "false",
       "data-placement": placement,
-      "aria-activedescendant": activeIndex >= 0 ? optionIds[activeIndex] : undefined,
       style: popupStyle,
     },
     getOptionProps,
@@ -338,7 +355,7 @@ export function Select({
   label,
   "aria-labelledby": ariaLabelledBy,
 }: SelectProps): React.ReactElement {
-  const select = useSelect({ value, options, onChange, disabled, id });
+  const select = useSelect({ value, options, onChange, disabled, id, compact });
   const selected = options.find((option) => option.value === value);
   const rootClassName = [
     select.rootProps.className,
@@ -348,28 +365,23 @@ export function Select({
     .filter(Boolean)
     .join(" ");
 
-  const trigger = (
-    <button
-      {...select.triggerProps}
-      aria-label={label && !ariaLabelledBy ? label : undefined}
-    >
-      <span className="fc-select__value">{selected?.label ?? ""}</span>
-      <span className="fc-select__caret" aria-hidden="true">
-        ⌄
-      </span>
-    </button>
-  );
+  const sharedLabelProps = ariaLabelledBy
+    ? { "aria-labelledby": ariaLabelledBy }
+    : label
+      ? { "aria-label": label }
+      : {};
 
   return (
-    <div
-      ref={select.rootRef}
-      className={rootClassName}
-      aria-labelledby={ariaLabelledBy}
-    >
-      {trigger}
+    <div ref={select.rootRef} className={rootClassName}>
+      <button {...select.triggerProps} {...sharedLabelProps}>
+        <span className="fc-select__value">{selected?.label ?? ""}</span>
+        <span className="fc-select__caret" aria-hidden="true">
+          ⌄
+        </span>
+      </button>
       {select.isOpen
         ? createPortal(
-            <ul {...select.listboxProps}>
+            <ul {...select.listboxProps} {...sharedLabelProps}>
               {options.map((option, index) => (
                 <li key={option.value} {...select.getOptionProps(index)}>
                   {option.label}

@@ -8279,7 +8279,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   min-height: 0; border: 0; box-shadow: none; background: transparent;
   font: 9px/1 var(--font-mono); color: var(--text-secondary); padding: 8px 16px 8px 10px;
 }
-.fc-select--compact .fc-select__popup { min-width: 160px; inset-inline: auto 0; }
+.fc-select__popup--compact { min-width: 160px; }
 
 .reduce-panel-motion .fc-select__trigger,
 .reduce-panel-motion .fc-select__caret,

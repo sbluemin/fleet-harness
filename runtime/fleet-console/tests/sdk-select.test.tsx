@@ -66,6 +66,9 @@ function options(): HTMLLIElement[] {
 beforeEach(() => {
   document.body.replaceChildren();
   vi.useFakeTimers();
+  if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+  }
 });
 
 afterEach(() => {
@@ -186,11 +189,14 @@ describe("Select behavior", () => {
     const { onChange } = renderSelect();
     act(() => trigger().click());
     const list = popup();
+    expect(trigger().getAttribute("role")).toBe("combobox");
     expect(trigger().getAttribute("aria-haspopup")).toBe("listbox");
     expect(trigger().getAttribute("aria-expanded")).toBe("true");
     expect(trigger().getAttribute("aria-controls")).toBe(list.id);
+    expect(trigger().getAttribute("aria-activedescendant")).toBeTruthy();
     expect(list.getAttribute("role")).toBe("listbox");
-    expect(list.getAttribute("aria-activedescendant")).toBeTruthy();
+    expect(list.getAttribute("aria-activedescendant")).toBeNull();
+    expect(list.getAttribute("tabindex")).toBeNull();
     for (const option of options()) {
       expect(option.getAttribute("role")).toBe("option");
       expect(option.hasAttribute("aria-selected")).toBe(true);
@@ -218,6 +224,62 @@ describe("Select behavior", () => {
     expect(options()).toHaveLength(2);
     expect(options()[1]?.getAttribute("aria-selected")).toBe("true");
   });
+
+  it("reflects external aria-labelledby on the trigger and listbox", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement("div", null, [
+          createElement("span", { id: "field-label", key: "label" }, "Default model"),
+          createElement(Select, {
+            key: "select",
+            value: "alpha",
+            options: BASE_OPTIONS,
+            onChange: vi.fn(),
+            "aria-labelledby": "field-label",
+          }),
+        ]),
+      );
+    });
+    act(() => trigger().click());
+    expect(trigger().getAttribute("aria-labelledby")).toBe("field-label");
+    expect(popup().getAttribute("aria-labelledby")).toBe("field-label");
+    expect(trigger().getAttribute("aria-label")).toBeNull();
+  });
+
+  it("scrolls the active option into view when navigation changes", () => {
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    renderSelect({ value: "alpha" });
+    act(() => trigger().click());
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("applies compact popup modifier and right-aligns the portaled surface", () => {
+    renderSelect({ compact: true });
+    const button = trigger();
+    vi.spyOn(button, "getBoundingClientRect").mockReturnValue({
+      x: 100,
+      y: 40,
+      width: 80,
+      height: 24,
+      top: 40,
+      right: 180,
+      bottom: 64,
+      left: 100,
+      toJSON: () => ({}),
+    });
+    act(() => button.click());
+    const list = popup();
+    expect(list.classList.contains("fc-select__popup--compact")).toBe(true);
+    expect(list.style.left).toBe(`${180 - 160}px`);
+    expect(list.style.width).toBe("160px");
+  });
 });
 
 describe("SettingsSelect public contract", () => {
@@ -242,10 +304,9 @@ describe("SettingsSelect public contract", () => {
     });
 
     const label = container.querySelector<HTMLSpanElement>(".fc-settings-select__label");
-    const selectRoot = container.querySelector<HTMLElement>(".fc-select");
     const trigger = container.querySelector<HTMLButtonElement>(".fc-select__trigger");
     expect(label?.textContent).toBe("Theme");
-    expect(selectRoot?.getAttribute("aria-labelledby")).toBe(label?.id);
+    expect(trigger?.getAttribute("aria-labelledby")).toBe(label?.id);
     expect(trigger?.textContent).toContain("Carbon");
 
     act(() => trigger?.click());
