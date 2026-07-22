@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-console",
-  "version": "1.31.0",
+  "version": "1.32.0",
   "description": "Fleet Console - standalone web surface for observing Fleet CLI workspaces, carrier jobs, live output streams, and terminals.",
   "repository": {
     "type": "git",

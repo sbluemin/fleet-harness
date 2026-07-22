@@ -5,6 +5,54 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-07-22
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add a "Float over Map" pill toggle to the right rail panel head that switches rail panels between the default push layout and an overlay mode where the panel floats over the Map without resizing it; the choice persists across sessions.
+- [fleet-console] Add a "Reduce panel motion" toggle to Settings > General. Off (default) follows the operating system's Reduce Motion setting as before; on suppresses all panel animations (open, move, minimize, and restore). Stored server-side with Console settings.
+- [fleet-console] Add shared Select and useSelect listbox primitives to the SDK react browser surface with token-styled themed popups.
+
+#### Changed
+- [fleet-console] Replace all native <select> dropdowns across Console settings, What's New, and Cowork with the shared themed Select for readable dark-theme popups.
+- [fleet-console] Replace native <select> dropdowns in Terminal carrier, model, effort, and Task Force settings, the Session Analyst composer, and Repository compare controls with the shared themed Select.
+
+#### Fixed
+- [fleet-console] Keep Alt+Left and Alt+Right navigation from selecting or restoring minimized Operation panels while Session Analyst, maximized, or Formation views are active.
+- [fleet-console] Carrier completion System Reminder messages now submit reliably when multiple jobs finish close together while browser payload redaction remains intact.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] The Session Analyst composer grows with the question up to six rows instead of clipping everything past one line, and the draft now lives in the per-operation analysis store so it survives closing and reopening the panel.
+- [fleet-console] Questions can be queued while the analyst is working: Enter stacks the question as a cancellable QUEUED chip, queued questions fire in FIFO order when each run completes, and Stop or Reset clears the queue.
+- [fleet-console] Follow-up suggestion chips (Go deeper, Check for intent drift, Turn this into an artifact, What is the agent doing now?) appear after every completed answer so the analyst's capabilities stay discoverable past the first question.
+- [fleet-console] Typing "/" in the composer opens an analysis command palette (/now /drift /brief /risks /timeline) with keyboard navigation, IME-safe guards, and combobox ARIA wiring; choosing a command fills the composer with its template question.
+- [fleet-console] Show a live authoring card in the Session Analyst chat while an artifact is being generated, resolving into a published card with an Open in Artifacts action.
+- [fleet-console] The Repository panel's Repositories source gains a discovery bar: fuzzy search with highlighted matches, Enter to open the first hit, and a scan-depth stepper with the result count in one row.
+
+#### Changed
+- [fleet-console] Carrier settings now save on change instead of per-carrier Save/Discard: Runtime CLI/model/effort, display name, and Task Force row edits persist immediately, CLI switches commit as one atomic update, and Task Force backend removal requires a two-step confirm that warns when the removal would deactivate the Task Force.
+- [fleet-console] Switching carrier chips no longer discards unsaved edits, because carrier settings hold no draft state.
+- [fleet-console] Repository panel selections now use a neutral ink wash with a brass spine, reserving brass for location cues such as the current branch label and HEAD badge.
+- [fleet-console] Repository panel bands and inputs consume the core surface tokens so each theme's material carries through the panel interior.
+- [fleet-console] Added and deleted diff rows now read in a single state color; syntax decoration stays on context rows only.
+- [fleet-console] Repository History keeps the all-branches graph while sizing each commit row only for lanes active at that point, so older branches no longer widen or collapse newer HEAD rows.
+- [fleet-console] Selecting a repository or worktree now lands in History, matching how branch and tag picks already navigate; the bottom scan-depth footer is retired.
+- [fleet-console] The agent panel's carrier stream strip becomes an ambient capsule: stacked captain dots, a live scan line, a per-track segment meter, and the latest output line with elapsed time and token estimate.
+- [fleet-console] The expanded stream deck lists a phase card per carrier track - an identity spine, live phase verbs such as Reasoning, Using a tool, and Writing, and a one-line preview replace the log rows.
+- [fleet-console] The Details Activity tab renders carrier output as streamed markdown with tool status chips that name their target, replacing the raw text dump; thinking stays behind a collapsible fold and completed jobs still clear after the short retention window.
+
+#### Fixed
+- [fleet-console] Keep the Session Analyst chat pane free of horizontal scrolling at narrow widths by scrolling wide markdown content inside its own block.
+- [fleet-console] The Terminal plugin serializes delayed System Reminder input and cancels stale submits when a PTY session closes or a write fails.
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] Hosts can now split PTY message text from its submit key with an optional delivery delay while existing callers retain their current behavior.
+
 ## [1.31.0] - 2026-07-21
 
 ### fleet-console

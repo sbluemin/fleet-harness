@@ -5,6 +5,54 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-07-22
+
+### fleet-console
+
+#### Added
+- [fleet-console] 우측 레일 패널 헤더에 "Float over Map" 필 토글을 추가해 레일 패널을 기본 Push 레이아웃과 Map 크기 변경 없이 패널이 위에 떠 있는 Overlay 모드 사이에서 전환할 수 있으며, 선택이 세션 간에 유지됩니다.
+- [fleet-console] Settings > General에 "Reduce panel motion" 토글을 추가합니다. 꺼짐(기본)은 기존처럼 운영체제의 동작 줄이기 설정을 따르고, 켜짐은 패널 애니메이션(열기, 이동, 최소화, 복원)을 모두 끕니다. Console 설정과 함께 서버에 저장됩니다.
+- [fleet-console] SDK react 브라우저 표면에 토큰 스타일 테마 팝업을 갖춘 공용 Select와 useSelect 리스트박스 프리미티브를 추가합니다.
+
+#### Changed
+- [fleet-console] Console 설정, What's New, Cowork의 네이티브 <select> 드롭다운을 공용 테마 Select로 교체하여 다크 테마 팝업 가독성을 개선합니다.
+- [fleet-console] Terminal 캐리어, 모델, effort, Task Force 설정과 Session Analyst 컴포저, Repository 비교 컨트롤의 네이티브 <select>를 공용 테마 Select로 교체합니다.
+
+#### Fixed
+- [fleet-console] Session Analyst, maximized 또는 Formation view가 활성화된 동안 Alt+Left와 Alt+Right 탐색이 최소화된 Operation 패널을 선택하거나 복원하지 않도록 수정했습니다.
+- [fleet-console] 여러 작업이 비슷한 시점에 완료되어도 Carrier 완료 System Reminder 메시지가 안정적으로 제출되며 브라우저 payload redaction은 그대로 유지됩니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Session Analyst composer가 질문에 따라 최대 6행까지 자동으로 늘어나 한 줄을 넘는 내용이 잘리지 않으며, 작성 중인 draft가 per-operation 분석 store에 보관되어 패널을 닫았다 열어도 유지됩니다.
+- [fleet-console] 분석가가 작업 중에도 질문을 큐에 쌓을 수 있습니다: Enter가 질문을 취소 가능한 QUEUED 칩으로 적재하고, 각 실행이 완료되면 FIFO 순서로 자동 전송되며, Stop이나 Reset은 큐를 비웁니다.
+- [fleet-console] 답변이 완료될 때마다 후속 제안 칩(Go deeper, Check for intent drift, Turn this into an artifact, What is the agent doing now?)이 표시되어 첫 질문 이후에도 분석가의 기능을 계속 발견할 수 있습니다.
+- [fleet-console] composer에 "/"를 입력하면 키보드 낸비게이션·IME 안전 가드·combobox ARIA 연결을 갖춘 분석 명령 팔레트(/now /drift /brief /risks /timeline)가 열리며, 명령을 고륩면 템플릿 질문이 composer에 채워집니다.
+- [fleet-console] Session Analyst 채팅에 아티팩트 생성 중 라이브 저작 카드를 표시하고, 게시 완료 시 Open in Artifacts 동작이 있는 완료 카드로 전환합니다.
+- [fleet-console] Repository 패널의 Repositories 소스에 디스커버리 바가 추가됩니다: 일치 글자가 강조되는 fuzzy 검색, Enter로 첫 결과 열기, 스캔 깊이 스테퍼와 결과 건수가 한 줄에 놓입니다.
+
+#### Changed
+- [fleet-console] 캐리어 설정이 캐리어별 Save/Discard 대신 변경 즉시 저장됩니다. Runtime CLI/모델/effort·표시 이름·Task Force 행 편집이 즉시 반영되고, CLI 전환은 하나의 원자적 갱신으로 커밋되며, Task Force 백엔드 제거는 제거 시 Task Force가 비활성화될 때 경고하는 2단계 확인을 거칩니다.
+- [fleet-console] 캐리어 설정이 draft 상태를 갖지 않으므로, 캐리어 칩 전환 시 저장하지 않은 편집이 사라지지 않습니다.
+- [fleet-console] Repository 패널의 선택 표시가 중립 잉크 워시 + brass 스파인으로 바뀌고, brass는 현재 브랜치 라벨과 HEAD 배지 같은 위치 신호에만 쓰입니다.
+- [fleet-console] Repository 패널의 밴드와 입력 표면이 코어 surface 토큰을 소비해 테마별 재질감이 패널 내부까지 이어집니다.
+- [fleet-console] diff의 추가/삭제 행이 단일 상태 색으로 읽히고, 구문 장식 색은 context 행에만 유지됩니다.
+- [fleet-console] Repository History는 전체 브랜치 그래프를 유지하면서 각 커밋 행을 해당 시점의 활성 lane에 맞춰 표시해 오래된 브랜치가 최신 HEAD 행의 폭이나 축약 상태를 확장하지 않습니다.
+- [fleet-console] 저장소나 워크트리를 선택하면 브랜치·태그 선택과 동일하게 History로 이동하며, 하단 스캔 깊이 푸터는 제거됩니다.
+- [fleet-console] 에이전트 패널의 캐리어 스트림 스트립이 앰비언트 캡슐로 바뀝니다: 겹쳐 쌓이는 캡틴 도트, 라이브 scan line, 트랙별 세그먼트 미터, 그리고 최신 출력 라인이 경과 시간·토큰 추정과 함께 표시됩니다.
+- [fleet-console] 펼친 스트림덱은 캐리어 트랙마다 phase 카드를 표시합니다 - 정체성 스파인, Reasoning·Using·Writing 같은 라이브 동사형 상태, 한 줄 프리뷰가 로그 행을 대체합니다.
+- [fleet-console] Details의 Activity 탭이 캐리어 출력을 스트리밍 마크다운으로 렌더하고 대상이 표기된 도구 상태 칩을 보여주어 원문 텍스트 덤프를 대체합니다; thinking은 접이식 폴드 뒤에 유지되고 완료된 job은 기존처럼 짧은 잔존 후 사라집니다.
+
+#### Fixed
+- [fleet-console] 좁은 폭에서 넓은 마크다운 콘텐츠가 자체 블록 안에서 스크롤되도록 하여 Session Analyst 채팅 패널의 가로 스크롤을 제거합니다.
+- [fleet-console] Terminal 플러그인은 지연된 System Reminder 입력을 직렬화하고 PTY 세션이 닫히거나 쓰기에 실패하면 오래된 제출을 취소합니다.
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] 호스트는 이제 선택적 전달 지연으로 PTY 메시지 텍스트와 제출 키를 분리할 수 있으며 기존 호출자의 동작은 그대로 유지됩니다.
+
 ## [1.31.0] - 2026-07-21
 
 ### fleet-console
