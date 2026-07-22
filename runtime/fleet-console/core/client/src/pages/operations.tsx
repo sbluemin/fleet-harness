@@ -79,7 +79,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
         snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
         canvas.operationOrder,
         canvas.collapsedGroups,
-        getCompanionOperationId() === null && getMaximizedOperationId() === null ? canvas.minimized : [],
+        canvas.minimized,
       );
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -87,15 +87,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, event.key === "ArrowRight" ? 1 : -1);
       if (!nextId) return;
-      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => {
-        // 모두 최소화된 부팅 상태의 폴백 대상은 store 포커스보다 먼저 복원한다. 그렇지 않으면 Canvas의
-        // "최소화된 active id 제거" effect가 pending focus 복원보다 앞서 실행되어 활성 표시를 지운다.
-        if (canvas.minimized.includes(nextId)) {
-          playRestoreFlight(nextId);
-          restoreOperation(nextId);
-        }
-        focusOperation(nextId);
-      });
+      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId));
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);

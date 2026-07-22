@@ -69,7 +69,7 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(nextOperationId(order, "group-1-visible", -1)).toBe("ungrouped-visible");
   });
 
-  it("falls back to SideBar order when every visible operation is minimized", () => {
+  it("returns no targets when every visible operation is minimized", () => {
     const order = focusCycleOperationIds(
       [
         makeOperation("grouped", "group", 1),
@@ -82,9 +82,9 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
       ["grouped", "collapsed", "ungrouped"],
     );
 
-    expect(order).toEqual(["grouped", "ungrouped"]);
-    expect(nextOperationId(order, null, 1)).toBe("grouped");
-    expect(nextOperationId(order, null, -1)).toBe("ungrouped");
+    expect(order).toEqual([]);
+    expect(nextOperationId(order, null, 1)).toBeNull();
+    expect(nextOperationId(order, null, -1)).toBeNull();
   });
 
 });
