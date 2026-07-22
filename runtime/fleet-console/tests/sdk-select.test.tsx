@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Select, type SelectOption } from "@fleet-console/sdk/react/browser";
 import { SettingsSelect } from "@fleet-console/sdk/settings/browser";
+import { isSelectOwnedKeyEvent } from "../core/client/src/components/whatsnew-modal.js";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -336,5 +337,35 @@ describe("SettingsSelect public contract", () => {
     const trigger = container.querySelector<HTMLButtonElement>(".fc-select__trigger");
     expect(trigger?.getAttribute("aria-label")).toBe("Select setting");
     expect(trigger?.disabled).toBe(true);
+  });
+});
+
+describe("WhatsNew modal key capture", () => {
+  it("defers modal capture while Select owns listbox keys and lets Escape close the popup first", () => {
+    const modalStopped = vi.fn();
+    const modalHandler = (event: KeyboardEvent) => {
+      if (isSelectOwnedKeyEvent(event)) return;
+      event.stopImmediatePropagation();
+      modalStopped();
+    };
+    window.addEventListener("keydown", modalHandler, true);
+
+    try {
+      renderSelect();
+      act(() => trigger().click());
+      act(() => {
+        trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      });
+      expect(document.querySelector(".fc-select__popup")).toBeNull();
+      expect(modalStopped).not.toHaveBeenCalled();
+
+      act(() => trigger().click());
+      act(() => {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      });
+      expect(modalStopped).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", modalHandler, true);
+    }
   });
 });

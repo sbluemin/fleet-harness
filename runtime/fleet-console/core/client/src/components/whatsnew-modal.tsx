@@ -81,6 +81,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   useEffect(() => {
     if (!state.whatsNewOpen || whatsNewSuppressed) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isSelectOwnedKeyEvent(event)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         closeWhatsNew();
@@ -272,6 +273,12 @@ function ReleaseNoteItemView({ item }: { readonly item: ReleaseNoteItem }) {
 
 function releaseNoteKey(version: string, index: number): string {
   return `${version}:${index}`;
+}
+
+export function isSelectOwnedKeyEvent(event: KeyboardEvent): boolean {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest(".fc-select__trigger, .fc-select__popup")) return true;
+  return document.querySelector(".fc-select__popup[data-open='true']") !== null;
 }
 
 function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {
