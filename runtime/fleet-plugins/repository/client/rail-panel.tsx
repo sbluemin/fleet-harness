@@ -159,6 +159,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [compareFileOpen, setCompareFileOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState("");
+  // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 —
+  // epoch를 key에 섞어 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 재설정한다.
+  const [historyLandingEpoch, setHistoryLandingEpoch] = useState(0);
   const selectedFile = useSelectedFile(ctx.theaterId ?? null, repoRel);
   const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
   const listPaneWidthRef = useRef(listPaneWidth);
@@ -257,9 +260,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, [ctx.theaterId, repoRel]);
   const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
     const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
-    // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — 이전 branch/tag refFilter·텍스트 필터가
-    // 남아 스코프된 로그와 WIP 숨김을 보여주지 않게 착지 전에 걷어낸다(전환 경로와 동일한 정리).
-    if (!decision.transition) { setRefFilter(null); setFilterText(""); setSource(decision.landing); return; }
+    // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — refFilter를 걷어내고 History 패널을
+    // epoch 리마운트해 전환 착지와 동일한 초기 상태로 만든다(스코프된 로그·WIP 숨김 잔존 방지).
+    if (!decision.transition) { setRefFilter(null); setHistoryLandingEpoch((value) => value + 1); setSource(decision.landing); return; }
     transitionRepository(next.relPath, true, decision.landing);
   }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
   const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
@@ -305,7 +308,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     <div className="repository-unified"><div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div><div className="repository-unified-body"><SourceNav source={source} refs={refs} repos={repos} worktrees={worktrees} onSource={setSource} /><div className="repository-source-content">
       {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} scanDepth={scanDepth} onScanDepth={setScanDepth} truncated={reposTruncated} /> : null}
       {source === "worktrees" ? worktreesError ? <div className="history-error">Unable to load worktrees<button type="button" className="repository-refresh-btn" onClick={() => setWorktreesRetry((value) => value + 1)}>Retry</button></div> : <WorktreeList worktrees={worktrees} onWorktree={handleSelectRepository} /> : null}
-      <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
+      <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
       <div className="repository-source-fill" hidden={source !== "compare"}><CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} onFileOpenChange={setCompareFileOpen} /></div>
       {source !== "repositories" && source !== "worktrees" && source !== "changes" && source !== "history" && source !== "compare" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
       <div hidden={source !== "changes"} ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
