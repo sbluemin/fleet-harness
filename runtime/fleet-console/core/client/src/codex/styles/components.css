@@ -2353,7 +2353,7 @@ kbd {
 .cowork-x { border: 0; background: transparent; color: var(--ink-fog); cursor: pointer; font-size: var(--font-size-lg); line-height: 1; padding: 0 var(--space-1); }
 .cowork-x:hover { color: var(--ink-pearl); }
 .cowork-pill:focus-visible, .cowork-ghost:focus-visible, .cowork-solid:focus-visible, .cowork-x:focus-visible, .cowork-chip:focus-visible, .cowork-send:focus-visible,
-.cowork-dock-input:focus-visible, .cowork-composer textarea:focus-visible, .cowork-card textarea:focus-visible, .cowork-selector select:focus-visible {
+.cowork-dock-input:focus-visible, .cowork-composer textarea:focus-visible, .cowork-card textarea:focus-visible {
   outline: 2px solid var(--brass-bright);
   outline-offset: 2px;
 }
@@ -2661,15 +2661,6 @@ kbd {
 .cowork-config { display: flex; flex-wrap: wrap; gap: var(--space-2); width: auto; }
 .cowork-selector { display: grid; gap: var(--space-1); min-inline-size: 120px; }
 .cowork-selector span { color: var(--ink-fog); font-size: var(--font-size-2xs); font-weight: 600; }
-.cowork-selector select {
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-abyss) 82%, transparent);
-  color: var(--ink-pearl);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  padding: var(--space-1) var(--space-2);
-}
 
 /* AI 요약 카드 */
 .cowork-summary {
