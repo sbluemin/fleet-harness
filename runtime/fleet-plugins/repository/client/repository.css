@@ -62,6 +62,7 @@
 }
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
+/* 밴드는 코어 surface 토큰을 소비해 테마 재질이 플러그인 내부까지 관통하게 한다. */
 .repository-toolbar {
   display: flex;
   align-items: center;
@@ -69,7 +70,7 @@
   min-width: 0;
   padding: 5px 8px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
+  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
 }
 
 .repository-filter,
@@ -85,7 +86,7 @@
 .history-filter-input {
   flex: 1;
   min-width: 0;
-  background: color-mix(in oklch, var(--ink-deep) 30%, transparent);
+  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--ink-spectral);
@@ -127,7 +128,7 @@
   gap: 6px;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
+  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
 }
 
 .repository-toolbar-label {
@@ -142,7 +143,7 @@
 .repository-view-toggle {
   margin-left: auto;
   display: inline-flex;
-  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   padding: 2px;
@@ -305,8 +306,9 @@
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
+/* 선택은 중립 잉크 워시와 brass 스파인으로 표시해 위치만 brass가 말하게 한다. */
 .repository-file-row.is-cur {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
@@ -342,7 +344,7 @@
 }
 
 .repository-file-row.is-cur .repository-file-fn {
-  color: var(--brass);
+  color: var(--text-primary);
 }
 
 .repository-file-dir {
@@ -565,7 +567,7 @@
 }
 
 .repository-line-add .repository-line-code {
-  color: var(--positive);
+  color: color-mix(in oklch, var(--text-primary) 72%, var(--positive));
 }
 
 .repository-line-del {
@@ -573,7 +575,7 @@
 }
 
 .repository-line-del .repository-line-code {
-  color: var(--coral);
+  color: color-mix(in oklch, var(--text-primary) 60%, var(--coral));
 }
 
 /* 구문강조도 장식적 구분 — --id-* 정체성 봉투에서만 가져와 상태 신호(warn/positive)와 격리한다 */
@@ -583,6 +585,17 @@
 .repository-token-type { color: var(--id-plum); }
 .repository-token-comment { color: var(--ink-fog); font-style: italic; }
 .repository-token-punctuation { color: var(--ink-fog); }
+/* add/del 행은 단색으로 말하고 장식 구문색은 context 행에만 둔다. comment·punctuation은 ink-fog 무채색 계열이라 유지한다. */
+.repository-line-add .repository-token-keyword,
+.repository-line-add .repository-token-string,
+.repository-line-add .repository-token-number,
+.repository-line-add .repository-token-type,
+.repository-line-del .repository-token-keyword,
+.repository-line-del .repository-token-string,
+.repository-line-del .repository-token-number,
+.repository-line-del .repository-token-type {
+  color: inherit;
+}
 
 /* ── 라인번호 거터 ── */
 .repository-gutter {
@@ -625,7 +638,7 @@
 
 /* ── 다중 파일 패치 파일 경계 행 ── */
 .repository-line-file-label {
-  background: var(--ink-mid);
+  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
   border-top: 1px solid var(--surface-rim);
   border-bottom: 1px solid var(--surface-rim);
 }
@@ -699,7 +712,7 @@
   min-width: 0;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-mid) 55%, transparent);
+  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
 }
 
 .history-count {
@@ -742,7 +755,7 @@
 }
 
 .history-commit-row.is-selected {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
@@ -786,10 +799,14 @@
   height: 11px;
 }
 
-.history-badge--head,
-.history-badge--tag {
+.history-badge--head {
   color: var(--brass);
   border: 1px solid color-mix(in oklch, var(--brass) 48%, transparent);
+}
+
+.history-badge--tag {
+  color: var(--ink-spectral);
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 45%, transparent);
 }
 
 .history-badge--branch {
@@ -863,7 +880,7 @@
   grid-column: 1;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-glass) 70%, transparent);
 }
 
 .history-detail-head {
@@ -918,7 +935,7 @@
 /* Segmented Commit Inspector — master graph/list remains above the detail. */
 .history-root { grid-template-rows: minmax(0, 1fr); }
 .history-list-pane { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--surface-rim); }
-.history-detail-pane { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--ink-deep) 70%, transparent); }
+.history-detail-pane { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--surface-glass) 70%, transparent); }
 .history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
 .history-divider { touch-action: none; }
 .history-commit-row { grid-template-columns: auto minmax(96px, 1fr) 7ch auto auto; gap: 0 7px; }
@@ -961,7 +978,7 @@
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
-.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: var(--ink-deep); color: var(--text-secondary); }
+.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); }
 .repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
 .repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
 .repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -970,10 +987,10 @@
 .repository-identity span { min-width: 0; overflow: hidden; color: var(--brass); flex: 0 1 auto; font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .repository-unified-body { display: flex; min-width: 0; min-height: 0; flex: 1; }
 /* --surface-deep은 어느 테마에도 정의된 적 없는 토큰이라 이 선언은 계속 무효였다(배경 투명).
-   정체 스트립과 같은 표면이어야 하므로 의도됐던 값인 --ink-deep으로 확정한다. */
-.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--surface-rim); background: var(--ink-deep); }
+   정체 스트립과 같은 테마 재질을 이어받도록 --surface-band를 소비한다. */
+.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); }
 .repository-source-nav button, .repository-source-nav span { min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
-.repository-source-nav button[aria-current="page"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.repository-source-nav button[aria-current="page"] { color: var(--text-primary); background: color-mix(in oklch, var(--ink-fog) 10%, transparent); box-shadow: inset 2px 0 0 var(--brass); }
 .repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
 .repository-source-nav b { padding: 8px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; }
 .repository-source-nav svg { width: 14px; height: 14px; flex: none; }
@@ -984,10 +1001,10 @@
 /* 목록은 스크롤되고 스캔 푸터는 하단에 고정된다 */
 .repository-scan-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .repository-scan-pane > .repository-ref-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
-.repository-scan-foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 7px 10px; border-top: 1px solid var(--surface-rim); background: var(--ink-deep); }
+.repository-scan-foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 7px 10px; border-top: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); }
 .repository-scan-foot label { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
 /* appearance:none으로 UA 기본 select 크롬을 걷어내고 필터 입력과 같은 시각 등급으로 맞춘다 */
-.repository-scan-depth { appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-deep) 30%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 2px 6px; outline: none; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-glide); }
+.repository-scan-depth { appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 35%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 2px 6px; outline: none; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-glide); }
 .repository-scan-depth:hover { border-color: var(--surface-rim-strong); }
 .repository-scan-depth:focus-visible { border-color: var(--brass); }
 .repository-scan-count { margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -997,11 +1014,12 @@
 .repository-ref-row { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; text-align: left; padding: 7px 10px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .repository-ref-row:hover { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
 .repository-ref-row:disabled { cursor: default; }
-.repository-ref-row.is-current { color: var(--brass); }
-.repository-ref-row.is-current:hover { color: var(--brass); }
+.repository-ref-row.is-current { color: var(--text-primary); }
+.repository-ref-row.is-current:hover { color: var(--text-primary); }
 .repository-ref-row svg { width: 13px; height: 13px; flex: none; opacity: .85; }
 .repository-ref-name { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-sub { margin-left: auto; color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 10px; }
+.repository-ref-row.is-current .repository-ref-sub { color: var(--brass); }
 .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
 .repository-wip-row { color: var(--brass); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
@@ -1012,9 +1030,9 @@
 
 /* ── Compare 뷰 ── */
 .repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
-.repository-compare-controls { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--ink-mid) 55%, transparent); }
+.repository-compare-controls { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
 /* .repository-scan-depth와 동일한 UA 크롬 제거·시각 등급 */
-.repository-compare-select { flex: 1; min-width: 0; appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-deep) 30%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 3px 6px; outline: none; cursor: pointer; text-overflow: ellipsis; transition: border-color var(--duration-fast) var(--ease-glide); }
+.repository-compare-select { flex: 1; min-width: 0; appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 35%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 3px 6px; outline: none; cursor: pointer; text-overflow: ellipsis; transition: border-color var(--duration-fast) var(--ease-glide); }
 .repository-compare-select:hover { border-color: var(--surface-rim-strong); }
 .repository-compare-select:focus-visible { border-color: var(--brass); }
 .repository-compare-arrow { flex: none; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px; }
