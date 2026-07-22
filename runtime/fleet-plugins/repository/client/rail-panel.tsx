@@ -6,6 +6,7 @@ import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposR
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
 import { CompareView } from "./compare-view.js";
+import { fuzzyMatch } from "./fuzzy.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
@@ -103,7 +104,7 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
   return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
-type Source = "repositories" | "worktrees" | "changes" | "history" | "compare" | "branches" | "tags" | "stashes";
+export type Source = "repositories" | "worktrees" | "changes" | "history" | "compare" | "branches" | "tags" | "stashes";
 type RefSource = Exclude<Source, "repositories" | "worktrees" | "changes" | "history" | "compare">;
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
@@ -111,6 +112,12 @@ export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: Repositor
 export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean };
 export type RepositoryRefGroup = { label?: "LOCAL" | "REMOTES"; rows: RepositoryRefRow[] };
 type Refs = RepositoryRefs;
+
+// 사용자 제스처 선택의 착지 결정 — 컨텍스트 전환 여부와 무관하게 History로 착지한다(refs 선택과 동일 문법).
+export function resolveRepositorySelection(theaterId: string | null, currentRel: string, nextRel: string): { readonly transition: boolean; readonly landing: Source } {
+  if (!theaterId || nextRel === currentRel) return { transition: false, landing: "history" };
+  return { transition: true, landing: "history" };
+}
 
 export function isRemoteHeadRef(ref: string): boolean {
   return /^refs\/remotes\/[^/]+\/HEAD$/.test(ref);
@@ -161,7 +168,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setSourceState(next);
     saveRepositorySource(next);
   }, []);
-  const transitionRepository = useCallback((nextRepoRel: string, persist: boolean) => {
+  const transitionRepository = useCallback((nextRepoRel: string, persist: boolean, landing: Source = "changes") => {
     if (!ctx.theaterId) return;
     if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
     clearSelectedFile();
@@ -173,7 +180,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
-    setSource("changes");
+    setSource(landing);
   }, [ctx.theaterId, setSource]);
   useEffect(() => {
     if (!ctx.theaterId) return;
@@ -249,8 +256,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (ctx.theaterId) setSelectedFile(entry, ctx.theaterId, repoRel);
   }, [ctx.theaterId, repoRel]);
   const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
-    if (!ctx.theaterId || next.relPath === repoRel) { setSource("changes"); return; }
-    transitionRepository(next.relPath, true);
+    const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
+    if (!decision.transition) { setSource(decision.landing); return; }
+    transitionRepository(next.relPath, true, decision.landing);
   }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
   const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
   const handleViewMode = useCallback((next: ViewMode) => {
@@ -312,24 +320,44 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "compare" ? "M5.5 3v9M3 9.5l2.5 2.5L8 9.5M12.5 15V6M10 8.5L12.5 6L15 8.5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}{button("compare", "Compare")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
 function RepoList({ repos, selectedRel, onRepository, scanDepth, onScanDepth, truncated }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean }) {
+  const [query, setQuery] = useState("");
   // 루트 저장소는 컨텍스트 복귀 affordance이므로 트리 밖 THIS THEATER 그룹에 고정한다.
   // (repos.ts 주석의 의도 — nested 저장소로 진입해도 루트로 되돌아오는 진입점이 필요.)
   const rootRepos = repos.filter((repo) => repo.kind === "root").sort((a, b) => a.name.localeCompare(b.name));
   const nestedRepos = repos.filter((repo) => repo.kind === "nested");
   const nestedTree = buildRepoTree(nestedRepos);
-  const groups: readonly { readonly key: string; readonly label: "THIS THEATER" | "NESTED"; readonly render: () => ReactNode }[] = [
+  const matchRepository = (repo: RepoCandidate) => {
+    const nameMatch = fuzzyMatch(query, repo.name);
+    const match = nameMatch ?? fuzzyMatch(query, repo.relPath);
+    return match === null ? null : { repo, nameMatch: nameMatch ?? undefined };
+  };
+  const rootMatches = query ? rootRepos.map(matchRepository).filter((match) => match !== null) : [];
+  const nestedMatches = query ? nestedRepos.map(matchRepository).filter((match) => match !== null) : [];
+  const matchedCount = rootMatches.length + nestedMatches.length;
+  const groups: readonly { readonly key: string; readonly label: "THIS THEATER" | "NESTED"; readonly render: () => ReactNode }[] = query ? [
+    ...(rootMatches.length > 0 ? [{ key: "root", label: "THIS THEATER" as const, render: () => <>{rootMatches.map(({ repo, nameMatch }) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} nameMatch={nameMatch} />)}</> }] : []),
+    ...(nestedMatches.length > 0 ? [{ key: "nested", label: "NESTED" as const, render: () => <>{nestedMatches.map(({ repo, nameMatch }) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} nameMatch={nameMatch} />)}</> }] : []),
+  ] : [
     ...(rootRepos.length > 0 ? [{ key: "root", label: "THIS THEATER" as const, render: () => <>{rootRepos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />)}</> }] : []),
     ...(nestedRepos.length > 0 ? [{ key: "nested", label: "NESTED" as const, render: () => <RepoTreeChildren node={nestedTree} depth={0} selectedRel={selectedRel} onRepository={onRepository} /> }] : []),
   ];
   return <div className="repository-scan-pane">
-    <div className="repository-ref-list">{groups.map((group) => <div key={group.key} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.render()}</div>)}</div>
-    <div className="repository-scan-foot">
-      <label htmlFor="repository-scan-depth">Depth</label>
-      <select id="repository-scan-depth" className="repository-scan-depth" value={scanDepth} onChange={(event) => onScanDepth(Number.parseInt(event.target.value, 10))}>
-        {Array.from({ length: SCAN_DEPTH_MAX - SCAN_DEPTH_MIN + 1 }, (_, index) => SCAN_DEPTH_MIN + index).map((depth) => <option key={depth} value={depth}>{depth}</option>)}
-      </select>
-      <span className="repository-scan-count">{repos.length} found{truncated ? " · limit reached" : ""}</span>
+    <div className="repository-discovery">
+      <input type="text" className="repository-filter-input" placeholder="Find repositories…" aria-label="Find repositories" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+        // 한글 IME 조합 확정 Enter가 첫 결과를 오선택하지 않게 조합 중에는 무시한다.
+        if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+        const firstMatch = rootMatches[0] ?? nestedMatches[0];
+        if (firstMatch) onRepository(firstMatch.repo);
+      }} />
+      {query ? <button type="button" className="repository-filter-clear" aria-label="Clear search" onClick={() => setQuery("")}>✕</button> : null}
+      <span className="repository-discovery-depth">Depth
+        <button type="button" className="repository-depth-step" aria-label="Scan shallower" disabled={scanDepth <= SCAN_DEPTH_MIN} onClick={() => onScanDepth(scanDepth - 1)}>−</button>
+        <output className="repository-depth-value">{scanDepth}</output>
+        <button type="button" className="repository-depth-step" aria-label="Scan deeper" disabled={scanDepth >= SCAN_DEPTH_MAX} onClick={() => onScanDepth(scanDepth + 1)}>+</button>
+      </span>
+      <span className="repository-scan-count">{query ? `${matchedCount} of ${repos.length}` : `${repos.length} found${truncated ? " · limit reached" : ""}`}</span>
     </div>
+    <div className="repository-ref-list">{groups.map((group) => <div key={group.key} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.render()}</div>)}{query && matchedCount === 0 ? <div className="repository-empty-row">No matching repositories</div> : null}</div>
   </div>;
 }
 
@@ -366,22 +394,22 @@ function RepoTreeFolder({ dirKey, node, depth, selectedRel, onRepository }: { re
   </div>;
 }
 
-function RepoLeafRow({ repo, depth, selectedRel, onRepository }: { readonly repo: RepoCandidate; readonly depth: number } & RepoTreeCommonProps) {
+function RepoLeafRow({ repo, depth, selectedRel, onRepository, nameMatch }: { readonly repo: RepoCandidate; readonly depth: number; readonly nameMatch?: readonly number[] } & RepoTreeCommonProps) {
   // 저장소 리프 아이콘을 폴더 아이콘 컬럼(padding-left 12 + chevron 12 + gap 6 = 30) 아래에 정렬한다.
   const indent = depth * 16 + 30;
   return <button type="button" title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} style={{ paddingLeft: `${indent}px` }} onClick={() => onRepository(repo)}>
     <SourceIcon source="repositories" />
-    <span className="repository-ref-name">{repo.name}{repo.relPath === selectedRel && " ✓"}</span>
+    <span className="repository-ref-name">{nameMatch ? Array.from(repo.name).map((character, index) => nameMatch.includes(index) ? <b key={index} className="repository-ref-hl">{character}</b> : character) : repo.name}</span>{repo.relPath === selectedRel && <span className="repository-ref-mark">✓</span>}
     {repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}
   </button>;
 }
-function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}{worktree.current && " ✓"}</span>{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
+function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}</span>{worktree.current && <span className="repository-ref-mark">✓</span>}{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
 function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
   if (source === "repositories" || source === "worktrees" || source === "changes" || source === "history" || source === "compare") return null;
   return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => {
     return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => {
       if (row.ref) onRef(row.ref);
-    }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}{row.current && " ✓"}</span>{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>;
+    }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}</span>{row.current && <span className="repository-ref-mark">✓</span>}{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>;
   })}</div>)}</div>;
 }
 
