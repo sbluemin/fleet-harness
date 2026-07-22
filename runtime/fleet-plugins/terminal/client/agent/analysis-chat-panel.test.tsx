@@ -3,6 +3,8 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { AnalysisEvent } from "./analysis-types.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 
 const { installDiagramHydratorSpy, renderMarkdownSpy } = vi.hoisted(() => ({
@@ -35,7 +37,7 @@ vi.mock("./analysis-store.js", () => ({
   useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset }),
 }));
 
-import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 
 const catalog = { clis: [{ cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["medium"], defaultEffort: "medium" }] }] };
 
@@ -107,6 +109,48 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__stop")?.textContent).toBe("");
     expect((container.querySelector('[aria-label="Reset Session Analyst"]') as HTMLButtonElement).disabled).toBe(false);
     expect(container.textContent).not.toContain("private chain of thought");
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("shows live artifact authoring, publishes the completion card, and opens Artifacts", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const setCompanionPanelVisible = vi.fn();
+    const context = {
+      operationId: "chat-test",
+      hiddenCompanionPanelIds: [ANALYST_ARTIFACTS_COMPANION_ID],
+      onSetCompanionPanelVisible: setCompanionPanelVisible,
+    } as OperationRenderContext;
+    storeState = analysisReducer(initialAnalysisState, { type: "sending", started: true, text: "Publish this", now: Date.now() });
+    const { container, root } = renderPanel(context);
+
+    emit({ type: "tool", title: "mcp__session_analyst__publish_artifact", status: "pending" });
+    const authoring = container.querySelector<HTMLElement>(".session-analyst__author-card.is-authoring")!;
+    expect(authoring.hasAttribute("aria-live")).toBe(false);
+    expect(authoring.textContent).toContain("Publishing an artifact");
+    expect(authoring.textContent).toContain("The analyst is authoring artifact content. It opens in Artifacts when it lands.");
+    expect(authoring.previousElementSibling?.classList.contains("session-analyst__transcript")).toBe(true);
+    expect(authoring.nextElementSibling?.classList.contains("session-analyst__pulse")).toBe(true);
+    const handle = container.querySelector<HTMLButtonElement>(".session-analyst-handle--artifacts")!;
+    expect(handle.classList.contains("is-authoring")).toBe(true);
+    expect(handle.querySelector(".session-analyst-handle__count")?.textContent).toBe("…");
+    expect(handle.title).toBe("The analyst is authoring an artifact…");
+
+    act(() => vi.advanceTimersByTime(2_100));
+    expect(authoring.querySelector(".session-analyst__author-time")?.textContent).toBe("2s");
+
+    emit({ type: "artifact", artifact: { id: "artifact", title: "Session brief", html: "<p>brief</p>", createdAt: Date.now() } });
+    const done = container.querySelector<HTMLElement>(".session-analyst__author-card.is-done")!;
+    expect(done.textContent).toContain("Artifact published — Session brief");
+    expect(done.querySelector(".session-analyst__author-time")?.textContent).toBe("2s");
+    expect(done.querySelector(".session-analyst__author-sub")).toBeNull();
+    expect(done.querySelector(".session-analyst__author-track")).toBeNull();
+
+    setCompanionPanelVisible.mockClear();
+    act(() => (done.querySelector(".session-analyst__author-open") as HTMLButtonElement).click());
+    expect(setCompanionPanelVisible).toHaveBeenCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, true);
 
     act(() => root.unmount());
     container.remove();
@@ -520,13 +564,17 @@ describe("Session Analyst Evidence Pulse", () => {
   });
 });
 
-function renderPanel() {
+function renderPanel(context: OperationRenderContext = { operationId: "chat-test" } as OperationRenderContext) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  rerenderStore = () => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never }));
+  rerenderStore = () => root.render(createElement(AnalystChatPanel, { context }));
   act(() => rerenderStore());
   return { container, root };
+}
+
+function emit(event: AnalysisEvent): void {
+  act(() => dispatch({ type: "event", event, now: Date.now() }));
 }
 
 function setTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
