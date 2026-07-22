@@ -257,7 +257,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, [ctx.theaterId, repoRel]);
   const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
     const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
-    if (!decision.transition) { setSource(decision.landing); return; }
+    // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — 이전 branch/tag refFilter·텍스트 필터가
+    // 남아 스코프된 로그와 WIP 숨김을 보여주지 않게 착지 전에 걷어낸다(전환 경로와 동일한 정리).
+    if (!decision.transition) { setRefFilter(null); setFilterText(""); setSource(decision.landing); return; }
     transitionRepository(next.relPath, true, decision.landing);
   }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
   const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
