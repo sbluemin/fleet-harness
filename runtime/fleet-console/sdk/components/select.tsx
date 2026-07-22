@@ -53,7 +53,12 @@ export interface SelectProps extends UseSelectOptions {
 const POPUP_OFFSET_PX = 6;
 const POPUP_MAX_HEIGHT_PX = 232;
 const COMPACT_POPUP_MIN_WIDTH_PX = 160;
+const VIEWPORT_MARGIN_PX = 8;
 const TYPEAHEAD_MS = 500;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
 
 function enabledIndices(options: readonly SelectOption[]): readonly number[] {
   const indices: number[] = [];
@@ -64,8 +69,12 @@ function enabledIndices(options: readonly SelectOption[]): readonly number[] {
 }
 
 function computePopupStyle(trigger: DOMRect, placement: "up" | "down", compact: boolean): React.CSSProperties {
-  const width = compact ? Math.max(COMPACT_POPUP_MIN_WIDTH_PX, trigger.width) : trigger.width;
-  const left = compact ? trigger.right - width : trigger.left;
+  const innerWidth = window.innerWidth;
+  const width = compact
+    ? Math.min(Math.max(COMPACT_POPUP_MIN_WIDTH_PX, trigger.width), innerWidth - VIEWPORT_MARGIN_PX * 2)
+    : Math.min(trigger.width, innerWidth - VIEWPORT_MARGIN_PX * 2);
+  const rawLeft = compact ? trigger.right - width : trigger.left;
+  const left = clamp(rawLeft, VIEWPORT_MARGIN_PX, innerWidth - width - VIEWPORT_MARGIN_PX);
   return placement === "down"
     ? { position: "fixed", left, width, top: trigger.bottom + POPUP_OFFSET_PX }
     : {
