@@ -27,6 +27,8 @@ export interface AnalysisState {
   readonly entries: readonly AnalysisEntry[];
   readonly tools: readonly { readonly title: string; readonly status: string }[];
   readonly artifacts: readonly AnalysisArtifact[];
+  readonly artifactAuthoring: { readonly startedAt: number } | null;
+  readonly artifactPublished: { readonly artifact: AnalysisArtifact; readonly durationMs: number | null } | null;
   readonly artifactsAutoOpenArmed: boolean;
   readonly error: string | null;
 }
@@ -47,6 +49,8 @@ export const initialAnalysisState: AnalysisState = {
   entries: [],
   tools: [],
   artifacts: [],
+  artifactAuthoring: null,
+  artifactPublished: null,
   artifactsAutoOpenArmed: true,
   error: null,
 };
@@ -103,18 +107,21 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     runEndedAt: null,
     error: null,
     tools: [],
+    artifactAuthoring: null,
+    artifactPublished: null,
     entries: [...state.entries, { role: "user", text: action.text }],
   };
   if (action.type === "error") return endWithError(state, action.message, action.now);
   if (action.type === "session-lost") return { ...endWithError(state, "Analysis session ended — send again to restart.", action.now), started: false };
   if (action.type === "start-failed") return { ...endWithError(state, action.message, action.now), started: false };
-  if (action.type === "stopped") return { ...state, queue: [], started: false, busy: false, phase: "stopped", runEndedAt: action.now, error: null };
+  if (action.type === "stopped") return { ...state, queue: [], started: false, busy: false, phase: "stopped", runEndedAt: action.now, artifactAuthoring: null, error: null };
   if (action.type === "stop-failed") return { ...endWithError(state, `Stop failed: ${action.message}`, action.now), started: false };
   if (action.type === "reset") {
     const catalog = state.catalog;
     return catalog ? { ...initialAnalysisState, catalog, ...resolveInitialSelection(catalog) } : initialAnalysisState;
   }
-  if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactsAutoOpenArmed: true };
+  // Clear는 완료 카드도 함께 걷는다 — 삭제된 artifact를 여는 CTA가 남으면 안 된다.
+  if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null, artifactsAutoOpenArmed: true };
   if (action.type === "artifacts-chip-disarm") return state.artifactsAutoOpenArmed ? { ...state, artifactsAutoOpenArmed: false } : state;
   if (action.type === "artifacts-chip-rearm") return state.artifactsAutoOpenArmed ? state : { ...state, artifactsAutoOpenArmed: true };
   if (action.type !== "event") return state;
@@ -126,14 +133,25 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (event.type === "chunk") return { ...state, phase: "writing", latestActivity: { kind: "writing" }, entries: appendAnalystChunk(state.entries, event.text) };
   // Thought content is deliberately neither stored nor rendered; only the observed event advances the phase.
   if (event.type === "thought") return { ...state, phase: "reasoning", latestActivity: { kind: "reasoning" } };
-  if (event.type === "tool") return {
+  if (event.type === "tool") {
+    const status = event.status.toLowerCase();
+    const isArtifactAuthoring = event.title.toLowerCase().includes("publish_artifact") && (status === "pending" || status === "in_progress");
+    return {
+      ...state,
+      phase: "tool",
+      latestActivity: { kind: "tool", title: event.title, status: event.status },
+      tools: [...state.tools.filter((tool) => tool.title !== event.title), { title: event.title, status: event.status }],
+      ...(isArtifactAuthoring ? { artifactAuthoring: state.artifactAuthoring ?? { startedAt: action.now }, artifactPublished: null } : {}),
+    };
+  }
+  if (event.type === "artifact") return {
     ...state,
-    phase: "tool",
-    latestActivity: { kind: "tool", title: event.title, status: event.status },
-    tools: [...state.tools.filter((tool) => tool.title !== event.title), { title: event.title, status: event.status }],
+    artifacts: [event.artifact, ...state.artifacts.filter((artifact) => artifact.id !== event.artifact.id)].slice(0, MAX_ANALYSIS_ARTIFACTS),
+    artifactPublished: { artifact: event.artifact, durationMs: state.artifactAuthoring ? action.now - state.artifactAuthoring.startedAt : null },
+    artifactAuthoring: null,
   };
-  if (event.type === "artifact") return { ...state, artifacts: [event.artifact, ...state.artifacts.filter((artifact) => artifact.id !== event.artifact.id)].slice(0, MAX_ANALYSIS_ARTIFACTS) };
-  if (event.type === "complete") return { ...state, busy: false, phase: "complete", runEndedAt: action.now, error: null };
+  // artifact 이벤트 없이 턴이 끝나면(툴 거부·실패) 저작 카드가 영구히 남지 않도록 함께 종료한다.
+  if (event.type === "complete") return { ...state, busy: false, phase: "complete", runEndedAt: action.now, artifactAuthoring: null, error: null };
   return endWithError(state, event.error.message, action.now);
 }
 
@@ -151,7 +169,7 @@ function resolveInitialSelection(catalog: AnalysisCatalog): Pick<AnalysisState, 
 }
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {
-  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, error: message };
+  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message };
 }
 
 function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string): readonly AnalysisEntry[] {

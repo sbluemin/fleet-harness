@@ -99,6 +99,74 @@ describe("shared analysis store reducer", () => {
     expect(analysisReducer(stopped, { type: "clear-artifacts" }).artifacts).toEqual([]);
   });
 
+  it("tracks publish_artifact authoring and transitions to a timed published artifact", () => {
+    const sent = analysisReducer(initialAnalysisState, { type: "sending", started: true, text: "Publish this", now: 1_000 });
+    const authoring = analysisReducer(sent, {
+      type: "event",
+      event: { type: "tool", title: "mcp__session_analyst__publish_artifact", status: "PENDING" },
+      now: 2_000,
+    });
+    expect(authoring).toMatchObject({ artifactAuthoring: { startedAt: 2_000 }, artifactPublished: null });
+
+    const stillAuthoring = analysisReducer(authoring, {
+      type: "event",
+      event: { type: "tool", title: "codex__publish_artifact", status: "in_progress" },
+      now: 3_000,
+    });
+    expect(stillAuthoring.artifactAuthoring).toEqual({ startedAt: 2_000 });
+
+    const artifact = { id: "artifact", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 };
+    const published = analysisReducer(stillAuthoring, { type: "event", event: { type: "artifact", artifact }, now: 5_500 });
+    expect(published).toMatchObject({
+      artifactAuthoring: null,
+      artifactPublished: { artifact, durationMs: 3_500 },
+    });
+  });
+
+  it("ignores non-matching tools and clears authoring at run boundaries", () => {
+    const baseline = { ...initialAnalysisState, artifactAuthoring: { startedAt: 1_000 } };
+    const unrelated = analysisReducer(baseline, {
+      type: "event",
+      event: { type: "tool", title: "wiki_read", status: "pending" },
+      now: 2_000,
+    });
+    expect(unrelated.artifactAuthoring).toEqual({ startedAt: 1_000 });
+
+    const artifact = { id: "artifact", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 };
+    const published = { ...baseline, artifactPublished: { artifact, durationMs: 2_000 } };
+    expect(analysisReducer(published, { type: "sending", started: false, text: "Again", now: 4_000 })).toMatchObject({ artifactAuthoring: null, artifactPublished: null });
+    expect(analysisReducer(published, { type: "reset" })).toMatchObject({ artifactAuthoring: null, artifactPublished: null });
+    expect(analysisReducer(published, { type: "stopped", now: 4_000 })).toMatchObject({ artifactAuthoring: null, artifactPublished: { artifact, durationMs: 2_000 } });
+    expect(analysisReducer(published, { type: "error", message: "Failed", now: 4_000 })).toMatchObject({ artifactAuthoring: null, artifactPublished: { artifact, durationMs: 2_000 } });
+  });
+
+  it("returns a published card to authoring when the same turn republishes", () => {
+    const artifact = { id: "artifact", title: "First", html: "<p>first</p>", createdAt: 1 };
+    const published = { ...initialAnalysisState, artifactPublished: { artifact, durationMs: 2_000 } };
+    const authoring = analysisReducer(published, {
+      type: "event",
+      event: { type: "tool", title: "publish_artifact", status: "in_progress" },
+      now: 8_000,
+    });
+    expect(authoring).toMatchObject({ artifactAuthoring: { startedAt: 8_000 }, artifactPublished: null });
+  });
+
+  it("ends authoring when the turn completes without an artifact event", () => {
+    const authoring = { ...initialAnalysisState, busy: true, artifactAuthoring: { startedAt: 1_000 } };
+    const completed = analysisReducer(authoring, { type: "event", event: { type: "complete" }, now: 5_000 });
+    expect(completed).toMatchObject({ phase: "complete", busy: false, artifactAuthoring: null, artifactPublished: null });
+  });
+
+  it("clears the published card together with cleared artifacts", () => {
+    const artifact = { id: "artifact", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 };
+    const published = {
+      ...initialAnalysisState,
+      artifacts: [artifact],
+      artifactPublished: { artifact, durationMs: 2_000 },
+    };
+    expect(analysisReducer(published, { type: "clear-artifacts" })).toMatchObject({ artifacts: [], artifactPublished: null });
+  });
+
   it("keeps only the newest per-operation artifact working set", () => {
     let state = initialAnalysisState;
     for (let index = 0; index <= MAX_ANALYSIS_ARTIFACTS; index += 1) {

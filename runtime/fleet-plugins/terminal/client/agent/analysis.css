@@ -7,6 +7,8 @@
 .session-analyst-handle__count.is-pulsing { animation: analyst-artifact-count-pulse var(--duration-slow) var(--ease-glide); }
 .session-analyst-handle.is-waiting { opacity: .45; border-color: var(--hairline); color: var(--text-tertiary); cursor: default; box-shadow: none; }
 .session-analyst-handle.is-waiting:hover { transform: translateY(-50%); background: var(--ink-deep); }
+.session-analyst-handle--artifacts.is-authoring { opacity: 1; color: var(--aurora); }
+.session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count { border: 1px dashed var(--aurora); animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
 .session-analyst-handle:focus-visible, .session-analyst__chat-pane button:focus-visible, .session-analyst__artifacts button:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; }
 
 .session-analyst__chat-pane { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text-primary); overflow: hidden; background: var(--surface-pillar); }
@@ -29,7 +31,7 @@
 
 .session-analyst__workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; overflow: hidden; background: transparent; }
 .session-analyst__chat-pane.is-initial .session-analyst__workspace { display: flex; flex-direction: column; justify-content: center; overflow: auto; padding: 22px 18px; }
-.session-analyst__chat { overflow: auto; min-height: 0; display: flex; flex-direction: column; padding: 22px 18px; background: transparent; }
+.session-analyst__chat { overflow-x: hidden; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; padding: 22px 18px; background: transparent; }
 .session-analyst__chat-pane.is-initial .session-analyst__chat { flex: none; overflow: visible; padding: 0; }
 .session-analyst__hero-wrap { margin: auto 0; display: grid; gap: var(--space-4); }
 .session-analyst__chat-pane.is-initial .session-analyst__hero-wrap { margin: 0; }
@@ -60,7 +62,9 @@
 .session-analyst__followups-row button:hover { border-color: color-mix(in oklch, var(--aurora) 45%, var(--hairline)); color: var(--text-primary); transform: translateY(-1px); }
 
 .session-analyst__chat > ol { display: grid; gap: 15px; align-content: start; padding: 0; margin: 0; list-style: none; user-select: text; cursor: text; }
-.session-analyst__message { padding: 11px 15px; border-radius: 18px; white-space: pre-wrap; line-height: 1.55; font-size: 12.5px; }
+/* Flex column 자식의 min-width:auto가 Markdown 고유 폭을 채팅 컨테이너로 전파하지 않게 한다. */
+.session-analyst__transcript { min-width: 0; }
+.session-analyst__message { min-width: 0; padding: 11px 15px; border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; font-size: 12.5px; }
 .session-analyst__message--user { background: color-mix(in oklch, var(--ink-veil) 70%, var(--ink-mid)); color: var(--text-primary); justify-self: end; max-width: 90%; }
 .session-analyst__message--analyst { position: relative; max-width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--text-secondary); padding: 6px 4px 6px 28px; animation: analyst-answer-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__message--analyst::before { content: "✳"; position: absolute; left: 2px; top: 7px; color: var(--aurora); }
@@ -74,10 +78,13 @@
   --font-size-title-md: 15px;
   --font-size-display-md: 17px;
   --font-size-display-lg: 18px;
-  max-inline-size: none;
+  min-width: 0;
+  max-width: 100%;
+  max-inline-size: 100%;
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.58;
+  overflow-wrap: anywhere;
   white-space: normal;
 }
 .session-analyst__response.markdown-body > * + * { margin-top: var(--space-3); }
@@ -89,10 +96,27 @@
 .session-analyst__response.markdown-body :is(ul, ol) { margin-bottom: var(--space-3); padding-left: var(--space-5); }
 .session-analyst__response.markdown-body li + li { margin-top: var(--space-1); }
 .session-analyst__response.markdown-body table { margin-block: var(--space-3); font-size: 10px; }
+.session-analyst__response table { display: block; max-width: 100%; overflow-x: auto; }
 .session-analyst__response.markdown-body table :is(th, td) { padding: var(--space-2) var(--space-3); }
 .session-analyst__response.markdown-body :is(blockquote, .code-block, .diagram-block) { margin-block: var(--space-3); }
 .session-analyst__response.markdown-body blockquote { padding: var(--space-2) var(--space-3); }
+.session-analyst__response .code-block { min-width: 0; max-width: 100%; }
 .session-analyst__response.markdown-body .code-block code { padding: var(--space-3); }
+.session-analyst__response .code-block code { display: block; max-width: 100%; overflow-x: auto; }
+
+.session-analyst__author-card { min-width: 0; flex: none; margin-top: 15px; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--ink-deep); padding: var(--space-3); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
+.session-analyst__author-card.is-authoring { border-color: color-mix(in oklch, var(--aurora) 35%, var(--hairline)); background: color-mix(in oklch, var(--aurora) 6%, var(--ink-deep)); }
+.session-analyst__author-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.session-analyst__author-sigil { flex: none; color: var(--aurora); font-size: 13px; line-height: 1; }
+.session-analyst__author-title { min-width: 0; flex: 1; overflow-wrap: anywhere; color: var(--text-primary); font-size: 12px; line-height: 1.35; }
+.session-analyst__author-time { flex: none; color: var(--aurora); font: 600 10px/1.3 var(--font-mono); }
+.session-analyst__author-sub { margin: var(--space-2) 0 0 21px; color: var(--text-tertiary); font-size: 10px; line-height: 1.4; }
+.session-analyst__author-track { height: 3px; margin: var(--space-3) 0 0 21px; overflow: hidden; border-radius: 2px; background: color-mix(in oklch, var(--aurora) 14%, var(--ink-mid)); }
+.session-analyst__author-track span { display: block; width: 34%; height: 100%; border-radius: inherit; background: var(--aurora); animation: analyst-author-slide 1.5s var(--ease-glide) infinite; }
+.session-analyst__author-card.is-done { border-color: color-mix(in oklch, var(--positive) 45%, var(--hairline)); background: color-mix(in oklch, var(--positive) 7%, var(--ink-deep)); }
+.session-analyst__author-card.is-done :is(.session-analyst__author-sigil, .session-analyst__author-time, .session-analyst__author-open) { color: var(--positive); }
+.session-analyst__author-open { flex: none; border: 1px solid color-mix(in oklch, var(--positive) 45%, var(--hairline)); border-radius: 999px; background: color-mix(in oklch, var(--positive) 4%, var(--ink-deep)); padding: 5px 9px; font: 600 9px/1 var(--font-mono); white-space: nowrap; cursor: pointer; }
+.session-analyst__author-open:hover { background: color-mix(in oklch, var(--positive) 10%, transparent); }
 
 .session-analyst__pulse { position: relative; min-height: 92px; flex: none; margin-top: 15px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--aurora) 35%, var(--hairline)); border-radius: var(--radius-md); background: color-mix(in oklch, var(--aurora) 6%, var(--ink-deep)); padding: var(--space-3); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before { content: ""; position: absolute; z-index: 1; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, transparent, var(--aurora), transparent); background-size: 200% 100%; animation: analyst-aurora-scan 1.6s linear infinite; }
@@ -183,6 +207,8 @@
 @keyframes analyst-receipt-settle { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes analyst-composer-dock { from { opacity: .72; transform: translateY(-7rem); } to { opacity: 1; transform: translateY(0); } }
 @keyframes analyst-artifact-count-pulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.32); } }
+@keyframes analyst-author-slide { from { transform: translateX(-100%); } to { transform: translateX(294%); } }
+@keyframes analyst-authoring-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
 @container (max-width: 24rem) {
   .session-analyst__suggestions { grid-template-columns: 1fr; }
@@ -204,5 +230,5 @@
   .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }
   .session-analyst-handle:hover { transform: translateY(-50%); }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
-  .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__queue-item, .session-analyst__followups, .session-analyst__slash, .session-analyst__composer.is-docking, .session-analyst__artifact-menu, .session-analyst-handle__count.is-pulsing { animation: none; }
+  .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__queue-item, .session-analyst__followups, .session-analyst__slash, .session-analyst__composer.is-docking, .session-analyst__artifact-menu, .session-analyst-handle__count.is-pulsing, .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count, .session-analyst__author-card, .session-analyst__author-track span { animation: none; }
 }

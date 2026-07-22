@@ -42,6 +42,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const supportsCompanionVisibility = hiddenCompanionPanelIds !== undefined && setCompanionPanelVisible !== undefined;
   const artifactsHidden = hiddenCompanionPanelIds?.includes(ANALYST_ARTIFACTS_COMPANION_ID) ?? false;
   const artifactsVisible = artifactCount > 0 && !artifactsHidden;
+  const artifactAuthoring = state.artifactAuthoring !== null && artifactCount === 0;
   const previousArtifactCountRef = React.useRef(0);
   const [countPulseRevision, setCountPulseRevision] = React.useState(0);
   const artifactsChipRef = React.useRef<HTMLButtonElement>(null);
@@ -63,7 +64,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     const chat = chatRef.current;
     if (!chat || !hasInteracted) return;
     chat.scrollTop = chat.scrollHeight;
-  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase]);
+  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished]);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -133,12 +134,12 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
         <button
           ref={artifactsChipRef}
           type="button"
-          className={`session-analyst-handle session-analyst-handle--artifacts${artifactCount === 0 ? " is-waiting" : ""}`}
+          className={`session-analyst-handle session-analyst-handle--artifacts${artifactCount === 0 ? " is-waiting" : ""}${artifactAuthoring ? " is-authoring" : ""}`}
           aria-label={artifactsVisible ? "Hide Artifacts" : "Open Artifacts"}
           aria-pressed={artifactsVisible}
           aria-disabled={artifactCount === 0}
           tabIndex={artifactCount === 0 ? -1 : undefined}
-          title={artifactCount === 0 ? "Artifacts the analyst publishes appear here" : undefined}
+          title={artifactAuthoring ? "The analyst is authoring an artifact…" : artifactCount === 0 ? "Artifacts the analyst publishes appear here" : undefined}
           onClick={() => {
             if (!setCompanionPanelVisible || artifactCount === 0) return;
             if (artifactsVisible) dispatch({ type: "artifacts-chip-disarm" });
@@ -147,6 +148,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
         >
           <span className="session-analyst-handle__chev" aria-hidden="true">{artifactsVisible ? "«" : "»"}</span>
           {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst-handle__count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
+          {artifactAuthoring ? <span className="session-analyst-handle__count">…</span> : null}
           <span className="session-analyst-handle__label">ARTIFACTS</span>
         </button>
       ) : null}
@@ -180,6 +182,15 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               </div>
             </div>
           )}
+          {/* 기존 EvidencePulse가 진행 상태를 낭독하므로 카드에는 별도 live region을 두지 않는다. */}
+          {state.artifactAuthoring || state.artifactPublished ? (
+            <ArtifactAuthorCard
+              state={state}
+              onOpen={supportsCompanionVisibility && setCompanionPanelVisible
+                ? () => setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, true)
+                : undefined}
+            />
+          ) : null}
           {state.phase !== "idle" ? <EvidencePulse state={state} /> : null}
         </section>
         {state.queue.length > 0 ? (
@@ -361,6 +372,35 @@ function PanelHeader({ state, onReset }: { readonly state: AnalysisState; readon
   );
 }
 
+function ArtifactAuthorCard({ state, onOpen }: { readonly state: AnalysisState; readonly onOpen?: () => void }) {
+  const authoringElapsedMs = useArtifactAuthoringElapsedMs(state.artifactAuthoring?.startedAt ?? null);
+  if (state.artifactAuthoring) {
+    return (
+      <div className="session-analyst__author-card is-authoring">
+        <div className="session-analyst__author-head">
+          <span className="session-analyst__author-sigil" aria-hidden="true">✳</span>
+          <strong className="session-analyst__author-title">Publishing an artifact</strong>
+          <time className="session-analyst__author-time">{formatElapsed(authoringElapsedMs)}</time>
+        </div>
+        <p className="session-analyst__author-sub">The analyst is authoring artifact content. It opens in Artifacts when it lands.</p>
+        <div className="session-analyst__author-track" aria-hidden="true"><span /></div>
+      </div>
+    );
+  }
+  const published = state.artifactPublished;
+  if (!published) return null;
+  return (
+    <div className="session-analyst__author-card is-done">
+      <div className="session-analyst__author-head">
+        <span className="session-analyst__author-sigil" aria-hidden="true">◆</span>
+        <strong className="session-analyst__author-title">Artifact published — {published.artifact.title}</strong>
+        {published.durationMs === null ? null : <time className="session-analyst__author-time">{formatElapsed(published.durationMs)}</time>}
+        {onOpen ? <button type="button" className="session-analyst__author-open" onClick={onOpen}>Open in Artifacts</button> : null}
+      </div>
+    </div>
+  );
+}
+
 function EvidencePulse({ state }: { readonly state: AnalysisState }) {
   const elapsedMs = useElapsedMs(state);
   const elapsed = formatElapsed(elapsedMs);
@@ -416,6 +456,17 @@ function useElapsedMs(state: AnalysisState): number {
   }, [state.busy, state.runStartedAt]);
   if (state.runStartedAt === null) return 0;
   return Math.max(0, (state.runEndedAt ?? now) - state.runStartedAt);
+}
+
+function useArtifactAuthoringElapsedMs(startedAt: number | null): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (startedAt === null) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [startedAt]);
+  return startedAt === null ? 0 : Math.max(0, now - startedAt);
 }
 
 function formatElapsed(elapsedMs: number): string {
