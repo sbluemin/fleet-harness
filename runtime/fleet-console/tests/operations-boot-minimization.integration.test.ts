@@ -210,7 +210,7 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().operations).toHaveProperty("launched");
   });
 
-  it("restores the only minimized panel with Alt+Arrow", async () => {
+  it("consumes Alt+Arrow without restoring or activating when every panel is minimized", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
     apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
@@ -226,6 +226,7 @@ describe("Operations boot minimization", () => {
       await Promise.resolve();
     });
     expect(getSnapshot().minimized).toEqual(["initial"]);
+    expect(getState().activeOperationId).toBeNull();
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
     const event = new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, cancelable: true });
@@ -235,8 +236,9 @@ describe("Operations boot minimization", () => {
     });
 
     expect(event.defaultPrevented).toBe(true);
-    expect(getState().activeOperationId).toBe("initial");
-    expect(getSnapshot().minimized).toEqual([]);
+    expect(getState().activeOperationId).toBeNull();
+    expect(getState().keyboardFocusRequest).toBeNull();
+    expect(getSnapshot().minimized).toEqual(["initial"]);
   });
 
   it("restores and activates a minimized Operation before pending Map focus moves the viewport", async () => {
@@ -265,7 +267,7 @@ describe("Operations boot minimization", () => {
     expect(getState().keyboardFocusRequest).toEqual({ operationId: "initial", requestId: 1 });
   });
 
-  it("advances the focus layer with Alt+Arrow while preserving Formation", async () => {
+  it("skips minimized peers while maximized", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
     apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
@@ -276,16 +278,42 @@ describe("Operations boot minimization", () => {
       root!.render(createElement(BrowserRouter, null, createElement(App)));
     });
     await act(async () => {
-      operations.resolve([operation("first"), operation("second")]);
+      operations.resolve([operation("first"), operation("second"), operation("third")]);
       theaters.resolve({ theaters: [theater()] });
       await Promise.resolve();
     });
     await act(async () => {
-      toggleFormationView();
+      restoreOperation("third");
       setMaximizedOperationId("first");
       await Promise.resolve();
     });
     expect(getMaximizedOperationId()).toBe("first");
+    expect(getFormationView()).toBe(false);
+    expect(getSnapshot().minimized).toEqual(["second"]);
+
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getState().activeOperationId).toBe("third");
+    expect(getMaximizedOperationId()).toBe("third");
+    expect(getFormationView()).toBe(false);
+    expect(getSnapshot().minimized).toEqual(["second"]);
+  });
+
+  it("skips minimized peers while Formation is active", async () => {
+    await bootApp([operation("first"), operation("second"), operation("third")]);
+    await act(async () => {
+      restoreOperation("first");
+      restoreOperation("third");
+      setActiveOperation("first");
+      toggleFormationView();
+      await Promise.resolve();
+    });
     expect(getFormationView()).toBe(true);
     expect(getSnapshot().minimized).toEqual(["second"]);
 
@@ -297,10 +325,9 @@ describe("Operations boot minimization", () => {
     });
 
     expect(event.defaultPrevented).toBe(true);
-    expect(getState().activeOperationId).toBe("second");
-    expect(getMaximizedOperationId()).toBe("second");
+    expect(getState().activeOperationId).toBe("third");
     expect(getFormationView()).toBe(true);
-    expect(getSnapshot().minimized).toEqual([]);
+    expect(getSnapshot().minimized).toEqual(["second"]);
   });
 
   it("switches pending focus through the active focus layer before Formation", async () => {
@@ -655,15 +682,18 @@ describe("Operations boot minimization", () => {
     expect(getCompanionOperationId()).toBeNull();
   });
 
-  it("retargets Analyze with Alt+Arrow before Maximized and Formation", async () => {
-    registryMocks.operationKinds = [companionKind(() => true)];
-    await bootApp([operation("first"), operation("second")]);
+  it("retargets Analyze with Alt+Arrow to a non-minimized peer while preserving minimized peers", async () => {
+    const canOpenCompanions = vi.fn(() => true);
+    registryMocks.operationKinds = [companionKind(canOpenCompanions)];
+    await bootApp([operation("first"), operation("second"), operation("third")]);
     await act(async () => {
       toggleFormationView();
+      restoreOperation("third");
       setMaximizedOperationId("first");
       setCompanionOperationId("first");
       await Promise.resolve();
     });
+    expect(getSnapshot().minimized).toEqual(["second"]);
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
     const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
@@ -673,9 +703,12 @@ describe("Operations boot minimization", () => {
     });
 
     expect(event.defaultPrevented).toBe(true);
-    expect(getCompanionOperationId()).toBe("second");
+    expect(canOpenCompanions).toHaveBeenCalledOnce();
+    expect(getCompanionOperationId()).toBe("third");
+    expect(getState().activeOperationId).toBe("third");
     expect(getMaximizedOperationId()).toBeNull();
     expect(getFormationView()).toBe(true);
+    expect(getSnapshot().minimized).toEqual(["second"]);
   });
 
   it("retargets Analyze through pending focus using the destination Theater's layer", async () => {
