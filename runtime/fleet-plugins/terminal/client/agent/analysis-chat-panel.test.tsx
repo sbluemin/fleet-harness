@@ -56,7 +56,7 @@ describe("Session Analyst Evidence Pulse", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the initial settings and prompt as one compact composer row", () => {
+  it("renders the initial settings beside and outside the prompt surface", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
@@ -67,10 +67,14 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
     const surface = composer.querySelector(".session-analyst__composer-surface")!;
+    const selectorStrip = composer.querySelector(".session-analyst__selector-strip")!;
 
     expect(container.querySelector(".session-analyst__chat-pane")?.classList.contains("is-initial")).toBe(true);
     expect(composer.classList.contains("is-initial")).toBe(true);
-    expect(surface.querySelectorAll("select")).toHaveLength(3);
+    expect(selectorStrip.parentElement).toBe(composer);
+    expect(selectorStrip.nextElementSibling).toBe(surface);
+    expect(surface.querySelector(".session-analyst__selector-strip")).toBeNull();
+    expect(selectorStrip.querySelectorAll("select")).toHaveLength(3);
     expect(surface.querySelector("textarea")?.rows).toBe(1);
     expect(surface.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
     expect(container.querySelector(".session-analyst__composer-meta")).toBeNull();
@@ -390,6 +394,7 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel();
     const textarea = container.querySelector("textarea")!;
     const palette = container.querySelector('[role="listbox"]')!;
+    expect(palette.parentElement).toBe(container.querySelector(".session-analyst__composer"));
     expect(textarea.getAttribute("role")).toBe("combobox");
     expect(textarea.getAttribute("aria-expanded")).toBe("true");
     expect(textarea.getAttribute("aria-controls")).toBe(palette.id);
