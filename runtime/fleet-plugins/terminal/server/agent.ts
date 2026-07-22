@@ -42,6 +42,7 @@ interface AgentRouteDeps {
 }
 
 const AGENT_OPERATION_TYPE = "agent";
+const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const TERMINAL_PLUGIN_ID = "terminal";
 
@@ -120,6 +121,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const unsubscribeReminder = createCarrierResultReminderRouter({
     streamRegister: runtime.carrierRuntime.jobs.streaming.register,
     writer: reminderWriter,
+    delivery: CONSOLE_PTY_MESSAGE_DELIVERY,
     resolveSink: (event) => {
       const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
       return sessionId ? { write: (data) => terminalRuntime.write(sessionId, data) } : undefined;
@@ -478,6 +480,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   async function handleExit(operationId: string): Promise<void> {
+    reminderWriter.cancel(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -495,6 +498,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   function removeSession(sessionId: string): void {
+    reminderWriter.cancel(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -503,6 +507,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   async function cleanup(): Promise<void> {
+    reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();
@@ -560,7 +565,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (safeLabel.length === 0) return;
     const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
     // 리마인더와 동일한 세션 키/writer로 직렬화해 rename+리마인더 인터리브를 막는다.
-    reminderWriter.enqueue(sessionId, (data) => terminalRuntime.write(sessionId, data), formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`));
+    reminderWriter.enqueue(
+      sessionId,
+      (data) => terminalRuntime.write(sessionId, data),
+      formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
+    );
   }
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {

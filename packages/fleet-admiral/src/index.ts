@@ -81,5 +81,6 @@ export {
   formatCarrierResultReminderMessage,
   sanitizeCarrierResultReminder,
   type DelayedPtyWriter,
+  type PtyMessageDeliveryOptions,
   type PtyWriteSink,
 } from "./agent-runtime/reminder-router.js";
