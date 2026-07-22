@@ -325,17 +325,56 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')?.click();
-    const cliSelect = article.querySelector<HTMLSelectElement>('select[name="cli"]')!;
-    cliSelect.value = "claude";
-    cliSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(3));
+    const cliTrigger = article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[0]!;
+    cliTrigger.click();
+    await vi.waitFor(() => expect(document.querySelector(".fc-select__popup")).not.toBeNull());
+    [...document.querySelectorAll<HTMLLIElement>(".fc-select__option")].find((option) => option.textContent === "claude")!.click();
 
     // 이전 CLI의 model을 들고 재조회하면 안 되고, 새 CLI의 목록으로 교체되어야 한다.
-    await vi.waitFor(() => expect(article.querySelector('select[name="model"]')?.innerHTML).toContain("opus"));
+    await vi.waitFor(() => expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[1]?.textContent).toContain("opus"));
     const claudeOptionsUrl = fetchMock.mock.calls.map(call => String(call[0])).find(url => url.includes("cli=claude"))!;
     expect(claudeOptionsUrl).not.toContain("model=");
-    expect(article.querySelector('select[name="effort"]')?.innerHTML).toContain("high");
+    expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[2]?.textContent).toContain("high");
 
     controller.destroy();
+    expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
+    article.remove();
+  });
+
+  it("unmounts the settings select island before dock HTML replacement and on destroy", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex", "claude"], models: ["gpt"], efforts: ["medium"] }));
+      return new Response(JSON.stringify(sessionDto()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    for (let index = 0; index < 3; index += 1) {
+      article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')!.click();
+      await vi.waitFor(() => {
+        const open = article.querySelector(".cowork-config") !== null;
+        expect(article.querySelectorAll(".fc-select").length).toBe(open ? 3 : 0);
+        expect(article.querySelectorAll("[data-cowork-settings-host]").length).toBe(open ? 1 : 0);
+      });
+    }
+
+    expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
+    article.querySelector<HTMLElement>('[data-cowork-action="toggle-panel"]')!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-config")).toBeNull());
+    expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
+
+    controller.destroy();
+    expect(article.querySelector(".cowork-dock-zone")).toBeNull();
+    expect(document.querySelectorAll(".fc-select")).toHaveLength(0);
     article.remove();
   });
 

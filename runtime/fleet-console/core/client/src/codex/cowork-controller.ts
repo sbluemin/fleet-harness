@@ -1,4 +1,6 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import {
   applyCowork, cancelCowork, closeCowork, CoworkRequestError, createCoworkSession,
   fetchCoworkOptions, peekCoworkEntrySession, promptCowork, subscribeCoworkEvents,
@@ -7,6 +9,7 @@ import {
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
 import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
 import type { DraftLine } from "./cowork-diff.js";
+import { CoworkSettingsSelect } from "./cowork-settings-select.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
 
@@ -69,6 +72,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let lastBodyKey = "published";
   let lastDockHtml: string | null = null;
   let diffMemo: { base: string; draft: string; lines: readonly DraftLine[] } | null = null;
+  let settingsSelectRoot: Root | null = null;
 
   // SSE 이벤트마다 LCS를 다시 돌리지 않도록 draft 쌍 기준으로 메모한다.
   const draftLines = (): readonly DraftLine[] => {
@@ -89,6 +93,51 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   tip.hidden = true;
   options.article.classList.add("cowork-host");
   options.article.append(anchor, dockZone, tip);
+
+  const unmountSettingsSelect = () => {
+    settingsSelectRoot?.unmount();
+    settingsSelectRoot = null;
+  };
+
+  const mountSettingsSelectIfNeeded = () => {
+    if (!configOpen || disposed) return;
+    const host = dockZone.querySelector<HTMLElement>("[data-cowork-settings-host]");
+    if (!host) return;
+    if (!settingsSelectRoot) settingsSelectRoot = createRoot(host);
+    settingsSelectRoot.render(createElement(CoworkSettingsSelect, {
+      clis: optionsDto.clis,
+      models: optionsDto.models,
+      efforts: optionsDto.efforts,
+      cli: settings.cli,
+      model: settings.model,
+      effort: settings.effort,
+      onCliChange: (value) => handleSettingChange("cli", value),
+      onModelChange: (value) => handleSettingChange("model", value),
+      onEffortChange: (value) => handleSettingChange("effort", value),
+    }));
+  };
+
+  const handleSettingChange = (name: "cli" | "model" | "effort", value: string) => {
+    settings = name === "cli"
+      ? { cli: value, model: "", effort: "" }
+      : { ...settings, [name]: value };
+    saveSettings(settings);
+    if (!session) {
+      if (name !== "effort") void updateOptions().then(() => { renderDock(); }).catch(() => undefined);
+      else mountSettingsSelectIfNeeded();
+      return;
+    }
+    if (name !== "effort") {
+      void updateOptions()
+        .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
+        .then(renderDock)
+        .catch((cause) => { error = cause instanceof Error ? cause.message : "Cowork request failed."; renderDock(); });
+    } else {
+      void mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings))
+        .then(renderDock)
+        .catch(() => undefined);
+    }
+  };
 
   // ── 렌더 ────────────────────────────────────────────────────────────────────
 
@@ -152,6 +201,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
           : '<button type="button" class="cowork-send" data-cowork-action="send" aria-label="Send to AI">↑</button>'}
       </div>
       ${error ? `<p class="cowork-error" role="alert">${escapeHtml(error)}</p>` : ""}`);
+    mountSettingsSelectIfNeeded();
   };
 
   const renderRevisionStream = (running: boolean): string => {
@@ -210,6 +260,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // 실제 변경이 있을 때만 교체하고 포커스 중이던 입력은 복원한다.
   const setDockHtml = (html: string) => {
     if (html === lastDockHtml) return;
+    unmountSettingsSelect();
     lastDockHtml = html;
     const active = document.activeElement;
     const focusKey = active instanceof HTMLInputElement && active.name === "prompt" && dockZone.contains(active)
@@ -241,7 +292,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const renderConfig = () => `
     <div class="cowork-popover cowork-config" role="region" aria-label="Agent settings">
-      ${select("CLI", "cli", optionsDto.clis, settings.cli)}${select("Model", "model", optionsDto.models, settings.model)}${select("Effort", "effort", optionsDto.efforts, settings.effort)}
+      <div data-cowork-settings-host></div>
     </div>`;
 
   const renderReview = (changed: number) => {
@@ -667,25 +718,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       event.stopPropagation();
       return;
     }
-    if (target instanceof HTMLSelectElement && ["cli", "model", "effort"].includes(target.name)) {
-      // CLI가 바뀌면 이전 CLI의 model/effort는 무효 — 리셋해야 새 CLI의 기본 목록을 받는다.
-      settings = target.name === "cli"
-        ? { cli: target.value, model: "", effort: "" }
-        : { ...settings, [target.name]: target.value };
-      saveSettings(settings);
-      if (!session) {
-        // 세션 전(dormant)에도 새 CLI의 목록은 즉시 갱신해 보여준다.
-        if (target.name !== "effort") void updateOptions().then(renderDock).catch(() => undefined);
-        return;
-      }
-      if (target.name !== "effort") {
-        void updateOptions()
-          .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
-          .then(renderDock)
-          .catch(cause => { error = cause instanceof Error ? cause.message : "Cowork request failed."; renderDock(); });
-      } else void mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)).catch(() => undefined);
-      return;
-    }
     if (target instanceof HTMLTextAreaElement && target.dataset.coworkComment) void persistAnnotations().catch(() => undefined);
   };
 
@@ -702,6 +734,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     destroy() {
       disposed = true;
       cancelRevisionRender();
+      unmountSettingsSelect();
       unsubscribe?.();
       options.article.removeEventListener("mouseup", onMouseUp);
       options.article.removeEventListener("mousedown", onMouseDown);
@@ -722,9 +755,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function select(label: string, name: string, values: readonly string[], current: string): string {
-  return `<label class="cowork-selector"><span>${label}</span><select name="${name}" ${values.length ? "" : "disabled"}>${values.map(value => `<option value="${escapeAttribute(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>`;
-}
 function copyCodeToClipboard(button: HTMLElement, code: string): void {
   const clipboard = navigator.clipboard;
   if (!clipboard) return;
