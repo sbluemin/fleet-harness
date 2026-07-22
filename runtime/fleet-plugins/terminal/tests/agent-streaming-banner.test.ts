@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { deriveTrackPhase, describeToolTarget, resolveToolTone, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -217,6 +217,113 @@ describe("isDockTrackLive (잡 종결 게이트 라이브 판정)", () => {
     expect(isDockTrackLive("done", "stream")).toBe(false);
     expect(isDockTrackLive("error", "active")).toBe(false);
     expect(isDockTrackLive("active", "done")).toBe(false);
+  });
+});
+
+describe("deriveTrackPhase (phase 카드 상태)", () => {
+  function makeTrack(overrides: Partial<JobView["tracks"][string]> = {}): JobView["tracks"][string] {
+    return {
+      trackId: "track-1",
+      displayName: "Carrier",
+      status: "stream",
+      lastEventId: 1,
+      text: "",
+      thought: "",
+      sentTextLength: 0,
+      sentThoughtLength: 0,
+      tools: [],
+      ...overrides,
+    };
+  }
+
+  it.each([
+    ["error", "active", { label: "Error", tone: "error" }],
+    ["stream", "error", { label: "Error", tone: "error" }],
+    ["aborted", "active", { label: "Aborted", tone: "error" }],
+    ["stream", "aborted", { label: "Aborted", tone: "error" }],
+    ["done", "active", { label: "Done", tone: "done" }],
+    ["stream", "done", { label: "Done", tone: "done" }],
+  ] as const)("track=%s job=%s의 종결 phase를 도출한다", (trackStatus, jobStatus, expected) => {
+    expect(deriveTrackPhase(makeTrack({ status: trackStatus }), jobStatus)).toEqual(expected);
+  });
+
+  it("혼합 결과에서는 resolveDockRowStatusLabel 계약과 같이 트랙 종결 상태를 job 오류보다 우선한다", () => {
+    const track = makeTrack({ status: "done" });
+    expect(resolveDockRowStatusLabel(track.status, "error")).toBe("done");
+    expect(deriveTrackPhase(track, "error")).toEqual({ label: "Done", tone: "done" });
+  });
+
+  it("err 트랙은 error tone이고 종결 job의 stale stream 트랙은 job 상태로 폴백한다", () => {
+    const errorPhase = deriveTrackPhase(makeTrack({ status: "err" }), "active");
+    const staleTrackPhase = deriveTrackPhase(makeTrack({ status: "stream" }), "done");
+    expect(errorPhase).toEqual({ label: "Error", tone: "error" });
+    expect(errorPhase.tone === "live").toBe(false);
+    expect(staleTrackPhase).toEqual({ label: "Done", tone: "done" });
+    expect(staleTrackPhase.tone === "live").toBe(false);
+  });
+
+  it("ACP 어휘(completed/failed)의 마지막 도구도 종결로 취급해 Using에 잔류하지 않는다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      tools: [{ id: "acp-done", name: "read", status: "completed" }],
+    }), "active")).toEqual({ label: "Working", tone: "live" });
+    expect(deriveTrackPhase(makeTrack({
+      text: "partial output",
+      tools: [{ id: "acp-failed", name: "edit", status: "failed" }],
+    }), "active")).toEqual({ label: "Writing", tone: "live" });
+    expect(resolveToolTone("completed")).toBe("done");
+    expect(resolveToolTone("failed")).toBe("error");
+    expect(resolveToolTone("in_progress")).toBe("live");
+    expect(resolveToolTone(undefined)).toBe("live");
+  });
+
+  it("마지막 미종결 도구를 출력보다 우선하고 이름이 없으면 tool로 폴백한다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      text: "partial output",
+      thought: "hidden reasoning",
+      tools: [
+        { id: "done", name: "read", status: "done" },
+        { id: "live", status: "running" },
+      ],
+    }), "active")).toEqual({ label: "Using tool", tone: "live" });
+  });
+
+  it("완료된 마지막 도구는 건너뛰고 Writing을 Reasoning보다 우선한다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      text: "partial output",
+      thought: "hidden reasoning",
+      tools: [{ id: "done", name: "read", status: "done" }],
+    }), "active")).toEqual({ label: "Writing", tone: "live" });
+  });
+
+  it("output 없이 thought가 있으면 Reasoning, 둘 다 없으면 Working이다", () => {
+    expect(deriveTrackPhase(makeTrack({ thought: "hidden reasoning" }), "active")).toEqual({ label: "Reasoning", tone: "live" });
+    expect(deriveTrackPhase(makeTrack(), "active")).toEqual({ label: "Working", tone: "live" });
+  });
+
+  it("종결 상태가 라이브 activity보다 항상 우선한다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      status: "done",
+      text: "output",
+      tools: [{ id: "live", name: "write", status: "running" }],
+    }), "active")).toEqual({ label: "Done", tone: "done" });
+    expect(deriveTrackPhase(makeTrack({ status: "done" }), "error")).toEqual({ label: "Done", tone: "done" });
+  });
+});
+
+describe("describeToolTarget (도구 대상 요약)", () => {
+  it("승인된 키 우선순위에서 첫 string 값을 선택한다", () => {
+    expect(describeToolTarget({ pattern: "later", command: "pnpm test", path: "src/index.ts", file_path: "src/main.ts" })).toBe("src/main.ts");
+    expect(describeToolTarget({ path: 42, file: "fallback.ts" })).toBe("fallback.ts");
+  });
+
+  it("대상을 60자로 절단한다", () => {
+    expect(describeToolTarget({ query: "q".repeat(75) })).toBe("q".repeat(60));
+  });
+
+  it("object가 아니거나 string 대상 키가 없으면 null이다", () => {
+    expect(describeToolTarget(null)).toBeNull();
+    expect(describeToolTarget(["file.ts"])).toBeNull();
+    expect(describeToolTarget({ path: false, other: "ignored" })).toBeNull();
   });
 });
 

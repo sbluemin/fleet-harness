@@ -3932,7 +3932,7 @@
 }
 
 .track-card--ok {
-  border-color: color-mix(in oklch, var(--brass) 28%, var(--surface-rim));
+  border-color: color-mix(in oklch, var(--positive) 28%, var(--surface-rim));
 }
 
 .track-card--bad {
@@ -3994,10 +3994,10 @@
   gap: var(--space-2);
   padding-bottom: var(--space-2);
   border-bottom: 1px dashed var(--surface-rim);
-  color: var(--ink-rim);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
   list-style: none;
@@ -4027,44 +4027,10 @@
   word-break: break-word;
 }
 
-/* text: 주 출력 — 또렷 */
-.track-card-text {
+/* markdown-body가 출력 타이포·블록 문법을 소유하며, 카드에서는 크기만 조정한다. */
+.track-card-output {
   margin: var(--space-3) 0 0;
-}
-
-.track-card-text pre {
-  margin: var(--space-1) 0 0;
-  color: var(--ink-spectral);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* 섹션 레이블 ("thinking" / "output") */
-.track-card-section-label {
-  display: block;
-  color: var(--ink-rim);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.track-card-section-label--output {
-  color: color-mix(in oklch, var(--brass) 60%, var(--ink-rim));
-}
-
-/* aurora 스트림 캐럿 — live 트랙 text 끝에 표시 */
-.track-card-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 1px;
-  background: var(--aurora);
-  vertical-align: text-bottom;
-  animation: caret-blink 1.1s step-end infinite;
+  font-size: 13px;
 }
 
 /* 에러 블록 — coral */
@@ -4082,36 +4048,62 @@
   word-break: break-word;
 }
 
-/* tools 목록 — 모노 brass 점 */
+/* 도구 활동: 상태 도트 + 대상 요약 칩 */
 .track-card-tools {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin: var(--space-3) 0 0;
-  padding: 0;
-  list-style: none;
 }
 
-.track-card-tools li {
-  display: flex;
+.track-card-tool-chip {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--ink-fog);
   font-family: var(--font-mono);
   font-size: 11px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  padding: 3px 9px;
+  background: var(--surface-glass);
+  color: var(--text-secondary);
 }
 
-.track-card-tools li::before {
+.track-card-tool-chip strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.track-card-tool-chip > span {
+  max-width: 60ch;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-card-tool-chip i {
   flex: none;
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--brass);
-  content: "";
+  background: var(--aurora);
+}
+
+.track-card-tool-chip.is-live i {
+  animation: aurora-pulse 1.4s ease-in-out infinite;
+}
+
+.track-card-tool-chip.is-done i {
+  background: var(--positive);
+}
+
+.track-card-tool-chip.is-error i {
+  background: var(--coral);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .track-card-caret {
+  .track-card-tool-chip.is-live i {
     animation: none;
     opacity: 1;
   }
@@ -4378,23 +4370,49 @@
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  /* 불투명 표면 도트린: backdrop blur 금지(instrument-design-contract). 오버레이 구분은
-     surface-glass-strong 불투명 배경 + floating shadow로만 확보한다. */
-  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-glass-strong));
-  box-shadow: var(--shadow-floating);
-  overflow: hidden;
+  border: 0;
+  background: transparent;
 }
 
-/* 스트립: 기본 상태 단일 행 계기판 — 펄스닷 · 캐리어명 · 최신 라인 · meta · 그립 · Details */
+/* 스트립 자체가 불투명 캡슐 표면을 소유한다. backdrop blur 금지(instrument-design-contract). */
 .job-dock-strip {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: 100%;
+  max-width: calc(100% - 2 * var(--space-4));
+  margin-inline: auto;
   padding: var(--space-1) var(--space-3);
   min-height: 30px;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill); /* 상태 캡슐 예외: theme.css radius doctrine */
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating);
+}
+
+.job-dock-strip::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--positive);
+  opacity: 0.6;
+}
+
+.job-dock-strip.is-live::before {
+  background: linear-gradient(90deg, transparent, var(--aurora), transparent);
+  opacity: 1;
+  animation: job-dock-scan 1.8s linear infinite;
+}
+
+.job-dock-strip.is-error::before {
+  background: var(--coral);
+  opacity: 1;
 }
 
 /* aurora 라이브 펄스닷 */
@@ -4423,7 +4441,7 @@
   }
 }
 
-/* 캐리어명: 스트립 고정폭, 캡틴 식별은 작은 dot/tag 채널에만 둔다. */
+/* 캐리어명: 캡틴 식별은 작은 dot/tag 채널에만 둔다. */
 .job-dock-carrier {
   display: inline-flex;
   align-items: center;
@@ -4439,12 +4457,23 @@
   color: var(--ink-spectral);
 }
 
+.job-dock-captain-stack {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 4px;
+}
+
 .job-dock-captain-dot {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface-glass-strong);
   border-radius: 50%;
   background: var(--captain-nimitz);
+}
+
+.job-dock-captain-stack .job-dock-captain-dot {
+  margin-left: -4px;
 }
 
 .job-dock-captain-dot[data-captain="nimitz"] { background: var(--captain-nimitz); }
@@ -4464,6 +4493,31 @@
   text-overflow: ellipsis;
   color: var(--ink-spectral);
 }
+
+.job-dock-carrier > .job-dock-captain-tag:last-child:not(:first-child) {
+  flex: none;
+}
+
+.job-dock-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.job-dock-seg > i {
+  width: 10px;
+  height: 4px;
+  border-radius: var(--radius-pill); /* 상태 미터 예외: theme.css radius doctrine */
+  background: var(--ink-rim);
+}
+
+.job-dock-seg > i[data-tone="live"] { background: var(--aurora); }
+.job-dock-seg > i[data-tone="done"] { background: var(--positive); }
+.job-dock-seg > i[data-tone="error"] { background: var(--coral); }
 
 /* 스트립 최신 라인: 가변폭 ellipsis, 접힘 상태에서만 가시 */
 .job-dock-strip-line {
@@ -4534,24 +4588,30 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: calc(100% - 2 * var(--space-4));
+  margin-inline: auto;
   min-height: 0;
-  border-top: 1px solid var(--surface-rim);
+  border: 0;
+  background: transparent;
 }
 
 .job-dock-body-wrap.is-collapsed {
   display: none;
 }
 
-/* 바디: 스크롤 가능한 트랙 행 스택, 하단 고정 여백 제거.
-   flex:1 1 auto + min-height:0으로 좁은 패널에서 200px 미만으로 수축하며 내부 스크롤한다. */
+/* 바디: 스크롤 가능한 phase 카드 스택. 도크는 패널보다 높을 수 없고 body만 수축한다. */
 .job-dock-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  max-height: 200px;
-  padding: var(--space-1) var(--space-3) var(--space-2);
+  max-height: 240px;
+  padding: var(--space-2) 0;
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
+  border: 0;
+  background: transparent;
 }
 
 /* follow 버튼 도크 스코프 오버라이드 — 바디 상하 여백에 맞게 위치 조정 */
@@ -4559,21 +4619,33 @@
   bottom: var(--space-2);
 }
 
-/* 트랙 행: 단일 flex 행 — [이름(조건부)] + 상태 + 최신 라인 */
-.job-dock-row {
-  display: flex;
+/* phase 카드: 정체성 spine + who/phase/preview/meta + 상태 ornament */
+.job-dock-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-3);
   align-items: center;
-  gap: var(--space-2);
-  min-height: 22px;
-  overflow: hidden;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-glass-strong);
+  border: 1px solid var(--surface-rim);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
 }
 
-/* 행 이름: 멀티잡=캡틴색, 단일잡+멀티트랙=무채색, 단일잡+단일트랙=생략 — 긴 이름은 잘라 상태·라인을 보호 */
-.job-dock-row-name {
+.job-dock-card[data-captain="nimitz"] { border-left-color: var(--captain-nimitz); }
+.job-dock-card[data-captain="kirov"] { border-left-color: var(--captain-kirov); }
+.job-dock-card[data-captain="genesis"] { border-left-color: var(--captain-genesis); }
+.job-dock-card[data-captain="ohio"] { border-left-color: var(--captain-ohio); }
+.job-dock-card[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); }
+.job-dock-card[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); }
+.job-dock-card[data-captain="tempest"] { border-left-color: var(--captain-tempest); }
+.job-dock-card[data-captain="chronicle"] { border-left-color: var(--captain-chronicle); }
+
+.job-dock-card-who {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  flex: none;
   max-width: 12em;
   overflow: hidden;
   white-space: nowrap;
@@ -4584,36 +4656,73 @@
   color: var(--ink-spectral);
 }
 
-/* 행 상태: 9.5px mono uppercase, 라이브 시 aurora */
-.job-dock-row-status {
+.job-dock-card-copy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.job-dock-card-phase {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 700;
-  color: var(--ink-fog);
+  color: var(--aurora);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.job-dock-row-status--live {
-  color: var(--aurora);
-}
+.job-dock-card[data-tone="done"] .job-dock-card-phase { color: var(--positive); }
+.job-dock-card[data-tone="error"] .job-dock-card-phase { color: var(--coral); }
 
-.job-dock-row-status--error {
-  color: var(--coral);
-}
-
-/* 행 최신 라인: 가변폭 ellipsis + aurora 캐럿 */
-.job-dock-row-line {
+.job-dock-card-line {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.job-dock-card-meta {
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-spectral);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.job-dock-card-bar {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 2px;
+  overflow: hidden;
+  border-radius: var(--radius-pill); /* 상태 미터 예외: theme.css radius doctrine */
+  background: var(--ink-rim);
+}
+
+.job-dock-card-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+}
+
+.job-dock-card[data-tone="live"] .job-dock-card-bar > i {
+  width: 34%;
+  background: linear-gradient(90deg, transparent, var(--aurora), transparent);
+  animation: job-dock-scan 1.8s linear infinite;
+}
+
+.job-dock-card[data-tone="done"] .job-dock-card-bar > i {
+  width: 100%;
+  background: var(--positive);
+  opacity: 0.5;
+}
+
+.job-dock-card[data-tone="error"] .job-dock-card-bar > i {
+  width: 100%;
+  background: var(--coral);
 }
 
 .thinking-chip {
@@ -4623,18 +4732,6 @@
   font-size: 10px;
   font-style: italic;
   white-space: nowrap;
-}
-
-/* 요청 라벨: 단일 잡 펼침 첫 행, 디밍 mono 10.5px */
-.job-dock-row-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-fog);
 }
 
 /* aurora 스트림 캐럿 */
@@ -4648,7 +4745,14 @@
   animation: caret-blink 1s step-start infinite;
 }
 
+@keyframes job-dock-scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(320%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .job-dock-strip.is-live::before,
+  .job-dock-card[data-tone="live"] .job-dock-card-bar > i,
   .job-dock-caret {
     animation: none;
     opacity: 1;
@@ -5296,6 +5400,13 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ResizeObserver 래퍼 — body의 직접-자식 flex 레이아웃을 승계해 head/tracks·복수 job 간격 계약을 유지한다. */
+.job-overlay-panel-content {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
