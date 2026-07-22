@@ -773,16 +773,14 @@ function ModelAuthBlock() {
             </div>
             {selectedModel?.effort ? (
               <div className="terminal-carriers-field">
-                <label className="terminal-carriers-label" htmlFor="kimi-default-effort">Default effort</label>
-                <select
-                  id="kimi-default-effort"
-                  className="terminal-carriers-select"
+                <span className="terminal-carriers-label" id="kimi-default-effort-label">Default effort</span>
+                <Select
+                  aria-labelledby="kimi-default-effort-label"
                   value={selectedEffort ?? selectedModel.effort.default}
                   disabled={saving || !settings.state}
-                  onChange={(event) => saveKimiModel(selectedModel.modelId, event.target.value)}
-                >
-                  {selectedModel.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}
-                </select>
+                  options={selectedModel.effort.levels.map((level) => ({ value: level, label: level }))}
+                  onChange={(effort) => saveKimiModel(selectedModel.modelId, effort)}
+                />
               </div>
             ) : null}
           </div>
