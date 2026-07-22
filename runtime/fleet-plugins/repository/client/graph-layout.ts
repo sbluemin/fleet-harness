@@ -4,6 +4,8 @@ import type { LogCommitEntry } from "../server/types.js";
 
 export interface GraphNode {
   readonly lane: number;
+  readonly activeLaneCount: number;
+  readonly collapsed: boolean;
   readonly isHead: boolean;
   readonly connectAbove: boolean;
   readonly connectBelow: boolean;
@@ -112,11 +114,13 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
       .filter(({ h, i }) => h !== null && i !== myLane)
       .map(({ i }) => i);
 
-    // 최대 레인 인덱스 추적
-    maxLaneIndex = Math.max(maxLaneIndex, myLane, ...branchToLanes, ...passThroughLanes);
+    const rowMaxLaneIndex = Math.max(myLane, ...passThroughLanes, ...mergeFromLanes, ...branchToLanes);
+    maxLaneIndex = Math.max(maxLaneIndex, rowMaxLaneIndex);
 
     nodes.push({
       lane: myLane,
+      activeLaneCount: rowMaxLaneIndex + 1,
+      collapsed,
       isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")),
       connectAbove: matched.length > 0,
       connectBelow: parents.length > 0 && laneHeads[myLane] === parents[0],

@@ -4,8 +4,6 @@ import type { GraphNode } from "./graph-layout.js";
 
 interface GraphGutterProps {
   readonly node: GraphNode;
-  readonly laneCount: number;
-  readonly collapsed?: boolean;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -40,9 +38,9 @@ function laneColor(lane: number): string {
 
 // ─── GraphGutter ─────────────────────────────────────────────────────────────
 
-export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterProps) {
-  const lanes = Math.max(laneCount, 1);
-  const collapseIndicatorWidth = collapsed ? 10 : 0;
+export function GraphGutter({ node }: GraphGutterProps) {
+  const lanes = Math.max(node.activeLaneCount, 1);
+  const collapseIndicatorWidth = node.collapsed ? 10 : 0;
   const width = lanes * LANE_WIDTH + collapseIndicatorWidth;
   const cx = laneCx(node.lane);
   const cy = ROW_HEIGHT / 2;
@@ -141,7 +139,7 @@ export function GraphGutter({ node, laneCount, collapsed = false }: GraphGutterP
       />
 
       {/* collapse 인디케이터 */}
-      {collapsed && (
+      {node.collapsed && (
         <text
           x={lanes * LANE_WIDTH + 2}
           y={cy + 4}
