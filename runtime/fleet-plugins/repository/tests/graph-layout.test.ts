@@ -205,4 +205,31 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
       { connectAbove: false, connectBelow: false },
     ]);
   });
+
+  it("⑧ 오래된 분기 topology가 나타날 때만 행 폭이 넓어지고 수렴 후 다시 좁아진다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "HEAD", parents: ["head-1"], refs: ["HEAD -> refs/heads/main"] }),
+      makeCommit({ fullHash: "head-1", parents: ["common"] }),
+      makeCommit({ fullHash: "topic", parents: ["common"], refs: ["refs/remotes/origin/topic"] }),
+      makeCommit({ fullHash: "common", parents: ["base"] }),
+      makeCommit({ fullHash: "base", parents: [] }),
+    ]);
+
+    expect(layout.nodes.map((node) => node.activeLaneCount)).toEqual([1, 1, 2, 2, 1]);
+    expect(layout.nodes[2]?.passThroughLanes).toEqual([0]);
+    expect(layout.nodes[3]?.mergeFromLanes).toEqual([1]);
+  });
+
+  it("⑨ 오래된 9-topology overflow는 앞선 HEAD 행을 소급해 collapsed 처리하지 않는다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "HEAD", parents: ["head-1"], refs: ["HEAD -> refs/heads/main"] }),
+      makeCommit({ fullHash: "head-1", parents: ["octopus"] }),
+      makeCommit({ fullHash: "octopus", parents: ["A", "B", "C", "D", "E", "F", "G", "H", "I"] }),
+      makeCommit({ fullHash: "A", parents: [] }),
+    ]);
+
+    expect(layout.collapsed).toBe(true);
+    expect(layout.nodes.map((node) => node.collapsed)).toEqual([false, false, true, true]);
+    expect(layout.nodes[2]?.activeLaneCount).toBe(8);
+  });
 });
