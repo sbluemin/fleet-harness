@@ -15,6 +15,15 @@ const DEFAULT_PLUGIN_ERROR_FALLBACK = <div className="fc-plugin-error">Plugin fa
 export { React };
 export default React;
 
+export {
+  Select,
+  useSelect,
+  type SelectOption,
+  type SelectProps,
+  type UseSelectOptions,
+  type UseSelectResult,
+} from "../components/select.js";
+
 export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProps, PluginErrorBoundaryState> {
   readonly state: PluginErrorBoundaryState = { hasError: false };
 

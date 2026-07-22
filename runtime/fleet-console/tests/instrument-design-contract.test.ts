@@ -29,7 +29,7 @@ const OWNED_SOURCES = [
 const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;
 
 function source(path: string): string {
-  return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8");
+  return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8").replace(/\r\n/g, "\n");
 }
 
 function externalSource(path: URL): string {
@@ -533,5 +533,42 @@ describe("Instrument core design contract", () => {
     expect(source("styles/layout.css")).toContain("background: color-mix(in oklch, var(--ink-fog) 10%, transparent);");
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
+  });
+
+  it("pins the shared SDK Select listbox grammar and stacking contract", () => {
+    const components = source("styles/components.css");
+    const rail = source("styles/rail.css");
+    const selectBlockStart = components.indexOf("/* ── Shared SDK Select listbox grammar");
+    expect(selectBlockStart).toBeGreaterThan(-1);
+    const selectBlock = components.slice(selectBlockStart);
+
+    expect(selectBlock).toContain("--z-select-popover: 40;");
+    expect(selectBlock).toContain(".fc-select__popup {");
+    expect(selectBlock).toContain("z-index: var(--z-select-popover);");
+    expect(selectBlock).toContain("border: 1px solid var(--surface-rim);");
+    expect(selectBlock).toContain("background: color-mix(in oklch, var(--ink-mid) 48%, transparent);");
+    expect(selectBlock).toContain("color: var(--ink-pearl);");
+    expect(selectBlock).toContain("font: 600 13px/1.2 var(--font-body);");
+    expect(selectBlock).toContain("padding: 0 13px;");
+    expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
+    expect(selectBlock).toContain("border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));");
+    expect(selectBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(selectBlock).toContain('content: "✓";');
+    expect(selectBlock).toContain("font-style: italic;");
+    expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
+    expect(selectBlock).toContain("font: 9px/1 var(--font-mono);");
+    expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
+    expect(selectBlock).toMatch(/\.reduce-panel-motion \.fc-select__trigger,\s*\.reduce-panel-motion \.fc-select__caret,\s*\.reduce-panel-motion \.fc-select__popup,\s*\.reduce-panel-motion \.fc-select__option \{\s*transition: none;\s*\}/);
+    expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
+
+    expect(selectBlock).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(selectBlock).not.toMatch(/\boklch\(/);
+    expect(selectBlock).not.toMatch(/\brgb\(/);
+
+    expect(rail).toContain("--z-rail: 10;");
+    expect(components).toContain(".group-context-menu-overlay {");
+    expect(components).toContain("z-index: 60;");
+    expect(Number("--z-rail: 10;".match(/\d+/)?.[0])).toBeLessThan(40);
+    expect(40).toBeLessThan(60);
   });
 });
