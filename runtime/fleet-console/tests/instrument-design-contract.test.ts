@@ -1,8 +1,27 @@
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+const CONSOLE_ROOT = new URL("../", import.meta.url);
 const CLIENT_ROOT = new URL("../core/client/src/", import.meta.url);
+const PRODUCT_SOURCE_ROOTS = [
+  new URL("core/client/src/", CONSOLE_ROOT),
+  new URL("sdk/", CONSOLE_ROOT),
+  new URL("../fleet-plugins/", CONSOLE_ROOT),
+] as const;
+const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
+const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
+  "node_modules",
+  "dist",
+  "tests",
+  "test",
+  "__tests__",
+  "proposals",
+  "examples",
+]);
+const RAW_PRODUCT_SELECT = /<select(?:[\s>/]|$)/;
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
@@ -34,6 +53,46 @@ function source(path: string): string {
 
 function externalSource(path: URL): string {
   return fs.readFileSync(path, "utf8");
+}
+
+function listProductSourceFiles(root: URL): string[] {
+  const files: string[] = [];
+  const stack = [fileURLToPath(root)];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (PRODUCT_SOURCE_SKIP_DIR_NAMES.has(entry.name)) continue;
+        stack.push(path.join(current, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (entry.name.endsWith(".generated.ts")) continue;
+      if (!PRODUCT_SOURCE_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))) continue;
+      files.push(path.join(current, entry.name));
+    }
+  }
+  return files.sort();
+}
+
+function findRawProductSelects(): Array<{ file: string; line: number; snippet: string }> {
+  const hits: Array<{ file: string; line: number; snippet: string }> = [];
+  for (const root of PRODUCT_SOURCE_ROOTS) {
+    for (const file of listProductSourceFiles(root)) {
+      const lines = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n").split("\n");
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index] ?? "";
+        if (RAW_PRODUCT_SELECT.test(line)) {
+          hits.push({
+            file: path.relative(fileURLToPath(CONSOLE_ROOT), file).replace(/\\/g, "/"),
+            line: index + 1,
+            snippet: line.trim(),
+          });
+        }
+      }
+    }
+  }
+  return hits;
 }
 
 describe("Instrument core design contract", () => {
@@ -533,6 +592,11 @@ describe("Instrument core design contract", () => {
     expect(source("styles/layout.css")).toContain("background: color-mix(in oklch, var(--ink-fog) 10%, transparent);");
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
+  });
+
+  it("forbids native product selects in Console core, SDK, and built-in plugins", () => {
+    const hits = findRawProductSelects();
+    expect(hits, hits.map((hit) => `${hit.file}:${hit.line} ${hit.snippet}`).join("\n")).toEqual([]);
   });
 
   it("pins the shared SDK Select listbox grammar and stacking contract", () => {
