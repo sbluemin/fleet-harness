@@ -259,7 +259,16 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
               />
             </span>
-            <span className="session-analyst__select"><select aria-label="Analysis effort" disabled={state.started || !model || !model.effortLevels.length} value={state.effort} onChange={(event) => dispatch({ type: "select-effort", effort: event.target.value })}>{model?.effortLevels.length ? model.effortLevels.map((item) => <option key={item} value={item}>{item}</option>) : <option value="">n/a</option>}</select></span>
+            <span className="session-analyst__select">
+              <Select
+                compact
+                label="Analysis effort"
+                value={state.effort}
+                disabled={state.started || !model || !model.effortLevels.length}
+                options={model?.effortLevels.length ? model.effortLevels.map((item) => ({ value: item, label: item })) : [{ value: "", label: "n/a" }]}
+                onChange={(effort) => dispatch({ type: "select-effort", effort })}
+              />
+            </span>
           </div> : null}
           <div className="session-analyst__composer-surface">
             <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>Ask about this session</label>
