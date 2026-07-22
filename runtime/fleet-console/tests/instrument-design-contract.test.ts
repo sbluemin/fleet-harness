@@ -1,8 +1,28 @@
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+const CONSOLE_ROOT = new URL("../", import.meta.url);
 const CLIENT_ROOT = new URL("../core/client/src/", import.meta.url);
+const PRODUCT_SOURCE_ROOTS = [
+  new URL("core/client/src/", CONSOLE_ROOT),
+  new URL("sdk/", CONSOLE_ROOT),
+  new URL("../fleet-plugins/", CONSOLE_ROOT),
+] as const;
+const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
+const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
+  "node_modules",
+  "dist",
+  "tests",
+  "test",
+  "__tests__",
+  "proposals",
+  "examples",
+]);
+const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
@@ -29,11 +49,95 @@ const OWNED_SOURCES = [
 const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;
 
 function source(path: string): string {
-  return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8");
+  return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8").replace(/\r\n/g, "\n");
 }
 
 function externalSource(path: URL): string {
   return fs.readFileSync(path, "utf8");
+}
+
+function listProductSourceFiles(root: URL): string[] {
+  const files: string[] = [];
+  const stack = [fileURLToPath(root)];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (PRODUCT_SOURCE_SKIP_DIR_NAMES.has(entry.name)) continue;
+        stack.push(path.join(current, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (entry.name.endsWith(".generated.ts")) continue;
+      if (!PRODUCT_SOURCE_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))) continue;
+      files.push(path.join(current, entry.name));
+    }
+  }
+  return files.sort();
+}
+
+function findRawProductSelects(): Array<{ file: string; line: number; snippet: string }> {
+  const hits: Array<{ file: string; line: number; snippet: string }> = [];
+  for (const root of PRODUCT_SOURCE_ROOTS) {
+    for (const file of listProductSourceFiles(root)) {
+      const text = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const sourceFile = ts.createSourceFile(
+        file,
+        text,
+        ts.ScriptTarget.Latest,
+        true,
+        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
+      hits.push(...findRawProductSelectsInSourceFile(sourceFile, file, text));
+    }
+  }
+  return hits.sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+}
+
+function findRawProductSelectsInSourceFile(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  text: string,
+): Array<{ file: string; line: number; snippet: string }> {
+  const hits: Array<{ file: string; line: number; snippet: string }> = [];
+  const relativeFile = path.relative(fileURLToPath(CONSOLE_ROOT), filePath).replace(/\\/g, "/");
+  const lines = text.split("\n");
+
+  const recordHit = (node: ts.Node) => {
+    const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+    hits.push({
+      file: relativeFile,
+      line,
+      snippet: (lines[line - 1] ?? "").trim(),
+    });
+  };
+
+  const isSelectTagName = (name: ts.JsxTagNameExpression | undefined): boolean =>
+    name !== undefined && ts.isIdentifier(name) && name.text === "select";
+
+  const isSelectFactoryFirstArg = (expression: ts.Expression | undefined): boolean =>
+    expression !== undefined && ts.isStringLiteralLike(expression) && expression.text === "select";
+
+  const factoryName = (expression: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(expression)) return expression.text;
+    if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) return expression.name.text;
+    return undefined;
+  };
+
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      if (isSelectTagName(node.tagName)) recordHit(node);
+    } else if (ts.isCallExpression(node)) {
+      const name = factoryName(node.expression);
+      if (name !== undefined && JSX_FACTORY_NAMES.has(name) && isSelectFactoryFirstArg(node.arguments[0])) {
+        recordHit(node);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return hits;
 }
 
 describe("Instrument core design contract", () => {
@@ -533,5 +637,57 @@ describe("Instrument core design contract", () => {
     expect(source("styles/layout.css")).toContain("background: color-mix(in oklch, var(--ink-fog) 10%, transparent);");
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
+  });
+
+  it("forbids native product selects in Console core, SDK, and built-in plugins", () => {
+    const hits = findRawProductSelects();
+    expect(hits, hits.map((hit) => `${hit.file}:${hit.line} ${hit.snippet}`).join("\n")).toEqual([]);
+  });
+
+  it("detects JSX and createElement native select factories with the AST scanner", () => {
+    const jsxText = '<select value="x" />\n<div><select /></div>';
+    const jsxSource = ts.createSourceFile("fixture.tsx", jsxText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const factoryText = 'createElement("select", { value: "x" });\nReact.createElement("select", null);';
+    const factorySource = ts.createSourceFile("fixture.ts", factoryText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    expect(findRawProductSelectsInSourceFile(jsxSource, "fixture.tsx", jsxText).map((hit) => hit.line)).toEqual([1, 2]);
+    expect(findRawProductSelectsInSourceFile(factorySource, "fixture.ts", factoryText).map((hit) => hit.line)).toEqual([1, 2]);
+  });
+
+  it("pins the shared SDK Select listbox grammar and stacking contract", () => {
+    const components = source("styles/components.css");
+    const rail = source("styles/rail.css");
+    const selectBlockStart = components.indexOf("/* ── Shared SDK Select listbox grammar");
+    expect(selectBlockStart).toBeGreaterThan(-1);
+    const selectBlock = components.slice(selectBlockStart);
+
+    expect(selectBlock).toContain("--z-select-popover: 40;");
+    expect(selectBlock).toContain(".fc-select__popup {");
+    expect(selectBlock).toContain("z-index: var(--z-select-popover);");
+    expect(selectBlock).toContain("border: 1px solid var(--surface-rim);");
+    expect(selectBlock).toContain("background: color-mix(in oklch, var(--ink-mid) 48%, transparent);");
+    expect(selectBlock).toContain("color: var(--ink-pearl);");
+    expect(selectBlock).toContain("font: 600 13px/1.2 var(--font-body);");
+    expect(selectBlock).toContain("padding: 0 13px;");
+    expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
+    expect(selectBlock).toContain("border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));");
+    expect(selectBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(selectBlock).toContain('content: "✓";');
+    expect(selectBlock).toContain("font-style: italic;");
+    expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
+    expect(selectBlock).toContain("font: 9px/1 var(--font-mono);");
+    expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
+    expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
+    expect(selectBlock).toMatch(/\.reduce-panel-motion \.fc-select__trigger,\s*\.reduce-panel-motion \.fc-select__caret,\s*\.reduce-panel-motion \.fc-select__popup,\s*\.reduce-panel-motion \.fc-select__option \{\s*transition: none;\s*\}/);
+    expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
+
+    expect(selectBlock).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(selectBlock).not.toMatch(/\boklch\(/);
+    expect(selectBlock).not.toMatch(/\brgb\(/);
+
+    expect(rail).toContain("--z-rail: 10;");
+    expect(components).toContain(".group-context-menu-overlay {");
+    expect(components).toContain("z-index: 60;");
+    expect(Number("--z-rail: 10;".match(/\d+/)?.[0])).toBeLessThan(40);
+    expect(40).toBeLessThan(60);
   });
 });

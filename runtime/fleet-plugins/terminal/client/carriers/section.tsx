@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { Select } from "@fleet-console/sdk/react/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 
 import {
@@ -232,16 +233,14 @@ function CarrierSettingsSection() {
                 <div className="terminal-carriers-runtime">
                   <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--cli">
                     <div className="terminal-carriers-field terminal-carriers-field--wide">
-                      <label className="terminal-carriers-label" htmlFor="carrier-cli">CLI</label>
-                      <select
-                        id="carrier-cli"
-                        className="terminal-carriers-select"
+                      <span className="terminal-carriers-label" id="carrier-cli-label">CLI</span>
+                      <Select
+                        aria-labelledby="carrier-cli-label"
                         value={activePendingSelections.cli ?? activeCarrier.cliType}
                         disabled={isSaving}
-                        onChange={(event) => void handleCliChange(event.target.value)}
-                      >
-                        {settings.options.cliTypes.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
-                      </select>
+                        options={settings.options.cliTypes.map((cli) => ({ value: cli.id, label: cli.displayName }))}
+                        onChange={(cliType) => void handleCliChange(cliType)}
+                      />
                     </div>
                   </div>
                   <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--model">
@@ -300,12 +299,17 @@ function CarrierChip({ carrier, active, minBackends, onSelect }: { readonly carr
 }
 
 function ModelSelect({ id, label, models, value, disabled = false, onChange }: { readonly id: string; readonly label: string; readonly models: readonly CarrierSettingsModelOption[]; readonly value: string; readonly disabled?: boolean; readonly onChange: (modelId: string) => void }) {
+  const labelId = `${id}-label`;
   return (
     <div className="terminal-carriers-field">
-      <label className="terminal-carriers-label" htmlFor={id}>{label}</label>
-      <select id={id} className="terminal-carriers-select" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        {models.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
-      </select>
+      <span className="terminal-carriers-label" id={labelId}>{label}</span>
+      <Select
+        aria-labelledby={labelId}
+        value={value}
+        disabled={disabled}
+        options={models.map((model) => ({ value: model.modelId, label: model.name }))}
+        onChange={onChange}
+      />
     </div>
   );
 }
@@ -319,12 +323,17 @@ function EffortSelect({ id, model, value, disabled = false, onChange }: { readon
       </div>
     );
   }
+  const labelId = `${id}-label`;
   return (
     <div className="terminal-carriers-field">
-      <label className="terminal-carriers-label" htmlFor={id}>Effort</label>
-      <select id={id} className="terminal-carriers-select" value={value || model.effort.default} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        {model.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}
-      </select>
+      <span className="terminal-carriers-label" id={labelId}>Effort</span>
+      <Select
+        aria-labelledby={labelId}
+        value={value || model.effort.default}
+        disabled={disabled}
+        options={model.effort.levels.map((level) => ({ value: level, label: level }))}
+        onChange={onChange}
+      />
     </div>
   );
 }
@@ -495,9 +504,14 @@ function TaskForcePanel({
         })}
         <div className="terminal-carriers-tf-add-row">
           {addOpen && availableCliOptions.length > 0 ? (
-            <select className="terminal-carriers-select terminal-carriers-tf-add-select" value={selectedAddCliType} disabled={isSaving} onChange={(event) => setAddCliType(event.target.value)} aria-label="Task Force CLI to add">
-              {availableCliOptions.map((cli) => <option key={cli.id} value={cli.id}>{cli.displayName}</option>)}
-            </select>
+            <Select
+              className="terminal-carriers-tf-add-select"
+              label="Task Force CLI to add"
+              value={selectedAddCliType}
+              disabled={isSaving}
+              options={availableCliOptions.map((cli) => ({ value: cli.id, label: cli.displayName }))}
+              onChange={(cliId) => setAddCliType(cliId)}
+            />
           ) : null}
           <button type="button" className="terminal-carriers-ghost-button" disabled={availableCliOptions.length === 0 || isSaving} onClick={() => {
             if (!addOpen) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Select, type SelectOption } from "@fleet-console/sdk/react/browser";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { CompareResult, DiffFileEntry } from "../server/types.js";
@@ -158,15 +159,25 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
     });
   }, []);
 
-  const refOptions = (items: readonly RepositoryRefItem[]) => items.map((item) => <option key={item.ref} value={item.ref}>{item.label}</option>);
+  const headRefOptions = useMemo((): readonly SelectOption[] => {
+    const options: SelectOption[] = [];
+    if (showHeadOption) options.push({ value: "HEAD", label: "HEAD" });
+    for (const item of refs.branches) options.push({ value: item.ref, label: `LOCAL · ${item.label}` });
+    for (const item of remoteRefs) options.push({ value: item.ref, label: `REMOTES · ${item.label}` });
+    for (const item of refs.tags) options.push({ value: item.ref, label: `TAGS · ${item.label}` });
+    return options;
+  }, [refs.branches, refs.tags, remoteRefs, showHeadOption]);
+  const baseRefOptions = useMemo(
+    (): readonly SelectOption[] => [{ value: "", label: "Select base…", disabled: true }, ...headRefOptions],
+    [headRefOptions],
+  );
   const refSelect = (side: "base" | "head", value: string) => (
-    <select className="repository-compare-select" aria-label={side === "base" ? "Base ref" : "Head ref"} value={value} onChange={(event) => chooseRef(side, event.target.value)}>
-      {side === "base" && <option value="" disabled>Select base…</option>}
-      {showHeadOption && <option value="HEAD">HEAD</option>}
-      {refs.branches.length > 0 && <optgroup label="LOCAL">{refOptions(refs.branches)}</optgroup>}
-      {remoteRefs.length > 0 && <optgroup label="REMOTES">{refOptions(remoteRefs)}</optgroup>}
-      {refs.tags.length > 0 && <optgroup label="TAGS">{refOptions(refs.tags)}</optgroup>}
-    </select>
+    <Select
+      label={side === "base" ? "Base ref" : "Head ref"}
+      value={value}
+      options={side === "base" ? baseRefOptions : headRefOptions}
+      onChange={(next) => chooseRef(side, next)}
+    />
   );
 
   const canCompare = base !== "" && head !== "" && base !== head;

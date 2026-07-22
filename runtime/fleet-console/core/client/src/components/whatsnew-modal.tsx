@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { Select } from "@fleet-console/sdk/react/browser";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { requestReleaseNotes } from "../release-notes-fetch.js";
@@ -80,6 +81,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   useEffect(() => {
     if (!state.whatsNewOpen || whatsNewSuppressed) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isSelectOwnedKeyEvent(event)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         closeWhatsNew();
@@ -146,16 +148,19 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
         </button>
         <div className="whatsnew-body">
           <div className="whatsnew-version-selector">
-            <select aria-label="Release version" value={selectedValue} onChange={(event) => selectReleaseNote(event.currentTarget.value)}>
-              {pageNotes.map((note, localIndex) => {
+            <Select
+              label="Release version"
+              className="whatsnew-version-select"
+              value={selectedValue}
+              onChange={selectReleaseNote}
+              options={pageNotes.map((note, localIndex) => {
                 const index = pageStart + localIndex;
-                return (
-                  <option key={releaseNoteKey(note.version, index)} value={releaseNoteKey(note.version, index)}>
-                    {note.version === "Unreleased" ? "Unreleased" : `v${note.version}`}{note.date ? ` · ${note.date}` : ""}
-                  </option>
-                );
+                return {
+                  value: releaseNoteKey(note.version, index),
+                  label: `${note.version === "Unreleased" ? "Unreleased" : `v${note.version}`}${note.date ? ` · ${note.date}` : ""}`,
+                };
               })}
-            </select>
+            />
             {pageCount > 1 ? (
               <div className="whatsnew-pagination">
                 <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label="Newer versions">
@@ -268,6 +273,28 @@ function ReleaseNoteItemView({ item }: { readonly item: ReleaseNoteItem }) {
 
 function releaseNoteKey(version: string, index: number): string {
   return `${version}:${index}`;
+}
+
+const SELECT_CLOSED_TRIGGER_OPEN_KEYS = new Set(["ArrowDown", "ArrowUp", "Enter", " "]);
+
+function isOpenSelectPopup(popup: Element | null): popup is HTMLElement {
+  return popup instanceof HTMLElement && popup.dataset.open === "true";
+}
+
+export function isSelectOwnedKeyEvent(event: KeyboardEvent): boolean {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) return false;
+
+  if (target.closest('.fc-select__popup[data-open="true"]')) return true;
+
+  const trigger = target.closest(".fc-select__trigger");
+  if (trigger instanceof HTMLButtonElement) {
+    const controlsId = trigger.getAttribute("aria-controls");
+    if (controlsId && isOpenSelectPopup(document.getElementById(controlsId))) return true;
+    return SELECT_CLOSED_TRIGGER_OPEN_KEYS.has(event.key);
+  }
+
+  return false;
 }
 
 function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {

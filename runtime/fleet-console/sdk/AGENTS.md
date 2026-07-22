@@ -10,6 +10,7 @@
 | `settings/`, `notifications/` | Configuration and notification capabilities |
 | `routing/`, `rail/` | Route and host-panel integration contracts |
 | `react/` | Stateless React authoring helpers |
+| `components/` | Shared browser UI primitives (controlled, host-styled) |
 
 ## Constraints
 

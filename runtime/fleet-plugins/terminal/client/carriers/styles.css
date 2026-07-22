@@ -308,8 +308,7 @@
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.85fr);
 }
 
-.terminal-carriers-input,
-.terminal-carriers-select {
+.terminal-carriers-input {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--surface-rim);
@@ -318,9 +317,6 @@
   color: var(--ink-pearl);
   font: 600 13px/1.2 var(--font-body);
   box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);
-}
-
-.terminal-carriers-input {
   padding: 0 13px;
 }
 
@@ -333,12 +329,7 @@
   letter-spacing: -0.03em;
 }
 
-.terminal-carriers-select {
-  padding: 0 11px;
-}
-
-.terminal-carriers-input:focus,
-.terminal-carriers-select:focus {
+.terminal-carriers-input:focus {
   border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);

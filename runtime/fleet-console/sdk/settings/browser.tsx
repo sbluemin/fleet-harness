@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { Select } from "../components/select.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
 export interface SettingsCardProps {
@@ -88,30 +89,25 @@ export function SettingsToggle({ checked, onChange, label, disabled = false }: S
 }
 
 export function SettingsSelect({ value, options, onChange, label, disabled = false }: SettingsSelectProps): React.ReactElement {
-  const id = React.useId();
-  const select = (
-    <select
-      id={id}
-      className="fc-settings-select__control"
+  const labelId = React.useId();
+  const selectOptions = options.map((option) => ({ value: option.value, label: option.label }));
+  const control = (
+    <Select
       value={value}
+      options={selectOptions}
+      onChange={onChange}
       disabled={disabled}
-      aria-label={label ? undefined : "Select setting"}
-      onChange={(event) => onChange(event.currentTarget.value)}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      label={label ? undefined : "Select setting"}
+      aria-labelledby={label ? labelId : undefined}
+    />
   );
   return label ? (
-    <label className="fc-settings-select" htmlFor={id}>
-      <span className="fc-settings-select__label">{label}</span>
-      {select}
+    <label className="fc-settings-select">
+      <span className="fc-settings-select__label" id={labelId}>{label}</span>
+      {control}
     </label>
   ) : (
-    <div className="fc-settings-select">{select}</div>
+    <div className="fc-settings-select">{control}</div>
   );
 }
 

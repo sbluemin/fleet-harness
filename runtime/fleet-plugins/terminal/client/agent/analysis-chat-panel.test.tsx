@@ -74,7 +74,10 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(selectorStrip.parentElement).toBe(composer);
     expect(selectorStrip.nextElementSibling).toBe(surface);
     expect(surface.querySelector(".session-analyst__selector-strip")).toBeNull();
-    expect(selectorStrip.querySelectorAll("select")).toHaveLength(3);
+    expect(selectorStrip.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
+    expect(selectorStrip.querySelector('[aria-label="Analysis CLI"]')).not.toBeNull();
+    expect(selectorStrip.querySelector('[aria-label="Analysis model"]')).not.toBeNull();
+    expect(selectorStrip.querySelector('[aria-label="Analysis effort"]')).not.toBeNull();
     expect(surface.querySelector("textarea")?.rows).toBe(1);
     expect(surface.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
     expect(container.querySelector(".session-analyst__composer-meta")).toBeNull();
@@ -107,6 +110,7 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__chat ol")?.classList.contains("is-dimmed")).toBe(false);
     expect(container.querySelector("textarea")?.disabled).toBe(false);
     expect(container.querySelectorAll("select")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
     expect(container.querySelectorAll(".session-analyst__stop")).toHaveLength(1);
     expect(container.querySelectorAll(".session-analyst__send")).toHaveLength(2);
     expect(container.querySelector(".session-analyst__stop")?.getAttribute("aria-label")).toBe("Stop");
@@ -517,6 +521,7 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__panel-state")?.textContent).toBe("Complete");
     expect(composer.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
 
     storeState = { ...storeState, phase: "stopped", started: false, latestActivity: { kind: "tool", title: "wiki_read", status: "running" }, runEndedAt: 13_000 };
     act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
@@ -525,6 +530,7 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__composer")).toBe(composer);
     expect(container.querySelector(".session-analyst__composer")?.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
 
     act(() => root.unmount());
     container.remove();
@@ -540,7 +546,7 @@ describe("Session Analyst Evidence Pulse", () => {
     };
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
-    expect(container.querySelectorAll("select")).toHaveLength(3);
+    expect(container.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
 
     storeState = {
       ...storeState,
@@ -557,6 +563,7 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(composer.classList.contains("is-docked")).toBe(true);
     expect(composer.classList.contains("is-docking")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
     expect(container.querySelector("textarea")?.rows).toBe(1);
     expect(container.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
 

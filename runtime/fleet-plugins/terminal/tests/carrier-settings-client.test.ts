@@ -163,9 +163,7 @@ describe("Terminal Carrier Settings client", () => {
     selectCarrierSettingsCarrier("nimitz");
     await renderCarrierSettings();
 
-    const model = requiredSelect("#carrier-model");
-    model.value = "gpt-5-mini";
-    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    await chooseSelectOption("#carrier-model", "GPT-5 mini");
     await waitForRequest(fetch, "PATCH");
 
     expect(mutationCalls(fetch)).toEqual([
@@ -183,9 +181,7 @@ describe("Terminal Carrier Settings client", () => {
     selectCarrierSettingsCarrier("nimitz");
     await renderCarrierSettings();
 
-    const cli = requiredSelect("#carrier-cli");
-    cli.value = "claude";
-    await act(async () => cli.dispatchEvent(new Event("change", { bubbles: true })));
+    await chooseSelectOption("#carrier-cli", "Claude");
     await waitForRequest(fetch, "PATCH");
 
     expect(mutationCalls(fetch)).toEqual([
@@ -203,16 +199,14 @@ describe("Terminal Carrier Settings client", () => {
     selectCarrierSettingsCarrier("nimitz");
     await renderCarrierSettings();
 
-    const cli = requiredSelect("#carrier-cli");
-    cli.value = "claude";
-    await act(async () => cli.dispatchEvent(new Event("change", { bubbles: true })));
-    expect(cli.value).toBe("claude");
+    await chooseSelectOption("#carrier-cli", "Claude");
+    expect(displayedSelectLabel("#carrier-cli")).toBe("Claude");
 
     const kirov = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")]
       .find((chip) => chip.textContent?.includes("Kirov"));
     if (!kirov) throw new Error("Kirov chip must render.");
     await act(async () => kirov.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(requiredSelect("#carrier-cli").value).toBe("codex");
+    expect(displayedSelectLabel("#carrier-cli")).toBe("Codex");
 
     await act(async () => {
       mutation.resolve(jsonResponse({ state: interactiveState }));
@@ -227,7 +221,7 @@ describe("Terminal Carrier Settings client", () => {
       }),
     ]);
     expect(container!.querySelector(".terminal-carriers-save-status")?.textContent).toBe("");
-    expect(requiredSelect("#carrier-cli").value).toBe("codex");
+    expect(displayedSelectLabel("#carrier-cli")).toBe("Codex");
   });
 
   it("keeps a pending model selected and reverts it after mutation failure", async () => {
@@ -237,18 +231,16 @@ describe("Terminal Carrier Settings client", () => {
     selectCarrierSettingsCarrier("nimitz");
     await renderCarrierSettings();
 
-    const model = requiredSelect("#carrier-model");
-    model.value = "gpt-5-mini";
-    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
-    expect(model.value).toBe("gpt-5-mini");
-    expect(model.disabled).toBe(true);
+    await chooseSelectOption("#carrier-model", "GPT-5 mini");
+    expect(displayedSelectLabel("#carrier-model")).toBe("GPT-5 mini");
+    expect(requiredSelectTrigger("#carrier-model").disabled).toBe(true);
 
     await act(async () => {
       mutation.resolve(new Response(JSON.stringify({ error: "mutation failed" }), { status: 500 }));
       await vi.waitFor(() => expect(getCarrierSettingsStoreState().savingActionId).toBeNull());
     });
 
-    expect(requiredSelect("#carrier-model").value).toBe("gpt-5");
+    expect(displayedSelectLabel("#carrier-model")).toBe("GPT-5");
     expect(getCarrierSettingsStoreState().error).toBe("mutation failed");
   });
 
@@ -258,9 +250,7 @@ describe("Terminal Carrier Settings client", () => {
     selectCarrierSettingsCarrier("nimitz");
     await renderCarrierSettings();
 
-    const model = requiredSelect("#tf-codex-model");
-    model.value = "gpt-5-mini";
-    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    await chooseSelectOption("#tf-codex-model", "GPT-5 mini");
     await waitForRequest(fetch, "PUT");
 
     expect(mutationCalls(fetch)).toEqual([
@@ -278,9 +268,7 @@ describe("Terminal Carrier Settings client", () => {
     selectCarrierSettingsCarrier("nimitz");
     await renderCarrierSettings();
 
-    const model = requiredSelect("#tf-claude-model");
-    model.value = "haiku";
-    await act(async () => model.dispatchEvent(new Event("change", { bubbles: true })));
+    await chooseSelectOption("#tf-claude-model", "Haiku");
     await waitForRequest(fetch, "PUT");
 
     expect(mutationCalls(fetch)).toEqual([
@@ -360,10 +348,37 @@ function actionButtonOrNull(label: string): HTMLButtonElement | null {
     .find((item) => item.textContent === label) ?? null;
 }
 
-function requiredSelect(selector: string): HTMLSelectElement {
-  const select = container!.querySelector<HTMLSelectElement>(selector);
-  if (!select) throw new Error(`${selector} select must render.`);
-  return select;
+function selectLabelId(selector: string): string {
+  const baseId = selector.startsWith("#") ? selector.slice(1) : selector;
+  return `${baseId}-label`;
+}
+
+function requiredSelectTrigger(selector: string): HTMLButtonElement {
+  const labelId = selectLabelId(selector);
+  // ARIA 계약: 외부 라벨의 aria-labelledby는 트리거 본인이 소유한다(래퍼가 아님).
+  const trigger = container!.querySelector<HTMLButtonElement>(`.fc-select__trigger[aria-labelledby="${labelId}"]`);
+  if (!trigger) throw new Error(`${selector} select trigger must render.`);
+  expect(trigger.getAttribute("aria-haspopup")).toBe("listbox");
+  return trigger;
+}
+
+function displayedSelectLabel(selector: string): string {
+  const labelId = selectLabelId(selector);
+  const trigger = container!.querySelector<HTMLElement>(`.fc-select__trigger[aria-labelledby="${labelId}"]`);
+  return trigger?.querySelector(".fc-select__value")?.textContent?.trim() ?? "";
+}
+
+async function chooseSelectOption(selector: string, optionLabel: string): Promise<void> {
+  const trigger = requiredSelectTrigger(selector);
+  await act(async () => trigger.click());
+  const listboxId = trigger.getAttribute("aria-controls");
+  if (!listboxId) throw new Error(`${selector} trigger must expose aria-controls.`);
+  const listbox = document.getElementById(listboxId);
+  if (!listbox || listbox.getAttribute("role") !== "listbox") throw new Error(`${selector} listbox must open.`);
+  const option = [...listbox.querySelectorAll<HTMLLIElement>('[role="option"]')]
+    .find((item) => item.textContent?.trim() === optionLabel);
+  if (!option) throw new Error(`Option ${optionLabel} must render for ${selector}.`);
+  await act(async () => option.click());
 }
 
 function jsonResponse(payload: unknown): Response {

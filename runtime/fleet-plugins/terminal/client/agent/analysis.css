@@ -156,9 +156,6 @@
 .session-analyst__selector-strip:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
 .session-analyst__select { position: relative; display: inline-flex; min-width: 0; }
 .session-analyst__select + .session-analyst__select::before { content: ""; position: absolute; inset: 9px auto 9px 0; width: 1px; background: var(--hairline); }
-.session-analyst__select::after { content: "⌄"; position: absolute; right: 6px; top: 50%; transform: translateY(-55%); color: var(--text-tertiary); font-size: 9px; pointer-events: none; }
-.session-analyst__select select { min-width: 0; max-width: 6.5rem; appearance: none; -webkit-appearance: none; border: 0; outline: 0; background: transparent; color: var(--text-secondary); padding: 8px 18px 8px 10px; font: 9px/1 var(--font-mono); cursor: pointer; text-overflow: ellipsis; }
-.session-analyst__select select:disabled { cursor: default; }
 .session-analyst__send { display: grid; place-items: center; width: 38px; height: 38px; flex: none; margin-left: auto; border: 0; border-radius: 50%; background: color-mix(in oklch, var(--text-primary) 72%, var(--ink-mid)); color: var(--ink-abyss); cursor: pointer; }
 .session-analyst__send:hover:not(:disabled) { filter: brightness(1.08); }
 .session-analyst__send:disabled { opacity: .42; cursor: default; }
@@ -229,8 +226,6 @@
   .session-analyst__queue, .session-analyst__followups { padding-right: 10px; padding-left: 10px; }
   .session-analyst__slash { right: 10px; left: 10px; }
   .session-analyst__composer-surface { gap: 4px; padding-left: 6px; }
-  .session-analyst__select select { max-width: 4.65rem; padding-right: 14px; padding-left: 7px; }
-  .session-analyst__select::after { right: 4px; }
   .session-analyst__panel-head--artifacts .session-analyst__panel-copy { display: none; }
 }
 

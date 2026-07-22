@@ -4,6 +4,7 @@ import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
+import { Select } from "@fleet-console/sdk/react/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
@@ -757,33 +758,29 @@ function ModelAuthBlock() {
         <div className="model-auth-row">
           <div className="terminal-carriers-runtime-row">
             <div className="terminal-carriers-field">
-              <label className="terminal-carriers-label" htmlFor="kimi-default-model">Default model</label>
-              <select
-                id="kimi-default-model"
-                className="terminal-carriers-select"
+              <span className="terminal-carriers-label" id="kimi-default-model-label">Default model</span>
+              <Select
+                aria-labelledby="kimi-default-model-label"
                 value={selectedModelId}
                 disabled={saving || !settings.state}
-                onChange={(event) => {
-                  const nextModel = kimiOptions.models.find((model) => model.modelId === event.target.value);
+                options={kimiOptions.models.map((model) => ({ value: model.modelId, label: model.name }))}
+                onChange={(nextModelId) => {
+                  const nextModel = kimiOptions.models.find((model) => model.modelId === nextModelId);
                   if (!nextModel) return;
                   saveKimiModel(nextModel.modelId, nextModel.effort ? (storedKimiModel?.effort ?? nextModel.effort.default) : undefined);
                 }}
-              >
-                {kimiOptions.models.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
-              </select>
+              />
             </div>
             {selectedModel?.effort ? (
               <div className="terminal-carriers-field">
-                <label className="terminal-carriers-label" htmlFor="kimi-default-effort">Default effort</label>
-                <select
-                  id="kimi-default-effort"
-                  className="terminal-carriers-select"
+                <span className="terminal-carriers-label" id="kimi-default-effort-label">Default effort</span>
+                <Select
+                  aria-labelledby="kimi-default-effort-label"
                   value={selectedEffort ?? selectedModel.effort.default}
                   disabled={saving || !settings.state}
-                  onChange={(event) => saveKimiModel(selectedModel.modelId, event.target.value)}
-                >
-                  {selectedModel.effort.levels.map((level) => <option key={level} value={level}>{level}</option>)}
-                </select>
+                  options={selectedModel.effort.levels.map((level) => ({ value: level, label: level }))}
+                  onChange={(effort) => saveKimiModel(selectedModel.modelId, effort)}
+                />
               </div>
             ) : null}
           </div>

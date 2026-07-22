@@ -1038,10 +1038,7 @@
 /* ── Compare 뷰 ── */
 .repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .repository-compare-controls { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
-/* UA 기본 select 크롬을 걷어내고 필터 입력과 같은 시각 등급으로 맞춘다. */
-.repository-compare-select { flex: 1; min-width: 0; appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 35%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 3px 6px; outline: none; cursor: pointer; text-overflow: ellipsis; transition: border-color var(--duration-fast) var(--ease-glide); }
-.repository-compare-select:hover { border-color: var(--surface-rim-strong); }
-.repository-compare-select:focus-visible { border-color: var(--brass); }
+.repository-compare-controls .fc-select { flex: 1; min-width: 0; }
 .repository-compare-arrow { flex: none; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px; }
 .repository-compare-run:disabled { opacity: .5; cursor: default; }
 .repository-compare-results { display: flex; flex-direction: column; }
