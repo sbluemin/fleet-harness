@@ -355,9 +355,8 @@ function selectLabelId(selector: string): string {
 
 function requiredSelectTrigger(selector: string): HTMLButtonElement {
   const labelId = selectLabelId(selector);
-  const root = container!.querySelector<HTMLElement>(`[aria-labelledby="${labelId}"]`);
-  if (!root) throw new Error(`${selector} select must render.`);
-  const trigger = root.querySelector<HTMLButtonElement>(".fc-select__trigger");
+  // ARIA 계약: 외부 라벨의 aria-labelledby는 트리거 본인이 소유한다(래퍼가 아님).
+  const trigger = container!.querySelector<HTMLButtonElement>(`.fc-select__trigger[aria-labelledby="${labelId}"]`);
   if (!trigger) throw new Error(`${selector} select trigger must render.`);
   expect(trigger.getAttribute("aria-haspopup")).toBe("listbox");
   return trigger;
@@ -365,8 +364,8 @@ function requiredSelectTrigger(selector: string): HTMLButtonElement {
 
 function displayedSelectLabel(selector: string): string {
   const labelId = selectLabelId(selector);
-  const root = container!.querySelector<HTMLElement>(`[aria-labelledby="${labelId}"]`);
-  return root?.querySelector(".fc-select__value")?.textContent?.trim() ?? "";
+  const trigger = container!.querySelector<HTMLElement>(`.fc-select__trigger[aria-labelledby="${labelId}"]`);
+  return trigger?.querySelector(".fc-select__value")?.textContent?.trim() ?? "";
 }
 
 async function chooseSelectOption(selector: string, optionLabel: string): Promise<void> {
