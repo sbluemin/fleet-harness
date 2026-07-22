@@ -72,9 +72,12 @@ export function isDockTrackLive(jobStatus: string, trackStatus: string): boolean
 }
 
 export function deriveTrackPhase(track: TrackView, jobStatus: string): TrackPhase {
-  if (isTrackError(track.status) || jobStatus === "error") return { label: "Error", tone: "error" };
-  if (track.status === "aborted" || jobStatus === "aborted") return { label: "Aborted", tone: "error" };
-  if (track.status === "done" || jobStatus === "done") return { label: "Done", tone: "done" };
+  if (isTrackError(track.status)) return { label: "Error", tone: "error" };
+  if (track.status === "aborted") return { label: "Aborted", tone: "error" };
+  if (track.status === "done") return { label: "Done", tone: "done" };
+  if (jobStatus === "error") return { label: "Error", tone: "error" };
+  if (jobStatus === "aborted") return { label: "Aborted", tone: "error" };
+  if (jobStatus === "done") return { label: "Done", tone: "done" };
 
   const lastTool = track.tools.at(-1);
   if (lastTool && lastTool.status !== "done" && lastTool.status !== "error") {

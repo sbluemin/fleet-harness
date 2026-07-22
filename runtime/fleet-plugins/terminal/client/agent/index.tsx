@@ -58,6 +58,7 @@ interface DockRowProps {
 
 interface PinnedScrollLocal {
   readonly containerRef: React.RefObject<HTMLDivElement | null>;
+  readonly contentRef: React.RefObject<HTMLDivElement | null>;
   readonly pinned: boolean;
   readonly jumpToLatest: () => void;
 }
@@ -158,6 +159,7 @@ function installAgentPlugin(ctx: PluginInstallContext): () => void {
 // core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.
 function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScrollLocal {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   const pinnedRef = React.useRef(true);
   const [pinned, setPinned] = React.useState(true);
 
@@ -192,6 +194,18 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     container.scrollTop = container.scrollHeight;
   }, [contentKey]);
 
+  React.useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const container = containerRef.current;
+    const content = contentRef.current;
+    if (!container || !content) return;
+    const observer = new ResizeObserver(() => {
+      if (pinned) container.scrollTop = container.scrollHeight;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [pinned, resetKey]);
+
   const jumpToLatest = React.useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -200,7 +214,7 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     updatePinned(true);
   }, [updatePinned]);
 
-  return { containerRef, pinned, jumpToLatest };
+  return { containerRef, contentRef, pinned, jumpToLatest };
 }
 
 function getTabbableElements(container: HTMLElement): HTMLElement[] {
@@ -459,7 +473,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
               {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <RequestDetails key={job.jobId} job={job} />)}
             </div>
             <div id={`${detailTabsId}-activity-panel`} ref={detailTab === "activity" ? modalScroll.containerRef : undefined} className="job-overlay-body job-overlay-panel" role="tabpanel" aria-labelledby={`${detailTabsId}-activity`} hidden={detailTab !== "activity"} tabIndex={detailTab === "activity" ? 0 : -1}>
-              {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)}
+              <div className="job-overlay-panel-content" ref={modalScroll.contentRef}>
+                {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)}
+              </div>
             </div>
             {detailTab === "activity" && !modalScroll.pinned ? (
               <button type="button" className="follow-button" onClick={modalScroll.jumpToLatest}>
@@ -945,6 +961,7 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
 
 function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly jobStatus: string }) {
   const modifier = trackCardModifier(track.status, jobStatus);
+  const phase = deriveTrackPhase(track, jobStatus);
   // 칩 텍스트도 modifier와 같은 해석에서 파생 — 종결 잡의 미종결 트랙이 coral 카드에
   // raw "stream" 라벨을 다는 표기 분열을 막는다(라이브 트랙은 자기 상태 그대로).
   const statusLabel = resolveDockRowStatusLabel(track.status, jobStatus);
@@ -963,7 +980,7 @@ function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly j
         </details>
       ) : null}
       {track.text ? (
-        <StreamedMarkdown className="track-card-output markdown-body" text={track.text} streaming={!isTerminalJobStatus(track.status)} />
+        <StreamedMarkdown className="track-card-output markdown-body" text={track.text} streaming={phase.tone === "live"} />
       ) : null}
       {track.error ? (
         <div className="track-card-error" role="group" aria-label="Error">{track.error}</div>

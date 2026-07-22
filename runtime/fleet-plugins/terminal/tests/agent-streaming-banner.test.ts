@@ -247,6 +247,21 @@ describe("deriveTrackPhase (phase 카드 상태)", () => {
     expect(deriveTrackPhase(makeTrack({ status: trackStatus }), jobStatus)).toEqual(expected);
   });
 
+  it("혼합 결과에서는 resolveDockRowStatusLabel 계약과 같이 트랙 종결 상태를 job 오류보다 우선한다", () => {
+    const track = makeTrack({ status: "done" });
+    expect(resolveDockRowStatusLabel(track.status, "error")).toBe("done");
+    expect(deriveTrackPhase(track, "error")).toEqual({ label: "Done", tone: "done" });
+  });
+
+  it("err 트랙은 error tone이고 종결 job의 stale stream 트랙은 job 상태로 폴백한다", () => {
+    const errorPhase = deriveTrackPhase(makeTrack({ status: "err" }), "active");
+    const staleTrackPhase = deriveTrackPhase(makeTrack({ status: "stream" }), "done");
+    expect(errorPhase).toEqual({ label: "Error", tone: "error" });
+    expect(errorPhase.tone === "live").toBe(false);
+    expect(staleTrackPhase).toEqual({ label: "Done", tone: "done" });
+    expect(staleTrackPhase.tone === "live").toBe(false);
+  });
+
   it("마지막 미종결 도구를 출력보다 우선하고 이름이 없으면 tool로 폴백한다", () => {
     expect(deriveTrackPhase(makeTrack({
       text: "partial output",
@@ -277,7 +292,7 @@ describe("deriveTrackPhase (phase 카드 상태)", () => {
       text: "output",
       tools: [{ id: "live", name: "write", status: "running" }],
     }), "active")).toEqual({ label: "Done", tone: "done" });
-    expect(deriveTrackPhase(makeTrack({ status: "done" }), "error")).toEqual({ label: "Error", tone: "error" });
+    expect(deriveTrackPhase(makeTrack({ status: "done" }), "error")).toEqual({ label: "Done", tone: "done" });
   });
 });
 
