@@ -137,10 +137,10 @@
 .session-analyst__receipt { display: flex; align-items: center; gap: var(--space-2); min-height: 34px; flex: none; margin-top: 15px; border-left: 2px solid var(--text-tertiary); background: var(--surface-glass-strong); padding: 0 var(--space-3); color: var(--text-tertiary); font: 10px/1.3 var(--font-mono); animation: analyst-receipt-settle var(--duration-base) var(--ease-glide) both; }
 
 .session-analyst__composer { position: relative; min-width: 0; background: transparent; }
-.session-analyst__composer.is-initial { flex: none; margin-top: 12px; padding: 0; }
+.session-analyst__composer.is-initial { display: flex; align-items: flex-end; gap: var(--space-2); flex: none; margin-top: 12px; padding: 0; }
 .session-analyst__composer.is-docked { padding: 10px 14px 14px; }
 .session-analyst__composer.is-docking { animation: analyst-composer-dock var(--duration-slow) var(--ease-glide) both; }
-.session-analyst__composer-surface { position: relative; display: flex; align-items: flex-end; gap: 7px; min-width: 0; min-height: 48px; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: 24px; background: color-mix(in oklch, var(--ink-mid) 86%, var(--ink-deep)); padding: 5px 6px 5px 9px; box-shadow: inset 0 1px 0 color-mix(in oklch, white 4%, transparent); transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide); }
+.session-analyst__composer-surface { position: relative; display: flex; align-items: flex-end; gap: 7px; min-width: 0; min-height: 48px; flex: 1; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: 24px; background: color-mix(in oklch, var(--ink-mid) 86%, var(--ink-deep)); padding: 5px 6px 5px 9px; box-shadow: inset 0 1px 0 color-mix(in oklch, white 4%, transparent); transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide); }
 .session-analyst__composer-surface:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
 .session-analyst__composer textarea { display: block; box-sizing: border-box; width: auto; min-width: 3rem; min-height: 36px; height: 36px; max-height: calc(1.5em * 6 + 16px); flex: 1 1 auto; resize: none; overflow-x: hidden; overflow-y: hidden; white-space: pre-wrap; border: 0; outline: 0; background: transparent; color: var(--text-primary); padding: 8px 6px; font: 12.5px/1.5 var(--font-body); transition: opacity var(--duration-base) var(--ease-glide); }
 .session-analyst__composer textarea::placeholder { color: color-mix(in oklch, var(--text-tertiary) 62%, transparent); }
@@ -209,6 +209,12 @@
 @keyframes analyst-artifact-count-pulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.32); } }
 @keyframes analyst-author-slide { from { transform: translateX(-100%); } to { transform: translateX(294%); } }
 @keyframes analyst-authoring-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+
+/* 스트립+입력 나란히 배치는 셀렉터 3종(≈271px)과 최소 입력 폭을 함께 수용할 때만 유효 — 좁으면 스트립을 위로 쌓는다. */
+@container (max-width: 33rem) {
+  .session-analyst__composer.is-initial { flex-wrap: wrap; }
+  .session-analyst__composer.is-initial .session-analyst__composer-surface { flex-basis: 100%; }
+}
 
 @container (max-width: 24rem) {
   .session-analyst__suggestions { grid-template-columns: 1fr; }
