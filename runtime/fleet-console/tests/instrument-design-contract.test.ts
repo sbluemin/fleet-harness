@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const CONSOLE_ROOT = new URL("../", import.meta.url);
@@ -21,7 +22,7 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
   "proposals",
   "examples",
 ]);
-const RAW_PRODUCT_SELECT = /<select(?:[\s>/]|$)/;
+const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
@@ -79,19 +80,63 @@ function findRawProductSelects(): Array<{ file: string; line: number; snippet: s
   const hits: Array<{ file: string; line: number; snippet: string }> = [];
   for (const root of PRODUCT_SOURCE_ROOTS) {
     for (const file of listProductSourceFiles(root)) {
-      const lines = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n").split("\n");
-      for (let index = 0; index < lines.length; index += 1) {
-        const line = lines[index] ?? "";
-        if (RAW_PRODUCT_SELECT.test(line)) {
-          hits.push({
-            file: path.relative(fileURLToPath(CONSOLE_ROOT), file).replace(/\\/g, "/"),
-            line: index + 1,
-            snippet: line.trim(),
-          });
-        }
-      }
+      const text = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const sourceFile = ts.createSourceFile(
+        file,
+        text,
+        ts.ScriptTarget.Latest,
+        true,
+        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
+      hits.push(...findRawProductSelectsInSourceFile(sourceFile, file, text));
     }
   }
+  return hits.sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+}
+
+function findRawProductSelectsInSourceFile(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  text: string,
+): Array<{ file: string; line: number; snippet: string }> {
+  const hits: Array<{ file: string; line: number; snippet: string }> = [];
+  const relativeFile = path.relative(fileURLToPath(CONSOLE_ROOT), filePath).replace(/\\/g, "/");
+  const lines = text.split("\n");
+
+  const recordHit = (node: ts.Node) => {
+    const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+    hits.push({
+      file: relativeFile,
+      line,
+      snippet: (lines[line - 1] ?? "").trim(),
+    });
+  };
+
+  const isSelectTagName = (name: ts.JsxTagNameExpression | undefined): boolean =>
+    name !== undefined && ts.isIdentifier(name) && name.text === "select";
+
+  const isSelectFactoryFirstArg = (expression: ts.Expression | undefined): boolean =>
+    expression !== undefined && ts.isStringLiteralLike(expression) && expression.text === "select";
+
+  const factoryName = (expression: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(expression)) return expression.text;
+    if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) return expression.name.text;
+    return undefined;
+  };
+
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      if (isSelectTagName(node.tagName)) recordHit(node);
+    } else if (ts.isCallExpression(node)) {
+      const name = factoryName(node.expression);
+      if (name !== undefined && JSX_FACTORY_NAMES.has(name) && isSelectFactoryFirstArg(node.arguments[0])) {
+        recordHit(node);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
   return hits;
 }
 
@@ -597,6 +642,15 @@ describe("Instrument core design contract", () => {
   it("forbids native product selects in Console core, SDK, and built-in plugins", () => {
     const hits = findRawProductSelects();
     expect(hits, hits.map((hit) => `${hit.file}:${hit.line} ${hit.snippet}`).join("\n")).toEqual([]);
+  });
+
+  it("detects JSX and createElement native select factories with the AST scanner", () => {
+    const jsxText = '<select value="x" />\n<div><select /></div>';
+    const jsxSource = ts.createSourceFile("fixture.tsx", jsxText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const factoryText = 'createElement("select", { value: "x" });\nReact.createElement("select", null);';
+    const factorySource = ts.createSourceFile("fixture.ts", factoryText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    expect(findRawProductSelectsInSourceFile(jsxSource, "fixture.tsx", jsxText).map((hit) => hit.line)).toEqual([1, 2]);
+    expect(findRawProductSelectsInSourceFile(factorySource, "fixture.ts", factoryText).map((hit) => hit.line)).toEqual([1, 2]);
   });
 
   it("pins the shared SDK Select listbox grammar and stacking contract", () => {
