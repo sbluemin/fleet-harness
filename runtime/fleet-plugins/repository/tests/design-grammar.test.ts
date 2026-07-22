@@ -87,18 +87,21 @@ describe("Repository design grammar", () => {
   it("uses core surface tokens for panel material", () => {
     expect(css).not.toContain("background: var(--ink-deep)");
 
-    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-compare-controls", ".repository-line-file-label"]) {
+    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-compare-controls", ".repository-line-file-label", ".repository-discovery"]) {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 55%");
     }
-    for (const selector of [".repository-identity", ".repository-source-nav", ".repository-scan-foot"]) {
+    for (const selector of [".repository-identity", ".repository-source-nav"]) {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 72%");
     }
+    expect(css).not.toContain(".repository-scan-foot");
+    expect(blockOf(".repository-ref-mark")).toContain("var(--brass)");
+    expect(blockOf(".repository-ref-hl")).toContain("var(--brass)");
     // .history-detail-pane은 스택 레이아웃 재선언 포함 2개 규칙 — background를 선언하는 모든 규칙이 glass를 소비해야 한다.
     const detailPanes = blocksOf(".history-detail-pane").filter((body) => body.includes("background"));
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
     for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
 
-    for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-scan-depth", ".repository-compare-select", ".repository-view-toggle"]) {
+    for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-compare-select", ".repository-view-toggle"]) {
       expect(blockOf(selector), selector).toContain("var(--ink-abyss) 35%");
     }
   });

@@ -998,15 +998,15 @@
 .repository-source-content { flex: 1; min-width: 0; min-height: 0; }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
-/* 목록은 스크롤되고 스캔 푸터는 하단에 고정된다 */
+/* Discovery bar는 목록 위에 고정되고 저장소 목록만 스크롤된다. */
 .repository-scan-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .repository-scan-pane > .repository-ref-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
-.repository-scan-foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 7px 10px; border-top: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); }
-.repository-scan-foot label { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
-/* appearance:none으로 UA 기본 select 크롬을 걷어내고 필터 입력과 같은 시각 등급으로 맞춘다 */
-.repository-scan-depth { appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 35%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 2px 6px; outline: none; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-glide); }
-.repository-scan-depth:hover { border-color: var(--surface-rim-strong); }
-.repository-scan-depth:focus-visible { border-color: var(--brass); }
+.repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
+.repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+.repository-depth-step { border: 0; background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: 12px; padding: 0 3px; }
+.repository-depth-step:hover:not(:disabled) { color: var(--text-primary); }
+.repository-depth-step:disabled { opacity: .4; cursor: default; }
+.repository-depth-value { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: 0 6px; color: var(--ink-spectral); font-family: var(--font-mono); font-size: 11px; }
 .repository-scan-count { margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
 .repository-ref-group { display: grid; gap: 2px; }
@@ -1018,6 +1018,10 @@
 .repository-ref-row.is-current:hover { color: var(--text-primary); }
 .repository-ref-row svg { width: 13px; height: 13px; flex: none; opacity: .85; }
 .repository-ref-name { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* 현재 체크아웃 마크 = 위치 채널 */
+.repository-ref-mark { flex: none; color: var(--brass); font-size: 11px; }
+/* 매칭 글자 = 포커스 채널(brass) */
+.repository-ref-hl { color: var(--brass); font-weight: 700; }
 .repository-ref-sub { margin-left: auto; color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 10px; }
 .repository-ref-row.is-current .repository-ref-sub { color: var(--brass); }
 .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
@@ -1031,7 +1035,7 @@
 /* ── Compare 뷰 ── */
 .repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .repository-compare-controls { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
-/* .repository-scan-depth와 동일한 UA 크롬 제거·시각 등급 */
+/* UA 기본 select 크롬을 걷어내고 필터 입력과 같은 시각 등급으로 맞춘다. */
 .repository-compare-select { flex: 1; min-width: 0; appearance: none; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 35%, transparent); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 12px; padding: 3px 6px; outline: none; cursor: pointer; text-overflow: ellipsis; transition: border-color var(--duration-fast) var(--ease-glide); }
 .repository-compare-select:hover { border-color: var(--surface-rim-strong); }
 .repository-compare-select:focus-visible { border-color: var(--brass); }
