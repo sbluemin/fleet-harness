@@ -48,6 +48,8 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
     bootstrapped: true,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,
+    pendingSideBarAddTheater: false,
+    pendingSideBarTheaterLaunch: null,
     launchMenuRequest: null,
     keyboardShortcutsOpen: false,
     operationNotifications: {},

@@ -25,5 +25,12 @@
       "@fleet-console/desktop-protocol": ["desktop-protocol/index.ts"]
     }
   },
-  "include": ["core/host/**/*.ts", "tests/**/*.ts", "tsup.config.ts", "vitest.config.ts"]
+  "include": [
+    "core/host/**/*.ts",
+    "core/client/src/vite-env.d.ts",
+    "core/client/src/virtual-fleet-plugins.d.ts",
+    "tests/**/*.ts",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
 }
