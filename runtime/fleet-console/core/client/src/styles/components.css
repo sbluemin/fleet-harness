@@ -7170,7 +7170,6 @@ body[data-codex-side="true"] .command-card {
   align-items: center;
 }
 
-.whatsnew-version-selector select,
 .whatsnew-refresh {
   min-height: 34px;
   border: 1px solid var(--surface-rim);
@@ -7223,9 +7222,8 @@ body[data-codex-side="true"] .command-card {
   font-size: var(--font-size-label-sm);
 }
 
-.whatsnew-version-selector select {
+.whatsnew-version-select {
   min-width: min(260px, 100%);
-  padding: 0 10px;
 }
 
 .whatsnew-refresh {

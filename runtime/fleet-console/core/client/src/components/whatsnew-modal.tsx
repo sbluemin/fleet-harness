@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { Select } from "@fleet-console/sdk/react/browser";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { requestReleaseNotes } from "../release-notes-fetch.js";
@@ -146,16 +147,19 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
         </button>
         <div className="whatsnew-body">
           <div className="whatsnew-version-selector">
-            <select aria-label="Release version" value={selectedValue} onChange={(event) => selectReleaseNote(event.currentTarget.value)}>
-              {pageNotes.map((note, localIndex) => {
+            <Select
+              label="Release version"
+              className="whatsnew-version-select"
+              value={selectedValue}
+              onChange={selectReleaseNote}
+              options={pageNotes.map((note, localIndex) => {
                 const index = pageStart + localIndex;
-                return (
-                  <option key={releaseNoteKey(note.version, index)} value={releaseNoteKey(note.version, index)}>
-                    {note.version === "Unreleased" ? "Unreleased" : `v${note.version}`}{note.date ? ` · ${note.date}` : ""}
-                  </option>
-                );
+                return {
+                  value: releaseNoteKey(note.version, index),
+                  label: `${note.version === "Unreleased" ? "Unreleased" : `v${note.version}`}${note.date ? ` · ${note.date}` : ""}`,
+                };
               })}
-            </select>
+            />
             {pageCount > 1 ? (
               <div className="whatsnew-pagination">
                 <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label="Newer versions">
