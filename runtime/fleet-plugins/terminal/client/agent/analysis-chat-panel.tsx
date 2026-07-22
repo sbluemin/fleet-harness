@@ -249,7 +249,16 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
               />
             </span>
-            <span className="session-analyst__select"><select aria-label="Analysis model" disabled={state.started || !model} value={state.model} onChange={(event) => dispatch({ type: "select-model", model: event.target.value })}>{cli?.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></span>
+            <span className="session-analyst__select">
+              <Select
+                compact
+                label="Analysis model"
+                value={state.model}
+                disabled={state.started || !model}
+                options={cli?.models.map((item) => ({ value: item.id, label: item.label })) ?? []}
+                onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
+              />
+            </span>
             <span className="session-analyst__select"><select aria-label="Analysis effort" disabled={state.started || !model || !model.effortLevels.length} value={state.effort} onChange={(event) => dispatch({ type: "select-effort", effort: event.target.value })}>{model?.effortLevels.length ? model.effortLevels.map((item) => <option key={item} value={item}>{item}</option>) : <option value="">n/a</option>}</select></span>
           </div> : null}
           <div className="session-analyst__composer-surface">
