@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
-import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
+import { deriveTrackPhase, describeToolTarget, resolveToolTone, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, isTrackLive, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "../client/agent/helpers.js";
 import { applyEvent, createEmptyJob, isTerminalJobStatus } from "../client/agent/reduce.js";
 import type { JobView } from "../client/agent/types.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -260,6 +260,20 @@ describe("deriveTrackPhase (phase 카드 상태)", () => {
     expect(errorPhase.tone === "live").toBe(false);
     expect(staleTrackPhase).toEqual({ label: "Done", tone: "done" });
     expect(staleTrackPhase.tone === "live").toBe(false);
+  });
+
+  it("ACP 어휘(completed/failed)의 마지막 도구도 종결로 취급해 Using에 잔류하지 않는다", () => {
+    expect(deriveTrackPhase(makeTrack({
+      tools: [{ id: "acp-done", name: "read", status: "completed" }],
+    }), "active")).toEqual({ label: "Working", tone: "live" });
+    expect(deriveTrackPhase(makeTrack({
+      text: "partial output",
+      tools: [{ id: "acp-failed", name: "edit", status: "failed" }],
+    }), "active")).toEqual({ label: "Writing", tone: "live" });
+    expect(resolveToolTone("completed")).toBe("done");
+    expect(resolveToolTone("failed")).toBe("error");
+    expect(resolveToolTone("in_progress")).toBe("live");
+    expect(resolveToolTone(undefined)).toBe("live");
   });
 
   it("마지막 미종결 도구를 출력보다 우선하고 이름이 없으면 tool로 폴백한다", () => {

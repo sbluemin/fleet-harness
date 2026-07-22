@@ -20,7 +20,7 @@ import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
+import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, resolveToolTone, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
 import type { RetainedJob } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
@@ -990,11 +990,7 @@ function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly j
         <div className="track-card-tools" role="list" aria-label="Tools">
           {track.tools.map((tool) => {
             const target = describeToolTarget(tool.input);
-            const tone = tool.status === "done" || tool.status === "completed"
-              ? "is-done"
-              : tool.status === "error" || tool.status === "failed"
-                ? "is-error"
-                : "is-live";
+            const tone = `is-${resolveToolTone(tool.status)}`;
             return (
               <span key={tool.id} className={`track-card-tool-chip ${tone}`} role="listitem">
                 <i aria-hidden="true" />
