@@ -64,6 +64,38 @@ function options(): HTMLLIElement[] {
   return Array.from(document.querySelectorAll<HTMLLIElement>(".fc-select__option"));
 }
 
+function expectFiniteNonNegativeGeometry(list: HTMLUListElement): void {
+  const left = Number.parseFloat(list.style.left);
+  const width = Number.parseFloat(list.style.width);
+  expect(Number.isFinite(left)).toBe(true);
+  expect(Number.isFinite(width)).toBe(true);
+  expect(left).toBeGreaterThanOrEqual(0);
+  expect(width).toBeGreaterThanOrEqual(0);
+  if (list.dataset.placement === "up") {
+    const bottom = Number.parseFloat(list.style.bottom);
+    expect(Number.isFinite(bottom)).toBe(true);
+    expect(bottom).toBeGreaterThanOrEqual(0);
+    return;
+  }
+  const top = Number.parseFloat(list.style.top);
+  expect(Number.isFinite(top)).toBe(true);
+  expect(top).toBeGreaterThanOrEqual(0);
+}
+
+function mockTriggerRect(button: HTMLButtonElement, rect: DOMRectInit & { width: number; height: number }): void {
+  vi.spyOn(button, "getBoundingClientRect").mockReturnValue({
+    x: rect.left ?? 0,
+    y: rect.top ?? 0,
+    width: rect.width,
+    height: rect.height,
+    top: rect.top ?? 0,
+    right: rect.right ?? ((rect.left ?? 0) + rect.width),
+    bottom: rect.bottom ?? ((rect.top ?? 0) + rect.height),
+    left: rect.left ?? 0,
+    toJSON: () => ({}),
+  });
+}
+
 beforeEach(() => {
   document.body.replaceChildren();
   vi.useFakeTimers();
@@ -341,6 +373,36 @@ describe("Select behavior", () => {
     expect(popup().style.width).toBe("384px");
     expect(Number.parseFloat(popup().style.left)).toBe(8);
   });
+
+  it.each([
+    { innerWidth: 0, compact: true, placement: "down" as const },
+    { innerWidth: 0, compact: false, placement: "down" as const },
+    { innerWidth: 0, compact: true, placement: "up" as const },
+    { innerWidth: 0, compact: false, placement: "up" as const },
+    { innerWidth: 10, compact: true, placement: "down" as const },
+    { innerWidth: 10, compact: false, placement: "down" as const },
+    { innerWidth: 10, compact: true, placement: "up" as const },
+    { innerWidth: 10, compact: false, placement: "up" as const },
+    { innerWidth: 100, compact: true, placement: "down" as const },
+    { innerWidth: 100, compact: false, placement: "down" as const },
+    { innerWidth: 100, compact: true, placement: "up" as const },
+    { innerWidth: 100, compact: false, placement: "up" as const },
+  ])(
+    "keeps $placement popup geometry finite and non-negative at innerWidth=$innerWidth compact=$compact",
+    ({ innerWidth, compact, placement }) => {
+      vi.spyOn(window, "innerWidth", "get").mockReturnValue(innerWidth);
+      vi.spyOn(window, "innerHeight", "get").mockReturnValue(300);
+      renderSelect({ compact });
+      const button = trigger();
+      mockTriggerRect(button, placement === "up"
+        ? { left: 12, top: 280, width: 60, height: 24, right: 72, bottom: 304 }
+        : { left: 12, top: 40, width: 60, height: 24, right: 72, bottom: 64 });
+      act(() => button.click());
+      const list = popup();
+      expect(list.dataset.placement).toBe(placement);
+      expectFiniteNonNegativeGeometry(list);
+    },
+  );
 });
 
 describe("SettingsSelect public contract", () => {

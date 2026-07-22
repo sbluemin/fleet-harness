@@ -676,7 +676,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
     expect(selectBlock).toContain("font: 9px/1 var(--font-mono);");
     expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
-    expect(selectBlock).toContain(".fc-select__popup--compact { min-width: 160px; }");
+    expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
     expect(selectBlock).toMatch(/\.reduce-panel-motion \.fc-select__trigger,\s*\.reduce-panel-motion \.fc-select__caret,\s*\.reduce-panel-motion \.fc-select__popup,\s*\.reduce-panel-motion \.fc-select__option \{\s*transition: none;\s*\}/);
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 

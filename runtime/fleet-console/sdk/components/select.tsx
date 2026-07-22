@@ -69,19 +69,28 @@ function enabledIndices(options: readonly SelectOption[]): readonly number[] {
 }
 
 function computePopupStyle(trigger: DOMRect, placement: "up" | "down", compact: boolean): React.CSSProperties {
-  const innerWidth = window.innerWidth;
+  const margin = Math.max(0, VIEWPORT_MARGIN_PX);
+  const viewportWidth = Math.max(0, window.innerWidth);
+  const viewportHeight = Math.max(0, window.innerHeight);
+  const maxWidth = Math.max(0, viewportWidth - 2 * margin);
+  const triggerWidth = Math.max(0, trigger.width);
   const width = compact
-    ? Math.min(Math.max(COMPACT_POPUP_MIN_WIDTH_PX, trigger.width), innerWidth - VIEWPORT_MARGIN_PX * 2)
-    : Math.min(trigger.width, innerWidth - VIEWPORT_MARGIN_PX * 2);
+    ? Math.min(Math.max(COMPACT_POPUP_MIN_WIDTH_PX, triggerWidth), maxWidth)
+    : Math.min(triggerWidth, maxWidth);
   const rawLeft = compact ? trigger.right - width : trigger.left;
-  const left = clamp(rawLeft, VIEWPORT_MARGIN_PX, innerWidth - width - VIEWPORT_MARGIN_PX);
+  const left = clamp(rawLeft, margin, Math.max(margin, viewportWidth - width - margin));
   return placement === "down"
-    ? { position: "fixed", left, width, top: trigger.bottom + POPUP_OFFSET_PX }
+    ? {
+        position: "fixed",
+        left,
+        width,
+        top: Math.max(0, trigger.bottom + POPUP_OFFSET_PX),
+      }
     : {
         position: "fixed",
         left,
         width,
-        bottom: window.innerHeight - trigger.top + POPUP_OFFSET_PX,
+        bottom: Math.max(0, viewportHeight - trigger.top + POPUP_OFFSET_PX),
       };
 }
 
