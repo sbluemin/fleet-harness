@@ -5405,6 +5405,13 @@
   gap: var(--space-5);
 }
 
+/* ResizeObserver 래퍼 — body의 직접-자식 flex 레이아웃을 승계해 head/tracks·복수 job 간격 계약을 유지한다. */
+.job-overlay-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
 .job-overlay-panel[hidden] { display: none; }
 
 .request-details,

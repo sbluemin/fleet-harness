@@ -200,11 +200,12 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     const content = contentRef.current;
     if (!container || !content) return;
     const observer = new ResizeObserver(() => {
-      if (pinned) container.scrollTop = container.scrollHeight;
+      // pinnedRef 직독 — 예약된 콜백이 렌더 시점 pinned를 읽으면 사용자의 unpin을 하단 재고정으로 되돌린다.
+      if (pinnedRef.current) container.scrollTop = container.scrollHeight;
     });
     observer.observe(content);
     return () => observer.disconnect();
-  }, [pinned, resetKey]);
+  }, [resetKey]);
 
   const jumpToLatest = React.useCallback(() => {
     const container = containerRef.current;
