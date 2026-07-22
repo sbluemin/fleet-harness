@@ -151,7 +151,9 @@
 .session-analyst__slash button small { color: var(--text-tertiary); font-size: 10.5px; }
 .session-analyst__slash button:is(.is-selected, :hover) { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
 .session-analyst__composer-hint { padding: 6px 4px 0; color: var(--text-tertiary); font: 500 9.5px/1.4 var(--font-mono); }
-.session-analyst__selector-strip { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 1px solid var(--hairline); border-radius: 999px; background: color-mix(in oklch, var(--ink-veil) 45%, var(--ink-deep)); transition: opacity var(--duration-base) var(--ease-glide); }
+.session-analyst__selector-strip { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 1px solid var(--hairline); border-radius: 999px; background: color-mix(in oklch, var(--ink-veil) 45%, var(--ink-deep)); transition: opacity var(--duration-base) var(--ease-glide), border-color var(--duration-base) var(--ease-glide); }
+/* 스트립이 composer-surface 밖으로 나온 뒤에도 키보드 포커스 큐가 유지되도록 동일한 focus-within 병더 문법을 적용한다. */
+.session-analyst__selector-strip:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
 .session-analyst__select { position: relative; display: inline-flex; min-width: 0; }
 .session-analyst__select + .session-analyst__select::before { content: ""; position: absolute; inset: 9px auto 9px 0; width: 1px; background: var(--hairline); }
 .session-analyst__select::after { content: "⌄"; position: absolute; right: 6px; top: 50%; transform: translateY(-55%); color: var(--text-tertiary); font-size: 9px; pointer-events: none; }
