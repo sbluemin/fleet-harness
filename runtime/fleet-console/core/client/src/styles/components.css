@@ -7609,7 +7609,6 @@ body[data-codex-side="true"] .command-card {
 }
 
 .fc-settings-toggle:focus-within .fc-settings-toggle__control,
-.fc-settings-select__control:focus,
 .fc-settings-field__control:focus {
   outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
   outline-offset: 2px;
@@ -7621,7 +7620,6 @@ body[data-codex-side="true"] .command-card {
   gap: var(--space-2);
 }
 
-.fc-settings-select__control,
 .fc-settings-field__control {
   width: 100%;
   min-height: 38px;
@@ -7631,13 +7629,6 @@ body[data-codex-side="true"] .command-card {
   color: var(--ink-pearl);
   font: inherit;
   letter-spacing: 0;
-}
-
-.fc-settings-select__control {
-  padding: 0 34px 0 12px;
-}
-
-.fc-settings-field__control {
   padding: 8px 12px;
 }
 

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Select, type SelectOption } from "@fleet-console/sdk/react/browser";
+import { SettingsSelect } from "@fleet-console/sdk/settings/browser";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -216,5 +217,63 @@ describe("Select behavior", () => {
     act(() => trigger().click());
     expect(options()).toHaveLength(2);
     expect(options()[1]?.getAttribute("aria-selected")).toBe("true");
+  });
+});
+
+describe("SettingsSelect public contract", () => {
+  it("keeps label association, disabled state, and onChange(next: string)", () => {
+    const onChange = vi.fn<(next: string) => void>();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(SettingsSelect, {
+          label: "Theme",
+          value: "carbon",
+          disabled: false,
+          options: [
+            { value: "instrument", label: "Instrument" },
+            { value: "carbon", label: "Carbon" },
+          ],
+          onChange,
+        }),
+      );
+    });
+
+    const label = container.querySelector<HTMLSpanElement>(".fc-settings-select__label");
+    const selectRoot = container.querySelector<HTMLElement>(".fc-select");
+    const trigger = container.querySelector<HTMLButtonElement>(".fc-select__trigger");
+    expect(label?.textContent).toBe("Theme");
+    expect(selectRoot?.getAttribute("aria-labelledby")).toBe(label?.id);
+    expect(trigger?.textContent).toContain("Carbon");
+
+    act(() => trigger?.click());
+    act(() => {
+      [...document.querySelectorAll<HTMLLIElement>(".fc-select__option")]
+        .find((option) => option.textContent === "Instrument")
+        ?.click();
+    });
+    expect(onChange).toHaveBeenCalledWith("instrument");
+  });
+
+  it("uses the unlabeled fallback aria label", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(SettingsSelect, {
+          value: "one",
+          options: [{ value: "one", label: "One" }],
+          onChange: vi.fn(),
+          disabled: true,
+        }),
+      );
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>(".fc-select__trigger");
+    expect(trigger?.getAttribute("aria-label")).toBe("Select setting");
+    expect(trigger?.disabled).toBe(true);
   });
 });
