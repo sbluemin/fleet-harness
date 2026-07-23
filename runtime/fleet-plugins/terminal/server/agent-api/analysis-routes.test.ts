@@ -76,6 +76,8 @@ describe("Session Analyst server contract", () => {
       "session 123e4567-e89b-42d3-a456-426614174000",
     ];
     const events: unknown[] = [];
+    const globalEvents: unknown[] = [];
+    const unsubscribeAll = registry.subscribeAll((operationId, event) => globalEvents.push({ operationId, event }));
     await registry.start("op", () => ({
       start: async () => undefined,
       send: async () => { throw new Error(rejectionDetails.join(" ")); },
@@ -88,10 +90,49 @@ describe("Session Analyst server contract", () => {
       type: "error",
       error: { code: "analysis_error", message: "Analysis request failed." },
     }]));
+    expect(globalEvents).toEqual([{
+      operationId: "op",
+      event: {
+        type: "error",
+        error: { code: "analysis_error", message: "Analysis request failed." },
+      },
+    }]);
     const exposed = JSON.stringify(events);
     for (const detail of rejectionDetails) expect(exposed).not.toContain(detail);
 
     unsubscribe?.();
+    unsubscribeAll();
+    await registry.stop("op");
+  });
+
+  it("drops a send rejection from a stopped session after the same operation restarts", async () => {
+    const registry = new AnalysisRegistry();
+    let rejectOldSend: ((reason?: unknown) => void) | undefined;
+    const globalEvents: unknown[] = [];
+    const newEntryEvents: unknown[] = [];
+    const unsubscribeAll = registry.subscribeAll((operationId, event) => globalEvents.push({ operationId, event }));
+
+    await registry.start("op", () => ({
+      start: async () => undefined,
+      send: () => new Promise<void>((_resolve, reject) => { rejectOldSend = reject; }),
+      dispose: async () => undefined,
+    }) as never);
+    await expect(registry.message("op", "old request")).resolves.toBe("accepted");
+    await expect(registry.stop("op")).resolves.toBe(true);
+    await expect(registry.start("op", () => ({
+      start: async () => undefined,
+      send: async () => undefined,
+      dispose: async () => undefined,
+    }) as never)).resolves.toBe("started");
+    const unsubscribeNewEntry = registry.subscribe("op", (event) => newEntryEvents.push(event));
+
+    rejectOldSend?.(new Error("old session failed"));
+    await Promise.resolve();
+    expect(globalEvents).toEqual([]);
+    expect(newEntryEvents).toEqual([]);
+
+    unsubscribeNewEntry?.();
+    unsubscribeAll();
     await registry.stop("op");
   });
 

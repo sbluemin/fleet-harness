@@ -53,6 +53,7 @@ export class AnalysisRegistry {
     if (entry.starting || entry.messaging) return "busy";
     entry.messaging = true;
     void entry.session.send(text).catch(() => {
+      if (this.entries.get(operationId) !== entry || entry.stopped) return;
       this.publish(operationId, { type: "error", error: { code: "analysis_error", message: "Analysis request failed." } });
     }).finally(() => { entry.messaging = false; });
     return "accepted";
