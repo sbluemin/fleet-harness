@@ -6,6 +6,7 @@ import {
   WORKSPACE_DOCK_DEFAULT_HEIGHT,
   buildWorkspaceTreeSections,
   calculateWorkspaceExtraWidth,
+  normalizeWorkspaceDockHeight,
   readWorkspaceDockHeight,
   readWorkspaceMode,
   saveWorkspaceDockHeight,
@@ -51,6 +52,25 @@ describe("Repository workspace layout", () => {
 
     storage.setItem(PREFS_WORKSPACE_DOCK_HEIGHT, "12");
     expect(readWorkspaceDockHeight(storage)).toBe(WORKSPACE_DOCK_DEFAULT_HEIGHT);
+  });
+
+  it("falls back safely when the storage accessor itself throws", () => {
+    const throwing = {
+      get getItem(): never { throw new Error("denied"); },
+      get setItem(): never { throw new Error("denied"); },
+      get removeItem(): never { throw new Error("denied"); },
+    } as unknown as Parameters<typeof readWorkspaceMode>[0];
+    expect(readWorkspaceMode(throwing)).toBe(false);
+    expect(readWorkspaceDockHeight(throwing)).toBe(WORKSPACE_DOCK_DEFAULT_HEIGHT);
+    expect(() => saveWorkspaceMode(true, throwing)).not.toThrow();
+    expect(() => saveWorkspaceDockHeight(300, throwing)).not.toThrow();
+  });
+
+  it("normalizes a stored dock height against the current container", () => {
+    expect(normalizeWorkspaceDockHeight(800, 500)).toBe(316);
+    expect(normalizeWorkspaceDockHeight(230, 900)).toBe(230);
+    expect(normalizeWorkspaceDockHeight(100, 900)).toBe(160);
+    expect(normalizeWorkspaceDockHeight(800, 200)).toBe(16);
   });
 
   it("builds the fixed source-tree section order with source counts", () => {

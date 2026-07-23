@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
@@ -10,7 +10,7 @@ import { layoutGraph } from "./graph-layout.js";
 import { HunkView } from "./hunk-view.js";
 import { formatCommitTime, refBadges } from "./log-parse.js";
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
-import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
+import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
 
 type LoadState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly truncated: boolean } | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
@@ -128,6 +128,20 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
   useEffect(() => { if (active) setEverActive(true); }, [active]);
   useEffect(() => { if (!everActive) return; if (!ctx.theaterId) { setState({ kind: "ok", commits: [], checkouts: [], truncated: false }); return; } let cancelled = false; setState({ kind: "loading" }); ctx.api.fetch("repository", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<LogResult>; }).then((data) => { if (!cancelled) setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, truncated: data.truncated ?? false }); }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, everActive, refreshToken, refFilter, repoRel]);
   useEffect(() => { onInspectorOpenChange?.(active && target !== null); }, [active, onInspectorOpenChange, target]); useEffect(() => () => dragDisposeRef.current?.(), []);
+  // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
+  useLayoutEffect(() => {
+    if (!workspace || target === null) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const normalize = () => {
+      const next = normalizeWorkspaceDockHeight(dockHeightRef.current, root.getBoundingClientRect().height);
+      if (next !== dockHeightRef.current) { dockHeightRef.current = next; setDockHeight(next); }
+    };
+    normalize();
+    const observer = new ResizeObserver(normalize);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [workspace, target]);
   const handleDivider = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const root = rootRef.current;

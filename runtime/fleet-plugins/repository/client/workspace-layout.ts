@@ -30,29 +30,36 @@ export function calculateWorkspaceExtraWidth(innerWidth: number, baseWidth = WOR
   return Math.max(0, Math.min(1200, innerWidth - 400) - baseWidth);
 }
 
-export function readWorkspaceMode(storage: StorageLike = localStorage): boolean {
-  try { return storage.getItem(PREFS_WORKSPACE) === "1"; }
+export function readWorkspaceMode(storage?: StorageLike): boolean {
+  try { return (storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE) === "1"; }
   catch { return false; }
 }
 
-export function saveWorkspaceMode(enabled: boolean, storage: StorageLike = localStorage): void {
+export function saveWorkspaceMode(enabled: boolean, storage?: StorageLike): void {
   try {
-    if (enabled) storage.setItem(PREFS_WORKSPACE, "1");
-    else storage.removeItem(PREFS_WORKSPACE);
+    const target = storage ?? globalThis.localStorage;
+    if (enabled) target.setItem(PREFS_WORKSPACE, "1");
+    else target.removeItem(PREFS_WORKSPACE);
   } catch { /* best-effort preference */ }
 }
 
-export function readWorkspaceDockHeight(storage: StorageLike = localStorage): number {
+export function readWorkspaceDockHeight(storage?: StorageLike): number {
   try {
-    const value = Number.parseFloat(storage.getItem(PREFS_WORKSPACE_DOCK_HEIGHT) ?? "");
+    const value = Number.parseFloat((storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE_DOCK_HEIGHT) ?? "");
     if (Number.isFinite(value) && value >= WORKSPACE_DOCK_MIN_HEIGHT) return value;
   } catch { /* best-effort preference */ }
   return WORKSPACE_DOCK_DEFAULT_HEIGHT;
 }
 
-export function saveWorkspaceDockHeight(height: number, storage: StorageLike = localStorage): void {
-  try { storage.setItem(PREFS_WORKSPACE_DOCK_HEIGHT, String(height)); }
+export function saveWorkspaceDockHeight(height: number, storage?: StorageLike): void {
+  try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_DOCK_HEIGHT, String(height)); }
   catch { /* best-effort preference */ }
+}
+
+export function normalizeWorkspaceDockHeight(storedHeight: number, containerHeight: number): number {
+  const maximum = containerHeight - 180 - 4;
+  if (maximum <= WORKSPACE_DOCK_MIN_HEIGHT) return Math.max(0, maximum);
+  return Math.max(WORKSPACE_DOCK_MIN_HEIGHT, Math.min(maximum, storedHeight));
 }
 
 export function clampWorkspaceDockHeight(startHeight: number, pointerDeltaY: number, containerHeight: number): number | null {
