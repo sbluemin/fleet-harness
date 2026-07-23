@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { focusCycleOperationIds, getState, nextOperationId, requestOperationKeyboardFocus, setState } from "../core/client/src/store.js";
+import { focusCycleOperationIds, getState, nextOperationId, requestOperationKeyboardFocus, setState, statusCycleOperationIds } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 function makeOperation(id: string, groupId: string | null = null, createdAt = 1): OperationNode {
@@ -101,5 +101,39 @@ describe("Operation keyboard focus requests", () => {
 
     requestOperationKeyboardFocus("other-operation");
     expect(getState().keyboardFocusRequest).toEqual({ operationId: "other-operation", requestId: 3 });
+  });
+});
+
+describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
+  it("orders by awaiting → running → idle → dormant, keeping operationOrder inside each rank and ignoring group collapse", () => {
+    const operations = [
+      makeOperation("idle-late", null, 1),
+      makeOperation("running-1", "collapsed-group", 2),
+      makeOperation("awaiting-1", "collapsed-group", 3),
+      makeOperation("idle-early", null, 4),
+      makeOperation("dormant-1", null, 5),
+    ];
+    const order = statusCycleOperationIds(
+      operations,
+      ["idle-early", "idle-late", "running-1", "awaiting-1", "dormant-1"],
+      { "running-1": "running", "awaiting-1": "awaiting", "dormant-1": "dormant" },
+      [],
+    );
+    // 사이드바 STATUS 섹션과 동일한 가시 순서: 접힌 그룹 소속이어도 제외되지 않는다.
+    expect(order).toEqual(["awaiting-1", "running-1", "idle-early", "idle-late", "dormant-1"]);
+  });
+
+  it("drops minimized operations and treats missing status as idle", () => {
+    const operations = [
+      makeOperation("plain", null, 1),
+      makeOperation("minimized-awaiting", null, 2),
+    ];
+    const order = statusCycleOperationIds(
+      operations,
+      ["plain", "minimized-awaiting"],
+      { "minimized-awaiting": "awaiting" },
+      ["minimized-awaiting"],
+    );
+    expect(order).toEqual(["plain"]);
   });
 });
