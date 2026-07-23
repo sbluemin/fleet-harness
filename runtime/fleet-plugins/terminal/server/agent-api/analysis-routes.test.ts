@@ -10,7 +10,7 @@ vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 
 import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
-import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalystCliId } from "./analysis-types.js";
+import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisEvent, type AnalystCliId } from "./analysis-types.js";
 
 describe("Session Analyst server contract", () => {
   it("maps detected binaries to a non-sensitive authoritative catalog and rejects stale selections", () => {
@@ -601,6 +601,7 @@ describe("Session Analyst server contract", () => {
     registerAnalysisRoutes(router.ctx as never, { detect });
     const requests = [
       ["GET", "/api/v1/plugins/terminal/analysis/catalog"],
+      ["GET", "/api/v1/plugins/terminal/analysis/stream"],
       ["GET", "/api/v1/plugins/terminal/analysis/op/ready"],
       ["POST", "/api/v1/plugins/terminal/analysis/op/start"],
       ["POST", "/api/v1/plugins/terminal/analysis/op/message"],
@@ -617,6 +618,172 @@ describe("Session Analyst server contract", () => {
     expect(router.responses).toHaveLength(requests.length);
     expect(router.responses).toEqual(requests.map(() => ({ status: 403, body: { error: { code: "analysis_catalog_invalid", message: "Analysis request is not accepted by this host." } } })));
     expect(detect).not.toHaveBeenCalled();
+  });
+
+  it("routes registry publications through subscribeAll with operation isolation", async () => {
+    const registry = new AnalysisRegistry();
+    const received: Array<{ operationId: string; event: unknown }> = [];
+    const unsubscribe = registry.subscribeAll((operationId, event) => { received.push({ operationId, event }); });
+    const sessions = ["op-a", "op-b"].map((operationId) => {
+      let emit: ((event: AnalysisEvent) => void) | undefined;
+      return { operationId, emitRef: () => emit, start: registry.start(operationId, (onEvent) => { emit = onEvent; return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined } as never; }) };
+    });
+    await Promise.all(sessions.map((session) => session.start));
+    sessions[0]!.emitRef()?.({ type: "chunk", text: "alpha" });
+    sessions[1]!.emitRef()?.({ type: "chunk", text: "beta" });
+    expect(received).toEqual([
+      { operationId: "op-a", event: { type: "chunk", text: "alpha" } },
+      { operationId: "op-b", event: { type: "chunk", text: "beta" } },
+    ]);
+    unsubscribe();
+    await registry.dispose();
+  });
+
+  it("lists active operation ids in deterministic code-unit lexicographic order", async () => {
+    const registry = new AnalysisRegistry();
+    for (const operationId of ["op-z", "op2", "op10", "Op-a"]) {
+      await registry.start(operationId, () => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }) as never);
+    }
+    expect(registry.activeOperationIds()).toEqual(["Op-a", "op-z", "op10", "op2"]);
+    expect(registry.activeOperationIds()).not.toEqual(["Op-a", "op-z", "op2", "op10"]);
+    await registry.dispose();
+  });
+
+  it("writes a sorted connected roster and operation-isolated global event envelopes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-global-stream-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const emitters = new Map<string, (event: AnalysisEvent) => void>();
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: ((options: { onEvent: (event: AnalysisEvent) => void; capturePath?: string }) => {
+        emitters.set(options.capturePath ?? "default", options.onEvent);
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
+    expect(response.writes[0]).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: ["op"] })}\n\n`);
+    emitters.values().next().value?.({ type: "chunk", text: "isolated" });
+    await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({ type: "event", operationId: "op", event: { type: "chunk", text: "isolated" } })}\n\n`));
+  });
+
+  it("excludes pending starts from activeOperationIds until session.start settles", async () => {
+    const registry = new AnalysisRegistry();
+    let resolveStart!: () => void;
+    const pending = registry.start("op-pending", () => ({
+      start: () => new Promise<void>((resolve) => { resolveStart = resolve; }),
+      send: async () => undefined,
+      dispose: async () => undefined,
+    }) as never);
+    expect(registry.activeOperationIds()).toEqual([]);
+    resolveStart();
+    await pending;
+    expect(registry.activeOperationIds()).toEqual(["op-pending"]);
+    await registry.dispose();
+  });
+
+  it("removes failed starts from activeOperationIds snapshots", async () => {
+    const registry = new AnalysisRegistry();
+    await expect(registry.start("op-fail", () => ({
+      start: async () => { throw new Error("start failed"); },
+      send: async () => undefined,
+      dispose: async () => undefined,
+    }) as never)).rejects.toThrow("start failed");
+    expect(registry.activeOperationIds()).toEqual([]);
+  });
+
+  it("publishes roster add and remove updates to global stream subscribers", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-global-roster-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: () => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }) as never,
+    });
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
+    expect(response.writes[0]).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: [] })}\n\n`);
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: ["op"] })}\n\n`));
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/stop", {});
+    await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: [] })}\n\n`));
+  });
+
+  it("routes generic send rejection through the global event envelope", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-global-error-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: () => ({
+        start: async () => undefined,
+        send: async () => { throw new Error("/Users/alice/private token"); },
+        dispose: async () => undefined,
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/message", { text: "review" });
+    await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({
+      type: "event",
+      operationId: "op",
+      event: { type: "error", error: { code: "analysis_error", message: "Analysis request failed." } },
+    })}\n\n`));
+    expect(JSON.stringify(response.writes)).not.toContain("/Users/alice/private");
+  });
+
+  it("routes analysis_exited through the global event envelope before cleanup", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-global-exited-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    let emit: ((event: AnalysisEvent) => void) | undefined;
+    const dispose = vi.fn(async () => undefined);
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: ((options: { onEvent: typeof emit }) => {
+        emit = options.onEvent;
+        return { start: async () => undefined, send: async () => undefined, dispose };
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
+    emit?.({ type: "error", error: { code: "analysis_exited", message: "exited" } });
+    const eventWrite = `data: ${JSON.stringify({
+      type: "event",
+      operationId: "op",
+      event: { type: "error", error: { code: "analysis_exited", message: "exited" } },
+    })}\n\n`;
+    await vi.waitFor(() => expect(response.writes).toContain(eventWrite));
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+  });
+
+  it("publishes analysis_exited through subscribeAll before the session is released", async () => {
+    const registry = new AnalysisRegistry();
+    const received: unknown[] = [];
+    registry.subscribeAll((_operationId, event) => { received.push(event); });
+    let emit: ((event: AnalysisEvent) => void) | undefined;
+    const dispose = vi.fn(async () => undefined);
+    await registry.start("op", (onEvent) => {
+      emit = onEvent;
+      return { start: async () => undefined, send: async () => undefined, dispose } as never;
+    });
+    emit?.({ type: "error", error: { code: "analysis_exited", message: "exited" } });
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    expect(received).toEqual([{ type: "error", error: { code: "analysis_exited", message: "exited" } }]);
+    await expect(registry.message("op", "hello")).resolves.toBe("not_found");
   });
 });
 

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
+import { resetAnalysisStreamHubForTests, subscribeAnalysis } from "./analysis-api.js";
 import { disposeAnalysisStore, getAnalysisStore } from "./analysis-store.js";
 
 const CATALOG_BODY = JSON.stringify({ clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [{ id: "sonnet", label: "Sonnet", effortLevels: ["high"], defaultEffort: "high" }] }] });
@@ -8,68 +9,134 @@ const CATALOG_BODY = JSON.stringify({ clis: [{ cliId: "claude", label: "Claude",
 interface StreamHarness {
   readonly api: ClientApiCapability;
   readonly fetch: ReturnType<typeof vi.fn>;
-  readonly emit: (payload: unknown) => void;
-  readonly emitLate: (payload: unknown) => void;
+  readonly subscribe: ReturnType<typeof vi.fn>;
+  readonly emitRoster: (operationIds: readonly string[]) => void;
+  readonly replaceRoster: (operationIds: readonly string[]) => void;
+  readonly emit: (operationId: string, payload: unknown) => void;
+  readonly emitLate: (operationId: string, payload: unknown) => void;
+  readonly deliverRaw: (raw: string) => void;
   readonly streamReady: () => boolean;
+  readonly streamOpen: () => boolean;
   readonly unsubscribeCount: () => number;
+  readonly eventSourceCount: () => number;
+}
+
+class TestEventSource {
+  static instances: TestEventSource[] = [];
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  readonly url: string;
+  readyState = TestEventSource.CONNECTING;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor(url: string) {
+    this.url = url;
+    TestEventSource.instances.push(this);
+  }
+  close(): void { this.readyState = TestEventSource.CLOSED; }
+  open(): void { this.readyState = TestEventSource.OPEN; }
+  deliver(data: string): void {
+    if (this.readyState !== TestEventSource.OPEN) return;
+    this.onmessage?.({ data } as MessageEvent<string>);
+  }
+  triggerError(): void { this.onerror?.(); }
 }
 
 function createHarness(onPath?: (path: string, init?: RequestInit) => Response | Promise<Response> | null): StreamHarness {
-  let stream: ((event: MessageEvent<string>) => void) | null = null;
-  let lastStream: ((event: MessageEvent<string>) => void) | null = null;
+  TestEventSource.instances = [];
+  const activeOperations = new Set<string>();
   let unsubscribeCount = 0;
   const fetch = vi.fn(async (_pluginId: string, path: string, init?: RequestInit) => {
     const override = onPath?.(path, init);
     if (override) return override;
     return new Response(path === "analysis/catalog" ? CATALOG_BODY : "{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
-  const api = {
-    fetch,
-    subscribe: (_pluginId: string, _path: string, listener: (event: MessageEvent<string>) => void) => {
-      stream = listener;
-      lastStream = listener;
-      return () => {
-        if (stream === listener) stream = null;
-        unsubscribeCount += 1;
-      };
-    },
-    resync: vi.fn(),
-  } satisfies ClientApiCapability;
+  const subscribe = vi.fn((_pluginId: string, _path: string, _listener: (event: MessageEvent<string>) => void) => {
+    return () => { unsubscribeCount += 1; };
+  });
+  const api = { fetch, subscribe, resync: vi.fn() } satisfies ClientApiCapability;
+  const deliverRoster = () => {
+    const source = TestEventSource.instances.at(-1);
+    source?.open();
+    source?.deliver(JSON.stringify({
+      type: "connected",
+      operationIds: [...activeOperations].sort(),
+    }));
+  };
   return {
     api,
     fetch,
-    emit: (payload) => stream?.({ data: JSON.stringify(payload) } as MessageEvent<string>),
-    emitLate: (payload) => lastStream?.({ data: JSON.stringify(payload) } as MessageEvent<string>),
-    streamReady: () => stream !== null,
+    subscribe,
+    emitRoster: (operationIds) => {
+      for (const operationId of operationIds) activeOperations.add(operationId);
+      deliverRoster();
+    },
+    replaceRoster: (operationIds) => {
+      activeOperations.clear();
+      for (const operationId of operationIds) activeOperations.add(operationId);
+      deliverRoster();
+    },
+    emit: (operationId, payload) => {
+      const source = TestEventSource.instances.at(-1);
+      source?.open();
+      source?.deliver(JSON.stringify({ type: "event", operationId, event: payload }));
+    },
+    emitLate: (operationId, payload) => {
+      const source = TestEventSource.instances.at(-1);
+      source?.open();
+      source?.deliver(JSON.stringify({ type: "event", operationId, event: payload }));
+    },
+    deliverRaw: (raw) => {
+      const source = TestEventSource.instances.at(-1);
+      source?.open();
+      source?.deliver(raw);
+    },
+    streamReady: () => TestEventSource.instances.length > 0,
+    streamOpen: () => TestEventSource.instances.some((instance) => instance.readyState === TestEventSource.OPEN),
     unsubscribeCount: () => unsubscribeCount,
+    eventSourceCount: () => TestEventSource.instances.length,
   };
 }
 
-async function sendWithConnected(store: ReturnType<typeof getAnalysisStore>, harness: StreamHarness, text: string): Promise<void> {
+afterEach(() => {
+  resetAnalysisStreamHubForTests();
+  TestEventSource.instances = [];
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+async function sendWithConnected(store: ReturnType<typeof getAnalysisStore>, harness: StreamHarness, operationId: string, text: string): Promise<void> {
   const pending = store.send(text);
   await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
-  harness.emit({ type: "connected" });
+  harness.emitRoster([operationId]);
   await pending;
 }
 
 describe("per-operation analysis store", () => {
+  beforeEach(() => {
+    vi.stubGlobal("EventSource", TestEventSource);
+  });
+
   it("shares state, gates the first message on the connected frame, and survives companion unmount", async () => {
     const harness = createHarness();
-    const first = getAnalysisStore("operation-store-share", harness.api);
-    const second = getAnalysisStore("operation-store-share", harness.api);
+    const operationId = "operation-store-share";
+    const first = getAnalysisStore(operationId, harness.api);
+    const second = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(first.getSnapshot().cliId).toBe("claude"));
 
     expect(second).toBe(first);
     first.dispatch({ type: "set-draft", draft: "Survives panel collapse" });
-    await sendWithConnected(first, harness, "Review this session");
+    await sendWithConnected(first, harness, operationId, "Review this session");
     expect(harness.fetch.mock.calls.map((call) => call[1])).toEqual([
       "analysis/catalog",
       "analysis/operation-store-share/start",
       "analysis/operation-store-share/message",
     ]);
-    harness.emit({ type: "chunk", text: "Looks good" });
+    expect(harness.subscribe).not.toHaveBeenCalled();
+    harness.emit(operationId, { type: "chunk", text: "Looks good" });
     expect(second.getSnapshot().entries.at(-1)).toEqual({ role: "analyst", text: "Looks good" });
-    harness.emit({ type: "complete" });
+    harness.emit(operationId, { type: "complete" });
     expect(first.getSnapshot().busy).toBe(false);
 
     // EXIT only unmounts companions, so the shared conversation and server session remain alive.
@@ -86,37 +153,39 @@ describe("per-operation analysis store", () => {
 
   it("automatically sends queued questions in FIFO order after each completion", async () => {
     const harness = createHarness();
-    const store = getAnalysisStore("operation-store-queue", harness.api);
+    const operationId = "operation-store-queue";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
-    await sendWithConnected(store, harness, "Initial question");
+    await sendWithConnected(store, harness, operationId, "Initial question");
     store.dispatch({ type: "queue-push", text: "First queued" });
     store.dispatch({ type: "queue-push", text: "Second queued" });
 
-    harness.emit({ type: "complete" });
+    harness.emit(operationId, { type: "complete" });
     await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ busy: true, queue: ["Second queued"] }));
     expect(messageBodies(harness)).toEqual(["Initial question", "First queued"]);
 
-    harness.emit({ type: "complete" });
+    harness.emit(operationId, { type: "complete" });
     await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ busy: true, queue: [] }));
     expect(messageBodies(harness)).toEqual(["Initial question", "First queued", "Second queued"]);
 
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-queue");
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("clears queued questions on stop and never fires them from late completion", async () => {
     const harness = createHarness();
-    const store = getAnalysisStore("operation-store-queue-stop", harness.api);
+    const operationId = "operation-store-queue-stop";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
-    await sendWithConnected(store, harness, "Initial question");
+    await sendWithConnected(store, harness, operationId, "Initial question");
     store.dispatch({ type: "queue-push", text: "Must not fire" });
 
     await store.stop();
     expect(store.getSnapshot().queue).toEqual([]);
-    harness.emitLate({ type: "complete" });
+    harness.emitLate(operationId, { type: "complete" });
     await Promise.resolve();
     expect(messageBodies(harness)).toEqual(["Initial question"]);
-    disposeAnalysisStore("operation-store-queue-stop");
+    disposeAnalysisStore(operationId);
   });
 
   it("rolls back started when the start request fails so selectors reopen", async () => {
@@ -139,15 +208,16 @@ describe("per-operation analysis store", () => {
     const harness = createHarness((path) => path.endsWith("/start")
       ? new Response(JSON.stringify({ error: { code: "analysis_session_exists", message: "Analysis session already exists." } }), { status: 409, headers: { "Content-Type": "application/json" } })
       : null);
-    const store = getAnalysisStore("operation-store-adopt", harness.api);
+    const operationId = "operation-store-adopt";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
 
-    await sendWithConnected(store, harness, "Continue the analysis");
+    await sendWithConnected(store, harness, operationId, "Continue the analysis");
     expect(store.getSnapshot().error).toBeNull();
     expect(store.getSnapshot().started).toBe(true);
-    expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-adopt/message")).toBe(true);
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-adopt");
+    expect(harness.fetch.mock.calls.some((call) => call[1] === `analysis/${operationId}/message`)).toBe(true);
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("drops a missing session after message failure and restarts from start on the next send", async () => {
@@ -156,37 +226,38 @@ describe("per-operation analysis store", () => {
       if (!path.endsWith("/message") || messageCount++ > 0) return null;
       return new Response(JSON.stringify({ error: { code: "analysis_session_not_found", message: "Analysis session was not found." } }), { status: 404, headers: { "Content-Type": "application/json" } });
     });
-    const store = getAnalysisStore("operation-store-message-lost", harness.api);
+    const operationId = "operation-store-message-lost";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
 
-    await sendWithConnected(store, harness, "First attempt");
+    await sendWithConnected(store, harness, operationId, "First attempt");
     expect(store.getSnapshot()).toMatchObject({ started: false, busy: false, error: "Analysis session ended — send again to restart." });
-    expect(harness.streamReady()).toBe(false);
-    expect(harness.unsubscribeCount()).toBe(1);
+    expect(harness.streamOpen()).toBe(false);
 
-    await sendWithConnected(store, harness, "Second attempt");
+    await sendWithConnected(store, harness, operationId, "Second attempt");
     const paths = harness.fetch.mock.calls.map((call) => call[1]);
     expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(2);
     expect(paths.filter((path) => path.endsWith("/message"))).toHaveLength(2);
     expect(store.getSnapshot().started).toBe(true);
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-message-lost");
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("stops through the endpoint, preserves output, rejects late events, and starts fresh on the next send", async () => {
     const harness = createHarness();
-    const store = getAnalysisStore("operation-store-stop", harness.api);
+    const operationId = "operation-store-stop";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
 
-    await sendWithConnected(store, harness, "First analysis");
-    harness.emit({ type: "tool", title: "wiki_read", status: "running" });
-    harness.emit({ type: "chunk", text: "Confirmed answer" });
-    harness.emit({ type: "artifact", artifact: { id: "artifact-1", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 } });
+    await sendWithConnected(store, harness, operationId, "First analysis");
+    harness.emit(operationId, { type: "tool", title: "wiki_read", status: "running" });
+    harness.emit(operationId, { type: "chunk", text: "Confirmed answer" });
+    harness.emit(operationId, { type: "artifact", artifact: { id: "artifact-1", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 } });
     const beforeStop = store.getSnapshot();
 
     await store.stop();
-    expect(harness.fetch.mock.calls.map((call) => call[1])).toContain("analysis/operation-store-stop/stop");
-    expect(harness.unsubscribeCount()).toBe(1);
+    expect(harness.fetch.mock.calls.map((call) => call[1])).toContain(`analysis/${operationId}/stop`);
+    expect(harness.streamOpen()).toBe(false);
     expect(store.getSnapshot()).toMatchObject({
       started: false,
       busy: false,
@@ -196,35 +267,36 @@ describe("per-operation analysis store", () => {
       latestActivity: { kind: "writing" },
     });
 
-    harness.emitLate({ type: "chunk", text: " late output" });
-    harness.emitLate({ type: "artifact", artifact: { id: "late", title: "Late", html: "<p>late</p>", createdAt: 2 } });
-    harness.emitLate({ type: "complete" });
+    harness.emitLate(operationId, { type: "chunk", text: " late output" });
+    harness.emitLate(operationId, { type: "artifact", artifact: { id: "late", title: "Late", html: "<p>late</p>", createdAt: 2 } });
+    harness.emitLate(operationId, { type: "complete" });
     expect(store.getSnapshot()).toMatchObject({ phase: "stopped", entries: beforeStop.entries, artifacts: beforeStop.artifacts });
 
-    await sendWithConnected(store, harness, "Fresh analysis");
+    await sendWithConnected(store, harness, operationId, "Fresh analysis");
     const paths = harness.fetch.mock.calls.map((call) => call[1]);
     expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(2);
     expect(paths.filter((path) => path.endsWith("/message"))).toHaveLength(2);
     expect(store.getSnapshot()).toMatchObject({ started: true, busy: true, phase: "starting" });
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-stop");
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("stops the server before reset, clears shared history and artifacts, and rejects late events", async () => {
     const harness = createHarness();
-    const store = getAnalysisStore("operation-store-reset", harness.api);
+    const operationId = "operation-store-reset";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
 
-    await sendWithConnected(store, harness, "Review this session");
-    harness.emit({ type: "chunk", text: "Confirmed answer" });
-    harness.emit({ type: "artifact", artifact: { id: "artifact-1", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 } });
-    harness.emit({ type: "complete" });
+    await sendWithConnected(store, harness, operationId, "Review this session");
+    harness.emit(operationId, { type: "chunk", text: "Confirmed answer" });
+    harness.emit(operationId, { type: "artifact", artifact: { id: "artifact-1", title: "Evidence", html: "<p>evidence</p>", createdAt: 1 } });
+    harness.emit(operationId, { type: "complete" });
 
     await store.reset();
     const resetPaths = harness.fetch.mock.calls.map((call) => call[1]);
-    expect(resetPaths).toContain("analysis/operation-store-reset/stop");
-    expect(resetPaths).toContain("analysis/operation-store-reset/artifacts");
-    expect(resetPaths.indexOf("analysis/operation-store-reset/artifacts")).toBeGreaterThan(resetPaths.indexOf("analysis/operation-store-reset/stop"));
+    expect(resetPaths).toContain(`analysis/${operationId}/stop`);
+    expect(resetPaths).toContain(`analysis/${operationId}/artifacts`);
+    expect(resetPaths.indexOf(`analysis/${operationId}/artifacts`)).toBeGreaterThan(resetPaths.indexOf(`analysis/${operationId}/stop`));
     expect(store.getSnapshot()).toMatchObject({
       cliId: "claude",
       model: "sonnet",
@@ -238,10 +310,10 @@ describe("per-operation analysis store", () => {
       error: null,
     });
 
-    harness.emitLate({ type: "chunk", text: "late output" });
-    harness.emitLate({ type: "artifact", artifact: { id: "late", title: "Late", html: "<p>late</p>", createdAt: 2 } });
+    harness.emitLate(operationId, { type: "chunk", text: "late output" });
+    harness.emitLate(operationId, { type: "artifact", artifact: { id: "late", title: "Late", html: "<p>late</p>", createdAt: 2 } });
     expect(store.getSnapshot()).toMatchObject({ phase: "idle", entries: [], artifacts: [] });
-    disposeAnalysisStore("operation-store-reset");
+    disposeAnalysisStore(operationId);
   });
 
   it("clears server artifacts on idle reset and completes when the clear fails", async () => {
@@ -265,9 +337,10 @@ describe("per-operation analysis store", () => {
       : null);
     const store = getAnalysisStore("operation-store-reset-fail", harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
-    await sendWithConnected(store, harness, "Review this session");
-    harness.emit({ type: "chunk", text: "Keep this answer" });
-    harness.emit({ type: "artifact", artifact: { id: "artifact-1", title: "Keep this", html: "<p>keep</p>", createdAt: 1 } });
+    const operationId = "operation-store-reset-fail";
+    await sendWithConnected(store, harness, operationId, "Review this session");
+    harness.emit(operationId, { type: "chunk", text: "Keep this answer" });
+    harness.emit(operationId, { type: "artifact", artifact: { id: "artifact-1", title: "Keep this", html: "<p>keep</p>", createdAt: 1 } });
 
     await expect(store.reset()).rejects.toThrow("Process did not stop.");
     expect(store.getSnapshot()).toMatchObject({
@@ -329,39 +402,41 @@ describe("per-operation analysis store", () => {
       });
     });
     const first = getAnalysisStore("operation-store-dispose-during-start", harness.api);
+    const operationId = "operation-store-dispose-during-start";
     await vi.waitFor(() => expect(first.getSnapshot().cliId).toBe("claude"));
 
     const firstSend = first.send("Review this session");
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1].endsWith("/start"))).toBe(true));
-    disposeAnalysisStore("operation-store-dispose-during-start");
+    disposeAnalysisStore(operationId);
     expect(firstStartSignal?.aborted).toBe(true);
-    const replacement = getAnalysisStore("operation-store-dispose-during-start", harness.api);
+    const replacement = getAnalysisStore(operationId, harness.api);
     expect(replacement).not.toBe(first);
     await vi.waitFor(() => expect(replacement.getSnapshot().cliId).toBe("claude"));
     const replacementSend = replacement.send("Start fresh");
     await firstSend;
     await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
-    harness.emit({ type: "connected" });
+    harness.emitRoster([operationId]);
     await replacementSend;
 
     const paths = harness.fetch.mock.calls.map((call) => call[1]);
-    const stopIndex = paths.indexOf("analysis/operation-store-dispose-during-start/stop");
+    const stopIndex = paths.indexOf(`analysis/${operationId}/stop`);
     expect(paths.filter((path) => path.endsWith("/start"))).toHaveLength(2);
-    expect(stopIndex).toBeGreaterThan(paths.indexOf("analysis/operation-store-dispose-during-start/start"));
-    expect(stopIndex).toBeLessThan(paths.lastIndexOf("analysis/operation-store-dispose-during-start/start"));
+    expect(stopIndex).toBeGreaterThan(paths.indexOf(`analysis/${operationId}/start`));
+    expect(stopIndex).toBeLessThan(paths.lastIndexOf(`analysis/${operationId}/start`));
     expect(paths.filter((path) => path.endsWith("/message"))).toHaveLength(1);
     expect(requestOrder).toEqual(["start-1", "abort-1", "stop", "start-2"]);
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-dispose-during-start");
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("reports stop failure without leaving the store busy or subscribed", async () => {
     const harness = createHarness((path) => path.endsWith("/stop")
       ? new Response(JSON.stringify({ error: { code: "analysis_stop_failed", message: "Process did not stop." } }), { status: 500, headers: { "Content-Type": "application/json" } })
       : null);
-    const store = getAnalysisStore("operation-store-stop-fail", harness.api);
+    const operationId = "operation-store-stop-fail";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
-    await sendWithConnected(store, harness, "Review this session");
+    await sendWithConnected(store, harness, operationId, "Review this session");
 
     await store.stop();
     expect(store.getSnapshot()).toMatchObject({
@@ -370,17 +445,18 @@ describe("per-operation analysis store", () => {
       phase: "error",
       error: "Stop failed: Process did not stop.",
     });
-    expect(harness.streamReady()).toBe(false);
-    disposeAnalysisStore("operation-store-stop-fail");
+    expect(harness.streamOpen()).toBe(false);
+    disposeAnalysisStore(operationId);
   });
 
   it("waits for Stop to settle before starting the next fresh session", async () => {
     let resolveStop!: (response: Response) => void;
     const stopResponse = new Promise<Response>((resolve) => { resolveStop = resolve; });
     const harness = createHarness((path) => path.endsWith("/stop") ? stopResponse : null);
-    const store = getAnalysisStore("operation-store-stop-then-send", harness.api);
+    const operationId = "operation-store-stop-then-send";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
-    await sendWithConnected(store, harness, "First analysis");
+    await sendWithConnected(store, harness, operationId, "First analysis");
 
     const stopping = store.stop();
     const restarting = store.send("Fresh analysis");
@@ -390,28 +466,182 @@ describe("per-operation analysis store", () => {
     resolveStop(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
     await stopping;
     await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
-    harness.emit({ type: "connected" });
+    harness.emitRoster([operationId]);
     await restarting;
     expect(harness.fetch.mock.calls.map((call) => call[1]).filter((path) => path.endsWith("/start"))).toHaveLength(2);
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-stop-then-send");
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("unsubscribes after an analysis_exited stream event and restarts on the next send", async () => {
     const harness = createHarness();
-    const store = getAnalysisStore("operation-store-stream-lost", harness.api);
+    const operationId = "operation-store-stream-lost";
+    const store = getAnalysisStore(operationId, harness.api);
     await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
 
-    await sendWithConnected(store, harness, "First attempt");
-    harness.emit({ type: "error", error: { code: "analysis_exited", message: "Process exited." } });
+    await sendWithConnected(store, harness, operationId, "First attempt");
+    harness.emit(operationId, { type: "error", error: { code: "analysis_exited", message: "Process exited." } });
     expect(store.getSnapshot()).toMatchObject({ started: false, busy: false, error: "Analysis session ended — send again to restart." });
-    expect(harness.streamReady()).toBe(false);
-    expect(harness.unsubscribeCount()).toBe(1);
+    expect(harness.streamOpen()).toBe(false);
 
-    await sendWithConnected(store, harness, "Second attempt");
+    await sendWithConnected(store, harness, operationId, "Second attempt");
     expect(harness.fetch.mock.calls.map((call) => call[1]).filter((path) => path.endsWith("/start"))).toHaveLength(2);
-    harness.emit({ type: "complete" });
-    disposeAnalysisStore("operation-store-stream-lost");
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
+  });
+
+  it("shares one physical EventSource across six capability-distinct stores", async () => {
+    const harness = createHarness();
+    const operationIds = Array.from({ length: 6 }, (_value, index) => `operation-store-multiplex-${index}`);
+    const apis = operationIds.map((_operationId, index) => ({ ...harness.api, marker: index }));
+    const stores = operationIds.map((operationId, index) => getAnalysisStore(operationId, apis[index]!));
+    await Promise.all(stores.map((store) => vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"))));
+    await Promise.all(stores.map((store, index) => sendWithConnected(store, harness, operationIds[index]!, `Question ${index}`)));
+    expect(harness.eventSourceCount()).toBe(1);
+    expect(TestEventSource.instances[0]?.url).toBe("/plugins/terminal/analysis/stream");
+    expect(harness.subscribe).not.toHaveBeenCalled();
+    harness.emit(operationIds[0]!, { type: "chunk", text: "alpha" });
+    harness.emit(operationIds[5]!, { type: "chunk", text: "zeta" });
+    expect(stores[0]!.getSnapshot().entries.at(-1)).toEqual({ role: "analyst", text: "alpha" });
+    expect(stores[5]!.getSnapshot().entries.at(-1)).toEqual({ role: "analyst", text: "zeta" });
+    expect(stores[1]!.getSnapshot().entries.filter((entry) => entry.role === "analyst")).toHaveLength(0);
+    disposeAnalysisStore(operationIds[0]!);
+    expect(harness.streamOpen()).toBe(true);
+    for (const operationId of operationIds.slice(1)) disposeAnalysisStore(operationId);
+    expect(harness.streamOpen()).toBe(false);
+  });
+
+  it("rejects only confirmed subscriptions missing from a reconnect roster", async () => {
+    const harness = createHarness();
+    const kept = "operation-store-reconnect-kept";
+    const lost = "operation-store-reconnect-lost";
+    const pending = "operation-store-reconnect-pending";
+    const keptStore = getAnalysisStore(kept, harness.api);
+    const lostStore = getAnalysisStore(lost, harness.api);
+    await vi.waitFor(() => expect(keptStore.getSnapshot().cliId).toBe("claude"));
+    await sendWithConnected(keptStore, harness, kept, "Keep me");
+    await sendWithConnected(lostStore, harness, lost, "Lose me");
+    const pendingEvents: unknown[] = [];
+    const unsubscribePending = subscribeAnalysis(harness.api, pending, (event) => { pendingEvents.push(event); });
+    harness.replaceRoster([kept]);
+    expect(lostStore.getSnapshot().error).toBe("Analysis session ended — send again to restart.");
+    expect(keptStore.getSnapshot().error).toBeNull();
+    expect(pendingEvents.some((event) => (event as { type?: string }).type === "error")).toBe(false);
+    unsubscribePending();
+    disposeAnalysisStore(kept);
+    disposeAnalysisStore(lost);
+  });
+
+  it("ignores malformed connected frames without evicting confirmed sessions", async () => {
+    const harness = createHarness();
+    const operationId = "operation-store-malformed-roster";
+    const store = getAnalysisStore(operationId, harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+    await sendWithConnected(store, harness, operationId, "Stay connected");
+    harness.deliverRaw(JSON.stringify({ type: "connected", operationIds: [operationId, 1] }));
+    expect(store.getSnapshot()).toMatchObject({ started: true, error: null });
+    disposeAnalysisStore(operationId);
+  });
+
+  it("does not infer session loss from CONNECTING transport errors", async () => {
+    const harness = createHarness();
+    const operationId = "operation-store-connecting-error";
+    const store = getAnalysisStore(operationId, harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+    const pending = store.send("Hold connection");
+    await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
+    const source = TestEventSource.instances[0]!;
+    expect(source.readyState).toBe(TestEventSource.CONNECTING);
+    source.triggerError();
+    expect(harness.eventSourceCount()).toBe(1);
+    harness.emitRoster([operationId]);
+    await pending;
+    expect(store.getSnapshot().error).toBeNull();
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
+  });
+
+  it("recovers from fatal CLOSED sources with one pending timer per close and identity-safe callbacks", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    const operationId = "operation-store-fatal-reconnect";
+    const store = getAnalysisStore(operationId, harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+    const pending = store.send("Need stream");
+    await vi.waitFor(() => expect(harness.streamReady()).toBe(true));
+
+    const first = TestEventSource.instances[0]!;
+    first.readyState = TestEventSource.CLOSED;
+    first.triggerError();
+    first.triggerError();
+    expect(harness.eventSourceCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(harness.eventSourceCount()).toBe(2);
+
+    const staleCallback = first.onmessage;
+    first.open();
+    staleCallback?.({ data: JSON.stringify({ type: "connected", operationIds: ["wrong-operation"] }) } as MessageEvent<string>);
+    expect(store.getSnapshot().error).toBeNull();
+
+    const second = TestEventSource.instances[1]!;
+    second.open();
+    harness.emitRoster([operationId]);
+    await pending;
+
+    second.readyState = TestEventSource.CLOSED;
+    second.triggerError();
+    expect(harness.eventSourceCount()).toBe(2);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(harness.eventSourceCount()).toBe(3);
+
+    const third = TestEventSource.instances[2]!;
+    third.open();
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
+    vi.useRealTimers();
+  });
+});
+
+describe("analysis stream hub reconnect delays", () => {
+  beforeEach(() => {
+    vi.stubGlobal("EventSource", TestEventSource);
+  });
+
+  it("uses bounded exponential recreation delays for consecutive CLOSED failures without roster frames", async () => {
+    vi.useFakeTimers();
+    const api = { fetch: vi.fn(), subscribe: vi.fn(), resync: vi.fn() } satisfies ClientApiCapability;
+    const expectedDelays = [250, 500, 1000, 2000, 4000, 4000] as const;
+    const unsubscribe = subscribeAnalysis(api, "operation-hub-backoff", () => {});
+
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(TestEventSource.instances[0]?.readyState).toBe(TestEventSource.CONNECTING);
+
+    let sourceCount = 1;
+    for (const [index, delay] of expectedDelays.entries()) {
+      const source = TestEventSource.instances.at(-1)!;
+      source.readyState = TestEventSource.CLOSED;
+      source.triggerError();
+      if (index === 0) source.triggerError();
+      expect(TestEventSource.instances).toHaveLength(sourceCount);
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(TestEventSource.instances).toHaveLength(sourceCount);
+      await vi.advanceTimersByTimeAsync(1);
+      sourceCount += 1;
+      expect(TestEventSource.instances).toHaveLength(sourceCount);
+      expect(TestEventSource.instances.at(-1)?.readyState).toBe(TestEventSource.CONNECTING);
+    }
+
+    const pending = TestEventSource.instances.at(-1)!;
+    pending.readyState = TestEventSource.CLOSED;
+    pending.triggerError();
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(TestEventSource.instances).toHaveLength(sourceCount);
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(TestEventSource.instances).toHaveLength(sourceCount);
+
+    vi.useRealTimers();
   });
 });
 
