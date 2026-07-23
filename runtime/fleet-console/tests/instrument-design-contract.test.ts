@@ -375,7 +375,7 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain("border-left: 1px solid var(--surface-rim);");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
     expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
-    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
+    expect(layout).toContain("min-width: var(--command-band-left-width, 280px);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
     expect(commandBandCenterBlock).toContain("justify-content: center;");
