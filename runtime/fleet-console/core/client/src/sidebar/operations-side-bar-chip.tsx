@@ -206,7 +206,7 @@ function chipStatusClass(status: OperationActivity | undefined): string {
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "awaiting") return "tenant-beacon is-awaiting";
   if (visual === "dormant") return "tenant-beacon is-dormant";
-  return "is-idle";
+  return "tenant-beacon is-idle";
 }
 
 function chipStatusLabel(status: OperationActivity | undefined): string {

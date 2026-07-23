@@ -22,8 +22,8 @@ describe("OperationsSideBarChip activity status", () => {
     ["running", "tenant-beacon is-turn-running", "Running"],
     ["awaiting", "tenant-beacon is-awaiting", "Awaiting input"],
     ["dormant", "tenant-beacon is-dormant", "Dormant"],
-    ["idle", "is-idle", "Idle"],
-    [undefined, "is-idle", "Idle"],
+    ["idle", "tenant-beacon is-idle", "Idle"],
+    [undefined, "tenant-beacon is-idle", "Idle"],
   ] as const)("renders %s as the matching status class and accessible label", (status, expectedClass, expectedLabel) => {
     const statusDot = renderChip(status);
 
