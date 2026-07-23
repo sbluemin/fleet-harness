@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
-import { useCanvasState } from "../canvas/canvas-store.js";
+import { animateViewportTo, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
 import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
@@ -34,6 +34,8 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
   const canvas = useCanvasState();
+  const formationLayout = useFormationLayout();
+  const formationView = useFormationView();
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
@@ -323,6 +325,13 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
           <SearchIcon />
         </button>
+        {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">
+          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label="Reset canvas view" title="Reset canvas view"><ResetViewIcon /></button>
+          <span className="command-band-formation-divider" aria-hidden="true" />
+          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label="Formation view — Grid layout" title="Formation view — Grid layout"><FormationGridIcon /></button>
+          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label="Formation view — Columns layout" title="Formation view — Columns layout"><FormationColumnsIcon /></button>
+          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label="Formation view — Rows layout" title="Formation view — Rows layout"><FormationRowsIcon /></button>
+        </div> : null}
       </div>
       <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
@@ -441,6 +450,22 @@ function resolveModLabel(): string {
 
 function SearchIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+}
+
+function FormationGridIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function ResetViewIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 7.2A4 4 0 1 1 4 9.2" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.4 4.6v2.8h2.8" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function FormationColumnsIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h3v11h-3zM6.5 2.5h3v11h-3zM10.5 2.5h3v11h-3z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function FormationRowsIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v3h-11zM2.5 6.5h11v3h-11zM2.5 10.5h11v3h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {

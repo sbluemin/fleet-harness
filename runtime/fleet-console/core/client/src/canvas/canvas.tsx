@@ -317,7 +317,7 @@ export function OperationsCanvas({
       {!hasContent ? (
         <div className="operations-canvas-empty" data-canvas-blocker>
           <span className="operations-canvas-empty-mark" aria-hidden="true" />
-          <p>{state.activeTheaterId ? EMPTY_GUIDE : "Add a Theater from the top bar to start operations."}</p>
+          <p>{state.activeTheaterId ? EMPTY_GUIDE : "Add a Theater from the sidebar to start operations."}</p>
         </div>
       ) : null}
       {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={canvas.viewport} /> : null}
