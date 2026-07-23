@@ -43,6 +43,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const railChromeExpanded = useRailChromeExpanded();
   const panelBehavior = useRailPanelBehavior();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
+  const previousPanelBehaviorRef = useRef(panelBehavior);
   const pluginPanels = useRailPanels();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const allPanels = [...builtInPanels, ...pluginPanels];
@@ -55,11 +56,28 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
 
   useLayoutEffect(() => {
     if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
     previousRailChromeExpandedRef.current = railChromeExpanded;
   }, [railChromeExpanded]);
+
+  useLayoutEffect(() => {
+    if (previousPanelBehaviorRef.current === panelBehavior) return;
+    previousPanelBehaviorRef.current = panelBehavior;
+    setIsSwitching(true);
+
+    let releaseFrame: number | null = null;
+    const paintedFrame = window.requestAnimationFrame(() => {
+      releaseFrame = window.requestAnimationFrame(() => setIsSwitching(false));
+    });
+
+    return () => {
+      window.cancelAnimationFrame(paintedFrame);
+      if (releaseFrame !== null) window.cancelAnimationFrame(releaseFrame);
+    };
+  }, [panelBehavior]);
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -98,7 +116,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   return (
     <div
       ref={rootRef}
-      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}${panelBehavior === "overlay" ? " is-overlay" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}${isSwitching ? " is-switching" : ""}${panelBehavior === "overlay" ? " is-overlay" : ""}`}
       data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
       role="complementary"
       aria-label="Activity Rail"

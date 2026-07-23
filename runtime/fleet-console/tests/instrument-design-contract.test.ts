@@ -318,8 +318,10 @@ describe("Instrument core design contract", () => {
     const rightRail = source("rail/right-rail.tsx");
     const railStore = source("rail/rail-store.ts");
     expect(rail).toContain(".right-rail.is-overlay");
+    expect(rail).toContain(".right-rail.is-switching");
     expect(rightRail).toContain("useRailPanelBehavior");
     expect(rightRail).toContain("right-rail-float-toggle");
+    expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
   });
 

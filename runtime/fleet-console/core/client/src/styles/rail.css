@@ -35,6 +35,12 @@
   overflow: visible;
 }
 
+/* 패널 behavior 전환의 한 painted frame에만 드래그 억제 패턴과 같은 의도로
+   rail·slot transition을 끊어 규칙 세트 교체가 오픈/클로즈 모션을 재생하지 않게 한다. */
+.right-rail.is-switching, .right-rail.is-switching .right-rail-panel-slot {
+  transition: none !important;
+}
+
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
    overflow:hidden + width 전환으로 spring 펼침/접힘을 구현한다.
    min-width는 애니메이션 중 내부 레이아웃 흔들림을 방지한다.        */
