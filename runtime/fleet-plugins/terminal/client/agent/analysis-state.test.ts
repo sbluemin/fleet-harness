@@ -11,6 +11,16 @@ describe("shared analysis store reducer", () => {
     expect(locked).toMatchObject({ started: true, busy: true, phase: "starting", runStartedAt: 1_000, runEndedAt: null });
   });
 
+  it("exposes the reset selection lock and preserves it until explicitly released", () => {
+    const selected = analysisReducer(initialAnalysisState, { type: "catalog", catalog });
+    const locked = analysisReducer(selected, { type: "selection-lock", locked: true });
+    expect(locked.selectionLocked).toBe(true);
+
+    const reset = analysisReducer(locked, { type: "reset" });
+    expect(reset.selectionLocked).toBe(true);
+    expect(analysisReducer(reset, { type: "selection-lock", locked: false }).selectionLocked).toBe(false);
+  });
+
   it("prefers Claude Sonnet at medium and restores that selection on reset", () => {
     const preferredCatalog = { clis: [
       { cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["high"], defaultEffort: "high" }] },
@@ -47,6 +57,52 @@ describe("shared analysis store reducer", () => {
       artifacts: [],
       error: null,
     });
+  });
+
+  it("hydrates persisted selection field by field and restores it on reset", () => {
+    const hydrationCatalog = { clis: [
+      { cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [
+        { id: "sonnet", label: "Sonnet", effortLevels: ["low", "medium", "high"], defaultEffort: "medium" },
+        { id: "opus", label: "Opus", effortLevels: ["high"], defaultEffort: "high" },
+      ] },
+      { cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [
+        { id: "gpt", label: "GPT", effortLevels: [], defaultEffort: undefined },
+      ] },
+    ] };
+    const hydrated = analysisReducer(initialAnalysisState, {
+      type: "catalog",
+      catalog: hydrationCatalog,
+      selection: { cliId: "codex", model: "removed", effort: "high" },
+    });
+    expect(hydrated).toMatchObject({ cliId: "codex", model: "gpt", effort: "" });
+
+    const reset = analysisReducer({ ...hydrated, started: true, entries: [{ role: "user", text: "Question" }] }, {
+      type: "reset",
+      selection: { cliId: "claude", model: "opus", effort: "high" },
+    });
+    expect(reset).toMatchObject({ cliId: "claude", model: "opus", effort: "high", started: false, entries: [] });
+  });
+
+  it("falls back within a valid persisted CLI when its model was removed", () => {
+    const sharedModelCatalog = { clis: [
+      { cliId: "claude", label: "Claude", available: false, defaultModel: "sonnet", models: [
+        { id: "sonnet", label: "Sonnet", effortLevels: ["medium"], defaultEffort: "medium" },
+      ] },
+      { cliId: "codex", label: "Codex", available: true, defaultModel: "shared", models: [
+        { id: "shared", label: "Shared Codex", effortLevels: ["high"], defaultEffort: "high" },
+      ] },
+      { cliId: "cursor", label: "Cursor", available: true, defaultModel: "auto", models: [
+        { id: "shared", label: "Shared Cursor", effortLevels: ["high"], defaultEffort: "high" },
+        { id: "auto", label: "Auto", effortLevels: ["low", "medium"], defaultEffort: "low" },
+      ] },
+    ] };
+    const hydrated = analysisReducer(initialAnalysisState, {
+      type: "catalog",
+      catalog: sharedModelCatalog,
+      selection: { cliId: "cursor", model: "removed", effort: "high" },
+    });
+
+    expect(hydrated).toMatchObject({ cliId: "cursor", model: "auto", effort: "medium" });
   });
 
   it("persists drafts and supports cancellable FIFO queue state", () => {

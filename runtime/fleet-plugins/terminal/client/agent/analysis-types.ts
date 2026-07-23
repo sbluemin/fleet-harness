@@ -14,6 +14,11 @@ export interface AnalysisCli {
 }
 
 export interface AnalysisCatalog { readonly clis: readonly AnalysisCli[]; }
+export interface AnalysisSelection {
+  readonly cliId: string;
+  readonly model: string;
+  readonly effort: string;
+}
 export interface AnalysisError { readonly code: string; readonly message: string; }
 export interface AnalysisArtifact { readonly id: string; readonly title: string; readonly html: string; readonly createdAt: number; }
 export type AnalysisEvent =

@@ -87,6 +87,65 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
+  it("switches panel copy live with context language and shows a fixed-slot save confirmation", async () => {
+    storeState = {
+      ...initialAnalysisState,
+      catalog,
+      cliId: "codex",
+      model: "gpt",
+      effort: "medium",
+      selectionSaved: true,
+    };
+    const koreanContext = { operationId: "chat-test", language: "ko" } as OperationRenderContext;
+    const { container, root } = renderPanel(koreanContext);
+    const saved = container.querySelector<HTMLElement>('[aria-live="polite"][aria-atomic="true"]')!;
+
+    expect(container.querySelector('[aria-label="Session Analyst 채팅"]')).not.toBeNull();
+    expect(container.querySelector(".session-analyst__hero h2")?.textContent).toBe("이 세션에 대해 물어보세요");
+    expect(container.querySelector('[aria-label="분석 CLI"]')).not.toBeNull();
+    expect(container.querySelector("textarea")?.placeholder).toBe("세션에 대해 질문하기… (/ 명령)");
+    expect(container.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("보내기");
+    expect(saved.textContent).toBe("저장됨");
+    expect(saved.style.inlineSize).toBe("5em");
+    expect(saved.style.opacity).toBe("1");
+    expect(saved.style.transition).toBe("opacity var(--duration-base) var(--ease-glide)");
+
+    const suggestion = [...container.querySelectorAll<HTMLButtonElement>(".session-analyst__suggestions button")]
+      .find((button) => button.textContent?.includes("에이전트가 지금 무엇을 하고 있어?"))!;
+    await act(async () => suggestion.click());
+    expect(send).toHaveBeenCalledWith("에이전트가 지금 무엇을 하고 있어?");
+
+    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test", language: "en" } as OperationRenderContext })));
+    expect(container.querySelector('[aria-label="Session Analyst chat"]')).not.toBeNull();
+    expect(container.querySelector(".session-analyst__hero h2")?.textContent).toBe("Ask about this session");
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("disables every selection control while reset holds the selection lock and re-enables it after release", () => {
+    storeState = {
+      ...initialAnalysisState,
+      catalog,
+      cliId: "codex",
+      model: "gpt",
+      effort: "medium",
+      selectionLocked: true,
+    };
+    const { container, root } = renderPanel();
+    const selectionTriggers = () => [...container.querySelectorAll<HTMLButtonElement>(".session-analyst__selector-strip .fc-select__trigger")];
+
+    expect(selectionTriggers()).toHaveLength(3);
+    expect(selectionTriggers().every((trigger) => trigger.disabled)).toBe(true);
+
+    storeState = { ...storeState, selectionLocked: false };
+    act(() => rerenderStore());
+    expect(selectionTriggers().every((trigger) => !trigger.disabled)).toBe(true);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it("keeps the transcript fully visible with one Stop and event-truthful tool activity", () => {
     storeState = {
       ...initialAnalysisState,
@@ -420,6 +479,40 @@ describe("Session Analyst Evidence Pulse", () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+
+  it("localizes every slash command draft while preserving the English templates", () => {
+    const expected = {
+      en: {
+        "/now": "What is the agent doing right now?",
+        "/drift": "Review this session for intent drift against my stated goals.",
+        "/brief": "Draft a handoff brief and publish it as an artifact.",
+        "/risks": "Flag anything I should review before this work continues.",
+        "/timeline": "Walk me through how this session unfolded.",
+      },
+      ko: {
+        "/now": "에이전트가 지금 무엇을 하고 있어?",
+        "/drift": "내가 정한 목표와 비교해 이 세션의 의도 드리프트를 검토해 줘.",
+        "/brief": "인수인계 브리프 초안을 작성하고 아티팩트로 발행해 줘.",
+        "/risks": "이 작업을 계속하기 전에 내가 검토해야 할 항목을 짚어 줘.",
+        "/timeline": "이 세션이 어떻게 진행됐는지 정리해 줘",
+      },
+    } as const;
+
+    for (const language of ["en", "ko"] as const) {
+      storeState = { ...initialAnalysisState };
+      const { container, root } = renderPanel({ operationId: `chat-test-${language}`, language } as OperationRenderContext);
+      const textarea = container.querySelector("textarea")!;
+      for (const [command, draft] of Object.entries(expected[language])) {
+        setTextareaValue(textarea, command);
+        const option = container.querySelector<HTMLElement>('[role="option"]')!;
+        expect(option.textContent).toContain(command);
+        act(() => option.click());
+        expect(storeState.draft).toBe(draft);
+      }
+      act(() => root.unmount());
+      container.remove();
+    }
   });
 
   it("leaves slash navigation and the draft unchanged during IME composition", () => {

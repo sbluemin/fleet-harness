@@ -29,7 +29,9 @@ describe("Session Analyst server contract", () => {
     expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "claude-kimi", "codex", "opencode-go", "cursor"]);
     for (const cliId of ["claude", "claude-kimi", "codex", "opencode-go", "cursor"] as const) {
       expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low" })).toBe(true);
+      expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low", language: "ko" })).toBe(true);
     }
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low", language: "ja" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "removed", effort: "low" })).toBe(false);
 
@@ -256,9 +258,9 @@ describe("Session Analyst server contract", () => {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b", language: "ko" });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
-    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined }));
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined, language: "ko" }));
   });
 
   it("disposes a registry entry when its Operation is deleted during pending start", async () => {

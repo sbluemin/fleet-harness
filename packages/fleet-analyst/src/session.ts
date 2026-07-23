@@ -16,7 +16,7 @@ import {
   type AcpPermissionResponse,
   type IUnifiedAgentClient,
 } from "@dotobokuri/core-unified-agent";
-import { ANALYST_SYSTEM_PROMPT } from "./prompt.js";
+import { resolveAnalystSystemPrompt } from "./prompt.js";
 import { ANALYST_TOOL_IDS, AnalystTools } from "./tools.js";
 import { redactTranscriptString } from "./transcript-indexer.js";
 import type { AnalystSessionOptions } from "./types.js";
@@ -63,7 +63,7 @@ export class AnalystSession {
     }
     this.bridge(client);
     try {
-      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: true, fsAccess: false, yoloMode: true, strictMcp: this.options.cliId === "claude" || this.options.cliId === "claude-kimi", systemPrompt: ANALYST_SYSTEM_PROMPT, mcpServers: [{ type: "http", name: ANALYST_MCP_SERVER, url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
+      await client.connect({ cwd: this.options.cwd, model: this.options.model, effort: this.options.effort, autoApprove: true, fsAccess: false, yoloMode: true, strictMcp: this.options.cliId === "claude" || this.options.cliId === "claude-kimi", systemPrompt: resolveAnalystSystemPrompt(this.options.language), mcpServers: [{ type: "http", name: ANALYST_MCP_SERVER, url, headers: [{ name: "Authorization", value: `Bearer ${this.token}` }] }] });
     } catch (error) {
       if (this.disposed) await (this.disposeFlight ?? Promise.resolve());
       else await client.disconnect().catch(() => undefined);

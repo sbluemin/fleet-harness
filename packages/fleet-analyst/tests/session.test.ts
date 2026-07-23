@@ -43,6 +43,25 @@ it.each([
   await session.dispose();
 });
 
+it("pins Korean output language in the provider system prompt at connect time", async () => {
+  const file = join(await mkdtemp(join(tmpdir(), "analyst-language-")), "capture.jsonl");
+  await writeFile(file, "");
+  const connect = vi.fn().mockResolvedValue(undefined);
+  const client = Object.assign(new EventEmitter(), {
+    connect,
+    cancelPrompt: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+  }) as unknown as IUnifiedAgentClient;
+  vi.spyOn(UnifiedAgent, "build").mockResolvedValue(client);
+  const session = new AnalystSession({ capturePath: file, cwd: process.cwd(), cliId: "claude", model: "test-model", language: "ko" });
+
+  await session.start();
+
+  const systemPrompt = connect.mock.calls[0]?.[0]?.systemPrompt as string;
+  expect(systemPrompt).toContain("\n\n# Language\nWrite every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.");
+  await session.dispose();
+});
+
 it("rejects sends before start and disposes idempotently", async () => {
   const session = new AnalystSession({
     capturePath: "/not-used-before-start.jsonl",

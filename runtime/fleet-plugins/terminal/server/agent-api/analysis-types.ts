@@ -68,8 +68,8 @@ export function analysisError(code: AnalysisErrorCode, message: string): Analysi
   return { error: { code, message } };
 }
 
-export function isAnalysisSelection(catalog: AnalysisCatalog, value: unknown): value is { readonly cliId: AnalystCliId; readonly model: string; readonly effort?: string } {
-  if (!isRecord(value) || !hasExactKeys(value, ["cliId", "model", "effort"]) || typeof value.cliId !== "string" || typeof value.model !== "string" || (value.effort !== undefined && typeof value.effort !== "string")) return false;
+export function isAnalysisSelection(catalog: AnalysisCatalog, value: unknown): value is { readonly cliId: AnalystCliId; readonly model: string; readonly effort?: string; readonly language?: "en" | "ko" } {
+  if (!isRecord(value) || !hasExactKeys(value, ["cliId", "model", "effort", "language"]) || typeof value.cliId !== "string" || typeof value.model !== "string" || (value.effort !== undefined && typeof value.effort !== "string") || (value.language !== undefined && value.language !== "en" && value.language !== "ko")) return false;
   const cli = catalog.clis.find((candidate) => candidate.cliId === value.cliId);
   if (!cli?.available) return false;
   const model = cli.models.find((candidate) => candidate.id === value.model);

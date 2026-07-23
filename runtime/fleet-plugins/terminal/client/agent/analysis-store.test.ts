@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
 import { resetAnalysisStreamHubForTests, subscribeAnalysis } from "./analysis-api.js";
 import { disposeAnalysisStore, getAnalysisStore } from "./analysis-store.js";
@@ -149,6 +149,140 @@ describe("per-operation analysis store", () => {
     // Operation close owns disposal and server-session cleanup.
     disposeAnalysisStore("operation-store-share");
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(true));
+  });
+
+  it("hydrates, auto-saves with terminal sibling preservation, confirms the save, and resets to persisted selection", async () => {
+    const catalogBody = JSON.stringify({ clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [
+      { id: "sonnet", label: "Sonnet", effortLevels: ["medium"], defaultEffort: "medium" },
+      { id: "opus", label: "Opus", effortLevels: ["high"], defaultEffort: "high" },
+    ] }] });
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(catalogBody, { status: 200, headers: { "Content-Type": "application/json" } })
+      : null);
+    let terminalRecord: Record<string, unknown> = {
+      font: { source: "curated", id: "jetbrains", customName: "", size: 16 },
+      analyst: { selection: { cliId: "claude", model: "opus", effort: "high" } },
+    };
+    const settings: ClientSettingsCapability = {
+      read: vi.fn(async () => terminalRecord),
+      write: vi.fn(async (_pluginId, value) => { terminalRecord = value; }),
+    };
+    const operationId = "operation-store-persisted-selection";
+    const store = getAnalysisStore(operationId, harness.api, settings, "ko");
+
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ cliId: "claude", model: "opus", effort: "high" }));
+    store.dispatch({ type: "select-model", model: "sonnet" });
+    await vi.waitFor(() => expect(settings.write).toHaveBeenCalledOnce());
+    expect(settings.write).toHaveBeenCalledWith("terminal", {
+      font: { source: "curated", id: "jetbrains", customName: "", size: 16 },
+      analyst: { selection: { cliId: "claude", model: "sonnet", effort: "medium" } },
+    });
+    expect(store.getSnapshot().selectionSaved).toBe(true);
+
+    store.dispatch({ type: "select-model", model: "opus" });
+    await vi.waitFor(() => expect(settings.write).toHaveBeenCalledTimes(2));
+    await store.reset();
+    expect(store.getSnapshot()).toMatchObject({ cliId: "claude", model: "opus", effort: "high", phase: "idle" });
+    disposeAnalysisStore(operationId);
+  });
+
+  it("ignores selection changes during reset and restores the completed persisted write", async () => {
+    const catalogBody = JSON.stringify({ clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [
+      { id: "sonnet", label: "Sonnet", effortLevels: ["medium"], defaultEffort: "medium" },
+      { id: "opus", label: "Opus", effortLevels: ["high"], defaultEffort: "high" },
+    ] }] });
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(catalogBody, { status: 200, headers: { "Content-Type": "application/json" } })
+      : null);
+    let terminalRecord: Record<string, unknown> = {
+      analyst: { selection: { cliId: "claude", model: "opus", effort: "high" } },
+    };
+    let completeWrite!: () => void;
+    const settings: ClientSettingsCapability = {
+      read: vi.fn(async () => terminalRecord),
+      write: vi.fn((_pluginId, value) => new Promise<void>((resolve) => {
+        completeWrite = () => {
+          terminalRecord = value;
+          resolve();
+        };
+      })),
+    };
+    const operationId = "operation-store-reset-selection-fence";
+    const store = getAnalysisStore(operationId, harness.api, settings);
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ model: "opus", effort: "high" }));
+
+    store.dispatch({ type: "select-model", model: "sonnet" });
+    await vi.waitFor(() => expect(settings.write).toHaveBeenCalledOnce());
+    const resetting = store.reset();
+    expect(store.getSnapshot().selectionLocked).toBe(true);
+    store.dispatch({ type: "select-model", model: "opus" });
+    expect(store.getSnapshot()).toMatchObject({ model: "sonnet", effort: "medium" });
+
+    completeWrite();
+    await resetting;
+    expect(terminalRecord).toMatchObject({
+      analyst: { selection: { cliId: "claude", model: "sonnet", effort: "medium" } },
+    });
+    expect(store.getSnapshot()).toMatchObject({ model: "sonnet", effort: "medium", phase: "idle", selectionLocked: false });
+    disposeAnalysisStore(operationId);
+  });
+
+  it("hydrates a replacement only after the disposed store's selection write settles", async () => {
+    const catalogBody = JSON.stringify({ clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [
+      { id: "sonnet", label: "Sonnet", effortLevels: ["medium"], defaultEffort: "medium" },
+      { id: "opus", label: "Opus", effortLevels: ["high"], defaultEffort: "high" },
+    ] }] });
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(catalogBody, { status: 200, headers: { "Content-Type": "application/json" } })
+      : null);
+    let terminalRecord: Record<string, unknown> = {
+      analyst: { selection: { cliId: "claude", model: "opus", effort: "high" } },
+    };
+    let completeWrite!: () => void;
+    const settings: ClientSettingsCapability = {
+      read: vi.fn(async () => terminalRecord),
+      write: vi.fn((_pluginId, value) => new Promise<void>((resolve) => {
+        completeWrite = () => {
+          terminalRecord = value;
+          resolve();
+        };
+      })),
+    };
+    const operationId = "operation-store-dispose-selection-fence";
+    const first = getAnalysisStore(operationId, harness.api, settings);
+    await vi.waitFor(() => expect(first.getSnapshot()).toMatchObject({ model: "opus", effort: "high" }));
+    first.dispatch({ type: "select-model", model: "sonnet" });
+    await vi.waitFor(() => expect(settings.write).toHaveBeenCalledOnce());
+
+    disposeAnalysisStore(operationId);
+    const replacement = getAnalysisStore(operationId, harness.api, settings);
+    expect(replacement).not.toBe(first);
+    expect(replacement.getSnapshot().catalog).toBeNull();
+
+    completeWrite();
+    await vi.waitFor(() => expect(replacement.getSnapshot()).toMatchObject({ model: "sonnet", effort: "medium" }));
+    expect(terminalRecord).toMatchObject({
+      analyst: { selection: { cliId: "claude", model: "sonnet", effort: "medium" } },
+    });
+    disposeAnalysisStore(operationId);
+  });
+
+  it("captures the resolved language in the start request", async () => {
+    const harness = createHarness();
+    const operationId = "operation-store-language";
+    const store = getAnalysisStore(operationId, harness.api, undefined, "ko");
+    await vi.waitFor(() => expect(store.getSnapshot().cliId).toBe("claude"));
+
+    await sendWithConnected(store, harness, operationId, "세션을 검토해 줘");
+    const start = harness.fetch.mock.calls.find((call) => String(call[1]).endsWith("/start"));
+    expect(JSON.parse(String((start?.[2] as RequestInit | undefined)?.body))).toEqual({
+      cliId: "claude",
+      model: "sonnet",
+      effort: "high",
+      language: "ko",
+    });
+    harness.emit(operationId, { type: "complete" });
+    disposeAnalysisStore(operationId);
   });
 
   it("automatically sends queued questions in FIFO order after each completion", async () => {

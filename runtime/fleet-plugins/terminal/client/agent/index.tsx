@@ -14,6 +14,7 @@ import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js"
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
+import { analysisCopy } from "./analysis-i18n.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts } from "./analysis-store.js";
 import "./analysis.css";
 
@@ -296,17 +297,18 @@ function useAnalysisReady(context: OperationRenderContext): boolean {
 
 function SessionAnalystHandle({ context, ready }: { readonly context: OperationRenderContext; readonly ready: boolean }) {
   const companionsOpen = context.companionsOpen ?? false;
+  const language = context.language ?? "en";
   return (
     <button
       type="button"
       className={`session-analyst-handle${ready ? "" : " is-waiting"}`}
-      aria-label={companionsOpen ? "Exit Session Analyst" : "Open Session Analyst"}
+      aria-label={analysisCopy(language, companionsOpen ? "Exit Session Analyst" : "Open Session Analyst")}
       aria-pressed={companionsOpen}
       aria-disabled={!ready}
       disabled={!ready}
-      title={ready ? undefined : "Send a message in this session first"}
+      title={ready ? undefined : analysisCopy(language, "Send a message in this session first")}
       onClick={() => { if (ready) context.onRequestCompanions?.(!context.companionsOpen); }}
-    ><span className="session-analyst-handle__chev" aria-hidden="true">{companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{companionsOpen ? "EXIT" : "ANALYZE"}</span></button>
+    ><span className="session-analyst-handle__chev" aria-hidden="true">{companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{analysisCopy(language, companionsOpen ? "EXIT" : "ANALYZE")}</span></button>
   );
 }
 

@@ -3,10 +3,12 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { AnalysisArtifact } from "./analysis-types.js";
 
 import { analysisArtifactUrl, clearAnalysisArtifacts } from "./analysis-api.js";
+import { analysisCopy, type AnalysisLanguage } from "./analysis-i18n.js";
 import { useAnalysisStore } from "./analysis-store.js";
 
 export function AnalystArtifactsPanel({ context }: { readonly context: OperationRenderContext }) {
   const { state, dispatch } = useAnalysisStore(context);
+  const language = context.language ?? "en";
   const artifacts = React.useMemo(() => [...state.artifacts].reverse(), [state.artifacts]);
   const newestId = state.artifacts[0]?.id ?? null;
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -38,57 +40,57 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   }, [count]);
 
   return (
-    <section className="session-analyst__artifacts" aria-label="Artifacts">
+    <section className="session-analyst__artifacts" aria-label={analysisCopy(language, "Artifacts")}>
       <header className="session-analyst__panel-head session-analyst__panel-head--artifacts">
         <span className="session-analyst__panel-mark session-analyst__panel-mark--artifact" aria-hidden="true">◇</span>
-        <span className="session-analyst__panel-copy"><strong>Artifacts</strong><small>Visual outputs from this analysis</small></span>
+        <span className="session-analyst__panel-copy"><strong>{analysisCopy(language, "Artifacts")}</strong><small>{analysisCopy(language, "Visual outputs from this analysis")}</small></span>
         <div className="session-analyst__artifact-list-shell" ref={listShell}>
-          <button type="button" className="session-analyst__artifact-count" aria-expanded={listOpen} aria-controls={listId} aria-haspopup="listbox" aria-label={`${listOpen ? "Hide" : "Show"} artifacts (${count} ${count === 1 ? "item" : "items"})`} onClick={() => setListOpen((open) => !open)} disabled={!count}>
-            <strong>{count}</strong>{" "}<span>{count === 1 ? "item" : "items"}</span><i aria-hidden="true" />
+          <button type="button" className="session-analyst__artifact-count" aria-expanded={listOpen} aria-controls={listId} aria-haspopup="listbox" aria-label={analysisCopy(language, listOpen ? "Hide artifacts ({count} {item/items})" : "Show artifacts ({count} {item/items})", { count, "item/items": count === 1 ? "item" : "items" })} onClick={() => setListOpen((open) => !open)} disabled={!count}>
+            <strong>{count}</strong>{" "}<span>{language === "ko" ? "개" : count === 1 ? "item" : "items"}</span><i aria-hidden="true" />
           </button>
           {listOpen ? (
-            <div className="session-analyst__artifact-menu" id={listId} role="listbox" aria-label="Published artifacts">
+            <div className="session-analyst__artifact-menu" id={listId} role="listbox" aria-label={analysisCopy(language, "Published artifacts")}>
               {artifacts.map((artifact) => {
                 const selected = artifact.id === active?.id;
                 return (
                   <button type="button" role="option" key={artifact.id} aria-selected={selected} className={selected ? "is-active" : undefined} title={artifact.title} onClick={() => { setActiveId(artifact.id); setListOpen(false); }}>
                     <span className="session-analyst__artifact-list-mark" aria-hidden="true">◇</span>
                     <strong>{artifact.title}</strong>
-                    <ArtifactTime createdAt={artifact.createdAt} />
+                    <ArtifactTime createdAt={artifact.createdAt} language={language} />
                   </button>
                 );
               })}
             </div>
           ) : null}
         </div>
-        <button type="button" className="session-analyst__clear" onClick={() => { setListOpen(false); dispatch({ type: "clear-artifacts" }); void clearAnalysisArtifacts(context.api, context.operationId).catch(() => {}); }} disabled={!count}>Clear</button>
+        <button type="button" className="session-analyst__clear" onClick={() => { setListOpen(false); dispatch({ type: "clear-artifacts" }); void clearAnalysisArtifacts(context.api, context.operationId).catch(() => {}); }} disabled={!count}>{analysisCopy(language, "Clear")}</button>
       </header>
       {count === 0 ? (
-        <div className="session-analyst__artifacts-empty"><strong>No artifacts yet</strong>Artifacts the analyst publishes will appear here.</div>
+        <div className="session-analyst__artifacts-empty"><strong>{analysisCopy(language, "No artifacts yet")}</strong>{analysisCopy(language, "Artifacts the analyst publishes will appear here.")}</div>
       ) : (
         <div className="session-analyst__artifact-content">
-          {active ? <ActiveArtifact key={active.id} artifact={active} theme={context.theme} /> : null}
+          {active ? <ActiveArtifact key={active.id} artifact={active} theme={context.theme} language={language} /> : null}
         </div>
       )}
     </section>
   );
 }
 
-function ActiveArtifact({ artifact, theme }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme }) {
+function ActiveArtifact({ artifact, theme, language }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme; readonly language: AnalysisLanguage }) {
   if (!artifact.id) return null;
   const consoleStyle = getComputedStyle(document.documentElement);
   const canvas = consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas";
   const foreground = consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText";
   return (
-    <article aria-label="Selected artifact preview">
-      <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} /></header>
+    <article aria-label={analysisCopy(language, "Selected artifact preview")}>
+      <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} language={language} /></header>
       <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)} sandbox="allow-scripts" />
     </article>
   );
 }
 
-function ArtifactTime({ createdAt }: { readonly createdAt: number }) {
+function ArtifactTime({ createdAt, language }: { readonly createdAt: number; readonly language: AnalysisLanguage }) {
   const date = new Date(createdAt);
   const valid = Number.isFinite(date.getTime());
-  return <time dateTime={valid ? date.toISOString() : undefined}>{valid ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Unknown time"}</time>;
+  return <time dateTime={valid ? date.toISOString() : undefined}>{valid ? date.toLocaleTimeString(language === "ko" ? "ko-KR" : "en", { hour: "2-digit", minute: "2-digit" }) : analysisCopy(language, "Unknown time")}</time>;
 }

@@ -1,6 +1,6 @@
 import type { ClientApiCapability, ConsoleTheme } from "@fleet-console/sdk/plugin";
 import { ApiError } from "@fleet-console/sdk/operations/browser";
-import { parseAnalysisCatalog, parseAnalysisError, parseAnalysisEvent, type AnalysisCatalog, type AnalysisError, type AnalysisEvent } from "./analysis-types.js";
+import { parseAnalysisCatalog, parseAnalysisError, parseAnalysisEvent, type AnalysisCatalog, type AnalysisError, type AnalysisEvent, type AnalysisSelection } from "./analysis-types.js";
 
 export class AnalysisApiError extends Error { constructor(readonly code: string, message: string) { super(message); } }
 const base = (operationId: string) => `analysis/${encodeURIComponent(operationId)}`;
@@ -46,7 +46,7 @@ export async function fetchAnalysisReady(api: ClientApiCapability, operationId: 
     return false;
   }
 }
-export async function startAnalysis(api: ClientApiCapability, operationId: string, input: { readonly cliId: string; readonly model: string; readonly effort: string }, signal?: AbortSignal): Promise<void> { await request(api, `${base(operationId)}/start`, input, signal); }
+export async function startAnalysis(api: ClientApiCapability, operationId: string, input: AnalysisSelection & { readonly language?: "en" | "ko" }, signal?: AbortSignal): Promise<void> { await request(api, `${base(operationId)}/start`, input, signal); }
 export async function sendAnalysisMessage(api: ClientApiCapability, operationId: string, text: string): Promise<void> { await request(api, `${base(operationId)}/message`, { text }); }
 export async function stopAnalysis(api: ClientApiCapability, operationId: string): Promise<void> { await request(api, `${base(operationId)}/stop`, {}); }
 export async function clearAnalysisArtifacts(api: ClientApiCapability, operationId: string): Promise<void> {
@@ -239,7 +239,7 @@ function dispatchWirePayload(raw: string, sourceId: number): void {
   if (eventFrame) dispatchToOperation(eventFrame.operationId, eventFrame.event);
 }
 
-async function request(api: ClientApiCapability, path: string, body: Record<string, string>, signal?: AbortSignal): Promise<void> {
+async function request(api: ClientApiCapability, path: string, body: object, signal?: AbortSignal): Promise<void> {
   const response = await fetchOrThrow(api, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), ...(signal ? { signal } : {}) });
   if (!response.ok) throw errorFrom(response.status, await response.json().catch(() => null));
 }
