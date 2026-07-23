@@ -1,9 +1,13 @@
-export const WORKSPACE_BASE_WIDTH = 312;
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
 export const WORKSPACE_DOCK_MIN_HEIGHT = 160;
+export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
+export const WORKSPACE_TREE_MIN_WIDTH = 148;
+export const WORKSPACE_TREE_DIVIDER_WIDTH = 4;
+// 트리를 줄여도 중앙(History/Changes) 영역이 유의미하게 남도록 하는 최소 보장 폭.
+export const WORKSPACE_MAIN_MIN_WIDTH = 180;
 
-export const PREFS_WORKSPACE = "fleet-console.repository.workspace";
 export const PREFS_WORKSPACE_DOCK_HEIGHT = "fleet-console.repository.workspace.dockHeight";
+export const PREFS_WORKSPACE_TREE_WIDTH = "fleet-console.repository.workspace.treeWidth";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -26,21 +30,23 @@ export type WorkspaceTreeSection = {
   readonly count: number;
 };
 
-export function calculateWorkspaceExtraWidth(innerWidth: number, baseWidth = WORKSPACE_BASE_WIDTH): number {
-  return Math.max(0, Math.min(1200, innerWidth - 400) - baseWidth);
-}
-
-export function readWorkspaceMode(storage?: StorageLike): boolean {
-  try { return (storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE) === "1"; }
-  catch { return false; }
-}
-
-export function saveWorkspaceMode(enabled: boolean, storage?: StorageLike): void {
+export function readWorkspaceTreeWidth(storage?: StorageLike): number {
   try {
-    const target = storage ?? globalThis.localStorage;
-    if (enabled) target.setItem(PREFS_WORKSPACE, "1");
-    else target.removeItem(PREFS_WORKSPACE);
+    const value = Number.parseFloat((storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE_TREE_WIDTH) ?? "");
+    if (Number.isFinite(value) && value >= WORKSPACE_TREE_MIN_WIDTH) return value;
   } catch { /* best-effort preference */ }
+  return WORKSPACE_TREE_DEFAULT_WIDTH;
+}
+
+export function saveWorkspaceTreeWidth(width: number, storage?: StorageLike): void {
+  try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_TREE_WIDTH, String(width)); }
+  catch { /* best-effort preference */ }
+}
+
+export function clampWorkspaceTreeWidth(startWidth: number, pointerDeltaX: number, containerWidth: number): number | null {
+  const maximum = containerWidth - WORKSPACE_MAIN_MIN_WIDTH - WORKSPACE_TREE_DIVIDER_WIDTH;
+  if (maximum < WORKSPACE_TREE_MIN_WIDTH) return null;
+  return Math.max(WORKSPACE_TREE_MIN_WIDTH, Math.min(maximum, startWidth + pointerDeltaX));
 }
 
 export function readWorkspaceDockHeight(storage?: StorageLike): number {

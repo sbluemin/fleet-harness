@@ -920,14 +920,7 @@
 }
 
 @container (max-width: 500px) {
-  .history-commit-author,
-  .history-commit-time {
-    display: none;
-  }
-}
-
-@container (max-width: 340px) {
-  .history-commit-badges {
+  .history-commit-author {
     display: none;
   }
 }
@@ -938,15 +931,16 @@
 .history-detail-pane { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--surface-glass) 70%, transparent); }
 .history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
 .history-divider { touch-action: none; }
-.history-commit-row { grid-template-columns: auto minmax(96px, 1fr) 7ch auto auto; gap: 0 7px; }
+.history-commit-row { grid-template-columns: auto auto minmax(96px, 1fr) 7ch auto; gap: 0 7px; }
 /* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해
    유령 2행 트랙(0px 28px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 28px 트랙 중앙으로 반 행 어긋난다.
    grid-row: 1로 전 셀을 단일 28px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. */
 .history-graph-gutter { grid-column: 1; grid-row: 1; }
-.history-commit-subject { grid-column: 2; min-width: 96px; }
-.history-commit-sha { grid-column: 3; }
-.history-commit-time { grid-column: 4; }
-.history-commit-badges { grid-column: 5; max-width: 168px; }
+/* Fork 문법 — refs 뱃지가 제목 앞(그래프 뒤)에서 커밋의 정체를 먼저 알린다. */
+.history-commit-badges { grid-column: 2; max-width: 40cqw; }
+.history-commit-subject { grid-column: 3; min-width: 96px; }
+.history-commit-sha { grid-column: 4; }
+.history-commit-time { grid-column: 5; }
 .history-inspector { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .history-segmented { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--surface-rim); }
 .history-segmented button { flex: 1; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
@@ -973,8 +967,10 @@
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
 .history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 22px; height: 22px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 12px; }.history-inspector-error { color: var(--coral); }
-@container (max-width: 610px) { .history-commit-badges, .history-commit-time { display: none; } }
-@container (max-width: 430px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } }
+/* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 시간 → sha → 뱃지 순으로 양보한다. */
+@container (max-width: 640px) { .history-commit-time { display: none; } .history-commit-row { grid-template-columns: auto auto minmax(96px, 1fr) 7ch; } }
+@container (max-width: 520px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto auto minmax(96px, 1fr); } }
+@container (max-width: 420px) { .history-commit-badges { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } .history-commit-subject { grid-column: 2; } }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
@@ -985,25 +981,8 @@
 /* 브랜치는 정체의 일부라 이름 옆에 붙인다 — margin-left:auto로 밀면 넓은 레일에서 이름과의 연관이 끊긴다.
    brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
 .repository-identity span { min-width: 0; overflow: hidden; color: var(--brass); flex: 0 1 auto; font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.repository-unified-body { display: flex; min-width: 0; min-height: 0; flex: 1; }
-/* --surface-deep은 어느 테마에도 정의된 적 없는 토큰이라 이 선언은 계속 무효였다(배경 투명).
-   정체 스트립과 같은 테마 재질을 이어받도록 --surface-band를 소비한다. */
-.repository-source-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); }
-.repository-source-nav button, .repository-source-nav span { position: relative; min-height: 28px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 12px; }
-.repository-source-nav button[aria-current="page"] { color: var(--text-primary); background: color-mix(in oklch, var(--ink-fog) 10%, transparent); }
-/* 활성 마크는 identity 스파인과 동일한 직선 전고 사각 띠 — inset shadow는 칩 라운드를 따라 휘므로
-   ::before를 나브 좌측 에지(패딩 6px 밖)에 그려 형태를 통일한다. */
-.repository-source-nav button[aria-current="page"]::before { content: ""; position: absolute; top: 0; bottom: 0; left: -6px; width: 2px; background: var(--brass); }
-.repository-source-nav button:disabled, .repository-source-nav span { color: var(--text-tertiary); }
-.repository-source-nav b { padding: 8px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; }
-.repository-source-nav svg { width: 14px; height: 14px; flex: none; }
-.repository-source-nav i { float: right; color: var(--text-tertiary); font-style: normal; }
-.repository-source-content { flex: 1; min-width: 0; min-height: 0; }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
-/* Discovery bar는 목록 위에 고정되고 저장소 목록만 스크롤된다. */
-.repository-scan-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.repository-scan-pane > .repository-ref-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
 .repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
 .repository-depth-step { border: 0; background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: 12px; padding: 0 3px; }
@@ -1031,43 +1010,23 @@
 .repository-wip-row { color: var(--brass); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
-@container (max-width: 420px) { .repository-source-nav { width: 44px; } .repository-source-nav button { display: grid; place-items: center; padding: 5px; } .repository-source-nav button span, .repository-source-nav button i, .repository-source-nav b { display: none; } }
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
 .repository-unified [hidden] { display: none !important; }
 
-/* Expanded Repository workspace: the rail-owned panel widens without changing compact presentation. */
-.repository-identity .repository-ws-toggle {
-  display: inline-grid;
-  width: 26px;
-  height: 26px;
-  margin-left: auto;
-  padding: 5px;
-  place-items: center;
-  flex: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: color var(--duration-base) var(--ease-spring), background var(--duration-base) var(--ease-spring), border-color var(--duration-base) var(--ease-spring);
-}
-
-.repository-identity .repository-ws-toggle:hover {
-  border-color: var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
-  color: var(--text-primary);
-}
-
-.repository-unified.is-workspace .repository-ws-toggle {
-  color: var(--brass);
-}
-
+/* Repository workspace — 레일 소속을 유지한 기본 레이아웃. */
 .repository-ws-layout {
   display: grid;
-  grid-template-columns: 222px minmax(0, 1fr);
+  /* 트리는 설정폭을 따르되 좁은 패널에서는 45cqw로 클램프되어 중앙(History)에 폭을 양보한다. */
+  grid-template-columns: min(var(--ws-tree-width, 222px), 45cqw) 4px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   flex: 1;
+}
+
+.repository-ws-tree-divider {
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
 }
 
 .repository-ws-tree {
@@ -1319,7 +1278,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .repository-identity .repository-ws-toggle,
   .repository-ws-tree-row {
     transition-duration: .01ms;
   }

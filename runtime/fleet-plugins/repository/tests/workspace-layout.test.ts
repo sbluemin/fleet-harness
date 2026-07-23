@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  PREFS_WORKSPACE,
   PREFS_WORKSPACE_DOCK_HEIGHT,
+  PREFS_WORKSPACE_TREE_WIDTH,
   WORKSPACE_DOCK_DEFAULT_HEIGHT,
+  WORKSPACE_TREE_DEFAULT_WIDTH,
   buildWorkspaceTreeSections,
-  calculateWorkspaceExtraWidth,
+  clampWorkspaceTreeWidth,
   normalizeWorkspaceDockHeight,
   readWorkspaceDockHeight,
-  readWorkspaceMode,
+  readWorkspaceTreeWidth,
   saveWorkspaceDockHeight,
-  saveWorkspaceMode,
+  saveWorkspaceTreeWidth,
 } from "../client/workspace-layout.js";
 
 function memoryStorage() {
@@ -23,23 +24,23 @@ function memoryStorage() {
 }
 
 describe("Repository workspace layout", () => {
-  it("persists expansion as 1 and removes the preference on collapse", () => {
+  it("persists the source-tree width and falls back for invalid values", () => {
     const storage = memoryStorage();
+    expect(readWorkspaceTreeWidth(storage)).toBe(WORKSPACE_TREE_DEFAULT_WIDTH);
 
-    expect(readWorkspaceMode(storage)).toBe(false);
-    saveWorkspaceMode(true, storage);
-    expect(storage.getItem(PREFS_WORKSPACE)).toBe("1");
-    expect(readWorkspaceMode(storage)).toBe(true);
+    saveWorkspaceTreeWidth(280, storage);
+    expect(storage.getItem(PREFS_WORKSPACE_TREE_WIDTH)).toBe("280");
+    expect(readWorkspaceTreeWidth(storage)).toBe(280);
 
-    saveWorkspaceMode(false, storage);
-    expect(storage.getItem(PREFS_WORKSPACE)).toBeNull();
-    expect(readWorkspaceMode(storage)).toBe(false);
+    storage.setItem(PREFS_WORKSPACE_TREE_WIDTH, "12");
+    expect(readWorkspaceTreeWidth(storage)).toBe(WORKSPACE_TREE_DEFAULT_WIDTH);
   });
 
-  it("calculates extra width from the capped viewport allowance and rail base", () => {
-    expect(calculateWorkspaceExtraWidth(600)).toBe(0);
-    expect(calculateWorkspaceExtraWidth(1440)).toBe(728);
-    expect(calculateWorkspaceExtraWidth(2000)).toBe(888);
+  it("clamps the source-tree drag within the container", () => {
+    expect(clampWorkspaceTreeWidth(222, 40, 800)).toBe(262);
+    expect(clampWorkspaceTreeWidth(222, -200, 800)).toBe(148);
+    expect(clampWorkspaceTreeWidth(222, 900, 800)).toBe(616);
+    expect(clampWorkspaceTreeWidth(222, 0, 300)).toBeNull();
   });
 
   it("persists the dock height and falls back for invalid values", () => {
@@ -59,10 +60,10 @@ describe("Repository workspace layout", () => {
       get getItem(): never { throw new Error("denied"); },
       get setItem(): never { throw new Error("denied"); },
       get removeItem(): never { throw new Error("denied"); },
-    } as unknown as Parameters<typeof readWorkspaceMode>[0];
-    expect(readWorkspaceMode(throwing)).toBe(false);
+    } as unknown as Parameters<typeof readWorkspaceTreeWidth>[0];
+    expect(readWorkspaceTreeWidth(throwing)).toBe(WORKSPACE_TREE_DEFAULT_WIDTH);
     expect(readWorkspaceDockHeight(throwing)).toBe(WORKSPACE_DOCK_DEFAULT_HEIGHT);
-    expect(() => saveWorkspaceMode(true, throwing)).not.toThrow();
+    expect(() => saveWorkspaceTreeWidth(280, throwing)).not.toThrow();
     expect(() => saveWorkspaceDockHeight(300, throwing)).not.toThrow();
   });
 

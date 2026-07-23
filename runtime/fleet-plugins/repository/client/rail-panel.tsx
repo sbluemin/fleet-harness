@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
@@ -12,7 +12,7 @@ import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile 
 import { HunkView } from "./hunk-view.js";
 import { HistoryPanel } from "./history-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
-import { buildWorkspaceTreeSections, calculateWorkspaceExtraWidth, readWorkspaceMode, saveWorkspaceMode } from "./workspace-layout.js";
+import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
 
 type ViewMode = "list" | "tree";
 
@@ -28,7 +28,6 @@ const PREFS_SCAN_DEPTH = "fleet-console.repository.scanDepth";
 const SCAN_DEPTH_MIN = 1;
 const SCAN_DEPTH_MAX = 8;
 const SCAN_DEPTH_DEFAULT = 3;
-const EXTENDED_EXTRA_WIDTH = 400;
 const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
 
@@ -43,9 +42,10 @@ function readViewMode(): ViewMode {
 export function readRepositorySource(): Source {
   try {
     const value = localStorage.getItem(PREFS_SOURCE);
-    if (value === "repositories" || value === "worktrees" || value === "changes" || value === "history" || value === "compare" || value === "branches" || value === "tags" || value === "stashes") return value;
+    if (value === "changes" || value === "history" || value === "compare") return value;
   } catch { /* ignore */ }
-  return "changes";
+  // 구 소스 페이지 값(repositories/branches 등)은 워크스페이스 중앙 뷰가 아니므로 History로 착지한다.
+  return "history";
 }
 
 export function readStoredRepositoryRel(theaterId: string): string {
@@ -105,8 +105,9 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
   return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
-export type Source = "repositories" | "worktrees" | "changes" | "history" | "compare" | "branches" | "tags" | "stashes";
-type RefSource = Exclude<Source, "repositories" | "worktrees" | "changes" | "history" | "compare">;
+export type Source = "changes" | "history" | "compare";
+type RefSource = "branches" | "tags" | "stashes";
+type SourceIconKind = Source | RefSource | "repositories" | "worktrees";
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
 export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[] };
@@ -151,14 +152,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [repoRel, setRepoRel] = useState(() => ctx.theaterId ? readStoredRepositoryRel(ctx.theaterId) : "");
   const repoRelRef = useRef(repoRel);
   const [source, setSourceState] = useState<Source>(readRepositorySource);
-  const [isWorkspace, setIsWorkspace] = useState(readWorkspaceMode);
+  const [treeWidth, setTreeWidth] = useState(readWorkspaceTreeWidth);
+  const treeWidthRef = useRef(treeWidth);
+  const [isTreeDragging, setIsTreeDragging] = useState(false);
+  const layoutRef = useRef<HTMLDivElement>(null);
   const [refFilter, setRefFilter] = useState<string | null>(null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
-  const [historyInspectorOpen, setHistoryInspectorOpen] = useState(false);
-  const [compareFileOpen, setCompareFileOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState("");
   // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 —
@@ -173,12 +175,29 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setSourceState(next);
     saveRepositorySource(next);
   }, []);
-  const toggleWorkspace = useCallback(() => {
-    setIsWorkspace((value) => {
-      const next = !value;
-      saveWorkspaceMode(next);
-      return next;
-    });
+  const handleTreeDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const container = layoutRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+    const startX = event.clientX;
+    const startWidth = treeWidthRef.current;
+    setIsTreeDragging(true);
+    const onMove = (move: PointerEvent) => {
+      const next = clampWorkspaceTreeWidth(startWidth, move.clientX - startX, containerWidth);
+      if (next !== null) {
+        treeWidthRef.current = next;
+        setTreeWidth(next);
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      setIsTreeDragging(false);
+      saveWorkspaceTreeWidth(treeWidthRef.current);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
   }, []);
   const transitionRepository = useCallback((nextRepoRel: string, persist: boolean, landing: Source = "changes") => {
     if (!ctx.theaterId) return;
@@ -186,8 +205,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     clearSelectedFile();
     setRefFilter(null);
     setFilterText("");
-    setHistoryInspectorOpen(false);
-    setCompareFileOpen(false);
     setChangedFiles({ kind: "loading" });
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
@@ -304,20 +321,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
-  useLayoutEffect(() => {
-    if (isWorkspace) {
-      const requestWorkspaceWidth = () => ctx.requestExtraWidth?.(calculateWorkspaceExtraWidth(window.innerWidth));
-      requestWorkspaceWidth();
-      window.addEventListener("resize", requestWorkspaceWidth);
-      return () => {
-        window.removeEventListener("resize", requestWorkspaceWidth);
-        ctx.requestExtraWidth?.(null);
-      };
-    }
-    ctx.requestExtraWidth?.((source === "changes" && selectedFile) || (source === "history" && historyInspectorOpen) || (source === "compare" && compareFileOpen) ? EXTENDED_EXTRA_WIDTH : null);
-    return () => ctx.requestExtraWidth?.(null);
-  }, [ctx.requestExtraWidth, selectedFile, source, historyInspectorOpen, compareFileOpen, isWorkspace]);
-
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
   const retryChangedFiles = useCallback(() => setChangedFilesRetry((value) => value + 1), []);
   const wipFiles = changedFiles.kind === "ok" ? changedFiles.files : [];
@@ -330,7 +333,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} />
     </div>
   </div>;
-  const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} onFileOpenChange={setCompareFileOpen} />;
+  const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} />;
   // 컴팩트 레이아웃과 동일하게 Changes/Compare를 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
   const workspaceMainVisible = source === "changes" || source === "compare";
   const workspaceMain = <>
@@ -338,19 +341,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     <div className="repository-source-fill" hidden={source !== "compare"}>{compareView}</div>
   </>;
   return (
-    <div className={`repository-unified${isWorkspace ? " is-workspace" : ""}`}>
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className="repository-ws-toggle" aria-label={isWorkspace ? "Collapse workspace" : "Expand workspace"} title={isWorkspace ? "Collapse workspace" : "Expand workspace"} onClick={toggleWorkspace}><WorkspaceToggleIcon expanded={isWorkspace} /></button></div>
-      {isWorkspace ? <div className="repository-ws-layout">
+    <div className="repository-unified is-workspace">
+      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div>
+      <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
-      </div> : <div className="repository-unified-body"><SourceNav source={source} refs={refs} repos={repos} worktrees={worktrees} onSource={setSource} /><div className="repository-source-content">
-        {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} scanDepth={scanDepth} onScanDepth={setScanDepth} truncated={reposTruncated} /> : null}
-        {source === "worktrees" ? worktreesError ? <div className="history-error">Unable to load worktrees<button type="button" className="repository-refresh-btn" onClick={() => setWorktreesRetry((value) => value + 1)}>Retry</button></div> : <WorktreeList worktrees={worktrees} onWorktree={handleSelectRepository} /> : null}
-        <div className="repository-source-fill" hidden={source !== "history"}><HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active={source === "history"} refFilter={refFilter} wipFiles={wipFiles} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} /></div>
-        <div className="repository-source-fill" hidden={source !== "compare"}>{compareView}</div>
-        {source !== "repositories" && source !== "worktrees" && source !== "changes" && source !== "history" && source !== "compare" ? refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={() => setRefsRetry((value) => value + 1)}>Retry</button></div> : <RefList source={source} refs={refs} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} /> : null}
-        <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>
-      </div></div>}
+        <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label="Resize source tree" />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+      </div>
     </div>
   );
 }
@@ -440,12 +437,8 @@ function WorkspaceTreeError({ label, onRetry }: { readonly label: string; readon
   return <div className="repository-ws-tree-error"><span>{label}</span><button type="button" onClick={onRetry}>Retry</button></div>;
 }
 
-function WorkspaceToggleIcon({ expanded }: { readonly expanded: boolean }) {
-  return <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">{expanded ? <><path d="M6 2v4H2M10 14v-4h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.5 5.5L6 2M13.5 10.5L10 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></> : <><path d="M2 6V2h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.5 2.5L2 6M10.5 13.5L14 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></>}</svg>;
-}
 
-function SourceIcon({ source }: { readonly source: Source }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "compare" ? "M5.5 3v9M3 9.5l2.5 2.5L8 9.5M12.5 15V6M10 8.5L12.5 6L15 8.5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function SourceNav({ source, refs, repos, worktrees, onSource }: { readonly source: Source; readonly refs: Refs; readonly repos: readonly RepoCandidate[]; readonly worktrees: readonly WorktreeCandidate[]; readonly onSource: (source: Source) => void }) { const button = (id: Source, label: string, count?: number) => <button key={id} type="button" aria-label={label} aria-current={source === id ? "page" : undefined} onClick={() => onSource(id)}><SourceIcon source={id} /><span>{label}</span>{count !== undefined && <i>{count}</i>}</button>; return <nav className="repository-source-nav" aria-label="Repository sources"><b>CONTEXT</b>{button("repositories", "Repositories", repos.length)}{button("worktrees", "Worktrees", worktrees.length)}<b>WORKING</b>{button("changes", "Changes")}{button("history", "History")}{button("compare", "Compare")}<b>REFS</b>{button("branches", "Branches", refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length)}{button("tags", "Tags", refs.tags.length)}{button("stashes", "Stashes", refs.stashes.length)}</nav>; }
+function SourceIcon({ source }: { readonly source: SourceIconKind }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "compare" ? "M5.5 3v9M3 9.5l2.5 2.5L8 9.5M12.5 15V6M10 8.5L12.5 6L15 8.5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function RepositoryDiscovery({ query, onQuery, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onEnter }: { readonly query: string; readonly onQuery: (query: string) => void; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onEnter: () => void }) {
   return <div className="repository-discovery">
     <input type="text" className="repository-filter-input" placeholder="Find repositories…" aria-label="Find repositories" value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => {
@@ -461,37 +454,6 @@ function RepositoryDiscovery({ query, onQuery, totalCount, matchedCount, scanDep
     <span className="repository-scan-count">{query ? `${matchedCount} of ${totalCount}` : `${totalCount} found${truncated ? " · limit reached" : ""}`}</span>
   </div>;
 }
-function RepoList({ repos, selectedRel, onRepository, scanDepth, onScanDepth, truncated }: { readonly repos: readonly RepoCandidate[]; readonly selectedRel: string; readonly onRepository: (repo: RepoCandidate) => void; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean }) {
-  const [query, setQuery] = useState("");
-  // 루트 저장소는 컨텍스트 복귀 affordance이므로 트리 밖 THIS THEATER 그룹에 고정한다.
-  // (repos.ts 주석의 의도 — nested 저장소로 진입해도 루트로 되돌아오는 진입점이 필요.)
-  const rootRepos = repos.filter((repo) => repo.kind === "root").sort((a, b) => a.name.localeCompare(b.name));
-  const nestedRepos = repos.filter((repo) => repo.kind === "nested");
-  const nestedTree = buildRepoTree(nestedRepos);
-  const matchRepository = (repo: RepoCandidate) => {
-    const nameMatch = fuzzyMatch(query, repo.name);
-    const match = nameMatch ?? fuzzyMatch(query, repo.relPath);
-    return match === null ? null : { repo, nameMatch: nameMatch ?? undefined };
-  };
-  const rootMatches = query ? rootRepos.map(matchRepository).filter((match) => match !== null) : [];
-  const nestedMatches = query ? nestedRepos.map(matchRepository).filter((match) => match !== null) : [];
-  const matchedCount = rootMatches.length + nestedMatches.length;
-  const groups: readonly { readonly key: string; readonly label: "THIS THEATER" | "NESTED"; readonly render: () => ReactNode }[] = query ? [
-    ...(rootMatches.length > 0 ? [{ key: "root", label: "THIS THEATER" as const, render: () => <>{rootMatches.map(({ repo, nameMatch }) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} nameMatch={nameMatch} />)}</> }] : []),
-    ...(nestedMatches.length > 0 ? [{ key: "nested", label: "NESTED" as const, render: () => <>{nestedMatches.map(({ repo, nameMatch }) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} nameMatch={nameMatch} />)}</> }] : []),
-  ] : [
-    ...(rootRepos.length > 0 ? [{ key: "root", label: "THIS THEATER" as const, render: () => <>{rootRepos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />)}</> }] : []),
-    ...(nestedRepos.length > 0 ? [{ key: "nested", label: "NESTED" as const, render: () => <RepoTreeChildren node={nestedTree} depth={0} selectedRel={selectedRel} onRepository={onRepository} /> }] : []),
-  ];
-  return <div className="repository-scan-pane">
-    <RepositoryDiscovery query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={matchedCount} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={truncated} onEnter={() => {
-      const firstMatch = rootMatches[0] ?? nestedMatches[0];
-      if (firstMatch) onRepository(firstMatch.repo);
-    }} />
-    <div className="repository-ref-list">{groups.map((group) => <div key={group.key} className="repository-ref-group"><b className="repository-ref-group-label">{group.label}</b>{group.render()}</div>)}{query && matchedCount === 0 ? <div className="repository-empty-row">No matching repositories</div> : null}</div>
-  </div>;
-}
-
 interface RepoTreeCommonProps {
   readonly selectedRel: string;
   readonly onRepository: (repo: RepoCandidate) => void;
@@ -534,16 +496,6 @@ function RepoLeafRow({ repo, depth, selectedRel, onRepository, nameMatch }: { re
     {repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}
   </button>;
 }
-function WorktreeList({ worktrees, onWorktree }: { readonly worktrees: readonly WorktreeCandidate[]; readonly onWorktree: (worktree: WorktreeCandidate) => void }) { return <div className="repository-ref-list">{worktrees.map((worktree) => <button type="button" key={worktree.relPath} title={worktree.relPath} className={`repository-ref-row${worktree.current ? " is-current" : ""}`} onClick={() => onWorktree(worktree)}><SourceIcon source="worktrees" /><span className="repository-ref-name">{worktree.name}</span>{worktree.current && <span className="repository-ref-mark">✓</span>}{worktree.branch && <span className="repository-ref-sub">{worktree.branch}</span>}</button>)}</div>; }
-function RefList({ source, refs, onRef }: { readonly source: Source; readonly refs: Refs; readonly onRef: (ref: string) => void }) {
-  if (source === "repositories" || source === "worktrees" || source === "changes" || source === "history" || source === "compare") return null;
-  return <div className="repository-ref-list">{buildRefListGroups(source, refs).map((group) => <div key={group.label ?? source} className="repository-ref-group">{group.label && <b className="repository-ref-group-label">{group.label}</b>}{group.rows.map((row) => {
-    return <button type="button" key={row.key} className={`repository-ref-row${row.current ? " is-current" : ""}`} disabled={row.ref === null} onClick={() => {
-      if (row.ref) onRef(row.ref);
-    }}><SourceIcon source={row.source} /><span className="repository-ref-name">{row.primary}</span>{row.current && <span className="repository-ref-mark">✓</span>}{row.sub && <span className="repository-ref-sub">{row.sub}</span>}</button>;
-  })}</div>)}</div>;
-}
-
 function RepositoryIcon() {
   return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="7" width="10" height="1.5" rx="0.5" fill="currentColor" /><rect x="2" y="10" width="8" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="13" width="12" height="1.5" rx="0.5" fill="currentColor" /></svg>;
 }

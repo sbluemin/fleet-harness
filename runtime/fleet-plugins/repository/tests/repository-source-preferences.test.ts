@@ -7,24 +7,9 @@ afterEach(() => {
 });
 
 describe("Repository source preference", () => {
-  it("reads a valid persisted source", () => {
-    vi.stubGlobal("localStorage", { getItem: () => "history" });
-    expect(readRepositorySource()).toBe("history");
-  });
-
-  it("keeps the repository context source", () => {
-    vi.stubGlobal("localStorage", { getItem: () => "repositories" });
-    expect(readRepositorySource()).toBe("repositories");
-  });
-
-  it("keeps the worktree context source", () => {
-    vi.stubGlobal("localStorage", { getItem: () => "worktrees" });
-    expect(readRepositorySource()).toBe("worktrees");
-  });
-
-  it("keeps the compare source", () => {
-    vi.stubGlobal("localStorage", { getItem: () => "compare" });
-    expect(readRepositorySource()).toBe("compare");
+  it.each(["history", "changes", "compare"])("reads a valid persisted center view", (value) => {
+    vi.stubGlobal("localStorage", { getItem: () => value });
+    expect(readRepositorySource()).toBe(value);
   });
 
   it("reads a valid persisted scan depth", () => {
@@ -37,8 +22,9 @@ describe("Repository source preference", () => {
     expect(readScanDepth()).toBe(3);
   });
 
-  it.each(["diff", "unknown", "", null])( "falls back to Changes for an invalid persisted source", (value) => {
+  // 구 소스 페이지 값(repositories/branches 등)은 워크스페이스 중앙 뷰가 아니므로 History로 착지한다.
+  it.each(["repositories", "worktrees", "branches", "tags", "stashes", "diff", "unknown", "", null])("lands legacy or invalid persisted sources on History", (value) => {
     vi.stubGlobal("localStorage", { getItem: () => value });
-    expect(readRepositorySource()).toBe("changes");
+    expect(readRepositorySource()).toBe("history");
   });
 });

@@ -75,14 +75,11 @@ describe("Repository design grammar", () => {
     expect(selectedCommit).toContain("var(--ink-fog) 12%");
     expect(selectedCommit).not.toContain("var(--brass) 14%");
 
-    const activeNav = blockOf('.repository-source-nav button[aria-current="page"]');
-    expect(activeNav).toContain("var(--text-primary)");
-    expect(activeNav).toContain("var(--ink-fog) 10%");
-    // 활성 마크는 칩 라운드에 말리는 inset shadow가 아니라 identity 스파인과 같은 직선 사각 띠여야 한다.
-    expect(activeNav).not.toContain("inset 2px 0 0 var(--brass)");
-    const activeNavMark = blockOf('.repository-source-nav button[aria-current="page"]::before');
-    expect(activeNavMark).toContain("width: 2px");
-    expect(activeNavMark).toContain("var(--brass)");
+    // 워크스페이스 트리의 활성(중앙 뷰) 행 — brass 스파인 + 옅은 wash + 1차 텍스트.
+    const activeTreeRow = blockOf(".repository-ws-tree-row.is-active");
+    expect(activeTreeRow).toContain("var(--text-primary)");
+    expect(activeTreeRow).toContain("var(--brass) 7%");
+    expect(activeTreeRow).toContain("inset 2px 0 0 var(--brass)");
 
     expect(blockOf(".history-badge--tag")).not.toContain("var(--brass)");
     expect(blockOf(".history-badge--head")).toContain("var(--brass)");
@@ -94,7 +91,7 @@ describe("Repository design grammar", () => {
     for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-compare-controls", ".repository-line-file-label", ".repository-discovery"]) {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 55%");
     }
-    for (const selector of [".repository-identity", ".repository-source-nav"]) {
+    for (const selector of [".repository-identity", ".repository-ws-tree"]) {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 72%");
     }
     expect(css).not.toContain(".repository-scan-foot");
