@@ -1035,6 +1035,296 @@
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
 .repository-unified [hidden] { display: none !important; }
 
+/* Expanded Repository workspace: the rail-owned panel widens without changing compact presentation. */
+.repository-identity .repository-ws-toggle {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  padding: 5px;
+  place-items: center;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-base) var(--ease-spring), background var(--duration-base) var(--ease-spring), border-color var(--duration-base) var(--ease-spring);
+}
+
+.repository-identity .repository-ws-toggle:hover {
+  border-color: var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  color: var(--text-primary);
+}
+
+.repository-unified.is-workspace .repository-ws-toggle {
+  color: var(--brass);
+}
+
+.repository-ws-layout {
+  display: grid;
+  grid-template-columns: 222px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.repository-ws-tree {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--surface-band) 72%, transparent);
+}
+
+.repository-ws-tree .repository-discovery {
+  gap: 5px;
+  padding: 6px;
+}
+
+.repository-ws-tree .repository-discovery .repository-filter-input {
+  min-width: 52px;
+}
+
+.repository-ws-tree .repository-scan-count {
+  display: none;
+}
+
+.repository-ws-tree-scroll {
+  min-height: 0;
+  padding: 4px 0 10px;
+  overflow-y: auto;
+}
+
+.repository-ws-section {
+  margin-top: 7px;
+}
+
+.repository-ws-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+}
+
+.repository-ws-section-head i {
+  margin-left: auto;
+  color: var(--ink-fog);
+  font-style: normal;
+  letter-spacing: 0;
+}
+
+.repository-ws-tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 10px 4px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition: color var(--duration-base) var(--ease-spring), background var(--duration-base) var(--ease-spring);
+}
+
+.repository-ws-tree-row:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  color: var(--text-primary);
+}
+
+.repository-ws-tree-row.is-active {
+  background: color-mix(in oklch, var(--brass) 7%, transparent);
+  color: var(--text-primary);
+  box-shadow: inset 2px 0 0 var(--brass);
+}
+
+.repository-ws-tree-row.is-current {
+  color: var(--text-primary);
+}
+
+.repository-ws-tree-row:disabled {
+  cursor: default;
+  color: var(--text-tertiary);
+}
+
+.repository-ws-tree-row > svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  opacity: .85;
+}
+
+.repository-ws-tree-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-ws-tree-row > i {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-ws-tree-row.is-current > i {
+  color: var(--brass);
+}
+
+.repository-ws-ref-group {
+  display: grid;
+}
+
+.repository-ws-ref-subhead {
+  padding: 4px 10px 2px 20px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: .12em;
+}
+
+.repository-ws-tree-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 18px;
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.repository-ws-tree-error button {
+  margin-left: auto;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.repository-ws-tree .repository-ref-row,
+.repository-ws-tree .repository-folder-row {
+  min-height: 26px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.repository-ws-history {
+  min-width: 0;
+  min-height: 0;
+}
+
+.repository-ws-history > .history-list-pane,
+.repository-ws-main {
+  grid-row: 1;
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.repository-ws-main {
+  overflow: hidden;
+}
+
+.repository-ws-main > .repository-root,
+.repository-ws-main > .repository-compare {
+  height: 100%;
+}
+
+.repository-ws-history > .history-detail-pane {
+  grid-row: 3;
+  background: var(--surface-glass);
+}
+
+.repository-ws-history > .history-divider {
+  grid-row: 2;
+}
+
+.repository-ws-inspector {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.repository-ws-dock {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.repository-ws-dock > .history-commit-files {
+  border-right: 1px solid var(--surface-rim);
+}
+
+.repository-ws-dock-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.repository-ws-dock-meta {
+  position: relative;
+  max-height: 104px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.repository-ws-dock-meta .history-inspector-head {
+  max-height: 104px;
+  padding: 9px 42px 8px 12px;
+  border-bottom: 0;
+}
+
+.repository-ws-dock-meta .history-inspector-message {
+  display: none;
+}
+
+.repository-ws-dock-meta .history-author {
+  margin-top: 5px;
+}
+
+.repository-ws-dock-meta .history-avatar {
+  display: none;
+}
+
+.repository-ws-dock-meta .history-inspector-ids,
+.repository-ws-dock-meta .history-ref-chips {
+  margin-top: 5px;
+}
+
+.repository-ws-dock-close {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repository-identity .repository-ws-toggle,
+  .repository-ws-tree-row {
+    transition-duration: .01ms;
+  }
+}
+
 /* ── Compare 뷰 ── */
 .repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .repository-compare-controls { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
