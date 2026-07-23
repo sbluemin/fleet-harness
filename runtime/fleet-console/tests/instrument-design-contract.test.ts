@@ -403,8 +403,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-theater-add-btn {");
     expect(layout).toContain(".command-band-formation-group {");
     expect(layout).toContain("left: calc(var(--command-band-left-width, 280px) + var(--space-2));");
-    expect(layout).toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
-    expect(layout).toContain("border-left: 1px solid var(--surface-rim);");
+    expect(layout).not.toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
     expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
     expect(layout).toContain("width: var(--command-band-left-width, 280px);");

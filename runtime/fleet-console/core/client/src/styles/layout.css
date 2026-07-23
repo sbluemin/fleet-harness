@@ -278,17 +278,11 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   display: flex;
   flex: none;
   align-items: center;
-  border-radius: var(--radius-md);
-  overflow: hidden;
 }
 
 .command-band-formation-group .command-band-formation-seg {
   /* 링 hover가 사각으로 깨지지 않도록 이웃 컨트롤과 동일한 6px 라운드 유지. */
   border-radius: 6px;
-}
-
-.command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {
-  border-left: 1px solid var(--surface-rim);
 }
 
 .command-band-formation-divider {
