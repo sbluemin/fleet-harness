@@ -374,7 +374,8 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("onClick={toggleOperationSearch}");
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
-    expect(commandBand).toContain('{operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">');
+    expect(commandBand).toContain(`      </div>
+      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">`);
     expect(commandBand).toContain('aria-label="Reset canvas view"');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
@@ -401,11 +402,12 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-formation-group {");
     expect(components).not.toContain(".side-bar-theater-add-btn {");
     expect(layout).toContain(".command-band-formation-group {");
+    expect(layout).toContain("left: calc(var(--command-band-left-width, 280px) + var(--space-2));");
     expect(layout).toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
     expect(layout).toContain("border-left: 1px solid var(--surface-rim);");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
     expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
-    expect(layout).toContain("min-width: var(--command-band-left-width, 280px);");
+    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
     expect(commandBandCenterBlock).toContain("justify-content: center;");

@@ -2481,9 +2481,6 @@
   display: flex;
   flex: none;
   height: 24px;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
 }
 
 .side-bar-theater-row-btn {
@@ -2509,7 +2506,6 @@
 
 .side-bar-theater-split-caret {
   width: 16px;
-  border-left: 1px solid var(--hairline);
 }
 
 .side-bar-theater-row-btn svg {
