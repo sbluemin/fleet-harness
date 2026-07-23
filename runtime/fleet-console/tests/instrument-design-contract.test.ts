@@ -313,6 +313,34 @@ describe("Instrument core design contract", () => {
     expect(store).toContain("setMaximizedOperationId");
   });
 
+  it("pins the non-durable STATUS regroup signal and identity channel grammar", () => {
+    const operations = source("pages/operations.tsx");
+    const sidebar = source("sidebar/operations-side-bar.tsx");
+    const sideBarStore = source("sidebar/operations-side-bar-store.ts");
+    const chip = source("sidebar/operations-side-bar-chip.tsx");
+    const components = source("styles/components.css");
+
+    expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
+    expect(operations).toContain("toggleSideBarStatusAxis();");
+    expect(sidebar).toContain('title="Sort by status (Alt+S)"');
+    expect(sidebar).toContain("groupOperationsByStatus(allEntries)");
+    expect(sidebar).toContain("if (statusAxis) return;");
+    expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
+    expect(sideBarStore).toContain("let statusAxis = false;");
+    expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
+    expect(sideBarStore).not.toContain("fleet-console.operations.status");
+
+    // Doctrine: status-section border/dot/count are signal-owned, while the chip group mark
+    // consumes only resolveAccentColor identity values and never repaints the status beacon.
+    expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
+    expect(components).toContain("--status-color: var(--positive);");
+    expect(components).toContain("--status-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
+    expect(components).toContain("border-left: 3px solid var(--status-color);");
+    expect(components).toContain("background: var(--group-mark);");
+    expect(components).toContain(".side-bar-status-axis-live-tick,");
+    expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
+  });
+
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
     const rightRail = source("rail/right-rail.tsx");

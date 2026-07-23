@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
-import { groupOperations, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
+import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
@@ -20,12 +21,13 @@ function makeNode(id: string, groupId?: string | null): OperationNode {
   };
 }
 
-function makeEntry(id: string, groupId?: string | null): SideBarEntry {
+function makeEntry(id: string, groupId?: string | null, status?: OperationActivity): SideBarEntry {
   return {
     operation: makeNode(id, groupId),
     active: false,
     minimized: false,
     notificationCount: 0,
+    status,
     icon: null,
   };
 }
@@ -285,6 +287,45 @@ describe("groupOperations", () => {
     const sections = groupOperations(entries, groups, []);
     expect(sections[sections.length - 1]?.groupId).toBeNull();
     expect(sections[sections.length - 1]?.entries).toHaveLength(0);
+  });
+});
+
+describe("groupOperationsByStatus", () => {
+  it("renders only non-empty sections in the literal status order and treats a missing key as idle", () => {
+    const entries = [
+      makeEntry("idle-missing"),
+      makeEntry("dormant", null, "dormant"),
+      makeEntry("awaiting", null, "awaiting"),
+      makeEntry("running", null, "running"),
+      makeEntry("idle-explicit", null, "idle"),
+    ];
+
+    const sections = groupOperationsByStatus(entries);
+
+    expect(sections.map((section) => [section.status, section.label])).toEqual([
+      ["awaiting", "AWAITING INPUT"],
+      ["running", "RUNNING"],
+      ["idle", "IDLE"],
+      ["dormant", "DORMANT"],
+    ]);
+    expect(sections[2]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
+  });
+
+  it("preserves the incoming sortOperationsByOrder sequence inside each status section", () => {
+    const sections = groupOperationsByStatus([
+      makeEntry("running-second", null, "running"),
+      makeEntry("awaiting", null, "awaiting"),
+      makeEntry("running-first", null, "running"),
+    ]);
+
+    expect(sections.find((section) => section.status === "running")?.entries.map((entry) => entry.operation.id))
+      .toEqual(["running-second", "running-first"]);
+  });
+
+  it("detects the GROUP-axis live tick only for an explicit awaiting status", () => {
+    const operations = [makeNode("a"), makeNode("b")];
+    expect(hasAwaitingOperation(operations, { a: "running", b: "awaiting" })).toBe(true);
+    expect(hasAwaitingOperation(operations, { a: "running" })).toBe(false);
   });
 });
 

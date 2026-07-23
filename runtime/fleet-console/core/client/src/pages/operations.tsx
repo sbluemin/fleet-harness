@@ -13,9 +13,10 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
+import { getSideBarStatusAxis, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder, statusCycleOperationIds } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -56,7 +57,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   }, [state.activeTheaterId]);
 
-  // Alt+←/→는 SideBar 가시 순서로 포커스를 순환하고, Alt+F는 같은 capture/editable 가드 정책을 공유한다.
+  // Alt+←/→는 SideBar 가시 순서로 포커스를 순환하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 공유한다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!shouldHandleOperationsKeyboardShortcut()) return;
@@ -64,6 +65,12 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
       // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
+      if (event.code === "KeyS" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleSideBarStatusAxis();
+        return;
+      }
       if (event.code === "KeyF" && !event.shiftKey) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -74,13 +81,17 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
       const snapshot = stateRef.current;
       const canvas = getCanvasSnapshot();
-      const order = focusCycleOperationIds(
-        snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId),
-        snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
-        canvas.operationOrder,
-        canvas.collapsedGroups,
-        canvas.minimized,
-      );
+      const theaterOperations = snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId);
+      // STATUS 축에서는 사이드바 가시 순서가 상태 섹션 순서이므로 순환도 같은 순서를 따른다.
+      const order = getSideBarStatusAxis()
+        ? statusCycleOperationIds(theaterOperations, canvas.operationOrder, snapshot.operationStatus, canvas.minimized)
+        : focusCycleOperationIds(
+            theaterOperations,
+            snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
+            canvas.operationOrder,
+            canvas.collapsedGroups,
+            canvas.minimized,
+          );
       event.preventDefault();
       event.stopImmediatePropagation();
       if (order.length === 0) return;

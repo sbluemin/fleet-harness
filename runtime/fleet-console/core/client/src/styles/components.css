@@ -2402,38 +2402,98 @@
 }
 
 .side-bar-theater-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.side-bar-theater-count {
+.side-bar-theater-chevron {
   flex: none;
-  margin-left: auto;
+  width: 12px;
+  height: 12px;
   color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
+  transition: transform 0.15s ease;
+}
+
+.side-bar-theater-chevron.is-collapsed {
+  transform: rotate(-90deg);
 }
 
 .side-bar-theater-row-controls {
   display: flex;
   align-items: center;
   flex: none;
-  gap: 1px;
+  gap: var(--space-1);
   margin-left: 2px;
+}
+
+.side-bar-status-axis-toggle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+}
+
+.side-bar-status-axis-toggle svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.side-bar-status-axis-toggle:hover {
+  border-color: var(--hairline-strong);
+  color: var(--ink-pearl);
+}
+
+.side-bar-status-axis-toggle[aria-pressed="true"] {
+  border-color: var(--hairline-strong);
+  background: var(--ink-veil);
+  color: var(--brass);
+}
+
+.side-bar-status-axis-toggle:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 1px;
+}
+
+.side-bar-status-axis-live-tick {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--aurora);
+  animation: aurora-pulse 1.8s infinite;
+}
+
+.side-bar-theater-split-control {
+  display: flex;
+  flex: none;
+  height: 24px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
 }
 
 .side-bar-theater-row-btn {
   display: grid;
   place-items: center;
   flex: none;
-  width: 20px;
-  height: 20px;
+  height: 22px;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--ink-fog);
   cursor: pointer;
@@ -2443,6 +2503,15 @@
     color var(--duration-fast) var(--ease-spring);
 }
 
+.side-bar-theater-split-plus {
+  width: 24px;
+}
+
+.side-bar-theater-split-caret {
+  width: 16px;
+  border-left: 1px solid var(--hairline);
+}
+
 .side-bar-theater-row-btn svg {
   width: 13px;
   height: 13px;
@@ -2450,10 +2519,13 @@
 
 .side-bar-theater-row-btn:hover,
 .side-bar-theater-row-btn:focus-visible {
-  background: color-mix(in oklch, var(--ink-pearl) 9%, transparent);
-  border-color: color-mix(in oklch, var(--ink-fog) 24%, transparent);
+  background: var(--ink-veil);
   color: var(--ink-pearl);
-  outline: none;
+}
+
+.side-bar-theater-row-btn:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: -2px;
 }
 
 .side-bar-theater-groups {
@@ -2647,6 +2719,26 @@
   background: var(--ink-fog);
 }
 
+/* STATUS 축의 그룹 mark는 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
+   기존 operation spine과 독립된 7px mark로만 표시하고 status beacon 신호면을 덮지 않는다. */
+.side-bar-chip-group-mark {
+  display: block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--group-mark);
+}
+
+.side-bar-chip--status-landed {
+  animation: side-bar-status-land 0.5s ease-out;
+}
+
+@keyframes side-bar-status-land {
+  from { background: var(--aurora-glow); }
+  to { background: transparent; }
+}
+
 .side-bar-chip-status.is-live {
   background: var(--aurora);
   box-shadow: 0 0 7px var(--aurora-glow);
@@ -2770,10 +2862,77 @@
   .side-bar-chip-status.is-live {
     animation: none;
   }
+
+  .side-bar-chip--status-landed {
+    animation: none;
+  }
 }
 
 
 /* ── Group Section Layout ──────────────────────────────────────────────────────── */
+
+/* STATUS 축의 3px border는 identity가 아니라 OperationActivity 신호 채널이다.
+   idle/dormant는 tenant beacon의 현행 토큰을 그대로 공유한다. */
+.side-bar-status-section {
+  --status-color: transparent;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--space-1);
+  margin-bottom: 6px;
+  border-left: 3px solid var(--status-color);
+}
+
+.side-bar-status-section--awaiting {
+  --status-color: var(--aurora);
+}
+
+.side-bar-status-section--running {
+  --status-color: var(--warn);
+}
+
+.side-bar-status-section--idle {
+  --status-color: var(--positive);
+}
+
+.side-bar-status-section--dormant {
+  --status-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+}
+
+.side-bar-status-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  background: color-mix(in oklch, var(--status-color) 8%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.side-bar-status-header__dot {
+  display: block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--status-color);
+}
+
+.side-bar-status-header--awaiting .side-bar-status-header__dot {
+  animation: aurora-pulse 1.8s infinite;
+}
+
+.side-bar-status-header__count {
+  flex: none;
+  min-width: 14px;
+  margin-left: auto;
+  color: color-mix(in oklch, var(--status-color) 65%, var(--ink-pearl));
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 
 .side-bar-ungrouped-section {
   list-style: none;
@@ -2907,6 +3066,15 @@
   .side-bar-group-header,
   .side-bar-theater-header {
     transition: none;
+  }
+
+  .side-bar-theater-chevron {
+    transition: none;
+  }
+
+  .side-bar-status-axis-live-tick,
+  .side-bar-status-header--awaiting .side-bar-status-header__dot {
+    animation: none;
   }
 
   .side-bar-group-header--dragging,
