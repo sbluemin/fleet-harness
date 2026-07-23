@@ -5,6 +5,53 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-07-23
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] Remove Chronicle from the built-in roster and report seven default Carriers.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add a theater-row status-axis toggle (Alt+S) that regroups the sidebar into AWAITING INPUT / RUNNING / IDLE / DORMANT sections while keeping group identity via the operation spine and a group mark dot; the mode is session-only and always reopens on the group axis.
+- [fleet-console] The console Language setting (Settings > General) now also drives Session Analyst, delivering the resolved locale to plugins through the operation render context.
+
+#### Changed
+- [fleet-console] Replace the sidebar Add Theater chrome row with a quiet New Theater ghost row at the end of the Theater list, matching Theater row grammar with a dashed anchor that wakes in brass on hover and focus.
+- [fleet-console] Move the Reset view and Formation layout toggles from the sidebar to a command band cluster docked just right of the sidebar edge, so they stay reachable while Formation view is active and no longer appear on utility routes such as Settings.
+- [fleet-console] Replace the theater-row operation count with the status toggle, absorb the collapse chevron into the row click gesture, and merge the actions and new-operation buttons into a single split control.
+
+#### Fixed
+- [fleet-console] Stop the right rail from replaying its open/close spring when the "Float over Map" behavior is toggled; the panel now stays frozen and only the Map reflows, in both directions.
+- [fleet-console] Render the sidebar Operation status dot in green for idle panels, matching the panel header beacon.
+- [fleet-console] Prevent Plan files from remaining stuck on Loading during live list refreshes.
+
+#### Removed
+- [fleet-console] Remove Chronicle identity styling and use a neutral brass fallback for removed or unknown Carrier identities.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Rebuild the Repository rail panel around a Full Workspace layout as its default presentation: a persistent, resizable source tree (repository discovery, worktrees, branches, tags, stashes) sits beside an always-visible commit graph with ref badges leading each subject, commit details dock below with file list and diff, and columns yield progressively (time, then sha, then badges) as the panel or tree is resized.
+- [fleet-console] Session Analyst now follows the console Language setting: panel copy and analysis answers render in English or Korean, with "auto" resolving from the browser language.
+- [fleet-console] Session Analyst CLI/Model/Effort selections now persist across reloads and restarts; Reset restores the saved default instead of the catalog guess, and the selectors stay locked while a reset is in flight.
+
+#### Fixed
+- [fleet-console] Keep Session Analyst responsive across multiple Operations by sharing one browser event stream.
+
+#### Removed
+- [fleet-console] Align Terminal Carrier settings and status surfaces with the seven-Carrier roster.
+
+### fleet-core
+
+#### Added
+- [fleet-analyst] Analyst sessions accept a response-language option and append a Korean response-language directive to the system prompt when Korean is selected.
+
+#### Breaking Changes
+- [fleet-admiral] [fleet-carriers] [fleet-wiki] Remove the Chronicle persona and its public defaults from the built-in Carrier catalog; documentation synthesis and Fleet Wiki mutation are now host-owned.
+
 ## [1.32.0] - 2026-07-22
 
 ### fleet-console

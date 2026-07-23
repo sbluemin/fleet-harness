@@ -5,6 +5,53 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-07-23
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] 기본 로스터에서 Chronicle을 제거하고 기본 Carrier 수를 7개로 표시합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Theater 행에 상태축 전환 토글(Alt+S)을 추가해 사이드바를 AWAITING INPUT / RUNNING / IDLE / DORMANT 섹션으로 재편성하고, Operation spine과 그룹 mark 도트로 그룹 정체성을 유지합니다. 이 모드는 세션 한정이며 다시 열면 항상 그룹 축으로 시작합니다.
+- [fleet-console] 콘솔 Language 설정(Settings → General)이 이제 Session Analyst에도 적용되며, 해석된 로케일이 operation render context를 통해 플러그인에 전달됩니다.
+
+#### Changed
+- [fleet-console] 사이드바 상단 Add Theater 크롬 행을 제거하고, Theater 목록 말미에 hover/focus 시 brass로 각성하는 dashed 앵커의 New Theater ghost 행을 Theater 행 문법 그대로 추가합니다.
+- [fleet-console] Reset view와 Formation 레이아웃 토글을 사이드바에서 사이드바 경계 바로 우측의 command band 클러스터로 이전하여 Formation view 활성 중에도 항상 접근 가능하고 Settings 같은 utility route에는 노출되지 않습니다.
+- [fleet-console] Theater 행의 Operation 갯수 표시를 상태 토글로 대체하고, 접기 chevron을 행 클릭 제스처로 흡수했으며, 액션과 새 Operation 버튼을 하나의 split 컨트롤로 병합했습니다.
+
+#### Fixed
+- [fleet-console] "Float over Map" 동작 전환 시 우측 레일이 오픈/클로즈 스프링을 재생하던 문제를 수정하여, 이제 양방향 모두 패널이 그대로 유지되고 Map만 리플로됩니다.
+- [fleet-console] 완료(idle)된 패널의 사이드바 상태 dot을 패널 헤더 beacon과 동일한 초록색으로 표시합니다.
+- [fleet-console] 실시간 목록 갱신 중 Plan 파일이 Loading 상태에 멈추는 문제를 수정합니다.
+
+#### Removed
+- [fleet-console] Chronicle 식별 스타일을 제거하고 삭제되었거나 알 수 없는 Carrier 식별자에는 중립적인 황동색 대체 스타일을 적용합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Repository 레일 패널을 Full Workspace 레이아웃 기본형으로 재구성합니다. 상시 표시되는 리사이즈 가능한 소스 트리(저장소 검색, 워크트리, 브랜치, 태그, 스태시) 옆에 커밋 그래프가 상주하고, refs 뱃지가 제목 앞에 표시되며, 커밋 상세는 파일 목록과 diff와 함께 하단에 도킹되고, 패널이나 트리 리사이즈에 따라 시간 → sha → 뱃지 순으로 열이 점진적으로 양보합니다.
+- [fleet-console] Session Analyst가 콘솔 Language 설정을 따라 패널 문구와 분석 답변을 영어/한국어로 제공하며, "auto"는 브라우저 언어로 해석됩니다.
+- [fleet-console] Session Analyst의 CLI/Model/Effort 선택이 리로드와 재시작 후에도 유지되며, Reset은 catalog 추정값 대신 저장된 기본값을 복원하고 초기화 중에는 셀렉터가 잠깁니다.
+
+#### Fixed
+- [fleet-console] 하나의 브라우저 이벤트 스트림을 공유해 여러 Operation에서 Session Analyst가 계속 응답하도록 합니다.
+
+#### Removed
+- [fleet-console] Terminal Carrier 설정과 상태 화면을 7개 Carrier 로스터에 맞춥니다.
+
+### fleet-core
+
+#### Added
+- [fleet-analyst] Analyst 세션이 응답 언어 옵션을 받아들이고, 한국어 선택 시 시스템 프롬프트에 한국어 응답 지시문을 추가합니다.
+
+#### Breaking Changes
+- [fleet-admiral] [fleet-carriers] [fleet-wiki] 기본 Carrier 카탈로그에서 Chronicle 페르소나와 공개 기본값을 제거하며, 문서 종합과 Fleet Wiki 변경은 이제 호스트가 직접 담당합니다.
+
 ## [1.32.0] - 2026-07-22
 
 ### fleet-console
