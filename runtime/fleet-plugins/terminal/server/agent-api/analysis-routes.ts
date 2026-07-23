@@ -50,6 +50,7 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
     }
     const path = pathname.slice(`${ctx.basePath}/analysis`.length) || "/";
     if (path === "/catalog") return handleCatalog(ctx, req, res, catalog);
+    if (path === "/stream") return handleGlobalStream(ctx, req, res, registry);
     const artifactMatch = path.match(/^\/artifacts\/([^/]+)$/);
     if (artifactMatch) return handleArtifact(ctx, req, res, decodeURIComponent(artifactMatch[1] ?? ""), registry);
     const clearArtifactsMatch = path.match(/^\/([^/]+)\/artifacts$/);
@@ -395,6 +396,29 @@ async function handleMessage(ctx: FleetPluginServerContext, req: http.IncomingMe
   if (result === "not_found") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was not found.");
   else if (result === "busy") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionBusy, "Analysis session is busy.");
   else ctx.host.http.writeJson(res, 200, { accepted: true });
+  return true;
+}
+
+function handleGlobalStream(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, registry: AnalysisRegistry): boolean {
+  if (req.method !== "GET") return methodNotAllowed(ctx, res);
+  let closed = false;
+  const write = (data: string) => { if (!closed && !res.writableEnded && !res.destroyed) res.write(data); };
+  const writeRoster = (operationIds: readonly string[]) => {
+    write(`data: ${JSON.stringify({ type: "connected", operationIds: [...operationIds] })}\n\n`);
+  };
+  res.writeHead(200, securityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" }));
+  writeRoster(registry.activeOperationIds());
+  const unsubscribeEvents = registry.subscribeAll((operationId, event) => {
+    write(`data: ${JSON.stringify({ type: "event", operationId, event })}\n\n`);
+  });
+  const unsubscribeRoster = registry.subscribeRoster((operationIds) => writeRoster(operationIds));
+  const keepalive = setInterval(() => write(": keepalive\n\n"), 30_000);
+  req.on("close", () => {
+    closed = true;
+    clearInterval(keepalive);
+    unsubscribeEvents();
+    unsubscribeRoster();
+  });
   return true;
 }
 
