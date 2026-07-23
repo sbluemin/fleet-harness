@@ -8,7 +8,6 @@ import {
   injectAgentCliProfile,
   type CodexPluginRegistrationCommand,
 } from "@dotobokuri/fleet-admiral";
-import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 import {
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
@@ -48,7 +47,7 @@ const EXPECTED_HOST_PLAN_TOOL_IDS = [
   "plan_verify",
 ] as const;
 // Fleet Wiki mutation·stage·lint·schema 도구는 전부 host-only —
-// 어떤 캐리어(chronicle 포함)에도 executor로 노출되지 않는다.
+// 어떤 캐리어에도 executor로 노출되지 않는다.
 const HOST_ONLY_WIKI_TOOL_IDS = [
   "wiki_drydock",
   "wiki_ingest",
@@ -124,37 +123,31 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
     const executorPort = executorPortRuntime;
     expect(executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().map((entry) => entry.name)).toEqual(["fleet"]);
-    expect(executorPort.getExecutorMcpTools("unknown", "chronicle")).toEqual([]);
+    expect(executorPort.getExecutorMcpTools("unknown", "nimitz")).toEqual([]);
 
-    const chronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "chronicle").map((tool) => tool.id));
-    const nonChronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
+    const ordinaryCarrierTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
     const kirovTools = new Set(executorPort.getExecutorMcpTools("fleet", "kirov").map((tool) => tool.id));
     const ohioTools = new Set(executorPort.getExecutorMcpTools("fleet", "ohio").map((tool) => tool.id));
 
-    // host-only Wiki 도구는 chronicle을 포함해 어떤 캐리어에도 노출되지 않는다.
+    // host-only Wiki 도구는 어떤 캐리어에도 노출되지 않는다.
     for (const toolId of HOST_ONLY_WIKI_TOOL_IDS) {
-      expect(chronicleTools.has(toolId)).toBe(false);
-      expect(nonChronicleTools.has(toolId)).toBe(false);
+      expect(ordinaryCarrierTools.has(toolId)).toBe(false);
     }
-    // 읽기 전용 4종은 chronicle과 다른 캐리어 모두에 글로벌 노출된다.
+    // 읽기 전용 4종은 모든 캐리어에 글로벌 노출된다.
     for (const toolId of GLOBAL_READONLY_WIKI_TOOL_IDS) {
-      expect(chronicleTools.has(toolId)).toBe(true);
-      expect(nonChronicleTools.has(toolId)).toBe(true);
+      expect(ordinaryCarrierTools.has(toolId)).toBe(true);
     }
-    expect(chronicleTools.has("wiki_patch_queue")).toBe(false);
-    expect(chronicleTools.has("wiki_schema_create")).toBe(false);
-    expect(nonChronicleTools.has("wiki_patch_queue")).toBe(false);
-    expect(nonChronicleTools.has("wiki_schema_create")).toBe(false);
+    expect(ordinaryCarrierTools.has("wiki_patch_queue")).toBe(false);
+    expect(ordinaryCarrierTools.has("wiki_schema_create")).toBe(false);
     // 모든 Wiki 도구는 호스트(agent tool)로는 여전히 노출된다.
     expect(fleetToolNames.has("wiki_schema_create")).toBe(true);
     expect(fleetToolNames.has("wiki_patch_queue")).toBe(true);
 
-    expect(nonChronicleTools.has("carrier_jobs")).toBe(true);
-    expect(nonChronicleTools.has("plan_read")).toBe(true);
-    expect(nonChronicleTools.has("plan_write")).toBe(false);
-    expect(nonChronicleTools.has("plan_mark_tasks")).toBe(false);
-    expect(nonChronicleTools.has("plan_verify")).toBe(false);
-    expect(chronicleTools.has("plan_read")).toBe(true);
+    expect(ordinaryCarrierTools.has("carrier_jobs")).toBe(true);
+    expect(ordinaryCarrierTools.has("plan_read")).toBe(true);
+    expect(ordinaryCarrierTools.has("plan_write")).toBe(false);
+    expect(ordinaryCarrierTools.has("plan_mark_tasks")).toBe(false);
+    expect(ordinaryCarrierTools.has("plan_verify")).toBe(false);
     expect(kirovTools.has("plan_read")).toBe(true);
     expect(kirovTools.has("plan_write")).toBe(true);
     expect(kirovTools.has("plan_mark_tasks")).toBe(false);
@@ -164,8 +157,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(ohioTools.has("plan_write")).toBe(false);
     expect(ohioTools.has("plan_verify")).toBe(false);
 
-    // 8개 Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
-    const ALL_CARRIER_IDS = ["chronicle", "nimitz", "genesis", "sentinel", "kirov", "ohio", "vanguard", "tempest"];
+    // 7개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
+    const ALL_CARRIER_IDS = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest"];
     const DENIED_HOST_ONLY_WIKI_TOOL_IDS = [...HOST_ONLY_WIKI_TOOL_IDS, "wiki_patch_queue", "wiki_schema_create"];
     for (const carrierId of ALL_CARRIER_IDS) {
       const tools = new Set(executorPort.getExecutorMcpTools("fleet", carrierId).map((tool) => tool.id));

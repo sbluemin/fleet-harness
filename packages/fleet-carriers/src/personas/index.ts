@@ -1,8 +1,4 @@
 export {
-  CARRIER_METADATA as CHRONICLE_METADATA,
-  CHRONICLE_DEFAULTS,
-} from "./chronicle.js";
-export {
   CARRIER_METADATA as GENESIS_METADATA,
   GENESIS_DEFAULTS,
 } from "./genesis.js";

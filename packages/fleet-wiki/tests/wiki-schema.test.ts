@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readFile, rm, stat, symlink, unlink, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -21,6 +21,8 @@ import {
 } from "../src/schema.js";
 import { pathExists } from "../src/store.js";
 
+const PRE_EXISTING_DOCTRINE = "# Pre-existing workspace doctrine\n\nunchanged bytes\n";
+
 const cleanupPaths: string[] = [];
 
 afterEach(async () => {
@@ -40,7 +42,7 @@ describe("workspace schema", () => {
     expect(await pathExists(path.join(paths.schemaDir, `${WORKSPACE_TEMPLATE_PREFIX}prd${WORKSPACE_TEMPLATE_SUFFIX}`))).toBe(true);
   });
 
-  it("creates the workspace doctrine AGENTS.md seed byte-for-byte", async () => {
+  it("creates the workspace doctrine AGENTS.md seed byte-for-byte when missing", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
 
@@ -48,6 +50,69 @@ describe("workspace schema", () => {
     const doctrine = await readFile(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME), "utf8");
 
     expect(doctrine).toBe(DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS);
+    expect(doctrine).not.toContain("Chronicle");
+  });
+
+  it("preserves arbitrary existing doctrine byte-for-byte across repeated calls", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const doctrinePath = path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME);
+
+    await mkdir(paths.root, { recursive: true });
+    await writeFile(doctrinePath, PRE_EXISTING_DOCTRINE, "utf8");
+    await ensureWorkspaceDoctrine(paths);
+    await ensureWorkspaceDoctrine(paths);
+
+    expect(await readFile(doctrinePath, "utf8")).toBe(PRE_EXISTING_DOCTRINE);
+  });
+
+  it("preserves readable 0444 custom and current doctrine without changing bytes or mode", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const doctrinePath = path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME);
+    const customDoctrine = "# User Doctrine\n\ncustom doctrine\n";
+
+    await mkdir(paths.root, { recursive: true });
+    await writeFile(doctrinePath, customDoctrine, { mode: 0o444 });
+    await ensureWorkspaceDoctrine(paths);
+    expect(await readFile(doctrinePath, "utf8")).toBe(customDoctrine);
+    expect((await stat(doctrinePath)).mode & 0o777).toBe(0o444);
+
+    await chmod(doctrinePath, 0o644);
+    await writeFile(doctrinePath, DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS, "utf8");
+    await chmod(doctrinePath, 0o444);
+    await ensureWorkspaceDoctrine(paths);
+    expect(await readFile(doctrinePath, "utf8")).toBe(DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS);
+    expect((await stat(doctrinePath)).mode & 0o777).toBe(0o444);
+  });
+
+  it("does not follow or replace symlinked doctrine paths", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const doctrinePath = path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME);
+    const linkTarget = path.join(paths.root, "existing-doctrine.md");
+
+    await mkdir(paths.root, { recursive: true });
+    await writeFile(linkTarget, PRE_EXISTING_DOCTRINE, "utf8");
+    await symlink(linkTarget, doctrinePath);
+    await ensureWorkspaceDoctrine(paths);
+
+    expect(await readFile(linkTarget, "utf8")).toBe(PRE_EXISTING_DOCTRINE);
+    expect(await readFile(doctrinePath, "utf8")).toBe(PRE_EXISTING_DOCTRINE);
+    expect((await lstat(doctrinePath)).isSymbolicLink()).toBe(true);
+  });
+
+  it("does not replace an existing doctrine directory", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const doctrinePath = path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME);
+
+    await mkdir(paths.root, { recursive: true });
+    await mkdir(doctrinePath);
+    await ensureWorkspaceDoctrine(paths);
+
+    expect(await pathExists(doctrinePath)).toBe(true);
+    expect((await lstat(doctrinePath)).isDirectory()).toBe(true);
   });
 
   it("is idempotent across repeated ensureWorkspaceSchema calls", async () => {
@@ -240,9 +305,13 @@ describe("workspace schema", () => {
     expect(schema).toContain("schema/template-{id}.md");
     expect(schema).toContain("patch approval enforce selected template body sections");
     expect(schemaAgents).toContain("Treat `rawSourceRef` as current latest-provenance metadata.");
-    expect(doctrine).toContain("already-pending queue proposal revisions may use `wiki_patch_edit`");
-    expect(doctrine).toContain("Chronicle schema lookup: `wiki_schema_list` / `wiki_schema_read`");
-    expect(doctrine).toContain("New custom schema templates are created directly through the Admiral's create-only `wiki_schema_create` tool.");
+    expect(doctrine).toContain("already-pending queue proposal revisions may use host-only `wiki_patch_edit`");
+    expect(doctrine).toContain("Read-only consult: `wiki_orient` · `wiki_briefing` · `wiki_read` · `wiki_resolve`");
+    expect(doctrine).toContain("host-only `wiki_ingest`");
+    expect(doctrine).toContain("`wiki_schema_list` / `wiki_schema_read` / `wiki_schema_create`");
+    expect(doctrine).toContain("The host performs every Fleet Wiki operation directly.");
+    expect(doctrine).not.toContain("Chronicle");
+    expect(doctrine).not.toContain("Sub-agents **propose**; the Admiral **commits**.");
   });
 
   it("does not recreate a deleted wiki-schema file when reading summary", async () => {

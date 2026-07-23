@@ -65,4 +65,17 @@ describe("carrier-operations skill asset", () => {
     expect(skillContent()).toContain("<task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set");
     expect(skillContent()).not.toContain("<execution_scope");
   });
+
+  it("defines exactly seven live carrier contracts with no Chronicle routing", () => {
+    const content = skillContent();
+    const carrierRuntime = createCarrierRuntime();
+    carrierRuntime.registerCarrierDefaults();
+    const carrierIds = getRegisteredOrder(carrierRuntime.registry);
+
+    expect(carrierIds).toHaveLength(7);
+    expect(content).not.toMatch(/\bchronicle\b/i);
+    for (const carrierId of carrierIds) {
+      expect(content).toContain(`**${carrierId}**`);
+    }
+  });
 });

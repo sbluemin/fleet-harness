@@ -24,7 +24,7 @@ const options = {
   cliTypes: [{ id: "codex", displayName: "Codex", defaultModel: "gpt-5", models: [{ modelId: "gpt-5", name: "GPT-5" }] }],
   taskForceConstraints: { minBackends: 2 },
 };
-const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"] as const;
+const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest"] as const;
 const interactiveOptions = {
   cliTypes: [
     {
@@ -124,7 +124,8 @@ describe("Terminal Carrier Settings client", () => {
     const strip = container!.querySelector<HTMLElement>('[role="group"][aria-label="Carrier list"]');
     const chips = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")];
     expect(strip).not.toBeNull();
-    expect(chips).toHaveLength(8);
+    expect(chips).toHaveLength(7);
+    expect(captainIds).toHaveLength(7);
     expect(chips[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(chips.slice(1).every((chip) => chip.getAttribute("aria-pressed") === "false")).toBe(true);
     expect(chips[0]?.querySelector(".terminal-carriers-live-dot.is-live")).not.toBeNull();
@@ -302,6 +303,34 @@ describe("Terminal Carrier Settings client", () => {
         method: "DELETE",
       }),
     ]);
+  });
+
+  it("falls back to neutral brass styling for removed captain IDs", async () => {
+    const removedCaptainState = {
+      generation: 4,
+      carriers: [{
+        carrierId: "chronicle",
+        displayName: "Chronicle",
+        sourceDisplayName: "Chronicle",
+        role: "Historian",
+        roleDescription: "Legacy roster entry",
+        slot: 99,
+        cliType: "codex",
+        defaultCliType: "codex",
+        model: "gpt-5",
+        taskForceCapable: false,
+        taskforce: { backends: [] },
+      }],
+    };
+    vi.stubGlobal("fetch", vi.fn((input: string) => Promise.resolve(new Response(JSON.stringify(
+      input.endsWith("/options") ? interactiveOptions : removedCaptainState,
+    ), { status: 200 }))));
+    await loadCarrierSettings();
+    await renderCarrierSettings();
+
+    const chip = container!.querySelector<HTMLElement>(".terminal-carriers-chip");
+    expect(chip?.getAttribute("style")).toContain("--cap-color: var(--brass)");
+    expect(container!.querySelector(".terminal-carriers-card")?.getAttribute("style")).toContain("--cap-color: var(--brass)");
   });
 
   it("surfaces a failed mutation and reloads server state", async () => {

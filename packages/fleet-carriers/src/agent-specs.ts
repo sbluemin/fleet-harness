@@ -5,8 +5,6 @@ import {
   type CarrierRegistry,
 } from "./dispatch/framework.js";
 import {
-  CHRONICLE_DEFAULTS,
-  CHRONICLE_METADATA,
   GENESIS_DEFAULTS,
   GENESIS_METADATA,
   KIROV_DEFAULTS,
@@ -36,7 +34,6 @@ const DEFAULT_CARRIER_REGISTRATIONS: readonly DefaultCarrierRegistration[] = [
   { defaults: SENTINEL_DEFAULTS, metadata: SENTINEL_METADATA },
   { defaults: VANGUARD_DEFAULTS, metadata: VANGUARD_METADATA },
   { defaults: TEMPEST_DEFAULTS, metadata: TEMPEST_METADATA },
-  { defaults: CHRONICLE_DEFAULTS, metadata: CHRONICLE_METADATA },
 ];
 
 export const DEFAULT_CARRIER_COUNT = DEFAULT_CARRIER_REGISTRATIONS.length;

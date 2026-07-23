@@ -10,6 +10,7 @@ import {
   readCarriersSnapshot,
   resetStoreForTests,
   saveAgentCliSelection,
+  updateCarrierDisplayName,
   withStoreLock,
 } from "../../src/index.js";
 import { updateCarriers } from "../../src/store/state-io.js";
@@ -95,6 +96,27 @@ describe("carriers.json state IO", () => {
 
     const raw = JSON.parse(fs.readFileSync(getCarriersFilePath()!, "utf-8")) as { _meta?: { generation?: number } };
     expect(raw._meta?.generation).toBe(2);
+  });
+
+  it("preserves sanitized chronicle and arbitrary custom keys across unrelated registered-carrier writes", () => {
+    writeCarriersJson({
+      _meta: { generation: 1 },
+      carriers: {
+        chronicle: { displayName: "Chronicle Legacy" },
+        custom_slot: { displayName: "Custom Carrier" },
+        ohio: { displayName: "Ohio Prime" },
+      },
+    });
+
+    updateCarrierDisplayName("genesis", "Genesis Prime", "Genesis");
+
+    const raw = JSON.parse(fs.readFileSync(getCarriersFilePath()!, "utf-8")) as {
+      carriers?: Record<string, { displayName?: string }>;
+    };
+    expect(raw.carriers?.chronicle?.displayName).toBe("Chronicle Legacy");
+    expect(raw.carriers?.custom_slot?.displayName).toBe("Custom Carrier");
+    expect(raw.carriers?.genesis?.displayName).toBe("Genesis Prime");
+    expect(raw.carriers?.ohio?.displayName).toBe("Ohio Prime");
   });
 
   it("recovers ownerless stale locks by renaming them out of the lock path", () => {

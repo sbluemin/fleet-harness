@@ -4590,7 +4590,7 @@
   height: 10px;
   border: 2px solid var(--surface-glass-strong);
   border-radius: 50%;
-  background: var(--captain-nimitz);
+  background: var(--brass);
 }
 
 .job-dock-captain-stack .job-dock-captain-dot {
@@ -4604,7 +4604,6 @@
 .job-dock-captain-dot[data-captain="sentinel"] { background: var(--captain-sentinel); }
 .job-dock-captain-dot[data-captain="vanguard"] { background: var(--captain-vanguard); }
 .job-dock-captain-dot[data-captain="tempest"] { background: var(--captain-tempest); }
-.job-dock-captain-dot[data-captain="chronicle"] { background: var(--captain-chronicle); }
 
 .job-dock-captain-tag {
   flex: 1;
@@ -4749,7 +4748,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--surface-glass-strong);
   border: 1px solid var(--surface-rim);
-  border-left: 3px solid transparent;
+  border-left: 3px solid var(--brass);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-floating);
 }
@@ -4761,7 +4760,6 @@
 .job-dock-card[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); }
 .job-dock-card[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); }
 .job-dock-card[data-captain="tempest"] { border-left-color: var(--captain-tempest); }
-.job-dock-card[data-captain="chronicle"] { border-left-color: var(--captain-chronicle); }
 
 .job-dock-card-who {
   display: inline-flex;

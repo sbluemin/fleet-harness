@@ -3,8 +3,6 @@ import type { CarrierMetadata } from "../src/index.js";
 import {
   CARRIER_JOBS_SELF_CALL_HINT,
   PRIOR_JOBS_REQUEST_HINT,
-  CHRONICLE_DEFAULTS,
-  CHRONICLE_METADATA,
   GENESIS_DEFAULTS,
   GENESIS_METADATA,
   KIROV_DEFAULTS,
@@ -39,7 +37,6 @@ const EXPECTED_IDS = [
   "sentinel",
   "vanguard",
   "tempest",
-  "chronicle",
 ] as const;
 
 const EXPECTED_DEFAULTS = {
@@ -49,17 +46,10 @@ const EXPECTED_DEFAULTS = {
   sentinel: { slot: 5, defaultModel: "sonnet", defaultEffort: "max" },
   vanguard: { slot: 6, defaultModel: "haiku", defaultEffort: "low" },
   tempest: { slot: 7, defaultModel: "sonnet", defaultEffort: "medium" },
-  chronicle: { slot: 8, defaultModel: "sonnet", defaultEffort: "low" },
   ohio: { slot: 4, defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
-const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
-  "carrier_jobs",
-  "plan_read",
-] as const;
-
 const ALL_PERSONAS: readonly PersonaCase[] = [
-  { name: "chronicle", meta: CHRONICLE_METADATA },
   { name: "genesis", meta: GENESIS_METADATA },
   { name: "kirov", meta: KIROV_METADATA },
   { name: "nimitz", meta: NIMITZ_METADATA },
@@ -77,7 +67,6 @@ const DEFAULT_PERSONAS = [
   { defaults: SENTINEL_DEFAULTS, meta: SENTINEL_METADATA },
   { defaults: VANGUARD_DEFAULTS, meta: VANGUARD_METADATA },
   { defaults: TEMPEST_DEFAULTS, meta: TEMPEST_METADATA },
-  { defaults: CHRONICLE_DEFAULTS, meta: CHRONICLE_METADATA },
 ] as const;
 
 describe("CARRIER_JOBS_SELF_CALL_HINT", () => {
@@ -101,42 +90,10 @@ describe("PRIOR_JOBS_REQUEST_HINT", () => {
 });
 
 describe("allowedExecutorTools", () => {
-  it("chronicle은 Fleet Wiki executor 도구를 선언하지 않는다 (host가 직접 수행)", () => {
-    expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
-    for (const tool of CHRONICLE_METADATA.allowedExecutorTools) {
-      expect(tool).not.toMatch(/^wiki_/);
-    }
-  });
-
   it("모든 기본 persona가 carrier_jobs를 명시 선언", () => {
     for (const persona of DEFAULT_PERSONAS) {
       expect(persona.meta.allowedExecutorTools).toContain("carrier_jobs");
     }
-  });
-});
-
-describe("Chronicle routing metadata", () => {
-  it("keeps routing Wiki-neutral", () => {
-    expect(CHRONICLE_METADATA.title).toBe("Chief Knowledge Officer");
-    expect(CHRONICLE_METADATA.summary).toBe("Codebase documentation stewardship.");
-    expect(CHRONICLE_METADATA.whenToUse).toEqual([
-      "documentation creation, update, or post-change .md audit (including AGENTS.md, README, CHANGELOG)",
-      "PR summaries, release notes, API specs (OpenAPI/Swagger), change-impact summaries, breaking-change reports, migration guides",
-    ]);
-    expect(CHRONICLE_METADATA.whenNotToUse).toEqual([
-      "before implementation and verification are complete",
-      "code modification (→genesis) or code review (→sentinel)",
-      "architectural judgment (→nimitz) or release-scope planning decisions (→kirov)",
-    ]);
-
-    const routingFields = [
-      CHRONICLE_METADATA.title,
-      CHRONICLE_METADATA.summary,
-      ...CHRONICLE_METADATA.whenToUse,
-      ...CHRONICLE_METADATA.whenNotToUse,
-    ].join("\n");
-    expect(routingFields).not.toMatch(/wiki/i);
-    expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
   });
 });
 
@@ -155,7 +112,7 @@ describe("allowedBuiltinExternalMcpServers", () => {
     expect(TEMPEST_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
   });
 
-  it("나머지 7개 carrier는 builtin external MCP를 열지 않는다", () => {
+  it("나머지 6개 carrier는 builtin external MCP를 열지 않는다", () => {
     for (const { name, meta } of ALL_PERSONAS) {
       if (name === "tempest") continue;
       expect(meta.allowedBuiltinExternalMcpServers ?? []).toHaveLength(0);
@@ -164,7 +121,7 @@ describe("allowedBuiltinExternalMcpServers", () => {
 });
 
 describe("persona defaults", () => {
-  it("각 persona 파일이 예상 8개 carrier 기본값을 소유", () => {
+  it("각 persona 파일이 예상 7개 carrier 기본값을 소유", () => {
     expect(DEFAULT_PERSONAS.map((persona) => persona.defaults.id)).toEqual(EXPECTED_IDS);
   });
 

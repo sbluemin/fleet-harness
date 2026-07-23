@@ -55,16 +55,11 @@ Update the root `fleet-harness` version and compile the release notes from repos
    - Validation performed.
    - Whether tests were run or intentionally skipped.
 
-## Chronicle Delegation Guidance
+## Host Synthesis
 
-Chronicle is useful when release notes need independent synthesis. Delegate to Chronicle when one or more of these are true:
+Release notes and changelog compilation are host-owned. Synthesize release items directly from the branch diff, commit history, and validated `.changelog.d/` fragments — never delegate release-note synthesis to a Carrier.
 
-- The branch contains many commits across multiple domains.
-- The diff includes behavior changes that are hard to classify.
-- Release-note tone, audience, or wording needs separate review.
-- The changelog must summarize work from multiple agents or external reports.
-
-Direct handling is acceptable when the changes are small, the commit messages and diff stat are clear, and the changelog can be derived confidently from local Git evidence.
+Scale the synthesis to the evidence: small changes may need only the validated fragments and a concise diff/commit review, while broad releases require a correspondingly wider host audit.
 
 ## Safety Rules
 

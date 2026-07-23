@@ -45,7 +45,7 @@ Proportionality: full-diff reading for doctrine/prompt/structural changes; stat 
 Multiple agents may share one branch and filesystem. Re-read files before modifying them or accepting Carrier-proposed modifications, prefer precise edits over full-file writes, and never overwrite or revert changes made by others. If ownership is unclear or concurrent edits conflict, stop and escalate.
 
 ### Cross-Carrier Feedback
-When multiple Carriers contribute to one task: route actionable review findings back to the implementing carrier with explicit fix instructions, re-run the same review on changed code only — never the entire codebase — and run documentation carriers last, only after implementation and verification are complete. Multi-carrier pattern selection lives in ${"`"}protocol-frontline${"`"}.
+When multiple Carriers contribute to one task: route actionable review findings back to the implementing carrier with explicit fix instructions, re-run the same review on changed code only — never the entire codebase — and perform post-verification documentation on the host directly, only after implementation and verification are complete. Multi-carrier pattern selection lives in ${"`"}protocol-frontline${"`"}.
 
 ### Retry Policy
 On carrier failure (timeout, connection, or runtime error): retry once with the same Carrier and request; on a second failure, report the error details to the user — never retry further or silently substitute another Carrier. Always preserve and report partial output received before a failure.`,

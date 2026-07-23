@@ -71,7 +71,7 @@ Fleet Wiki는 아키텍처 결정, 제품 히스토리, 가이드, 리뷰 큐를
 
 <img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier Settings" width="100%" />
 
-각 Carrier의 CLI 백엔드, 모델, 추론 강도, Task Force 구성을 하나의 시각적 로스터에서 선택합니다. 기본 제공되는 8개의 전문 Carrier는 전략, 기획, 구현, 다단 실행, QA, 정찰, 외부 인텔리전스, 문서화를 담당합니다.
+각 Carrier의 CLI 백엔드, 모델, 추론 강도, Task Force 구성을 하나의 시각적 로스터에서 선택합니다. 기본 제공되는 7개의 전문 Carrier는 전략, 기획, 구현, 다단 실행, QA, 정찰, 외부 인텔리전스를 담당합니다. 문서화와 Fleet Wiki 갱신은 Carrier에 위임하지 않고 제독(호스트)이 직접 수행합니다.
 
 > Fleet Console은 리서치 프리뷰입니다.
 

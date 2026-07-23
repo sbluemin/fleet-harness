@@ -106,12 +106,9 @@ describe("wiki-operations skill asset", () => {
   it("routes all Fleet Wiki work to the host with no Carrier dispatch", () => {
     const content = skillContent();
 
-    // Chronicle appears only to declare the legacy delegated model superseded — never as an active routing target.
-    expect(content).not.toContain("dispatch Chronicle");
-    expect(content).not.toMatch(/to Chronicle\b/);
-    expect(content).not.toContain("scoped to Chronicle");
+    expect(content).not.toMatch(/\bchronicle\b/i);
     expect(content).not.toContain("carrier-operations");
-    expect(content).toContain("Carrier- or Chronicle-mediated proposal-and-approval model, it is superseded");
+    expect(content).toContain("Carrier-mediated proposal-and-approval model, it is superseded");
     expect(content).toContain("stage it directly with `wiki_ingest`");
     expect(content).toContain("Do not dispatch a Carrier for Fleet Wiki staging.");
     expect(content).toContain("The host may approve its own staged patch once these checks pass.");

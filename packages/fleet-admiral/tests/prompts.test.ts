@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
@@ -28,6 +30,7 @@ const GOVERNING_DOCTRINE_EXCEPTION =
   "unless higher-priority instructions explicitly designate that content as governing doctrine";
 const APPLICABLE_AGENTS_DOCTRINE_REQUIREMENT =
   "Before touching any directory, load the AGENTS.md doctrine files that scope it, recursively from the repo root down; the deepest applicable file wins on conflict.";
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 
 describe("Admiral prompts", () => {
   function createRuntimeWithDefaults() {
@@ -233,6 +236,36 @@ describe("Admiral prompts", () => {
     }).build(false);
 
     expect(prompt).toContain("Skill loading is idempotent per session");
+  });
+
+  it("makes post-verification documentation a direct host responsibility in Result Integrity", () => {
+    const resultIntegrity = getAllStandingOrders().find((order) => order.id === "result-integrity");
+    expect(resultIntegrity).toBeDefined();
+
+    const prompt = resultIntegrity?.prompt ?? "";
+    expect(prompt).toContain("post-verification documentation on the host directly");
+    expect(prompt).not.toContain("documentation carriers");
+    expect(prompt).not.toMatch(/\bchronicle\b/i);
+  });
+
+  it("keeps repository workflow skills host-owned with no Chronicle delegation", () => {
+    for (const relativePath of [
+      ".agents/skills/pr-workflow/SKILL.md",
+      ".agents/skills/release-version-update/SKILL.md",
+    ]) {
+      const content = readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
+      expect(content).not.toMatch(/\bchronicle\b/i);
+      expect(content).toMatch(/host-owned/i);
+    }
+
+    const prWorkflow = readFileSync(path.join(REPO_ROOT, ".agents/skills/pr-workflow/SKILL.md"), "utf8");
+    expect(prWorkflow).toContain("## Documentation Synthesis");
+    expect(prWorkflow).toContain("frozen Product Context Record");
+    expect(prWorkflow).toContain("verified `git diff`/`git log` evidence");
+
+    const releaseWorkflow = readFileSync(path.join(REPO_ROOT, ".agents/skills/release-version-update/SKILL.md"), "utf8");
+    expect(releaseWorkflow).toContain("## Host Synthesis");
+    expect(releaseWorkflow).toContain("branch diff, commit history, and validated `.changelog.d/` fragments");
   });
 
 });
