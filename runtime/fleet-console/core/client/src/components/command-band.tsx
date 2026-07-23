@@ -325,14 +325,14 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
           <SearchIcon />
         </button>
-        {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">
-          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label="Reset canvas view" title="Reset canvas view"><ResetViewIcon /></button>
-          <span className="command-band-formation-divider" aria-hidden="true" />
-          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label="Formation view — Grid layout" title="Formation view — Grid layout"><FormationGridIcon /></button>
-          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label="Formation view — Columns layout" title="Formation view — Columns layout"><FormationColumnsIcon /></button>
-          <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label="Formation view — Rows layout" title="Formation view — Rows layout"><FormationRowsIcon /></button>
-        </div> : null}
       </div>
+      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label="Reset canvas view" title="Reset canvas view"><ResetViewIcon /></button>
+        <span className="command-band-formation-divider" aria-hidden="true" />
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label="Formation view — Grid layout" title="Formation view — Grid layout"><FormationGridIcon /></button>
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label="Formation view — Columns layout" title="Formation view — Columns layout"><FormationColumnsIcon /></button>
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label="Formation view — Rows layout" title="Formation view — Rows layout"><FormationRowsIcon /></button>
+      </div> : null}
       <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={`Active Theater: ${activeTheater.label}`}>

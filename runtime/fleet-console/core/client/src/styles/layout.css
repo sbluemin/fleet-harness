@@ -20,6 +20,7 @@
 }
 
 .command-band {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);
   flex: none;
@@ -78,9 +79,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-left {
-  /* 사이드바 폭에 정렬하되, Formation 클러스터 등 내용이 초과하면 좌측 1fr 트랙으로 확장해 중앙 침범을 막는다. */
-  width: fit-content;
-  min-width: var(--command-band-left-width, 280px);
+  width: var(--command-band-left-width, 280px);
   gap: var(--space-1);
   padding-inline: var(--space-2);
   border-right: 1px solid var(--surface-rim);
@@ -272,6 +271,10 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-formation-group {
+  position: absolute;
+  left: calc(var(--command-band-left-width, 280px) + var(--space-2));
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex: none;
   align-items: center;
