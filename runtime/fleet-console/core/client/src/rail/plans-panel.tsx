@@ -81,9 +81,11 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const readerRequestRef = useRef(0);
   const listSignaturesRef = useRef<Map<string, string> | null>(null);
   const readerStateRef = useRef<PlanReaderState>(readerState);
-  // reader가 실제 반영한 목록 signature. 성공 시에만 갱신되므로 background read 실패는
-  // 다음 목록 갱신에서 signature 불일치로 다시 감지된다.
+  // reader가 요청했거나 실제 반영한 목록 signature. 요청 시작 시 예약해 동일 signature의
+  // 중복 목록 갱신이 요청을 supersede하지 않게 하고, 현재 요청 실패 시 해제해 재시도를 허용한다.
   const readerSignatureRef = useRef<string | null>(null);
+  // signature가 null인 삭제 확인 요청과 실패 후 재시도 가능한 상태를 구분한다.
+  const readerInFlightRef = useRef(false);
   // 목록 갱신에서 선택 Plan이 사라졌을 때 세팅 — 다음 reader 조회 실패를 조용히 버리지 않고 error로 표면화한다.
   const readerForceRef = useRef(false);
   // 수동 REFRESH에서 세팅 — 다음 목록 조회 실패를 background로 삼키지 않고 error로 표면화한다.
@@ -127,9 +129,11 @@ function PlansPanelBody(ctx: RailPanelContext) {
       const currentSelection = selectedNameRef.current;
       if (currentSelection) {
         if (!nextSignatures.has(currentSelection)) {
-          readerSignatureRef.current = null;
-          readerForceRef.current = true;
-          setReaderRetry((attempt) => attempt + 1);
+          if (readerSignatureRef.current !== null || !readerInFlightRef.current) {
+            readerSignatureRef.current = null;
+            readerForceRef.current = true;
+            setReaderRetry((attempt) => attempt + 1);
+          }
         } else if (nextSignatures.get(currentSelection) !== readerSignatureRef.current) {
           setReaderRetry((attempt) => attempt + 1);
         }
@@ -144,18 +148,20 @@ function PlansPanelBody(ctx: RailPanelContext) {
 
     if (!theaterId || !selectedName) return;
 
+    readerInFlightRef.current = true;
+    readerSignatureRef.current = listSignaturesRef.current?.get(selectedName) ?? null;
     const forceSurface = readerForceRef.current;
     readerForceRef.current = false;
     const isBackgroundRevalidation = !forceSurface
       && readerStateRef.current.kind === "ready"
       && readerStateRef.current.plan.name === selectedName;
     if (!isBackgroundRevalidation) {
-      readerSignatureRef.current = null;
       readerStateRef.current = { kind: "loading" };
       setReaderState({ kind: "loading" });
     }
     void fetchPlanRead(theaterId, selectedName).then((result) => {
       if (requestId === readerRequestRef.current) {
+        readerInFlightRef.current = false;
         readerSignatureRef.current = listSignaturesRef.current?.get(result.name) ?? null;
         const nextState = { kind: "ready", plan: result } as const;
         readerStateRef.current = nextState;
@@ -166,6 +172,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
       // 읽기 불가(413 등)로 바뀐 사실을 낡은 본문으로 가리면 안 된다. loopback 특성상
       // 일시 네트워크 실패로 인한 오탐 여지는 사실상 없다.
       if (requestId === readerRequestRef.current) {
+        readerInFlightRef.current = false;
+        readerSignatureRef.current = null;
         readerStateRef.current = { kind: "error" };
         setReaderState({ kind: "error" });
       }
@@ -195,6 +203,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
   // 오분류되어 읽기 실패를 침묵시키는 일이 없게 한다(재열람은 항상 foreground).
   const handleClose = useCallback(() => {
     setSelectedPlan(null);
+    readerInFlightRef.current = false;
     readerSignatureRef.current = null;
     readerStateRef.current = { kind: "loading" };
     setReaderState({ kind: "loading" });
