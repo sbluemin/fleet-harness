@@ -2698,10 +2698,6 @@
   box-shadow: 0 0 6px var(--coral-glow);
 }
 
-.side-bar-chip-status.is-idle {
-  opacity: 0.5;
-}
-
 @keyframes side-bar-chip-status-pulse {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
