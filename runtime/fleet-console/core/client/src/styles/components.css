@@ -2489,8 +2489,9 @@
   flex: none;
   height: 22px;
   padding: 0;
-  border: 0;
-  border-radius: 0;
+  /* 이웃 status-axis 토글과 동일한 보더 링 hover 문법 — 채움형 사각 hover 금지. */
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--ink-fog);
   cursor: pointer;
@@ -2515,7 +2516,7 @@
 
 .side-bar-theater-row-btn:hover,
 .side-bar-theater-row-btn:focus-visible {
-  background: var(--ink-veil);
+  border-color: var(--hairline-strong);
   color: var(--ink-pearl);
 }
 

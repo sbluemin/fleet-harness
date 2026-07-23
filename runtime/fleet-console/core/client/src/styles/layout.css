@@ -283,7 +283,8 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-formation-group .command-band-formation-seg {
-  border-radius: 0;
+  /* 링 hover가 사각으로 깨지지 않도록 이웃 컨트롤과 동일한 6px 라운드 유지. */
+  border-radius: 6px;
 }
 
 .command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {
@@ -311,8 +312,13 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-formation-toggle svg { display: block; width: 16px; height: 16px; }
 
+/* hover는 이웃 command-band-button과 동일한 링 문법 — brass 채움은 활성(pressed) 상태 전용. */
 .command-band-formation-toggle:hover:not(:disabled),
-.command-band-formation-toggle:focus-visible,
+.command-band-formation-toggle:focus-visible {
+  border-color: var(--hairline-strong);
+  color: var(--ink-pearl);
+}
+
 .command-band-formation-toggle[aria-pressed="true"] {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass);
