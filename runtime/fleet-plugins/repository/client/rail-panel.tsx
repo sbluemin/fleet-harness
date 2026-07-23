@@ -331,13 +331,18 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     </div>
   </div>;
   const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} onFileOpenChange={setCompareFileOpen} />;
-  const workspaceMain = source === "changes" ? changesView : source === "compare" ? compareView : undefined;
+  // 컴팩트 레이아웃과 동일하게 Changes/Compare를 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
+  const workspaceMainVisible = source === "changes" || source === "compare";
+  const workspaceMain = <>
+    <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>
+    <div className="repository-source-fill" hidden={source !== "compare"}>{compareView}</div>
+  </>;
   return (
     <div className={`repository-unified${isWorkspace ? " is-workspace" : ""}`}>
       <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className="repository-ws-toggle" aria-label={isWorkspace ? "Collapse workspace" : "Expand workspace"} title={isWorkspace ? "Collapse workspace" : "Expand workspace"} onClick={toggleWorkspace}><WorkspaceToggleIcon expanded={isWorkspace} /></button></div>
       {isWorkspace ? <div className="repository-ws-layout">
         <WorkspaceTree repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onInspectorOpenChange={setHistoryInspectorOpen} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div> : <div className="repository-unified-body"><SourceNav source={source} refs={refs} repos={repos} worktrees={worktrees} onSource={setSource} /><div className="repository-source-content">
         {source === "repositories" ? reposError ? <div className="history-error">Unable to load repositories<button type="button" className="repository-refresh-btn" onClick={() => setReposRetry((value) => value + 1)}>Retry</button></div> : <RepoList repos={repos} selectedRel={repoRel} onRepository={handleSelectRepository} scanDepth={scanDepth} onScanDepth={setScanDepth} truncated={reposTruncated} /> : null}
         {source === "worktrees" ? worktreesError ? <div className="history-error">Unable to load worktrees<button type="button" className="repository-refresh-btn" onClick={() => setWorktreesRetry((value) => value + 1)}>Retry</button></div> : <WorktreeList worktrees={worktrees} onWorktree={handleSelectRepository} /> : null}

@@ -1244,8 +1244,8 @@
   overflow: hidden;
 }
 
-.repository-ws-main > .repository-root,
-.repository-ws-main > .repository-compare {
+.repository-ws-main .repository-source-fill > .repository-root,
+.repository-ws-main .repository-source-fill > .repository-compare {
   height: 100%;
 }
 

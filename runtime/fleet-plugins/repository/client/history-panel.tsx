@@ -101,16 +101,17 @@ interface HistoryPanelProps {
   readonly wipFiles: readonly DiffFileEntry[];
   readonly workspace?: boolean;
   readonly workspaceMain?: ReactNode;
+  readonly workspaceMainVisible?: boolean;
   readonly onInspectorOpenChange?: (open: boolean) => void;
   readonly onClearRef?: () => void;
   readonly onWip?: () => void;
 }
 
-export function HistoryPanel({ ctx, repoRel, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
-  return <HistoryPanelBody key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
+export function HistoryPanel({ ctx, repoRel, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
+  return <HistoryPanelBody key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
 }
 
-function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace, workspaceMain, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "ctx" | "refFilter" | "repoRel" | "wipFiles" | "workspace">> & Pick<HistoryPanelProps, "workspaceMain" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
+function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "ctx" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [target, setTarget] = useState<CommitTarget | null>(null);
   const [filterText, setFilterText] = useState("");
@@ -185,11 +186,11 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
     ? workspace ? buildWorkspaceDockTemplate(dockHeight) : buildHistoryStackTemplate(logHeight)
     : undefined;
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined}>
-    <div className="history-list-pane" hidden={workspace && workspaceMain !== undefined}>
+    <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
       <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder="Filter…" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{refFilter && <button type="button" className="repository-ref-chip" onClick={onClearRef}>{refFilter} ✕</button>}{state.kind === "ok" && <span className="history-count">{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span>}</div>
       <div className="history-list">{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>Uncommitted changes <span>{wip.files} files · +{wip.additions} −{wip.deletions}</span></button>}{state.kind === "loading" && <div className="history-empty">Loading…</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">No history</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">No matching items</div>}{state.kind === "ok" && layout && visible.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} />)}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) && <div className="history-truncated">History capped at 200 commits.</div>}</div>
     </div>
-    {workspaceMain !== undefined && <div className="repository-ws-main">{workspaceMain}</div>}
+    {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
     {target && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? "Resize commit detail dock" : "Resize commit log"} onPointerDown={handleDivider} /><div className="history-detail-pane"><CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={setTarget} onClose={() => setTarget(null)} /></div></>}
   </div>;
 }
