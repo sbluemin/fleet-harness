@@ -20,6 +20,9 @@ interface SideBarChipProps {
   readonly index: number;
   readonly isCloseArmed: boolean;
   readonly accentValue: string | null;
+  readonly groupMark?: { readonly name: string; readonly color: string } | null;
+  readonly statusLanded?: boolean;
+  readonly reorderEnabled?: boolean;
   readonly dragging: boolean;
   readonly dragOffsetY: number;
   readonly dropTarget: boolean;
@@ -41,6 +44,9 @@ export function OperationsSideBarChip({
   index,
   isCloseArmed,
   accentValue,
+  groupMark = null,
+  statusLanded = false,
+  reorderEnabled = true,
   dragging,
   dragOffsetY,
   dropTarget,
@@ -63,6 +69,7 @@ export function OperationsSideBarChip({
     "side-bar-chip",
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
+    statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
   ].filter(Boolean).join(" ");
@@ -104,6 +111,7 @@ export function OperationsSideBarChip({
   return (
     <li
       data-side-bar-chip-id={operation.id}
+      data-reorder-enabled={reorderEnabled ? "true" : "false"}
       className={chipClassName}
       role="button"
       tabIndex={0}
@@ -116,14 +124,14 @@ export function OperationsSideBarChip({
       onFocus={() => {
         if (!isCloseArmed) onDisarmClose();
       }}
-      onPointerDown={(event) => onPointerDragStart(event, operation.id)}
+      onPointerDown={reorderEnabled ? (event) => onPointerDragStart(event, operation.id) : undefined}
       onPointerUp={() => {
         if (dragging) suppressClickRef.current = true;
       }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
         // 재배치: Alt+Shift+↑/↓ — shift 없는 Alt+↑/↓는 operations의 Operation 순환이 가져간다.
-        if (!preview && event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        if (!preview && reorderEnabled && event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
           event.preventDefault();
           onKeyboardMove(operation.id, event.key === "ArrowUp" ? -1 : 1);
           return;
@@ -156,6 +164,14 @@ export function OperationsSideBarChip({
       )}
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
+      ) : null}
+      {groupMark ? (
+        <span
+          className="side-bar-chip-group-mark"
+          title={groupMark.name}
+          aria-label={`Group ${groupMark.name}`}
+          style={{ "--group-mark": groupMark.color } as CSSProperties}
+        />
       ) : null}
       <span
         className={`side-bar-chip-status ${chipStatusClass(status)}`}

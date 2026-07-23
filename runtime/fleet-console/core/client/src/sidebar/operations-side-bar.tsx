@@ -17,7 +17,7 @@ import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { setSideBarCollapsed, setSideBarWidth, setTheaterCollapsed, useCollapsedTheaters, useSideBarState } from "./operations-side-bar-store.js";
+import { setSideBarCollapsed, setSideBarWidth, setTheaterCollapsed, toggleSideBarStatusAxis, useCollapsedTheaters, useSideBarState, useSideBarStatusAxis } from "./operations-side-bar-store.js";
 import { resolveOperationLaunchKind } from "./resolve-launch-kind.js";
 
 interface OperationsSideBarProps {
@@ -114,14 +114,17 @@ interface TheaterEntryBuildInput {
 
 interface TheaterSectionHeaderProps {
   readonly theater: TheaterInfo;
-  readonly operationCount: number;
   readonly active: boolean;
   readonly collapsed: boolean;
+  readonly statusAxis: boolean;
+  readonly statusActionsOpen: boolean;
+  readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
+  readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect) => void;
@@ -134,8 +137,11 @@ interface TheaterInactiveSectionProps {
   readonly groups: readonly OperationGroup[];
   readonly collapsedGroups: ReadonlySet<string>;
   readonly operationAccent: Readonly<Record<string, string>>;
-  readonly operationCount: number;
   readonly collapsed: boolean;
+  readonly statusAxis: boolean;
+  readonly statusActionsOpen: boolean;
+  readonly showStatusLiveTick: boolean;
+  readonly statusLandingIds: ReadonlySet<string>;
   readonly dragging: boolean;
   readonly dropBefore: boolean;
   readonly dropAfter: boolean;
@@ -143,6 +149,7 @@ interface TheaterInactiveSectionProps {
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
+  readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect) => void;
@@ -162,6 +169,22 @@ const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
+const STATUS_LANDING_DURATION_MS = 500;
+
+type SideBarStatus = OperationActivity;
+
+interface StatusSection {
+  readonly status: SideBarStatus;
+  readonly label: "AWAITING INPUT" | "RUNNING" | "IDLE" | "DORMANT";
+  readonly entries: readonly SideBarEntry[];
+}
+
+const STATUS_SECTION_ORDER: readonly Omit<StatusSection, "entries">[] = [
+  { status: "awaiting", label: "AWAITING INPUT" },
+  { status: "running", label: "RUNNING" },
+  { status: "idle", label: "IDLE" },
+  { status: "dormant", label: "DORMANT" },
+];
 export function OperationsSideBar({
   theaters,
   activeTheaterId,
@@ -198,12 +221,16 @@ export function OperationsSideBar({
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
+  const statusAxis = useSideBarStatusAxis();
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const closeArmTimeoutRef = useRef<number | null>(null);
+  const statusLandingTimeoutRef = useRef<number | null>(null);
+  const previousOperationStatusRef = useRef<ReadonlyMap<string, SideBarStatus>>(new Map());
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
+  const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const entriesRef = useRef<SideBarEntry[]>([]);
@@ -244,12 +271,16 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
+  const statusSections = groupOperationsByStatus(allEntries);
   const hasCustomGroups = groupedSections.some((section) => section.group !== null);
   const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
   const visibleEntries = groupedSections.flatMap((section) =>
     collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
   );
   const currentOrder = allEntries.map((entry) => entry.operation.id);
+  const statusSignature = operations
+    .map((operation) => `${operation.id}:${normalizeOperationStatus(operationStatus[operation.id])}`)
+    .join("\0");
 
   const clearCloseArmTimer = useCallback(() => {
     if (closeArmTimeoutRef.current === null) return;
@@ -282,6 +313,39 @@ export function OperationsSideBar({
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
 
+  useEffect(() => {
+    const nextStatuses = new Map(
+      operations.map((operation) => [operation.id, normalizeOperationStatus(operationStatus[operation.id])] as const),
+    );
+    const previousStatuses = previousOperationStatusRef.current;
+    previousOperationStatusRef.current = nextStatuses;
+    if (!statusAxis) {
+      if (statusLandingTimeoutRef.current !== null) window.clearTimeout(statusLandingTimeoutRef.current);
+      statusLandingTimeoutRef.current = null;
+      setStatusLandingIds((current) => current.size === 0 ? current : new Set());
+      return;
+    }
+    const movedIds = operations
+      .filter((operation) => {
+        const previous = previousStatuses.get(operation.id);
+        return previous !== undefined && previous !== nextStatuses.get(operation.id);
+      })
+      .map((operation) => operation.id);
+    if (movedIds.length === 0) return;
+    if (statusLandingTimeoutRef.current !== null) window.clearTimeout(statusLandingTimeoutRef.current);
+    setStatusLandingIds(new Set(movedIds));
+    statusLandingTimeoutRef.current = window.setTimeout(() => {
+      statusLandingTimeoutRef.current = null;
+      setStatusLandingIds(new Set());
+    }, STATUS_LANDING_DURATION_MS);
+  // statusSignature is the stable primitive dependency for the operation/status map assembled above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusAxis, statusSignature]);
+
+  useEffect(() => () => {
+    if (statusLandingTimeoutRef.current !== null) window.clearTimeout(statusLandingTimeoutRef.current);
+  }, []);
+
   // 팔레트 "New Operation" 커맨드 요청을 소비해 ＋New 버튼과 동일한 launch 오버레이를 그 버튼 앵커 위치에 연다.
   useEffect(() => {
     if (!launchMenuRequest) return;
@@ -309,6 +373,7 @@ export function OperationsSideBar({
     : null;
 
   const keyboardMove = (operationId: string, direction: -1 | 1) => {
+    if (statusAxis) return;
     const index = visibleEntries.findIndex((e) => e.operation.id === operationId);
     if (index === -1) return;
     const targetIndex = Math.max(0, Math.min(visibleEntries.length - 1, index + direction));
@@ -343,6 +408,10 @@ export function OperationsSideBar({
     dragRef.current = next;
     setDrag(next);
   };
+
+  useEffect(() => {
+    if (statusAxis && dragRef.current?.kind === "chip") updateDrag(null);
+  }, [statusAxis]);
 
   // drag 시작(pointerId가 생김)에만 window 리스너 3개를 등록하고, drag 종료 시 정확히 3개 해제한다.
   const dragPointerId = drag?.pointerId ?? null;
@@ -432,6 +501,7 @@ export function OperationsSideBar({
   }, [dragPointerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
+    if (statusAxis) return;
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
     setActiveContextMenu(null);
@@ -637,7 +707,9 @@ export function OperationsSideBar({
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
-          const theaterOperationCount = operations.filter((operation) => operation.theaterId === theater.id).length;
+          const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
+          const showStatusLiveTick = !statusAxis && hasAwaitingOperation(theaterOperations, operationStatus);
+          const statusActionsOpen = activeContextMenu?.kind === "theater" && activeContextMenu.theaterId === theater.id;
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
           const isTheaterDragging = drag?.kind === "theater" && drag.sourceTheaterId === theater.id && drag.dragging;
           const theaterDragOffsetY = isTheaterDragging && drag?.kind === "theater" ? drag.currentY - drag.startY : 0;
@@ -672,8 +744,11 @@ export function OperationsSideBar({
                 groups={groups.filter((group) => group.theaterId === theater.id)}
                 collapsedGroups={new Set(theaterCanvas.collapsedGroups)}
                 operationAccent={theaterCanvas.operationAccent}
-                operationCount={theaterOperationCount}
                 collapsed={theaterCollapsed}
+                statusAxis={statusAxis}
+                statusActionsOpen={statusActionsOpen}
+                showStatusLiveTick={showStatusLiveTick}
+                statusLandingIds={statusLandingIds}
                 dragging={isTheaterDragging}
                 dropBefore={theaterDropBefore}
                 dropAfter={theaterDropAfter}
@@ -681,6 +756,7 @@ export function OperationsSideBar({
                 onSelectTheater={onSelectTheater}
                 onFocus={onFocus}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
+                onToggleStatusAxis={toggleSideBarStatusAxis}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
@@ -706,14 +782,17 @@ export function OperationsSideBar({
             >
               <TheaterSectionHeader
                 theater={theater}
-                operationCount={theaterOperationCount}
                 active
                 collapsed={theaterCollapsed}
+                statusAxis={statusAxis}
+                statusActionsOpen={statusActionsOpen}
+                showStatusLiveTick={showStatusLiveTick}
                 dragging={isTheaterDragging}
                 dropTarget={theaterDropBefore}
                 dragOffsetY={theaterDragOffsetY}
                 onSelectTheater={onSelectTheater}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
+                onToggleStatusAxis={toggleSideBarStatusAxis}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
@@ -727,7 +806,50 @@ export function OperationsSideBar({
               />
               {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
-                {groupedSections.map((section) => {
+                {statusAxis ? statusSections.map((section) => (
+                  <li
+                    key={section.status}
+                    className={`side-bar-status-section side-bar-status-section--${section.status}`}
+                  >
+                    <div className={`side-bar-status-header side-bar-status-header--${section.status}`}>
+                      <span className="side-bar-status-header__dot" aria-hidden="true" />
+                      <span className="side-bar-status-header__label">{section.label}</span>
+                      <span className="side-bar-status-header__count">{section.entries.length}</span>
+                    </div>
+                    <ol className="side-bar-group-chips" aria-label={`${section.label} operations`}>
+                      {section.entries.map((entry) => {
+                        const globalIndex = allEntries.indexOf(entry);
+                        const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+                        const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+                        const groupMark = resolveEntryGroupMark(entry, activeGroups);
+                        return (
+                          <OperationsSideBarChip
+                            key={entry.operation.id}
+                            entry={entry}
+                            index={globalIndex}
+                            isCloseArmed={armedCloseId === entry.operation.id}
+                            accentValue={accentValue}
+                            groupMark={groupMark}
+                            statusLanded={statusLandingIds.has(entry.operation.id)}
+                            reorderEnabled={false}
+                            dragging={false}
+                            dragOffsetY={0}
+                            dropTarget={false}
+                            onArmClose={armClose}
+                            onDisarmClose={disarmClose}
+                            onClose={onClose}
+                            onMinimize={onMinimize}
+                            onFocus={onFocus}
+                            onKeyboardMove={keyboardMove}
+                            onPointerDragStart={beginPointerDrag}
+                            onOpenAccent={(operationId, anchor) => setActiveContextMenu({ kind: "chip", operationId, anchor })}
+                            onRename={onRename}
+                          />
+                        );
+                      })}
+                    </ol>
+                  </li>
+                )) : groupedSections.map((section) => {
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -945,6 +1067,36 @@ export function groupOperations(
   return [...sections, ungrouped];
 }
 
+export function groupOperationsByStatus(entries: readonly SideBarEntry[]): StatusSection[] {
+  return STATUS_SECTION_ORDER.flatMap(({ status, label }) => {
+    const members = entries.filter((entry) => normalizeOperationStatus(entry.status) === status);
+    return members.length > 0 ? [{ status, label, entries: members }] : [];
+  });
+}
+
+export function hasAwaitingOperation(
+  operations: readonly OperationNode[],
+  operationStatus: Readonly<Record<string, OperationActivity>>,
+): boolean {
+  return operations.some((operation) => operationStatus[operation.id] === "awaiting");
+}
+
+function normalizeOperationStatus(status: OperationActivity | undefined): SideBarStatus {
+  return status ?? "idle";
+}
+
+function resolveEntryGroupMark(
+  entry: SideBarEntry,
+  groups: readonly OperationGroup[],
+): { readonly name: string; readonly color: string } | null {
+  const groupId = entry.operation.groupId;
+  if (!groupId) return null;
+  const group = groups.find((candidate) => candidate.id === groupId);
+  if (!group) return null;
+  const color = resolveAccentColor(group.color);
+  return color ? { name: group.name, color } : null;
+}
+
 function buildTheaterEntries({
   theaterId,
   operations,
@@ -975,14 +1127,17 @@ function buildTheaterEntries({
 
 function TheaterSectionHeader({
   theater,
-  operationCount,
   active,
   collapsed,
+  statusAxis,
+  statusActionsOpen,
+  showStatusLiveTick,
   dragging,
   dropTarget,
   dragOffsetY,
   onSelectTheater,
   onToggleCollapsed,
+  onToggleStatusAxis,
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
@@ -1003,11 +1158,11 @@ function TheaterSectionHeader({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    // 중첩 행 컨트롤(∨/⋯/＋)에서 버블된 Enter/Space를 가로채면 버튼 키보드 활성화가 죽는다(Codex P2).
+    // 중첩 행 컨트롤(status/+ /caret)에서 버블된 Enter/Space를 가로채면 버튼 키보드 활성화가 죽는다.
     if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    onSelectTheater(theater.id);
+    activateOrToggle();
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1019,12 +1174,23 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
+  // 행 클릭은 ▾ 버튼을 흡수한 단일 제스처다. 비활성 Theater는 먼저 선택만 하고(접힌 채 전환되는
+  // 사고 방지), 이미 활성인 Theater에서만 접기/펼치기를 토글한다.
+  const activateOrToggle = () => {
+    if (!active) {
+      onSelectTheater(theater.id);
+      if (collapsed) onToggleCollapsed(theater.id);
+      return;
+    }
+    onToggleCollapsed(theater.id);
+  };
+
   const select = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
-    onSelectTheater(theater.id);
+    activateOrToggle();
   };
 
   return (
@@ -1040,46 +1206,51 @@ function TheaterSectionHeader({
       onPointerUp={handlePointerUp}
       aria-current={active ? "true" : undefined}
       aria-expanded={!collapsed}
-      title={theater.label}
+      title={collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`}
     >
       <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
       <span className="side-bar-theater-name">{theater.label}</span>
-      <span className="side-bar-theater-count">{operationCount}</span>
-      <span className="side-bar-theater-row-controls" aria-label={`${theater.label} controls`}>
+      <ChevronIcon collapsed={collapsed} />
+      <span className="side-bar-theater-row-controls" role="group" aria-label={`${theater.label} controls`}>
+        <button
+          type="button"
+          className="side-bar-status-axis-toggle"
+          aria-label="Sort by status"
+          aria-pressed={statusAxis}
+          title="Sort by status (Alt+S)"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleStatusAxis();
+          }}
+        >
+          <StatusListIcon />
+          {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
+        </button>
+        <span className="side-bar-theater-split-control" role="group" aria-label={`${theater.label} operation controls`}>
           <button
             type="button"
-            className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
-            aria-label={collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`}
-            aria-expanded={!collapsed}
-            title={collapsed ? "Expand" : "Collapse"}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleCollapsed(theater.id);
-            }}
-          >
-            <ChevronIcon collapsed={collapsed} />
-          </button>
-          <button
-            type="button"
-            className="side-bar-theater-row-btn"
-            aria-label="Theater actions"
-            title="Theater actions"
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenActions(event.currentTarget.getBoundingClientRect(), event.currentTarget);
-            }}
-          >
-            <MoreIcon />
-          </button>
-          <button
-            type="button"
-            className="side-bar-theater-row-btn side-bar-theater-launch-btn"
+            className="side-bar-theater-row-btn side-bar-theater-launch-btn side-bar-theater-split-plus"
             aria-label={`New Operation in ${theater.label}`}
             title={`New Operation in ${theater.label}`}
             onClick={(event) => onOpenLaunch(event, theater.id)}
           >
             <PlusIcon />
           </button>
+          <button
+            type="button"
+            className="side-bar-theater-row-btn side-bar-theater-split-caret"
+            aria-label="Theater actions"
+            aria-haspopup="menu"
+            aria-expanded={statusActionsOpen}
+            title="Theater actions"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenActions(event.currentTarget.getBoundingClientRect(), event.currentTarget);
+            }}
+          >
+            <CaretIcon />
+          </button>
+        </span>
       </span>
     </div>
   );
@@ -1091,8 +1262,11 @@ function TheaterInactiveSection({
   groups,
   collapsedGroups,
   operationAccent,
-  operationCount,
   collapsed,
+  statusAxis,
+  statusActionsOpen,
+  showStatusLiveTick,
+  statusLandingIds,
   dragging,
   dropBefore,
   dropAfter,
@@ -1100,12 +1274,14 @@ function TheaterInactiveSection({
   onSelectTheater,
   onFocus,
   onToggleCollapsed,
+  onToggleStatusAxis,
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
   onPointerDragStart,
 }: TheaterInactiveSectionProps) {
   const sections = groupOperations(entries, groups, []);
+  const statusSections = groupOperationsByStatus(entries);
   const hasCustomGroups = sections.some((section) => section.group !== null);
   return (
     <li
@@ -1118,22 +1294,67 @@ function TheaterInactiveSection({
     >
       <TheaterSectionHeader
         theater={theater}
-        operationCount={operationCount}
         active={false}
         collapsed={collapsed}
+        statusAxis={statusAxis}
+        statusActionsOpen={statusActionsOpen}
+        showStatusLiveTick={showStatusLiveTick}
         dragging={dragging}
         dropTarget={dropBefore}
         dragOffsetY={dragOffsetY}
         onSelectTheater={onSelectTheater}
         onToggleCollapsed={onToggleCollapsed}
+        onToggleStatusAxis={onToggleStatusAxis}
         onOpenActions={onOpenActions}
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
         onPointerDragStart={onPointerDragStart}
       />
-      {!collapsed && sections.length > 0 ? (
+      {!collapsed && (statusAxis ? statusSections.length : sections.length) > 0 ? (
         <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
-          {sections.map((section) => {
+          {statusAxis ? statusSections.map((section) => (
+            <li
+              key={section.status}
+              className={`side-bar-status-section side-bar-status-section--${section.status}`}
+            >
+              <div className={`side-bar-status-header side-bar-status-header--${section.status}`}>
+                <span className="side-bar-status-header__dot" aria-hidden="true" />
+                <span className="side-bar-status-header__label">{section.label}</span>
+                <span className="side-bar-status-header__count">{section.entries.length}</span>
+              </div>
+              <ol className="side-bar-group-chips" aria-label={`${section.label} operations`}>
+                {section.entries.map((entry, index) => {
+                  const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+                  const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+                  return (
+                    <OperationsSideBarChip
+                      key={entry.operation.id}
+                      entry={entry}
+                      index={index}
+                      isCloseArmed={false}
+                      accentValue={accentValue}
+                      groupMark={resolveEntryGroupMark(entry, groups)}
+                      statusLanded={statusLandingIds.has(entry.operation.id)}
+                      reorderEnabled={false}
+                      dragging={false}
+                      dragOffsetY={0}
+                      dropTarget={false}
+                      preview
+                      onArmClose={() => {}}
+                      onDisarmClose={() => {}}
+                      onClose={() => {}}
+                      onMinimize={() => {}}
+                      onFocus={onFocus}
+                      onKeyboardMove={() => {}}
+                      onPointerDragStart={() => {}}
+                      onOpenAccent={() => {}}
+                      onRename={() => {}}
+                    />
+                  );
+                })}
+              </ol>
+            </li>
+          )) : sections.map((section) => {
             const isCollapsed = section.groupId !== null && collapsedGroups.has(section.groupId);
             const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
             return (
@@ -1310,22 +1531,29 @@ function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | nul
 
 function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      {collapsed ? (
-        <path d="M6 3.8 10.2 8 6 12.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-      ) : (
-        <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-      )}
+    <svg className={`side-bar-theater-chevron${collapsed ? " is-collapsed" : ""}`} viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function MoreIcon() {
+function StatusListIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="3.5" cy="8" r="1.1" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.1" fill="currentColor" />
-      <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="4" cy="4" r="1.5" fill="currentColor" />
+      <path d="M8 4h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="4" cy="8" r="1.5" fill="currentColor" />
+      <path d="M8 8h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="4" cy="12" r="1.5" fill="currentColor" />
+      <path d="M8 12h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CaretIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="m5.2 6.6 2.8 2.8 2.8-2.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

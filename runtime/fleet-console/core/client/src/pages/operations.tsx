@@ -13,6 +13,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
+import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
@@ -56,7 +57,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   }, [state.activeTheaterId]);
 
-  // Alt+←/→는 SideBar 가시 순서로 포커스를 순환하고, Alt+F는 같은 capture/editable 가드 정책을 공유한다.
+  // Alt+←/→는 SideBar 가시 순서로 포커스를 순환하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 공유한다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!shouldHandleOperationsKeyboardShortcut()) return;
@@ -64,6 +65,12 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
       // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
+      if (event.code === "KeyS" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleSideBarStatusAxis();
+        return;
+      }
       if (event.code === "KeyF" && !event.shiftKey) {
         event.preventDefault();
         event.stopImmediatePropagation();

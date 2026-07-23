@@ -43,6 +43,24 @@ describe("two-state SideBar store", () => {
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
   });
+
+  it("keeps the STATUS axis in memory only and starts a fresh module in GROUP mode", async () => {
+    const store = await loadStore();
+    const listener = vi.fn();
+    const unsubscribe = store.subscribeStatusAxis(listener);
+
+    expect(store.getSideBarStatusAxis()).toBe(false);
+    store.toggleSideBarStatusAxis();
+
+    expect(store.getSideBarStatusAxis()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.length).toBe(0);
+
+    vi.resetModules();
+    const reloadedStore = await loadStore();
+    expect(reloadedStore.getSideBarStatusAxis()).toBe(false);
+    unsubscribe();
+  });
 });
 
 async function loadStore() {

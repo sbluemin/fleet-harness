@@ -13,12 +13,16 @@ const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 
 const sideBarListeners = new Set<() => void>();
 const collapsedTheaterListeners = new Set<() => void>();
+const statusAxisListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
   collapsed: readInitialCollapsed(),
 };
 let collapsedTheaterIds = readInitialCollapsedTheaters();
+// STATUS 축은 의도적으로 세션 메모리에만 둔다. localStorage나 durable canvas state에
+// 합류시키지 않아 새 페이지 로드마다 GROUP 축(false)에서 시작한다.
+let statusAxis = false;
 
 export function useSideBarState(): SideBarState {
   return useSyncExternalStore(subscribeSideBarState, getSideBarState, getSideBarState);
@@ -26,6 +30,10 @@ export function useSideBarState(): SideBarState {
 
 export function useCollapsedTheaters(): readonly string[] {
   return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
+}
+
+export function useSideBarStatusAxis(): boolean {
+  return useSyncExternalStore(subscribeStatusAxis, getSideBarStatusAxis, getSideBarStatusAxis);
 }
 
 export function setSideBarWidth(width: number): void {
@@ -58,6 +66,25 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_THEATER_COLLAPSED, JSON.stringify(next));
   } catch { /* ignore */ }
   notifyCollapsedTheaterListeners();
+}
+
+export function setSideBarStatusAxis(active: boolean): void {
+  if (statusAxis === active) return;
+  statusAxis = active;
+  for (const listener of statusAxisListeners) listener();
+}
+
+export function toggleSideBarStatusAxis(): void {
+  setSideBarStatusAxis(!statusAxis);
+}
+
+export function getSideBarStatusAxis(): boolean {
+  return statusAxis;
+}
+
+export function subscribeStatusAxis(listener: () => void): () => void {
+  statusAxisListeners.add(listener);
+  return () => statusAxisListeners.delete(listener);
 }
 
 function getMaxPx(): number {
