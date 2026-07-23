@@ -22,6 +22,7 @@ const listeners = new Set<Listener>();
 let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
 let fontWriteEpoch = 0;
+let terminalSettingsWriteFlight: Promise<void> | null = null;
 
 export function migrateLegacyTerminalPrefs(): void {
   if (typeof window === "undefined") return;
@@ -133,14 +134,29 @@ async function hydrateFontFromServer(): Promise<void> {
 }
 
 async function pushFontToServer(font: TerminalFontSettings): Promise<void> {
-  if (!settingsCapability) return;
+  const settings = settingsCapability;
+  if (!settings) return;
   try {
-    await settingsCapability.write("terminal", {
+    await mergeTerminalSettingsRecord(settings, {
       font: { source: font.source, id: font.id, customName: font.customName, size: font.size },
     });
   } catch {
     // best-effort — write 실패 시 조용히 무시한다.
   }
+}
+
+export function mergeTerminalSettingsRecord(settings: ClientSettingsCapability, patch: Record<string, unknown>): Promise<void> {
+  const merge = async () => {
+    const current = await settings.read("terminal");
+    await settings.write("terminal", { ...(current ?? {}), ...patch });
+  };
+  const previous = terminalSettingsWriteFlight;
+  const write = previous ? previous.catch(() => undefined).then(merge) : merge();
+  terminalSettingsWriteFlight = write;
+  void write.finally(() => {
+    if (terminalSettingsWriteFlight === write) terminalSettingsWriteFlight = null;
+  }).catch(() => undefined);
+  return write;
 }
 
 function readStoredRenderer(): TerminalRenderer {

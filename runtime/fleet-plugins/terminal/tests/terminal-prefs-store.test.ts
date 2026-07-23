@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
-import { connectTerminalSettings, getTerminalPrefsSnapshot, migrateLegacyTerminalPrefs, setInstalledTerminalFont, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-prefs-store.js";
+import { connectTerminalSettings, getTerminalPrefsSnapshot, mergeTerminalSettingsRecord, migrateLegacyTerminalPrefs, setInstalledTerminalFont, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-prefs-store.js";
 
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
 const FONT_KEY = "fleet-plugin.terminal.font";
@@ -120,7 +120,7 @@ describe("connectTerminalSettings / server hydration", () => {
       serverValue: { font: { source: "curated", id: "jetbrains", customName: "", size: 16 } },
     });
     connectTerminalSettings(cap);
-    await vi.waitFor(() => cap.putCalls.length === 0 && getTerminalPrefsSnapshot().font.id === "jetbrains");
+    await vi.waitFor(() => expect(getTerminalPrefsSnapshot().font.id).toBe("jetbrains"));
     expect(getTerminalPrefsSnapshot().font.id).toBe("jetbrains");
     expect(store[FONT_KEY]).toBeUndefined();
   });
@@ -129,7 +129,7 @@ describe("connectTerminalSettings / server hydration", () => {
     store[FONT_KEY] = JSON.stringify({ source: "curated", id: "fira-code", customName: "", size: 15 });
     const cap = makeCapability({ serverValue: null });
     connectTerminalSettings(cap);
-    await vi.waitFor(() => cap.putCalls.length > 0);
+    await vi.waitFor(() => expect(cap.putCalls.length).toBeGreaterThan(0));
     expect(cap.putCalls[0]?.id).toBe("terminal");
     expect((cap.putCalls[0]?.value as { font?: { id?: string } }).font?.id).toBe("fira-code");
     expect(store[FONT_KEY]).toBeUndefined();
@@ -139,13 +139,13 @@ describe("connectTerminalSettings / server hydration", () => {
     store[FONT_KEY] = JSON.stringify({ source: "curated", id: "fira-code", customName: "", size: 15 });
     const cap = makeCapability({ serverValue: null });
     connectTerminalSettings(cap);
-    await vi.waitFor(() => cap.putCalls.length > 0);
+    await vi.waitFor(() => expect(cap.putCalls.length).toBeGreaterThan(0));
     const firstCallCount = cap.putCalls.length;
     // 서버에 이제 값이 있음 — 재연결 시 추가 PUT 없음
     const cap2 = makeCapability({ serverValue: { font: { source: "curated", id: "fira-code", customName: "", size: 15 } } });
     connectTerminalSettings(cap2);
     // 하이드레이션이 서버 값을 채택할 때까지 대기한 뒤 재시드 PUT이 없음을 단언한다.
-    await vi.waitFor(() => getTerminalPrefsSnapshot().font.id === "fira-code");
+    await vi.waitFor(() => expect(getTerminalPrefsSnapshot().font.id).toBe("fira-code"));
     await new Promise((r) => setTimeout(r, 10));
     expect(cap2.putCalls.length).toBe(0);
     // 첫 번째 캐파빌리티의 총 PUT은 1회여야 함
@@ -179,7 +179,7 @@ describe("connectTerminalSettings / server hydration", () => {
     connectTerminalSettings(cap);
     setInstalledTerminalFont("  MesloLGS NF\u0000  ");
     resolveRead({ font: { source: "curated", id: "jetbrains", customName: "", size: 12 } });
-    await vi.waitFor(() => getTerminalPrefsSnapshot().font.customName === "MesloLGS NF");
+    await vi.waitFor(() => expect(cap.putCalls.length).toBeGreaterThan(0));
     expect(getTerminalPrefsSnapshot().font).toMatchObject({ source: "custom", id: null, customName: "MesloLGS NF" });
     expect((cap.putCalls[0]?.value as { font?: unknown }).font).toEqual({ source: "custom", id: null, customName: "MesloLGS NF", size: getTerminalPrefsSnapshot().font.size });
   });
@@ -216,10 +216,10 @@ describe("connectTerminalSettings / server hydration", () => {
     const cap = makeCapability({ serverValue: null });
     connectTerminalSettings(cap);
     setTerminalFont("jetbrains");
-    await vi.waitFor(() => cap.putCalls.some((c) => {
+    await vi.waitFor(() => expect(cap.putCalls.some((c) => {
       const font = (c.value as { font?: { id?: string } }).font;
       return font?.id === "jetbrains";
-    }));
+    })).toBe(true));
     expect(cap.putCalls.some((c) => {
       const font = (c.value as { font?: { id?: string } }).font;
       return font?.id === "jetbrains";
@@ -231,10 +231,42 @@ describe("connectTerminalSettings / server hydration", () => {
     connectTerminalSettings(cap);
     setTerminalFontSize(17);
     setInstalledTerminalFont("  MesloLGS NF\u0000  ");
-    await vi.waitFor(() => cap.putCalls.some((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF"));
+    await vi.waitFor(() => expect(cap.putCalls.some((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF")).toBe(true));
     const installedWrite = cap.putCalls.find((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF");
     expect(installedWrite).toEqual({ id: "terminal", value: { font: { source: "custom", id: null, customName: "MesloLGS NF", size: 17 } } });
     expect(store[FONT_KEY]).toBeUndefined();
+  });
+
+  it("preserves the Analyst selection when writing font settings", async () => {
+    const selection = { cliId: "codex", model: "gpt-5", effort: "high" };
+    const cap = makeCapability({ serverValue: { analyst: { selection } } });
+    connectTerminalSettings(cap);
+    setTerminalFont("jetbrains");
+    await vi.waitFor(() => expect(cap.putCalls.some((call) => (call.value as { font?: { id?: string } }).font?.id === "jetbrains")).toBe(true));
+    expect(cap.putCalls.find((call) => (call.value as { font?: { id?: string } }).font?.id === "jetbrains")).toEqual({
+      id: "terminal",
+      value: {
+        analyst: { selection },
+        font: { source: "curated", id: "jetbrains", customName: "", size: getTerminalPrefsSnapshot().font.size },
+      },
+    });
+  });
+
+  it("serializes Terminal record merges so concurrent font and Analyst writes preserve both keys", async () => {
+    let record: Record<string, unknown> = {};
+    const settings: ClientSettingsCapability = {
+      read: async () => ({ ...record }),
+      write: async (_pluginId, value) => { record = value; },
+    };
+    const font = { source: "curated", id: "jetbrains", customName: "", size: 16 };
+    const analyst = { selection: { cliId: "codex", model: "gpt-5", effort: "high" } };
+
+    await Promise.all([
+      mergeTerminalSettingsRecord(settings, { font }),
+      mergeTerminalSettingsRecord(settings, { analyst }),
+    ]);
+
+    expect(record).toEqual({ font, analyst });
   });
 
   it("keeps the local fallback state when an installed-font server write fails", async () => {

@@ -1,4 +1,4 @@
-import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent } from "./analysis-types.js";
+import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent, AnalysisSelection } from "./analysis-types.js";
 
 // Must match the server's MAX_ANALYSIS_ARTIFACTS per-operation cap.
 export const MAX_ANALYSIS_ARTIFACTS = 32;
@@ -30,6 +30,8 @@ export interface AnalysisState {
   readonly artifactAuthoring: { readonly startedAt: number } | null;
   readonly artifactPublished: { readonly artifact: AnalysisArtifact; readonly durationMs: number | null } | null;
   readonly artifactsAutoOpenArmed: boolean;
+  readonly selectionLocked: boolean;
+  readonly selectionSaved: boolean;
   readonly error: string | null;
 }
 
@@ -52,11 +54,13 @@ export const initialAnalysisState: AnalysisState = {
   artifactAuthoring: null,
   artifactPublished: null,
   artifactsAutoOpenArmed: true,
+  selectionLocked: false,
+  selectionSaved: false,
   error: null,
 };
 
 export type AnalysisAction =
-  | { readonly type: "catalog"; readonly catalog: AnalysisCatalog }
+  | { readonly type: "catalog"; readonly catalog: AnalysisCatalog; readonly selection?: AnalysisSelection | null }
   | { readonly type: "select-cli"; readonly cliId: string }
   | { readonly type: "select-model"; readonly model: string }
   | { readonly type: "select-effort"; readonly effort: string }
@@ -71,14 +75,17 @@ export type AnalysisAction =
   | { readonly type: "start-failed"; readonly message: string; readonly now: number }
   | { readonly type: "stopped"; readonly now: number }
   | { readonly type: "stop-failed"; readonly message: string; readonly now: number }
-  | { readonly type: "reset" }
+  | { readonly type: "reset"; readonly selection?: AnalysisSelection | null }
+  | { readonly type: "selection-lock"; readonly locked: boolean }
+  | { readonly type: "selection-saved" }
+  | { readonly type: "selection-saved-clear" }
   | { readonly type: "clear-artifacts" }
   | { readonly type: "artifacts-chip-disarm" }
   | { readonly type: "artifacts-chip-rearm" };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   if (action.type === "catalog") {
-    return { ...state, catalog: action.catalog, ...resolveInitialSelection(action.catalog) };
+    return { ...state, catalog: action.catalog, ...resolvePersistedSelection(action.catalog, action.selection) };
   }
   if (action.type === "select-cli" && !state.started) {
     const cli = state.catalog?.clis.find((item) => item.cliId === action.cliId);
@@ -118,8 +125,13 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (action.type === "stop-failed") return { ...endWithError(state, `Stop failed: ${action.message}`, action.now), started: false };
   if (action.type === "reset") {
     const catalog = state.catalog;
-    return catalog ? { ...initialAnalysisState, catalog, ...resolveInitialSelection(catalog) } : initialAnalysisState;
+    return catalog
+      ? { ...initialAnalysisState, catalog, selectionLocked: state.selectionLocked, ...resolvePersistedSelection(catalog, action.selection) }
+      : { ...initialAnalysisState, selectionLocked: state.selectionLocked };
   }
+  if (action.type === "selection-lock") return state.selectionLocked === action.locked ? state : { ...state, selectionLocked: action.locked };
+  if (action.type === "selection-saved") return { ...state, selectionSaved: true };
+  if (action.type === "selection-saved-clear") return state.selectionSaved ? { ...state, selectionSaved: false } : state;
   // Clear는 완료 카드도 함께 걷는다 — 삭제된 artifact를 여는 CTA가 남으면 안 된다.
   if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null, artifactsAutoOpenArmed: true };
   if (action.type === "artifacts-chip-disarm") return state.artifactsAutoOpenArmed ? { ...state, artifactsAutoOpenArmed: false } : state;
@@ -166,6 +178,29 @@ function resolveInitialSelection(catalog: AnalysisCatalog): Pick<AnalysisState, 
     ? "medium"
     : model?.defaultEffort ?? model?.effortLevels[0] ?? "";
   return { cliId: cli?.cliId ?? "", model: model?.id ?? "", effort };
+}
+
+function resolvePersistedSelection(catalog: AnalysisCatalog, selection?: AnalysisSelection | null): Pick<AnalysisState, "cliId" | "model" | "effort"> {
+  const fallback = resolveInitialSelection(catalog);
+  if (!selection) return fallback;
+  const persistedCli = catalog.clis.find((item) => item.cliId === selection.cliId && item.available);
+  const cli = persistedCli ?? catalog.clis.find((item) => item.cliId === fallback.cliId);
+  if (!cli) return fallback;
+  const fallbackModel = persistedCli
+    ? cli.models.find((item) => item.id === cli.defaultModel) ?? cli.models[0]
+    : cli.models.find((item) => item.id === fallback.model)
+      ?? cli.models.find((item) => item.id === cli.defaultModel)
+      ?? cli.models[0];
+  const persistedModel = cli.models.find((item) => item.id === selection.model);
+  const model = persistedModel ?? fallbackModel;
+  if (!model) return { cliId: cli.cliId, model: "", effort: "" };
+  const fallbackEffort = model.effortLevels.includes("medium")
+    ? "medium"
+    : model.defaultEffort ?? model.effortLevels[0] ?? "";
+  const effort = model.effortLevels.length === 0
+    ? (selection.effort === "" ? "" : fallbackEffort)
+    : (model.effortLevels.includes(selection.effort) ? selection.effort : fallbackEffort);
+  return { cliId: cli.cliId, model: model.id, effort };
 }
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {

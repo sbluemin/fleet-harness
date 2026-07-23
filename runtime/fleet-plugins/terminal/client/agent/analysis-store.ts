@@ -1,8 +1,10 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
-import type { ClientApiCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ClientSettingsCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
+import type { AnalysisSelection } from "./analysis-types.js";
+import { mergeTerminalSettingsRecord } from "../shared/terminal-prefs-store.js";
 
 export interface AnalysisStore {
   readonly getSnapshot: () => AnalysisState;
@@ -12,6 +14,7 @@ export interface AnalysisStore {
   readonly stop: () => Promise<void>;
   readonly reset: () => Promise<void>;
   readonly dispose: () => void;
+  readonly updateContext: (settings: ClientSettingsCapability | undefined, language: "en" | "ko" | undefined) => void;
 }
 
 interface AnalysisStoreBinding {
@@ -26,15 +29,18 @@ const stores = new Map<string, AnalysisStore>();
 const disposalFlights = new Map<string, Promise<void>>();
 
 export function useAnalysisStore(context: OperationRenderContext): AnalysisStoreBinding {
-  const store = getAnalysisStore(context.operationId, context.api);
+  const store = getAnalysisStore(context.operationId, context.api, context.settings, context.language);
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset };
 }
 
-export function getAnalysisStore(operationId: string, api: ClientApiCapability): AnalysisStore {
+export function getAnalysisStore(operationId: string, api: ClientApiCapability, settings?: ClientSettingsCapability, language?: "en" | "ko"): AnalysisStore {
   const existing = stores.get(operationId);
-  if (existing) return existing;
-  const store = createAnalysisStore(operationId, api);
+  if (existing) {
+    existing.updateContext(settings, language);
+    return existing;
+  }
+  const store = createAnalysisStore(operationId, api, settings, language);
   stores.set(operationId, store);
   return store;
 }
@@ -51,8 +57,11 @@ export function rearmAnalysisArtifacts(operationId: string): void {
 const CONNECT_WAIT_MS = 2_000;
 const RESPONSE_TIMEOUT_MS = 120_000;
 
-function createAnalysisStore(operationId: string, api: ClientApiCapability): AnalysisStore {
+function createAnalysisStore(operationId: string, api: ClientApiCapability, initialSettings?: ClientSettingsCapability, initialLanguage?: "en" | "ko"): AnalysisStore {
   let state = initialAnalysisState;
+  let settingsCapability = initialSettings;
+  let language = initialLanguage;
+  let persistedSelection: AnalysisSelection | null = null;
   let disposed = false;
   let unsubscribe: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
@@ -60,16 +69,48 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
   let startController: AbortController | null = null;
   let stopFlight: Promise<void> | null = null;
   let resetFlight: Promise<void> | null = null;
+  let selectionWriteFlight: Promise<void> = Promise.resolve();
+  let selectionWriteEpoch = 0;
+  let selectionSavedTimer: ReturnType<typeof setTimeout> | null = null;
   let streamGeneration = 0;
   let runGeneration = 0;
   const listeners = new Set<() => void>();
 
   const dispatch = (action: AnalysisAction) => {
     if (disposed) return;
+    const savesSelection = action.type === "select-cli" || action.type === "select-model" || action.type === "select-effort";
+    if (savesSelection && state.selectionLocked) return;
     const next = analysisReducer(state, action);
     if (next === state) return;
-    state = next;
+    if (savesSelection && selectionSavedTimer !== null) {
+      clearTimeout(selectionSavedTimer);
+      selectionSavedTimer = null;
+    }
+    state = savesSelection && next.selectionSaved ? { ...next, selectionSaved: false } : next;
     for (const listener of listeners) listener();
+    if (savesSelection) queueSelectionSave({ cliId: state.cliId, model: state.model, effort: state.effort });
+  };
+
+  const queueSelectionSave = (selection: AnalysisSelection) => {
+    const settings = settingsCapability;
+    if (!settings) return;
+    const epoch = ++selectionWriteEpoch;
+    selectionWriteFlight = selectionWriteFlight.then(async () => {
+      try {
+        await mergeTerminalSettingsRecord(settings, {
+          analyst: { selection },
+        });
+        persistedSelection = selection;
+        if (disposed || epoch !== selectionWriteEpoch) return;
+        dispatch({ type: "selection-saved" });
+        selectionSavedTimer = setTimeout(() => {
+          selectionSavedTimer = null;
+          dispatch({ type: "selection-saved-clear" });
+        }, 1_500);
+      } catch {
+        // best-effort — the current in-memory selection remains usable.
+      }
+    });
   };
 
   const disarmWatchdog = () => {
@@ -137,10 +178,12 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     const pendingReset = resetFlight;
     const pendingStop = stopFlight;
     const pendingStart = startFlight;
+    const pendingSelectionWrite = selectionWriteFlight;
     const pendingStartController = startController;
     disposed = true;
     stores.delete(operationId);
     invalidateRun();
+    if (selectionSavedTimer !== null) clearTimeout(selectionSavedTimer);
     listeners.clear();
     pendingStartController?.abort();
     const flight = (async () => {
@@ -148,6 +191,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       if (pendingStart) await pendingStart.catch(() => {});
       if (pendingReset) await pendingReset.catch(() => {});
       if (pendingStop) await pendingStop.catch(() => {});
+      await pendingSelectionWrite;
       await stopAnalysis(api, operationId);
     })().catch(() => {});
     disposalFlights.set(operationId, flight);
@@ -174,7 +218,9 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
       if (!trimmed || state.busy || disposed) return;
       const starting = !state.started;
       const generation = ++runGeneration;
-      const selection = { cliId: state.cliId, model: state.model, effort: state.effort };
+      // Output language belongs to the server session created by this start. Later global
+      // language changes update panel copy live, but apply to output only after reset/restart.
+      const selection = { cliId: state.cliId, model: state.model, effort: state.effort, ...(language ? { language } : {}) };
       dispatch({ type: "sending", started: starting, text: trimmed, now: Date.now() });
       if (starting) {
         const controller = new AbortController();
@@ -228,14 +274,16 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
     reset: async () => {
       if (resetFlight) return resetFlight;
       if (disposed) return;
+      dispatch({ type: "selection-lock", locked: true });
       const shouldStopServer = state.started || state.phase !== "idle" || state.entries.length > 0 || state.artifacts.length > 0;
       invalidateRun();
       const flight = (async () => {
         if (stopFlight) await stopFlight;
         if (startFlight) await startFlight.catch(() => {});
+        await selectionWriteFlight;
         if (shouldStopServer) await stopAnalysis(api, operationId);
         await clearAnalysisArtifacts(api, operationId).catch(() => {});
-        dispatch({ type: "reset" });
+        dispatch({ type: "reset", selection: persistedSelection });
       })().catch((error: unknown) => {
         dispatch({ type: "error", message: `Reset failed: ${failureMessage(error)}`, now: Date.now() });
         throw error;
@@ -245,16 +293,47 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability): Ana
         await flight;
       } finally {
         if (resetFlight === flight) resetFlight = null;
+        dispatch({ type: "selection-lock", locked: false });
       }
     },
     dispose,
+    updateContext: (settings, nextLanguage) => {
+      if (settings) settingsCapability = settings;
+      language = nextLanguage;
+    },
   };
 
-  void fetchAnalysisCatalog(api)
-    .then((catalog) => dispatch({ type: "catalog", catalog }))
+  const previousDisposal = disposalFlights.get(operationId);
+  void (previousDisposal ?? Promise.resolve())
+    .then(() => Promise.all([fetchAnalysisCatalog(api), readPersistedSelection(settingsCapability)]))
+    .then(([catalog, selection]) => {
+      persistedSelection = selection;
+      dispatch({ type: "catalog", catalog, selection });
+    })
     .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }));
 
   return store;
+}
+
+async function readPersistedSelection(settings: ClientSettingsCapability | undefined): Promise<AnalysisSelection | null> {
+  if (!settings) return null;
+  try {
+    const current = await settings.read("terminal");
+    if (!current) return null;
+    const analyst = record(current["analyst"]);
+    const selection = record(analyst["selection"]);
+    return typeof selection["cliId"] === "string"
+      && typeof selection["model"] === "string"
+      && typeof selection["effort"] === "string"
+      ? { cliId: selection["cliId"], model: selection["model"], effort: selection["effort"] }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function failureMessage(error: unknown): string {

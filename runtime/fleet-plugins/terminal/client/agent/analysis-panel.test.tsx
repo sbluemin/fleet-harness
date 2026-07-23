@@ -20,7 +20,7 @@ describe("Session Analyst contract", () => {
     expect(chat).toContain("Starting analyst");
     expect(chat).toContain("Reasoning over session");
     expect(chat).toContain("Writing answer");
-    expect(chat.match(/aria-label="Stop"/g)).toHaveLength(1);
+    expect(chat.match(/analysisCopy\(language, "Stop"\)/g)).toHaveLength(1);
     expect(chat).toContain('className="session-analyst__send session-analyst__stop"');
     expect(chat).not.toContain("state.thinking");
     expect(artifacts).not.toContain("SANDBOXED HTML");

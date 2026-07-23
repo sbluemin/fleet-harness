@@ -23,8 +23,8 @@ import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 
 const THEMES = ["instrument", "maritime", "carbon"] as const satisfies readonly ConsoleTheme[];
 
-function operationContext(theme: ConsoleTheme, fetch = vi.fn(async () => new Response(null, { status: 200 }))): OperationRenderContext {
-  return { theme, operationId: "op/id", api: { fetch } } as never;
+function operationContext(theme: ConsoleTheme, fetch = vi.fn(async () => new Response(null, { status: 200 })), language?: "en" | "ko"): OperationRenderContext {
+  return { theme, operationId: "op/id", api: { fetch }, language } as never;
 }
 
 function artifactUrl(frame: HTMLIFrameElement): URL {
@@ -110,6 +110,22 @@ describe("artifact frame", () => {
 
     act(() => container.querySelector<HTMLButtonElement>(".session-analyst__clear")?.click());
     expect(fetch).toHaveBeenCalledWith("terminal", "analysis/op%2Fid/artifacts", { method: "DELETE" });
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("renders Korean artifact chrome with one count suffix", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext("instrument", undefined, "ko") })));
+
+    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__artifact-count")!;
+    expect(container.querySelector(".session-analyst__panel-copy")?.textContent).toBe("아티팩트이 분석의 시각적 결과물");
+    expect(trigger.textContent).toBe("2 개");
+    expect(trigger.getAttribute("aria-label")).toBe("아티팩트 보기(2개)");
+    expect(container.querySelector('article[aria-label="선택한 아티팩트 미리보기"]')).not.toBeNull();
 
     act(() => root.unmount());
     container.remove();

@@ -8,7 +8,9 @@ import { isBlockingDialogOpen } from "../blocking-dialog.js";
 import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
+import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
@@ -45,6 +47,7 @@ interface PluginOperationRendererProps {
   readonly geometry: OperationGeometry;
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
+  readonly language: "en" | "ko";
   readonly viewportZoom: number;
   readonly onActivate: () => void;
   readonly onClose: () => void;
@@ -86,6 +89,8 @@ export function OperationsCanvas({
   const activePluginOperationId = state.activeOperationId;
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
+  const globalSettings = useGlobalSettingsStore();
+  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const glanceVisible = useGlanceHold();
   const disabled = !state.activeTheaterId || state.addingTheater;
@@ -258,6 +263,7 @@ export function OperationsCanvas({
             operationKindRegistry,
             status: state.operationStatus[operation.id],
             theme: state.activeTheme,
+            language,
             viewportZoom: effectiveZoom,
             minimized: minimizedSet.has(operation.id),
             maximized: operationMaximized,
@@ -472,6 +478,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
   readonly status?: OperationActivity;
   readonly theme: ConsoleTheme;
+  readonly language: "en" | "ko";
   readonly viewportZoom: number;
   readonly minimized: boolean;
   readonly maximized: boolean;
@@ -541,6 +548,7 @@ function renderPluginOperation(operation: OperationNode, options: {
             geometry={geometry}
             operation={operation}
             theme={options.theme}
+            language={options.language}
             viewportZoom={options.viewportZoom}
             onActivate={options.onActivate}
             onClose={options.onClose}
@@ -562,6 +570,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               geometry={geometry}
               operation={operation}
               theme={options.theme}
+              language={options.language}
               viewportZoom={options.viewportZoom}
               onActivate={options.onActivate}
               onClose={options.onClose}
@@ -586,6 +595,7 @@ function PluginOperationRenderer({
   geometry,
   operation,
   theme,
+  language,
   viewportZoom,
   onActivate,
   onClose,
@@ -607,6 +617,7 @@ function PluginOperationRenderer({
     ...(keyboardFocusRequestId === undefined ? {} : { keyboardFocusRequestId }),
     zoom: viewportZoom,
     theme,
+    language,
     api: capabilities.api,
     lifecycle: capabilities.lifecycle,
     terminal: capabilities.terminal,

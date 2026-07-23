@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { ANALYST_SYSTEM_PROMPT } from "../src/prompt.js";
+import { ANALYST_KOREAN_LANGUAGE_INSTRUCTION, ANALYST_SYSTEM_PROMPT, resolveAnalystSystemPrompt } from "../src/prompt.js";
 
 it("snapshots the approved observer, evidence, and artifact contract", () => {
   expect({
@@ -72,4 +72,12 @@ it("snapshots the approved observer, evidence, and artifact contract", () => {
       "visibleArtifact": true,
     }
   `);
+});
+
+it("adds the exact approved Korean output instruction only for Korean sessions", () => {
+  const instruction = "\n\n# Language\nWrite every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.";
+  expect(ANALYST_KOREAN_LANGUAGE_INSTRUCTION).toBe(instruction);
+  expect(resolveAnalystSystemPrompt("ko")).toBe(`${ANALYST_SYSTEM_PROMPT}${instruction}`);
+  expect(resolveAnalystSystemPrompt("en")).toBe(ANALYST_SYSTEM_PROMPT);
+  expect(resolveAnalystSystemPrompt()).toBe(ANALYST_SYSTEM_PROMPT);
 });

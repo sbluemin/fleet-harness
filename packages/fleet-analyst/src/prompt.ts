@@ -33,3 +33,14 @@ Lead with the conclusion and keep chat answers to 120 words or fewer. For a stru
 # Tone
 
 Be calm and specific. Do not encourage or apologize.`;
+
+export const ANALYST_KOREAN_LANGUAGE_INSTRUCTION = `
+
+# Language
+Write every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.`;
+
+export function resolveAnalystSystemPrompt(language?: "en" | "ko"): string {
+  return language === "ko"
+    ? `${ANALYST_SYSTEM_PROMPT}${ANALYST_KOREAN_LANGUAGE_INSTRUCTION}`
+    : ANALYST_SYSTEM_PROMPT;
+}

@@ -129,6 +129,7 @@ export interface OperationRenderContext extends OperationContext {
   readonly operation: OperationNode;
   readonly zoom: number;
   readonly theme: ConsoleTheme;
+  readonly language?: "en" | "ko";
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly terminal: ClientTerminalCapability;
