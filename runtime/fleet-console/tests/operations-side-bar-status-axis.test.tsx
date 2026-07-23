@@ -142,19 +142,32 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>(".side-bar-theater-header").getAttribute("aria-expanded")).toBe("false");
     expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
   });
+
+  it("selects an inactive Theater on row click without mutating its persisted collapse preference", () => {
+    setTheaterCollapsed("theater-a", true);
+    const onSelectTheater = vi.fn();
+    renderSideBar([makeOperation("only", null)], [], onSelectTheater, "theater-other");
+
+    act(() => required<HTMLElement>(".side-bar-theater-header").click());
+
+    expect(onSelectTheater).toHaveBeenCalledWith("theater-a");
+    // 비활성 클릭=선택만 — 접힘 영속 키는 그대로 남는다.
+    expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
+  });
 });
 
 function renderSideBar(
   operations: readonly OperationNode[],
   groups: readonly OperationGroup[] = [],
   onSelectTheater = vi.fn(),
+  activeTheaterId: string = THEATER.id,
 ): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => root?.render(createElement(MemoryRouter, null, createElement(OperationsSideBar, {
     theaters: [THEATER],
-    activeTheaterId: THEATER.id,
+    activeTheaterId,
     operations,
     groups,
     minimized: [],

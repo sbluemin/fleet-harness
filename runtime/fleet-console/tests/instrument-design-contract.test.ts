@@ -332,7 +332,7 @@ describe("Instrument core design contract", () => {
 
     // Doctrine: status-section border/dot/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
-    expect(sidebar).toContain("resolveEntryGroupMark(entry, activeGroups)");
+    expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
     expect(components).toContain("--status-color: var(--positive);");
     expect(components).toContain("--status-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
     expect(components).toContain("border-left: 3px solid var(--status-color);");

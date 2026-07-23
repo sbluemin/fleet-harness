@@ -227,7 +227,7 @@ export function OperationsSideBar({
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const closeArmTimeoutRef = useRef<number | null>(null);
-  const statusLandingTimeoutRef = useRef<number | null>(null);
+  const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const previousOperationStatusRef = useRef<ReadonlyMap<string, SideBarStatus>>(new Map());
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
@@ -272,6 +272,12 @@ export function OperationsSideBar({
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const statusSections = groupOperationsByStatus(allEntries);
+  // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
+  const entryIndexById = new Map(allEntries.map((entry, index) => [entry.operation.id, index] as const));
+  const groupMarkByGroupId = new Map(activeGroups.map((group) => {
+    const color = resolveAccentColor(group.color);
+    return [group.id, color ? { name: group.name, color } : null] as const;
+  }));
   const hasCustomGroups = groupedSections.some((section) => section.group !== null);
   const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
   const visibleEntries = groupedSections.flatMap((section) =>
@@ -320,8 +326,8 @@ export function OperationsSideBar({
     const previousStatuses = previousOperationStatusRef.current;
     previousOperationStatusRef.current = nextStatuses;
     if (!statusAxis) {
-      if (statusLandingTimeoutRef.current !== null) window.clearTimeout(statusLandingTimeoutRef.current);
-      statusLandingTimeoutRef.current = null;
+      for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
+      statusLandingTimeoutsRef.current.clear();
       setStatusLandingIds((current) => current.size === 0 ? current : new Set());
       return;
     }
@@ -332,18 +338,28 @@ export function OperationsSideBar({
       })
       .map((operation) => operation.id);
     if (movedIds.length === 0) return;
-    if (statusLandingTimeoutRef.current !== null) window.clearTimeout(statusLandingTimeoutRef.current);
-    setStatusLandingIds(new Set(movedIds));
-    statusLandingTimeoutRef.current = window.setTimeout(() => {
-      statusLandingTimeoutRef.current = null;
-      setStatusLandingIds(new Set());
+    // 이동 배치별 독립 타이머: 기존 flash를 취소하지 않고 병합했다가 이 배치의 ID만 만료시킨다.
+    setStatusLandingIds((current) => {
+      const next = new Set(current);
+      for (const id of movedIds) next.add(id);
+      return next;
+    });
+    const timeoutId = window.setTimeout(() => {
+      statusLandingTimeoutsRef.current.delete(timeoutId);
+      setStatusLandingIds((current) => {
+        const next = new Set(current);
+        for (const id of movedIds) next.delete(id);
+        return next.size === current.size ? current : next;
+      });
     }, STATUS_LANDING_DURATION_MS);
+    statusLandingTimeoutsRef.current.add(timeoutId);
   // statusSignature is the stable primitive dependency for the operation/status map assembled above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusAxis, statusSignature]);
 
   useEffect(() => () => {
-    if (statusLandingTimeoutRef.current !== null) window.clearTimeout(statusLandingTimeoutRef.current);
+    for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
+    statusLandingTimeoutsRef.current.clear();
   }, []);
 
   // 팔레트 "New Operation" 커맨드 요청을 소비해 ＋New 버튼과 동일한 launch 오버레이를 그 버튼 앵커 위치에 연다.
@@ -818,10 +834,10 @@ export function OperationsSideBar({
                     </div>
                     <ol className="side-bar-group-chips" aria-label={`${section.label} operations`}>
                       {section.entries.map((entry) => {
-                        const globalIndex = allEntries.indexOf(entry);
+                        const globalIndex = entryIndexById.get(entry.operation.id) ?? 0;
                         const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                         const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
-                        const groupMark = resolveEntryGroupMark(entry, activeGroups);
+                        const groupMark = entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null;
                         return (
                           <OperationsSideBarChip
                             key={entry.operation.id}
@@ -1174,12 +1190,11 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
-  // 행 클릭은 ▾ 버튼을 흡수한 단일 제스처다. 비활성 Theater는 먼저 선택만 하고(접힌 채 전환되는
-  // 사고 방지), 이미 활성인 Theater에서만 접기/펼치기를 토글한다.
+  // 행 클릭은 ▾ 버튼을 흡수한 단일 제스처다. 비활성 Theater는 선택만 하고(영속 접힘 선호를
+  // 건드리지 않는다), 이미 활성인 Theater에서만 접기/펼치기를 토글한다.
   const activateOrToggle = () => {
     if (!active) {
       onSelectTheater(theater.id);
-      if (collapsed) onToggleCollapsed(theater.id);
       return;
     }
     onToggleCollapsed(theater.id);
