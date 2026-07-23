@@ -79,8 +79,3 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <objective> required: What intelligence is needed — feature, pattern, API usage, or implementation detail.
   - <focus_areas?> optional: Specific directories, files, symbols, or code patterns to prioritize.
   - <constraints?> optional: Time constraints, specific branches/tags, or areas to exclude.
-- **chronicle** (Chronicle · Chief Knowledge Officer) — wrap request content in these blocks (? = optional):
-  - <target> required: which code, module, PR, feature, or release artifact to document.
-  - <doc_type> required: README, API spec, PR summary, release notes, changelog, AGENTS.md, '.md-audit', change-impact summary, breaking-change report, migration guide.
-  - <audience> required: developers, end-users, API consumers, operators, or contributors.
-  - <scope?> optional: include/exclude; for changelogs/change-impact/audits: commit range, PR, diff, feature slice, deployment scope.

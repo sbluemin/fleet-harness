@@ -16,7 +16,7 @@ export interface TrackPhase {
   readonly tone: "live" | "done" | "error";
 }
 
-const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest", "chronicle"]);
+const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest"]);
 const BACKEND_CLIS = new Set(["claude", "claude-kimi", "codex", "opencode-go", "cursor"]);
 
 export function formatElapsedDuration(elapsedMs: number): string {

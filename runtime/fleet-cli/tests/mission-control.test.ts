@@ -129,14 +129,14 @@ describe("Mission Control controller", () => {
     const lines = renderMissionControl(80, {
       cliOptions: CLI_OPTIONS,
       lastExit: undefined,
-      loadedCounts: { carriers: 8, queuedPatches: 3, wikiEntries: 17 },
+      loadedCounts: { carriers: 7, queuedPatches: 3, wikiEntries: 17 },
       release: { channel: "stable", version: "0.22.1" },
       selectedCliId: "claude",
       state: "idle",
     });
     const plainOutput = stripAnsi(lines.join("\n"));
 
-    expect(plainOutput).toContain("8 carriers");
+    expect(plainOutput).toContain("7 carriers");
     expect(plainOutput).toContain("17 wiki entries");
     expect(plainOutput).toContain("3 queued");
     expect(plainOutput).toContain("v0.22.1");
@@ -160,16 +160,16 @@ describe("Mission Control controller", () => {
 
   it("anchors launcher status counts and update state above the root footer", () => {
     const controller = createTestController({
-      loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
+      loadedCounts: { carriers: 7, queuedPatches: 0, wikiEntries: 17 },
       release: { channel: "stable", latestVersion: "0.23.0", version: "0.22.1" },
     });
     // 섹션 여백 도입으로 루트 화면은 24행보다 큰 단말을 전제한다.
     controller.ptyView.resize(80, 30);
     const plainLines = controller.component.render(80).map(stripAnsi);
     const output = plainLines.join("\n");
-    const countsIndex = plainLines.findIndex((line) => line.includes("✓ 8 carriers"));
+    const countsIndex = plainLines.findIndex((line) => line.includes("✓ 7 carriers"));
 
-    expect(output).toContain("✓ 8 carriers");
+    expect(output).toContain("✓ 7 carriers");
     expect(output).toContain("✓ 17 wiki entries");
     expect(output).toContain("v0.22.1 · stable");
     expect(output).toContain("Exit");
@@ -524,7 +524,7 @@ describe("Mission Control controller", () => {
 
   it("renders about panel with counts and placeholder docs link", () => {
     const controller = createTestController({
-      loadedCounts: { carriers: 8, queuedPatches: 3, wikiEntries: 17 },
+      loadedCounts: { carriers: 7, queuedPatches: 3, wikiEntries: 17 },
       release: { channel: "stable", version: "0.22.1" },
     });
 
@@ -532,10 +532,10 @@ describe("Mission Control controller", () => {
     const output = controller.component.render(80).join("\n");
 
     expect(renderPlain(controller)).toContain("Version: 0.22.1");
-    expect(renderPlain(controller)).toContain("Carriers      : 8");
+    expect(renderPlain(controller)).toContain("Carriers      : 7");
     expect(renderPlain(controller)).toContain("Docs          : (configured later)");
     expect(output).toContain("Version: \x1b[38;2;254;188;56m0.22.1\x1b[0m");
-    expect(output).toContain("Carriers      : \x1b[38;2;254;188;56m8\x1b[0m");
+    expect(output).toContain("Carriers      : \x1b[38;2;254;188;56m7\x1b[0m");
     expect(output).toContain("Docs          : \x1b[38;2;254;188;56m(configured later)\x1b[0m");
   });
 
@@ -543,7 +543,7 @@ describe("Mission Control controller", () => {
     const lines = renderMissionControl(80, {
       cliOptions: CLI_OPTIONS,
       lastExit: undefined,
-      loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
+      loadedCounts: { carriers: 7, queuedPatches: 0, wikiEntries: 17 },
       release: { channel: "local", version: "0.22.1" },
       selectedCliId: "claude",
       state: "idle",

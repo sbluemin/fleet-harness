@@ -21,7 +21,7 @@ describe("discoverMissionControlCounts", () => {
     const dataDir = path.join(dataParent, "data");
 
     expect(discoverMissionControlCounts({ dataDir, invocationCwd })).toEqual({
-      carriers: 8,
+      carriers: 7,
       queuedPatches: 0,
       wikiEntries: 0,
     });
@@ -40,7 +40,7 @@ describe("discoverMissionControlCounts", () => {
     writeFile(path.join(workspace.path, "knowledge", "queue", "_sets", "ignored", "patch.md"), "# Ignored\n");
 
     expect(discoverMissionControlCounts({ dataDir, invocationCwd })).toEqual({
-      carriers: 8,
+      carriers: 7,
       queuedPatches: 1,
       wikiEntries: 2,
     });
@@ -56,7 +56,7 @@ describe("discoverMissionControlCounts", () => {
     symlinkSync(outside, path.join(workspace.path, "knowledge"));
 
     expect(discoverMissionControlCounts({ dataDir, invocationCwd })).toEqual({
-      carriers: 8,
+      carriers: 7,
       queuedPatches: 0,
       wikiEntries: 0,
     });
@@ -68,7 +68,7 @@ describe("discoverMissionControlCounts", () => {
     writeFile(path.join(invocationCwd, ".fleet", "knowledge", "wiki", "legacy.md"), "# Legacy\n");
 
     expect(discoverMissionControlCounts({ dataDir, invocationCwd })).toEqual({
-      carriers: 8,
+      carriers: 7,
       queuedPatches: 0,
       wikiEntries: 0,
     });

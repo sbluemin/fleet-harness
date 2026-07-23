@@ -229,8 +229,11 @@ Then report in Korean:
 - **Genesis** — implementation of fixes (default for ≥ 2 files or non-trivial logic).
 - **Sentinel** — additional code/security review when a fix touches concurrency, auth, input validation, or other sensitive surfaces.
 - **Nimitz** — only when reviewers disagree or a fix needs an architecture decision (read-only).
-- **Chronicle** — only when a fix introduces doc impact beyond touched code (README/CHANGELOG/AGENTS.md).
 - Skip delegation for trivial single-file edits.
+
+## Documentation Synthesis
+
+PR titles, summaries, bodies, and `.changelog.d/pr-<pr_number>.md` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis to a Carrier.
 
 ## Safety Rules
 

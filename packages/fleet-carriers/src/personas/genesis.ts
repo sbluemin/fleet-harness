@@ -40,7 +40,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "architecture decisions without prior nimitz review",
     "non-trivial implementation lacking an execution plan from Kirov when planning is clearly needed",
     "post-build QA & security (→sentinel)",
-    "post-build documentation (→chronicle)",
+    "post-build documentation (host-owned; not Carrier dispatch)",
   ],
   requestBlocks: [
     { tag: "objective", hint: "What needs to be built or achieved. Be specific about the desired end state.", required: true },

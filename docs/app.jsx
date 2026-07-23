@@ -10,7 +10,7 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 // ───── UI strings ─────
 const UI = {
   navHierarchy: { ko: "지휘 체계", en: "Command Chain" },
-  navCaptains:  { ko: "8 함장", en: "8 Captains" },
+  navCaptains:  { ko: "7 함장", en: "7 Captains" },
   navProtocol:  { ko: "4 모드", en: "4 Modes" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
@@ -21,7 +21,7 @@ const UI = {
   heroDescAdmiral:{ ko: "대원수", en: "Admiral of the Navy" },
   heroDescMid:    { ko: "로서 임무를 부여하고, 호스트인 ", en: ", while the host — the " },
   heroDescHost:   { ko: "제독", en: "Admiral" },
-  heroDescMid2:   { ko: "이 8명의 ", en: " — delegates to eight " },
+  heroDescMid2:   { ko: "이 7명의 ", en: " — delegates to seven " },
   heroDescCap:    { ko: "함장", en: "Captains" },
   heroDescTail:   { ko: "에게 책임을 위임해 작전을 종결합니다.", en: " who close the operation." },
 
@@ -45,8 +45,8 @@ const UI = {
   backendsTitle: { ko: ["네 개의 CLI,", "한 명의 제독."], en: ["Four CLIs,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작전을 수행하지 않는다. 각 백엔드는 자신이 가장 잘하는 항해를 맡는다.", en: "No single model runs every mission. Each backend takes the voyage it sails best." },
 
-  captainsEy:    { ko: "Captains Roster · 08", en: "Captains Roster · 08" },
-  captainsTitle: { ko: ["여덟 명의 함장,", "겹치지 않는 여덟 개의 책임."], en: ["Eight captains,", "eight non-overlapping duties."] },
+  captainsEy:    { ko: "Captains Roster · 07", en: "Captains Roster · 07" },
+  captainsTitle: { ko: ["일곱 명의 함장,", "겹치지 않는 일곱 개의 책임."], en: ["Seven captains,", "seven non-overlapping duties."] },
   captainsLede:  { ko: "함장은 장식이 아닌 운영 계약이다. 좌측에서 함장을 선택하면 임무 강령과 책임 명세가 펼쳐진다.", en: "Captains aren't decoration — they're operational contracts. Pick one to see its mission and duties." },
   captainsAria:  { ko: "함장 명단", en: "Captains list" },
   captainCap:    { ko: "Captain", en: "Captain" },
@@ -72,12 +72,12 @@ const UI = {
 
   closerEy:    { ko: "Mission Brief · Ready", en: "Mission Brief · Ready" },
   closerTitle: { ko: ["함대는", "당신의 명령을 기다린다."], en: ["The fleet awaits", "your orders."] },
-  closerSub:   { ko: "저장소를 살펴보고, 첫 임무를 부여하라. 정찰부터 항해일지까지, 함대가 알아서 끝낸다.", en: "Explore the repo, issue your first mission. From recon to the captain's log, the fleet handles the rest." },
+  closerSub:   { ko: "저장소를 살펴보고, 첫 임무를 부여하라. 정찰부터 검증까지, 함대가 알아서 끝낸다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Explore the repo, issue your first mission. From recon to verification, the fleet handles the rest. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
   installCmt:  { ko: "# install the harness", en: "# install the harness" },
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 4 CLI · 8 Captains · 4 Modes", en: "· 4 CLI · 8 Captains · 4 Modes" },
+  countMeta:   { ko: "· 4 CLI · 7 Captains · 4 Modes", en: "· 4 CLI · 7 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -98,7 +98,7 @@ const HIERARCHY = [
     rank: "Tier 03",
     role: { ko: "함장", en: "Captain" },
     en: "Captain · CLI AGENT",
-    desc: { ko: "8명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Eight specialists, each running a single CLI backend within their domain to execute the operation." },
+    desc: { ko: "7명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Seven specialists, each running a single CLI backend within their domain to execute the operation." },
   },
 ];
 
@@ -201,19 +201,6 @@ const CAPTAINS = [
       { ko: "Review Cycle에서 Genesis 결과를 병렬 심문", en: "Interrogates Genesis's output in parallel during the Review Cycle." },
     ],
   },
-  {
-    id: "Chronicle",
-    role: { ko: "Chief Knowledge Officer", en: "Chief Knowledge Officer" },
-    cli: "Claude Code",
-    color: "#3dd5f3",
-    mission: { ko: "함대의 기억. 작전이 끝나기 전 마지막으로 항해일지를 닫는 자.", en: "The fleet's memory. The last hand to close the captain's log before the operation ends." },
-    duties: [
-      { ko: "AGENTS.md · 함장 운영 매뉴얼 유지", en: "Maintains AGENTS.md and the captains' operating manual." },
-      { ko: "PR 요약 · 변경 영향 감사 보고", en: "PR summaries and change-impact audit reports." },
-      { ko: "문서 SSOT 동기화 — 코드와 일지의 차이 추적", en: "Doc SSOT sync — tracks divergence between code and log." },
-      { ko: "Documentation Update 단계의 단독 책임자", en: "Sole owner of the Documentation Update phase." },
-    ],
-  },
 ];
 
 const MODES = [
@@ -311,7 +298,7 @@ const DIFFS = [
     n: "02",
     name: "Naval Metaphor as Contract",
     kr: { ko: "운영 가능한 해군 메타포", en: "An Operational Naval Metaphor" },
-    body: { ko: "장식이 아니다. 8명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다.", en: "Not decoration. Each of the eight captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code." },
+    body: { ko: "장식이 아니다. 7명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the seven captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
   },
   {
     n: "03",
@@ -364,7 +351,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "4 CLI 백엔드 동시 지휘", en: "Four CLI backends commanded together" },
-      { ko: "8 함장 명시적 책임 분리", en: "Eight captains, distinct duties" },
+      { ko: "7 함장 명시적 책임 분리", en: "Seven captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
     verdict: { ko: "처음부터 함대로 설계되었다.", en: "Designed as a fleet from day one." },
@@ -406,16 +393,16 @@ function Nav() {
 
 // ───── Hero ─────
 function Hero() {
-  const nodeCount = 8;
+  const nodeCount = 7;
   const radius = 38;
   const nodes = Array.from({ length: nodeCount }, (_, i) => {
     const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
     return {
       x: 50 + Math.cos(angle) * radius,
       y: 50 + Math.sin(angle) * radius,
-      label: ["VG", "TP", "NM", "KV", "GN", "OH", "SN", "CH"][i],
-      full: ["Vanguard", "Tempest", "Nimitz", "Kirov", "Genesis", "Ohio", "Sentinel", "Chronicle"][i],
-      color: ["#5fd673", "#3dd5f3", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa", "#fb7185", "#3dd5f3"][i],
+      label: ["VG", "TP", "NM", "KV", "GN", "OH", "SN"][i],
+      full: ["Vanguard", "Tempest", "Nimitz", "Kirov", "Genesis", "Ohio", "Sentinel"][i],
+      color: ["#5fd673", "#3dd5f3", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa", "#fb7185"][i],
     };
   });
 
@@ -453,7 +440,7 @@ function Hero() {
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaCaptains)}</div>
-                <div className="value"><em>8</em> · {t(UI.metaCaptainsVal)}</div>
+                <div className="value"><em>7</em> · {t(UI.metaCaptainsVal)}</div>
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaProtocol)}</div>
