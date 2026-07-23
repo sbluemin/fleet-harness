@@ -1192,6 +1192,7 @@ function TheaterSectionHeader({
 
   // 행 클릭은 ▾ 버튼을 흡수한 단일 제스처다. 비활성 Theater는 선택만 하고(영속 접힘 선호를
   // 건드리지 않는다), 이미 활성인 Theater에서만 접기/펼치기를 토글한다.
+  // 행 title도 이 결과와 일치시킨다: 비활성 행은 "Switch to …", 활성 행만 Expand/Collapse를 광고한다.
   const activateOrToggle = () => {
     if (!active) {
       onSelectTheater(theater.id);
@@ -1221,7 +1222,7 @@ function TheaterSectionHeader({
       onPointerUp={handlePointerUp}
       aria-current={active ? "true" : undefined}
       aria-expanded={!collapsed}
-      title={collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`}
+      title={active ? (collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`) : `Switch to ${theater.label}`}
     >
       <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
       <span className="side-bar-theater-name">{theater.label}</span>
