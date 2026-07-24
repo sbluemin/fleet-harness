@@ -66,27 +66,25 @@ describe("two-state SideBar store", () => {
     const store = await loadStore();
     const listener = vi.fn();
     const unsubscribe = store.subscribeStatusSectionCollapse(listener);
-    const empty: readonly unknown[] = [];
-    const occupied: readonly unknown[] = [{}];
 
-    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", empty)).toBe(true);
-    expect(store.getSideBarStatusSectionCollapsed("theater-a", "running", occupied)).toBe(false);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(true);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "running", false)).toBe(false);
 
-    store.toggleSideBarStatusSectionCollapsed("theater-a", "awaiting", empty);
-    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", empty)).toBe(false);
-    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", occupied)).toBe(false);
+    store.toggleSideBarStatusSectionCollapsed("theater-a", "awaiting", true);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(false);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", false)).toBe(false);
 
-    store.toggleSideBarStatusSectionCollapsed("theater-a", "awaiting", occupied);
-    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", empty)).toBe(true);
-    expect(store.getSideBarStatusSectionCollapsed("theater-b", "awaiting", occupied)).toBe(false);
+    store.toggleSideBarStatusSectionCollapsed("theater-a", "awaiting", false);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(true);
+    expect(store.getSideBarStatusSectionCollapsed("theater-b", "awaiting", false)).toBe(false);
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(window.localStorage.length).toBe(0);
 
     vi.resetModules();
     const reloadedStore = await loadStore();
-    expect(reloadedStore.getSideBarStatusSectionCollapsed("theater-a", "awaiting", empty)).toBe(true);
-    expect(reloadedStore.getSideBarStatusSectionCollapsed("theater-a", "awaiting", occupied)).toBe(false);
+    expect(reloadedStore.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(true);
+    expect(reloadedStore.getSideBarStatusSectionCollapsed("theater-a", "awaiting", false)).toBe(false);
     unsubscribe();
   });
 });

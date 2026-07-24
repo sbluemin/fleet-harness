@@ -66,6 +66,10 @@ export function OperationsSideBarChip({
   const suppressClickRef = useRef(false);
   const { operation, active, minimized, notificationCount, status } = entry;
   const title = displayTitle(operation);
+  const groupContext = statusAxis && groupMark ? ` in group ${groupMark.name}` : "";
+  const chipAriaLabel = active
+    ? `${title}${groupContext} (focused)`
+    : `Focus operation ${title}${groupContext}`;
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
@@ -117,7 +121,7 @@ export function OperationsSideBarChip({
       className={chipClassName}
       role="button"
       tabIndex={0}
-      aria-label={active ? `${title} (focused)` : `Focus operation ${title}`}
+      aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
       title={preview ? "Click to open in its Theater" : active ? "Focused · double-click to rename · right-click to set accent" : "Click to focus · double-click to rename · right-click to set accent"}
       style={chipStyle}
@@ -171,7 +175,7 @@ export function OperationsSideBarChip({
         <span
           className="side-bar-chip-group-pill"
           title={groupMark.name}
-          aria-label={`Group ${groupMark.name}`}
+          aria-hidden="true"
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         >
           {groupMark.name}

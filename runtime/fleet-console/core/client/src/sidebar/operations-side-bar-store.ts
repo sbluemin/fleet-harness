@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 interface SideBarState {
   readonly width: number;
@@ -46,9 +46,12 @@ export function useSideBarStatusAxis(): boolean {
 export function useSideBarStatusSectionCollapsed(
   theaterId: string,
   status: SideBarStatus,
-  entries: readonly unknown[],
+  empty: boolean,
 ): boolean {
-  const getSnapshot = () => getSideBarStatusSectionCollapsed(theaterId, status, entries);
+  const getSnapshot = useCallback(
+    () => getSideBarStatusSectionCollapsed(theaterId, status, empty),
+    [theaterId, status, empty],
+  );
   return useSyncExternalStore(subscribeStatusSectionCollapse, getSnapshot, getSnapshot);
 }
 
@@ -106,21 +109,21 @@ export function subscribeStatusAxis(listener: () => void): () => void {
 export function getSideBarStatusSectionCollapsed(
   theaterId: string,
   status: SideBarStatus,
-  entries: readonly unknown[],
+  empty: boolean,
 ): boolean {
   const key = statusSectionKey(theaterId, status);
   if (userCollapsedStatusSections.has(key)) return true;
   if (userExpandedStatusSections.has(key)) return false;
-  return entries.length === 0;
+  return empty;
 }
 
 export function toggleSideBarStatusSectionCollapsed(
   theaterId: string,
   status: SideBarStatus,
-  entries: readonly unknown[],
+  empty: boolean,
 ): void {
   const key = statusSectionKey(theaterId, status);
-  if (getSideBarStatusSectionCollapsed(theaterId, status, entries)) {
+  if (getSideBarStatusSectionCollapsed(theaterId, status, empty)) {
     userCollapsedStatusSections = new Set(userCollapsedStatusSections);
     userCollapsedStatusSections.delete(key);
     userExpandedStatusSections = new Set(userExpandedStatusSections).add(key);
@@ -135,6 +138,11 @@ export function toggleSideBarStatusSectionCollapsed(
 export function subscribeStatusSectionCollapse(listener: () => void): () => void {
   statusSectionCollapseListeners.add(listener);
   return () => statusSectionCollapseListeners.delete(listener);
+}
+
+export function resetSideBarStatusSectionCollapseForTests(): void {
+  userCollapsedStatusSections = new Set();
+  userExpandedStatusSections = new Set();
 }
 
 function statusSectionKey(theaterId: string, status: SideBarStatus): string {
