@@ -21,6 +21,7 @@ interface SideBarChipProps {
   readonly isCloseArmed: boolean;
   readonly accentValue: string | null;
   readonly groupMark?: { readonly name: string; readonly color: string } | null;
+  readonly statusAxis?: boolean;
   readonly statusLanded?: boolean;
   readonly reorderEnabled?: boolean;
   readonly dragging: boolean;
@@ -45,6 +46,7 @@ export function OperationsSideBarChip({
   isCloseArmed,
   accentValue,
   groupMark = null,
+  statusAxis = false,
   statusLanded = false,
   reorderEnabled = true,
   dragging,
@@ -165,7 +167,16 @@ export function OperationsSideBarChip({
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
       ) : null}
-      {groupMark ? (
+      {groupMark && statusAxis && !preview ? (
+        <span
+          className="side-bar-chip-group-pill"
+          title={groupMark.name}
+          aria-label={`Group ${groupMark.name}`}
+          style={{ "--group-mark": groupMark.color } as CSSProperties}
+        >
+          {groupMark.name}
+        </span>
+      ) : groupMark && !statusAxis ? (
         <span
           className="side-bar-chip-group-mark"
           title={groupMark.name}
@@ -173,12 +184,14 @@ export function OperationsSideBarChip({
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         />
       ) : null}
-      <span
-        className={`side-bar-chip-status ${chipStatusClass(status)}`}
-        role="img"
-        aria-label={chipStatusLabel(status)}
-        title={chipStatusLabel(status)}
-      />
+      {!statusAxis ? (
+        <span
+          className={`side-bar-chip-status ${chipStatusClass(status)}`}
+          role="img"
+          aria-label={chipStatusLabel(status)}
+          title={chipStatusLabel(status)}
+        />
+      ) : null}
       {!preview && !minimized ? (
         <button
           type="button"

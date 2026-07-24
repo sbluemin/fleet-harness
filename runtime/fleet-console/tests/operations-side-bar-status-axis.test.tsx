@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 describe("OperationsSideBar STATUS axis", () => {
-  it("toggles from GROUP to ordered status sections, hides the live tick, and keeps group identity marks", () => {
+  it("toggles from GROUP to ordered status sections, hides the live tick, and renders group identity pills without row beacons", () => {
     const operations = [
       makeOperation("idle", null),
       makeOperation("running", "group-a"),
@@ -72,9 +72,55 @@ describe("OperationsSideBar STATUS axis", () => {
     ]);
     expect(container?.querySelector(".side-bar-group-header")).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').style.getPropertyValue("--user-accent")).toBe("var(--id-rose)");
-    expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-mark').title).toBe("Alpha crew");
-    expect(container?.querySelector('[data-side-bar-chip-id="idle"] .side-bar-chip-group-mark')).toBeNull();
+    const pill = required<HTMLElement>('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-pill');
+    expect(pill.title).toBe("Alpha crew");
+    expect(pill.getAttribute("aria-label")).toBe("Group Alpha crew");
+    expect(pill.textContent).toBe("Alpha crew");
+    expect(pill.style.getPropertyValue("--group-mark")).toBe("var(--id-cerulean)");
+    expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-mark')).toBeNull();
+    expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-status')).toBeNull();
+    expect(container?.querySelector('[data-side-bar-chip-id="idle"] .side-bar-chip-group-pill')).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
+  });
+
+  it("pins all four slots, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
+    setConsoleState({ operationStatus: { only: "running" } });
+    setSideBarStatusAxis(true);
+    renderSideBar([makeOperation("only", null)]);
+
+    const sections = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-section") ?? []);
+    expect(sections).toHaveLength(4);
+    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0"]);
+
+    const awaiting = required<HTMLElement>(".side-bar-status-section--awaiting");
+    expect(awaiting.className).toContain("side-bar-status-section--empty");
+    const awaitingToggle = required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section AWAITING INPUT"]');
+    expect(awaitingToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(awaiting.querySelector(".side-bar-status-empty-hint")).toBeNull();
+
+    act(() => awaitingToggle.click());
+
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING INPUT"]').title).toBe("Collapse");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
+
+    const runningToggle = required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]');
+    expect(runningToggle.getAttribute("aria-expanded")).toBe("true");
+    act(() => runningToggle.click());
+    expect(required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').title).toBe("Expand");
+    expect(container?.querySelector('[data-side-bar-chip-id="only"]')).toBeNull();
+    act(() => required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').click());
+    expect(container?.querySelector('[data-side-bar-chip-id="only"]')).not.toBeNull();
+  });
+
+  it("suppresses both group pills and status beacons in inactive Theater preview chips", () => {
+    setConsoleState({ operationStatus: { preview: "awaiting" } });
+    setSideBarStatusAxis(true);
+    renderSideBar([makeOperation("preview", "group-a")], [GROUP_A], vi.fn(), "theater-other");
+
+    const preview = required<HTMLElement>('[data-side-bar-chip-id="preview"]');
+    expect(preview.querySelector(".side-bar-chip-group-pill")).toBeNull();
+    expect(preview.querySelector(".side-bar-chip-group-mark")).toBeNull();
+    expect(preview.querySelector(".side-bar-chip-status")).toBeNull();
   });
 
   it("keeps keyboard reordering disabled in STATUS and unchanged in GROUP", () => {
@@ -133,6 +179,8 @@ describe("OperationsSideBar STATUS axis", () => {
     const caret = required<HTMLButtonElement>(".side-bar-theater-split-caret");
     expect(caret.getAttribute("aria-haspopup")).toBe("menu");
     expect(caret.getAttribute("aria-expanded")).toBe("false");
+    expect(caret.querySelectorAll("circle")).toHaveLength(3);
+    expect(caret.querySelector("path")).toBeNull();
 
     act(() => required<HTMLElement>(".side-bar-theater-header").click());
 
