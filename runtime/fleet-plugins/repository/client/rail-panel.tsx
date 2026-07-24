@@ -374,8 +374,9 @@ interface WorkspaceTreeProps {
   readonly onRef: (ref: string) => void;
 }
 
-function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef }: WorkspaceTreeProps) {
+export function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef }: WorkspaceTreeProps) {
   const [query, setQuery] = useState("");
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set(["tags", "stashes"]));
   const rootRepos = repos.filter((repo) => repo.kind === "root").sort((a, b) => a.name.localeCompare(b.name));
   const nestedRepos = repos.filter((repo) => repo.kind === "nested");
   const nestedTree = buildRepoTree(nestedRepos);
@@ -395,7 +396,20 @@ function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, worktrees
   });
   const sectionHeader = (id: (typeof sections)[number]["id"]) => {
     const section = sections.find((item) => item.id === id)!;
-    return <div className="repository-ws-section-head"><span>{section.label}</span><i>{section.count}</i></div>;
+    const collapsed = collapsedSections.has(id);
+    return <button type="button" className="repository-ws-section-head" aria-expanded={!collapsed} onClick={() => {
+      setCollapsedSections((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }}>
+      <svg className="repository-folder-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span>{section.label}</span><i>{section.count}</i>
+    </button>;
   };
   const refRows = (refSource: RefSource) => buildRefListGroups(refSource, refs).map((group) => <div key={group.label ?? refSource} className="repository-ws-ref-group">
     {group.label && <span className="repository-ws-ref-subhead">{group.label}</span>}
@@ -409,26 +423,28 @@ function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, worktrees
       if (first) onRepository(first);
     }} />
     <div className="repository-ws-tree-scroll">
-      <section className="repository-ws-section">{sectionHeader("context")}
-        {reposError ? <WorkspaceTreeError label="Unable to load repositories" onRetry={onRetryRepos} /> : <>
+      <section className={`repository-ws-section${collapsedSections.has("context") ? " is-collapsed" : ""}`}>{sectionHeader("context")}
+        {!collapsedSections.has("context") && (reposError ? <WorkspaceTreeError label="Unable to load repositories" onRetry={onRetryRepos} /> : <>
           {rootMatches.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />)}
           {query ? nestedMatches.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />) : <RepoTreeChildren node={nestedTree} depth={0} selectedRel={selectedRel} onRepository={onRepository} />}
           {query && matchedCount === 0 && <div className="repository-empty-row">No matching repositories</div>}
+        </>)}
+      </section>
+      <section className={`repository-ws-section${collapsedSections.has("working") ? " is-collapsed" : ""}`}>{sectionHeader("working")}
+        {!collapsedSections.has("working") && <>
+          <button type="button" className={`repository-ws-tree-row${source === "history" ? " is-active" : ""}`} onClick={() => onSource("history")}><SourceIcon source="history" /><span>History</span></button>
+          <button type="button" className={`repository-ws-tree-row${source === "changes" ? " is-active" : ""}`} onClick={() => onSource("changes")}><SourceIcon source="changes" /><span>Changes</span><i>{changesCount}</i></button>
+          <button type="button" className={`repository-ws-tree-row${source === "compare" ? " is-active" : ""}`} onClick={() => onSource("compare")}><SourceIcon source="compare" /><span>Compare</span></button>
         </>}
       </section>
-      <section className="repository-ws-section">{sectionHeader("working")}
-        <button type="button" className={`repository-ws-tree-row${source === "history" ? " is-active" : ""}`} onClick={() => onSource("history")}><SourceIcon source="history" /><span>History</span></button>
-        <button type="button" className={`repository-ws-tree-row${source === "changes" ? " is-active" : ""}`} onClick={() => onSource("changes")}><SourceIcon source="changes" /><span>Changes</span><i>{changesCount}</i></button>
-        <button type="button" className={`repository-ws-tree-row${source === "compare" ? " is-active" : ""}`} onClick={() => onSource("compare")}><SourceIcon source="compare" /><span>Compare</span></button>
+      <section className={`repository-ws-section${collapsedSections.has("worktrees") ? " is-collapsed" : ""}`}>{sectionHeader("worktrees")}
+        {!collapsedSections.has("worktrees") && (worktreesError ? <WorkspaceTreeError label="Unable to load worktrees" onRetry={onRetryWorktrees} /> : worktrees.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} onClick={() => onRepository(worktree)}><SourceIcon source="worktrees" /><span>{worktree.name}</span>{worktree.current && <i>HEAD</i>}</button>))}
       </section>
-      <section className="repository-ws-section">{sectionHeader("worktrees")}
-        {worktreesError ? <WorkspaceTreeError label="Unable to load worktrees" onRetry={onRetryWorktrees} /> : worktrees.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} onClick={() => onRepository(worktree)}><SourceIcon source="worktrees" /><span>{worktree.name}</span>{worktree.current && <i>HEAD</i>}</button>)}
+      <section className={`repository-ws-section${collapsedSections.has("branches") ? " is-collapsed" : ""}`}>{sectionHeader("branches")}
+        {!collapsedSections.has("branches") && (refsError ? <WorkspaceTreeError label="Unable to load refs" onRetry={onRetryRefs} /> : refRows("branches"))}
       </section>
-      <section className="repository-ws-section">{sectionHeader("branches")}
-        {refsError ? <WorkspaceTreeError label="Unable to load refs" onRetry={onRetryRefs} /> : refRows("branches")}
-      </section>
-      <section className="repository-ws-section">{sectionHeader("tags")}{!refsError && refRows("tags")}</section>
-      <section className="repository-ws-section">{sectionHeader("stashes")}{!refsError && refRows("stashes")}</section>
+      <section className={`repository-ws-section${collapsedSections.has("tags") ? " is-collapsed" : ""}`}>{sectionHeader("tags")}{!collapsedSections.has("tags") && !refsError && refRows("tags")}</section>
+      <section className={`repository-ws-section${collapsedSections.has("stashes") ? " is-collapsed" : ""}`}>{sectionHeader("stashes")}{!collapsedSections.has("stashes") && !refsError && refRows("stashes")}</section>
     </div>
   </aside>;
 }

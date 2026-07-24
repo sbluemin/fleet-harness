@@ -1066,10 +1066,29 @@
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 9.5px;
   letter-spacing: .14em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.repository-ws-section-head:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  color: var(--text-secondary);
+}
+
+.repository-ws-section-head:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: -1px;
+}
+
+.repository-ws-section.is-collapsed .repository-folder-chevron {
+  transform: rotate(-90deg);
 }
 
 .repository-ws-section-head i {

@@ -107,6 +107,34 @@ describe("Repository design grammar", () => {
     }
   });
 
+  it("keeps workspace section header buttons within the interaction grammar", () => {
+    const sectionHead = blockOf(".repository-ws-section-head");
+    expect(sectionHead).toContain("display: flex");
+    expect(sectionHead).toContain("width: 100%");
+    expect(sectionHead).toContain("border: 0");
+    expect(sectionHead).toContain("background: transparent");
+    expect(sectionHead).toContain("color: var(--text-tertiary)");
+    expect(sectionHead).toContain("font-family: var(--font-mono)");
+    expect(sectionHead).toContain("cursor: pointer");
+    expect(sectionHead).toContain("text-align: left");
+
+    const sectionHeadHover = blockOf(".repository-ws-section-head:hover");
+    expect(sectionHeadHover).toContain("background: color-mix(in oklch, var(--ink-fog) 9%, transparent)");
+    expect(sectionHeadHover).toContain("color: var(--text-secondary)");
+
+    const sectionHeadFocus = blockOf(".repository-ws-section-head:focus-visible");
+    expect(sectionHeadFocus).toContain("outline: 1px solid var(--brass)");
+    expect(sectionHeadFocus).toContain("outline-offset: -1px");
+
+    const chevrons = blocksOf(".repository-folder-chevron");
+    expect(chevrons[0]).toContain("width: 11px");
+    expect(chevrons[0]).toContain("height: 11px");
+    expect(chevrons[0]).toContain("color: var(--ink-fog)");
+    expect(chevrons[0]).toContain("transition: transform var(--duration-base) var(--ease-spring)");
+    expect(chevrons.some((body) => body.includes("transition-duration: 0.01ms"))).toBe(true);
+    expect(blockOf(".repository-ws-section.is-collapsed .repository-folder-chevron")).toContain("transform: rotate(-90deg)");
+  });
+
   it("retires legacy compare ref select chrome", () => {
     expect(css).not.toMatch(/\.repository-compare-select\b/);
   });
