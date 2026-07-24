@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  getSideBarStatusSectionCollapsed,
+  resetSideBarStatusSectionCollapseForTests,
+  toggleSideBarStatusSectionCollapsed,
+} from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { focusCycleOperationIds, getState, nextOperationId, requestOperationKeyboardFocus, setState, statusCycleOperationIds } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
@@ -118,6 +123,7 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
       ["idle-early", "idle-late", "running-1", "awaiting-1", "dormant-1"],
       { "running-1": "running", "awaiting-1": "awaiting", "dormant-1": "dormant" },
       [],
+      () => false,
     );
     // 사이드바 STATUS 섹션과 동일한 가시 순서: 접힌 그룹 소속이어도 제외되지 않는다.
     expect(order).toEqual(["awaiting-1", "running-1", "idle-early", "idle-late", "dormant-1"]);
@@ -133,7 +139,42 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
       ["plain", "minimized-awaiting"],
       { "minimized-awaiting": "awaiting" },
       ["minimized-awaiting"],
+      () => false,
     );
     expect(order).toEqual(["plain"]);
+  });
+
+  it("excludes explicitly collapsed status sections, restores them when expanded, and leaves GROUP cycling unchanged", () => {
+    resetSideBarStatusSectionCollapseForTests();
+    const operations = [
+      makeOperation("awaiting"),
+      makeOperation("running"),
+      makeOperation("idle"),
+    ];
+    const operationOrder = operations.map((operation) => operation.id);
+    const operationStatus = { awaiting: "awaiting", running: "running" } as const;
+    const statusOrder = () => statusCycleOperationIds(
+      operations,
+      operationOrder,
+      operationStatus,
+      [],
+      (status) => getSideBarStatusSectionCollapsed("theater", status, false),
+    );
+
+    try {
+      expect(statusOrder()).toEqual(["awaiting", "running", "idle"]);
+
+      toggleSideBarStatusSectionCollapsed("theater", "running", false);
+
+      expect(statusOrder()).toEqual(["awaiting", "idle"]);
+      expect(focusCycleOperationIds(operations, [], operationOrder, [], []))
+        .toEqual(["awaiting", "running", "idle"]);
+
+      toggleSideBarStatusSectionCollapsed("theater", "running", false);
+
+      expect(statusOrder()).toEqual(["awaiting", "running", "idle"]);
+    } finally {
+      resetSideBarStatusSectionCollapseForTests();
+    }
   });
 });

@@ -437,7 +437,7 @@ export function focusCycleOperationIds(
 
 // STATUS 축의 Alt+←/→ 순환 순서: 사이드바 STATUS 섹션의 가시 순서와 동일하게
 // awaiting → running → idle → dormant 랭크로 안정 정렬한다(랭크 내부는 operationOrder 순서 유지).
-// STATUS 축은 그룹 접힘이 없으므로 collapsedGroups는 적용하지 않는다.
+// 그룹 접힘은 적용하지 않되, 상태 섹션 접힘 predicate로 사이드바에서 숨은 Operation을 제외한다.
 const STATUS_CYCLE_RANK: Readonly<Record<OperationActivity, number>> = { awaiting: 0, running: 1, idle: 2, dormant: 3 };
 
 export function statusCycleOperationIds(
@@ -445,12 +445,14 @@ export function statusCycleOperationIds(
   operationOrder: readonly string[],
   operationStatus: Readonly<Record<string, OperationActivity>>,
   minimized: readonly string[],
+  isStatusSectionCollapsed: (status: OperationActivity) => boolean,
 ): readonly string[] {
   const minimizedIds = new Set(minimized);
-  const rank = (operation: OperationNode): number => STATUS_CYCLE_RANK[operationStatus[operation.id] ?? "idle"];
+  const status = (operation: OperationNode): OperationActivity => operationStatus[operation.id] ?? "idle";
+  const rank = (operation: OperationNode): number => STATUS_CYCLE_RANK[status(operation)];
   return [...sortOperationsByOrder(operations, operationOrder)]
     .sort((left, right) => rank(left) - rank(right))
-    .filter((operation) => !minimizedIds.has(operation.id))
+    .filter((operation) => !minimizedIds.has(operation.id) && !isStatusSectionCollapsed(status(operation)))
     .map((operation) => operation.id);
 }
 
