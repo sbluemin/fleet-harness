@@ -180,6 +180,12 @@
   background: var(--brass-glow);
 }
 
+/* 활성 프리셋 위에서도 포커스가 구분되도록 inset 링을 쓴다 — 컨테이너의
+   overflow: hidden 바깥으로 나가지 않아 pill 클리핑과 충돌하지 않는다. */
+.right-rail-opacity-segment:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+
 .right-rail-close-btn {
   position: absolute;
   top: 9px;
