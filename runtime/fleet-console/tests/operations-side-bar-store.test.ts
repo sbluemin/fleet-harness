@@ -61,6 +61,32 @@ describe("two-state SideBar store", () => {
     expect(reloadedStore.getSideBarStatusAxis()).toBe(false);
     unsubscribe();
   });
+
+  it("derives per-Theater STATUS collapse from empty sections and keeps explicit overrides in memory only", async () => {
+    const store = await loadStore();
+    const listener = vi.fn();
+    const unsubscribe = store.subscribeStatusSectionCollapse(listener);
+
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(true);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "running", false)).toBe(false);
+
+    store.toggleSideBarStatusSectionCollapsed("theater-a", "awaiting", true);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(false);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", false)).toBe(false);
+
+    store.toggleSideBarStatusSectionCollapsed("theater-a", "awaiting", false);
+    expect(store.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(true);
+    expect(store.getSideBarStatusSectionCollapsed("theater-b", "awaiting", false)).toBe(false);
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(window.localStorage.length).toBe(0);
+
+    vi.resetModules();
+    const reloadedStore = await loadStore();
+    expect(reloadedStore.getSideBarStatusSectionCollapsed("theater-a", "awaiting", true)).toBe(true);
+    expect(reloadedStore.getSideBarStatusSectionCollapsed("theater-a", "awaiting", false)).toBe(false);
+    unsubscribe();
+  });
 });
 
 async function loadStore() {

@@ -2716,8 +2716,8 @@
   background: var(--ink-fog);
 }
 
-/* STATUS 축의 그룹 mark는 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
-   기존 operation spine과 독립된 7px mark로만 표시하고 status beacon 신호면을 덮지 않는다. */
+/* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
+   기존 operation spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
 .side-bar-chip-group-mark {
   display: block;
   flex: none;
@@ -2725,6 +2725,23 @@
   height: 7px;
   border-radius: 999px;
   background: var(--group-mark);
+}
+
+.side-bar-chip-group-pill {
+  flex: none;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in oklch, var(--group-mark) 34%, transparent);
+  border-radius: 999px;
+  color: color-mix(in oklch, var(--group-mark) 85%, var(--ink-pearl));
+  background: color-mix(in oklch, var(--group-mark) 13%, transparent);
 }
 
 .side-bar-chip--status-landed {
@@ -2900,13 +2917,48 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 12px;
+  padding: 7px 12px 7px 8px;
   background: color-mix(in oklch, var(--status-color) 8%, transparent);
   color: var(--ink-fog);
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.12em;
+}
+
+.side-bar-status-section--empty .side-bar-status-header {
+  opacity: 0.55;
+}
+
+.side-bar-status-header__toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-status-header__toggle:hover,
+.side-bar-status-header__toggle:focus-visible {
+  color: var(--ink-spectral);
+  outline: none;
+}
+
+.side-bar-status-header__arrow {
+  width: 12px;
+  height: 12px;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-status-header__arrow.is-collapsed {
+  transform: rotate(-90deg);
 }
 
 .side-bar-status-header__dot {
@@ -2918,8 +2970,18 @@
   background: var(--status-color);
 }
 
+.side-bar-status-section--empty .side-bar-status-header__dot {
+  opacity: 0.4;
+}
+
 .side-bar-status-header--awaiting .side-bar-status-header__dot {
   animation: aurora-pulse 1.8s infinite;
+}
+
+/* 빈 섹션은 주의 신호를 낼 상태가 없으므로 awaiting pulse도 끈다 — count 0에서
+   맥동하는 dot은 "대기 입력이 있다"는 거짓 신호가 된다(명시도 우위로 pulse 규칙을 덮는다). */
+.side-bar-status-section--empty .side-bar-status-header--awaiting .side-bar-status-header__dot {
+  animation: none;
 }
 
 .side-bar-status-header__count {
@@ -2929,6 +2991,14 @@
   color: color-mix(in oklch, var(--status-color) 65%, var(--ink-pearl));
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.side-bar-status-empty-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  color: var(--ink-muted);
+  padding: 6px 12px 8px 27px;
 }
 
 .side-bar-ungrouped-section {
@@ -3080,6 +3150,10 @@
   }
 
   .side-bar-group-header__arrow {
+    transition: none;
+  }
+
+  .side-bar-status-header__arrow {
     transition: none;
   }
 }

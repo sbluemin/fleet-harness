@@ -7,7 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, setOperationOrder } from "../core/client/src/canvas/canvas-store.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
-import { setSideBarCollapsed, setSideBarStatusAxis, setTheaterCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
+import {
+  resetSideBarStatusSectionCollapseForTests,
+  setSideBarCollapsed,
+  setSideBarStatusAxis,
+  setTheaterCollapsed,
+} from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { setState as setConsoleState } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -21,7 +26,9 @@ beforeEach(() => {
   window.localStorage.clear();
   setSideBarCollapsed(false);
   setSideBarStatusAxis(false);
+  resetSideBarStatusSectionCollapseForTests();
   setTheaterCollapsed("theater-a", false);
+  setTheaterCollapsed("theater-b", false);
   loadForTheater("theater-a");
   setConsoleState({ operationStatus: {} });
 });
@@ -32,12 +39,13 @@ afterEach(() => {
   root = null;
   container = null;
   setSideBarStatusAxis(false);
+  resetSideBarStatusSectionCollapseForTests();
   setConsoleState({ operationStatus: {} });
   loadForTheater(null);
 });
 
 describe("OperationsSideBar STATUS axis", () => {
-  it("toggles from GROUP to ordered status sections, hides the live tick, and keeps group identity marks", () => {
+  it("toggles from GROUP to ordered status sections, hides the live tick, and renders group identity pills without row beacons", () => {
     const operations = [
       makeOperation("idle", null),
       makeOperation("running", "group-a"),
@@ -72,9 +80,101 @@ describe("OperationsSideBar STATUS axis", () => {
     ]);
     expect(container?.querySelector(".side-bar-group-header")).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').style.getPropertyValue("--user-accent")).toBe("var(--id-rose)");
-    expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-mark').title).toBe("Alpha crew");
-    expect(container?.querySelector('[data-side-bar-chip-id="idle"] .side-bar-chip-group-mark')).toBeNull();
+    const pill = required<HTMLElement>('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-pill');
+    expect(pill.title).toBe("Alpha crew");
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+    expect(pill.getAttribute("aria-label")).toBeNull();
+    expect(pill.textContent).toBe("Alpha crew");
+    expect(pill.style.getPropertyValue("--group-mark")).toBe("var(--id-cerulean)");
+    expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').getAttribute("aria-label"))
+      .toBe("Focus operation awaiting in group Alpha crew");
+    expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-mark')).toBeNull();
+    expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-status')).toBeNull();
+    expect(container?.querySelector('[data-side-bar-chip-id="idle"] .side-bar-chip-group-pill')).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
+  });
+
+  it("pins all four slots, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
+    setConsoleState({ operationStatus: { only: "running" } });
+    setSideBarStatusAxis(true);
+    renderSideBar([makeOperation("only", null)]);
+
+    const sections = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-section") ?? []);
+    expect(sections).toHaveLength(4);
+    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0"]);
+
+    const awaiting = required<HTMLElement>(".side-bar-status-section--awaiting");
+    expect(awaiting.className).toContain("side-bar-status-section--empty");
+    const awaitingToggle = required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section AWAITING INPUT"]');
+    expect(awaitingToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(awaiting.querySelector(".side-bar-status-empty-hint")).toBeNull();
+
+    act(() => awaitingToggle.click());
+
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING INPUT"]').title).toBe("Collapse");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
+
+    const runningToggle = required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]');
+    expect(runningToggle.getAttribute("aria-expanded")).toBe("true");
+    act(() => runningToggle.click());
+    expect(required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').title).toBe("Expand");
+    expect(container?.querySelector('[data-side-bar-chip-id="only"]')).toBeNull();
+    act(() => required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').click());
+    expect(container?.querySelector('[data-side-bar-chip-id="only"]')).not.toBeNull();
+  });
+
+  it("keeps an explicit empty-section expansion when an Operation enters and leaves again", () => {
+    setSideBarStatusAxis(true);
+    renderSideBar([]);
+
+    act(() => required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section AWAITING INPUT"]').click());
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
+
+    act(() => setConsoleState({ operationStatus: { arriving: "awaiting" } }));
+    rerenderSideBar([makeOperation("arriving", null)]);
+
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING INPUT"]').getAttribute("aria-expanded")).toBe("true");
+    expect(container?.querySelector('[data-side-bar-chip-id="arriving"]')).not.toBeNull();
+
+    act(() => setConsoleState({ operationStatus: {} }));
+    rerenderSideBar([]);
+
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING INPUT"]').getAttribute("aria-expanded")).toBe("true");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
+  });
+
+  it("isolates the same status collapse toggle by Theater key", () => {
+    const operations = [
+      makeOperation("alpha-running", null),
+      makeOperation("bravo-running", null, undefined, THEATER_B.id),
+    ];
+    setConsoleState({ operationStatus: { "alpha-running": "running", "bravo-running": "running" } });
+    setSideBarStatusAxis(true);
+    renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER, THEATER_B]);
+
+    const alpha = required<HTMLElement>(`[data-theater-id="${THEATER.id}"]`);
+    const bravo = required<HTMLElement>(`[data-theater-id="${THEATER_B.id}"]`);
+    act(() => alpha.querySelector<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]')?.click());
+
+    expect(alpha.querySelector('[data-side-bar-chip-id="alpha-running"]')).toBeNull();
+    expect(bravo.querySelector('[data-side-bar-chip-id="bravo-running"]')).not.toBeNull();
+    expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]')).not.toBeNull();
+
+    act(() => bravo.querySelector<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]')?.click());
+
+    expect(alpha.querySelector('.side-bar-status-section--running [aria-label="Expand section RUNNING"]')).not.toBeNull();
+    expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Expand section RUNNING"]')).not.toBeNull();
+  });
+
+  it("suppresses both group pills and status beacons in inactive Theater preview chips", () => {
+    setConsoleState({ operationStatus: { preview: "awaiting" } });
+    setSideBarStatusAxis(true);
+    renderSideBar([makeOperation("preview", "group-a")], [GROUP_A], vi.fn(), "theater-other");
+
+    const preview = required<HTMLElement>('[data-side-bar-chip-id="preview"]');
+    expect(preview.querySelector(".side-bar-chip-group-pill")).toBeNull();
+    expect(preview.querySelector(".side-bar-chip-group-mark")).toBeNull();
+    expect(preview.querySelector(".side-bar-chip-status")).toBeNull();
   });
 
   it("keeps keyboard reordering disabled in STATUS and unchanged in GROUP", () => {
@@ -133,6 +233,8 @@ describe("OperationsSideBar STATUS axis", () => {
     const caret = required<HTMLButtonElement>(".side-bar-theater-split-caret");
     expect(caret.getAttribute("aria-haspopup")).toBe("menu");
     expect(caret.getAttribute("aria-expanded")).toBe("false");
+    expect(caret.querySelectorAll("circle")).toHaveLength(3);
+    expect(caret.querySelector("path")).toBeNull();
 
     act(() => required<HTMLElement>(".side-bar-theater-header").click());
 
@@ -161,12 +263,32 @@ function renderSideBar(
   groups: readonly OperationGroup[] = [],
   onSelectTheater = vi.fn(),
   activeTheaterId: string = THEATER.id,
+  theaters: readonly TheaterInfo[] = [THEATER],
 ): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  act(() => root?.render(createElement(MemoryRouter, null, createElement(OperationsSideBar, {
-    theaters: [THEATER],
+  act(() => root?.render(sideBarElement(operations, groups, onSelectTheater, activeTheaterId, theaters)));
+}
+
+function rerenderSideBar(
+  operations: readonly OperationNode[],
+  groups: readonly OperationGroup[] = [],
+  activeTheaterId: string = THEATER.id,
+  theaters: readonly TheaterInfo[] = [THEATER],
+): void {
+  act(() => root?.render(sideBarElement(operations, groups, vi.fn(), activeTheaterId, theaters)));
+}
+
+function sideBarElement(
+  operations: readonly OperationNode[],
+  groups: readonly OperationGroup[],
+  onSelectTheater: (theaterId: string) => void,
+  activeTheaterId: string,
+  theaters: readonly TheaterInfo[],
+) {
+  return createElement(MemoryRouter, null, createElement(OperationsSideBar, {
+    theaters,
     activeTheaterId,
     operations,
     groups,
@@ -196,7 +318,7 @@ function renderSideBar(
     onAddTheater: () => {},
     onCancelAddTheater: () => {},
     onForgetTheater: () => {},
-  }))));
+  }));
 }
 
 function required<T extends Element>(selector: string): T {
@@ -205,10 +327,10 @@ function required<T extends Element>(selector: string): T {
   return element;
 }
 
-function makeOperation(id: string, groupId: string | null, accent?: string): OperationNode {
+function makeOperation(id: string, groupId: string | null, accent?: string, theaterId: string = THEATER.id): OperationNode {
   return {
     id,
-    theaterId: THEATER.id,
+    theaterId,
     type: "shell",
     pluginId: "terminal",
     title: id,
@@ -227,6 +349,12 @@ const THEATER: TheaterInfo = {
   lastOpenedAt: "2026-01-01T00:00:00.000Z",
   hasWiki: false,
   activeAdmiralCount: 0,
+};
+
+const THEATER_B: TheaterInfo = {
+  ...THEATER,
+  id: "theater-b",
+  label: "Bravo",
 };
 
 const GROUP_A: OperationGroup = {

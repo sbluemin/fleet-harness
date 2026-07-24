@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 interface SideBarState {
   readonly width: number;
@@ -14,6 +14,7 @@ const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 const sideBarListeners = new Set<() => void>();
 const collapsedTheaterListeners = new Set<() => void>();
 const statusAxisListeners = new Set<() => void>();
+const statusSectionCollapseListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
@@ -23,6 +24,12 @@ let collapsedTheaterIds = readInitialCollapsedTheaters();
 // STATUS 축은 의도적으로 세션 메모리에만 둔다. localStorage나 durable canvas state에
 // 합류시키지 않아 새 페이지 로드마다 GROUP 축(false)에서 시작한다.
 let statusAxis = false;
+// STATUS 섹션 접힘도 같은 비영속 축이다. 빈 섹션의 기본 접힘과 사용자가 명시한
+// 접기/펼치기를 구분하려고 두 집합을 유지하며 localStorage에는 기록하지 않는다.
+let userCollapsedStatusSections = new Set<string>();
+let userExpandedStatusSections = new Set<string>();
+
+export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
 
 export function useSideBarState(): SideBarState {
   return useSyncExternalStore(subscribeSideBarState, getSideBarState, getSideBarState);
@@ -34,6 +41,18 @@ export function useCollapsedTheaters(): readonly string[] {
 
 export function useSideBarStatusAxis(): boolean {
   return useSyncExternalStore(subscribeStatusAxis, getSideBarStatusAxis, getSideBarStatusAxis);
+}
+
+export function useSideBarStatusSectionCollapsed(
+  theaterId: string,
+  status: SideBarStatus,
+  empty: boolean,
+): boolean {
+  const getSnapshot = useCallback(
+    () => getSideBarStatusSectionCollapsed(theaterId, status, empty),
+    [theaterId, status, empty],
+  );
+  return useSyncExternalStore(subscribeStatusSectionCollapse, getSnapshot, getSnapshot);
 }
 
 export function setSideBarWidth(width: number): void {
@@ -85,6 +104,49 @@ export function getSideBarStatusAxis(): boolean {
 export function subscribeStatusAxis(listener: () => void): () => void {
   statusAxisListeners.add(listener);
   return () => statusAxisListeners.delete(listener);
+}
+
+export function getSideBarStatusSectionCollapsed(
+  theaterId: string,
+  status: SideBarStatus,
+  empty: boolean,
+): boolean {
+  const key = statusSectionKey(theaterId, status);
+  if (userCollapsedStatusSections.has(key)) return true;
+  if (userExpandedStatusSections.has(key)) return false;
+  return empty;
+}
+
+export function toggleSideBarStatusSectionCollapsed(
+  theaterId: string,
+  status: SideBarStatus,
+  empty: boolean,
+): void {
+  const key = statusSectionKey(theaterId, status);
+  if (getSideBarStatusSectionCollapsed(theaterId, status, empty)) {
+    userCollapsedStatusSections = new Set(userCollapsedStatusSections);
+    userCollapsedStatusSections.delete(key);
+    userExpandedStatusSections = new Set(userExpandedStatusSections).add(key);
+  } else {
+    userExpandedStatusSections = new Set(userExpandedStatusSections);
+    userExpandedStatusSections.delete(key);
+    userCollapsedStatusSections = new Set(userCollapsedStatusSections).add(key);
+  }
+  for (const listener of statusSectionCollapseListeners) listener();
+}
+
+export function subscribeStatusSectionCollapse(listener: () => void): () => void {
+  statusSectionCollapseListeners.add(listener);
+  return () => statusSectionCollapseListeners.delete(listener);
+}
+
+export function resetSideBarStatusSectionCollapseForTests(): void {
+  userCollapsedStatusSections = new Set();
+  userExpandedStatusSections = new Set();
+}
+
+function statusSectionKey(theaterId: string, status: SideBarStatus): string {
+  return `${theaterId}:${status}`;
 }
 
 function getMaxPx(): number {
