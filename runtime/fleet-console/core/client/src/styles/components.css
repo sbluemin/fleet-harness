@@ -2978,6 +2978,12 @@
   animation: aurora-pulse 1.8s infinite;
 }
 
+/* 빈 섹션은 주의 신호를 낼 상태가 없으므로 awaiting pulse도 끈다 — count 0에서
+   맥동하는 dot은 "대기 입력이 있다"는 거짓 신호가 된다(명시도 우위로 pulse 규칙을 덮는다). */
+.side-bar-status-section--empty .side-bar-status-header--awaiting .side-bar-status-header__dot {
+  animation: none;
+}
+
 .side-bar-status-header__count {
   flex: none;
   min-width: 14px;
