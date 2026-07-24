@@ -5,12 +5,16 @@ interface RailStore {
   readonly railChromeExpanded: boolean;
   readonly panelExtraWidth: number;
   readonly panelBehavior: "push" | "overlay";
+  readonly overlayAlpha: RailOverlayAlpha;
 }
+
+export type RailOverlayAlpha = 100 | 90 | 75 | 60;
 
 type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
 const PREFS_PANEL_BEHAVIOR = "fleet-console.rail.panelBehavior";
+const PREFS_OVERLAY_ALPHA = "fleet-console.rail.overlayAlpha";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 let store: RailStore = {
@@ -18,6 +22,7 @@ let store: RailStore = {
   railChromeExpanded: readStoredChromeExpanded(),
   panelExtraWidth: 0,
   panelBehavior: readStoredPanelBehavior(),
+  overlayAlpha: readStoredOverlayAlpha(),
 };
 
 export function subscribeRailStore(listener: Listener): () => void {
@@ -72,6 +77,12 @@ export function toggleRailPanelBehavior(): void {
   setRailPanelBehavior(store.panelBehavior === "push" ? "overlay" : "push");
 }
 
+export function setRailOverlayAlpha(alpha: RailOverlayAlpha): void {
+  if (store.overlayAlpha === alpha) return;
+  setStore({ ...store, overlayAlpha: alpha });
+  saveStoredOverlayAlpha(alpha);
+}
+
 export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
   if (panelId !== store.activeRailPanelId) return;
   const raw = (px === null || !Number.isFinite(px)) ? 0 : px;
@@ -95,6 +106,10 @@ export function useRailPanelExtraWidth(): number {
 
 export function useRailPanelBehavior(): "push" | "overlay" {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelBehavior;
+}
+
+export function useRailOverlayAlpha(): RailOverlayAlpha {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).overlayAlpha;
 }
 
 function readStoredPanelId(): string | null {
@@ -122,6 +137,14 @@ function readStoredPanelBehavior(): "push" | "overlay" {
   } catch { return "push"; }
 }
 
+function readStoredOverlayAlpha(): RailOverlayAlpha {
+  try {
+    const stored = localStorage.getItem(PREFS_OVERLAY_ALPHA);
+    if (stored === "90" || stored === "75" || stored === "60") return Number(stored) as RailOverlayAlpha;
+    return 100;
+  } catch { return 100; }
+}
+
 function saveStoredPanelId(id: string | null): void {
   try {
     if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
@@ -135,6 +158,10 @@ function saveStoredChromeExpanded(expanded: boolean): void {
 
 function saveStoredPanelBehavior(behavior: "push" | "overlay"): void {
   try { localStorage.setItem(PREFS_PANEL_BEHAVIOR, behavior); } catch { /* ignore */ }
+}
+
+function saveStoredOverlayAlpha(alpha: RailOverlayAlpha): void {
+  try { localStorage.setItem(PREFS_OVERLAY_ALPHA, String(alpha)); } catch { /* ignore */ }
 }
 
 function setStore(next: RailStore): void {

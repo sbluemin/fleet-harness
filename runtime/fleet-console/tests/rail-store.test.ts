@@ -212,3 +212,52 @@ describe("rail panel behavior", () => {
     expect(getRailStoreSnapshot().panelBehavior).toBe("push");
   });
 });
+
+describe("rail overlay alpha", () => {
+  function stubOverlayAlphaStorage(initial: string | null = null) {
+    const values = new Map<string, string>();
+    if (initial !== null) values.set("fleet-console.rail.overlayAlpha", initial);
+    const setItem = vi.fn((key: string, value: string) => values.set(key, value));
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem,
+      removeItem: (key: string) => values.delete(key),
+    });
+    return { values, setItem };
+  }
+
+  it("defaults to Solid (100) when no value is stored", async () => {
+    stubOverlayAlphaStorage();
+    const { getRailStoreSnapshot } = await freshStore();
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
+  });
+
+  it.each([
+    ["100", 100],
+    ["90", 90],
+    ["75", 75],
+    ["60", 60],
+  ] as const)("restores stored alpha %s", async (stored, expected) => {
+    stubOverlayAlphaStorage(stored);
+    const { getRailStoreSnapshot } = await freshStore();
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(expected);
+  });
+
+  it("persists the selected alpha as an exact string", async () => {
+    const storage = stubOverlayAlphaStorage();
+    const { setRailOverlayAlpha } = await freshStore();
+    setRailOverlayAlpha(75);
+    expect(storage.values.get("fleet-console.rail.overlayAlpha")).toBe("75");
+    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.overlayAlpha", "75");
+
+    setRailOverlayAlpha(100);
+    expect(storage.values.get("fleet-console.rail.overlayAlpha")).toBe("100");
+    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.overlayAlpha", "100");
+  });
+
+  it.each(["0", "59", "74", "89", "101", "solid", "75.0"])("falls back to 100 for invalid stored value %s", async (stored) => {
+    stubOverlayAlphaStorage(stored);
+    const { getRailStoreSnapshot } = await freshStore();
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
+  });
+});
