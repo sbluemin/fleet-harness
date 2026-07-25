@@ -25,7 +25,7 @@ describe("Fleet Plan agent specs", () => {
     expect(specs.write.promptSnippet).toContain("Load plan-operations");
     expect(specs.write.guardrails).toContain("Host-only mutation surface; never expose this tool to a Carrier executor.");
     expect(specs.verify.description).toContain("Host-only");
-    expect(specs.markTasks.description).toContain("Ohio-only");
+    expect(specs.markTasks.description).toContain("Host-only");
     expect(specs.read.guardrails).toContain("Read-only: this tool never creates directories or mutates Plan state.");
   });
 

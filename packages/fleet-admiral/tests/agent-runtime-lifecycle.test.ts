@@ -46,7 +46,7 @@ describe("createFleetAgentRuntimeLifecycle cleanup ordering", () => {
 		expect(() => lifecycle.carrierRuntime.admission.assertOpen()).toThrow(/closed to new dispatches/);
 		// The runtime-owned dispatch context registry is disposed as part of cleanup.
 		expect(lifecycle.carrierRuntime.dispatchContexts.claim("resume-ctx", {
-			carrierId: "ohio",
+			carrierId: "genesis",
 			cwd: "/tmp",
 			shape: "single",
 			backends: [{ cliType: "claude" }],

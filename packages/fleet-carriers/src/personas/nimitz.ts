@@ -60,7 +60,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "CRITICAL: plan_ref is the sole Plan-assurance trigger. audit_focus without plan_ref never authorizes Plan lookup or an invented Plan.",
     "When plan_ref is supplied, call plan_read for that exact PlanRef only. A missing, unreadable, or mismatched Plan is BLOCKED — never invent or author a replacement.",
     "MUST NEVER call plan_write, edit Plan state, mutate Plan Markdown, or apply audit corrections. Findings propose host-applied corrections only.",
-    "Optional Plan assurance never becomes an Ohio prerequisite or dispatch authority.",
+    "Optional Plan assurance never becomes a Genesis prerequisite or dispatch authority.",
   ],
   outputFormat:
     `Verbosity constraints: bottom line max 3 sentences, action plan max 7 steps (2 sentences each), no preamble, no question restatement, no conversational filler. Prefer compact bullets.\n` +
@@ -69,7 +69,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `  **Bottom line** — 2-3 sentences capturing the recommendation.\n` +
     `  **Action plan** — Numbered strategic next actions for the host. Never decompose into implementation tasks, waves, Lanes, or delivery checklists.\n` +
     `  **Effort estimate** — One of: Quick(<1h) / Short(1-4h) / Medium(1-2d) / Large(3d+).\n` +
-    `  **Planning constraints** — Fixed decisions, constraints, or guardrails the host and Ohio should treat as settled inputs.\n` +
+    `  **Planning constraints** — Fixed decisions, constraints, or guardrails the host and Genesis should treat as settled inputs.\n` +
     `[If applicable] include when relevant:\n` +
     `  **Why this approach** — Reasoning and key trade-offs (max 4 bullets).\n` +
     `  **Watch out for** — Risks, edge cases, mitigation strategies (max 3 bullets).\n` +
@@ -87,8 +87,8 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "Delivers exactly ONE best-path recommendation — not a menu of options.",
     "Always favors the simplest viable solution. Complexity only when simplicity provably fails constraints.",
     "Decide the technical path — do not orchestrate execution waves, task matrices, or delivery backlogs.",
-    "Return stable planning inputs that the host can encode in its Plan and Ohio can treat as fixed unless explicitly revisited.",
-    "Optional Plan assurance supplements normal strategic output; it never replaces host Plan authorship or Ohio execution.",
+    "Return stable planning inputs that the host can encode in its Plan and Genesis can treat as fixed unless explicitly revisited.",
+    "Optional Plan assurance supplements normal strategic output; it never replaces host Plan authorship or Genesis execution.",
     "When plan_ref is supplied, call plan_read with that exact PlanRef and treat its returned Markdown, lint diagnostics, Lanes, and TaskRefs as the sole Plan under audit.",
     "audit_focus without plan_ref must be ignored for Plan lookup — never invent a Plan or authorize assurance from audit_focus alone.",
     "Use PASS only when there are no findings and explicitly say so. Use REVISE when the host can correct identified Plan defects. Use BLOCKED when the Plan cannot be read or required audit evidence is unavailable.",

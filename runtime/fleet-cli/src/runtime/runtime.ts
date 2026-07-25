@@ -79,10 +79,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		},
 		workspaceChangeScanner: createWorkspaceChangeScanner(),
 		wikiToolSpecs: getWikiToolSpecs(wikiWorkspaceResolver),
-		extraAgentTools: [planTools.read, planTools.write, planTools.verify],
-		extraExecutorTools: [
-			{ spec: planTools.markTasks, options: { allowedScopes: [] } },
-		],
+		extraAgentTools: [planTools.read, planTools.write, planTools.verify, planTools.markTasks],
 	});
 
 	return {

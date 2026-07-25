@@ -53,11 +53,7 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <scope> required: Which modules, directories, or subsystems are in play.
   - <constraints?> optional: Hard technical constraints, compatibility requirements, or non-negotiables.
   - <references?> optional: Prior Nimitz recommendations, host-authored Plans, Nimitz Plan-assurance findings, existing patterns to follow, or design decisions already made.
-- **ohio** (Ohio · Multi-Wave Execution) — wrap request content in these blocks (? = optional):
-  - <task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.
-  - <objective?> optional: Optional brief restatement of the overarching goal for context anchoring.
-  - <scope?> optional: Optional explicit boundaries that further narrow, but never expand, the assigned TaskRefs.
-  - <constraints?> optional: Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.
+  - <task_refs?> optional: Optional newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. When present, Genesis calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks; the host owns completion marking after artifact inspection.
 - **sentinel** (Sentinel · QA & Security Lead) — wrap request content in these blocks (? = optional):
   - <target> required: Which files, modules, PRs, endpoints, or recent changes to inspect.
   - <concern?> optional: Specific suspicion, symptom, or area of worry to focus on.

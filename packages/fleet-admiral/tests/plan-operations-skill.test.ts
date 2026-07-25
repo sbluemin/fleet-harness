@@ -46,16 +46,16 @@ describe("plan-operations skill asset", () => {
     expect(content).toContain("- Shared mutable resources:");
     expect(content).toContain("### Lane W1-A — <name>");
     expect(content).toContain("- [ ] W1-A-T1 — <step>");
-    expect(content).toContain("- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only");
-    expect(content).toContain("`plan_write` and `plan_verify` are host-only");
-    expect(content).toContain("`plan_mark_tasks` is Ohio-only");
+    expect(content).toContain("- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only");
+    expect(content).toContain("`plan_write`, `plan_verify`, and `plan_mark_tasks` are host-only");
+    expect(content).toContain("No Carrier receives `plan_mark_tasks`");
     expect(content).toContain("It does not verify source, documentation, configuration, generated assets, tests, security, acceptance criteria, or user-visible behavior.");
   });
 
-  it("keeps Nimitz Plan assurance optional and read-only, then hands host-authored TaskRefs to Ohio", () => {
+  it("keeps Nimitz Plan assurance optional and read-only, then hands host-authored TaskRefs to Genesis with host completion", () => {
     const content = skillContent();
 
-    expect(content).toContain("Nimitz Plan assurance is never required for Plan authoring or Ohio dispatch.");
+    expect(content).toContain("Nimitz Plan assurance is never required for Plan authoring or Genesis dispatch.");
     expect(content).toContain("1. `<context>` required");
     expect(content).toContain("2. `<problem>` required");
     expect(content).toContain("3. `<plan_ref>` optional — sole audit trigger");
@@ -64,7 +64,8 @@ describe("plan-operations skill asset", () => {
     expect(content).toContain("`PASS | REVISE | BLOCKED`");
     expect(content).toContain("A clean audit explicitly reports no findings.");
     expect(content).toContain("never calls `plan_write`");
-    expect(content).toContain("The host dispatches one same-Lane TaskRef group per Ohio request.");
+    expect(content).toContain("The host dispatches one same-Lane TaskRef group per Genesis Plan-driven request.");
+    expect(content).toContain("call `plan_mark_tasks` with exactly the original dispatched TaskRefs");
     expect(content).toContain("Plan wording, topology, ownership, or task changes return to the host.");
   });
 });

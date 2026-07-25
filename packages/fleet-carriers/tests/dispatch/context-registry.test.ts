@@ -10,7 +10,7 @@ import {
 } from "../../src/dispatch/context-registry.js";
 
 const binding = {
-  carrierId: "ohio",
+  carrierId: "alpha",
   cwd: "/tmp/project/../project",
   shape: "single" as const,
   backends: [{ cliType: "codex" as const }],

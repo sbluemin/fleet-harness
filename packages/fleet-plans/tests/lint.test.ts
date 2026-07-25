@@ -47,8 +47,8 @@ describe("lintPlanMarkdown", () => {
       .replace("- Handoff: Public WorkspaceDir export", "- Handoff:\n- Handoff: duplicate")
       .replace("W1-A-T2 — Persist cwd identity", "W1-A-T4 — Persist cwd identity")
       .replace(
-        "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only",
-        "- Full-plan Ohio invocation: allowed",
+        "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only",
+        "- Full-plan execution: allowed",
       );
     const result = lintPlanMarkdown(markdown);
 
@@ -85,7 +85,7 @@ describe("lintPlanMarkdown", () => {
   });
 
   it("requires the full-plan dispatch policy inside Dispatch Manifest", () => {
-    const policy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const policy = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
     const markdown = buildValidPlan()
       .replace(`${policy}\n`, "")
       .replace("# Documentation Updates", `${policy}\n\n# Documentation Updates`);
@@ -93,6 +93,95 @@ describe("lintPlanMarkdown", () => {
     const result = lintPlanMarkdown(markdown);
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
+  it("accepts the exact legacy Ohio full-plan policy as the sole alternative", () => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const legacy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdown(buildValidPlan().replace(canonical, legacy));
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects both canonical and legacy full-plan policy lines together", () => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const legacy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdown(buildValidPlan().replace(canonical, `${canonical}\n${legacy}`));
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
+  it("rejects malformed full-plan policy variants", () => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    for (const malformed of [
+      "- Full-plan execution: unavailable",
+      "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only!",
+      "- Full-plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only",
+    ]) {
+      const result = lintPlanMarkdown(buildValidPlan().replace(canonical, malformed));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+    }
+  });
+
+  it("rejects a valid canonical policy that is accompanied by a malformed Full-plan line", () => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const malformed = "- Full-plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdown(buildValidPlan().replace(canonical, `${canonical}\n${malformed}`));
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
+  it("rejects a valid legacy policy that is accompanied by a malformed Full-plan line", () => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const legacy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const malformed = "- Full-plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdown(buildValidPlan().replace(canonical, `${legacy}\n${malformed}`));
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
+  it.each([
+    ["space-separated Full Plan", "- Full Plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["lowercase full-plan", "- full-plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["tab-separated Full plan", "- Full\tplan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["no-separator Fullplan", "- Fullplan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["repeated-hyphen Full---plan", "- Full---plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+  ])("rejects canonical plus normalized malformed companion (%s)", (_label, malformed) => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdown(buildValidPlan().replace(canonical, `${canonical}\n${malformed}`));
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
+  it.each([
+    ["space-separated Full Plan", "- Full Plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["lowercase full-plan", "- full-plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["tab-separated Full plan", "- Full\tplan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["no-separator Fullplan", "- Fullplan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+    ["repeated-hyphen Full---plan", "- Full---plan Genesis invocation: unavailable; dispatch explicit same-Lane TaskRefs only"],
+  ])("rejects legacy plus normalized malformed companion (%s)", (_label, malformed) => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const legacy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdown(buildValidPlan().replace(canonical, `${legacy}\n${malformed}`));
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
+  it("does not treat Full-plan wording inside a Dispatch Manifest Lane description as a policy line", () => {
+    const result = lintPlanMarkdown(buildValidPlan().replace(
+      "- Lane W1-A — exact write set, dependencies, gate, handoff, and rollback from W1-A",
+      "- Lane W1-A — exact write set, dependencies, gate, handoff, and rollback from W1-A including Full-plan notes",
+    ));
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
   });
 
   it("does not accept topology fields placed outside Execution Topology", () => {

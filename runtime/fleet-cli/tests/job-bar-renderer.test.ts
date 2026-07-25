@@ -218,7 +218,7 @@ describe("job bar renderer", () => {
   it("uses finishedAt for elapsed time and keeps the group elapsed on the job row", () => {
     const runtime = createTestCarrierRuntime();
     const job = {
-      ...buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+      ...buildTaskForceJob("taskforce:first", "vanguard", "claude", "codex"),
       finishedAt: 91000,
     };
 
@@ -246,7 +246,7 @@ describe("job bar renderer", () => {
       carrierRuntime: runtime,
       frame: 0,
       jobs: [{
-        ...buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+        ...buildTaskForceJob("taskforce:first", "vanguard", "claude", "codex"),
         tracks: [
           {
             displayCli: "claude",
@@ -289,7 +289,7 @@ describe("job bar renderer", () => {
       carrierRuntime: runtime,
       frame: 0,
       jobs: [{
-        ...buildTaskForceJob("taskforce:safe-labels", "ohio", "claude", "codex"),
+        ...buildTaskForceJob("taskforce:safe-labels", "vanguard", "claude", "codex"),
         tracks: [
           {
             displayCli: "claude",
@@ -335,7 +335,7 @@ describe("job bar renderer", () => {
       type: "job:registered",
       jobId: "taskforce:elapsed-freeze",
       kind: "taskforce",
-      ownerCarrierId: "ohio",
+      ownerCarrierId: "vanguard",
       label: "Coordinate backends",
       startedAt: 1000,
       tracks: [
@@ -443,7 +443,7 @@ describe("job bar renderer", () => {
       carrierRuntime: runtime,
       frame: 0,
       jobs: [
-        buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+        buildTaskForceJob("taskforce:first", "vanguard", "claude", "codex"),
       ],
       runs: new Map([
         ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "stream", blocks: [{ type: "text", text: "active" }] }],
@@ -455,7 +455,7 @@ describe("job bar renderer", () => {
       carrierRuntime: runtime,
       frame: 5,
       jobs: [
-        buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+        buildTaskForceJob("taskforce:first", "vanguard", "claude", "codex"),
       ],
       runs: new Map([
         ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "stream", blocks: [{ type: "text", text: "active" }] }],
@@ -467,7 +467,7 @@ describe("job bar renderer", () => {
       carrierRuntime: runtime,
       frame: 5,
       jobs: [
-        buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+        buildTaskForceJob("taskforce:first", "vanguard", "claude", "codex"),
       ],
       runs: new Map([
         ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "done", blocks: [{ type: "text", text: "done" }] }],
@@ -511,18 +511,18 @@ describe("job bar renderer", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-taskforce-"));
     initStore(tempDir);
     const runtime = createTestCarrierRuntime();
-    setTaskForceBackend(runtime.registry, "ohio", "claude", { model: firstModel("claude") });
-    setTaskForceBackend(runtime.registry, "ohio", "codex", { model: firstModel("codex") });
+    setTaskForceBackend(runtime.registry, "vanguard", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(runtime.registry, "vanguard", "codex", { model: firstModel("codex") });
     const state = createJobBarState({ carrierRuntime: runtime });
     currentJobBarState = state;
-    state.getPanelJobs().set("taskforce:first", buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"));
+    state.getPanelJobs().set("taskforce:first", buildTaskForceJob("taskforce:first", "vanguard", "claude", "codex"));
 
     const rendered = createJobBarSections(state).flatMap((section) => section.component.render(200)).join("\n");
     const text = stripAnsi(rendered);
 
-    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}O`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}V`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
-    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Vanguard`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}${firstModel("claude")} - medium`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}${firstModel("codex")} - high`);
@@ -533,18 +533,18 @@ describe("job bar renderer", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-displaycli-collision-"));
     initStore(tempDir);
     const runtime = createTestCarrierRuntime();
-    setTaskForceBackend(runtime.registry, "ohio", "claude", { model: firstModel("claude") });
-    setTaskForceBackend(runtime.registry, "ohio", "codex", { model: firstModel("codex") });
+    setTaskForceBackend(runtime.registry, "vanguard", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(runtime.registry, "vanguard", "codex", { model: firstModel("codex") });
     const state = createJobBarState({ carrierRuntime: runtime });
     currentJobBarState = state;
-    state.getPanelJobs().set("taskforce:collision", buildTaskForceJob("taskforce:collision", "ohio", "ohio", "codex"));
+    state.getPanelJobs().set("taskforce:collision", buildTaskForceJob("taskforce:collision", "vanguard", "vanguard", "codex"));
 
     const rendered = createJobBarSections(state).flatMap((section) => section.component.render(200)).join("\n");
-    const backendLine = rendered.split("\n").find((line) => line.includes("Ohio") && line.includes("└─") && !line.includes("Taskforce"));
+    const backendLine = rendered.split("\n").find((line) => line.includes("Vanguard") && line.includes("└─") && !line.includes("Taskforce"));
 
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
-    expect(backendLine).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
-    expect(backendLine).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
+    expect(backendLine).toContain(`${PROVIDER_ANSI_COLORS.claude}Vanguard`);
+    expect(backendLine).not.toContain(`${TASKFORCE_BADGE_COLOR}Vanguard`);
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {
@@ -591,7 +591,7 @@ describe("job bar renderer", () => {
       type: "job:registered",
       jobId: "taskforce:sess",
       kind: "taskforce",
-      ownerCarrierId: "ohio",
+      ownerCarrierId: "vanguard",
       label: "Coordinate backends",
       startedAt: 2000,
       tracks: [
@@ -619,9 +619,9 @@ function createTestCarrierRuntime(): ReturnType<typeof createCarrierRuntime> {
   const runtime = createCarrierRuntime();
   runtime.registerCarrierDefaults();
   registerCarrier(runtime.registry, {
-    id: "ohio",
+    id: "vanguard",
     defaultCliType: "claude",
-    displayName: "Ohio",
+    displayName: "Vanguard",
     slot: 4,
     taskForceCapable: true,
   });

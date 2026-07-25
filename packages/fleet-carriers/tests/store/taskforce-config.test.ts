@@ -32,26 +32,26 @@ describe("carrier taskforce config store", () => {
 
   it("removes all Task Force backend selections for one carrier", () => {
     const registry = registerCapableCarriers();
-    setTaskForceBackend(registry, "ohio", "claude", { model: firstModel("claude") });
-    setTaskForceBackend(registry, "ohio", "codex", { model: firstModel("codex") });
+    setTaskForceBackend(registry, "vanguard", "claude", { model: firstModel("claude") });
+    setTaskForceBackend(registry, "vanguard", "codex", { model: firstModel("codex") });
     setTaskForceBackend(registry, "genesis", "codex", { model: firstModel("codex") });
 
-    expect(clearTaskForceConfig("ohio")).toBe(true);
+    expect(clearTaskForceConfig("vanguard")).toBe(true);
 
     const snapshot = readCarriersSnapshot();
-    expect(snapshot.carriers.ohio?.taskforce).toBeUndefined();
+    expect(snapshot.carriers.vanguard?.taskforce).toBeUndefined();
     expect(snapshot.carriers.genesis?.taskforce?.codex?.model).toBe(firstModel("codex"));
   });
 
   it("returns false without writing when the carrier has no Task Force config", () => {
-    expect(clearTaskForceConfig("ohio")).toBe(false);
+    expect(clearTaskForceConfig("vanguard")).toBe(false);
     expect(fs.existsSync(getCarriersFilePath()!)).toBe(false);
   });
 });
 
 function registerCapableCarriers(): CarrierRegistry {
   const registry = createCarrierRegistry();
-  for (const id of ["ohio", "genesis"]) {
+  for (const id of ["vanguard", "genesis"]) {
     registerCarrier(registry, { id, displayName: id, slot: 1, defaultCliType: "claude", taskForceCapable: true });
   }
   return registry;

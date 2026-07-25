@@ -214,37 +214,37 @@ describe("carrier stream handler registry", () => {
 describe("carrier roster rendering", () => {
   it("excludes requested carrier IDs from the normal carrier_dispatch roster", () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     registerCarrier(registry, createConfig("sentinel", "Sentinel"));
 
-    const roster = buildCarrierRoster(registry, ["ohio", "sentinel"], {
-      excludeCarrierIds: ["ohio"],
+    const roster = buildCarrierRoster(registry, ["alpha", "sentinel"], {
+      excludeCarrierIds: ["alpha"],
     });
 
-    expect(roster).not.toContain("**ohio**");
-    expect(roster).not.toContain('carrier_id: "ohio"');
+    expect(roster).not.toContain("**alpha**");
+    expect(roster).not.toContain('carrier_id: "alpha"');
     expect(roster).toContain("**sentinel**");
     expect(roster).toContain('carrier_id: "sentinel"');
   });
 
   it("renders the shared prior_jobs preamble once before carrier entries", () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const preamble = `All carriers accept an optional <prior_jobs> block: ${PRIOR_JOBS_REQUEST_HINT}`;
 
-    const roster = buildCarrierRoster(registry, ["ohio"], {
+    const roster = buildCarrierRoster(registry, ["alpha"], {
       preambleLines: [preamble],
     });
 
     expect(roster.match(/<prior_jobs>/g)).toHaveLength(1);
-    expect(roster.indexOf(preamble)).toBeLessThan(roster.indexOf("**ohio**"));
+    expect(roster.indexOf(preamble)).toBeLessThan(roster.indexOf("**alpha**"));
   });
 
   it("renders the routing tier without request-block contracts", () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    registerCarrier(registry, createConfigWithBlocks("alpha", "Alpha"));
 
-    const roster = buildCarrierRoster(registry, ["ohio"], { tier: "routing" });
+    const roster = buildCarrierRoster(registry, ["alpha"], { tier: "routing" });
 
     expect(roster).toContain("Use for:");
     expect(roster).toContain("NOT for:");
@@ -254,31 +254,31 @@ describe("carrier roster rendering", () => {
 
   it("renders the contracts tier with request blocks only", () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    registerCarrier(registry, createConfigWithBlocks("alpha", "Alpha"));
 
-    const roster = buildCarrierRoster(registry, ["ohio"], { tier: "contracts" });
+    const roster = buildCarrierRoster(registry, ["alpha"], { tier: "contracts" });
 
     expect(roster).toContain("<task_refs> required:");
     expect(roster).toContain("<objective?> optional:");
     expect(roster).not.toContain("Use for:");
     expect(roster).not.toContain("NOT for:");
-    expect(roster).not.toContain('carrier_id: "ohio"');
+    expect(roster).not.toContain('carrier_id: "alpha"');
   });
 
   it("renders blockless carriers as free-form in the contracts tier", () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
 
-    const roster = buildCarrierRoster(registry, ["ohio"], { tier: "contracts" });
+    const roster = buildCarrierRoster(registry, ["alpha"], { tier: "contracts" });
 
     expect(roster).toContain("free-form request body — no structured request blocks");
   });
 
   it("omits full render entries for default (tierless) calls unchanged", () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    registerCarrier(registry, createConfigWithBlocks("alpha", "Alpha"));
 
-    const roster = buildCarrierRoster(registry, ["ohio"]);
+    const roster = buildCarrierRoster(registry, ["alpha"]);
 
     expect(roster).toContain("Use for:");
     expect(roster).toContain("Request blocks — wrap content in these (? = optional):");
@@ -303,7 +303,7 @@ describe("carrier_dispatch effort resolution", () => {
   it("uses carriers.json effort instead of the persona dispatch defaultEffort", async () => {
     writeStates({
       carriers: {
-        ohio: {
+        alpha: {
           agentCli: {
             claude: {
               model: "sonnet",
@@ -314,7 +314,7 @@ describe("carrier_dispatch effort resolution", () => {
       },
     });
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
     const ctx: AgentToolCtx = {
       cwd: "/tmp",
@@ -322,7 +322,7 @@ describe("carrier_dispatch effort resolution", () => {
     };
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check dispatch effort",
       request: "Verify effort source.",
     }, ctx);
@@ -331,7 +331,7 @@ describe("carrier_dispatch effort resolution", () => {
       expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
     expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
-      scopeId: "ohio",
+      scopeId: "alpha",
       cliType: "claude",
       model: "sonnet",
       effort: "max",
@@ -341,14 +341,14 @@ describe("carrier_dispatch effort resolution", () => {
   it("uses persona dispatch defaults when no model state exists", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, {
-      ...createConfig("ohio", "Ohio"),
+      ...createConfig("alpha", "Alpha"),
       defaultEffort: "max",
       defaultModel: "sonnet",
     });
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check dispatch defaults",
       request: "Verify dispatch defaults.",
     }, {
@@ -360,7 +360,7 @@ describe("carrier_dispatch effort resolution", () => {
       expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
     expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
-      scopeId: "ohio",
+      scopeId: "alpha",
       cliType: "claude",
       model: "sonnet",
       effort: "max",
@@ -370,13 +370,13 @@ describe("carrier_dispatch effort resolution", () => {
   it("omits a resume session id for an untracked single dispatch", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, {
-      ...createConfig("ohio", "Ohio"),
+      ...createConfig("alpha", "Alpha"),
       defaultModel: "sonnet",
     });
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Untracked dispatch",
       request: "Run without a resume_context_id.",
     }, {
@@ -396,7 +396,7 @@ describe("carrier_dispatch effort resolution", () => {
     const effort = firstEffort("claude", model);
     const registry = createCarrierRegistry();
     registerCarrier(registry, {
-      ...createConfig("ohio", "Ohio"),
+      ...createConfig("alpha", "Alpha"),
       defaultEffort: effort,
       defaultModel: model,
     });
@@ -405,7 +405,7 @@ describe("carrier_dispatch effort resolution", () => {
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check single dispatch metadata",
       request: "Verify single dispatch track metadata.",
     }, {
@@ -418,13 +418,13 @@ describe("carrier_dispatch effort resolution", () => {
     expect(registered).toEqual(expect.objectContaining({
       jobId: "carrier:dispatch-single-metadata",
       kind: "carrier",
-      ownerCarrierId: "ohio",
+      ownerCarrierId: "alpha",
     }));
     if (registered?.type !== "job:registered") throw new Error("Single carrier job registration event was not emitted.");
     expect(registered.tracks).toEqual([
       expect.objectContaining({
-        displayCli: "ohio",
-        displayName: "Ohio",
+        displayCli: "alpha",
+        displayName: "Alpha",
         effort,
         kind: "carrier",
         model,
@@ -434,7 +434,7 @@ describe("carrier_dispatch effort resolution", () => {
       expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
     expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
-      scopeId: "ohio",
+      scopeId: "alpha",
       cliType: "claude",
       effort,
       model,
@@ -462,13 +462,13 @@ describe("carrier_dispatch readiness gating", () => {
       }),
     );
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     const result = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Trigger readiness failure",
       request: "Fail before the prompt.",
     }, {
@@ -507,11 +507,11 @@ describe("carrier_dispatch readiness gating", () => {
       };
     });
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     const execution = tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Gate ordering",
       request: "Prompt must wait for readiness.",
     }, {
@@ -544,7 +544,7 @@ describe("carrier_dispatch workspace manifest recording", () => {
 
   it("captures a single dispatch edit made immediately after the prompt gate opens", async () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     let edited = false;
@@ -559,7 +559,7 @@ describe("carrier_dispatch workspace manifest recording", () => {
     const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check manifest",
       request: "Verify manifest capture.",
     }, {
@@ -583,11 +583,11 @@ describe("carrier_dispatch workspace manifest recording", () => {
 
   it("records scanner-not-configured without failing single dispatch", async () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     const result = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check missing scanner",
       request: "Verify missing scanner.",
     }, {
@@ -607,7 +607,7 @@ describe("carrier_dispatch workspace manifest recording", () => {
   it("does not scan when request-block validation rejects before launch", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, {
-      ...createConfig("ohio", "Ohio"),
+      ...createConfig("alpha", "Alpha"),
       carrierMetadata: {
         category: "operations",
         outputFormat: "Report results.",
@@ -625,7 +625,7 @@ describe("carrier_dispatch workspace manifest recording", () => {
     const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
 
     const result = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check validation scanner skip",
       request: "Missing objective.",
     }, {
@@ -658,15 +658,15 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const claudeEffort = firstEffort("claude", claudeModel);
     const codexEffort = firstEffort("codex", codexModel);
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
-    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: claudeEffort });
-    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: codexEffort });
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
+    setTaskForceBackend(registry, "alpha", "claude", { model: claudeModel, effort: claudeEffort });
+    setTaskForceBackend(registry, "alpha", "codex", { model: codexModel, effort: codexEffort });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check Task Force metadata",
       request: "Verify Task Force track metadata.",
     }, {
@@ -679,7 +679,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     expect(registered).toEqual(expect.objectContaining({
       jobId: "taskforce:dispatch-taskforce-metadata",
       kind: "taskforce",
-      ownerCarrierId: "ohio",
+      ownerCarrierId: "alpha",
     }));
     if (registered?.type !== "job:registered") throw new Error("Task Force job registration event was not emitted.");
     expect(registered.tracks).toEqual([
@@ -704,14 +704,14 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
-    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    registerCarrier(registry, createConfigWithBlocks("alpha", "Alpha"));
+    setTaskForceBackend(registry, "alpha", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "alpha", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const request = "outside <objective>  exact /tmp/fake & <script>literal</script>  </objective><task_refs>W1</task_refs><task_refs>duplicate</task_refs>";
 
-    await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "ohio", label: "Request observer", request }, {
+    await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "alpha", label: "Request observer", request }, {
       cwd: "/tmp",
       toolCallId: "taskforce-request-observer",
     });
@@ -737,12 +737,12 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
-    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
+    setTaskForceBackend(registry, "alpha", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "alpha", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
-    await tool.execute({ carrier_id: "ohio", label: "Task Force", request: "Run both backends." }, {
+    await tool.execute({ carrier_id: "alpha", label: "Task Force", request: "Run both backends." }, {
       cwd: "/tmp",
       sessionLabel: "terminal-a",
       toolCallId: "taskforce-fresh-handles",
@@ -754,7 +754,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const calls = vi.mocked(executeOneShot).mock.calls.map(([options]) => options);
     expect(calls.map((options) => options.cliType).sort()).toEqual(["claude", "codex"]);
     for (const options of calls) {
-      expect(options.scopeId).toBe("ohio");
+      expect(options.scopeId).toBe("alpha");
       expect(options.resumeSessionId).toBeUndefined();
     }
   });
@@ -763,9 +763,9 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
-    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
+    setTaskForceBackend(registry, "alpha", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "alpha", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     let edited = false;
@@ -780,7 +780,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check Task Force manifest",
       request: "Verify Task Force manifest.",
     }, {
@@ -806,7 +806,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     const codexModel = firstModel("codex");
     writeStates({
       carriers: {
-        ohio: {
+        alpha: {
           agentMode: "subagent",
           taskforce: {
             claude: {
@@ -822,13 +822,13 @@ describe("carrier_dispatch taskforce stream metadata", () => {
       },
     });
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     const result = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Check invalid Task Force metadata",
       request: "Verify invalid Task Force config rejection.",
     }, {
@@ -864,12 +864,12 @@ describe("carrier_dispatch request observer", () => {
 
   it("emits the exact parsed request without changing the single executor request or call count", async () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfigWithBlocks("ohio", "Ohio"));
+    registerCarrier(registry, createConfigWithBlocks("alpha", "Alpha"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
     const request = "lead <task_refs source=\"host\"> W1 </task_refs> free <unknown>x</unknown>";
 
-    await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "ohio", label: "Request observer", request }, {
+    await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "alpha", label: "Request observer", request }, {
       cwd: "/tmp",
       toolCallId: "single-request-observer",
     });
@@ -906,11 +906,11 @@ describe("carrier_dispatch explicit cwd injection", () => {
 
   it("falls back to the host session cwd when no cwd argument is provided", async () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "No explicit cwd",
       request: "Run with host cwd.",
     }, {
@@ -922,18 +922,18 @@ describe("carrier_dispatch explicit cwd injection", () => {
       expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
     expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
-      scopeId: "ohio",
+      scopeId: "alpha",
       cwd: "/host/session/cwd",
     }));
   });
 
   it("forwards an explicit absolute cwd to the carrier spawn", async () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Explicit worktree cwd",
       request: "Run in the worktree.",
       cwd: "/abs/worktree/path",
@@ -946,18 +946,18 @@ describe("carrier_dispatch explicit cwd injection", () => {
       expect(executeOneShot).toHaveBeenCalledTimes(1);
     });
     expect(executeOneShot).toHaveBeenCalledWith(expect.objectContaining({
-      scopeId: "ohio",
+      scopeId: "alpha",
       cwd: "/abs/worktree/path",
     }));
   });
 
   it("rejects a relative cwd before launching a job", async () => {
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     const result = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Relative cwd",
       request: "Should be rejected.",
       cwd: "relative/worktree",
@@ -979,13 +979,13 @@ describe("carrier_dispatch explicit cwd injection", () => {
     const claudeModel = firstModel("claude");
     const codexModel = firstModel("codex");
     const registry = createCarrierRegistry();
-    registerCarrier(registry, createConfig("ohio", "Ohio"));
-    setTaskForceBackend(registry, "ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
-    setTaskForceBackend(registry, "ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    registerCarrier(registry, createConfig("alpha", "Alpha"));
+    setTaskForceBackend(registry, "alpha", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    setTaskForceBackend(registry, "alpha", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "Task Force worktree cwd",
       request: "Run Task Force in the worktree.",
       cwd: "/abs/worktree/path",

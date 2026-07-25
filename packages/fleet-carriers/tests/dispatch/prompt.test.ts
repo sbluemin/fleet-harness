@@ -19,7 +19,7 @@ const META: CarrierMetadata = {
 
 describe("validateRequiredRequestBlocks", () => {
   it("accepts requests containing all required blocks", () => {
-    const result = validateRequiredRequestBlocks(META, "<task_refs>workspace:plan#W1-A-T1</task_refs>", "ohio");
+    const result = validateRequiredRequestBlocks(META, "<task_refs>workspace:plan#W1-A-T1</task_refs>", "alpha");
 
     expect(result.ok).toBe(true);
   });
@@ -33,23 +33,23 @@ describe("validateRequiredRequestBlocks", () => {
       additional: "literal observer residual",
     };
 
-    expect(validateParsedRequiredRequestBlocks(META, parsed, "ohio")).toEqual({ ok: true });
+    expect(validateParsedRequiredRequestBlocks(META, parsed, "alpha")).toEqual({ ok: true });
   });
 
   it("echoes the full request-block contract in the rejection error", () => {
-    const result = validateRequiredRequestBlocks(META, "do the thing", "ohio");
+    const result = validateRequiredRequestBlocks(META, "do the thing", "alpha");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.missing).toEqual(["task_refs"]);
-    expect(result.error).toContain('Missing required request block(s) for carrier "ohio"');
+    expect(result.error).toContain('Missing required request block(s) for carrier "alpha"');
     // 자기회복 폴백: 계약을 미리 로드하지 않았어도 에러만으로 재작성 가능해야 한다.
     expect(result.error).toContain("<task_refs> required: Assigned TaskRefs.");
     expect(result.error).toContain("<objective?> optional: Optional goal restatement.");
   });
 
   it("rejects required blocks with an empty body", () => {
-    const result = validateRequiredRequestBlocks(META, "<task_refs>   </task_refs>", "ohio");
+    const result = validateRequiredRequestBlocks(META, "<task_refs>   </task_refs>", "alpha");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -59,7 +59,7 @@ describe("validateRequiredRequestBlocks", () => {
   it("accepts a required top-level block whose body contains unbalanced literal markup", () => {
     const request = "<task_refs>Use <unknown> literally</task_refs>";
 
-    expect(validateRequiredRequestBlocks(META, request, "ohio")).toEqual({ ok: true });
+    expect(validateRequiredRequestBlocks(META, request, "alpha")).toEqual({ ok: true });
     expect(parseCarrierRequest(META, request).blocks[0]).toMatchObject({ present: true, body: "Use <unknown> literally" });
   });
 
@@ -115,7 +115,7 @@ describe("parseCarrierRequest", () => {
     ["unmatched prose markup", "use <draft> wording <task_refs>W1</task_refs>", "use <draft> wording "],
     ["generic-looking literals", "Foo<T> <task_refs>W1</task_refs>", "Foo<T> "],
   ])("preserves %s before a later configured block", (_case, request, additional) => {
-    expect(validateRequiredRequestBlocks(META, request, "ohio")).toEqual({ ok: true });
+    expect(validateRequiredRequestBlocks(META, request, "alpha")).toEqual({ ok: true });
     expect(parseCarrierRequest(META, request)).toEqual({
       blocks: [
         { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "W1" },

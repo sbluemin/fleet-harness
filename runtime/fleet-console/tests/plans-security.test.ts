@@ -194,7 +194,7 @@ Keep the Plan visible from its active Theater.
 
 # Dispatch Manifest
 
-- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only
+- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only
 - Lane W1-A — exact write set, dependencies, gate, handoff, and rollback from W1-A
 
 # QA Gates

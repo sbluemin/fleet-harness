@@ -105,7 +105,7 @@ afterEach(async () => {
 describe("single dispatch context resume", () => {
   it("tracks and rolls back a single prepared handle while readiness is pending", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     const readiness = defer<OneShotReady>();
     const completion = defer<ExecResult>();
     const abortGate = defer<void>();
@@ -122,7 +122,7 @@ describe("single dispatch context resume", () => {
     vi.mocked(executeOneShot).mockReturnValue(handle);
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const pending = tool.execute({ carrier_id: "ohio", label: "Pending readiness cleanup", request: "Keep readiness pending." }, { cwd: "/tmp", toolCallId: "single-readiness-cleanup" });
+    const pending = tool.execute({ carrier_id: "alpha", label: "Pending readiness cleanup", request: "Keep readiness pending." }, { cwd: "/tmp", toolCallId: "single-readiness-cleanup" });
     await vi.waitFor(() => expect(executeOneShot).toHaveBeenCalledTimes(1));
     let cleanupFinished = false;
     const cleanup = runtime.cleanup().then(() => { cleanupFinished = true; });
@@ -139,7 +139,7 @@ describe("single dispatch context resume", () => {
 
   it("rolls back a single dispatch when cleanup closes admission during baseline capture", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     const baseline = defer<readonly [] | null>();
     const handles: OneShotExecution[] = [];
     vi.mocked(executeOneShot).mockImplementation((opts) => {
@@ -157,7 +157,7 @@ describe("single dispatch context resume", () => {
     const scanner = { snapshot: vi.fn(() => baseline.promise) };
     const tool = runtime.buildDispatchToolSpec({ ...deps, workspaceChangeScanner: scanner });
 
-    const pending = tool.execute({ carrier_id: "ohio", label: "Cleanup race", request: "Do not open the prompt gate." }, { cwd: "/tmp", toolCallId: "single-cleanup-race" });
+    const pending = tool.execute({ carrier_id: "alpha", label: "Cleanup race", request: "Do not open the prompt gate." }, { cwd: "/tmp", toolCallId: "single-cleanup-race" });
     await vi.waitFor(() => expect(scanner.snapshot).toHaveBeenCalledTimes(1));
     await runtime.cleanup();
     expect(handles[0]!.startPrompt).not.toHaveBeenCalled();
@@ -174,11 +174,11 @@ describe("single dispatch context resume", () => {
 
   it("returns and commits a fresh context_id when no resume_context_id is provided", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const result = await tool.execute({ carrier_id: "ohio", label: "Fresh", request: "Run once." }, { cwd: "/tmp", toolCallId: "u1" });
+    const result = await tool.execute({ carrier_id: "alpha", label: "Fresh", request: "Run once." }, { cwd: "/tmp", toolCallId: "u1" });
 
     await vi.waitFor(() => expect(executeOneShot).toHaveBeenCalledTimes(1));
     expect(vi.mocked(executeOneShot).mock.calls[0]![0].resumeSessionId).toBeUndefined();
@@ -188,16 +188,16 @@ describe("single dispatch context resume", () => {
 
   it("commits a mapping on a done turn and resumes it with the saved session id", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const first = await tool.execute({ carrier_id: "ohio", label: "First", request: "Run." }, { cwd: "/tmp", toolCallId: "c1" });
+    const first = await tool.execute({ carrier_id: "alpha", label: "First", request: "Run." }, { cwd: "/tmp", toolCallId: "c1" });
     const contextId = details(first).context_id;
     expect(contextId).toMatch(/^ctx:/);
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
 
-    const resumed = await tool.execute({ carrier_id: "ohio", label: "Resume", request: "Continue.", resume_context_id: contextId }, { cwd: "/tmp", toolCallId: "c2" });
+    const resumed = await tool.execute({ carrier_id: "alpha", label: "Resume", request: "Continue.", resume_context_id: contextId }, { cwd: "/tmp", toolCallId: "c2" });
     await vi.waitFor(() => expect(executeOneShot).toHaveBeenCalledTimes(2));
 
     expect(vi.mocked(executeOneShot).mock.calls[0]![0].resumeSessionId).toBeUndefined();
@@ -207,21 +207,21 @@ describe("single dispatch context resume", () => {
 
   it("forwards server bindings unchanged through nested-cwd fresh and resumed launches", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
     const serverBindings = Object.freeze({ plan_workspace: "/theater" });
     const nestedCarrierCwd = "/theater/.fleet/worktrees/topic";
 
     const first = await tool.execute(
-      { carrier_id: "ohio", label: "Nested first", request: "Run." },
+      { carrier_id: "alpha", label: "Nested first", request: "Run." },
       { cwd: nestedCarrierCwd, toolCallId: "nested-single-1", serverBindings },
     );
     const contextId = details(first).context_id;
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
 
     await tool.execute(
-      { carrier_id: "ohio", label: "Nested resume", request: "Continue.", resume_context_id: contextId },
+      { carrier_id: "alpha", label: "Nested resume", request: "Continue.", resume_context_id: contextId },
       { cwd: nestedCarrierCwd, toolCallId: "nested-single-2", serverBindings },
     );
 
@@ -237,7 +237,7 @@ describe("single dispatch context resume", () => {
 
   it("rejects a second in-flight dispatch that reuses the same resume_context_id", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     const pending = defer<ExecResult>();
     vi.mocked(executeOneShot).mockImplementationOnce((opts) => ({
       readiness: Promise.resolve({ cliType: opts.cliType as CliType, protocol: protocolFor(opts.cliType as CliType), sessionId: "s" }),
@@ -247,11 +247,11 @@ describe("single dispatch context resume", () => {
     }));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const first = await tool.execute({ carrier_id: "ohio", label: "Hold", request: "Stay in flight." }, { cwd: "/tmp", toolCallId: "b1" });
+    const first = await tool.execute({ carrier_id: "alpha", label: "Hold", request: "Stay in flight." }, { cwd: "/tmp", toolCallId: "b1" });
     expect(details(first).accepted).toBe(true);
     const contextId = details(first).context_id;
 
-    const second = await tool.execute({ carrier_id: "ohio", label: "Reuse", request: "Collide.", resume_context_id: contextId }, { cwd: "/tmp", toolCallId: "b2" });
+    const second = await tool.execute({ carrier_id: "alpha", label: "Reuse", request: "Collide.", resume_context_id: contextId }, { cwd: "/tmp", toolCallId: "b2" });
     expect(details(second).accepted).toBe(false);
     expect(details(second).error).toContain("in flight");
     // Only the first call ever built a one-shot handle.
@@ -262,26 +262,26 @@ describe("single dispatch context resume", () => {
 
   it("rejects reuse against a different binding", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const first = await tool.execute({ carrier_id: "ohio", label: "Bind A", request: "Run.", cwd: "/abs/a" }, { cwd: "/host", toolCallId: "m1" });
+    const first = await tool.execute({ carrier_id: "alpha", label: "Bind A", request: "Run.", cwd: "/abs/a" }, { cwd: "/host", toolCallId: "m1" });
     const contextId = details(first).context_id;
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
 
-    const mismatch = await tool.execute({ carrier_id: "ohio", label: "Bind B", request: "Run.", cwd: "/abs/b", resume_context_id: contextId }, { cwd: "/host", toolCallId: "m2" });
+    const mismatch = await tool.execute({ carrier_id: "alpha", label: "Bind B", request: "Run.", cwd: "/abs/b", resume_context_id: contextId }, { cwd: "/host", toolCallId: "m2" });
     expect(details(mismatch).accepted).toBe(false);
     expect(details(mismatch).error).toContain("different carrier");
   });
 
   it("rejects an invalid resume_context_id before building a handle", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const result = await tool.execute({ carrier_id: "ohio", label: "Bad id", request: "Run.", resume_context_id: " has space " }, { cwd: "/tmp", toolCallId: "bad" });
+    const result = await tool.execute({ carrier_id: "alpha", label: "Bad id", request: "Run.", resume_context_id: " has space " }, { cwd: "/tmp", toolCallId: "bad" });
     expect(details(result).accepted).toBe(false);
     expect(details(result).error).toContain("Invalid resume_context_id");
     expect(executeOneShot).not.toHaveBeenCalled();
@@ -289,10 +289,10 @@ describe("single dispatch context resume", () => {
 
   it("rejects an unknown resume_context_id instead of silently starting fresh", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const result = await tool.execute({ carrier_id: "ohio", label: "Missing", request: "Resume.", resume_context_id: "ctx:missing" }, { cwd: "/tmp", toolCallId: "missing" });
+    const result = await tool.execute({ carrier_id: "alpha", label: "Missing", request: "Resume.", resume_context_id: "ctx:missing" }, { cwd: "/tmp", toolCallId: "missing" });
 
     expect(details(result).accepted).toBe(false);
     expect(details(result).error).toContain("unknown or expired");
@@ -303,8 +303,8 @@ describe("single dispatch context resume", () => {
 describe("Task Force context barrier and resume", () => {
   it("tracks and rolls back every prepared Task Force handle while readiness is pending", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce(runtime.registry, "ohio");
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
     const abortGate = defer<void>();
     const handles: OneShotExecution[] = [];
     vi.mocked(executeOneShot).mockImplementation((opts) => {
@@ -326,7 +326,7 @@ describe("Task Force context barrier and resume", () => {
     });
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const pending = tool.execute({ carrier_id: "ohio", label: "Pending Task Force readiness cleanup", request: "Keep every readiness pending." }, { cwd: "/tmp", toolCallId: "taskforce-readiness-cleanup" });
+    const pending = tool.execute({ carrier_id: "alpha", label: "Pending Task Force readiness cleanup", request: "Keep every readiness pending." }, { cwd: "/tmp", toolCallId: "taskforce-readiness-cleanup" });
     await vi.waitFor(() => expect(handles).toHaveLength(2));
     let cleanupFinished = false;
     const cleanup = runtime.cleanup().then(() => { cleanupFinished = true; });
@@ -345,8 +345,8 @@ describe("Task Force context barrier and resume", () => {
 
   it("rolls back every Task Force backend when cleanup closes admission during baseline capture", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce(runtime.registry, "ohio");
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
     const baseline = defer<readonly [] | null>();
     const handles: OneShotExecution[] = [];
     vi.mocked(executeOneShot).mockImplementation((opts) => {
@@ -364,7 +364,7 @@ describe("Task Force context barrier and resume", () => {
     const scanner = { snapshot: vi.fn(() => baseline.promise) };
     const tool = runtime.buildDispatchToolSpec({ ...deps, workspaceChangeScanner: scanner });
 
-    const pending = tool.execute({ carrier_id: "ohio", label: "Task Force cleanup race", request: "Do not open either prompt gate." }, { cwd: "/tmp", toolCallId: "taskforce-cleanup-race" });
+    const pending = tool.execute({ carrier_id: "alpha", label: "Task Force cleanup race", request: "Do not open either prompt gate." }, { cwd: "/tmp", toolCallId: "taskforce-cleanup-race" });
     await vi.waitFor(() => expect(scanner.snapshot).toHaveBeenCalledTimes(1));
     await runtime.cleanup();
     expect(handles).toHaveLength(2);
@@ -386,8 +386,8 @@ describe("Task Force context barrier and resume", () => {
 
   it("aborts every backend and sends zero prompts when one readiness fails", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce(runtime.registry, "ohio");
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
     vi.mocked(executeOneShot).mockImplementation((opts) => {
       const cliType = opts.cliType as CliType;
       if (cliType === "codex") {
@@ -402,7 +402,7 @@ describe("Task Force context barrier and resume", () => {
     });
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const result = await tool.execute({ carrier_id: "ohio", label: "TF barrier", request: "Run both." }, { cwd: "/tmp", toolCallId: "tf-fail" });
+    const result = await tool.execute({ carrier_id: "alpha", label: "TF barrier", request: "Run both." }, { cwd: "/tmp", toolCallId: "tf-fail" });
 
     expect(details(result).accepted).toBe(false);
     // Both handles were built, but the barrier opened no prompt gate.
@@ -417,17 +417,17 @@ describe("Task Force context barrier and resume", () => {
 
   it("resumes each backend by its own session without cross-wiring", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce(runtime.registry, "ohio");
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const first = await tool.execute({ carrier_id: "ohio", label: "TF first", request: "Run." }, { cwd: "/tmp", toolCallId: "tf1" });
+    const first = await tool.execute({ carrier_id: "alpha", label: "TF first", request: "Run." }, { cwd: "/tmp", toolCallId: "tf1" });
     const contextId = details(first).context_id;
     expect(contextId).toMatch(/^ctx:/);
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
 
-    const resumed = await tool.execute({ carrier_id: "ohio", label: "TF resume", request: "Continue.", resume_context_id: contextId }, { cwd: "/tmp", toolCallId: "tf2" });
+    const resumed = await tool.execute({ carrier_id: "alpha", label: "TF resume", request: "Continue.", resume_context_id: contextId }, { cwd: "/tmp", toolCallId: "tf2" });
     await vi.waitFor(() => expect(executeOneShot).toHaveBeenCalledTimes(4));
 
     const resumeCalls = vi.mocked(executeOneShot).mock.calls.slice(2).map(([options]) => options);
@@ -440,22 +440,22 @@ describe("Task Force context barrier and resume", () => {
 
   it("forwards server bindings unchanged to every nested-cwd Task Force backend on fresh and resumed launches", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce(runtime.registry, "ohio");
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
     const serverBindings = Object.freeze({ plan_workspace: "/theater" });
     const nestedCarrierCwd = "/theater/.fleet/worktrees/topic";
 
     const first = await tool.execute(
-      { carrier_id: "ohio", label: "Nested Task Force first", request: "Run." },
+      { carrier_id: "alpha", label: "Nested Task Force first", request: "Run." },
       { cwd: nestedCarrierCwd, toolCallId: "nested-taskforce-1", serverBindings },
     );
     const contextId = details(first).context_id;
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
 
     await tool.execute(
-      { carrier_id: "ohio", label: "Nested Task Force resume", request: "Continue.", resume_context_id: contextId },
+      { carrier_id: "alpha", label: "Nested Task Force resume", request: "Continue.", resume_context_id: contextId },
       { cwd: nestedCarrierCwd, toolCallId: "nested-taskforce-2", serverBindings },
     );
 
@@ -472,12 +472,12 @@ describe("Task Force context barrier and resume", () => {
 
   it("rolls back every prepared Task Force resource when readiness confirmation rejects a resumed binding", async () => {
     runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("ohio", "Ohio"));
-    configureTaskForce(runtime.registry, "ohio");
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const tool = runtime.buildDispatchToolSpec(deps);
 
-    const first = await tool.execute({ carrier_id: "ohio", label: "TF first", request: "Run." }, { cwd: "/tmp", toolCallId: "tf-confirm-first" });
+    const first = await tool.execute({ carrier_id: "alpha", label: "TF first", request: "Run." }, { cwd: "/tmp", toolCallId: "tf-confirm-first" });
     const contextId = details(first).context_id;
     expect(contextId).toMatch(/^ctx:/);
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
@@ -501,7 +501,7 @@ describe("Task Force context barrier and resume", () => {
     });
 
     const rejected = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "TF mismatched resume",
       request: "Resume with a changed provider protocol.",
       resume_context_id: contextId,
@@ -519,7 +519,7 @@ describe("Task Force context barrier and resume", () => {
     vi.mocked(executeOneShot).mockReset();
     vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
     const retry = await tool.execute({
-      carrier_id: "ohio",
+      carrier_id: "alpha",
       label: "TF retry",
       request: "Resume after the rejected readiness confirmation.",
       resume_context_id: contextId,

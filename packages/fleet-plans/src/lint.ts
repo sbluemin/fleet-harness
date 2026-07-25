@@ -35,6 +35,8 @@ const LANE_HEADING_PATTERN = /^### Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — (.+)$/;
 const TASK_PATTERN = /^\s+- \[([ xX])\] (W[1-9]\d*-[A-Z][A-Z0-9]*-T[1-9]\d*) — (.+)$/;
 const MANIFEST_LANE_PATTERN = /^- Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — /;
 const OWNERSHIP_LANE_PATTERN = /^- (W[1-9]\d*-[A-Z][A-Z0-9]*)(?=\s|$)/;
+/** Policy-like Dispatch Manifest line: list dash, optional Markdown whitespace, then Full/plan with flexible separators. */
+const FULL_PLAN_POLICY_LIKE_PATTERN = /^-\s*full[\s\t-]*plan\b/i;
 
 interface MutableLane {
   dependencyStartConditions: string[];
@@ -338,9 +340,19 @@ function validateManifest(manifestLines: readonly string[], lanes: readonly Muta
       addDiagnostic(diagnostics, "MANIFEST_UNKNOWN_LANE", `Dispatch Manifest references unknown lane ${id}`);
     }
   }
-  const policy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
-  if (manifestLines.filter((line) => line === policy).length !== 1) {
-    addDiagnostic(diagnostics, "FULL_PLAN_POLICY", `Dispatch Manifest must contain exactly: ${policy}`);
+  const canonicalPolicy = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+  const legacyPolicy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+  const fullPlanPolicyLines = manifestLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
+  const policy = fullPlanPolicyLines[0];
+  if (
+    fullPlanPolicyLines.length !== 1
+    || (policy !== canonicalPolicy && policy !== legacyPolicy)
+  ) {
+    addDiagnostic(
+      diagnostics,
+      "FULL_PLAN_POLICY",
+      `Dispatch Manifest must contain exactly one of: ${canonicalPolicy} | ${legacyPolicy}`,
+    );
   }
 }
 

@@ -45,25 +45,33 @@ describe("Terminal Carrier Settings routes", () => {
     expect(responses).toEqual([{ status: 401, body: { error: "unauthorized" } }]);
   });
 
-  it("does not promote stale carriers.json Kirov overrides into registry-driven settings state", () => {
-    const storeDir = "/tmp/fleet-terminal-carriers-stale-kirov";
+  it("does not promote stale carriers.json Kirov or Ohio overrides into registry-driven settings state", () => {
+    const storeDir = "/tmp/fleet-terminal-carriers-stale-retired";
     initStore(storeDir);
     const registry = createCarrierRegistry();
     registerDefaultCarriers(registry);
     fs.mkdirSync(storeDir, { recursive: true });
     fs.writeFileSync(path.join(storeDir, "carriers.json"), JSON.stringify({
       _meta: { generation: 3 },
-      carriers: { kirov: { displayName: "Stale Kirov" } },
+      carriers: {
+        kirov: { displayName: "Stale Kirov" },
+        ohio: { displayName: "Stale Ohio" },
+      },
     }));
 
     const state = buildCarrierSettingsState(registry);
+    const persisted = JSON.parse(fs.readFileSync(path.join(storeDir, "carriers.json"), "utf8")) as {
+      carriers?: Record<string, unknown>;
+    };
     expect(state.carriers.map((carrier) => carrier.carrierId)).not.toContain("kirov");
+    expect(state.carriers.map((carrier) => carrier.carrierId)).not.toContain("ohio");
     expect(state.carriers.map((carrier) => carrier.carrierId)).toEqual([
       "nimitz",
       "genesis",
-      "ohio",
       "sentinel",
       "vanguard",
     ]);
+    expect(persisted.carriers?.kirov).toEqual({ displayName: "Stale Kirov" });
+    expect(persisted.carriers?.ohio).toEqual({ displayName: "Stale Ohio" });
   });
 });

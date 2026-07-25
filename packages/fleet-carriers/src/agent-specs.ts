@@ -9,8 +9,6 @@ import {
   GENESIS_METADATA,
   NIMITZ_DEFAULTS,
   NIMITZ_METADATA,
-  OHIO_DEFAULTS,
-  OHIO_METADATA,
   SENTINEL_DEFAULTS,
   SENTINEL_METADATA,
   VANGUARD_DEFAULTS,
@@ -25,7 +23,6 @@ interface DefaultCarrierRegistration {
 const DEFAULT_CARRIER_REGISTRATIONS: readonly DefaultCarrierRegistration[] = [
   { defaults: NIMITZ_DEFAULTS, metadata: NIMITZ_METADATA },
   { defaults: GENESIS_DEFAULTS, metadata: GENESIS_METADATA },
-  { defaults: OHIO_DEFAULTS, metadata: OHIO_METADATA },
   { defaults: SENTINEL_DEFAULTS, metadata: SENTINEL_METADATA },
   { defaults: VANGUARD_DEFAULTS, metadata: VANGUARD_METADATA },
 ];

@@ -66,7 +66,7 @@ describe("carrier roster renderer SA/TF colors", () => {
 
     const rendered = renderRosterEntry(entry);
 
-    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Vanguard`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
   });
 
@@ -79,9 +79,9 @@ describe("carrier roster renderer SA/TF colors", () => {
       state: { cursor: 0, kind: "carrierActions" },
     });
 
-    expect(findRenderedLine(rendered, "Ohio")).not.toContain("<selected>");
-    expect(findRenderedLine(rendered, "Ohio")).toContain("▸");
-    expect(findRenderedLine(rendered, "Ohio")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
+    expect(findRenderedLine(rendered, "Vanguard")).not.toContain("<selected>");
+    expect(findRenderedLine(rendered, "Vanguard")).toContain("▸");
+    expect(findRenderedLine(rendered, "Vanguard")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
     expect(findRenderedLine(rendered, "▸ Agent CLI")).not.toContain("<selected>");
     expect(findRenderedLine(rendered, "▸ Agent CLI")).not.toContain(SELECTED_BG_ANSI);
   });
@@ -128,7 +128,7 @@ describe("carrier roster renderer SA/TF colors", () => {
     });
     const renameRendered = renderRosterModel(entry, {
       expandedCarrierId: null,
-      renameState: { carrierId: entry.carrierId, draft: "New Ohio" },
+      renameState: { carrierId: entry.carrierId, draft: "New Vanguard" },
       selectedCarrierId: entry.carrierId,
       state: { kind: "browse" },
     });
@@ -146,7 +146,7 @@ describe("carrier roster renderer SA/TF colors", () => {
     expectMarkerOnly(findRenderedLine(modelRendered, "●"));
     expectMarkerOnly(findRenderedLine(effortRendered, "high"));
     expectMarkerOnly(findRenderedLine(cliTypeRendered, "Codex"));
-    expectMarkerOnly(findRenderedLine(renameRendered, "New Ohio"));
+    expectMarkerOnly(findRenderedLine(renameRendered, "New Vanguard"));
     expectMarkerOnly(findRenderedLine(batchRendered, "Claude"));
   });
 
@@ -202,8 +202,8 @@ describe("carrier roster renderer SA/TF colors", () => {
   it("keeps selected TaskForce rows marker-only without full selected bg", () => {
     const runtime = createTestCarrierRuntime();
     const surface = new RosterTaskForcePanelSurface({
-      carrierDisplayName: "Ohio",
-      carrierId: "ohio",
+      carrierDisplayName: "Vanguard",
+      carrierId: "vanguard",
       carrierRuntime: runtime,
       done: vi.fn(),
       requestRender: vi.fn(),
@@ -221,7 +221,7 @@ describe("carrier roster renderer SA/TF colors", () => {
   });
 
   it("keeps selected carrier signature bg separate from non-selected rows", () => {
-    const selectedEntry = buildRosterEntry({ carrierId: "ohio", displayName: "Ohio", slot: 1 });
+    const selectedEntry = buildRosterEntry({ carrierId: "vanguard", displayName: "Vanguard", slot: 1 });
     const plainEntry = buildRosterEntry({ carrierId: "nimitz", displayName: "Nimitz", slot: 2 });
     const rendered = renderRosterEntries([selectedEntry, plainEntry], {
       expandedCarrierId: null,
@@ -232,8 +232,8 @@ describe("carrier roster renderer SA/TF colors", () => {
       width: 96,
     });
 
-    expect(findRenderedLine(rendered, "Ohio")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
-    expect(findRenderedLine(rendered, "Ohio")).not.toContain(SELECTED_BG_ANSI);
+    expect(findRenderedLine(rendered, "Vanguard")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
+    expect(findRenderedLine(rendered, "Vanguard")).not.toContain(SELECTED_BG_ANSI);
     expect(findRenderedLine(rendered, "Nimitz")).not.toContain(PROVIDER_BG_ANSI_COLORS.claude);
     expect(findRenderedLine(rendered, "Nimitz")).not.toContain(SELECTED_BG_ANSI);
   });
@@ -264,10 +264,10 @@ function createTestCarrierRuntime(): CarrierRuntime {
 
 function buildRosterEntry(overrides: Partial<CarrierStatusEntry> = {}): CarrierStatusEntry {
   return {
-    carrierId: "ohio",
+    carrierId: "vanguard",
     cliType: "claude",
     defaultCliType: "claude",
-    displayName: "Ohio",
+    displayName: "Vanguard",
     effort: null,
     isDefault: true,
     model: firstModel("claude"),

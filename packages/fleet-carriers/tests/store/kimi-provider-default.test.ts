@@ -36,40 +36,40 @@ describe("Kimi 프로바이더 기본 모델 폴백", () => {
   it("캐리어별/페르소나 기본 모델이 없으면 전역 설정의 Kimi 기본 모델을 사용한다", () => {
     writeSettingsJson({ version: 1, kimiModel: { model: "k3", effort: "low" } });
 
-    const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+    const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "k3", effort: "low" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "k3", effort: "low" });
   });
 
   it("전역 설정이 없으면 레지스트리 기본 모델로 폴백한다", () => {
-    const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+    const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding" });
   });
 
   it("전역 설정 파일이 손상되면 레지스트리 기본 모델로 폴백한다", () => {
     fs.mkdirSync(path.join(tempHome!, ".fleet"), { recursive: true });
     fs.writeFileSync(path.join(tempHome!, ".fleet", "settings.json"), "{nope", "utf-8");
 
-    const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+    const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding" });
   });
 
   it("전역 설정의 모델이 유효하지 않으면 레지스트리 기본 모델로 폴백한다", () => {
     writeSettingsJson({ version: 1, kimiModel: { model: "not-a-real-model", effort: "high" } });
 
-    const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+    const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding" });
   });
 
   it("effort 미지원 모델이 전역 설정에 저장되면 effort를 생략한다", () => {
     writeSettingsJson({ version: 1, kimiModel: { model: "kimi-for-coding-highspeed", effort: "high" } });
 
-    const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+    const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding-highspeed" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "kimi-for-coding-highspeed" });
   });
 
   it("유효한 캐리어별 선택은 전역 설정보다 우선한다", () => {
@@ -77,34 +77,34 @@ describe("Kimi 프로바이더 기본 모델 폴백", () => {
     writeCarriersJson({
       _meta: { generation: 1 },
       carriers: {
-        ohio: {
+        genesis: {
           agentCliType: "claude-kimi",
           agentCli: { "claude-kimi": { model: "k3[1m]", effort: "max" } },
         },
       },
     });
 
-    const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+    const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "k3[1m]", effort: "max" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "k3[1m]", effort: "max" });
   });
 
   it("유효한 페르소나 기본 모델은 전역 설정보다 우선한다", () => {
     writeSettingsJson({ version: 1, kimiModel: { model: "k3", effort: "low" } });
 
     const states = loadCarrierStates({
-      ohio: { cliType: "claude-kimi", defaultModel: "k3[1m]", defaultEffort: "max" },
+      genesis: { cliType: "claude-kimi", defaultModel: "k3[1m]", defaultEffort: "max" },
     });
 
-    expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "k3[1m]", effort: "max" });
+    expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "k3[1m]", effort: "max" });
   });
 
   it("Kimi가 아닌 CLI는 전역 설정의 kimiModel을 무시한다", () => {
     writeSettingsJson({ version: 1, kimiModel: { model: "k3", effort: "low" } });
 
-    const states = loadCarrierStates({ ohio: { cliType: "codex" } });
+    const states = loadCarrierStates({ genesis: { cliType: "codex" } });
 
-    expect(states.ohio?.agentCli.codex).toEqual({ model: "gpt-5.6-sol", effort: "low" });
+    expect(states.genesis?.agentCli.codex).toEqual({ model: "gpt-5.6-sol", effort: "low" });
   });
 
   it("carriers store가 재배치돼도 전역 설정은 기본 fleet 디렉터리를 따른다", () => {
@@ -120,9 +120,9 @@ describe("Kimi 프로바이더 기본 모델 폴백", () => {
         "utf-8",
       );
 
-      const states = loadCarrierStates({ ohio: { cliType: "claude-kimi" } });
+      const states = loadCarrierStates({ genesis: { cliType: "claude-kimi" } });
 
-      expect(states.ohio?.agentCli["claude-kimi"]).toEqual({ model: "k3", effort: "low" });
+      expect(states.genesis?.agentCli["claude-kimi"]).toEqual({ model: "k3", effort: "low" });
     } finally {
       resetStoreForTests();
       fs.rmSync(customDir, { recursive: true, force: true });

@@ -24,7 +24,7 @@ const options = {
   cliTypes: [{ id: "codex", displayName: "Codex", defaultModel: "gpt-5", models: [{ modelId: "gpt-5", name: "GPT-5" }] }],
   taskForceConstraints: { minBackends: 2 },
 };
-const captainIds = ["nimitz", "genesis", "ohio", "sentinel", "vanguard"] as const;
+const captainIds = ["nimitz", "genesis", "sentinel", "vanguard"] as const;
 const interactiveOptions = {
   cliTypes: [
     {
@@ -124,19 +124,19 @@ describe("Terminal Carrier Settings client", () => {
     const strip = container!.querySelector<HTMLElement>('[role="group"][aria-label="Carrier list"]');
     const chips = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")];
     expect(strip).not.toBeNull();
-    expect(chips).toHaveLength(5);
-    expect(captainIds).toHaveLength(5);
+    expect(chips).toHaveLength(4);
+    expect(captainIds).toHaveLength(4);
     expect(chips[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(chips.slice(1).every((chip) => chip.getAttribute("aria-pressed") === "false")).toBe(true);
     expect(chips[0]?.querySelector(".terminal-carriers-live-dot.is-live")).not.toBeNull();
     expect(container!.querySelector(".terminal-carriers-control-group--taskforce")).not.toBeNull();
 
-    const ohioChip = chips.find((chip) => chip.textContent?.includes("Ohio"));
-    if (!ohioChip) throw new Error("Ohio chip must render.");
-    await act(async () => ohioChip.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(ohioChip.getAttribute("aria-pressed")).toBe("true");
-    expect(ohioChip.querySelector(".terminal-carriers-live-dot.is-live")).toBeNull();
-    expect(container!.querySelector(".terminal-carriers-card")?.textContent).toContain("Captain · OHIO");
+    const genesisChip = chips.find((chip) => chip.textContent?.includes("Genesis"));
+    if (!genesisChip) throw new Error("Genesis chip must render.");
+    await act(async () => genesisChip.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(genesisChip.getAttribute("aria-pressed")).toBe("true");
+    expect(genesisChip.querySelector(".terminal-carriers-live-dot.is-live")).toBeNull();
+    expect(container!.querySelector(".terminal-carriers-card")?.textContent).toContain("Captain · GENESIS");
     expect(container!.querySelector(".terminal-carriers-control-group--taskforce")).toBeNull();
 
     const editName = container!.querySelector<HTMLButtonElement>('[aria-label="Edit display name"]');
