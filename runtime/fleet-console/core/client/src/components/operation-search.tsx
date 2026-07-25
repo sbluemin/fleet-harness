@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { filterOperationSearchEntries, groupOperationSearchEntries, searchTokens } from "../operation-search.js";
 import {
@@ -14,7 +16,6 @@ import {
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
-import { usePluginRegistry } from "../plugin-registry.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import {
@@ -32,6 +33,8 @@ import type { ConsoleState } from "../types.js";
 interface OperationSearchProps {
   readonly state: ConsoleState;
   readonly railPanels: readonly PaletteRailPanelInfo[];
+  // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
+  readonly plugins: readonly FleetClientPlugin[];
 }
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
@@ -39,10 +42,9 @@ const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
 const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
-export function OperationSearch({ state, railPanels }: OperationSearchProps) {
+export function OperationSearch({ state, railPanels, plugins }: OperationSearchProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const registry = usePluginRegistry();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -128,7 +130,7 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         const operation = state.operations.find((op) => op.id === action.operationId);
-        const plugin = operation ? registry.plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
+        const plugin = operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
         if (plugin?.resumeOperation) {
           void Promise.resolve(plugin.resumeOperation(action.operationId)).catch(() => focusOperation(action.operationId));
         } else {
@@ -140,7 +142,7 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         const operation = state.operations.find((op) => op.id === action.operationId);
-        const plugin = (operation ? registry.plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
+        const plugin = (operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
         void closeOperationCompletely(action.operationId, plugin);
         break;
       }

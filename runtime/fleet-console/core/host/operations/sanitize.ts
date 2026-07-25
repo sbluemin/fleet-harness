@@ -18,9 +18,13 @@ const FIXED_SENSITIVE_OPERATION_FIELDS = new Set([
 
 export function createSanitizedOpDto(node: OperationNode, options: OperationSanitizeOptions = {}): OperationNode {
   const sensitiveFields = new Set([...FIXED_SENSITIVE_OPERATION_FIELDS, ...(options.sensitiveFields ?? [])]);
+  const payload = sanitizeRecord(node.payload, sensitiveFields);
+  // providerSession은 브라우저에 못 나가지만, "재개 가능한 저장 세션이 있다"는 사실 자체는
+  // 비민감 파생 정보다 — 복원 op의 dormant 분류(I2)가 이 마커에 의존한다.
+  if (isRecord(node.payload?.providerSession)) payload.resumeAvailable = true;
   return {
     ...node,
-    payload: sanitizeRecord(node.payload, sensitiveFields),
+    payload,
   };
 }
 

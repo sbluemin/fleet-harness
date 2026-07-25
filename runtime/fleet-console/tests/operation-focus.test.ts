@@ -144,8 +144,8 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
     expect(order).toEqual(["plain"]);
   });
 
-  it("ranks a restored operation with providerSession but no live status as dormant", () => {
-    const restored = { ...makeOperation("restored", null, 1), payload: { providerSession: { provider: "claude", sessionId: "s1" } } };
+  it("ranks a restored operation with resumeAvailable but no live status as dormant", () => {
+    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
     const operations = [makeOperation("plain", null, 2), restored];
     const order = statusCycleOperationIds(
       operations,
@@ -158,8 +158,8 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
     expect(order).toEqual(["plain", "restored"]);
   });
 
-  it("lets a live status entry win over the providerSession dormant fallback", () => {
-    const restored = { ...makeOperation("restored", null, 1), payload: { providerSession: { provider: "claude", sessionId: "s1" } } };
+  it("lets a live status entry win over the resumeAvailable dormant fallback", () => {
+    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
     const order = statusCycleOperationIds(
       [restored, makeOperation("plain", null, 2)],
       ["restored", "plain"],

@@ -89,15 +89,15 @@ describe("operation search", () => {
     ]);
   });
 
-  it("resolves entry activity: live status wins, providerSession falls back to dormant, otherwise idle", () => {
+  it("resolves entry activity: live status wins, resumeAvailable falls back to dormant, otherwise idle", () => {
     const entries = buildOperationSearchEntries(makeState([
       makeOperation("op-live", "theater-alpha", "Live"),
-      { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { providerSession: { provider: "claude", sessionId: "s1" } } },
+      { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { resumeAvailable: true } },
       makeOperation("op-plain", "theater-alpha", "Plain"),
     ]));
     const state = makeState([
       makeOperation("op-live", "theater-alpha", "Live"),
-      { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { providerSession: { provider: "claude", sessionId: "s1" } } },
+      { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { resumeAvailable: true } },
       makeOperation("op-plain", "theater-alpha", "Plain"),
     ], undefined, { "op-live": "running", "op-restored": "awaiting" });
     const withStatus = buildOperationSearchEntries(state);

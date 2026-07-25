@@ -147,7 +147,7 @@ describe("Operation search focus handoff", () => {
 });
 
 function SearchHarness() {
-  return createElement(OperationSearch, { state: useConsoleState(), railPanels: [{ id: "alerts", title: "Alerts" }] });
+  return createElement(OperationSearch, { state: useConsoleState(), railPanels: [{ id: "alerts", title: "Alerts" }], plugins: [] });
 }
 
 let observedPathname = "";

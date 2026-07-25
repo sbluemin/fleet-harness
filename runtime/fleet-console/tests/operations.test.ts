@@ -71,6 +71,33 @@ describe("operations platform", () => {
     expect(serialized).not.toContain("plugin-secret");
   });
 
+  it("derives a non-sensitive resumeAvailable marker when providerSession is stripped", () => {
+    const store = createOperationStore({ now: () => 10 });
+    const resumable = store.create({
+      id: "op-resumable",
+      theaterId: "theater",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Agent",
+      payload: { providerSession: { sessionId: "provider-secret" } },
+    });
+    const plain = store.create({
+      id: "op-plain",
+      theaterId: "theater",
+      type: "shell",
+      pluginId: "terminal",
+      title: "Shell",
+      payload: {},
+    });
+
+    const resumableDto = createSanitizedOpDto(resumable);
+    const plainDto = createSanitizedOpDto(plain);
+
+    expect(resumableDto.payload?.resumeAvailable).toBe(true);
+    expect(JSON.stringify(resumableDto)).not.toContain("provider-secret");
+    expect(plainDto.payload?.resumeAvailable).toBeUndefined();
+  });
+
   it("rejects forbidden browser readback payload keys in the SDK validator", () => {
     const base = makeNode({ id: "safe", payload: { visible: "ok" } });
 

@@ -123,9 +123,9 @@ describe("buildPaletteCommands", () => {
   });
 
   it("offers Resume only for dormant operations and Close/minimize for active-theater operations", () => {
-    const dormant = makeOperation("op-dormant", { providerSession: { provider: "claude", sessionId: "s1" } });
+    const dormant = makeOperation("op-dormant", { resumeAvailable: true });
     const live = makeOperation("op-live");
-    const otherTheater = makeOperation("op-other", { providerSession: { provider: "claude", sessionId: "s2" } }, "theater-beta");
+    const otherTheater = makeOperation("op-other", { resumeAvailable: true }, "theater-beta");
     const commands = buildPaletteCommands(makeState({
       operations: [dormant, live, otherTheater],
       operationStatus: { "op-live": "running" },
