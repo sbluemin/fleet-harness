@@ -329,7 +329,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("getState().theaters.find");
     expect(rightRail).toContain("theater.id === theaterId");
     expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, activeId]");
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, activeId]");
     expect(rightRail).not.toContain("selectPathContext");
     expect(rightRail).not.toContain(".pathAware");
   });

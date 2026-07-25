@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientApiCapability } from "../plugin/types.js";
 
 /** @deprecated Rail panels now always operate at the Theater root. */
@@ -17,6 +18,7 @@ export interface RailPanelContext {
   readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
+  readonly language?: ConsoleLocale;
 }
 
 export interface RailSearchRequest {
@@ -37,7 +39,7 @@ export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonl
 
 export interface RailPanelDescriptor {
   readonly id: string;
-  readonly title: string;
+  readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);
   readonly render: (ctx: RailPanelContext) => ReactNode;
   readonly search?: RailSearchProvider;

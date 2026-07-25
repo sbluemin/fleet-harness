@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
 
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
 import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -13,6 +16,7 @@ import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side
 import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
+import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
 interface NavigatorWithUserAgentData extends Navigator {
@@ -42,7 +46,10 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   const activeCliId = typeof activeOperation?.payload.cliId === "string" ? activeOperation.payload.cliId : null;
   const activeCliLabel = typeof activeOperation?.payload.cliLabel === "string" ? activeOperation.payload.cliLabel : activeCliId;
   const activeKind = activeOperation ? activePlugin?.operationKinds?.find((kind) => kind.type === activeOperation.type) ?? null : null;
-  const activeOperationIcon = activeOperation && activePlugin?.renderLaunchIcon ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKind?.title ?? activeOperation.type }) : null;
+  const globalSettings = useGlobalSettingsStore();
+  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
+  const activeKindTitle = activeKind ? resolveLocalizedText(activeKind.title, language) : null;
+  const activeOperationIcon = activeOperation && activePlugin?.renderLaunchIcon ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKindTitle ?? activeOperation.type }) : null;
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
@@ -364,7 +371,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
                 <span className="command-band-segment-label">{activeOperation.title}</span>
                 <CommandBandTriggerCaret />
               </button>}
-              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKind?.title ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
+              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
             </> : <button
               ref={operationTriggerRef}
               type="button"

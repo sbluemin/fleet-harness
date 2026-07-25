@@ -1,12 +1,16 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { getState, subscribe } from "../store.js";
+import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
@@ -92,6 +96,8 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? FALLBACK_THEATER_LABEL,
     () => FALLBACK_THEATER_LABEL,
   );
+  const globalSettings = useGlobalSettingsStore();
+  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const rootRef = useRef<HTMLDivElement>(null);
   const activeId = useActiveRailPanelId();
   const railChromeExpanded = useRailChromeExpanded();
@@ -103,6 +109,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
+  const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
   const hasPanel = activePanel !== null;
   const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -244,10 +251,11 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     theaterId,
     pathContext: { kind: "root", relPath: null, label: theaterLabel },
     api,
+    language,
     requestExtraWidth: (px: number | null) => {
       if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
     },
-  }), [theaterId, theaterLabel, api, activeId]);
+  }), [theaterId, theaterLabel, api, language, activeId]);
 
   return (
     <div
@@ -273,7 +281,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
             role="separator"
             aria-orientation="vertical"
             tabIndex={0}
-            aria-label={`Resize ${activePanel.title} panel`}
+            aria-label={`Resize ${activePanelTitle} panel`}
             aria-controls={`rail-panel-${activePanel.id}`}
             aria-valuenow={Math.round(panelWidth)}
             aria-valuemin={MIN_PANEL_WIDTH}
@@ -281,19 +289,19 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <RailPanelContent activePanel={activePanel} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} />
+          <RailPanelContent activePanel={activePanel} activePanelTitle={activePanelTitle} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} />
         )}
       </div>
       <nav className="right-rail-icons" aria-label="Activity tools">
         <div className="right-rail-tabs" role="tablist" aria-label="Activity panels">
           {builtInPanels.map((panel) => (
-            <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
+            <RailIcon key={panel.id} panel={panel} language={language} isActive={activeId === panel.id} />
           ))}
           {builtInPanels.length > 0 && pluginPanels.length > 0 ? (
             <div className="right-rail-divider" role="separator" aria-hidden="true" />
           ) : null}
           {pluginPanels.map((panel) => (
-            <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
+            <RailIcon key={panel.id} panel={panel} language={language} isActive={activeId === panel.id} />
           ))}
         </div>
       </nav>
@@ -303,6 +311,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
 interface RailPanelContentProps {
   readonly activePanel: RailPanelDescriptor;
+  readonly activePanelTitle: string;
   readonly activeId: string | null;
   readonly ctx: RailPanelContext;
   readonly panelBehavior: "push" | "overlay";
@@ -312,11 +321,11 @@ interface RailPanelContentProps {
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
 // 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
 // (activePanel·ctx·activeId·panelBehavior·overlayAlpha) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId, ctx, panelBehavior, overlayAlpha }: RailPanelContentProps) {
+const RailPanelContent = memo(function RailPanelContent({ activePanel, activePanelTitle, activeId, ctx, panelBehavior, overlayAlpha }: RailPanelContentProps) {
   return (
     <>
       <div className="right-rail-panel-head">
-        <span className="right-rail-panel-title">{activePanel.title}</span>
+        <span className="right-rail-panel-title">{activePanelTitle}</span>
         <button
           className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
           type="button"
@@ -347,7 +356,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
         <button
           className="right-rail-close-btn"
           type="button"
-          aria-label={`Close ${activePanel.title}`}
+          aria-label={`Close ${activePanelTitle}`}
           onClick={closeRailPanel}
         >
           ✕
@@ -362,12 +371,14 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
 
 interface RailIconProps {
   readonly panel: RailPanelDescriptor;
+  readonly language: ConsoleLocale;
   readonly isActive: boolean;
 }
 
-function RailIcon({ panel, isActive }: RailIconProps) {
+function RailIcon({ panel, language, isActive }: RailIconProps) {
   const handleClick = useCallback(() => toggleRailPanel(panel.id), [panel.id]);
   const icon = typeof panel.icon === "function" ? panel.icon() : panel.icon;
+  const title = resolveLocalizedText(panel.title, language);
 
   return (
     <button
@@ -376,8 +387,8 @@ function RailIcon({ panel, isActive }: RailIconProps) {
       type="button"
       role="tab"
       aria-selected={isActive}
-      aria-label={panel.title}
-      title={panel.title}
+      aria-label={title}
+      title={title}
       onClick={handleClick}
     >
       {icon}

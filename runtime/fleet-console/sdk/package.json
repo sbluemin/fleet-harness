@@ -79,6 +79,16 @@
       "types": "./rail/types.ts",
       "import": "./rail/types.ts",
       "default": "./rail/types.ts"
+    },
+    "./i18n": {
+      "types": "./i18n/types.ts",
+      "import": "./i18n/types.ts",
+      "default": "./i18n/types.ts"
+    },
+    "./i18n/translate": {
+      "types": "./i18n/translate.ts",
+      "import": "./i18n/translate.ts",
+      "default": "./i18n/translate.ts"
     }
   },
   "scripts": {

@@ -1,10 +1,15 @@
+import type { LocalizedText } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+
+import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { searchTokens } from "./operation-search.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, ThemeId } from "./types.js";
+import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
 export interface PaletteRailPanelInfo {
   readonly id: string;
-  readonly title: string;
+  readonly title: LocalizedText;
 }
 
 export type PaletteCommandAction =
@@ -50,6 +55,7 @@ export function commandModeQuery(value: string): string {
 
 export function buildPaletteCommands(current: ConsoleState, railPanels: readonly PaletteRailPanelInfo[]): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
+  const language = resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto");
   const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
   const activeOperation = current.operations.find(
     (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
@@ -140,7 +146,7 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
   for (const panel of railPanels) {
     commands.push({
       commandId: `open-rail-panel:${panel.id}`,
-      label: `Open panel: ${panel.title}`,
+      label: `Open panel: ${resolveLocalizedText(panel.title, language)}`,
       current: false,
       action: { kind: "open-rail-panel", panelId: panel.id },
     });

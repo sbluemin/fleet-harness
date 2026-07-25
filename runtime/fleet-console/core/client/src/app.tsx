@@ -44,6 +44,11 @@ export function App() {
   pendingDeletionsRef.current = pendingDeletions;
   const activeDeletion = latestPendingDeletion(pendingDeletions, undoClock);
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
+
+  useEffect(() => {
+    document.documentElement.lang = releaseNotesLocale;
+  }, [releaseNotesLocale]);
+
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
   // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 동일한 빌트인+플러그인 합성 순서를 미러한다.

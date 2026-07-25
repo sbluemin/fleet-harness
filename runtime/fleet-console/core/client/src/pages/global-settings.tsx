@@ -1,12 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
+import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { useConsoleLocale } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "../store.js";
@@ -87,7 +90,8 @@ export function GlobalSettings() {
   const location = useLocation();
   const navigate = useNavigate();
   const registry = usePluginRegistry();
-  const pluginSections = collectPluginSettingsSections(registry.plugins);
+  const locale = useConsoleLocale();
+  const pluginSections = collectPluginSettingsSections(registry.plugins, locale);
   const pluginGroups = groupPluginSettingsSections(pluginSections);
   const selectSection = (sectionId: SettingsSectionId) => {
     setActiveSectionId(sectionId);
@@ -197,13 +201,16 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
   }
 }
 
-function collectPluginSettingsSections(plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: string; readonly render?: () => ReactNode }[] }[]): readonly PluginSettingsNavItem[] {
+function collectPluginSettingsSections(
+  plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: LocalizedText; readonly render?: () => ReactNode }[] }[],
+  locale: ConsoleLocale,
+): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
     (plugin.settingsSections ?? []).map((section) => ({
       id: `${plugin.id}:${section.id}` as const,
       pluginId: plugin.id,
       pluginLabel: formatPluginLabel(plugin.id),
-      sectionTitle: section.title,
+      sectionTitle: resolveLocalizedText(section.title, locale),
       render: section.render,
     })),
   );

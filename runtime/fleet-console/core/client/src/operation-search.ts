@@ -1,8 +1,11 @@
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
+import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "./types.js";
+import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
 export interface OperationSearchEntry {
   readonly operationId: string;
@@ -38,13 +41,14 @@ export async function searchRailPanels(
   theaterId: string,
   signal: AbortSignal,
 ): Promise<readonly RailSearchGroup[]> {
+  const language = resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto");
   const groups = await Promise.all(panels.map(async (panel): Promise<RailSearchGroup | null> => {
     if (!panel.search) return null;
     const results = await searchRailPanel(panel, query, theaterId, signal);
     if (!results || results.length === 0) return null;
     return {
       panelId: panel.id,
-      panelTitle: panel.title,
+      panelTitle: resolveLocalizedText(panel.title, language),
       results: results.slice(0, RAIL_SEARCH_PROVIDER_LIMIT),
     };
   }));
