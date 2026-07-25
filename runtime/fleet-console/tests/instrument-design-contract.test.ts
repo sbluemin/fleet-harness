@@ -647,6 +647,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("onClick={() => setSideBarCollapsed(!sideBar.collapsed)}");
     expect(commandBand).toContain('className="command-band-button command-band-search"');
     expect(commandBand).toContain("onClick={toggleOperationSearch}");
+    expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
@@ -679,7 +680,9 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain(".command-band-formation-group {");
     expect(layout).toContain("left: calc(var(--command-band-left-width, 280px) + var(--space-2));");
     expect(layout).not.toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
-    expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');
+    // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
+    // 좌측 트랙이 내용 크기로 접힌다. 두 갈래를 한 줄로 고정해 한쪽만 바뀌는 표류를 막는다.
+    expect(commandBand).toContain('"--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`');
     expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
     expect(layout).toContain("width: var(--command-band-left-width, 280px);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";

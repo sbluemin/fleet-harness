@@ -18,6 +18,7 @@ import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useT } from "../i18n/index.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { cycleViewModePreference, useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
 interface NavigatorWithUserAgentData extends Navigator {
@@ -30,12 +31,19 @@ interface CommandBandProps {
   readonly operationsViewVisible: boolean;
 }
 
-export function CommandBand({ operationsViewVisible }: CommandBandProps) {
+export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
   const state = useConsoleState();
   const registry = usePluginRegistry();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
+  const viewMode = useViewMode();
+  const operationsViewVisible = requestedOperationsViewVisible && viewMode.effective !== "mobile";
+  const viewModeLabel = t(viewMode.preference === "auto"
+    ? "chrome.commandBand.viewModeAuto"
+    : viewMode.preference === "mobile"
+      ? "chrome.commandBand.viewModeMobile"
+      : "chrome.commandBand.viewModeDesktop");
   const modLabel = resolveModLabel();
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
@@ -312,8 +320,8 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       />
       <header
         ref={commandBandRef}
-        className={`command-band${operationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}`}
-        style={{ "--command-band-left-width": `${sideBar.width}px` } as CSSProperties}
+        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}`}
+        style={{ "--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px` } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}
         inert={commandBandHidden || undefined}
         onPointerEnter={handleBandPointerEnter}
@@ -321,7 +329,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         onFocus={fullscreen.reveal}
         onBlur={handleInteractionBlur}
       >
-      <div className={`command-band-left${operationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
+      <div className={`command-band-left${requestedOperationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <FleetBrandHome className="command-band-brand" />
         {state.channel === "local" ? <div className="command-band-environment">
           <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
@@ -344,7 +352,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label={t("chrome.commandBand.formationColumns")} title={t("chrome.commandBand.formationColumns")}><FormationColumnsIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label={t("chrome.commandBand.formationRows")} title={t("chrome.commandBand.formationRows")}><FormationRowsIcon /></button>
       </div> : null}
-      <div className="command-band-center">
+      {viewMode.effective !== "mobile" ? <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>
             <button
@@ -410,11 +418,14 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
             containerRef={switcherMenuRef}
           /> : null}
         </div> : null}
-      </div>
+      </div> : null}
       <div className="command-band-right">
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-pin" onClick={fullscreen.togglePin} aria-label={t("chrome.commandBand.pinCommandBand")} aria-pressed={fullscreen.isPinned} title={fullscreen.isPinned ? t("chrome.commandBand.unpinCommandBand") : t("chrome.commandBand.pinCommandBand")}>
           <PinIcon />
         </button> : null}
+        <button type="button" className="command-band-button command-band-viewmode" onClick={cycleViewModePreference} aria-label={viewModeLabel} aria-pressed={viewMode.preference !== "auto"} title={viewModeLabel}>
+          {viewMode.preference === "auto" ? <ViewModeAutoIcon /> : viewMode.preference === "mobile" ? <ViewModeMobileIcon /> : <ViewModeDesktopIcon />}
+        </button>
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })} title={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })}>
           <PanelToggleIcon side="right" />
         </button> : null}
@@ -470,6 +481,18 @@ function resolveModLabel(): string {
 
 function SearchIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+}
+
+function ViewModeAutoIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="2.5" width="10" height="7.5" rx="1.4" strokeWidth="1.2" /><path d="M4.5 12.5h4M6.5 10v2.5" strokeWidth="1.2" strokeLinecap="round" /><rect x="9.5" y="6.5" width="4.5" height="7" rx="1" strokeWidth="1.2" /></svg>;
+}
+
+function ViewModeMobileIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="4.25" y="1.5" width="7.5" height="13" rx="1.6" strokeWidth="1.3" /><path d="M6.7 3.3h2.6M7.4 12.7h1.2" strokeWidth="1.2" strokeLinecap="round" /></svg>;
+}
+
+function ViewModeDesktopIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="2.25" width="13" height="9" rx="1.5" strokeWidth="1.3" /><path d="M5 14h6M8 11.25V14" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
 
 function FormationGridIcon() {
