@@ -103,7 +103,7 @@
   flex: 1;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -114,7 +114,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 14px;
   line-height: 1;
   padding: 4px;
@@ -123,7 +123,7 @@
 }
 
 .fexp-viewer-close:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .fexp-viewer-body {
@@ -136,7 +136,7 @@
   padding: 16px;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .fexp-viewer-error {
@@ -168,7 +168,7 @@
   background: color-mix(in oklch, var(--ink-deep) 30%, transparent);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 3px 8px;
@@ -185,7 +185,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 12px;
   padding: 2px 4px;
   border-radius: var(--radius-xs);
@@ -194,7 +194,7 @@
 }
 
 .fexp-filter-clear:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 /* ── 파일 트리 ── */
@@ -214,11 +214,11 @@
   text-align: left;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .fexp-tree-up:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .fexp-tree-row {
@@ -233,17 +233,17 @@
   cursor: pointer;
   text-align: left;
   font-size: 13px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   transition: background 0.1s;
 }
 
 .fexp-tree-row:hover {
-  background: var(--surface-hover);
+  background: var(--surface-glass);
 }
 
 .fexp-tree-row.is-cur {
   color: var(--brass);
-  background: var(--surface-active);
+  background: var(--surface-glass-strong);
 }
 
 .fexp-tree-icon {
@@ -253,7 +253,7 @@
   justify-content: center;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   width: 16px;
   height: 16px;
 }
@@ -273,14 +273,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-ui);
+  font-family: var(--font-body);
   font-size: 13px;
 }
 
 .fexp-tree-spin {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   animation: none;
 }
 
@@ -289,7 +289,7 @@
 .fexp-tree-error {
   padding: 16px 12px;
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .fexp-tree-error { color: var(--coral); }
@@ -329,7 +329,7 @@
   padding: 0 8px;
   text-align: right;
   user-select: none;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   vertical-align: top;
   border-right: 1px solid var(--surface-rim);
 }
@@ -337,19 +337,19 @@
 .fexp-line-code {
   padding: 0 12px;
   white-space: pre;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   vertical-align: top;
 }
 
 /* 구문강조 토큰 팔레트 */
-.syn-key  { color: var(--brass-bright, var(--brass)); font-weight: 500; }
+.syn-key  { color: var(--brass-bright, var(--brass)); font-weight: var(--weight-medium); }
 .syn-str  { color: var(--positive); }
 .syn-num  { color: var(--warn); }
-.syn-com  { color: var(--ink-fog); font-style: italic; }
+.syn-com  { color: var(--text-tertiary); font-style: italic; }
 .syn-fn   { color: var(--aurora); }
 .syn-tag  { color: var(--coral); }
 .syn-attr { color: var(--brass); }
-.syn-punct { color: var(--ink-fog); }
+.syn-punct { color: var(--text-tertiary); }
 
 /* ── 마크다운 뷰어 ── */
 .fexp-md-wrap {
@@ -372,7 +372,7 @@
   padding: 3px 8px;
   border: 1px dashed color-mix(in oklch, var(--ink-fog) 48%, transparent);
   border-radius: var(--radius-sm);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
@@ -415,7 +415,7 @@
 .fexp-img-caption {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   text-align: center;
 }
 
@@ -433,20 +433,20 @@
 
 .fexp-bin-glyph {
   font-size: 32px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .fexp-bin-name {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   margin: 0;
 }
 
 .fexp-bin-meta,
 .fexp-bin-hint {
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   margin: 0;
 }
 
@@ -456,7 +456,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   padding: 2px 4px;
   border-radius: var(--radius-xs);
   line-height: 1;
@@ -466,7 +466,7 @@
 }
 
 .fexp-hidden-toggle:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .fexp-hidden-toggle.is-active {
@@ -479,7 +479,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 15px;
   padding: 2px 4px;
   border-radius: var(--radius-xs);
@@ -490,5 +490,5 @@
 }
 
 .fexp-refresh-btn:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }

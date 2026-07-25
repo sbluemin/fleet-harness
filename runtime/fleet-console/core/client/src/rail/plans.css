@@ -65,9 +65,9 @@
 .plans-search-label {
   display: grid;
   gap: 4px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -78,8 +78,11 @@
   background: color-mix(in srgb, var(--surface-rim) 32%, transparent);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
-  color: var(--ink-spectral);
-  font: inherit;
+  color: var(--text-secondary);
+  font-weight: var(--weight-regular);
+  font-size: inherit;
+  line-height: inherit;
+  font-family: inherit;
   letter-spacing: normal;
   text-transform: none;
 }
@@ -93,7 +96,7 @@
   background: transparent;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 9px;
@@ -118,7 +121,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   text-align: left;
 }
 
@@ -162,7 +165,7 @@
 
 .plans-row-name {
   overflow: hidden;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 11px;
   text-overflow: ellipsis;
@@ -172,7 +175,7 @@
 .plans-row-meta,
 .plans-reader-meta,
 .plans-loading {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.4;
@@ -217,10 +220,10 @@
 .plans-reader-title {
   margin: 0;
   overflow: hidden;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: 17px;
-  font-weight: 580;
+  font-weight: var(--weight-medium);
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -237,14 +240,14 @@
   padding: 4px 6px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 14px;
   line-height: 1;
 }
 
 .plans-close:hover {
   border-color: var(--surface-rim);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .plans-reader-body {
@@ -272,7 +275,7 @@
   padding: 5px 7px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .plans-wave.is-complete {
@@ -292,7 +295,9 @@
   border: 0;
   color: inherit;
   cursor: pointer;
-  font: inherit;
+  font-weight: var(--weight-regular);
+  line-height: inherit;
+  font-family: inherit;
   font-size: 11px;
   text-align: left;
   text-overflow: ellipsis;
@@ -317,7 +322,7 @@
   display: flex;
   align-items: baseline;
   gap: 7px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 9.5px;
   line-height: 1.4;
@@ -331,7 +336,10 @@
   border: 0;
   color: inherit;
   cursor: pointer;
-  font: inherit;
+  font-weight: var(--weight-regular);
+  font-size: inherit;
+  line-height: inherit;
+  font-family: inherit;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -344,11 +352,11 @@
 }
 
 .plans-lane.is-blocked {
-  color: var(--ink-rim);
+  color: var(--text-tertiary);
 }
 
 .plans-lane.is-ready {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .plans-lane-ready {
@@ -361,7 +369,7 @@
   padding: 1px 7px;
   border: 1px dashed var(--surface-rim);
   border-radius: var(--radius-sm);
-  color: var(--ink-rim);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
 }
@@ -371,7 +379,7 @@
   padding: 1px 7px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-sm);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.14em;
@@ -397,13 +405,14 @@
 .plans-error-state {
   display: grid;
   gap: 7px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .plans-empty-detail {
-  color: color-mix(in srgb, var(--ink-fog) 74%, transparent);
+  /* 위계는 크기로 낸다 — 판독 티어를 알파로 희석하면 토큰이 지는 대비 계약이 무력화된다. */
+  color: var(--text-tertiary);
   font-size: 11px;
 }
 

@@ -104,7 +104,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   gap: 7px;
   padding: 4px 8px 4px 5px;
   border-radius: var(--radius-xs);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
 }
 
 .command-band-brand:hover,
@@ -121,7 +121,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-brand .brand-foot-wordmark {
   font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 640;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
 }
 
@@ -133,14 +133,13 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   flex: none;
   padding: 4px 7px;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   background: var(--surface-glass);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.01em;
 }
 
 .command-band-local-chip:hover,
@@ -161,7 +160,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 :root[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-local-chip {
   gap: 4px;
   padding-inline: 5px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   min-width: 0;
 }
 
@@ -185,16 +184,16 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   border-radius: var(--radius-md);
   background: var(--surface-band);
   box-shadow: 0 12px 30px color-mix(in oklch, var(--ink-deep) 70%, transparent);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-size: 11px;
 }
 
 .command-band-environment-title {
   margin-bottom: var(--space-2);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -208,13 +207,13 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   border-top: 1px solid var(--surface-rim);
 }
 
-.command-band-environment-row span { color: var(--ink-fog); }
+.command-band-environment-row span { color: var(--text-tertiary); }
 /* 경로 값은 진단 목적상 전문이 보여야 한다 — 말줄임 대신 줄바꿈으로 전체를 노출한다. */
-.command-band-environment-row code { color: var(--ink-pearl); font-family: var(--font-mono); overflow-wrap: anywhere; word-break: break-all; }
-.command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--ink-spectral); font: inherit; cursor: pointer; }
+.command-band-environment-row code { color: var(--text-primary); font-family: var(--font-mono); overflow-wrap: anywhere; word-break: break-all; }
+.command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--text-secondary); font-weight: var(--weight-regular); font-size: inherit; line-height: inherit; font-family: inherit; cursor: pointer; }
 .command-band-environment-row button:hover,
 .command-band-environment-row button:focus-visible { border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim)); outline: none; }
-.command-band-environment-footer { margin-top: var(--space-2); color: var(--ink-fog); font-size: 10px; }
+.command-band-environment-footer { margin-top: var(--space-2); color: var(--text-tertiary); font-size: 10px; }
 
 /* 좁은 뷰에서는 칩 앵커(x≈80~160) + 520px 폭이 우측을 벗어나 Copy 버튼이 잘린다 —
    앵커 대신 viewport gutter에 고정해 전체 행이 항상 화면 안에 남게 한다. */
@@ -246,13 +245,13 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   display: grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
 }
@@ -266,7 +265,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-button:focus-visible {
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   outline: none;
 }
 
@@ -296,12 +295,12 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   display: grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .command-band-formation-toggle svg { display: block; width: 16px; height: 16px; }
@@ -310,7 +309,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-formation-toggle:hover:not(:disabled),
 .command-band-formation-toggle:focus-visible {
   border-color: var(--hairline-strong);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
 }
 
 .command-band-formation-toggle[aria-pressed="true"] {
@@ -334,7 +333,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -348,15 +347,16 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   letter-spacing: 0.06em;
 }
 
-.command-band-theater-separator { color: var(--ink-fog); }
+.command-band-theater-separator { color: var(--text-tertiary); }
 
 .command-band-operation-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--ink-pearl);
-  font: inherit;
+  color: var(--text-primary);
+  line-height: inherit;
+  font-family: inherit;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -368,10 +368,11 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   border: 1px solid color-mix(in oklch, var(--brass) 48%, var(--surface-rim));
   border-radius: var(--radius-xs);
   background: var(--ink-deep);
-  color: var(--ink-pearl);
-  font: inherit;
+  color: var(--text-primary);
+  line-height: inherit;
+  font-family: inherit;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: var(--weight-medium);
 }
 
 .command-band-operation-attribute {
@@ -382,7 +383,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   padding: 2px 6px;
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 9.5px;
 }
@@ -426,7 +427,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   display: grid;
   place-items: center;
   flex: none;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -440,7 +441,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-operation-placeholder {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -468,7 +469,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   width: 100%;
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -480,7 +481,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-menu-item:hover:not(:disabled),
 .command-band-menu-item:focus-visible {
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   outline: none;
 }
@@ -527,8 +528,8 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   margin-left: auto;
   padding-left: var(--space-2);
   flex: none;
-  color: color-mix(in oklch, var(--ink-fog) 70%, transparent);
-  font-size: 9px;
+  color: var(--text-tertiary);
+  font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -542,7 +543,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-menu-empty {
   margin: 0;
   padding: var(--space-2);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.04em;

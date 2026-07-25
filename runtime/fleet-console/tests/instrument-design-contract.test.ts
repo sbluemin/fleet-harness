@@ -12,6 +12,18 @@ const PRODUCT_SOURCE_ROOTS = [
   new URL("sdk/", CONSOLE_ROOT),
   new URL("../fleet-plugins/", CONSOLE_ROOT),
 ] as const;
+const CSS_SOURCE_ROOTS = [
+  new URL("core/client/src/", CONSOLE_ROOT),
+  new URL("../fleet-plugins/", CONSOLE_ROOT),
+] as const;
+const STANDALONE_CSS_SOURCES = [
+  new URL("markdown/styles.css", CONSOLE_ROOT),
+  new URL("font-picker/styles.css", CONSOLE_ROOT),
+] as const;
+const CSS_THEME_SOURCES = [
+  new URL("core/client/src/styles/theme.css", CONSOLE_ROOT),
+  new URL("core/client/src/codex/styles/theme.css", CONSOLE_ROOT),
+] as const;
 const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
 const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
   "node_modules",
@@ -47,6 +59,34 @@ const OWNED_SOURCES = [
 ] as const;
 
 const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;
+const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
+const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
+const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
+  // Canvas injects each frame's identity accent through TSX inline styles.
+  "--user-accent",
+  // Canvas injects stagger timing through CSSStyleDeclaration.setProperty at runtime.
+  "--panel-stagger-delay",
+  // Sidebar TSX injects its measured width for the shell layout.
+  "--side-bar-width",
+  // Sidebar TSX injects transient drag offsets for chips and group headers.
+  "--drag-dy",
+  // Sidebar TSX injects the persisted group tone used by group-scoped surfaces.
+  "--grp-color",
+  // Sidebar chip TSX injects the group marker tone for each rendered mark.
+  "--group-mark",
+  // What's New TSX injects each section's reveal delay.
+  "--whatsnew-delay",
+  // Command Band TSX injects the measured left sidebar width.
+  "--command-band-left-width",
+  // Right Rail TSX injects the current panel width.
+  "--right-rail-panel-width",
+  // Right Rail TSX injects the user-selected overlay opacity.
+  "--right-rail-overlay-alpha",
+  // Repository Rail TSX injects the user-resized workspace tree width.
+  "--ws-tree-width",
+  // Terminal Carriers TSX injects the selected captain identity tone.
+  "--cap-color",
+]);
 
 function source(path: string): string {
   return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8").replace(/\r\n/g, "\n");
@@ -74,6 +114,140 @@ function listProductSourceFiles(root: URL): string[] {
     }
   }
   return files.sort();
+}
+
+function listCssFiles(root: URL): string[] {
+  const files: string[] = [];
+  const stack = [fileURLToPath(root)];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        stack.push(path.join(current, entry.name));
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".css")) files.push(path.join(current, entry.name));
+    }
+  }
+  return files.sort();
+}
+
+function listProductCssFiles(): string[] {
+  return [
+    ...CSS_SOURCE_ROOTS.flatMap(listCssFiles),
+    ...STANDALONE_CSS_SOURCES.map(fileURLToPath),
+  ].sort();
+}
+
+function consoleRelativePath(file: string): string {
+  return path.relative(fileURLToPath(CONSOLE_ROOT), file).replace(/\\/g, "/");
+}
+
+function maskCssCommentsAndStrings(css: string): string {
+  const masked = css.split("");
+  let state: "code" | "comment" | "string" = "code";
+  let quote = "";
+
+  for (let index = 0; index < css.length; index += 1) {
+    const current = css[index]!;
+    const next = css[index + 1];
+    if (state === "code" && current === "/" && next === "*") {
+      masked[index] = " ";
+      masked[index + 1] = " ";
+      state = "comment";
+      index += 1;
+      continue;
+    }
+    if (state === "comment") {
+      if (current === "*" && next === "/") {
+        masked[index] = " ";
+        masked[index + 1] = " ";
+        state = "code";
+        index += 1;
+      } else if (current !== "\n") {
+        masked[index] = " ";
+      }
+      continue;
+    }
+    if (state === "code" && (current === '"' || current === "'")) {
+      quote = current;
+      masked[index] = " ";
+      state = "string";
+      continue;
+    }
+    if (state === "string") {
+      if (current === "\\") {
+        masked[index] = " ";
+        if (next !== undefined && next !== "\n") {
+          masked[index + 1] = " ";
+          index += 1;
+        }
+      } else if (current === quote) {
+        masked[index] = " ";
+        state = "code";
+      } else if (current !== "\n") {
+        masked[index] = " ";
+      }
+    }
+  }
+
+  return masked.join("");
+}
+
+function maskFontFaceBlocks(css: string): string {
+  const masked = maskCssCommentsAndStrings(css);
+  const result = masked.split("");
+  const fontFace = /@font-face\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = fontFace.exec(masked)) !== null) {
+    const open = masked.indexOf("{", match.index);
+    if (open === -1) continue;
+    let depth = 0;
+    let close = open;
+    for (; close < masked.length; close += 1) {
+      if (masked[close] === "{") depth += 1;
+      if (masked[close] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          close += 1;
+          break;
+        }
+      }
+    }
+    for (let index = match.index; index < close; index += 1) {
+      if (result[index] !== "\n") result[index] = " ";
+    }
+    fontFace.lastIndex = close;
+  }
+  return result.join("");
+}
+
+function cssDeclarations(css: string, property: string): Array<{ index: number; value: string }> {
+  const declarations: Array<{ index: number; value: string }> = [];
+  const pattern = new RegExp(`(?:^|[;{])\\s*(${property})\\s*:\\s*([^;{}]*)`, "gim");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(css)) !== null) {
+    declarations.push({
+      index: match.index + match[0].indexOf(match[1]!),
+      value: match[2]!.trim(),
+    });
+  }
+  return declarations;
+}
+
+function lineAt(text: string, index: number): number {
+  return text.slice(0, index).split("\n").length;
+}
+
+function customPropertyDefinitions(css: string): Set<string> {
+  const definitions = new Set<string>();
+  const masked = maskCssCommentsAndStrings(css);
+  const pattern = /(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gim;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(masked)) !== null) {
+    definitions.add(match[1]!);
+  }
+  return definitions;
 }
 
 function findRawProductSelects(): Array<{ file: string; line: number; snippet: string }> {
@@ -196,6 +370,64 @@ describe("Instrument core design contract", () => {
     expect(css).not.toMatch(/backdrop-filter|--op-accent|--chip-accent/);
     expect(css).toContain("background: var(--surface-glass)");
     expect(css).toContain(":focus-visible");
+  });
+
+  // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
+  it("keeps text color on the semantic three-tier token grammar", () => {
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskCssCommentsAndStrings(css);
+      for (const declaration of cssDeclarations(masked, "color")) {
+        if (!RAW_TEXT_INK_TOKENS.test(declaration.value)) continue;
+        const line = lineAt(css, declaration.index);
+        violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // 가변 서체도 위계는 3티어뿐이므로 임의 숫자 굵기가 흩어지면 같은 역할의 위계를 읽을 수 없다.
+  it("keeps product font weight on the regular, medium, and bold token tiers", () => {
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskFontFaceBlocks(css);
+      for (const declaration of cssDeclarations(masked, "font-weight")) {
+        if (!NUMERIC_FONT_WEIGHT.test(declaration.value)) continue;
+        const line = lineAt(css, declaration.index);
+        violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      }
+      for (const declaration of cssDeclarations(masked, "font")) {
+        const beforeLineHeight = declaration.value.split("/", 1)[0]!;
+        if (!/(?:^|\s)(?:[1-9]\d{0,2}|1000)(?=\s|$)/.test(beforeLineHeight)) continue;
+        const line = lineAt(css, declaration.index);
+        violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // 미정의 var 참조는 조용히 무효화되어 의도와 다르게 상속되므로 정의 또는 명시된 런타임 주입이 필요하다.
+  it("requires every referenced custom property to have a CSS definition or runtime injection", () => {
+    const globallyDefined = new Set(
+      CSS_THEME_SOURCES.flatMap((theme) => [...customPropertyDefinitions(externalSource(theme))]),
+    );
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskCssCommentsAndStrings(css);
+      const defined = new Set([...globallyDefined, ...customPropertyDefinitions(css)]);
+      const reference = /var\(\s*(--[A-Za-z0-9_-]+)/g;
+      let match: RegExpExecArray | null;
+      while ((match = reference.exec(masked)) !== null) {
+        const name = match[1]!;
+        if (defined.has(name) || RUNTIME_CUSTOM_PROPERTY_ALLOWLIST.has(name)) continue;
+        const line = lineAt(css, match.index);
+        violations.push(`${consoleRelativePath(file)}:${line} ${name}`);
+      }
+    }
+    expect(violations).toEqual([]);
   });
 
   it("keeps user identity on the spine+mark grammar and off the state border channel", () => {
@@ -665,7 +897,7 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("top: calc(-1 * var(--space-3));");
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("background: var(--ink-mid);");
-    expect(components).toContain("color: var(--ink-spectral);");
+    expect(components).toContain("color: var(--text-secondary);");
     expect(components).toContain(".canvas-operation.is-active .canvas-operation-titlebar {");
     expect(components).toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");
     expect(components).toContain(".canvas-operation-window-controls {");
@@ -727,8 +959,8 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("z-index: var(--z-select-popover);");
     expect(selectBlock).toContain("border: 1px solid var(--surface-rim);");
     expect(selectBlock).toContain("background: color-mix(in oklch, var(--ink-mid) 48%, transparent);");
-    expect(selectBlock).toContain("color: var(--ink-pearl);");
-    expect(selectBlock).toContain("font: 600 13px/1.2 var(--font-body);");
+    expect(selectBlock).toContain("color: var(--text-primary);");
+    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: 13px; line-height: 1.2; font-family: var(--font-body);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
     expect(selectBlock).toContain("border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));");
@@ -736,7 +968,9 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
-    expect(selectBlock).toContain("font: 9px/1 var(--font-mono);");
+    expect(selectBlock).toContain(
+      "font-weight: var(--weight-regular);\n  font-size: 9px;\n  line-height: 1;\n  font-family: var(--font-mono);",
+    );
     expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
     expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
     expect(selectBlock).toMatch(/\.reduce-panel-motion \.fc-select__trigger,\s*\.reduce-panel-motion \.fc-select__caret,\s*\.reduce-panel-motion \.fc-select__popup,\s*\.reduce-panel-motion \.fc-select__option \{\s*transition: none;\s*\}/);

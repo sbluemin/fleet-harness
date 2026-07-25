@@ -29,7 +29,7 @@
   min-width: 0;
   max-inline-size: clamp(60ch, 78ch, 78ch);
   margin-inline: auto;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-size: var(--font-size-body);
   line-height: 1.78;
   letter-spacing: -0.003em;
@@ -52,9 +52,9 @@
    최상위 헤딩 스타일이 필요하다. codex h2(display-md) 위 단계인 display-lg로 위계를 잡는다. */
 .markdown-body h1 {
   scroll-margin-top: var(--space-6);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-family: var(--font-body);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.024em;
   font-variation-settings: "opsz" 72;
   font-size: var(--font-size-display-lg);
@@ -65,9 +65,9 @@
 .markdown-body h3,
 .markdown-body h4 {
   scroll-margin-top: var(--space-6);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-family: var(--font-body);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.022em;
   font-variation-settings: "opsz" 60;
 }
@@ -97,7 +97,7 @@
   font-size: var(--font-size-title-md);
   line-height: 1.3;
   font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.012em;
 }
 
@@ -105,22 +105,22 @@
   margin-top: var(--space-6);
   font-family: var(--font-body);
   font-size: var(--font-size-body);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   color: var(--brass-bright);
 }
 
 .markdown-body p,
 .markdown-body li {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .markdown-body strong {
-  color: var(--ink-pearl);
-  font-weight: 600;
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
 }
 
 .markdown-body em {
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-style: italic;
 }
 
@@ -167,7 +167,7 @@
   border-left: 3px solid var(--brass);
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: color-mix(in oklch, var(--brass) 8%, transparent);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-style: italic;
 }
 
@@ -197,7 +197,7 @@
   color: var(--brass-bright);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -205,7 +205,7 @@
 .markdown-body .frontmatter dd {
   margin: 0;
   min-width: 0;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-size: var(--font-size-lg);
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -231,9 +231,9 @@
   background: color-mix(in oklch, var(--ink-mid) 70%, transparent);
   color: var(--brass-bright);
   font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   font-size: var(--font-size-sm);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -317,7 +317,7 @@
 .code-block-language {
   flex: 1;
   text-align: center;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   letter-spacing: 0.08em;
@@ -332,11 +332,11 @@
   border-radius: 8px;
   border: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent);
   background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition:
     color var(--duration-fast) var(--ease-spring),
@@ -357,7 +357,7 @@
   background: transparent;
   border: none;
   border-radius: 0;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--font-size-code);
   line-height: 1.7;
@@ -407,8 +407,8 @@
   z-index: 2;
   color: var(--brass-bright);
   font-family: var(--font-mono);
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   pointer-events: none;
@@ -452,7 +452,7 @@
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg .edgeLabel {
   background: transparent;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg .flowchart-link,
@@ -480,19 +480,19 @@
 }
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg .slice {
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
   font-style: italic;
 }
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg .pieTitleText {
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.12em;
   font-style: italic;
 }
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg .legend text {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.03em;
 }
 
@@ -552,7 +552,7 @@
   padding: var(--space-6);
   border: none;
   background: var(--ink-abyss);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
 }
 
 .diagram-lightbox::backdrop {
@@ -586,7 +586,7 @@
   color: var(--brass-bright);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -611,7 +611,7 @@
   color: var(--brass-bright);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
 }
 
@@ -637,7 +637,7 @@
   align-items: center;
   justify-content: center;
   min-width: 58px;
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   background: color-mix(in oklch, var(--ink-abyss) 54%, transparent);
   border: 1px solid color-mix(in oklch, var(--surface-rim) 82%, transparent);
 }
@@ -652,9 +652,8 @@
   color: var(--brass-bright);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease-spring),
