@@ -98,6 +98,20 @@ describe("operations platform", () => {
     expect(plainDto.payload?.resumeAvailable).toBeUndefined();
   });
 
+  it("strips a caller-supplied resumeAvailable marker so only the host derives it", () => {
+    const store = createOperationStore({ now: () => 10 });
+    const spoofed = store.create({
+      id: "op-spoofed",
+      theaterId: "theater",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Agent",
+      payload: { resumeAvailable: true },
+    });
+
+    expect(createSanitizedOpDto(spoofed).payload?.resumeAvailable).toBeUndefined();
+  });
+
   it("rejects forbidden browser readback payload keys in the SDK validator", () => {
     const base = makeNode({ id: "safe", payload: { visible: "ok" } });
 

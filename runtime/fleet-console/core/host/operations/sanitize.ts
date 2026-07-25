@@ -21,6 +21,8 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
   const payload = sanitizeRecord(node.payload, sensitiveFields);
   // providerSession은 브라우저에 못 나가지만, "재개 가능한 저장 세션이 있다"는 사실 자체는
   // 비민감 파생 정보다 — 복원 op의 dormant 분류(I2)가 이 마커에 의존한다.
+  // 호스트 소유 상태이므로 호출자 주입분은 먼저 지우고 providerSession에서만 파생한다(Codex P2).
+  delete payload.resumeAvailable;
   if (isRecord(node.payload?.providerSession)) payload.resumeAvailable = true;
   return {
     ...node,
