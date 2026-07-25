@@ -14,6 +14,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
@@ -97,6 +98,7 @@ export function OperationsCanvas({
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const glanceVisible = useGlanceHold();
   const disabled = !state.activeTheaterId || state.addingTheater;
+  const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -276,6 +278,7 @@ export function OperationsCanvas({
             hiddenCompanionPanelIds: operationCompanion ? hiddenCompanionPanelIds : [],
             formation: formationView,
             focusLayerHidden,
+            operationBodyPoolAvailable,
             onRenderHiddenFocus: () => {
               const focusTarget = canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']");
               if (focusTarget) {
@@ -495,6 +498,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly hiddenCompanionPanelIds: readonly string[];
   readonly formation: boolean;
   readonly focusLayerHidden: boolean;
+  readonly operationBodyPoolAvailable: boolean;
   readonly onRenderHiddenFocus: () => void;
   readonly topEdge: boolean;
   readonly accentKey: string | null;
@@ -547,26 +551,49 @@ function renderPluginOperation(operation: OperationNode, options: {
         onGeometryCommit={options.onGeometryCommit}
         onRenderHiddenFocus={options.onRenderHiddenFocus}
       >
-        <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.operationFailed" />}>
-          <PluginOperationRenderer
-            active={options.active}
-            keyboardFocusRequestId={options.keyboardFocusRequestId}
-            capabilities={capabilities}
-            geometry={geometry}
-            operation={operation}
-            theme={options.theme}
-            language={options.language}
-            viewportZoom={options.viewportZoom}
-            onActivate={options.onActivate}
-            onClose={options.onClose}
-            onGeometryChange={options.onGeometryChange}
-            onRequestCompanions={onRequestCompanions}
-            companionsOpen={options.companion}
-            hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
-            onSetCompanionPanelVisible={onSetCompanionPanelVisible}
-            render={descriptor.render}
+        {options.operationBodyPoolAvailable ? (
+          <OperationBodySlot
+            operationId={operation.id}
+            className="canvas-operation-body-slot"
+            config={{
+              active: options.active,
+              keyboardFocusRequestId: options.keyboardFocusRequestId,
+              geometry,
+              operation,
+              theme: options.theme,
+              language: options.language,
+              zoom: options.viewportZoom,
+              onActivate: options.onActivate,
+              onClose: options.onClose,
+              onGeometryChange: options.onGeometryChange,
+              onRequestCompanions,
+              companionsOpen: options.companion,
+              hiddenCompanionPanelIds: options.hiddenCompanionPanelIds,
+              onSetCompanionPanelVisible,
+            } satisfies OperationBodyConfig}
           />
-        </PluginErrorBoundary>
+        ) : (
+          <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.operationFailed" />}>
+            <PluginOperationRenderer
+              active={options.active}
+              keyboardFocusRequestId={options.keyboardFocusRequestId}
+              capabilities={capabilities}
+              geometry={geometry}
+              operation={operation}
+              theme={options.theme}
+              language={options.language}
+              viewportZoom={options.viewportZoom}
+              onActivate={options.onActivate}
+              onClose={options.onClose}
+              onGeometryChange={options.onGeometryChange}
+              onRequestCompanions={onRequestCompanions}
+              companionsOpen={options.companion}
+              hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
+              onSetCompanionPanelVisible={onSetCompanionPanelVisible}
+              render={descriptor.render}
+            />
+          </PluginErrorBoundary>
+        )}
       </OperationFrame>
       {options.companions.map((companion, index) => (
         <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!} language={options.language}>

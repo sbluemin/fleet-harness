@@ -16,9 +16,14 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
+import { MobileShell } from "../mobile/mobile-shell.js";
+import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
+import { useViewMode } from "../view-mode-store.js";
+import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -39,6 +44,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const formationView = useFormationView();
   const minimized = useMinimized();
   const registry = usePluginRegistry();
+  const viewMode = useViewMode();
+  const globalSettings = useGlobalSettingsStore();
+  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
 
   const operationOrder = useMemo(
@@ -62,6 +70,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // Alt+←/→는 캔버스 배치 순서(그룹 order → 그룹 내 operationOrder → ungrouped)로 포커스를 순환하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 공유한다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if (viewMode.effective === "mobile") return;
       if (!shouldHandleOperationsKeyboardShortcut()) return;
       if (!event.altKey || event.metaKey || event.ctrlKey) return;
       const active = document.activeElement;
@@ -103,9 +112,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds]);
+  }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, viewMode.effective]);
 
   useEffect(() => {
+    if (viewMode.effective === "mobile") return;
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
@@ -122,7 +132,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       getMaximizedOperationId(),
     ].filter((id): id is string => id !== null));
     minimizeOperations(bootOperationIds.filter((id) => !protectedIds.has(id)));
-  }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated]);
+  }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated, viewMode.effective]);
 
   const focusMapOperation = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
@@ -143,10 +153,15 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   useEffect(() => {
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
+    if (viewMode.effective === "mobile") {
+      setActiveOperation(operationId);
+      consumeOperationFocus();
+      return;
+    }
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
     consumeOperationFocus();
-  }, [focusMapOperation, registry.operationKinds, state.pendingOperationFocus]);
+  }, [focusMapOperation, registry.operationKinds, state.pendingOperationFocus, viewMode.effective]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -286,6 +301,25 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       .finally(() => closingOperationIds.delete(operationId));
   }, [onDeferredDeletion, registry.plugins]);
 
+  const poolCapabilities = useMemo(() => createHostCapabilities(() => {
+    void fetchOperations(null).then(hydrateOperations).catch(() => {});
+  }), []);
+  const defaultBodyConfig = useCallback((operation: OperationNode): OperationBodyConfig => ({
+    active: state.activeOperationId === operation.id,
+    geometry: operation.geometry ?? ensurePluginGeometry(operation),
+    operation,
+    theme: state.activeTheme,
+    language,
+    zoom: 1,
+    onActivate: () => setActiveOperation(operation.id),
+    onClose: () => handleClose(operation.id),
+    onGeometryChange: () => {},
+    onRequestCompanions: () => {},
+    companionsOpen: false,
+    hiddenCompanionPanelIds: [],
+    onSetCompanionPanelVisible: () => {},
+  }), [handleClose, language, state.activeOperationId, state.activeTheme]);
+
   const handleAddTheater = useCallback(async (path: string) => {
     beginAddTheater();
     try {
@@ -318,7 +352,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     }
   }, [onDeferredDeletion]);
 
-  return (
+  const shell = viewMode.effective === "mobile" ? (
+    <MobileShell
+      operations={theaterOperations}
+      activeOperationId={state.activeOperationId}
+      operationStatus={state.operationStatus}
+      operationNotifications={state.operationNotifications}
+      theme={state.activeTheme}
+      language={language}
+      onSelectOperation={setActiveOperation}
+      onCloseOperation={handleClose}
+    />
+  ) : (
     <div className="console-body is-canvas">
       <OperationsSideBar
         theaters={state.theaters}
@@ -368,6 +413,16 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
       <CodexReadingSheet />
     </div>
+  );
+  return (
+    <OperationBodyPool
+      operations={theaterOperations}
+      operationKinds={registry.operationKinds}
+      capabilities={poolCapabilities}
+      defaultConfig={defaultBodyConfig}
+    >
+      {shell}
+    </OperationBodyPool>
   );
 }
 

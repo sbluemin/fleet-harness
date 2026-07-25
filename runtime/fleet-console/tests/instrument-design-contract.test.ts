@@ -642,6 +642,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("onClick={() => setSideBarCollapsed(!sideBar.collapsed)}");
     expect(commandBand).toContain('className="command-band-button command-band-search"');
     expect(commandBand).toContain("onClick={toggleOperationSearch}");
+    expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
