@@ -78,7 +78,14 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () 
 vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
-vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({ getSideBarState: () => ({ collapsed: false }), setSideBarCollapsed: vi.fn() }));
+// operations.tsx의 Alt 핸들러가 상태축 분기를 위해 이 모듈을 함께 읽으므로, 누락되면 preventDefault 이전에 던진다.
+vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({
+  getSideBarState: () => ({ collapsed: false }),
+  setSideBarCollapsed: vi.fn(),
+  getSideBarStatusAxis: () => false,
+  getSideBarStatusSectionCollapsed: () => false,
+  toggleSideBarStatusAxis: vi.fn(),
+}));
 vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
   OperationsSideBar: ({ onClose, onFocus, onMinimize }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
