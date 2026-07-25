@@ -23,6 +23,10 @@ export function consumePlansSearchTarget(expected: PlansSearchTarget): void {
   emit();
 }
 
+export function getPlansSearchTargetForTest(): PlansSearchTarget | null {
+  return target;
+}
+
 export function usePlansSearchTarget(): PlansSearchTarget | null {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

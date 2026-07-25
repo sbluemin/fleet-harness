@@ -40,6 +40,7 @@ const PREVIEW_TIMEOUT_MS = 30_000;
 const CLI_TIMEOUT_MS = 120_000;
 const USERINFO_URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
 const TOKEN_URL_PARAM_RE = /([?&](?:access_?token|token|api_?key|apikey|auth(?:orization)?|password|secret|credential)=)[^&#\s]*/gi;
+const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -230,8 +231,11 @@ export async function handleList(
   }
 
   try {
-    ctx.host.http.writeJson(res, 200, { skills: await listInstalledSkills(projectCwd, executor) });
+    const skills = await listInstalledSkills(projectCwd, executor);
+    if (theaterId) installedSkillsByTheater.set(theaterId, skills);
+    ctx.host.http.writeJson(res, 200, { skills });
   } catch {
+    if (theaterId) installedSkillsByTheater.set(theaterId, []);
     ctx.host.http.writeJson(res, 200, { skills: [] });
   }
 }
@@ -273,17 +277,13 @@ export async function handlePaletteSearch(
     ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
     return;
   }
-  try {
-    const tokens = body.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    const skills = (await listInstalledSkills(projectCwd, executor))
-      .filter((skill) => tokens.every((token) => skill.name.toLocaleLowerCase().includes(token)))
-      .sort((left, right) => left.name.localeCompare(right.name) || left.scope.localeCompare(right.scope))
-      .slice(0, body.limit as number)
-      .map(({ name, scope }) => ({ name, scope }));
-    ctx.host.http.writeJson(res, 200, { skills });
-  } catch {
-    ctx.host.http.writeJson(res, 200, { skills: [] });
-  }
+  const tokens = body.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const skills = (installedSkillsByTheater.get(body.theaterId) ?? [])
+    .filter((skill) => tokens.every((token) => skill.name.toLocaleLowerCase().includes(token)))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.scope.localeCompare(right.scope))
+    .slice(0, body.limit as number)
+    .map(({ name, scope }) => ({ name, scope }));
+  ctx.host.http.writeJson(res, 200, { skills });
 }
 
 export async function handleSearch(

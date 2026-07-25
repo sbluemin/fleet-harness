@@ -181,7 +181,38 @@ describe("project scope cwd", () => {
 });
 
 describe("palette installed-skill search", () => {
-  it("returns only logical names and scopes without CLI filesystem paths", async () => {
+  it("returns an empty result without invoking the CLI when no list is cached", async () => {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-search-empty-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    await fs.mkdir(theaterRoot, { recursive: true });
+    try {
+      const executor = vi.fn<CliExecutor>(async () => ({ stdout: "[]", stderr: "", exitCode: 0 }));
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number; _body: unknown })._status = status;
+              (res as unknown as { _status: number; _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({ theaterId: "uncached-theater", query: "needle", limit: 8 }),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+      const res = makeRes();
+
+      await handlePaletteSearch(makeReq("POST", "/plugins/skills/palette-search"), res, ctx, executor);
+
+      expect(res._status).toBe(200);
+      expect(res._body).toEqual({ skills: [] });
+      expect(executor).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
+  });
+
+  it("returns only cached logical names and scopes without invoking the CLI", async () => {
     const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-search-"));
     const theaterRoot = path.join(temporaryDirectory, "theater");
     await fs.mkdir(theaterRoot, { recursive: true });
@@ -209,9 +240,14 @@ describe("palette installed-skill search", () => {
         stderr: "",
         exitCode: 0,
       });
-      const res = makeRes();
+      const executorSpy = vi.fn(executor);
+      const listRes = makeRes();
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=theater-a"), listRes, ctx, executorSpy);
+      expect(listRes._status).toBe(200);
+      executorSpy.mockClear();
 
-      await handlePaletteSearch(makeReq("POST", "/plugins/skills/palette-search"), res, ctx, executor);
+      const res = makeRes();
+      await handlePaletteSearch(makeReq("POST", "/plugins/skills/palette-search"), res, ctx, executorSpy);
 
       expect(res._status).toBe(200);
       expect(res._body).toEqual({
@@ -220,6 +256,7 @@ describe("palette installed-skill search", () => {
           { name: "needle-project", scope: "project" },
         ],
       });
+      expect(executorSpy).not.toHaveBeenCalled();
       expect(JSON.stringify(res._body)).not.toContain(temporaryDirectory);
       expect(JSON.stringify(res._body)).not.toContain(await fs.realpath(theaterRoot));
     } finally {
