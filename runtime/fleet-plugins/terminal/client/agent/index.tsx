@@ -70,6 +70,8 @@ const ANALYSIS_READY_POLL_MS = 5_000;
 export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
 const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
 const AGENT_COMPANION_IDS = [CARRIER_STREAMS_COMPANION_ID, ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
+const streamsAutoOpenedOperationIds = new Set<string>();
+type AnalysisReadiness = "unknown" | "ready" | "not-ready";
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -243,29 +245,39 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
   return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
-function useAnalysisReady(context: OperationRenderContext): boolean {
-  const [ready, setReady] = React.useState(false);
+function useAnalysisReady(context: OperationRenderContext): AnalysisReadiness {
+  const [result, setResult] = React.useState<{
+    readonly operationId: string;
+    readonly readiness: AnalysisReadiness;
+  }>({ operationId: context.operationId, readiness: "unknown" });
+  const readiness = result.operationId === context.operationId ? result.readiness : "unknown";
 
   React.useEffect(() => {
-    if (ready) return;
     let disposed = false;
     let requestPending = false;
+    let interval: number | undefined;
+    setResult({ operationId: context.operationId, readiness: "unknown" });
     const poll = async () => {
       if (requestPending) return;
       requestPending = true;
       const nextReady = await fetchAnalysisReady(context.api, context.operationId);
       requestPending = false;
-      if (!disposed && nextReady) setReady(true);
+      if (disposed) return;
+      setResult({
+        operationId: context.operationId,
+        readiness: nextReady ? "ready" : "not-ready",
+      });
+      if (nextReady && interval !== undefined) window.clearInterval(interval);
     };
     void poll();
-    const interval = window.setInterval(() => { void poll(); }, ANALYSIS_READY_POLL_MS);
+    interval = window.setInterval(() => { void poll(); }, ANALYSIS_READY_POLL_MS);
     return () => {
       disposed = true;
-      window.clearInterval(interval);
+      if (interval !== undefined) window.clearInterval(interval);
     };
-  }, [context.api, context.operationId, ready]);
+  }, [context.api, context.operationId]);
 
-  return ready;
+  return readiness;
 }
 
 function isCompanionPanelVisible(context: OperationRenderContext, companionId: string): boolean {
@@ -273,13 +285,18 @@ function isCompanionPanelVisible(context: OperationRenderContext, companionId: s
 }
 
 function toggleCompanionPanel(context: OperationRenderContext, companionId: string): void {
-  const currentlyVisible = isCompanionPanelVisible(context, companionId);
-  const nextVisible = !currentlyVisible;
-  context.onSetCompanionPanelVisible?.(companionId, nextVisible);
-  if (nextVisible) {
-    if (!context.companionsOpen) context.onRequestCompanions?.(true);
+  if (!context.onSetCompanionPanelVisible) {
+    context.onRequestCompanions?.(!context.companionsOpen);
     return;
   }
+  const currentlyVisible = isCompanionPanelVisible(context, companionId);
+  const nextVisible = !currentlyVisible;
+  if (nextVisible) {
+    if (!context.companionsOpen) context.onRequestCompanions?.(true);
+    context.onSetCompanionPanelVisible(companionId, true);
+    return;
+  }
+  context.onSetCompanionPanelVisible(companionId, false);
   const visibleCount = AGENT_COMPANION_IDS.filter((id) => isCompanionPanelVisible(context, id)).length;
   if (visibleCount <= 1) context.onRequestCompanions?.(false);
 }
@@ -334,12 +351,14 @@ function CarrierStreamsHandle({ context, live }: { readonly context: OperationRe
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const analysisReady = useAnalysisReady(context);
+  const analysisReadiness = useAnalysisReady(context);
   const { state: analysisState } = useAnalysisStore(context);
   const jobs = sessionJobs(session);
   const liveTrackCount = countLiveTracks(jobs);
-  const previousLiveTrackCountRef = React.useRef(0);
-  const streamsAutoOpenedRef = React.useRef(false);
+  const previousLiveTrackRef = React.useRef({
+    operationId: context.operationId,
+    count: liveTrackCount,
+  });
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
@@ -352,24 +371,32 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   }, [context.companionsOpen, context.operationId]);
 
   React.useEffect(() => {
-    if (analysisReady || !context.onSetCompanionPanelVisible) return;
+    if (analysisReadiness !== "not-ready" || !context.onSetCompanionPanelVisible) return;
     context.onSetCompanionPanelVisible(ANALYST_CHAT_COMPANION_ID, false);
     context.onSetCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, false);
-  }, [analysisReady, context.onSetCompanionPanelVisible]);
+  }, [analysisReadiness, context.onSetCompanionPanelVisible]);
 
   React.useEffect(() => {
-    const previousCount = previousLiveTrackCountRef.current;
-    previousLiveTrackCountRef.current = liveTrackCount;
-    if (streamsAutoOpenedRef.current || previousCount !== 0 || liveTrackCount === 0) return;
-    streamsAutoOpenedRef.current = true;
+    const previous = previousLiveTrackRef.current;
+    if (previous.operationId !== context.operationId) {
+      previousLiveTrackRef.current = { operationId: context.operationId, count: liveTrackCount };
+      return;
+    }
+    previousLiveTrackRef.current = { operationId: context.operationId, count: liveTrackCount };
+    if (
+      streamsAutoOpenedOperationIds.has(context.operationId)
+      || previous.count !== 0
+      || liveTrackCount === 0
+    ) return;
+    streamsAutoOpenedOperationIds.add(context.operationId);
+    if (!context.companionsOpen) context.onRequestCompanions?.(true);
     context.onSetCompanionPanelVisible?.(CARRIER_STREAMS_COMPANION_ID, true);
-    context.onRequestCompanions?.(true);
-  }, [context.onRequestCompanions, context.onSetCompanionPanelVisible, liveTrackCount]);
+  }, [context.companionsOpen, context.onRequestCompanions, context.onSetCompanionPanelVisible, context.operationId, liveTrackCount]);
 
   const handles = (
     <div className="session-analyst-handle-stack">
       <CarrierStreamsHandle context={context} live={liveTrackCount > 0} />
-      <SessionAnalystHandle context={context} ready={analysisReady} working={analysisState.busy} />
+      <SessionAnalystHandle context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
     </div>
   );
 
@@ -468,10 +495,11 @@ function CarrierStreamColumn({
   const elapsed = useElapsed(track.startedAt ?? job.startedAt, track.finishedAt ?? job.finishedAt);
   const request = trackRequestText(job, track);
   const contentKey = `${track.lastEventId}:${track.text.length}:${track.tools.length}`;
-  const scroll = usePinnedScrollLocal(`${job.jobId}:${track.trackId}`, contentKey);
+  const scroll = usePinnedScrollLocal(`${job.jobId}:${track.trackId}:${expanded}`, contentKey);
   const completed = phase.tone === "done";
   const reasoning = phase.tone === "live" && track.thought.length > 0
     && (track.text.length === 0 || latestTrackEventType(job, track.trackId) === "track:thought");
+  const error = track.error ?? (phase.tone === "error" ? job.error : undefined);
 
   if (completed && !expanded) {
     return (
@@ -512,7 +540,7 @@ function CarrierStreamColumn({
           {reasoning ? (
             <div className="carrier-stream-column__reasoning" role="status"><i aria-hidden="true" />Reasoning…</div>
           ) : null}
-          {track.error ? <div className="carrier-stream-column__error" role="alert">{track.error}</div> : null}
+          {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
           {track.tools.length > 0 ? (
             <div className="carrier-stream-column__tools" role="list" aria-label={`Tools used by ${track.displayName}`}>
               {track.tools.map((tool) => {
@@ -545,11 +573,12 @@ function countLiveTracks(jobs: readonly JobView[]): number {
 }
 
 function trackRequestText(job: JobView, track: TrackView): string {
-  if (track.requestPreview?.trim()) return track.requestPreview.trim();
-  if (!job.request) return "";
-  const blocks = job.request.blocks.filter((block) => block.present && block.body.trim()).map((block) => block.body.trim());
-  if (job.request.additional.trim()) blocks.push(job.request.additional.trim());
-  return blocks.join("\n\n");
+  if (job.request) {
+    const blocks = job.request.blocks.filter((block) => block.present && block.body.trim()).map((block) => block.body.trim());
+    if (job.request.additional.trim()) blocks.push(job.request.additional.trim());
+    return blocks.join("\n\n");
+  }
+  return track.requestPreview?.trim() ?? "";
 }
 
 function latestTrackEventType(job: JobView, trackId: string): string | undefined {

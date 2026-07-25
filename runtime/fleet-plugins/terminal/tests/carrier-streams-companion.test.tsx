@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ClientApiCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -12,6 +12,7 @@ vi.mock("../client/shared/index.js", () => ({
 
 import { disposeAnalysisStore, getAnalysisStore } from "../client/agent/analysis-store.js";
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
+import { applyEvent, createEmptyJob } from "../client/agent/reduce.js";
 import {
   CARRIER_STREAMS_COMPANION_ID,
   agentOperationKind,
@@ -30,7 +31,7 @@ import {
   removeSession,
   setAgentState,
 } from "../client/agent/store.js";
-import type { JobView, TrackView } from "../client/agent/types.js";
+import type { JobView, ObservedEvent, TrackView } from "../client/agent/types.js";
 
 const OPERATION_ID = "carrier-streams-operation";
 const TENANT_ID = "carrier-streams-tenant";
@@ -68,7 +69,7 @@ describe("Carrier Streams companion", () => {
     }))).resolves.toBe(true);
   });
 
-  it("renders horizontal carrier columns in request, markdown, reasoning, and tool-chip order without thought content", async () => {
+  it("renders horizontal carrier columns in request and markdown order without thought content", async () => {
     installSession([
       makeJob("job-live", "active", [
         makeTrack("kirov-track", {
@@ -76,7 +77,6 @@ describe("Carrier Streams companion", () => {
           requestPreview: "Implement the approved companion.",
           text: "**Streaming** output",
           thought: "private chain of thought",
-          tools: [{ id: "tool-1", name: "Edit", input: { path: "src/index.tsx" }, status: "running" }],
         }),
         makeTrack("nimitz-track", {
           displayName: "Nimitz",
@@ -93,8 +93,6 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).toContain("2 LIVE");
     expect(container?.textContent).toContain("Implement the approved companion.");
     expect(container?.textContent).toContain("Streaming");
-    expect(container?.textContent).toContain("Edit");
-    expect(container?.textContent).toContain("src/index.tsx");
     expect(container?.textContent).toContain("Reasoning…");
     expect(container?.textContent).not.toContain("private chain of thought");
     expect(container?.textContent).not.toContain("another private thought");
@@ -102,12 +100,73 @@ describe("Carrier Streams companion", () => {
     const firstColumn = columns?.[0];
     const request = firstColumn?.querySelector(".carrier-stream-column__request");
     const answer = firstColumn?.querySelector(".carrier-stream-column__answer");
-    const tools = firstColumn?.querySelector(".carrier-stream-column__tools");
     expect(request?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("prefers the complete job request over the deprecated track preview", async () => {
+    installSession([{
+      ...makeJob("job-request", "active", [
+        makeTrack("request-track", {
+          requestPreview: "Deprecated first line only.",
+          text: "Working",
+        }),
+      ]),
+      request: {
+        blocks: [{
+          tag: "objective",
+          hint: "",
+          required: true,
+          present: true,
+          body: "Implement the complete approved objective.",
+        }],
+        additional: "Preserve every specified constraint.",
+      },
+    }]);
+    await renderCompanion();
+
+    expect(container?.textContent).toContain("Implement the complete approved objective.");
+    expect(container?.textContent).toContain("Preserve every specified constraint.");
+    expect(container?.textContent).not.toContain("Deprecated first line only.");
+  });
+
+  it("normalizes server track:tool payloads through the reducer into one updated DOM chip", async () => {
+    let job = createEmptyJob(TENANT_ID, "job-tool", 1_000);
+    job = applyEvent(job, observed(1, "job:registered", {
+      tracks: [{ trackId: "tool-track", displayName: "Kirov" }],
+    }));
+    job = applyEvent(job, observed(2, "track:begin", {
+      trackId: "tool-track",
+      requestPreview: "Use the reducer adapter.",
+    }));
+    job = applyEvent(job, observed(3, "track:text", {
+      trackId: "tool-track",
+      text: "Editing the implementation.",
+    }));
+    job = applyEvent(job, observed(4, "track:tool", {
+      trackId: "tool-track",
+      title: "Edit",
+      status: "running",
+      detailChars: 42,
+    }));
+    job = applyEvent(job, observed(5, "track:tool", {
+      trackId: "tool-track",
+      title: "Edit",
+      status: "completed",
+      detailChars: 84,
+    }));
+    installSession([job]);
+    await renderCompanion();
+
+    const chips = container?.querySelectorAll(".carrier-stream-column__tool");
+    expect(chips).toHaveLength(1);
+    expect(chips?.[0]?.textContent).toContain("Edit");
+    expect(chips?.[0]?.getAttribute("data-tone")).toBe("done");
+    const answer = container?.querySelector(".carrier-stream-column__answer");
+    const tools = container?.querySelector(".carrier-stream-column__tools");
     expect(answer?.compareDocumentPosition(tools as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("collapses completed tracks to a 44px strip and expands them in memory", async () => {
+  it("collapses completed tracks to a 44px strip, expands them in memory, and restores pinned following", async () => {
     installSession([makeJob("job-done", "active", [
       makeTrack("done-track", { displayName: "Kirov", text: "Final answer" }),
     ], "kirov")]);
@@ -127,6 +186,26 @@ describe("Carrier Streams companion", () => {
     expect(container?.querySelector(".carrier-stream-column--collapsed")).toBeNull();
     expect(container?.querySelector(".carrier-stream-column__markdown")?.textContent).toContain("Final answer");
     expect(container?.querySelector('[aria-label="Collapse completed stream for Kirov"]')).not.toBeNull();
+
+    const body = container?.querySelector<HTMLDivElement>(".carrier-stream-column__body");
+    if (!body) throw new Error("Expanded stream body must exist.");
+    Object.defineProperty(body, "scrollHeight", { configurable: true, value: 600 });
+    Object.defineProperty(body, "clientHeight", { configurable: true, value: 100 });
+    body.scrollTop = 500;
+    act(() => body.dispatchEvent(new Event("scroll")));
+    await act(async () => {
+      installSession([makeJob("job-done", "done", [
+        makeTrack("done-track", {
+          displayName: "Kirov",
+          status: "done",
+          lastEventId: 2,
+          text: "Final answer\nFollowed output",
+          finishedAt: 2_000,
+        }),
+      ], "kirov")]);
+      await Promise.resolve();
+    });
+    expect(body.scrollTop).toBe(600);
   });
 
   it("shows the exact idle state when no carrier tracks are retained", async () => {
@@ -135,6 +214,21 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).toContain("No carriers streaming.");
     expect(container?.textContent).toContain("The next dispatch from this operation appears here the moment it begins.");
     expect(container?.textContent).toContain("IDLE");
+  });
+
+  it("does not treat an initially live snapshot as an auto-open transition", async () => {
+    installSession([makeJob("job-baseline", "active", [makeTrack("baseline-track")], "kirov")]);
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+    await renderOperation(createContext({
+      companionsOpen: false,
+      hiddenCompanionPanelIds: ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    }));
+
+    expect(onRequestCompanions).not.toHaveBeenCalled();
+    expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("carrier-streams", true);
   });
 
   it("auto-opens streams once on the first 0-to-1 live transition and each handle toggles only its own panel", async () => {
@@ -157,6 +251,10 @@ describe("Carrier Streams companion", () => {
 
     expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
     expect(onRequestCompanions).toHaveBeenCalledWith(true);
+    const carrierVisibilityCall = onSetCompanionPanelVisible.mock.calls.findIndex(([id, visible]) => id === "carrier-streams" && visible === true);
+    expect(onRequestCompanions.mock.invocationCallOrder[0]).toBeLessThan(
+      onSetCompanionPanelVisible.mock.invocationCallOrder[carrierVisibilityCall] ?? Number.POSITIVE_INFINITY,
+    );
     expect(container?.querySelector(".session-analyst-handle--streams.is-live")).not.toBeNull();
 
     onRequestCompanions.mockClear();
@@ -176,6 +274,118 @@ describe("Carrier Streams companion", () => {
     expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", false);
     expect(onRequestCompanions).toHaveBeenCalledWith(false);
     expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("session-analyst-chat", expect.anything());
+
+    act(() => root?.unmount());
+    root = null;
+    installSession([]);
+    onRequestCompanions.mockClear();
+    onSetCompanionPanelVisible.mockClear();
+    await renderOperation(createContext({
+      api,
+      companionsOpen: false,
+      hiddenCompanionPanelIds: ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    }));
+    onRequestCompanions.mockClear();
+    onSetCompanionPanelVisible.mockClear();
+    await act(async () => {
+      installSession([makeJob("job-live", "active", [makeTrack("live-track")], "kirov")]);
+      await Promise.resolve();
+    });
+    expect(onRequestCompanions).not.toHaveBeenCalled();
+    expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("carrier-streams", true);
+  });
+
+  it("opens the host before applying a panel override that host initialization would reset", async () => {
+    installSession([]);
+    await render(createElement(CompanionVisibilityHost));
+    await vi.waitFor(() => {
+      expect(container?.querySelector<HTMLButtonElement>('[aria-label="Open Session Analyst"]')?.disabled).toBe(false);
+    });
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Open Session Analyst"]')?.click());
+
+    await vi.waitFor(() => {
+      expect(container?.querySelector('[aria-label="Exit Session Analyst"]')).not.toBeNull();
+    });
+  });
+
+  it("falls back to toggling the whole companion area when per-panel visibility is unavailable", async () => {
+    installSession([]);
+    const onRequestCompanions = vi.fn();
+    const api = createApi(true);
+    await renderOperation(createContext({
+      api,
+      companionsOpen: false,
+      onRequestCompanions,
+      onSetCompanionPanelVisible: undefined,
+    }));
+    await vi.waitFor(() => {
+      expect(container?.querySelector<HTMLButtonElement>('[aria-label="Open Session Analyst"]')?.disabled).toBe(false);
+    });
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Open Carrier Streams"]')?.click());
+    expect(onRequestCompanions).toHaveBeenLastCalledWith(true);
+
+    onRequestCompanions.mockClear();
+    await renderOperation(createContext({
+      api,
+      companionsOpen: true,
+      onRequestCompanions,
+      onSetCompanionPanelVisible: undefined,
+    }));
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Exit Carrier Streams"]')?.click());
+    expect(onRequestCompanions).toHaveBeenLastCalledWith(false);
+
+    onRequestCompanions.mockClear();
+    await renderOperation(createContext({
+      api,
+      companionsOpen: false,
+      onRequestCompanions,
+      onSetCompanionPanelVisible: undefined,
+    }));
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Open Session Analyst"]')?.click());
+    expect(onRequestCompanions).toHaveBeenLastCalledWith(true);
+  });
+
+  it("preserves panel overrides while analysis readiness is still unknown", async () => {
+    installSession([]);
+    let resolveReady: ((response: Response) => void) | undefined;
+    const readyResponse = new Promise<Response>((resolve) => { resolveReady = resolve; });
+    const api = createApi(false, readyResponse);
+    const onSetCompanionPanelVisible = vi.fn();
+    await renderOperation(createContext({ api, onSetCompanionPanelVisible }));
+
+    expect(onSetCompanionPanelVisible).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveReady?.(jsonResponse({ ready: false }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("session-analyst-chat", false);
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("session-analyst-artifacts", false);
+  });
+
+  it("falls back to the job error when finalization has no track error", async () => {
+    let job = createEmptyJob(TENANT_ID, "job-error", 1_000);
+    job = applyEvent(job, observed(1, "job:registered", {
+      tracks: [{ trackId: "error-track", displayName: "Sentinel" }],
+    }));
+    job = applyEvent(job, observed(2, "track:begin", { trackId: "error-track" }));
+    installSession([job]);
+    await renderCompanion();
+
+    job = applyEvent(job, observed(3, "job:finalized", {
+      status: "error",
+      error: "Carrier dispatch failed.",
+    }));
+    await act(async () => {
+      installSession([job]);
+      await Promise.resolve();
+    });
+    const alert = container?.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Carrier dispatch failed.");
   });
 
   it("adds the same live badge to ANALYZE while the analysis engine is busy", async () => {
@@ -345,16 +555,59 @@ function createContext(overrides: Partial<OperationRenderContext> & { readonly a
   } as unknown as OperationRenderContext;
 }
 
-function createApi(): ClientApiCapability {
-  const fetch = vi.fn(async (_pluginId: string, path: string) => new Response(
-    path === "analysis/catalog"
-      ? JSON.stringify({ clis: [] })
-      : path.endsWith("/ready")
-        ? JSON.stringify({ ready: false })
-        : "{}",
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  ));
+function CompanionVisibilityHost() {
+  const [api] = useState(() => createApi(true));
+  const [companionsOpen, setCompanionsOpen] = useState(false);
+  const [hiddenCompanionPanelIds, setHiddenCompanionPanelIds] = useState([
+    "carrier-streams",
+    "session-analyst-chat",
+    "session-analyst-artifacts",
+  ]);
+  const operationRender = agentOperationKind.render;
+  if (!operationRender) return null;
+  return operationRender(createContext({
+    api,
+    companionsOpen,
+    hiddenCompanionPanelIds,
+    onRequestCompanions: (open) => {
+      if (open && !companionsOpen) {
+        setHiddenCompanionPanelIds(["session-analyst-chat", "session-analyst-artifacts"]);
+      }
+      setCompanionsOpen(open);
+    },
+    onSetCompanionPanelVisible: (companionId, visible) => {
+      setHiddenCompanionPanelIds((current) => visible
+        ? current.filter((id) => id !== companionId)
+        : current.includes(companionId) ? current : [...current, companionId]);
+    },
+  })) as React.ReactElement;
+}
+
+function createApi(ready = false, readyResponse?: Promise<Response>): ClientApiCapability {
+  const fetch = vi.fn(async (_pluginId: string, path: string) => {
+    if (path === "analysis/catalog") return jsonResponse({ clis: [] });
+    if (path.endsWith("/ready")) return readyResponse ?? jsonResponse({ ready });
+    return jsonResponse({});
+  });
   return { fetch, subscribe: () => () => undefined, resync: vi.fn() } as ClientApiCapability;
+}
+
+function jsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function observed(id: number, type: string, event: Record<string, unknown>): ObservedEvent {
+  return {
+    id,
+    tenantId: TENANT_ID,
+    jobId: "observed-job",
+    type,
+    at: 1_000 + id,
+    event,
+  };
 }
 
 function operation(overrides: Partial<OperationNode> = {}): OperationNode {

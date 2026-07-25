@@ -291,6 +291,8 @@
 .reduce-panel-motion .carrier-stream-column__tool[data-tone="live"] > i::after {
   animation: none;
 }
+.reduce-panel-motion .session-analyst-handle-stack .session-analyst-handle { transition: none; }
+.reduce-panel-motion .session-analyst-handle-stack .session-analyst-handle:hover { transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }

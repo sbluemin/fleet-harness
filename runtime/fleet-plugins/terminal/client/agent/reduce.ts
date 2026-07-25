@@ -197,17 +197,20 @@ function createEmptyTrack(trackId: string): TrackView {
 }
 
 function upsertTool(tools: readonly TrackToolCall[], payload: Record<string, unknown>): readonly TrackToolCall[] {
-  const id = readString(payload.toolId) ?? readString(payload.id);
+  const title = readString(payload.title);
+  const id = readString(payload.toolCallId) ?? readString(payload.toolId) ?? readString(payload.id) ?? title;
   if (!id) return tools;
-  const next: TrackToolCall = {
-    id,
-    name: readString(payload.name),
-    input: payload.input,
-    output: payload.output,
-    status: readString(payload.status),
-  };
   const index = tools.findIndex((tool) => tool.id === id);
-  return index >= 0 ? [...tools.slice(0, index), { ...tools[index], ...next }, ...tools.slice(index + 1)] : [...tools, next];
+  const existing = index >= 0 ? tools[index] : undefined;
+  const next: TrackToolCall = {
+    ...existing,
+    id,
+    name: title ?? readString(payload.name) ?? existing?.name,
+    input: payload.input ?? existing?.input,
+    output: payload.output ?? existing?.output,
+    status: readString(payload.status) ?? existing?.status,
+  };
+  return index >= 0 ? [...tools.slice(0, index), next, ...tools.slice(index + 1)] : [...tools, next];
 }
 
 function adoptFinalBody(existing: string, sentLength: number, fallback: string | undefined, fallbackLength: number | undefined): { readonly text: string; readonly sentLength: number } {
