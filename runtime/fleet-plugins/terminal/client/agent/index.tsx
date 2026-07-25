@@ -523,7 +523,12 @@ function CarrierStreamColumn({
       </header>
       <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
         <div ref={scroll.contentRef} className="carrier-stream-column__content">
-          {request ? <div className="carrier-stream-column__request">{request}</div> : null}
+          {request ? (
+            <div className="carrier-stream-column__request" data-captain={captain}>
+              <span className="carrier-stream-column__request-kicker">{analysisCopy(language, "Dispatch order")}</span>
+              <p>{request}</p>
+            </div>
+          ) : null}
           {track.text ? (
             <div className="carrier-stream-column__answer">
               <span aria-hidden="true">✳</span>

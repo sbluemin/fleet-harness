@@ -171,6 +171,7 @@ describe("Carrier Streams companion", () => {
   it("localizes the activity pulse card for Korean", async () => {
     installSession([makeJob("job-ko-pulse", "active", [
       makeTrack("ko-pulse", {
+        requestPreview: "Map the console packages.",
         tools: [
           { id: "read-1", name: "Read", status: "completed" },
           { id: "edit-1", name: "Edit", status: "running" },
@@ -178,6 +179,10 @@ describe("Carrier Streams companion", () => {
       }),
     ])]);
     await renderCompanion(createContext({ language: "ko" }));
+
+    const request = container?.querySelector(".carrier-stream-column__request");
+    expect(request?.querySelector(".carrier-stream-column__request-kicker")?.textContent).toBe("출격 명령");
+    expect(request?.textContent).toContain("Map the console packages.");
 
     const activity = container?.querySelector(".carrier-stream-column__activity");
     expect(activity?.textContent).toContain("Edit 사용 중");

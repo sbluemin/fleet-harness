@@ -47,10 +47,22 @@
 .carrier-stream-column__body { max-height: 320px; min-height: 0; flex: 1; overflow-y: auto; outline: none; scrollbar-width: thin; }
 .carrier-stream-column__body:focus-visible { box-shadow: inset 0 0 0 2px var(--brass-bright); }
 .carrier-stream-column__content { display: flex; min-height: 100%; flex-direction: column; gap: 12px; padding: 12px; }
-.carrier-stream-column__request { align-self: flex-end; max-width: 88%; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--hairline); border-radius: 12px 12px 4px 12px; background: var(--ink-veil); color: var(--text-secondary); padding: 9px 11px; font-size: 11px; line-height: 1.55; }
+/* 출격 명령서 — 채팅 말풍선이 아니라 캐리어에게 발부된 명령 블록. 정체성은 spine+wash 문법
+   (도크 카드 선례), 미상 캐리어는 brass 중립 폴백. */
+.carrier-stream-column__request { border-left: 3px solid var(--brass); border-radius: 4px 10px 10px 4px; background: color-mix(in oklch, var(--brass) 5%, var(--ink-deep)); color: var(--text-secondary); padding: 9px 12px; font-size: 11px; line-height: 1.55; }
+.carrier-stream-column__request[data-captain="nimitz"] { border-left-color: var(--captain-nimitz); background: color-mix(in oklch, var(--captain-nimitz) 5%, var(--ink-deep)); }
+.carrier-stream-column__request[data-captain="kirov"] { border-left-color: var(--captain-kirov); background: color-mix(in oklch, var(--captain-kirov) 5%, var(--ink-deep)); }
+.carrier-stream-column__request[data-captain="genesis"] { border-left-color: var(--captain-genesis); background: color-mix(in oklch, var(--captain-genesis) 5%, var(--ink-deep)); }
+.carrier-stream-column__request[data-captain="ohio"] { border-left-color: var(--captain-ohio); background: color-mix(in oklch, var(--captain-ohio) 5%, var(--ink-deep)); }
+.carrier-stream-column__request[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); background: color-mix(in oklch, var(--captain-sentinel) 5%, var(--ink-deep)); }
+.carrier-stream-column__request[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); background: color-mix(in oklch, var(--captain-vanguard) 5%, var(--ink-deep)); }
+.carrier-stream-column__request-kicker { display: block; margin-bottom: 4px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9px; font-weight: var(--weight-bold); letter-spacing: .14em; text-transform: uppercase; }
+.carrier-stream-column__request p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .carrier-stream-column__answer { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 8px; }
 .carrier-stream-column__answer > span { color: var(--aurora); font-size: 13px; line-height: 1.5; }
-.carrier-stream-column__markdown { min-width: 0; color: var(--text-secondary); font-size: 11.5px; line-height: 1.62; overflow-wrap: anywhere; }
+/* 공용 .markdown-body의 리딩 measure(max-inline-size 78ch + margin-inline auto)가 셀 안에서
+   본문을 중앙 정렬·트랙 초과시키므로 해제한다 — Analyst 채팅 마크다운과 동일한 처방. */
+.carrier-stream-column__markdown { min-width: 0; max-width: 100%; max-inline-size: 100%; margin: 0; color: var(--text-secondary); font-size: 11.5px; line-height: 1.62; overflow-wrap: anywhere; }
 .carrier-stream-column__reasoning { display: inline-flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 10px; line-height: 1; font-family: var(--font-mono); }
 .carrier-stream-column__reasoning i { position: relative; width: 6px; height: 6px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
 .carrier-stream-column__reasoning i::after { content: ""; position: absolute; inset: -3px; border: 1px solid var(--aurora); border-radius: 50%; animation: analyst-orbit-pulse 1.8s var(--ease-glide) infinite; }

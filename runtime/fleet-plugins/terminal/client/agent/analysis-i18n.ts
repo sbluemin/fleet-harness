@@ -84,6 +84,7 @@ const KOREAN_COPY = {
   "Send a message in this session first": "먼저 이 세션에서 메시지를 보내세요",
   "EXIT": "닫기",
   "ANALYZE": "분석",
+  "Dispatch order": "출격 명령",
   "STREAMS": "스트림",
   "This operation · live carrier output": "이 오퍼레이션의 라이브 캐리어 출력",
   "LIVE": "진행 중",
