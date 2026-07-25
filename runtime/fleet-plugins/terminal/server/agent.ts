@@ -380,11 +380,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       }
       beginInitialPromptGeneration(sessionId);
       if (fresh) {
-        // stale provider 상태는 spawn 전에 지운다 — attach 도중 새 CLI의 capture hook이 먼저
-        // 완료되면, attach 후 정리가 새 capture까지 지우는 레이스가 된다(Codex P1). attach 실패 시
-        // payload의 providerSession이 남아 일반 resume 재시도는 여전히 가능하다.
+        // stale provider 상태는 spawn 전에 모두 떼어낸다(capture 파일, observability, payload) —
+        // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새 capture까지 지우고,
+        // payload에 구 세션이 남으면 성공 patch가 그것을 다시 심는다(Codex P1). attach 실패 시에는
+        // catch에서 payload providerSession을 원복해 일반 resume 재시도를 보존한다.
         unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
         observability.clearTerminalSessionProviderSession(sessionId);
+        const payloadWithoutProvider = { ...node.payload };
+        delete payloadWithoutProvider.providerSession;
+        ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
       await terminalRuntime.attach({
         cwd,
@@ -400,14 +404,20 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
-      // fresh는 기본적으로 providerSession을 떼어내지만, attach 중 자식이 capture한 새 세션은 보존한다 —
-      // patch 시점의 최신 payload를 읽어 덮어쓰기 레이스를 피한다(Codex P1).
+      // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
+      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다(Codex P1).
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
       const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
       invalidateInitialPromptGeneration(sessionId);
+      if (fresh && providerSession) {
+        // 실패 롤백: spawn 전에 떼어낸 payload providerSession을 복원해 일반 resume 재시도를 보존한다.
+        const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
+        rollbackPayload.providerSession = providerSession;
+        ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
+      }
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
       if (reverted) observability.notifySessionUpdated(reverted);

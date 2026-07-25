@@ -15,7 +15,7 @@ import {
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import {
@@ -142,6 +142,9 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
       case "close-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        // Analyze/companion 대상을 닫을 때는 캔버스/사이드바 close 경로(operations.tsx handleClose)와
+        // 같이 companion을 먼저 해제한다 — 두면 삭제된 op가 fallback dormant 프레임으로 잔존한다(Codex P2).
+        if (getCompanionOperationId() === action.operationId) forceDropCompanionOperationId();
         const operation = state.operations.find((op) => op.id === action.operationId);
         const plugin = (operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
         void closeOperationCompletely(action.operationId, plugin);
