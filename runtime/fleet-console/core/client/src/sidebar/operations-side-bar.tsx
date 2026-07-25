@@ -17,7 +17,10 @@ import { resolveOperationActivity } from "../operation-activity.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
-import { subscribeSideBarOperationAction } from "./operation-action-request.js";
+import {
+  subscribeSideBarOperationAction,
+  type SideBarOperationMenuAction,
+} from "./operation-action-request.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import {
@@ -68,7 +71,13 @@ interface OperationsSideBarProps {
 }
 
 type ActiveContextMenu =
-  | { readonly kind: "chip"; readonly operationId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
+  | {
+      readonly kind: "chip";
+      readonly operationId: string;
+      readonly anchor: DOMRect;
+      readonly returnFocus?: HTMLElement | null;
+      readonly requestedAction?: SideBarOperationMenuAction;
+    }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
   | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null };
 
@@ -732,6 +741,7 @@ export function OperationsSideBar({
       ? '.side-bar-theater-menu[role="menu"]'
       : '.group-context-menu-card[role="menu"]',
     returnFocusRef: contextMenuReturnFocusRef,
+    requestedAction: activeContextMenu?.kind === "chip" ? activeContextMenu.requestedAction : undefined,
     onEscape: closeActiveContextMenu,
   });
 
@@ -942,7 +952,9 @@ export function OperationsSideBar({
                           onFocus={onFocus}
                           onKeyboardMove={keyboardMove}
                           onPointerDragStart={beginPointerDrag}
-                          onOpenAccent={(operationId, anchor, returnFocus) => setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus })}
+                          onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
+                            setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus, requestedAction });
+                          }}
                           onRename={onRename}
                         />
                       );
@@ -1029,7 +1041,9 @@ export function OperationsSideBar({
                         onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
-                        onOpenAccent={(operationId, anchor, returnFocus) => setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus })}
+                        onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
+                          setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus, requestedAction });
+                        }}
                         onRename={onRename}
                       />
                     );

@@ -5,7 +5,10 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { operationActivityLabel, operationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
-import { subscribeSideBarOperationAction } from "./operation-action-request.js";
+import {
+  subscribeSideBarOperationAction,
+  type SideBarOperationMenuAction,
+} from "./operation-action-request.js";
 
 export interface SideBarEntry {
   readonly operation: OperationNode;
@@ -37,7 +40,12 @@ interface SideBarChipProps {
   readonly onFocus: (operationId: string) => void;
   readonly onKeyboardMove: (operationId: string, direction: -1 | 1) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => void;
-  readonly onOpenAccent: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  readonly onOpenAccent: (
+    operationId: string,
+    anchor: DOMRect,
+    returnFocus?: HTMLElement | null,
+    requestedAction?: SideBarOperationMenuAction,
+  ) => void;
   readonly onRename: (operationId: string, title: string) => void;
 }
 
@@ -127,7 +135,7 @@ export function OperationsSideBarChip({
     }
     if (request.action === "assign-group" || request.action === "set-accent") {
       onDisarmClose();
-      onOpenAccent(operation.id, chip.getBoundingClientRect(), chip);
+      onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
       return true;
     }
     onDisarmClose();

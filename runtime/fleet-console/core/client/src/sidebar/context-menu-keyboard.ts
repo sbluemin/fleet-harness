@@ -1,11 +1,16 @@
 import { useEffect, type RefObject } from "react";
 
+import type { SideBarOperationMenuAction } from "./operation-action-request.js";
+
 const MENU_ITEM_SELECTOR = 'button[role^="menuitem"]:not(:disabled)';
+// accent 섹션 판별은 data 마커로만 한다 — 접근 이름 문구는 다듬을 수 있는 표현이라 근거로 삼으면 조용히 깨진다.
+const ACCENT_OPTION_ATTRIBUTE = "data-accent-option";
 
 interface ContextMenuKeyboardOptions {
   readonly open: boolean;
   readonly menuSelector: string;
   readonly returnFocusRef: RefObject<HTMLElement | null>;
+  readonly requestedAction?: SideBarOperationMenuAction;
   readonly onEscape: () => void;
 }
 
@@ -13,6 +18,7 @@ export function useContextMenuKeyboard({
   open,
   menuSelector,
   returnFocusRef,
+  requestedAction,
   onEscape,
 }: ContextMenuKeyboardOptions): void {
   useEffect(() => {
@@ -31,10 +37,15 @@ export function useContextMenuKeyboard({
       };
       const initialItems = items();
       if (initialItems.length > 0) {
-        setCurrent(0, false);
+        const requestedIndex = requestedAction === "set-accent"
+          ? initialItems.findIndex((item) => item.hasAttribute(ACCENT_OPTION_ATTRIBUTE))
+          : 0;
+        // 마커를 못 찾으면 첫 항목으로 안전하게 떨어진다.
+        const initialIndex = Math.max(0, requestedIndex);
+        setCurrent(initialIndex, false);
         if (returnFocusRef.current !== null) {
           focusFrame = window.requestAnimationFrame(() => {
-            if (!cancelled && menu.isConnected) setCurrent(0, true);
+            if (!cancelled && menu.isConnected) setCurrent(initialIndex, true);
           });
         }
       }
@@ -103,5 +114,5 @@ export function useContextMenuKeyboard({
       observer?.disconnect();
       cleanupMenu?.();
     };
-  }, [menuSelector, onEscape, open, returnFocusRef]);
+  }, [menuSelector, onEscape, open, requestedAction, returnFocusRef]);
 }

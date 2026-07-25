@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadForTheater } from "../core/client/src/canvas/canvas-store.js";
+import { requestSideBarOperationAction } from "../core/client/src/sidebar/operation-action-request.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, setTheaterCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import type { OperationGroup, OperationNode, TheaterInfo } from "../core/client/src/types.js";
@@ -62,6 +63,46 @@ describe("sidebar context menu keyboard path", () => {
     expect(document.activeElement).toBe(chip);
   });
 
+  it("focuses the first accent for a palette set-accent request while preserving the full menu loop and Escape return", async () => {
+    renderSideBar();
+    const chip = required<HTMLElement>('[data-side-bar-chip-id="operation-a"]');
+
+    act(() => requestSideBarOperationAction(OPERATION.id, "set-accent"));
+    await nextFrame();
+
+    const menu = required<HTMLElement>('.group-context-menu-card[role="menu"]');
+    const items = menuItems(menu);
+    expect(document.activeElement?.getAttribute("data-accent-option")).toBe("none");
+    expect(document.activeElement?.textContent).toContain("None");
+    expect(items.filter((item) => item.tabIndex === 0)).toEqual([document.activeElement]);
+
+    const accentIndex = items.findIndex((item) => item.hasAttribute("data-accent-option"));
+    expect(accentIndex).toBeGreaterThan(0);
+    dispatchKey(document.activeElement as HTMLElement, "ArrowUp");
+    expect(document.activeElement).toBe(items[accentIndex - 1]);
+    expect(document.activeElement?.hasAttribute("data-accent-option")).toBe(false);
+
+    dispatchKey(document.activeElement as HTMLElement, "ArrowDown");
+    expect(document.activeElement?.getAttribute("data-accent-option")).toBe("none");
+
+    dispatchKey(document.activeElement as HTMLElement, "Escape");
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(chip);
+  });
+
+  it("keeps the first menu item focused for a palette assign-group request", async () => {
+    renderSideBar();
+
+    act(() => requestSideBarOperationAction(OPERATION.id, "assign-group"));
+    await nextFrame();
+
+    const menu = required<HTMLElement>('.group-context-menu-card[role="menu"]');
+    const items = menuItems(menu);
+    expect(document.activeElement).toBe(items[0]);
+    expect(document.activeElement?.hasAttribute("data-accent-option")).toBe(false);
+    expect(items.filter((item) => item.tabIndex === 0)).toEqual([items[0]]);
+  });
+
   it("opens the Theater actions menu from the row with ContextMenu and applies the same focus loop", async () => {
     renderSideBar();
     const row = required<HTMLElement>(".side-bar-theater-header");
@@ -91,9 +132,10 @@ describe("sidebar context menu keyboard path", () => {
     const chip = required<HTMLElement>('[data-side-bar-chip-id="operation-a"]');
     dispatchKey(chip, "F10", { shiftKey: true });
     await nextFrame();
-    const firstItem = required<HTMLButtonElement>('.group-context-menu-card button[role="menuitemradio"]');
+    const firstItem = required<HTMLButtonElement>('.group-context-menu-card button[data-accent-option="none"]');
     const click = vi.fn();
     firstItem.addEventListener("click", click);
+    firstItem.focus();
 
     dispatchKey(firstItem, "Enter");
 

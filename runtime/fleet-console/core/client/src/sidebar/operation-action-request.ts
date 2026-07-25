@@ -4,6 +4,8 @@ export type SideBarOperationAction =
   | "set-accent"
   | "minimize";
 
+export type SideBarOperationMenuAction = Extract<SideBarOperationAction, "assign-group" | "set-accent">;
+
 interface PendingOperationAction {
   readonly operationId: string;
   readonly action: SideBarOperationAction;
