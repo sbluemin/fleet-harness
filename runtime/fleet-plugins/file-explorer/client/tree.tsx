@@ -427,6 +427,13 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
     const row = flatRows[rowIndex];
     if (!row) return;
     const path = row.entry.relativePath;
+    if (path === renderedCursorPath) {
+      // 경계(첫/마지막 행)에서는 커서가 그대로라 리렌더가 없다. 요청을 남겨두면 나중의 SSE 리렌더가
+      // 그걸 소비해 사용자가 떠난 뒤 포커스를 훔치므로, 여기서 바로 처리하고 큐를 비운다.
+      pendingFocusPathRef.current = null;
+      rowRefs.current.get(path)?.focus();
+      return;
+    }
     pendingFocusPathRef.current = path;
     setCursorPath(path);
     if (shouldVirtualize && (rowIndex < startIdx || rowIndex >= endIdx)) {

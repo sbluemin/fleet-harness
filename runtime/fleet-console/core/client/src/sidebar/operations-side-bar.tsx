@@ -398,15 +398,17 @@ export function OperationsSideBar({
       setTheaterCollapsed(operation.theaterId, false);
       return false;
     }
-    if (operation.groupId && collapsedGroupSet.has(operation.groupId)) {
-      toggleGroupCollapsed(operation.groupId);
-      return false;
-    }
+    // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
       const status = normalizeOperationStatus(operationStatus[operation.id]);
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
         toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
       }
+      return false;
+    }
+    if (operation.groupId && collapsedGroupSet.has(operation.groupId)) {
+      toggleGroupCollapsed(operation.groupId);
+      return false;
     }
     return false;
   }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, operationStatus, operations, statusAxis]);
@@ -1100,7 +1102,7 @@ export function OperationsSideBar({
             onSetGroupId: (groupId) => onSetGroupId(contextMenuOperation.id, groupId),
             onCreateGroup: (name) => onCreateGroup(contextMenuOperation.theaterId, name, contextMenuOperation.id),
           }}
-          onClose={() => setActiveContextMenu(null)}
+          onClose={closeActiveContextMenu}
         />
       ) : activeContextMenu?.kind === "group" && contextMenuGroup ? (
         <GroupContextMenu
@@ -1112,7 +1114,7 @@ export function OperationsSideBar({
             onRename: (name) => onRenameGroup(contextMenuGroup.id, name),
             onUngroupAll: () => onUngroupAll(contextMenuGroup.id),
           }}
-          onClose={() => setActiveContextMenu(null)}
+          onClose={closeActiveContextMenu}
         />
       ) : activeContextMenu?.kind === "theater" && contextMenuTheater ? (
         <TheaterActionsMenu

@@ -166,7 +166,10 @@ describe("sidebar context menu keyboard path", () => {
 
     expect(click).toHaveBeenCalledOnce();
     expect(document.querySelector('[role="menu"]')).toBeNull();
+    // Escape뿐 아니라 항목 실행으로 닫힐 때도 포커스가 칩으로 돌아와야 한다.
+    expect(document.activeElement).toBe(chip);
   });
+
 });
 
 function renderSideBar(): void {
