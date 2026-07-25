@@ -40,10 +40,10 @@ interface WaveStart {
 }
 
 const TITLE_PATTERN = /^#\s+(.+)$/;
-// Execution Topology 섹션의 필드 불릿 — Kirov lane 템플릿(# Execution Topology / - Execution mode: Sequential | Parallel)
+// Execution Topology 섹션의 필드 불릿 — Fleet Plan lane 템플릿(# Execution Topology / - Execution mode: Sequential | Parallel)
 const EXECUTION_MODE_PATTERN = /^-\s*Execution mode:\s*(sequential|parallel)\b/i;
 const WAVE_PATTERN = /^##\s+wave\s+(\d+)\b/i;
-// Kirov lane 템플릿의 wave 하위 서브섹션(### Lane WN-X — <name>). id 캡처는 관용적(W1-A 형태 우선, 실패 시 null).
+// Fleet Plan lane 템플릿의 wave 하위 서브섹션(### Lane WN-X — <name>). id 캡처는 관용적(W1-A 형태 우선, 실패 시 null).
 const LANE_PATTERN = /^###\s+lane\s+(.+)$/i;
 const LANE_ID_PATTERN = /^(W\d+-[A-Za-z0-9]+)\b/i;
 const LANE_BOUNDARY_PATTERN = /^#{1,3}\s/;
@@ -52,7 +52,7 @@ const CHECKBOX_PATTERN = /^\s*-\s*\[( |x|X)\]/;
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 // 닫는 펜스는 info string 없이 마커 뒤가 공백뿐이어야 한다(CommonMark) — ```ts 같은 라인은 닫기가 아니라 내용이다.
 const CLOSING_FENCE_PATTERN = /^\s*(`{3,}|~{3,})\s*$/;
-// Kirov 기본 템플릿의 h1은 문서 제목이 아니라 섹션 헤딩이다 — title로 채택하지 않고 파일명 폴백에 맡긴다.
+// Fleet Plan 기본 템플릿의 h1은 문서 제목이 아니라 섹션 헤딩이다 — title로 채택하지 않고 파일명 폴백에 맡긴다.
 const TEMPLATE_SECTION_TITLES = new Set([
   "objective",
   "file ownership",

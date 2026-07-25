@@ -71,7 +71,7 @@ Fleet Wiki는 아키텍처 결정, 제품 히스토리, 가이드, 리뷰 큐를
 
 <img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier Settings" width="100%" />
 
-각 Carrier의 CLI 백엔드, 모델, 추론 강도, Task Force 구성을 하나의 시각적 로스터에서 선택합니다. 기본 제공되는 6개의 전문 Carrier는 전략, Plan 보증, 구현, 다단 실행, QA, 로컬·원격 통합 코드베이스 인텔리전스를 담당합니다. 제독(호스트)이 Fleet Plan을 직접 작성·변경하며, Kirov는 호스트가 작성한 기존 PlanRef를 선택적으로 감사하고 Ohio는 호스트가 작성한 Plan의 TaskRef를 실행합니다. 문서화와 Fleet Wiki 갱신도 Carrier에 위임하지 않고 제독(호스트)이 직접 수행합니다.
+각 Carrier의 CLI 백엔드, 모델, 추론 강도, Task Force 구성을 하나의 시각적 로스터에서 선택합니다. 기본 제공되는 5개의 전문 Carrier는 전략 판단과 선택적 Plan 보증, 구현, 다단 실행, QA, 로컬·원격 통합 코드베이스 인텔리전스를 담당합니다. 제독(호스트)이 Fleet Plan을 직접 작성·변경하며, Nimitz는 호스트가 작성한 정확한 PlanRef를 변경 없이 선택적으로 감사하고 Ohio는 호스트가 작성한 Plan의 TaskRef를 실행합니다. 문서화와 Fleet Wiki 갱신도 Carrier에 위임하지 않고 제독(호스트)이 직접 수행합니다.
 
 > Fleet Console은 리서치 프리뷰입니다.
 

@@ -12,7 +12,7 @@ import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
   id: "vanguard",
   displayName: "Vanguard",
-  slot: 6,
+  slot: 5,
   taskForceCapable: true,
   agent: {
     dispatch: {
@@ -32,7 +32,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "local or remote codebase reconnaissance — exploration, multi-file scanning, symbol tracing",
     "upstream or external repository investigation through APIs, public code search, or temporary clones",
     "API and SDK usage examples, web research, and external knowledge gathering",
-    "preparation for host planning or heavier operations (Nimitz, Genesis, Kirov audit) requiring code intelligence first",
+    "preparation for host planning or heavier operations (Nimitz, Genesis) requiring code intelligence first",
   ],
   whenNotToUse: [
     "ANY code modification or file editing (→genesis)",

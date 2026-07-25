@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CarrierMetadata, CarrierRequest } from "../../src/index.js";
-import { KIROV_METADATA, formatRequestBlocksGuide, parseCarrierRequest, validateParsedRequiredRequestBlocks, validateRequiredRequestBlocks } from "../../src/index.js";
+import { NIMITZ_METADATA, formatRequestBlocksGuide, parseCarrierRequest, validateParsedRequiredRequestBlocks, validateRequiredRequestBlocks } from "../../src/index.js";
 
 const META: CarrierMetadata = {
   category: "operations",
@@ -63,13 +63,14 @@ describe("validateRequiredRequestBlocks", () => {
     expect(parseCarrierRequest(META, request).blocks[0]).toMatchObject({ present: true, body: "Use <unknown> literally" });
   });
 
-  it("rejects a Kirov audit without its required plan_ref", () => {
-    const result = validateRequiredRequestBlocks(KIROV_METADATA, "<audit_focus>Check ownership</audit_focus>", "kirov");
+  it("rejects a Nimitz request without required context/problem even when audit_focus is present", () => {
+    const result = validateRequiredRequestBlocks(NIMITZ_METADATA, "<audit_focus>Check ownership</audit_focus>", "nimitz");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.missing).toEqual(["plan_ref"]);
-    expect(result.error).toContain("<plan_ref> required:");
+    expect(result.missing).toEqual(["context", "problem"]);
+    expect(result.error).toContain("<context> required:");
+    expect(result.error).toContain("<problem> required:");
   });
 });
 

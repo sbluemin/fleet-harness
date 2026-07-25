@@ -16,7 +16,7 @@ export const CARRIER_OPERATIONS_POLICY: StandingOrder = {
   prompt: String.raw`## Carrier Operations Policy
 
 ### Core Principle
-Delegate execution — retain judgment and planning. Routing, synthesis, trade-off arbitration, Fleet Plan authoring, and Plan mutation stay with the host agent except Ohio's completion marking. Kirov may audit only an existing host-authored PlanRef and never authors or mutates it.
+Delegate execution — retain judgment and planning. Routing, synthesis, trade-off arbitration, Fleet Plan authoring, and Plan mutation stay with the host agent except Ohio's completion marking. Nimitz may optionally audit an existing host-authored PlanRef when plan_ref is supplied and never authors or mutates it.
 
 ### Proportionality
 Match fleet size to task complexity: single carrier / small fleet / full fleet. Do not expand breadth where a single dispatch suffices.

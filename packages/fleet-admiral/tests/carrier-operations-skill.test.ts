@@ -60,24 +60,27 @@ describe("carrier-operations skill asset", () => {
     expect(skillContent()).toContain(`All carriers accept an optional \`<prior_jobs>\` block: ${PRIOR_JOBS_REQUEST_HINT}`);
   });
 
-  it("exposes Kirov audit and Ohio host-authored TaskRef contracts", () => {
-    expect(skillContent()).toContain("Kirov · Plan Assurance & Audit");
-    expect(skillContent()).toContain("<plan_ref> required: Required exact PlanRef for an already host-authored Fleet Plan.");
+  it("exposes Nimitz optional Plan assurance and Ohio host-authored TaskRef contracts", () => {
+    expect(skillContent()).toContain("Nimitz · Strategic Command & Judgment");
+    expect(skillContent()).toContain("<plan_ref?> optional: Optional exact PlanRef for an already host-authored Fleet Plan. Its presence activates read-only Plan assurance");
+    expect(skillContent()).toContain("<audit_focus?> optional: Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize; applies only when plan_ref is supplied.");
+    expect(skillContent()).not.toContain("**kirov**");
     expect(skillContent()).not.toContain("<plan_id>");
     expect(skillContent()).not.toContain("<goal>");
     expect(skillContent()).toContain("<task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set");
     expect(skillContent()).not.toContain("<execution_scope");
   });
 
-  it("defines exactly six live carrier contracts with no removed Carrier routing", () => {
+  it("defines exactly five live carrier contracts with no removed Carrier routing", () => {
     const content = skillContent();
     const carrierRuntime = createCarrierRuntime();
     carrierRuntime.registerCarrierDefaults();
     const carrierIds = getRegisteredOrder(carrierRuntime.registry);
 
-    expect(carrierIds).toHaveLength(6);
+    expect(carrierIds).toHaveLength(5);
     expect(content).not.toMatch(/\bchronicle\b/i);
     expect(content).not.toMatch(/\btempest\b/i);
+    expect(content).not.toMatch(/\bkirov\b/i);
     for (const carrierId of carrierIds) {
       expect(content).toContain(`**${carrierId}**`);
     }

@@ -5,7 +5,7 @@ export interface TrackPhase {
   readonly tone: "live" | "done" | "error";
 }
 
-const CAPTAIN_IDS = new Set(["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"]);
+const CAPTAIN_IDS = new Set(["nimitz", "genesis", "ohio", "sentinel", "vanguard"]);
 
 export function formatElapsedDuration(elapsedMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));

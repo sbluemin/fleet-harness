@@ -12,7 +12,7 @@ import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
   id: "ohio",
   displayName: "Ohio",
-  slot: 4,
+  slot: 3,
   agent: {
     dispatch: {
       defaultCliType: "claude",

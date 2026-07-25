@@ -5,8 +5,6 @@ import {
   PRIOR_JOBS_REQUEST_HINT,
   GENESIS_DEFAULTS,
   GENESIS_METADATA,
-  KIROV_DEFAULTS,
-  KIROV_METADATA,
   NIMITZ_DEFAULTS,
   NIMITZ_METADATA,
   OHIO_DEFAULTS,
@@ -29,7 +27,6 @@ interface PersonaCase {
 
 const EXPECTED_IDS = [
   "nimitz",
-  "kirov",
   "genesis",
   "ohio",
   "sentinel",
@@ -37,17 +34,15 @@ const EXPECTED_IDS = [
 ] as const;
 
 const EXPECTED_DEFAULTS = {
-  genesis: { slot: 3, defaultModel: "sonnet", defaultEffort: "medium" },
-  kirov: { slot: 2, defaultModel: "opus[1m]", defaultEffort: "xhigh" },
+  genesis: { slot: 2, defaultModel: "sonnet", defaultEffort: "medium" },
   nimitz: { slot: 1, defaultModel: "opus[1m]", defaultEffort: "max" },
-  sentinel: { slot: 5, defaultModel: "sonnet", defaultEffort: "max" },
-  vanguard: { slot: 6, defaultModel: "haiku", defaultEffort: "low" },
-  ohio: { slot: 4, defaultModel: "sonnet", defaultEffort: "low" },
+  sentinel: { slot: 4, defaultModel: "sonnet", defaultEffort: "max" },
+  vanguard: { slot: 5, defaultModel: "haiku", defaultEffort: "low" },
+  ohio: { slot: 3, defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
 const ALL_PERSONAS: readonly PersonaCase[] = [
   { name: "genesis", meta: GENESIS_METADATA },
-  { name: "kirov", meta: KIROV_METADATA },
   { name: "nimitz", meta: NIMITZ_METADATA },
   { name: "ohio", meta: OHIO_METADATA },
   { name: "sentinel", meta: SENTINEL_METADATA },
@@ -56,7 +51,6 @@ const ALL_PERSONAS: readonly PersonaCase[] = [
 
 const DEFAULT_PERSONAS = [
   { defaults: NIMITZ_DEFAULTS, meta: NIMITZ_METADATA },
-  { defaults: KIROV_DEFAULTS, meta: KIROV_METADATA },
   { defaults: GENESIS_DEFAULTS, meta: GENESIS_METADATA },
   { defaults: OHIO_DEFAULTS, meta: OHIO_METADATA },
   { defaults: SENTINEL_DEFAULTS, meta: SENTINEL_METADATA },
@@ -92,12 +86,12 @@ describe("allowedExecutorTools", () => {
 });
 
 describe("Task Force capability defaults", () => {
-  it("only nimitz, kirov, and vanguard source-own the capability marker", () => {
+  it("only nimitz and vanguard source-own the capability marker", () => {
     const capable = DEFAULT_PERSONAS
       .filter((persona) => persona.defaults.taskForceCapable === true)
       .map((persona) => persona.defaults.id);
 
-    expect(capable).toEqual(["nimitz", "kirov", "vanguard"]);
+    expect(capable).toEqual(["nimitz", "vanguard"]);
   });
 });
 
@@ -106,7 +100,7 @@ describe("allowedBuiltinExternalMcpServers", () => {
     expect(VANGUARD_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
   });
 
-  it("나머지 5개 carrier는 builtin external MCP를 열지 않는다", () => {
+  it("나머지 carrier는 builtin external MCP를 열지 않는다", () => {
     for (const { name, meta } of ALL_PERSONAS) {
       if (name === "vanguard") continue;
       expect(meta.allowedBuiltinExternalMcpServers ?? []).toHaveLength(0);
@@ -115,7 +109,7 @@ describe("allowedBuiltinExternalMcpServers", () => {
 });
 
 describe("persona defaults", () => {
-  it("각 persona 파일이 예상 6개 carrier 기본값을 소유", () => {
+  it("각 persona 파일이 예상 5개 carrier 기본값을 소유", () => {
     expect(DEFAULT_PERSONAS.map((persona) => persona.defaults.id)).toEqual(EXPECTED_IDS);
   });
 
@@ -148,7 +142,7 @@ describe("Vanguard local and remote reconnaissance contract", () => {
     expect(VANGUARD_DEFAULTS).toEqual({
       id: "vanguard",
       displayName: "Vanguard",
-      slot: 6,
+      slot: 5,
       taskForceCapable: true,
       agent: {
         dispatch: {
@@ -164,7 +158,7 @@ describe("Vanguard local and remote reconnaissance contract", () => {
       "local or remote codebase reconnaissance — exploration, multi-file scanning, symbol tracing",
       "upstream or external repository investigation through APIs, public code search, or temporary clones",
       "API and SDK usage examples, web research, and external knowledge gathering",
-      "preparation for host planning or heavier operations (Nimitz, Genesis, Kirov audit) requiring code intelligence first",
+      "preparation for host planning or heavier operations (Nimitz, Genesis) requiring code intelligence first",
     ]);
     expect(VANGUARD_METADATA.whenNotToUse).toEqual([
       "ANY code modification or file editing (→genesis)",
@@ -207,30 +201,45 @@ describe("Vanguard local and remote reconnaissance contract", () => {
   });
 });
 
-describe("Kirov assurance and Ohio TaskRef execution contract", () => {
-  it("keeps Kirov optional, strictly read-only, and scoped to an existing host-authored PlanRef", () => {
-    const principles = KIROV_METADATA.principles ?? [];
+describe("Nimitz Plan assurance and Ohio TaskRef execution contract", () => {
+  it("keeps Nimitz optional Plan assurance strictly read-only and plan_ref-triggered", () => {
+    const principles = NIMITZ_METADATA.principles ?? [];
 
-    expect(KIROV_METADATA.title).toBe("Plan Assurance & Audit");
-    expect(KIROV_METADATA.summary).toContain("existing host-authored Fleet Plan");
-    expect(KIROV_METADATA.requestBlocks).toEqual([
-      expect.objectContaining({ tag: "plan_ref", required: true }),
-      expect.objectContaining({ tag: "audit_focus", required: false }),
-      expect.objectContaining({ tag: "context", required: false }),
+    expect(NIMITZ_METADATA.title).toBe("Strategic Command & Judgment");
+    expect(NIMITZ_METADATA.summary).toContain("Optionally audits an existing host-authored Fleet Plan");
+    expect(NIMITZ_METADATA.requestBlocks).toEqual([
+      expect.objectContaining({ tag: "context", required: true }),
+      expect.objectContaining({ tag: "problem", required: true }),
       expect.objectContaining({ tag: "constraints", required: false }),
+      expect.objectContaining({ tag: "artifacts", required: false }),
+      expect.objectContaining({
+        tag: "plan_ref",
+        required: false,
+        hint: "Optional exact PlanRef for an already host-authored Fleet Plan. Its presence activates read-only Plan assurance; Nimitz never authors or mutates Plan state.",
+      }),
+      expect.objectContaining({
+        tag: "audit_focus",
+        required: false,
+        hint: "Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize; applies only when plan_ref is supplied.",
+      }),
     ]);
-    expect(KIROV_METADATA.requestBlocks.map((block) => block.tag)).not.toEqual(expect.arrayContaining(["plan_id", "goal"]));
-    expect(KIROV_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
-    expect(KIROV_METADATA.permissions.join("\n")).toContain("must never call plan_write");
-    expect(KIROV_METADATA.permissions.join("\n")).toContain("MUST NOT write or edit source code, documentation, configuration");
-    expect(KIROV_METADATA.permissions.join("\n")).toContain("MUST NOT make product, architecture");
-    expect(KIROV_METADATA.outputFormat).toContain("PASS | REVISE | BLOCKED");
+    expect(NIMITZ_METADATA.requestBlocks.map((block) => block.tag)).not.toEqual(expect.arrayContaining(["plan_id", "goal"]));
+    expect(NIMITZ_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
+    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("plan_ref is the sole Plan-assurance trigger");
+    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("MUST NEVER call plan_write");
+    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("never becomes an Ohio prerequisite");
+    expect(NIMITZ_METADATA.outputFormat).toContain("PASS | REVISE | BLOCKED");
     for (const field of ["**PlanRef**", "**Findings**", "**Dispatch readiness**", "**Host action**"]) {
-      expect(KIROV_METADATA.outputFormat).toContain(field);
+      expect(NIMITZ_METADATA.outputFormat).toContain(field);
     }
-    expect(KIROV_METADATA.outputFormat).toContain("For PASS, explicitly report no findings.");
+    expect(NIMITZ_METADATA.outputFormat).toContain("For PASS, explicitly report no findings.");
+    expect(NIMITZ_METADATA.outputFormat).toContain("**Bottom line**");
+    expect(NIMITZ_METADATA.outputFormat).toContain("**Action plan** — Numbered strategic next actions for the host.");
+    expect(NIMITZ_METADATA.outputFormat).toContain("Never decompose into implementation tasks, waves, Lanes, or delivery checklists.");
+    expect(NIMITZ_METADATA.outputFormat).not.toContain("Numbered implementation steps.");
     expect(principles.join("\n")).toContain("affected Plan section, Lane, or TaskRef");
-    expect(principles.join("\n")).toContain("optional assurance, not a planning prerequisite");
+    expect(principles.join("\n")).toContain("audit_focus without plan_ref must be ignored");
+    expect(principles.join("\n")).toContain("never replaces host Plan authorship");
   });
 
   it("Ohio accepts exactly one Plan/Lane TaskRef group and marks it through the Plan tool", () => {

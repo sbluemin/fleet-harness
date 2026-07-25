@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import type http from "node:http";
+import path from "node:path";
 
 import { createCarrierRegistry, initStore, registerDefaultCarriers, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 import { afterEach, describe, expect, it } from "vitest";
@@ -39,7 +41,29 @@ describe("Terminal Carrier Settings routes", () => {
 
     registerCarrierSettingsRoutes(ctx, { registry });
     expect(registeredPath).toBe("/api/v1/plugins/terminal/carriers");
-    await handler!({ req: { method: "PATCH", headers: { "content-type": "application/json" } } as never, res: {} as never, pathname: "/api/v1/plugins/terminal/carriers/kirov" });
+    await handler!({ req: { method: "PATCH", headers: { "content-type": "application/json" } } as never, res: {} as never, pathname: "/api/v1/plugins/terminal/carriers/nimitz" });
     expect(responses).toEqual([{ status: 401, body: { error: "unauthorized" } }]);
+  });
+
+  it("does not promote stale carriers.json Kirov overrides into registry-driven settings state", () => {
+    const storeDir = "/tmp/fleet-terminal-carriers-stale-kirov";
+    initStore(storeDir);
+    const registry = createCarrierRegistry();
+    registerDefaultCarriers(registry);
+    fs.mkdirSync(storeDir, { recursive: true });
+    fs.writeFileSync(path.join(storeDir, "carriers.json"), JSON.stringify({
+      _meta: { generation: 3 },
+      carriers: { kirov: { displayName: "Stale Kirov" } },
+    }));
+
+    const state = buildCarrierSettingsState(registry);
+    expect(state.carriers.map((carrier) => carrier.carrierId)).not.toContain("kirov");
+    expect(state.carriers.map((carrier) => carrier.carrierId)).toEqual([
+      "nimitz",
+      "genesis",
+      "ohio",
+      "sentinel",
+      "vanguard",
+    ]);
   });
 });

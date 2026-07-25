@@ -16,7 +16,7 @@ import { carrierSettingsSection } from "../client/carriers/section.js";
 const state = {
   generation: 1,
   carriers: [{
-    carrierId: "kirov", displayName: "Kirov", sourceDisplayName: "Kirov", role: "Planner", roleDescription: "Plans", slot: 1,
+    carrierId: "genesis", displayName: "Genesis", sourceDisplayName: "Genesis", role: "Engineer", roleDescription: "Builds", slot: 2,
     cliType: "codex", defaultCliType: "codex", model: "gpt-5", taskForceCapable: false, taskforce: { backends: [] },
   }],
 };
@@ -24,7 +24,7 @@ const options = {
   cliTypes: [{ id: "codex", displayName: "Codex", defaultModel: "gpt-5", models: [{ modelId: "gpt-5", name: "GPT-5" }] }],
   taskForceConstraints: { minBackends: 2 },
 };
-const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"] as const;
+const captainIds = ["nimitz", "genesis", "ohio", "sentinel", "vanguard"] as const;
 const interactiveOptions = {
   cliTypes: [
     {
@@ -101,9 +101,9 @@ describe("Terminal Carrier Settings client", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(options), { status: 200 })));
 
     await loadCarrierSettings();
-    expect(getCarrierSettingsStoreState().activeCarrierId).toBe("kirov");
-    selectCarrierSettingsCarrier("kirov");
-    expect(getCarrierSettingsStoreState().activeCarrierId).toBe("kirov");
+    expect(getCarrierSettingsStoreState().activeCarrierId).toBe("genesis");
+    selectCarrierSettingsCarrier("genesis");
+    expect(getCarrierSettingsStoreState().activeCarrierId).toBe("genesis");
     expect(getCarrierSettingsStoreState()).not.toHaveProperty("draft");
   });
 
@@ -124,8 +124,8 @@ describe("Terminal Carrier Settings client", () => {
     const strip = container!.querySelector<HTMLElement>('[role="group"][aria-label="Carrier list"]');
     const chips = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")];
     expect(strip).not.toBeNull();
-    expect(chips).toHaveLength(6);
-    expect(captainIds).toHaveLength(6);
+    expect(chips).toHaveLength(5);
+    expect(captainIds).toHaveLength(5);
     expect(chips[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(chips.slice(1).every((chip) => chip.getAttribute("aria-pressed") === "false")).toBe(true);
     expect(chips[0]?.querySelector(".terminal-carriers-live-dot.is-live")).not.toBeNull();
@@ -203,10 +203,10 @@ describe("Terminal Carrier Settings client", () => {
     await chooseSelectOption("#carrier-cli", "Claude");
     expect(displayedSelectLabel("#carrier-cli")).toBe("Claude");
 
-    const kirov = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")]
-      .find((chip) => chip.textContent?.includes("Kirov"));
-    if (!kirov) throw new Error("Kirov chip must render.");
-    await act(async () => kirov.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const genesis = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")]
+      .find((chip) => chip.textContent?.includes("Genesis"));
+    if (!genesis) throw new Error("Genesis chip must render.");
+    await act(async () => genesis.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(displayedSelectLabel("#carrier-cli")).toBe("Codex");
 
     await act(async () => {

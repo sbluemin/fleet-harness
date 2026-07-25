@@ -66,7 +66,6 @@
 
   /* captain 식별은 --id-* 8톤에 1:1 배정한다 — raw hex 금지, 테마 연동, 중복 없음. */
   --captain-nimitz: var(--id-amber);
-  --captain-kirov: var(--id-plum);
   --captain-genesis: var(--id-crimson);
   --captain-ohio: var(--id-indigo);
   --captain-sentinel: var(--id-rose);

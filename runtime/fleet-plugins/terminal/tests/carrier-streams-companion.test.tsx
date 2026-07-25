@@ -80,8 +80,8 @@ describe("Carrier Streams companion", () => {
   it("stacks full-width carrier rows in request, markdown, reasoning, and latest-activity order without thought content", async () => {
     installSession([
       makeJob("job-live", "active", [
-        makeTrack("kirov-track", {
-          displayName: "Kirov",
+        makeTrack("genesis-track", {
+          displayName: "Genesis",
           requestPreview: "Implement the approved companion.",
           text: "**Streaming** output",
           thought: "private chain of thought",
@@ -95,7 +95,7 @@ describe("Carrier Streams companion", () => {
           text: "",
           thought: "another private thought",
         }),
-      ], "kirov"),
+      ], "genesis"),
     ]);
     await renderCompanion();
 
@@ -108,7 +108,7 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).toContain("Reasoning…");
     expect(container?.textContent).not.toContain("private chain of thought");
     expect(container?.textContent).not.toContain("another private thought");
-    expect(container?.querySelector('[data-captain="kirov"]')).not.toBeNull();
+    expect(container?.querySelector('[data-captain="genesis"]')).not.toBeNull();
     expect(ANALYSIS_CSS).toMatch(/\.carrier-streams__board \{[^}]*flex-direction: column;[^}]*gap: 10px;[^}]*overflow-x: hidden;[^}]*overflow-y: auto;/);
     expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column \{[^}]*flex: none;[^}]*width: 100%;/);
     expect(ANALYSIS_CSS).not.toContain("flex: 1 0 250px");
@@ -138,13 +138,13 @@ describe("Carrier Streams companion", () => {
 
   it("orders message above reasoning above the latest activity card", async () => {
     const track = makeTrack("order-track", {
-      displayName: "Kirov",
+      displayName: "Genesis",
       text: "Public answer",
       thought: "hidden reasoning",
       tools: [{ id: "bash-1", name: "Bash", status: "running" }],
     });
     installSession([{
-      ...makeJob("job-order", "active", [track], "kirov"),
+      ...makeJob("job-order", "active", [track], "genesis"),
       recentEvents: [{
         id: 9,
         tenantId: TENANT_ID,
@@ -223,7 +223,7 @@ describe("Carrier Streams companion", () => {
   it("normalizes server track:tool payloads through the reducer into one latest activity card", async () => {
     let job = createEmptyJob(TENANT_ID, "job-tool", 1_000);
     job = applyEvent(job, observed(1, "job:registered", {
-      tracks: [{ trackId: "tool-track", displayName: "Kirov" }],
+      tracks: [{ trackId: "tool-track", displayName: "Genesis" }],
     }));
     job = applyEvent(job, observed(2, "track:begin", {
       trackId: "tool-track",
@@ -283,33 +283,33 @@ describe("Carrier Streams companion", () => {
 
   it("collapses completed tracks to a one-line full-width strip, expands them in memory, and restores pinned following", async () => {
     installSession([makeJob("job-done", "active", [
-      makeTrack("done-track", { displayName: "Kirov", text: "Final answer" }),
-    ], "kirov")]);
+      makeTrack("done-track", { displayName: "Genesis", text: "Final answer" }),
+    ], "genesis")]);
     await renderCompanion();
     await act(async () => {
       installSession([makeJob("job-done", "done", [
         makeTrack("done-track", {
-          displayName: "Kirov",
+          displayName: "Genesis",
           status: "done",
           text: "Final answer",
           tools: [{ id: "write-1", name: "Write", input: { file_path: "src/main.ts" }, status: "completed" }],
           finishedAt: 2_000,
         }),
-      ], "kirov")]);
+      ], "genesis")]);
       await Promise.resolve();
     });
 
     const collapsed = container?.querySelector<HTMLButtonElement>(".carrier-stream-column--collapsed");
     expect(collapsed?.textContent).toContain("DONE");
-    expect(collapsed?.getAttribute("aria-label")).toBe("Expand completed stream · Kirov");
-    expect(Array.from(collapsed?.children ?? []).map((child) => child.textContent)).toEqual(["", "Kirov", "DONE", "1s"]);
+    expect(collapsed?.getAttribute("aria-label")).toBe("Expand completed stream · Genesis");
+    expect(Array.from(collapsed?.children ?? []).map((child) => child.textContent)).toEqual(["", "Genesis", "DONE", "1s"]);
     expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column--collapsed \{[^}]*height: 36px;[^}]*width: 100%;[^}]*flex-direction: row;/);
     expect(ANALYSIS_CSS).not.toMatch(/\.carrier-stream-column--collapsed \{[^}]*writing-mode:/);
 
     act(() => collapsed?.click());
     expect(container?.querySelector(".carrier-stream-column--collapsed")).toBeNull();
     expect(container?.querySelector(".carrier-stream-column__markdown")?.textContent).toContain("Final answer");
-    expect(container?.querySelector('[aria-label="Collapse completed stream · Kirov"]')).not.toBeNull();
+    expect(container?.querySelector('[aria-label="Collapse completed stream · Genesis"]')).not.toBeNull();
     const activity = container?.querySelector(".carrier-stream-column__activity");
     expect(activity?.getAttribute("data-tone")).toBe("done");
     expect(activity?.querySelector(".carrier-stream-column__activity-scan")).toBeNull();
@@ -327,14 +327,14 @@ describe("Carrier Streams companion", () => {
     await act(async () => {
       installSession([makeJob("job-done", "done", [
         makeTrack("done-track", {
-          displayName: "Kirov",
+          displayName: "Genesis",
           status: "done",
           lastEventId: 2,
           text: "Final answer\nFollowed output",
           tools: [{ id: "write-1", name: "Write", input: { file_path: "src/main.ts" }, status: "completed" }],
           finishedAt: 2_000,
         }),
-      ], "kirov")]);
+      ], "genesis")]);
       await Promise.resolve();
     });
     expect(body.scrollTop).toBe(600);
@@ -362,7 +362,7 @@ describe("Carrier Streams companion", () => {
     }));
     expect(onRequestCompanions).not.toHaveBeenCalled();
     await act(async () => {
-      installSession([makeJob("job-live", "active", [makeTrack("live-track")], "kirov")]);
+      installSession([makeJob("job-live", "active", [makeTrack("live-track")], "genesis")]);
       await Promise.resolve();
     });
 
@@ -422,7 +422,7 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).not.toContain("No carriers streaming.");
 
     await act(async () => {
-      installSession([makeJob("job-live-ko", "active", [makeTrack("live-ko")], "kirov")]);
+      installSession([makeJob("job-live-ko", "active", [makeTrack("live-ko")], "genesis")]);
       await Promise.resolve();
     });
     await renderCompanion(createContext({ language: "ko" }));
@@ -569,7 +569,7 @@ describe("Carrier Streams companion", () => {
     let job = createEmptyJob(TENANT_ID, "job-mixed", 1_000);
     job = applyEvent(job, observed(1, "job:registered", {
       tracks: [
-        { trackId: "ok-track", displayName: "Kirov" },
+        { trackId: "ok-track", displayName: "Genesis" },
         { trackId: "bad-track", displayName: "Sentinel" },
       ],
     }));
@@ -588,7 +588,7 @@ describe("Carrier Streams companion", () => {
     const doneStrip = container?.querySelector<HTMLButtonElement>(".carrier-stream-column--collapsed");
     act(() => doneStrip?.click());
     const columns = [...(container?.querySelectorAll(".carrier-stream-column") ?? [])];
-    const okColumn = columns.find((column) => column.textContent?.includes("Kirov"));
+    const okColumn = columns.find((column) => column.textContent?.includes("Genesis"));
     const badColumn = columns.find((column) => column.textContent?.includes("Sentinel"));
     expect(okColumn?.querySelector('[role="alert"]')).toBeNull();
     expect(badColumn?.querySelector('[role="alert"]')?.textContent).toBe("One carrier failed.");
@@ -629,8 +629,20 @@ describe("Carrier Streams helpers", () => {
     expect(resolveToolTone("failed")).toBe("error");
     expect(describeToolTarget({ file_path: "src/main.ts", path: "fallback.ts" })).toBe("src/main.ts");
     expect(formatElapsedDuration(90_000)).toBe("1m 30s");
-    expect(resolveCarrierCaptain("kirov")).toBe("kirov");
+    expect(resolveCarrierCaptain("genesis")).toBe("genesis");
+    expect(resolveCarrierCaptain("kirov")).toBeUndefined();
     expect(resolveCarrierCaptain("unknown")).toBeUndefined();
+  });
+
+  it("does not promote stale Kirov owner ids into registry-driven captain identity", async () => {
+    installSession([makeJob("job-stale-kirov", "active", [
+      makeTrack("stale-track", { displayName: "Stale Kirov", text: "still streaming" }),
+    ], "kirov")]);
+    await renderCompanion();
+
+    expect(container?.textContent).toContain("Stale Kirov");
+    expect(container?.querySelector('[data-captain="kirov"]')).toBeNull();
+    expect(container?.querySelector(".carrier-stream-column__captain-dot")).toBeNull();
   });
 
   it("merges job ids without duplicating known entries", () => {

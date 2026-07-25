@@ -10,7 +10,7 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 // ───── UI strings ─────
 const UI = {
   navHierarchy: { ko: "지휘 체계", en: "Command Chain" },
-  navCaptains:  { ko: "6 함장", en: "6 Captains" },
+  navCaptains:  { ko: "5 함장", en: "5 Captains" },
   navProtocol:  { ko: "4 모드", en: "4 Modes" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
@@ -21,7 +21,7 @@ const UI = {
   heroDescAdmiral:{ ko: "대원수", en: "Admiral of the Navy" },
   heroDescMid:    { ko: "로서 임무를 부여하고, 호스트인 ", en: ", while the host — the " },
   heroDescHost:   { ko: "제독", en: "Admiral" },
-  heroDescMid2:   { ko: "이 6명의 ", en: " — delegates to six " },
+  heroDescMid2:   { ko: "이 5명의 ", en: " — delegates to five " },
   heroDescCap:    { ko: "함장", en: "Captains" },
   heroDescTail:   { ko: "에게 책임을 위임해 작전을 종결합니다.", en: " who close the operation." },
 
@@ -45,8 +45,8 @@ const UI = {
   backendsTitle: { ko: ["네 개의 CLI,", "한 명의 제독."], en: ["Four CLIs,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작전을 수행하지 않는다. 각 백엔드는 자신이 가장 잘하는 항해를 맡는다.", en: "No single model runs every mission. Each backend takes the voyage it sails best." },
 
-  captainsEy:    { ko: "Captains Roster · 06", en: "Captains Roster · 06" },
-  captainsTitle: { ko: ["여섯 명의 함장,", "겹치지 않는 여섯 개의 책임."], en: ["Six captains,", "six non-overlapping duties."] },
+  captainsEy:    { ko: "Captains Roster · 05", en: "Captains Roster · 05" },
+  captainsTitle: { ko: ["다섯 명의 함장,", "겹치지 않는 다섯 개의 책임."], en: ["Five captains,", "five non-overlapping duties."] },
   captainsLede:  { ko: "함장은 장식이 아닌 운영 계약이다. 좌측에서 함장을 선택하면 임무 강령과 책임 명세가 펼쳐진다.", en: "Captains aren't decoration — they're operational contracts. Pick one to see its mission and duties." },
   captainsAria:  { ko: "함장 명단", en: "Captains list" },
   captainCap:    { ko: "Captain", en: "Captain" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 4 CLI · 6 Captains · 4 Modes", en: "· 4 CLI · 6 Captains · 4 Modes" },
+  countMeta:   { ko: "· 4 CLI · 5 Captains · 4 Modes", en: "· 4 CLI · 5 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -98,7 +98,7 @@ const HIERARCHY = [
     rank: "Tier 03",
     role: { ko: "함장", en: "Captain" },
     en: "Captain · CLI AGENT",
-    desc: { ko: "6명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Six specialists, each running a single CLI backend within their domain to execute the operation." },
+    desc: { ko: "5명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Five specialists, each running a single CLI backend within their domain to execute the operation." },
   },
 ];
 
@@ -131,25 +131,12 @@ const CAPTAINS = [
     role: { ko: "Strategic Command & Judgment", en: "Strategic Command & Judgment" },
     cli: "Claude Code",
     color: "#d4af37",
-    mission: { ko: "방아쇠를 당기지 않는다. 그러나 어디에 어떻게 당길지를 결정한다. Read-only 전략 사령관.", en: "Doesn't pull the trigger — decides where and how it should be pulled. The read-only strategic commander." },
+    mission: { ko: "방아쇠를 당기지 않는다. 그러나 어디에 어떻게 당길지를 결정하고, 호스트가 작성한 정확한 PlanRef를 선택적으로 감사한다. Read-only 전략 사령관.", en: "Doesn't pull the trigger — decides where and how it should be pulled, and may optionally audit an exact host-authored PlanRef. The read-only strategic commander." },
     duties: [
       { ko: "아키텍처 결정 (ADR) — 트레이드오프 및 위험 분석", en: "Architecture decisions (ADRs) — tradeoffs and risk analysis." },
       { ko: "전략 판단 — 대안 비교, 우선순위, 진행 여부", en: "Strategic judgment — alternatives, priorities, go/no-go." },
-      { ko: "Task Force 합의 — 다중 함장 결과 중재", en: "Task Force consensus — arbitrating multi-captain outputs." },
-      { ko: "Read-only 모드 — 실행은 위임, 판단만 수행", en: "Read-only mode — judgment only; execution is delegated." },
-    ],
-  },
-  {
-    id: "Kirov",
-    role: { ko: "Plan Assurance & Audit", en: "Plan Assurance & Audit" },
-    cli: "Claude Code",
-    color: "#e8a854",
-    mission: { ko: "호스트가 작성한 PlanRef를 읽기 전용으로 감사한다. Plan 변경과 결정은 호스트에 남긴다.", en: "Read-only assurance for a host-authored PlanRef. Plan changes and decisions stay with the host." },
-    duties: [
-      { ko: "호스트가 작성한 기존 PlanRef를 plan_read로 감사", en: "Audits an existing host-authored PlanRef through plan_read." },
-      { ko: "Plan 섹션·Lane·TaskRef별 발견사항 식별", en: "Identifies findings by Plan section, Lane, or TaskRef." },
-      { ko: "PASS · REVISE · BLOCKED 디스패치 준비도 판정", en: "Reports PASS, REVISE, or BLOCKED dispatch readiness." },
-      { ko: "호스트가 적용할 수정 제안 — Plan 상태는 변경하지 않음", en: "Proposes host-applied corrections without mutating Plan state." },
+      { ko: "선택적 Plan 보증 — 정확한 PlanRef의 PASS · REVISE · BLOCKED 판정", en: "Optional Plan assurance — PASS, REVISE, or BLOCKED judgment for an exact PlanRef." },
+      { ko: "Task Force 합의와 읽기 전용 경계 — 실행·Plan 변경은 호스트에 반환", en: "Task Force consensus and read-only boundary — execution and Plan changes return to the host." },
     ],
   },
   {
@@ -288,7 +275,7 @@ const DIFFS = [
     n: "02",
     name: "Naval Metaphor as Contract",
     kr: { ko: "운영 가능한 해군 메타포", en: "An Operational Naval Metaphor" },
-    body: { ko: "장식이 아니다. 6명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the six captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
+    body: { ko: "장식이 아니다. 5명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the five captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
   },
   {
     n: "03",
@@ -341,7 +328,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "4 CLI 백엔드 동시 지휘", en: "Four CLI backends commanded together" },
-      { ko: "6 함장 명시적 책임 분리", en: "Six captains, distinct duties" },
+      { ko: "5 함장 명시적 책임 분리", en: "Five captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
     verdict: { ko: "처음부터 함대로 설계되었다.", en: "Designed as a fleet from day one." },
@@ -383,16 +370,16 @@ function Nav() {
 
 // ───── Hero ─────
 function Hero() {
-  const nodeCount = 6;
+  const nodeCount = 5;
   const radius = 38;
   const nodes = Array.from({ length: nodeCount }, (_, i) => {
     const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
     return {
       x: 50 + Math.cos(angle) * radius,
       y: 50 + Math.sin(angle) * radius,
-      label: ["VG", "NM", "KV", "GN", "OH", "SN"][i],
-      full: ["Vanguard", "Nimitz", "Kirov", "Genesis", "Ohio", "Sentinel"][i],
-      color: ["#5fd673", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa", "#fb7185"][i],
+      label: ["VG", "NM", "GN", "OH", "SN"][i],
+      full: ["Vanguard", "Nimitz", "Genesis", "Ohio", "Sentinel"][i],
+      color: ["#5fd673", "#d4af37", "#ff6b6b", "#a78bfa", "#fb7185"][i],
     };
   });
 
@@ -430,7 +417,7 @@ function Hero() {
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaCaptains)}</div>
-                <div className="value"><em>6</em> · {t(UI.metaCaptainsVal)}</div>
+                <div className="value"><em>{CAPTAINS.length}</em> · {t(UI.metaCaptainsVal)}</div>
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaProtocol)}</div>

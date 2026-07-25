@@ -12,7 +12,7 @@ import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 export const GENESIS_DEFAULTS: CarrierPersonaDefaults = {
   id: "genesis",
   displayName: "Genesis",
-  slot: 3,
+  slot: 2,
   agent: {
     dispatch: {
       defaultCliType: "claude",
@@ -46,7 +46,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "objective", hint: "What needs to be built or achieved. Be specific about the desired end state.", required: true },
     { tag: "scope", hint: "Which modules, directories, or subsystems are in play.", required: true },
     { tag: "constraints", hint: "Hard technical constraints, compatibility requirements, or non-negotiables.", required: false },
-    { tag: "references", hint: "Prior Nimitz recommendations, host-authored Plans, Kirov audits, existing patterns to follow, or design decisions already made.", required: false },
+    { tag: "references", hint: "Prior Nimitz recommendations, host-authored Plans, Nimitz Plan-assurance findings, existing patterns to follow, or design decisions already made.", required: false },
   ],
   allowedExecutorTools: ["carrier_jobs", "plan_read"],
 
