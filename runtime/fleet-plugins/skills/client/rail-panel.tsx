@@ -153,6 +153,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         onClose={() => setReadMoreEntry(null)}
         onInstall={handleOverlayInstall}
         t={t}
+        language={ctx.language}
       />
     </div>
   );

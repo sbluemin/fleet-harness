@@ -1,3 +1,7 @@
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import type { RepositoryMessageKey } from "./i18n/messages.js";
+
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
 export const WORKSPACE_DOCK_MIN_HEIGHT = 160;
 export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
@@ -26,8 +30,17 @@ export interface WorkspaceTreeCounts {
 
 export type WorkspaceTreeSection = {
   readonly id: "context" | "working" | "worktrees" | "branches" | "tags" | "stashes";
-  readonly label: "CONTEXT" | "WORKING" | "WORKTREES" | "BRANCHES" | "TAGS" | "STASHES";
+  readonly label: string;
   readonly count: number;
+};
+
+const SECTION_LABEL_KEY: Record<WorkspaceTreeSection["id"], RepositoryMessageKey> = {
+  context: "repository.section.context",
+  working: "repository.section.working",
+  worktrees: "repository.section.worktrees",
+  branches: "repository.section.branches",
+  tags: "repository.section.tags",
+  stashes: "repository.section.stashes",
 };
 
 export function readWorkspaceTreeWidth(storage?: StorageLike): number {
@@ -78,13 +91,16 @@ export function buildWorkspaceDockTemplate(dockHeight: number): string {
   return `minmax(180px, 1fr) 4px ${dockHeight}px`;
 }
 
-export function buildWorkspaceTreeSections(counts: WorkspaceTreeCounts): readonly WorkspaceTreeSection[] {
+export function buildWorkspaceTreeSections(
+  counts: WorkspaceTreeCounts,
+  t: Translate<RepositoryMessageKey>,
+): readonly WorkspaceTreeSection[] {
   return [
-    { id: "context", label: "CONTEXT", count: counts.context },
-    { id: "working", label: "WORKING", count: counts.changes },
-    { id: "worktrees", label: "WORKTREES", count: counts.worktrees },
-    { id: "branches", label: "BRANCHES", count: counts.branches },
-    { id: "tags", label: "TAGS", count: counts.tags },
-    { id: "stashes", label: "STASHES", count: counts.stashes },
+    { id: "context", label: t(SECTION_LABEL_KEY.context), count: counts.context },
+    { id: "working", label: t(SECTION_LABEL_KEY.working), count: counts.changes },
+    { id: "worktrees", label: t(SECTION_LABEL_KEY.worktrees), count: counts.worktrees },
+    { id: "branches", label: t(SECTION_LABEL_KEY.branches), count: counts.branches },
+    { id: "tags", label: t(SECTION_LABEL_KEY.tags), count: counts.tags },
+    { id: "stashes", label: t(SECTION_LABEL_KEY.stashes), count: counts.stashes },
   ];
 }

@@ -70,7 +70,7 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
-  const commands = useMemo(() => buildPaletteCommands(state, railPanels), [state, railPanels]);
+  const commands = useMemo(() => buildPaletteCommands(state, railPanels, t), [state, railPanels, t]);
   const filteredCommands = useMemo(
     () => (commandMode ? filterPaletteCommands(commands, commandModeQuery(query)) : commands),
     [commandMode, commands, query],
@@ -114,7 +114,7 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [commandMode, query, railPanels, state.activeTheaterId, state.operationSearchOpen]);
+  }, [commandMode, query, railPanels, state.activeTheaterId, state.operationSearchOpen, t]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;

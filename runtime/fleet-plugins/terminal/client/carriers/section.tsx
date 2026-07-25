@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Select } from "@fleet-console/sdk/react/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 
+import { getT, useTerminalLocale } from "../i18n/index.js";
 import {
   getCarrierSettingsStoreState,
   loadCarrierSettings,
@@ -35,11 +36,12 @@ const CAPTAIN_COLOR_TOKENS: Readonly<Record<string, string>> = {
 
 export const carrierSettingsSection = defineSettingsSection({
   id: "carriers",
-  title: "Carriers",
+  title: (locale) => getT(locale)("terminal.carriers.title"),
   render: () => <CarrierSettingsSection />,
 });
 
 function CarrierSettingsSection() {
+  const t = getT(useTerminalLocale());
   const settings = useCarrierSettingsStore();
   const activeCarrier = settings.state?.carriers.find((carrier) => carrier.carrierId === settings.activeCarrierId) ?? null;
   const [editingDisplayName, setEditingDisplayName] = useState(false);
@@ -142,9 +144,9 @@ function CarrierSettingsSection() {
     <>
       {settings.error ? <p className="terminal-carriers-error" role="alert">{settings.error}</p> : null}
 
-      <div className="terminal-carriers-strip" role="group" aria-label="Carrier list">
-        {settings.loading && !settings.state ? <p className="terminal-carriers-empty">Loading carrier settings.</p> : null}
-        {settings.state && settings.state.carriers.length === 0 ? <p className="terminal-carriers-empty">No carriers registered.</p> : null}
+      <div className="terminal-carriers-strip" role="group" aria-label={t("terminal.carriers.listAria")}>
+        {settings.loading && !settings.state ? <p className="terminal-carriers-empty">{t("terminal.carriers.loading")}</p> : null}
+        {settings.state && settings.state.carriers.length === 0 ? <p className="terminal-carriers-empty">{t("terminal.carriers.empty")}</p> : null}
         {settings.state?.carriers.map((carrier) => (
           <CarrierChip
             key={carrier.carrierId}
@@ -160,14 +162,14 @@ function CarrierSettingsSection() {
         <section key={activeCarrier.carrierId} className="global-settings-card terminal-carriers-card" style={getCaptainColorStyle(activeCarrier.carrierId)}>
             <div className="terminal-carriers-detail-head">
               <div className="terminal-carriers-detail-title-block">
-                <div className="terminal-carriers-captain-id"><span>Captain</span> · {activeCarrier.carrierId.toUpperCase()}</div>
+                <div className="terminal-carriers-captain-id"><span>{t("terminal.carriers.captain")}</span> · {activeCarrier.carrierId.toUpperCase()}</div>
                 <div className={`terminal-carriers-name-line ${editingDisplayName ? "is-editing" : ""}`}>
                   {editingDisplayName ? (
                     <>
                       <input
                         id="carrier-display-name"
                         className="terminal-carriers-input terminal-carriers-name-input"
-                        aria-label="Display name"
+                        aria-label={t("terminal.carriers.displayName")}
                         value={displayName}
                         maxLength={DISPLAY_NAME_MAX_LENGTH}
                         disabled={isSaving}
@@ -187,17 +189,17 @@ function CarrierSettingsSection() {
                           }
                         }}
                       />
-                      <button type="button" className="terminal-carriers-icon-button" data-display-name-action aria-label="Save display name" disabled={isSaving} onClick={() => void commitDisplayName()}>
+                      <button type="button" className="terminal-carriers-icon-button" data-display-name-action aria-label={t("terminal.carriers.saveDisplayNameAria")} disabled={isSaving} onClick={() => void commitDisplayName()}>
                         <CheckIcon />
                       </button>
-                      <button type="button" className="terminal-carriers-icon-button" data-display-name-action aria-label="Cancel display name edit" onClick={cancelDisplayName}>
+                      <button type="button" className="terminal-carriers-icon-button" data-display-name-action aria-label={t("terminal.carriers.cancelDisplayNameAria")} onClick={cancelDisplayName}>
                         <CloseIcon />
                       </button>
                     </>
                   ) : (
                     <>
                       <h3 className="terminal-carriers-captain-name">{activeCarrier.displayName}</h3>
-                      <button type="button" className="terminal-carriers-icon-button" aria-label="Edit display name" disabled={isSaving} onClick={() => {
+                      <button type="button" className="terminal-carriers-icon-button" aria-label={t("terminal.carriers.editDisplayNameAria")} disabled={isSaving} onClick={() => {
                         setDisplayName(activeCarrier.displayName);
                         setEditingDisplayName(true);
                       }}>
@@ -210,11 +212,11 @@ function CarrierSettingsSection() {
               </div>
               <div className="terminal-carriers-detail-actions">
                 <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
-                  {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : ""}
+                  {saveStatus === "saving" ? t("terminal.carriers.saving") : saveStatus === "saved" ? t("terminal.carriers.saved") : ""}
                 </div>
                 <div className="terminal-carriers-save-actions">
                   <button type="button" className="terminal-carriers-action-button terminal-carriers-detail-refresh" disabled={settings.loading || isSaving} onClick={() => void loadCarrierSettings()}>
-                    Refresh
+                    {t("terminal.carriers.refresh")}
                   </button>
                 </div>
               </div>
@@ -222,16 +224,16 @@ function CarrierSettingsSection() {
 
             <div className="terminal-carriers-body">
               <div className="terminal-carriers-control-group">
-                <div className="terminal-carriers-resp-title">Identity</div>
+                <div className="terminal-carriers-resp-title">{t("terminal.carriers.identity")}</div>
                 <div className="terminal-carriers-mission">{activeCarrier.roleDescription}</div>
               </div>
 
               <div className="terminal-carriers-control-group">
-                <div className="terminal-carriers-resp-title">Runtime</div>
+                <div className="terminal-carriers-resp-title">{t("terminal.carriers.runtime")}</div>
                 <div className="terminal-carriers-runtime">
                   <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--cli">
                     <div className="terminal-carriers-field terminal-carriers-field--wide">
-                      <span className="terminal-carriers-label" id="carrier-cli-label">CLI</span>
+                      <span className="terminal-carriers-label" id="carrier-cli-label">{t("terminal.carriers.cli")}</span>
                       <Select
                         aria-labelledby="carrier-cli-label"
                         value={activePendingSelections.cli ?? activeCarrier.cliType}
@@ -244,7 +246,7 @@ function CarrierSettingsSection() {
                   <div className="terminal-carriers-runtime-row terminal-carriers-runtime-row--model">
                     <ModelSelect
                       id="carrier-model"
-                      label="Model"
+                      label={t("terminal.carriers.model")}
                       models={activeCli.models}
                       value={activePendingSelections.model ?? activeCarrier.model}
                       disabled={isSaving}
@@ -274,10 +276,10 @@ function CarrierSettingsSection() {
         </section>
       ) : (
         <section className="global-settings-card terminal-carriers-card">
-          <p className="terminal-carriers-empty">Select a carrier.</p>
+          <p className="terminal-carriers-empty">{t("terminal.carriers.select")}</p>
           {/* 선택된 함장이 없어도 로스터 재조회 경로는 남겨 둔다. */}
           <button type="button" className="terminal-carriers-action-button" disabled={settings.loading} onClick={() => void loadCarrierSettings()}>
-            Refresh
+            {t("terminal.carriers.refresh")}
           </button>
         </section>
       )}
@@ -313,18 +315,19 @@ function ModelSelect({ id, label, models, value, disabled = false, onChange }: {
 }
 
 function EffortSelect({ id, model, value, disabled = false, onChange }: { readonly id: string; readonly model: CarrierSettingsModelOption | null | undefined; readonly value: string; readonly disabled?: boolean; readonly onChange: (effort: string) => void }) {
+  const t = getT(useTerminalLocale());
   if (!model?.effort) {
     return (
       <div className="terminal-carriers-field">
-        <span className="terminal-carriers-label">Effort</span>
-        <p className="terminal-carriers-help">Not supported for this model.</p>
+        <span className="terminal-carriers-label">{t("terminal.carriers.effort")}</span>
+        <p className="terminal-carriers-help">{t("terminal.carriers.effortUnsupported")}</p>
       </div>
     );
   }
   const labelId = `${id}-label`;
   return (
     <div className="terminal-carriers-field">
-      <span className="terminal-carriers-label" id={labelId}>Effort</span>
+      <span className="terminal-carriers-label" id={labelId}>{t("terminal.carriers.effort")}</span>
       <Select
         aria-labelledby={labelId}
         value={value || model.effort.default}
@@ -349,6 +352,7 @@ function TaskForcePanel({
   readonly savingActionId: string | null;
   readonly stateGeneration: number;
 }) {
+  const t = getT(useTerminalLocale());
   // 구성된 백엔드가 있으면 기본 펼침, 없으면 접힘. detail이 carrierId로 remount되어 캐리어별로 재초기화된다.
   const configuredCount = carrier.taskforce.backends.length;
   const [expanded, setExpanded] = useState(configuredCount > 0);
@@ -361,6 +365,11 @@ function TaskForcePanel({
   const availableCliOptions = cliOptions.filter((cli) => !carrier.taskforce.backends.some((backend) => backend.cliType === cli.id));
   const selectedAddCliType = addCliType || availableCliOptions[0]?.id || "";
   const isSaving = savingActionId !== null;
+  const helpText = configuredCount > 0
+    ? active
+      ? t(configuredCount === 1 ? "terminal.carriers.tf.helpActive_one" : "terminal.carriers.tf.helpActive_other", { count: configuredCount })
+      : t(configuredCount === 1 ? "terminal.carriers.tf.helpNeeds_one" : "terminal.carriers.tf.helpNeeds_other", { count: configuredCount, minBackends })
+    : t("terminal.carriers.tf.helpEmpty", { minBackends });
 
   useEffect(() => {
     setArmedCliType(null);
@@ -447,22 +456,18 @@ function TaskForcePanel({
     <div className={`terminal-carriers-control-group terminal-carriers-control-group--taskforce ${expanded ? "is-expanded" : ""}`}>
       <div className="terminal-carriers-section-head">
         <div>
-          <p className="terminal-carriers-resp-title">Task Force</p>
-          <p className="terminal-carriers-help">
-            {configuredCount > 0
-              ? `${configuredCount} backend${configuredCount === 1 ? "" : "s"} configured${active ? " · active" : ` · needs ${minBackends}+ to activate`}.`
-              : `Run this carrier across multiple CLI backends. Needs at least ${minBackends} to activate.`}
-          </p>
+          <p className="terminal-carriers-resp-title">{t("terminal.carriers.taskForce")}</p>
+          <p className="terminal-carriers-help">{helpText}</p>
         </div>
         <div className="terminal-carriers-tf-head-actions">
           <button type="button" className="terminal-carriers-tf-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-            {expanded ? "Hide" : "Configure"}
+            {expanded ? t("terminal.carriers.tf.hide") : t("terminal.carriers.tf.configure")}
           </button>
         </div>
       </div>
       {expanded ? (
       <div className="terminal-carriers-tf-list">
-        {carrier.taskforce.backends.length === 0 ? <p className="terminal-carriers-tf-empty">No Task Force backend configured.</p> : null}
+        {carrier.taskforce.backends.length === 0 ? <p className="terminal-carriers-tf-empty">{t("terminal.carriers.tf.empty")}</p> : null}
         {carrier.taskforce.backends.map((backend) => {
           const cli = cliOptions.find((item) => item.id === backend.cliType);
           if (!cli) return null;
@@ -472,29 +477,29 @@ function TaskForcePanel({
           const rowStatus = rowStatuses[cli.id] ?? "idle";
           const armed = armedCliType === cli.id;
           const removeLabel = carrier.taskforce.backends.length - 1 < minBackends
-            ? "Confirm — TF deactivates"
-            : "Confirm remove";
+            ? t("terminal.carriers.tf.confirmDeactivate")
+            : t("terminal.carriers.tf.confirmRemove");
           return (
             <div className="terminal-carriers-tf-item is-active" key={cli.id}>
               <div className="terminal-carriers-tf-title">
                 <span className={`terminal-carriers-live-dot ${active ? "is-live" : ""}`} aria-hidden="true" />
                 <strong>{cli.displayName}</strong>
                 <span className={`terminal-carriers-tf-status ${rowStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
-                  {rowStatus === "saving" ? "Saving…" : rowStatus === "saved" ? "Saved ✓" : ""}
+                  {rowStatus === "saving" ? t("terminal.carriers.saving") : rowStatus === "saved" ? t("terminal.carriers.saved") : ""}
                 </span>
               </div>
-              <ModelSelect id={`tf-${cli.id}-model`} label="Model" models={cli.models} value={modelValue} disabled={isSaving} onChange={(modelId) => void handleBackendModelChange(cli, modelId)} />
+              <ModelSelect id={`tf-${cli.id}-model`} label={t("terminal.carriers.model")} models={cli.models} value={modelValue} disabled={isSaving} onChange={(modelId) => void handleBackendModelChange(cli, modelId)} />
               <EffortSelect id={`tf-${cli.id}-effort`} model={model} value={effortValue} disabled={isSaving} onChange={(effort) => void handleBackendEffortChange(cli.id, modelValue, effort)} />
               <div className="terminal-carriers-tf-actions">
                 <button
                   type="button"
                   className={`terminal-carriers-ghost-button terminal-carriers-tf-remove ${armed ? "is-armed" : ""}`}
                   data-remove-cli={cli.id}
-                  aria-label={armed ? `Confirm removal of ${cli.displayName} backend` : undefined}
+                  aria-label={armed ? t("terminal.carriers.tf.confirmRemovalAria", { name: cli.displayName }) : undefined}
                   disabled={isSaving}
                   onClick={() => void handleRemove(cli.id)}
                 >
-                  {armed ? removeLabel : "Remove"}
+                  {armed ? removeLabel : t("terminal.carriers.tf.remove")}
                 </button>
               </div>
             </div>
@@ -504,7 +509,7 @@ function TaskForcePanel({
           {addOpen && availableCliOptions.length > 0 ? (
             <Select
               className="terminal-carriers-tf-add-select"
-              label="Task Force CLI to add"
+              label={t("terminal.carriers.tf.addCliLabel")}
               value={selectedAddCliType}
               disabled={isSaving}
               options={availableCliOptions.map((cli) => ({ value: cli.id, label: cli.displayName }))}
@@ -526,7 +531,7 @@ function TaskForcePanel({
               setAddOpen(false);
             });
           }}>
-            Add
+            {t("terminal.carriers.tf.add")}
           </button>
         </div>
       </div>

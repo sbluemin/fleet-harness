@@ -2,7 +2,7 @@ import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
-import { getT, type CoreMessageKey } from "./i18n/index.js";
+import type { CoreMessageKey } from "./i18n/index.js";
 import { searchTokens } from "./operation-search.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, ThemeId } from "./types.js";
@@ -58,8 +58,11 @@ export function commandModeQuery(value: string): string {
   return value.slice(1);
 }
 
-export function buildPaletteCommands(current: ConsoleState, railPanels: readonly PaletteRailPanelInfo[]): readonly PaletteCommandEntry[] {
-  const t = consoleT();
+export function buildPaletteCommands(
+  current: ConsoleState,
+  railPanels: readonly PaletteRailPanelInfo[],
+  t: T,
+): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const language = resolveActiveLocale();
   const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
@@ -216,8 +219,4 @@ function resolveActiveLocale() {
       ? navigator.language.toLowerCase()
       : "";
   return resolveConsoleLanguage(preference, navigatorLanguage);
-}
-
-function consoleT(): T {
-  return getT(resolveActiveLocale());
 }

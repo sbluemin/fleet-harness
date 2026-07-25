@@ -7,8 +7,11 @@ import {
   filterPaletteCommands,
   isCommandModeInput,
 } from "../core/client/src/palette-commands.js";
+import { getT } from "../core/client/src/i18n/index.js";
 import { DEFAULT_UI_FONT } from "../core/client/src/ui-font.js";
 import type { ConsoleState, TheaterInfo } from "../core/client/src/types.js";
+
+const tEn = getT("en");
 
 beforeEach(() => {
   // 팔레트 라벨 단언은 en 카탈로그를 기준으로 한다 — 호스트 로케일과 무관하게 고정한다.
@@ -96,7 +99,7 @@ describe("palette command mode parsing", () => {
 
 describe("buildPaletteCommands", () => {
   it("derives Theater, panel, toggle, theme, and navigation commands from state", () => {
-    const commands = buildPaletteCommands(makeState(), RAIL_PANELS);
+    const commands = buildPaletteCommands(makeState(), RAIL_PANELS, tEn);
     expect(commands.map((command) => command.commandId)).toEqual([
       "switch-theater:theater-alpha",
       "switch-theater:theater-beta",
@@ -118,13 +121,13 @@ describe("buildPaletteCommands", () => {
   });
 
   it("marks the active Theater and active theme as current", () => {
-    const commands = buildPaletteCommands(makeState({ activeTheme: "carbon" }), []);
+    const commands = buildPaletteCommands(makeState({ activeTheme: "carbon" }), [], tEn);
     const currents = commands.filter((command) => command.current).map((command) => command.commandId);
     expect(currents).toEqual(["switch-theater:theater-alpha", "switch-theme:carbon"]);
   });
 
   it("omits New Operation without an active Theater and What's new without release notes", () => {
-    const commands = buildPaletteCommands(makeState({ activeTheaterId: null }), []);
+    const commands = buildPaletteCommands(makeState({ activeTheaterId: null }), [], tEn);
     expect(commands.some((command) => command.commandId === "new-operation")).toBe(false);
     expect(commands.some((command) => command.commandId === "whats-new")).toBe(false);
   });
@@ -132,7 +135,7 @@ describe("buildPaletteCommands", () => {
   it("includes What's new when release notes are loaded", () => {
     const commands = buildPaletteCommands(makeState({
       releaseNotes: [{ version: "1.30.0", date: "2026-07-20", sections: [], localizationFallback: false }],
-    }), []);
+    }), [], tEn);
     expect(commands.some((command) => command.commandId === "whats-new")).toBe(true);
   });
 
@@ -143,7 +146,7 @@ describe("buildPaletteCommands", () => {
     const commands = buildPaletteCommands(makeState({
       operations: [dormant, live, otherTheater],
       operationStatus: { "op-live": "running" },
-    }), []);
+    }), [], tEn);
     const ids = commands.map((command) => command.commandId);
     expect(ids).toContain("resume-operation:op-dormant");
     expect(ids).not.toContain("resume-operation:op-live");
@@ -158,12 +161,12 @@ describe("buildPaletteCommands", () => {
   });
 
   it("omits Minimize all when the active Theater has no operations", () => {
-    const commands = buildPaletteCommands(makeState(), []);
+    const commands = buildPaletteCommands(makeState(), [], tEn);
     expect(commands.some((command) => command.commandId === "minimize-all-operations")).toBe(false);
   });
 
   it("shows the four exact chip-menu Operation actions only for an active Operation in the active Theater", () => {
-    const withoutActive = buildPaletteCommands(makeState(), []);
+    const withoutActive = buildPaletteCommands(makeState(), [], tEn);
     const operationLabels = ["Rename operation…", "Assign group…", "Set accent…", "Minimize operation"];
     expect(withoutActive.filter((command) => operationLabels.includes(command.label))).toEqual([]);
 
@@ -179,7 +182,7 @@ describe("buildPaletteCommands", () => {
         geometry: null,
         ts: { createdAt: 1, updatedAt: 1 },
       }],
-    }), []);
+    }), [], tEn);
     expect(withActive.filter((command) => operationLabels.includes(command.label)).map((command) => command.label)).toEqual(operationLabels);
 
     const staleActive = buildPaletteCommands(makeState({
@@ -194,7 +197,7 @@ describe("buildPaletteCommands", () => {
         geometry: null,
         ts: { createdAt: 1, updatedAt: 1 },
       }],
-    }), []);
+    }), [], tEn);
     expect(staleActive.filter((command) => operationLabels.includes(command.label))).toEqual([]);
   });
 });
@@ -214,7 +217,7 @@ function makeOperation(id: string, payload: Record<string, unknown> = {}, theate
 
 describe("filterPaletteCommands", () => {
   it("matches case-insensitive AND tokens against the command label", () => {
-    const commands = buildPaletteCommands(makeState(), RAIL_PANELS);
+    const commands = buildPaletteCommands(makeState(), RAIL_PANELS, tEn);
     expect(filterPaletteCommands(commands, "switch beta").map((command) => command.commandId)).toEqual(["switch-theater:theater-beta"]);
     expect(filterPaletteCommands(commands, "THEME").map((command) => command.commandId)).toEqual([
       "switch-theme:instrument",

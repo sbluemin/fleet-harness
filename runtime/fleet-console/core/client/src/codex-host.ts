@@ -55,6 +55,12 @@ export function setNavigatorTheater(theaterId: string | null): void {
   navigatorController?.setTheater(theaterId);
 }
 
+/** 열린 navigator/reader 문구를 현재 로케일로 다시 그린다(문서·스크롤 보존). */
+export function refreshCodexLocale(): void {
+  navigatorController?.refreshLocale();
+  void readerController?.refreshLocale();
+}
+
 export function mountReaderInto(
   readSlot: HTMLElement,
   tocSlot: HTMLElement,

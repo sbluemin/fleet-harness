@@ -203,16 +203,17 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   relativePath={viewState.relativePath}
                   theaterId={theaterId}
                   truncated={viewState.truncated}
+                  language={ctx.language}
                 />
               )}
               {viewState.kind === "code" && viewState.lang !== "markdown" && (
-                <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} />
+                <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} t={t} />
               )}
               {viewState.kind === "image" && (
                 <ImageViewer src={viewState.src} name={viewState.name} />
               )}
               {viewState.kind === "binary" && (
-                <BinaryViewer name={viewState.name} />
+                <BinaryViewer name={viewState.name} t={t} />
               )}
             </div>
           </div>

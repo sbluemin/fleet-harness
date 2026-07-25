@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { SkillListItem } from "../server/types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
@@ -16,6 +16,7 @@ interface ReadingOverlayProps {
   readonly onClose: () => void;
   readonly onInstall: () => void;
   readonly t: Translate<SkillsMessageKey>;
+  readonly language: ConsoleLocale | undefined;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -26,9 +27,6 @@ const FOCUSABLE_SELECTOR = [
   "input:not([disabled])",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
-
-const PERMISSION_WARNING =
-  "Skills run with full agent permissions. Review before use.";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +54,7 @@ export function ReadingOverlay({
   onClose,
   onInstall,
   t,
+  language,
 }: ReadingOverlayProps) {
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -171,22 +170,22 @@ export function ReadingOverlay({
             type="button"
             className="skills-overlay-close"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("skills.overlay.close")}
           >
             ✕
           </button>
         </div>
         <div className="skills-overlay-body">
           {loading && (
-            <div className="skills-empty-state">Loading SKILL.md…</div>
+            <div className="skills-empty-state">{t("skills.overlay.loading")}</div>
           )}
           {!loading && markdown === null && (
-            <div className="skills-empty-state">Could not load SKILL.md.</div>
+            <div className="skills-empty-state">{t("skills.overlay.loadFailed")}</div>
           )}
-          {markdown !== null && <MarkdownView content={markdown} />}
+          {markdown !== null && <MarkdownView content={markdown} language={language} />}
         </div>
         <div className="skills-overlay-footer">
-          <p className="skills-permission-warning">{PERMISSION_WARNING}</p>
+          <p className="skills-permission-warning">{t("skills.overlay.permissionWarning")}</p>
           {!isInstalled && (
             <button
               type="button"

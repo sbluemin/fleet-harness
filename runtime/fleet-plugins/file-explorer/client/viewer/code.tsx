@@ -1,21 +1,25 @@
 import { useMemo } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import type { FileExplorerMessageKey } from "../i18n/index.js";
 import { tokenize } from "../syntax/highlighter.js";
 
 interface CodeViewerProps {
   readonly content: string;
   readonly lang: string;
   readonly truncated?: boolean;
+  readonly t: Translate<FileExplorerMessageKey>;
 }
 
-export function CodeViewer({ content, lang, truncated }: CodeViewerProps) {
+export function CodeViewer({ content, lang, truncated, t }: CodeViewerProps) {
   const lines = useMemo(() => splitLines(content, lang), [content, lang]);
 
   return (
     <div className="fexp-code-wrap">
-      {truncated && <div className="fexp-truncated-badge">File is too large — showing a partial preview</div>}
+      {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
       <div className="fexp-code-scroll">
-        <table className="fexp-code-table" aria-label="File contents">
+        <table className="fexp-code-table" aria-label={t("fileExplorer.viewer.fileContentsAria")}>
           <tbody>
             {lines.map((line, idx) => (
               <tr key={idx} className="fexp-code-row">

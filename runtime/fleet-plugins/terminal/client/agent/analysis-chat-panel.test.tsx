@@ -346,7 +346,11 @@ describe("Session Analyst Evidence Pulse", () => {
     const chat = container.querySelector<HTMLElement>(".session-analyst__chat")!;
     const diagram = chat.querySelector<HTMLElement>(".diagram-block")!;
 
-    expect(installDiagramHydratorSpy).toHaveBeenCalledWith(chat);
+    expect(installDiagramHydratorSpy).toHaveBeenCalledWith(chat, expect.objectContaining({
+      openExpandedAria: "Open diagram in expanded view",
+      lightboxTitle: "MANIFEST · DIAGRAM",
+      close: "Close",
+    }));
     expect(diagram.dataset.diagramState).toBe("rendered");
 
     act(() => root.unmount());

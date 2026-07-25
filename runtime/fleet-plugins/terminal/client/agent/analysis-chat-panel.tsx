@@ -6,7 +6,7 @@ import "@fleet-console/markdown/styles.css";
 
 import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
+import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
 import { useAnalysisStore } from "./analysis-store.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 
@@ -97,8 +97,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   }, []);
   React.useEffect(() => {
     const chat = chatRef.current;
-    if (chat) installDiagramHydrator(chat);
-  }, []);
+    if (chat) installDiagramHydrator(chat, diagramHydratorLabels(language));
+  }, [language]);
   React.useEffect(() => {
     const previousCount = previousArtifactCountRef.current;
     previousArtifactCountRef.current = artifactCount;

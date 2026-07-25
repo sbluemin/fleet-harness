@@ -14,19 +14,10 @@ import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile 
 import { HunkView } from "./hunk-view.js";
 import { HistoryPanel } from "./history-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
-import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth, type WorkspaceTreeSection } from "./workspace-layout.js";
+import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
 import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./search-navigation.js";
 
 type T = Translate<RepositoryMessageKey>;
-
-const SECTION_LABEL_KEY: Record<WorkspaceTreeSection["id"], RepositoryMessageKey> = {
-  context: "repository.section.context",
-  working: "repository.section.working",
-  worktrees: "repository.section.worktrees",
-  branches: "repository.section.branches",
-  tags: "repository.section.tags",
-  stashes: "repository.section.stashes",
-};
 
 type ViewMode = "list" | "tree";
 
@@ -419,7 +410,7 @@ export function WorkspaceTree({ t, repos, reposError, reposTruncated, scanDepth,
     branches: branchCount,
     tags: refs.tags.length,
     stashes: refs.stashes.length,
-  });
+  }, t);
   const sectionHeader = (id: (typeof sections)[number]["id"]) => {
     const section = sections.find((item) => item.id === id)!;
     const collapsed = collapsedSections.has(id);
@@ -434,7 +425,7 @@ export function WorkspaceTree({ t, repos, reposError, reposTruncated, scanDepth,
       <svg className="repository-folder-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
         <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <span>{t(SECTION_LABEL_KEY[section.id])}</span><i>{section.count}</i>
+      <span>{section.label}</span><i>{section.count}</i>
     </button>;
   };
   const refRows = (refSource: RefSource) => buildRefListGroups(refSource, refs).map((group) => <div key={group.label ?? refSource} className="repository-ws-ref-group">

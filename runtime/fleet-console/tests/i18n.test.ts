@@ -5,9 +5,84 @@ import { describe, expect, it } from "vitest";
 import { createTranslator, resolveLocalizedText } from "../sdk/i18n/translate.js";
 import type { MessageCatalog } from "../sdk/i18n/types.js";
 import { formatRelativeTime } from "../core/client/src/i18n/format.js";
-import { getT } from "../core/client/src/i18n/index.js";
+import { CORE_MESSAGES, getT } from "../core/client/src/i18n/index.js";
 import { renderMessage } from "../core/client/src/i18n/rich.js";
 import { translateServerError } from "../core/client/src/i18n/server-errors.js";
+
+/**
+ * en===ko가 허용되는 값 목록.
+ * 원형 유지 용어·제품/테마명·프로토콜 토큰·이관 전부터 EN UI에 한국어가 있던 라벨 등.
+ */
+const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
+  // 다이어그램 라이트박스 고정 헤드라인
+  "MANIFEST · DIAGRAM",
+  // 이관 전부터 command-band rename aria가 한국어였음
+  "{title} 이름 변경",
+  // 단축키 표기·언어 칩·버전 태그
+  "⌘/Ctrl",
+  "EN",
+  "한국어",
+  "v{version}",
+  // 도메인·제품 원형 및 복수형 내비 라벨
+  "Operations",
+  "GitHub",
+  "Backend API",
+  "Formation",
+  "Operation {title}",
+  "Companion {title}",
+  "Map",
+  "Activity Rail",
+  "Theater",
+  "Codex",
+  "Plans",
+  "Console",
+  "Terminal",
+  // 테마·포트 모드·언어 선택 라벨(고유명)
+  "Instrument",
+  "Maritime",
+  "Carbon",
+  "Auto",
+  "English",
+  "Dynamic",
+  "Static",
+  "1024–65535",
+  " · Dynamic",
+  // 액센트 색 고유명
+  "Crimson",
+  "Amber",
+  "Moss",
+  "Teal",
+  "Cerulean",
+  "Indigo",
+  "Plum",
+  "Rose",
+  // Plans/뱃지 프로토콜·상태 토큰
+  "PARALLEL",
+  "READY",
+  // 제품 탭·Cowork 설정 토큰
+  "Fleet CLI",
+  "Fleet Console",
+  "Fleet Desktop",
+  "Fleet Plugin",
+  "Fleet Core",
+  "CLI",
+  "Model",
+  "Effort",
+  // Codex 패치 종류·Schema·op 뱃지(프로토콜 토큰)
+  "Create",
+  "Update",
+  "Patch",
+  "Schema",
+  "CREATE",
+  "UPDATE",
+  // 이관 전부터 EN UI에 한국어가 있던 충돌 해소 라벨
+  "기존 문서 대체",
+  "신규 문서 생성",
+]);
+
+function placeholderNames(message: string): string[] {
+  return [...message.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]!).sort();
+}
 
 const CATALOG = {
   en: {
@@ -102,5 +177,31 @@ describe("renderMessage", () => {
     });
     const keyed = parts.filter((part) => typeof part === "object" && part !== null && "key" in part);
     expect(keyed.map((part) => (part as { key: string }).key)).toEqual(["rich:x:0", "rich:y:1"]);
+  });
+});
+
+describe("CORE_MESSAGES locale parity", () => {
+  it("fails when en===ko unless the value is on the intentional allowlist", () => {
+    const unexpected: string[] = [];
+    for (const key of Object.keys(CORE_MESSAGES.en) as Array<keyof typeof CORE_MESSAGES.en>) {
+      const en = CORE_MESSAGES.en[key];
+      const ko = CORE_MESSAGES.ko[key];
+      if (en === ko && !IDENTICAL_LOCALE_VALUE_ALLOWLIST.has(en)) {
+        unexpected.push(`${key}: ${JSON.stringify(en)}`);
+      }
+    }
+    expect(unexpected).toEqual([]);
+  });
+
+  it("keeps the same {placeholder} set for every en/ko message pair", () => {
+    const mismatched: string[] = [];
+    for (const key of Object.keys(CORE_MESSAGES.en) as Array<keyof typeof CORE_MESSAGES.en>) {
+      const enPlaceholders = placeholderNames(CORE_MESSAGES.en[key]);
+      const koPlaceholders = placeholderNames(CORE_MESSAGES.ko[key]);
+      if (enPlaceholders.join("\0") !== koPlaceholders.join("\0")) {
+        mismatched.push(`${key}: en=${JSON.stringify(enPlaceholders)} ko=${JSON.stringify(koPlaceholders)}`);
+      }
+    }
+    expect(mismatched).toEqual([]);
   });
 });

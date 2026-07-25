@@ -37,13 +37,6 @@ export function formatDate(value: Date | string | number, locale: ConsoleLocale)
   }).format(toDate(value));
 }
 
-export function formatTimeOfDay(value: Date | string | number, locale: ConsoleLocale): string {
-  return new Intl.DateTimeFormat(LOCALE_TAG[locale], {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(toDate(value));
-}
-
 function toDate(value: Date | string | number): Date {
   return value instanceof Date ? value : new Date(value);
 }

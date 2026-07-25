@@ -13,7 +13,7 @@ import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "../store.js";
-import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
+import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
 interface LanguageOption {
@@ -361,7 +361,13 @@ function TypographyCard({
         </button>
       </div>
       <FontPicker
-        builtIns={UI_FONT_BUILT_INS.map(({ id, label, family, aliases, description }) => ({ id, label, family, aliases, description }))}
+        builtIns={UI_FONT_BUILT_INS.map(({ id, label, family, aliases }) => ({
+          id,
+          label,
+          family,
+          aliases,
+          description: t(UI_FONT_DESCRIPTION_KEYS[id]),
+        }))}
         installedFonts={installedFonts}
         selected={activeUiFont.source === "builtin" ? { source: "builtin", id: activeUiFont.id } : { source: "system", familyName: activeUiFont.familyName }}
         selectedSystemFont={activeUiFont.source === "system" ? activeUiFont.familyName : null}

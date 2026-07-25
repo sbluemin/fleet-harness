@@ -16,6 +16,8 @@ export type NavigatorRequest =
 export interface NavigatorController {
   destroy(): void;
   setTheater(theaterId: string | null): void;
+  /** 로케일 변경 시 셸·목록 문구를 다시 그린다(검색·선택 상태 유지). */
+  refreshLocale(): void;
 }
 
 interface NavigatorOptions {
@@ -247,6 +249,26 @@ export function mountNavigatorInto(
       currentQuery = "";
       currentEntryId = null;
       if (searchInput) searchInput.value = "";
+      renderList(getState());
+    },
+    refreshLocale(): void {
+      const t = consoleT();
+      root.querySelector(".codex-nav-modes")?.setAttribute("aria-label", t("codex.nav.catalogAria"));
+      const entriesTab = root.querySelector<HTMLElement>('[data-mode="entries"]');
+      if (entriesTab) entriesTab.textContent = t("codex.nav.entries");
+      const schemaTab = root.querySelector<HTMLElement>('[data-mode="schema"]');
+      if (schemaTab) schemaTab.textContent = t("codex.nav.schema");
+      searchInput.placeholder = t("codex.nav.searchPlaceholder");
+      searchInput.setAttribute("aria-label", t("codex.nav.searchAria"));
+      const drydockBtn = root.querySelector<HTMLElement>('[data-action="drydock"]');
+      if (drydockBtn) {
+        drydockBtn.replaceChildren(
+          document.createTextNode(`${t("codex.nav.reviewQueue")} `),
+          drydockBadge,
+        );
+      }
+      const conflictsBtn = root.querySelector<HTMLElement>('[data-action="conflicts"]');
+      if (conflictsBtn) conflictsBtn.textContent = t("codex.nav.conflicts");
       renderList(getState());
     },
   };

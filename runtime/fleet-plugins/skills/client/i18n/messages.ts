@@ -31,6 +31,17 @@ export const skillsEn = {
   "skills.scope.project": "Project",
   "skills.scope.global": "Global",
   "skills.toast.installed": "Installed {name} to {scope}",
+  "skills.install.permissionWarning": "Skills run with full agent permissions. Review before use — open the name to read SKILL.md.",
+  "skills.install.selectTheater": "Select a Theater to install project skills",
+  "skills.install.allAgents": "All agents",
+  "skills.install.installNow": "Install now",
+  "skills.overlay.close": "Close",
+  "skills.overlay.loading": "Loading SKILL.md…",
+  "skills.overlay.loadFailed": "Could not load SKILL.md.",
+  "skills.overlay.permissionWarning": "Skills run with full agent permissions. Review before use.",
+  "skills.markdown.copy": "Copy",
+  "skills.markdown.copyCodeAria": "Copy {language} code",
+  "skills.markdown.copied": "Copied",
 } as const;
 
 export const skillsKo: Record<keyof typeof skillsEn, string> = {
@@ -66,6 +77,17 @@ export const skillsKo: Record<keyof typeof skillsEn, string> = {
   "skills.scope.project": "프로젝트",
   "skills.scope.global": "전역",
   "skills.toast.installed": "{name}을(를) {scope}에 설치했습니다",
+  "skills.install.permissionWarning": "스킬은 에이전트 전체 권한으로 실행됩니다. 사용 전 확인하세요 — 이름을 열어 SKILL.md를 읽으세요.",
+  "skills.install.selectTheater": "프로젝트 스킬을 설치하려면 Theater를 선택하세요",
+  "skills.install.allAgents": "모든 에이전트",
+  "skills.install.installNow": "지금 설치",
+  "skills.overlay.close": "닫기",
+  "skills.overlay.loading": "SKILL.md 불러오는 중…",
+  "skills.overlay.loadFailed": "SKILL.md를 불러올 수 없습니다.",
+  "skills.overlay.permissionWarning": "스킬은 에이전트 전체 권한으로 실행됩니다. 사용 전 확인하세요.",
+  "skills.markdown.copy": "복사",
+  "skills.markdown.copyCodeAria": "{language} 코드 복사",
+  "skills.markdown.copied": "복사됨",
 };
 
 export const SKILLS_MESSAGES = { en: skillsEn, ko: skillsKo } as const;

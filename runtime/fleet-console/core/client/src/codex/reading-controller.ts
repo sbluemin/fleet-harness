@@ -55,6 +55,8 @@ export interface ReadingController {
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
   refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
+  /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
+  refreshLocale(): Promise<void>;
 }
 
 export interface MountReadingOptions {
@@ -93,6 +95,8 @@ export function mountReadingInto(
   let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
+  let currentEntryId = opts.kind === "entry" ? opts.initialEntryId : "";
+  let currentSubId = opts.subId;
 
   // 드라이독 결정 상태 (패치 상세 뷰에서 관리)
   type DecisionPhase = "idle" | "approving" | "rejecting" | "submitting";
@@ -373,9 +377,11 @@ export function mountReadingInto(
       coworkController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
+      currentEntryId = entryId;
       await renderEntryView(entryId);
     },
     async navigateSub(subId: string | undefined): Promise<void> {
+      currentSubId = subId;
       if (opts.kind === "drydock") {
         await renderDrydockView(subId);
       } else if (opts.kind === "conflicts") {
@@ -386,6 +392,26 @@ export function mountReadingInto(
     },
     refreshCallbacks(next): void {
       liveOpts = { ...liveOpts, ...next };
+    },
+    async refreshLocale(): Promise<void> {
+      if (destroyed) return;
+      const scrollParent = readContainer.parentElement;
+      const scrollTop = scrollParent?.scrollTop ?? 0;
+      installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
+      if (opts.kind === "entry" && currentEntryId) {
+        await renderEntryView(currentEntryId);
+      } else if (opts.kind === "drydock") {
+        await renderDrydockView(currentSubId);
+      } else if (opts.kind === "conflicts") {
+        await renderConflictsView(currentSubId);
+      } else if (opts.kind === "schema") {
+        await renderSchemaView(currentSubId);
+      }
+      if (scrollParent) {
+        requestAnimationFrame(() => {
+          scrollParent.scrollTop = scrollTop;
+        });
+      }
     },
   };
 }

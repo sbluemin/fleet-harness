@@ -29,9 +29,6 @@ const AGENT_LABELS: Record<AgentId, string> = {
   opencode: "OpenCode",
 };
 
-const PERMISSION_WARNING =
-  "Skills run with full agent permissions. Review before use — open the name to read SKILL.md.";
-
 // ─── InstallFlow ──────────────────────────────────────────────────────────────
 
 export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, jobLog, t }: InstallFlowProps) {
@@ -85,7 +82,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
           className={`skills-scope-btn${scope === "project" ? " is-active" : ""}`}
           onClick={() => setScope("project")}
           disabled={!theaterId || isRunning || isDone}
-          title={!theaterId ? "Select a Theater to install project skills" : undefined}
+          title={!theaterId ? t("skills.install.selectTheater") : undefined}
         >
           {t("skills.scope.project")}
         </button>
@@ -106,7 +103,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
           onClick={handleToggleAll}
           disabled={isRunning || isDone}
         >
-          All agents
+          {t("skills.install.allAgents")}
         </button>
         {AGENT_IDS.map((id) => (
           <button
@@ -121,7 +118,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
         ))}
       </div>
 
-      <p className="skills-permission-warning">{PERMISSION_WARNING}</p>
+      <p className="skills-permission-warning">{t("skills.install.permissionWarning")}</p>
 
       {!isRunning && !isDone && !isError && (
         <div className="skills-card-actions">
@@ -138,7 +135,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
             onClick={handleInstall}
             disabled={!allAgents && selectedAgents.size === 0}
           >
-            Install now
+            {t("skills.install.installNow")}
           </button>
         </div>
       )}
