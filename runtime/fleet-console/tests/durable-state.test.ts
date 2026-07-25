@@ -17,29 +17,29 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 3, theaters: [], operations: [], groups: [], deletionTombstones: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 3, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 4, theaters: [], operations: [], groups: [], deletionTombstones: [], workspacePresets: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 4, theaters: [], operations: [], groups: [], deletionTombstones: [], workspacePresets: [] });
   });
 
   it("drops legacy pathContext values without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 3, theaters: [base] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 3, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 4, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 4, theaters: [base] });
   });
 
   it("round-trips optional Theater order without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
 
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 3 }], operations: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       theaters: [{ ...base, order: 3 }],
     });
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: -1 }], operations: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       theaters: [base],
     });
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 1.5 }], operations: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       theaters: [base],
     });
   });
@@ -70,7 +70,7 @@ describe("durable console state", () => {
       ],
     });
 
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.theaters).toHaveLength(1);
     expect(migrated.groups).toEqual([]);
     expect(migrated.operations).toEqual([
@@ -138,13 +138,51 @@ describe("durable console state", () => {
     });
 
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [theater], operations: [operation], groups: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       deletionTombstones: [],
+      workspacePresets: [],
     });
     expect(sanitized.deletionTombstones).toEqual([
       expect.objectContaining({ deletionId: "d-op", kind: "operation", targetId: "op" }),
-      expect.objectContaining({ deletionId: "d-theater", kind: "theater", targetId: "t", operations: [expect.objectContaining({ id: "op" })] }),
+      expect.objectContaining({ deletionId: "d-theater", kind: "theater", targetId: "t", operations: [expect.objectContaining({ id: "op" })], workspacePresets: [] }),
     ]);
+  });
+
+  it("migrates v3 to v4 through the sequential chain and sanitizes presets item by item", () => {
+    const layout = makeWorkspacePresetLayout();
+    const valid = {
+      id: "preset-a",
+      theaterId: "theater",
+      name: "Review",
+      createdAt: 1,
+      updatedAt: 2,
+      layout,
+    };
+
+    const migrated = sanitizeDurableConsoleState({
+      version: 3,
+      theaters: [],
+      operations: [],
+      groups: [],
+      deletionTombstones: [],
+    });
+    const sanitized = sanitizeDurableConsoleState({
+      version: 4,
+      theaters: [],
+      operations: [],
+      groups: [],
+      deletionTombstones: [],
+      workspacePresets: [
+        valid,
+        { ...valid, id: "bad-name", name: "x".repeat(65) },
+        { ...valid, id: "bad-viewport", layout: { ...layout, viewport: { ...layout.viewport, zoom: Number.NaN } } },
+        { ...valid, id: "bad-geometry", layout: { ...layout, operationGeometries: { op: { ...layout.operationGeometries.op, width: "wide" } } } },
+        { ...valid, id: "bad-panel", layout: { ...layout, rail: { ...layout.rail, panelWidth: Number.POSITIVE_INFINITY } } },
+      ],
+    });
+
+    expect(migrated).toMatchObject({ version: 4, workspacePresets: [] });
+    expect(sanitized.workspacePresets).toEqual([valid]);
   });
 
   it("creates the state store with sensitive durable JSON settings", () => {
@@ -191,5 +229,17 @@ function makeOperationNode(input: { readonly id: string; readonly pluginId: stri
     geometry: null,
     state: {},
     ts: { createdAt: 1, updatedAt: 1 },
+  };
+}
+
+function makeWorkspacePresetLayout() {
+  return {
+    viewport: { x: 12, y: -4, zoom: 0.8 },
+    operationGeometries: {
+      op: { x: 1, y: 2, width: 640, height: 400, zIndex: 3 },
+    },
+    minimizedOperationIds: ["op"],
+    rail: { activePanelId: "plans", chromeExpanded: true, panelWidth: 420 },
+    sidebar: { statusAxis: "status" as const },
   };
 }
