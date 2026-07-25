@@ -34,15 +34,15 @@ afterEach(() => {
 });
 
 describe("Task Force capability policy", () => {
-  it("source-enables exactly the three capable default personas while custom carriers stay closed", () => {
+  it("source-enables exactly the two capable default personas while custom carriers stay closed", () => {
     const registry = createCarrierRegistry();
     registerDefaultCarriers(registry);
     registerCarrier(registry, config("custom", false));
 
-    const capable = ["nimitz", "vanguard", "tempest", "kirov", "genesis", "ohio", "sentinel", "custom"]
+    const capable = ["nimitz", "vanguard", "kirov", "genesis", "ohio", "sentinel", "custom"]
       .filter((id) => isTaskForceCapable(registry, id));
 
-    expect(capable).toEqual(["nimitz", "vanguard", "tempest"]);
+    expect(capable).toEqual(["nimitz", "vanguard"]);
   });
 
   it("makes stale settings ineffective when capability is removed and reactivates them when it returns", () => {

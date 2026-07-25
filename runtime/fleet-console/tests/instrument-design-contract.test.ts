@@ -845,18 +845,20 @@ describe("Instrument core design contract", () => {
 
   it("uses neutral brass fallback for unknown job-dock captain identities", () => {
     const components = source("styles/components.css");
-    const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest"] as const;
+    const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"] as const;
 
     expect(components).toMatch(/\.job-dock-captain-dot \{[^}]*background:\s*var\(--brass\)/);
     expect(components).toMatch(/\.job-dock-card \{[^}]*border-left:\s*3px solid var\(--brass\)/);
-    expect(components.match(/\.job-dock-captain-dot\[data-captain="/g)).toHaveLength(7);
-    expect(components.match(/\.job-dock-card\[data-captain="/g)).toHaveLength(7);
+    expect(components.match(/\.job-dock-captain-dot\[data-captain="/g)).toHaveLength(6);
+    expect(components.match(/\.job-dock-card\[data-captain="/g)).toHaveLength(6);
     for (const id of captainIds) {
       expect(components).toContain(`.job-dock-captain-dot[data-captain="${id}"] { background: var(--captain-${id}); }`);
       expect(components).toContain(`.job-dock-card[data-captain="${id}"] { border-left-color: var(--captain-${id}); }`);
     }
     expect(components).not.toContain('data-captain="chronicle"');
     expect(components).not.toContain("--captain-chronicle");
+    expect(components).not.toContain('data-captain="tempest"');
+    expect(components).not.toContain("--captain-tempest");
   });
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {

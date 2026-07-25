@@ -157,8 +157,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(ohioTools.has("plan_write")).toBe(false);
     expect(ohioTools.has("plan_verify")).toBe(false);
 
-    // 7개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
-    const ALL_CARRIER_IDS = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest"];
+    // 6개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
+    const ALL_CARRIER_IDS = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"];
     const DENIED_HOST_ONLY_WIKI_TOOL_IDS = [...HOST_ONLY_WIKI_TOOL_IDS, "wiki_patch_queue", "wiki_schema_create"];
     for (const carrierId of ALL_CARRIER_IDS) {
       const tools = new Set(executorPort.getExecutorMcpTools("fleet", carrierId).map((tool) => tool.id));

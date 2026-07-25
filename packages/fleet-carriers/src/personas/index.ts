@@ -19,10 +19,6 @@ export {
   SENTINEL_DEFAULTS,
 } from "./sentinel.js";
 export {
-  CARRIER_METADATA as TEMPEST_METADATA,
-  TEMPEST_DEFAULTS,
-} from "./tempest.js";
-export {
   CARRIER_METADATA as VANGUARD_METADATA,
   VANGUARD_DEFAULTS,
 } from "./vanguard.js";

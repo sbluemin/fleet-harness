@@ -37,7 +37,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "single-file edits or host-directed single-shot tasks (→genesis)",
     "architecture decisions (→nimitz)",
     "planning work itself (→host agent)",
-    "reconnaissance before planning (→vanguard/tempest)",
+    "reconnaissance before planning (→vanguard)",
   ],
   requestBlocks: [
     { tag: "task_refs", hint: "Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.", required: true },

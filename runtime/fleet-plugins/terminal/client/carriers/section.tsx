@@ -31,7 +31,6 @@ const CAPTAIN_COLOR_TOKENS: Readonly<Record<string, string>> = {
   ohio: "var(--captain-ohio)",
   sentinel: "var(--captain-sentinel)",
   vanguard: "var(--captain-vanguard)",
-  tempest: "var(--captain-tempest)",
 };
 
 export const carrierSettingsSection = defineSettingsSection({

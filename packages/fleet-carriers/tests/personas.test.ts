@@ -13,8 +13,6 @@ import {
   OHIO_METADATA,
   SENTINEL_DEFAULTS,
   SENTINEL_METADATA,
-  TEMPEST_DEFAULTS,
-  TEMPEST_METADATA,
   VANGUARD_DEFAULTS,
   VANGUARD_METADATA,
   clearRegisteredCarriers,
@@ -36,7 +34,6 @@ const EXPECTED_IDS = [
   "ohio",
   "sentinel",
   "vanguard",
-  "tempest",
 ] as const;
 
 const EXPECTED_DEFAULTS = {
@@ -45,7 +42,6 @@ const EXPECTED_DEFAULTS = {
   nimitz: { slot: 1, defaultModel: "opus[1m]", defaultEffort: "max" },
   sentinel: { slot: 5, defaultModel: "sonnet", defaultEffort: "max" },
   vanguard: { slot: 6, defaultModel: "haiku", defaultEffort: "low" },
-  tempest: { slot: 7, defaultModel: "sonnet", defaultEffort: "medium" },
   ohio: { slot: 4, defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
@@ -55,7 +51,6 @@ const ALL_PERSONAS: readonly PersonaCase[] = [
   { name: "nimitz", meta: NIMITZ_METADATA },
   { name: "ohio", meta: OHIO_METADATA },
   { name: "sentinel", meta: SENTINEL_METADATA },
-  { name: "tempest", meta: TEMPEST_METADATA },
   { name: "vanguard", meta: VANGUARD_METADATA },
 ];
 
@@ -66,7 +61,6 @@ const DEFAULT_PERSONAS = [
   { defaults: OHIO_DEFAULTS, meta: OHIO_METADATA },
   { defaults: SENTINEL_DEFAULTS, meta: SENTINEL_METADATA },
   { defaults: VANGUARD_DEFAULTS, meta: VANGUARD_METADATA },
-  { defaults: TEMPEST_DEFAULTS, meta: TEMPEST_METADATA },
 ] as const;
 
 describe("CARRIER_JOBS_SELF_CALL_HINT", () => {
@@ -98,30 +92,30 @@ describe("allowedExecutorTools", () => {
 });
 
 describe("Task Force capability defaults", () => {
-  it("only nimitz, vanguard, and tempest source-own the capability marker", () => {
+  it("only nimitz and vanguard source-own the capability marker", () => {
     const capable = DEFAULT_PERSONAS
       .filter((persona) => persona.defaults.taskForceCapable === true)
       .map((persona) => persona.defaults.id);
 
-    expect(capable).toEqual(["nimitz", "vanguard", "tempest"]);
+    expect(capable).toEqual(["nimitz", "vanguard"]);
   });
 });
 
 describe("allowedBuiltinExternalMcpServers", () => {
-  it("tempest만 grep_app builtin external MCP를 명시 허용", () => {
-    expect(TEMPEST_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
+  it("vanguard만 grep_app builtin external MCP를 명시 허용", () => {
+    expect(VANGUARD_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
   });
 
-  it("나머지 6개 carrier는 builtin external MCP를 열지 않는다", () => {
+  it("나머지 5개 carrier는 builtin external MCP를 열지 않는다", () => {
     for (const { name, meta } of ALL_PERSONAS) {
-      if (name === "tempest") continue;
+      if (name === "vanguard") continue;
       expect(meta.allowedBuiltinExternalMcpServers ?? []).toHaveLength(0);
     }
   });
 });
 
 describe("persona defaults", () => {
-  it("각 persona 파일이 예상 7개 carrier 기본값을 소유", () => {
+  it("각 persona 파일이 예상 6개 carrier 기본값을 소유", () => {
     expect(DEFAULT_PERSONAS.map((persona) => persona.defaults.id)).toEqual(EXPECTED_IDS);
   });
 
@@ -147,6 +141,70 @@ describe("persona defaults", () => {
       }
     });
   }
+});
+
+describe("Vanguard local and remote reconnaissance contract", () => {
+  it("keeps the settled identity, routing, tools, and request contract", () => {
+    expect(VANGUARD_DEFAULTS).toEqual({
+      id: "vanguard",
+      displayName: "Vanguard",
+      slot: 6,
+      taskForceCapable: true,
+      agent: {
+        dispatch: {
+          defaultCliType: "claude",
+          defaultModel: "haiku",
+          defaultEffort: "low",
+        },
+      },
+    });
+    expect(VANGUARD_METADATA.title).toBe("Reconnaissance Specialist");
+    expect(VANGUARD_METADATA.summary).toBe("Read-only codebase intelligence — explores local and remote repositories, traces symbols, searches public code and web sources, and deep-dives unfamiliar implementations.");
+    expect(VANGUARD_METADATA.whenToUse).toEqual([
+      "local or remote codebase reconnaissance — exploration, multi-file scanning, symbol tracing",
+      "upstream or external repository investigation through APIs, public code search, or temporary clones",
+      "API and SDK usage examples, web research, and external knowledge gathering",
+      "preparation for host planning or heavier operations (Nimitz, Genesis, Kirov audit) requiring code intelligence first",
+    ]);
+    expect(VANGUARD_METADATA.whenNotToUse).toEqual([
+      "ANY code modification or file editing (→genesis)",
+      "architecture, product, or trade-off decisions (→nimitz)",
+    ]);
+    expect(VANGUARD_METADATA.requestBlocks).toEqual([
+      { tag: "objective", required: true, hint: "What codebase intelligence is needed — question to answer, behavior to trace, or target to locate." },
+      { tag: "search_space", required: false, hint: "Local directories or files, repository references or URLs, and domains to inspect." },
+      { tag: "hints", required: false, hint: "Known symbols, paths, branches or tags, keywords, file patterns, or prior findings to narrow the scan." },
+      { tag: "constraints", required: false, hint: "Source or version requirements, time limits, and areas or sources to exclude." },
+      { tag: "depth", required: false, hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'." },
+    ]);
+    expect(VANGUARD_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
+    expect(VANGUARD_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
+  });
+
+  it("keeps the settled permissions, evidence rules, and output fields", () => {
+    expect(VANGUARD_METADATA.permissions).toEqual([
+      "CRITICAL: Analysis-only. NEVER modify user or project files, write code, commit, push, or execute mutating commands against an analyzed source.",
+      "Full access to read local codebases and execute read-only commands for exploration.",
+      "MUST use grep_app for public code search only; MUST NOT query secrets, internal code, or private repo content.",
+      "For GitHub sources, may use gh CLI for read-only API interactions; for other sources, use available read-only APIs, web access, or a temporary clone.",
+      "CRITICAL: When cloning, MUST use an OS-native temporary directory (e.g., mktemp -d). NEVER clone into the current working directory or any project path. MUST clean up the cloned directory after analysis.",
+      "Choose the least invasive evidence path that satisfies the requested depth: existing local source, read-only API or public search, then temporary clone.",
+      "If the request fails (timeout/rate limit/connection error), retry up to 3 times before reporting failure.",
+    ]);
+    expect(VANGUARD_METADATA.principles).toEqual([
+      CARRIER_JOBS_SELF_CALL_HINT,
+      "For local sources, use absolute file paths with line references; for remote sources, name the repository or source reference and use source-relative paths with line references whenever available.",
+      "Keep local and remote evidence clearly labeled.",
+    ]);
+    for (const field of ["**Thoroughness**", "**Findings**", "**Confidence level**"]) {
+      expect(VANGUARD_METADATA.outputFormat).toContain(field);
+    }
+    expect(VANGUARD_METADATA.outputFormat).toContain("Identify every source used.");
+    expect(VANGUARD_METADATA.outputFormat).toContain("Keep each code snippet under 20 lines.");
+    expect(VANGUARD_METADATA.outputFormat).toContain("**Source overview**");
+    expect(VANGUARD_METADATA.outputFormat).toContain("**Key observations**");
+    expect(VANGUARD_METADATA.outputFormat).toContain("Never recommend application, infer intent, or suggest follow-up actions");
+  });
 });
 
 describe("Kirov assurance and Ohio TaskRef execution contract", () => {

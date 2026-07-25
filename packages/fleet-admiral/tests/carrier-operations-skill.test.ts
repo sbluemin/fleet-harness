@@ -69,14 +69,15 @@ describe("carrier-operations skill asset", () => {
     expect(skillContent()).not.toContain("<execution_scope");
   });
 
-  it("defines exactly seven live carrier contracts with no Chronicle routing", () => {
+  it("defines exactly six live carrier contracts with no removed Carrier routing", () => {
     const content = skillContent();
     const carrierRuntime = createCarrierRuntime();
     carrierRuntime.registerCarrierDefaults();
     const carrierIds = getRegisteredOrder(carrierRuntime.registry);
 
-    expect(carrierIds).toHaveLength(7);
+    expect(carrierIds).toHaveLength(6);
     expect(content).not.toMatch(/\bchronicle\b/i);
+    expect(content).not.toMatch(/\btempest\b/i);
     for (const carrierId of carrierIds) {
       expect(content).toContain(`**${carrierId}**`);
     }
