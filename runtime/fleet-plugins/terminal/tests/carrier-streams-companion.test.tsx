@@ -477,6 +477,35 @@ describe("Carrier Streams companion", () => {
     expect(alert?.textContent).toBe("Carrier exited before producing output.");
   });
 
+  it("keeps job-level errors out of successful tracks in a mixed-result job", async () => {
+    let job = createEmptyJob(TENANT_ID, "job-mixed", 1_000);
+    job = applyEvent(job, observed(1, "job:registered", {
+      tracks: [
+        { trackId: "ok-track", displayName: "Kirov" },
+        { trackId: "bad-track", displayName: "Sentinel" },
+      ],
+    }));
+    job = applyEvent(job, observed(2, "track:begin", { trackId: "ok-track" }));
+    job = applyEvent(job, observed(3, "track:begin", { trackId: "bad-track" }));
+    job = applyEvent(job, observed(4, "track:text", { trackId: "ok-track", text: "Succeeded" }));
+    job = applyEvent(job, observed(5, "track:finalized", { trackId: "ok-track", status: "done" }));
+    job = applyEvent(job, observed(6, "track:finalized", { trackId: "bad-track", status: "error" }));
+    job = applyEvent(job, observed(7, "job:finalized", {
+      status: "error",
+      error: "One carrier failed.",
+    }));
+    installSession([job]);
+    await renderCompanion();
+
+    const doneStrip = container?.querySelector<HTMLButtonElement>(".carrier-stream-column--collapsed");
+    act(() => doneStrip?.click());
+    const columns = [...(container?.querySelectorAll(".carrier-stream-column") ?? [])];
+    const okColumn = columns.find((column) => column.textContent?.includes("Kirov"));
+    const badColumn = columns.find((column) => column.textContent?.includes("Sentinel"));
+    expect(okColumn?.querySelector('[role="alert"]')).toBeNull();
+    expect(badColumn?.querySelector('[role="alert"]')?.textContent).toBe("One carrier failed.");
+  });
+
   it("adds the same live badge to ANALYZE while the analysis engine is busy", async () => {
     installSession([]);
     const api = createApi();

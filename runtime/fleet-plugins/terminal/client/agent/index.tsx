@@ -500,7 +500,9 @@ function CarrierStreamColumn({
   const completed = phase.tone === "done";
   const reasoning = phase.tone === "live" && track.thought.length > 0
     && (track.text.length === 0 || latestTrackEventType(job, track.trackId) === "track:thought");
-  const error = track.error ?? job.error ?? (phase.tone === "error" ? job.summary : undefined);
+  // 잡 레벨 오류/요약 폴백은 이 트랙의 phase가 error일 때만 — 혼합 결과 잡에서
+  // 성공 트랙 컬럼이 잡 실패 문구를 떠안는 오표기를 막는다(트랙 자체 오류는 항상 표시).
+  const error = track.error ?? (phase.tone === "error" ? job.error ?? job.summary : undefined);
 
   if (completed && !expanded) {
     return (
