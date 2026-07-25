@@ -125,6 +125,19 @@ describe("lintPlanMarkdown", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
   });
 
+  it("rejects an exact legacy Full-plan companion outside Dispatch Manifest", () => {
+    const legacy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const markdown = buildValidPlan().replace(
+      "# Documentation Updates\n\n- Update host and Carrier Plan workflow documentation.",
+      `# Documentation Updates\n\n${legacy}\n\n- Update host and Carrier Plan workflow documentation.`,
+    );
+
+    const result = lintPlanMarkdown(markdown);
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+  });
+
   it("rejects malformed full-plan policy variants", () => {
     const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
     for (const malformed of [

@@ -127,6 +127,7 @@ function lintPlanMarkdownWithLegacyPolicy(
   const tasks = parseTasks(lines, lanes, diagnostics);
   validateTopology(sectionBodyLines(lines, headingLines, "# Execution Topology"), lanes, diagnostics);
   validateManifest(
+    lines,
     sectionBodyLines(lines, headingLines, "# Dispatch Manifest"),
     lanes,
     diagnostics,
@@ -356,6 +357,7 @@ function parseTasks(lines: readonly string[], lanes: MutableLane[], diagnostics:
 }
 
 function validateManifest(
+  documentLines: readonly string[],
   manifestLines: readonly string[],
   lanes: readonly MutableLane[],
   diagnostics: PlanDiagnostic[],
@@ -377,9 +379,12 @@ function validateManifest(
       addDiagnostic(diagnostics, "MANIFEST_UNKNOWN_LANE", `Dispatch Manifest references unknown lane ${id}`);
     }
   }
-  const fullPlanPolicyLines = manifestLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
-  const policy = fullPlanPolicyLines[0];
-  const policyAccepted = fullPlanPolicyLines.length === 1
+  // Manifest에 허용된 정책 1줄 + 문서 전체에서 policy-like 줄이 그 1줄뿐이어야 한다.
+  const documentPolicyLines = documentLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
+  const manifestPolicyLines = manifestLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
+  const policy = manifestPolicyLines[0];
+  const policyAccepted = documentPolicyLines.length === 1
+    && manifestPolicyLines.length === 1
     && (
       policy === CANONICAL_FULL_PLAN_POLICY
       || (allowLegacyFullPlanPolicy && policy === LEGACY_FULL_PLAN_POLICY)
