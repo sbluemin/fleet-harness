@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AgentTerminalSessionInfo } from "../server/agent-api/types.js";
-import { sweepIdleAgentSessions, startIdleAgentDormantSweeper } from "../server/agent-idle-dormant-sweeper.js";
+import {
+  CARRIER_JOB_FINALIZED_GRACE_MS,
+  isCarrierJobActiveForIdle,
+  sweepIdleAgentSessions,
+  startIdleAgentDormantSweeper,
+} from "../server/agent-idle-dormant-sweeper.js";
 
 describe("idle agent dormant sweeper", () => {
   it("returns immediately when auto-dormant is disabled (null)", () => {
@@ -89,6 +94,34 @@ describe("idle agent dormant sweeper", () => {
     expect(terminate).toHaveBeenCalledWith("no-osc-none");
   });
 
+  it("treats non-terminal carrier jobs as active regardless of grace", () => {
+    expect(isCarrierJobActiveForIdle({ status: "active", updatedAt: 0 }, 60_000)).toBe(true);
+  });
+
+  it("treats recently finalized carrier jobs as active within grace", () => {
+    const finalizedAt = 10_000;
+    expect(isCarrierJobActiveForIdle(
+      { status: "done", updatedAt: finalizedAt },
+      finalizedAt + CARRIER_JOB_FINALIZED_GRACE_MS - 1,
+    )).toBe(true);
+    expect(isCarrierJobActiveForIdle(
+      { status: "error", updatedAt: finalizedAt },
+      finalizedAt + CARRIER_JOB_FINALIZED_GRACE_MS - 1,
+    )).toBe(true);
+    expect(isCarrierJobActiveForIdle(
+      { status: "aborted", updatedAt: finalizedAt },
+      finalizedAt + CARRIER_JOB_FINALIZED_GRACE_MS - 1,
+    )).toBe(true);
+  });
+
+  it("treats finalized carrier jobs as inactive after grace elapses", () => {
+    const finalizedAt = 10_000;
+    expect(isCarrierJobActiveForIdle(
+      { status: "done", updatedAt: finalizedAt },
+      finalizedAt + CARRIER_JOB_FINALIZED_GRACE_MS,
+    )).toBe(false);
+  });
+
   it("skips sessions with an active carrier job", () => {
     const terminate = vi.fn();
     sweepIdleAgentSessions({
@@ -103,21 +136,53 @@ describe("idle agent dormant sweeper", () => {
     expect(terminate).not.toHaveBeenCalled();
   });
 
-  it("terminates idle sessions whose carrier jobs are all terminal", () => {
+  it("skips sessions whose carrier job finalized inside the grace window", () => {
+    const terminate = vi.fn();
+    const finalizedAt = 1_000;
+    const wallNow = finalizedAt + 250;
+    const jobs = [{ status: "done", updatedAt: finalizedAt }];
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [liveSession({ sessionId: "just-finalized" })],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => jobs.some((job) => isCarrierJobActiveForIdle(job, wallNow)),
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).not.toHaveBeenCalled();
+  });
+
+  it("terminates idle sessions after finalize grace when jobs are terminal-only", () => {
     const terminate = vi.fn(() => true);
-    const activeBySession = new Map<string, boolean>([
-      ["carrier-done", false],
-    ]);
+    const finalizedAt = 1_000;
+    const wallNow = finalizedAt + CARRIER_JOB_FINALIZED_GRACE_MS;
+    const jobs = [{ status: "done", updatedAt: finalizedAt }];
     sweepIdleAgentSessions({
       loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
       listTerminalSessions: () => [liveSession({ sessionId: "carrier-done" })],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
-      hasActiveCarrierJob: (sessionId) => activeBySession.get(sessionId) === true,
+      hasActiveCarrierJob: () => jobs.some((job) => isCarrierJobActiveForIdle(job, wallNow)),
       terminate,
       now: () => 60 * 60_000,
     });
     expect(terminate).toHaveBeenCalledWith("carrier-done");
+  });
+
+  it("skips non-terminal carrier jobs even when updatedAt is old", () => {
+    const terminate = vi.fn();
+    const jobs = [{ status: "active", updatedAt: 0 }];
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [liveSession({ sessionId: "carrier-active" })],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => jobs.some((job) => isCarrierJobActiveForIdle(job, 60 * 60_000)),
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).not.toHaveBeenCalled();
   });
 
   it("keeps terminating jobless idle sessions", () => {

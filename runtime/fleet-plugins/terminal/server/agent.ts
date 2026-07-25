@@ -24,7 +24,7 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
-import { isTerminalCarrierJobStatus, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
+import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -202,11 +202,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       readProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir }) !== null
       || readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined
     ),
-    // tenantId(=cliRunId)로 세션-job이 연결된다. 활성 carrier job이 있으면 reminder용 PTY를 지킨다.
+    // tenantId(=cliRunId)로 세션-job이 연결된다. 활성·finalize grace 안 job이 있으면 reminder용 PTY를 지킨다.
+    // job.updatedAt은 wall-clock(Date.now) 기준이므로 grace 비교도 동일 시계를 쓴다.
     hasActiveCarrierJob: (sessionId) => {
       const tenantId = observability.getTerminalSessionInfo(sessionId)?.tenantId;
       if (!tenantId) return false;
-      return observability.listJobs(tenantId).some((job) => !isTerminalCarrierJobStatus(job.status));
+      const nowMs = Date.now();
+      return observability.listJobs(tenantId).some((job) => isCarrierJobActiveForIdle(job, nowMs, CARRIER_JOB_FINALIZED_GRACE_MS));
     },
     terminate: (sessionId) => terminalRuntime.terminate(sessionId),
     registerCleanup: (cleanup) => ctx.host.lifecycle.registerCleanup(cleanup),

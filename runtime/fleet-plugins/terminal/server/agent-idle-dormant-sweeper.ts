@@ -5,6 +5,13 @@ import { resolveAgentIdleDormantMinutes } from "./settings-routes.js";
 
 export const AGENT_IDLE_DORMANT_SWEEP_INTERVAL_MS = 60_000;
 
+/**
+ * carrier job finalize 직후 reminder Enter 제출(submitDelayMs=250)이 끝나기 전에
+ * sweep이 PTY를 죽이지 않도록 두는 유예. 250ms의 20배 마진이며, 유후 임계(분 단위)를
+ * 사실상 연장하지 않는다.
+ */
+export const CARRIER_JOB_FINALIZED_GRACE_MS = 5_000;
+
 /** 클라이언트 isTerminalJobStatus와 동일 어휘 — 이 집합 밖은 활성(non-terminal) job이다. */
 const TERMINAL_CARRIER_JOB_STATUSES = new Set(["done", "error", "aborted"]);
 
@@ -26,8 +33,23 @@ export interface IdleAgentDormantSweeperDeps extends IdleAgentDormantSweepDeps {
   readonly clearIntervalFn?: typeof clearInterval;
 }
 
+export interface CarrierJobIdleActivity {
+  readonly status: string;
+  readonly updatedAt: number;
+}
+
 export function isTerminalCarrierJobStatus(status: string): boolean {
   return TERMINAL_CARRIER_JOB_STATUSES.has(status);
+}
+
+/** non-terminal이거나, terminal이어도 finalize 직후 grace 안이면 idle dorm 관점에서 활성. */
+export function isCarrierJobActiveForIdle(
+  job: CarrierJobIdleActivity,
+  nowMs: number,
+  graceMs: number = CARRIER_JOB_FINALIZED_GRACE_MS,
+): boolean {
+  if (!isTerminalCarrierJobStatus(job.status)) return true;
+  return nowMs - job.updatedAt < graceMs;
 }
 
 export function sweepIdleAgentSessions(deps: IdleAgentDormantSweepDeps): void {
