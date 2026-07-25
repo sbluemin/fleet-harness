@@ -13,6 +13,7 @@ export const KIROV_DEFAULTS: CarrierPersonaDefaults = {
   id: "kirov",
   displayName: "Kirov",
   slot: 2,
+  taskForceCapable: true,
   agent: {
     dispatch: {
       defaultCliType: "claude",
