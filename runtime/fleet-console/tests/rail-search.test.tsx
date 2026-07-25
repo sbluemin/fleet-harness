@@ -1,0 +1,233 @@
+// @vitest-environment jsdom
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { RailPanelDescriptor, RailSearchProvider, RailSearchResult } from "@fleet-console/sdk/rail";
+
+import { OperationSearch } from "../core/client/src/components/operation-search.js";
+import { useConsoleState } from "../core/client/src/hooks/use-store.js";
+import {
+  RAIL_SEARCH_DEBOUNCE_MS,
+  RAIL_SEARCH_PROVIDER_LIMIT,
+  RAIL_SEARCH_PROVIDER_TIMEOUT_MS,
+  searchRailPanels,
+} from "../core/client/src/operation-search.js";
+import { closeRailPanel, getRailStoreSnapshot, setRailChromeExpanded } from "../core/client/src/rail/rail-store.js";
+import { getState, setState } from "../core/client/src/store.js";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let container: HTMLDivElement;
+let root: Root;
+let panels: readonly RailPanelDescriptor[] = [];
+let pathname = "";
+let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  window.localStorage.clear();
+  document.body.replaceChildren();
+  scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+  closeRailPanel();
+  setRailChromeExpanded(false);
+  setState({
+    ...getState(),
+    activeTheaterId: "theater-a",
+    theaters: [{
+      id: "theater-a",
+      label: "Theater A",
+      createdAt: "2026-07-25T00:00:00.000Z",
+      lastOpenedAt: "2026-07-25T00:00:00.000Z",
+      hasWiki: false,
+      activeAdmiralCount: 0,
+    }],
+    operations: [],
+    operationSearchOpen: true,
+  });
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  if (scrollIntoViewDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  document.body.replaceChildren();
+  panels = [];
+  pathname = "";
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("rail search fan-out", () => {
+  it("enforces the provider timeout and per-provider result cap while isolating failures", async () => {
+    const slow = vi.fn<RailSearchProvider>(() => new Promise(() => undefined));
+    const failed = vi.fn<RailSearchProvider>(async () => { throw new Error("failed"); });
+    const fast = vi.fn<RailSearchProvider>(async ({ limit }) => {
+      expect(limit).toBe(RAIL_SEARCH_PROVIDER_LIMIT);
+      return Array.from({ length: 12 }, (_, index) => result(`fast-${index}`));
+    });
+    const abort = new AbortController();
+    const pending = searchRailPanels([
+      panel("slow", "Slow", slow),
+      panel("failed", "Failed", failed),
+      panel("fast", "Fast", fast),
+    ], "needle", "theater-a", abort.signal);
+
+    await vi.advanceTimersByTimeAsync(RAIL_SEARCH_PROVIDER_TIMEOUT_MS);
+    const groups = await pending;
+
+    expect(groups.map((group) => group.panelId)).toEqual(["fast"]);
+    expect(groups[0]?.results).toHaveLength(RAIL_SEARCH_PROVIDER_LIMIT);
+    expect(slow.mock.calls[0]?.[0].signal.aborted).toBe(true);
+  });
+
+  it("does not fan out for an empty query, missing Theater, or command mode", async () => {
+    const provider = vi.fn<RailSearchProvider>(async () => []);
+    panels = [panel("files", "Files", provider)];
+    renderPalette();
+
+    await advanceDebounce();
+    expect(provider).not.toHaveBeenCalled();
+
+    setInput(">open panel");
+    await advanceDebounce();
+    expect(provider).not.toHaveBeenCalled();
+
+    act(() => setState({ activeTheaterId: null }));
+    setInput("needle");
+    await advanceDebounce();
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("debounces providers and discards a response that arrives after abort via the generation fence", async () => {
+    const requests = new Map<string, { readonly signal: AbortSignal; readonly resolve: (results: readonly RailSearchResult[]) => void }>();
+    const provider = vi.fn<RailSearchProvider>(({ query, signal }) => new Promise((resolve) => {
+      requests.set(query, { signal, resolve });
+    }));
+    panels = [panel("repository", "Repository", provider)];
+    renderPalette();
+
+    setInput("old");
+    await act(async () => { await vi.advanceTimersByTimeAsync(RAIL_SEARCH_DEBOUNCE_MS - 1); });
+    expect(provider).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(provider).toHaveBeenCalledTimes(1);
+
+    setInput("new");
+    await advanceDebounce();
+    expect(requests.get("old")?.signal.aborted).toBe(true);
+    expect(provider).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      requests.get("new")?.resolve([result("new-result", "New result")]);
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("New result");
+
+    await act(async () => {
+      requests.get("old")?.resolve([result("old-result", "Old result")]);
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("New result");
+    expect(container.textContent).not.toContain("Old result");
+  });
+
+  it("runs activate before routing to Operations and opening the owning panel", async () => {
+    let finishActivation: (() => void) | undefined;
+    const activate = vi.fn(() => new Promise<void>((resolve) => { finishActivation = resolve; }));
+    panels = [panel("plans", "Plans", async () => [result("plan-a", "Plan A", activate)])];
+    renderPalette("/settings");
+
+    setInput("plan");
+    await advanceDebounce();
+    const option = container.querySelector<HTMLButtonElement>(".operation-search-panel-result");
+    expect(option?.textContent).toContain("Plan A");
+
+    act(() => option!.click());
+    expect(activate).toHaveBeenCalledOnce();
+    expect(pathname).toBe("/settings");
+    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: null, railChromeExpanded: false });
+
+    await act(async () => {
+      finishActivation?.();
+      await Promise.resolve();
+    });
+    expect(pathname).toBe("/operations");
+    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: "plans", railChromeExpanded: true });
+  });
+
+  it("keeps matching Operations above panel groups", async () => {
+    panels = [panel("files", "Files", async () => [result("file", "Needle file")])];
+    act(() => setState({
+      operations: [{
+        id: "operation-a",
+        theaterId: "theater-a",
+        type: "shell",
+        pluginId: "terminal",
+        title: "Needle Operation",
+        payload: {},
+        geometry: null,
+        ts: { createdAt: 1, updatedAt: 1 },
+      }],
+    }));
+    renderPalette();
+    setInput("needle");
+    await advanceDebounce();
+
+    const headings = [...container.querySelectorAll(".operation-search-section-heading")].map((node) => node.textContent);
+    expect(headings).toEqual(["Theater A", "Files"]);
+    expect(container.textContent).toContain("Needle Operation");
+    expect(container.textContent).toContain("Needle file");
+  });
+});
+
+function renderPalette(initialPath = "/operations"): void {
+  act(() => {
+    root.render(createElement(
+      MemoryRouter,
+      { initialEntries: [initialPath] },
+      createElement(PaletteHarness),
+      createElement(LocationProbe),
+    ));
+  });
+  act(() => { vi.advanceTimersByTime(0); });
+}
+
+function PaletteHarness() {
+  return createElement(OperationSearch, { state: useConsoleState(), railPanels: panels, plugins: [] });
+}
+
+function LocationProbe() {
+  pathname = useLocation().pathname;
+  return null;
+}
+
+function setInput(value: string): void {
+  const input = container.querySelector<HTMLInputElement>("#operation-search-input");
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  act(() => {
+    setter?.call(input, value);
+    input?.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+async function advanceDebounce(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(RAIL_SEARCH_DEBOUNCE_MS);
+    await Promise.resolve();
+  });
+}
+
+function panel(id: string, title: string, search: RailSearchProvider): RailPanelDescriptor {
+  return { id, title, icon: null, render: () => null, search };
+}
+
+function result(id: string, title = id, activate: RailSearchResult["activate"] = () => undefined): RailSearchResult {
+  return { id, title, activate };
+}

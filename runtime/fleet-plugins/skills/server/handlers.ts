@@ -9,7 +9,7 @@ import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
 import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
 import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
-import type { AgentId, Scope } from "./types.js";
+import type { AgentId, Scope, SkillListItem } from "./types.js";
 import { isPlainObject, validateAgent, validateScope, validateSkill, validateSource } from "./validation.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -40,6 +40,7 @@ const PREVIEW_TIMEOUT_MS = 30_000;
 const CLI_TIMEOUT_MS = 120_000;
 const USERINFO_URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
 const TOKEN_URL_PARAM_RE = /([?&](?:access_?token|token|api_?key|apikey|auth(?:orization)?|password|secret|credential)=)[^&#\s]*/gi;
+const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -164,6 +165,44 @@ function spawnJobAsync(
 
 // ─── handlers ────────────────────────────────────────────────────────────────
 
+async function listInstalledSkills(projectCwd: string | null, executor: CliExecutor): Promise<SkillListItem[]> {
+  if (projectCwd) {
+    const [projectRaw, globalRaw, projectSources, globalSources] = await Promise.all([
+      runListCommand(["list", "--json"], projectCwd, executor),
+      runListCommand(["list", "-g", "--json"], os.homedir(), executor),
+      readSkillSources(projectCwd),
+      readSkillSources(os.homedir()),
+    ]);
+    return [
+      ...projectRaw.map((entry) => ({
+        name: entry.name,
+        scope: "project" as Scope,
+        agents: entry.agents,
+        source: projectSources.get(entry.name),
+        displayPath: buildDisplayPath("project", entry.name),
+      })),
+      ...globalRaw.map((entry) => ({
+        name: entry.name,
+        scope: "global" as Scope,
+        agents: entry.agents,
+        source: globalSources.get(entry.name),
+        displayPath: buildDisplayPath("global", entry.name),
+      })),
+    ];
+  }
+  const [globalRaw, globalSources] = await Promise.all([
+    runListCommand(["list", "-g", "--json"], os.homedir(), executor),
+    readSkillSources(os.homedir()),
+  ]);
+  return globalRaw.map((entry) => ({
+    name: entry.name,
+    scope: "global" as Scope,
+    agents: entry.agents,
+    source: globalSources.get(entry.name),
+    displayPath: buildDisplayPath("global", entry.name),
+  }));
+}
+
 export async function handleList(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -192,50 +231,59 @@ export async function handleList(
   }
 
   try {
-    if (projectCwd) {
-      const [projectRaw, globalRaw, projectSources, globalSources] = await Promise.all([
-        runListCommand(["list", "--json"], projectCwd, executor),
-        runListCommand(["list", "-g", "--json"], os.homedir(), executor),
-        readSkillSources(projectCwd),
-        readSkillSources(os.homedir()),
-      ]);
-
-      const projectSkills = projectRaw.map((entry) => ({
-        name: entry.name,
-        scope: "project" as Scope,
-        agents: entry.agents,
-        source: projectSources.get(entry.name),
-        displayPath: buildDisplayPath("project", entry.name),
-      }));
-
-      const globalSkills = globalRaw.map((entry) => ({
-        name: entry.name,
-        scope: "global" as Scope,
-        agents: entry.agents,
-        source: globalSources.get(entry.name),
-        displayPath: buildDisplayPath("global", entry.name),
-      }));
-
-      ctx.host.http.writeJson(res, 200, { skills: [...projectSkills, ...globalSkills] });
-    } else {
-      const [globalRaw, globalSources] = await Promise.all([
-        runListCommand(["list", "-g", "--json"], os.homedir(), executor),
-        readSkillSources(os.homedir()),
-      ]);
-
-      const skills = globalRaw.map((entry) => ({
-        name: entry.name,
-        scope: "global" as Scope,
-        agents: entry.agents,
-        source: globalSources.get(entry.name),
-        displayPath: buildDisplayPath("global", entry.name),
-      }));
-
-      ctx.host.http.writeJson(res, 200, { skills });
-    }
+    const skills = await listInstalledSkills(projectCwd, executor);
+    if (theaterId) installedSkillsByTheater.set(theaterId, skills);
+    ctx.host.http.writeJson(res, 200, { skills });
   } catch {
+    if (theaterId) installedSkillsByTheater.set(theaterId, []);
     ctx.host.http.writeJson(res, 200, { skills: [] });
   }
+}
+
+export async function handlePaletteSearch(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  executor: CliExecutor,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  const body = await ctx.host.http.readJsonBody<{
+    readonly theaterId?: unknown;
+    readonly query?: unknown;
+    readonly limit?: unknown;
+  }>(req);
+  if (
+    !isPlainObject(body)
+    || typeof body.theaterId !== "string"
+    || typeof body.query !== "string"
+    || body.query.trim() === ""
+    || !Number.isInteger(body.limit)
+    || (body.limit as number) < 1
+    || (body.limit as number) > 8
+    || "relPath" in body
+  ) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+  let projectCwd: string | null;
+  try {
+    projectCwd = await resolveProjectScopeCwd(ctx, body.theaterId);
+  } catch (error) {
+    writeProjectPathError(res, ctx, error);
+    return;
+  }
+  if (!projectCwd) {
+    ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+    return;
+  }
+  const tokens = body.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const skills = (installedSkillsByTheater.get(body.theaterId) ?? [])
+    .filter((skill) => tokens.every((token) => skill.name.toLocaleLowerCase().includes(token)))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.scope.localeCompare(right.scope))
+    .slice(0, body.limit as number)
+    .map(({ name, scope }) => ({ name, scope }));
+  ctx.host.http.writeJson(res, 200, { skills });
 }
 
 export async function handleSearch(

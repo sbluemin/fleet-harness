@@ -27,6 +27,11 @@ vi.mock("@fleet-console/markdown/mermaid", () => ({
 }));
 
 import { plansPanel } from "../core/client/src/rail/plans-panel.js";
+import {
+  activatePlansSearchTarget,
+  consumePlansSearchTarget,
+  getPlansSearchTargetForTest,
+} from "../core/client/src/rail/plans-search-navigation.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -51,8 +56,11 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root.unmount());
+  const target = getPlansSearchTargetForTest();
+  if (target) consumePlansSearchTarget(target);
   container.remove();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
 
 describe("Plans panel reader revalidation", () => {
@@ -155,6 +163,51 @@ describe("Plans panel reader revalidation", () => {
   });
 });
 
+describe("Plans palette target reveal", () => {
+  it("clears active filters before selecting and scrolling the target, then consumes it", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    mocks.fetchPlansList.mockResolvedValue({
+      plans: [
+        listPlan(),
+        listPlan({ name: "beta.md", title: "Beta", tasksDone: 1, tasksTotal: 1 }),
+      ],
+    });
+    mocks.fetchPlanRead.mockResolvedValue({
+      ...readPlan("Beta"),
+      name: "beta.md",
+    });
+
+    await renderPanel();
+    const search = container.querySelector<HTMLInputElement>(".plans-search");
+    const inProgress = [...container.querySelectorAll<HTMLButtonElement>(".plans-filter")]
+      .find((button) => button.textContent === "IN PROGRESS");
+    await act(async () => {
+      setInputValue(search, "alpha");
+      inProgress?.click();
+    });
+    expect(container.textContent).not.toContain("beta.md");
+
+    await act(async () => {
+      activatePlansSearchTarget("theater-1", "beta.md");
+    });
+    await flush();
+
+    expect(search?.value).toBe("");
+    expect(container.querySelector(".plans-filter.is-active")?.textContent).toBe("ALL");
+    expect(container.querySelector(".plans-row.is-selected .plans-row-name")?.textContent).toBe("beta.md");
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView.mock.instances[0]).toBe(
+      [...container.querySelectorAll<HTMLButtonElement>(".plans-row-select")]
+        .find((button) => button.textContent?.includes("beta.md")),
+    );
+    expect(getPlansSearchTargetForTest()).toBeNull();
+  });
+});
+
 async function renderPanel(): Promise<void> {
   await act(async () => {
     root.render(plansPanel.render({
@@ -225,4 +278,11 @@ function deferred<T>(): {
     reject = onReject;
   });
   return { promise, resolve, reject };
+}
+
+function setInputValue(input: HTMLInputElement | null, value: string): void {
+  if (!input) throw new Error("plans search input not found");
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }

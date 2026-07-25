@@ -8,6 +8,7 @@ import {
   handleInstalledFile,
   handleInstall,
   handleList,
+  handlePaletteSearch,
   handlePreview,
   handleRemove,
   handleSearch,
@@ -22,6 +23,10 @@ export default definePlugin({
 
     registerRouter(ctx, "list", async ({ req, res }) => {
       await handleList(req, res, ctx, executor);
+      return true;
+    });
+    registerRouter(ctx, "palette-search", async ({ req, res }) => {
+      await handlePaletteSearch(req, res, ctx, executor);
       return true;
     });
     registerRouter(ctx, "search", async ({ req, res }) => {

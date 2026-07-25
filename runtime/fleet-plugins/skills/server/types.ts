@@ -18,6 +18,15 @@ export interface SkillListResult {
   readonly skills: SkillListItem[];
 }
 
+export interface InstalledSkillSearchItem {
+  readonly name: string;
+  readonly scope: Scope;
+}
+
+export interface InstalledSkillSearchResult {
+  readonly skills: readonly InstalledSkillSearchItem[];
+}
+
 export interface SkillSearchItem {
   readonly id: string;
   readonly name: string;

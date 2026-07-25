@@ -1,6 +1,7 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { handleFilesImage, handleFilesList, handleFilesRead, handleFilesWatch } from "./server/handlers.js";
+import { handleFilesSearch } from "./server/search.js";
 
 export default definePlugin({
   id: "file-explorer",
@@ -19,6 +20,10 @@ export default definePlugin({
     });
     registerRouter(ctx, "files/watch", ({ req, res }) => {
       handleFilesWatch(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "files/palette-search", async ({ req, res }) => {
+      await handleFilesSearch(req, res, ctx);
       return true;
     });
   },

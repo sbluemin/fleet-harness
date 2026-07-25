@@ -5,15 +5,18 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "@fleet-console/markdown/styles.css";
-import { fetchPlanRead, fetchPlansList, type PlanListItem, type PlanReadResult } from "../api.js";
+import { fetchPlanRead, fetchPlansList, fetchPlansSearch, type PlanListItem, type PlanReadResult } from "../api.js";
 import "./plans.css";
 import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planLaneHeadingMatches, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
 import { subscribeToPlanChanges } from "./plans-events.js";
+import { activatePlansSearchTarget, consumePlansSearchTarget, type PlansSearchTarget, usePlansSearchTarget } from "./plans-search-navigation.js";
 
 interface PlansListProps {
+  readonly revealTarget: PlansSearchTarget | null;
   readonly selectedName: string | null;
   readonly state: PlansListState;
   readonly onRetry: () => void;
+  readonly onRevealHandled: (target: PlansSearchTarget) => void;
   readonly onSelect: (name: string) => void;
   readonly pulsedNames: ReadonlySet<string>;
 }
@@ -62,6 +65,15 @@ export const plansPanel: RailPanelDescriptor = {
   defaultWidth: 360,
   icon: PlansIcon,
   render: (ctx) => <PlansPanel {...ctx} />,
+  search: async ({ query, theaterId, limit, signal }) => {
+    const result = await fetchPlansSearch(theaterId, query, limit, signal);
+    return result.plans.map((plan) => ({
+      id: plan.name,
+      title: plan.title,
+      subtitle: plan.name,
+      activate: () => activatePlansSearchTarget(theaterId, plan.name),
+    }));
+  },
 };
 
 function PlansPanel(ctx: RailPanelContext) {
@@ -78,6 +90,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const [listRetry, setListRetry] = useState(0);
   const [readerRetry, setReaderRetry] = useState(0);
   const [pulsedNames, setPulsedNames] = useState<ReadonlySet<string>>(() => new Set());
+  const [revealTarget, setRevealTarget] = useState<PlansSearchTarget | null>(null);
+  const searchTarget = usePlansSearchTarget();
   const listRequestRef = useRef(0);
   const readerRequestRef = useRef(0);
   const listSignaturesRef = useRef<Map<string, string> | null>(null);
@@ -94,6 +108,12 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const selectedNameRef = useRef<string | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
+
+  useEffect(() => {
+    if (!searchTarget || searchTarget.theaterId !== theaterId || !theaterId) return;
+    setSelectedPlan({ theaterId, name: searchTarget.name });
+    setRevealTarget(searchTarget);
+  }, [searchTarget, theaterId]);
 
   useEffect(() => {
     selectedNameRef.current = selectedName;
@@ -200,6 +220,10 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const handleSelect = useCallback((name: string) => {
     if (theaterId) setSelectedPlan({ theaterId, name });
   }, [theaterId]);
+  const handleRevealHandled = useCallback((target: PlansSearchTarget) => {
+    consumePlansSearchTarget(target);
+    setRevealTarget((current) => current?.requestId === target.requestId ? null : current);
+  }, []);
   // 닫힌 리더는 유지할 내용이 없다 — ref/상태를 함께 리셋해 같은 플랜 재열람이 background로
   // 오분류되어 읽기 실패를 침묵시키는 일이 없게 한다(재열람은 항상 foreground).
   const handleClose = useCallback(() => {
@@ -224,9 +248,11 @@ function PlansPanelBody(ctx: RailPanelContext) {
         {selectedName && <PlanReader state={readerState} onClose={handleClose} onRetry={retryReader} />}
         {selectedName && <div className="plans-divider" aria-hidden="true" />}
         <PlansList
+          revealTarget={revealTarget}
           selectedName={selectedName}
           state={listState}
           onRetry={retryList}
+          onRevealHandled={handleRevealHandled}
           onSelect={handleSelect}
           pulsedNames={pulsedNames}
         />
@@ -235,11 +261,25 @@ function PlansPanelBody(ctx: RailPanelContext) {
   );
 }
 
-function PlansList({ selectedName, state, onRetry, onSelect, pulsedNames }: PlansListProps) {
+function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled, onSelect, pulsedNames }: PlansListProps) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<PlanStatusFilter>("all");
   const [copiedName, setCopiedName] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  useLayoutEffect(() => {
+    if (!revealTarget || state.kind === "loading") return;
+    if (state.kind !== "ready") {
+      onRevealHandled(revealTarget);
+      return;
+    }
+    if (query !== "" || status !== "all") {
+      setQuery("");
+      setStatus("all");
+      return;
+    }
+    rowRefs.current.get(revealTarget.name)?.scrollIntoView({ block: "nearest" });
+    onRevealHandled(revealTarget);
+  }, [onRevealHandled, query, revealTarget, state, status]);
   if (state.kind === "no-theater") {
     return <div className="plans-list-pane"><EmptyState>Select a Theater to browse plans.</EmptyState></div>;
   }

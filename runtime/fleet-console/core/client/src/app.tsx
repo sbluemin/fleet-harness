@@ -38,10 +38,9 @@ export function App() {
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
-  // 팔레트 커맨드 모드의 "Open panel" 목록 — RightRail과 동일한 빌트인+플러그인 합성 순서를 미러한다.
+  // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 동일한 빌트인+플러그인 합성 순서를 미러한다.
   const paletteRailPanels = useMemo(
-    () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right")]
-      .map((panel) => ({ id: panel.id, title: panel.title })),
+    () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right")],
     [registry.railPanels],
   );
 

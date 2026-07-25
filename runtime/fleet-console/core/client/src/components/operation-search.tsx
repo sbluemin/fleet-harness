@@ -2,16 +2,23 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { setGlobalSettingsField } from "../global-settings-store.js";
-import { filterOperationSearchEntries, groupOperationSearchEntries, searchTokens } from "../operation-search.js";
+import {
+  filterOperationSearchEntries,
+  groupOperationSearchEntries,
+  RAIL_SEARCH_DEBOUNCE_MS,
+  searchRailPanels,
+  searchTokens,
+  type RailSearchGroup,
+} from "../operation-search.js";
 import {
   buildPaletteCommands,
   commandModeQuery,
   filterPaletteCommands,
   isCommandModeInput,
   type PaletteCommandEntry,
-  type PaletteRailPanelInfo,
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
@@ -33,7 +40,7 @@ import type { ConsoleState } from "../types.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
-  readonly railPanels: readonly PaletteRailPanelInfo[];
+  readonly railPanels: readonly RailPanelDescriptor[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly FleetClientPlugin[];
 }
@@ -48,10 +55,12 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
   const location = useLocation();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [railSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const resultRefs = useRef(new Map<string, HTMLButtonElement>());
+  const searchGenerationRef = useRef(0);
   const commandMode = isCommandModeInput(query);
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
@@ -62,14 +71,45 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
     [commandMode, commands, query],
   );
   const tokens = useMemo(() => searchTokens(commandMode ? commandModeQuery(query) : query), [commandMode, query]);
-  const resultCount = commandMode ? filteredCommands.length : filteredEntries.length;
+  const railSearchEntries = useMemo(
+    () => railSearchGroups.flatMap((group) => group.results.map((result) => ({ group, result }))),
+    [railSearchGroups],
+  );
+  const resultCount = commandMode ? filteredCommands.length : filteredEntries.length + railSearchEntries.length;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
   const selectedResultKey = commandMode
-    ? filteredCommands[clampedSelectedIndex]?.commandId
-    : filteredEntries[clampedSelectedIndex]?.operationId;
+    ? filteredCommands[clampedSelectedIndex] ? commandResultKey(filteredCommands[clampedSelectedIndex]!.commandId) : undefined
+    : filteredEntries[clampedSelectedIndex]
+      ? operationResultKey(filteredEntries[clampedSelectedIndex]!.operationId)
+      : railSearchEntries[clampedSelectedIndex - filteredEntries.length]
+        ? railResultKey(
+          railSearchEntries[clampedSelectedIndex - filteredEntries.length]!.group.panelId,
+          railSearchEntries[clampedSelectedIndex - filteredEntries.length]!.result.id,
+        )
+        : undefined;
   const activeOptionId = selectedResultKey === undefined
     ? undefined
-    : commandMode ? commandOptionId(selectedResultKey) : operationOptionId(selectedResultKey);
+    : resultOptionId(selectedResultKey);
+
+  useEffect(() => {
+    const generation = ++searchGenerationRef.current;
+    setRailSearchGroups([]);
+    const theaterId = state.activeTheaterId;
+    if (!state.operationSearchOpen || commandMode || query.trim() === "" || !theaterId) return;
+
+    const abort = new AbortController();
+    const timer = window.setTimeout(() => {
+      void searchRailPanels(railPanels, query, theaterId, abort.signal).then((nextGroups) => {
+        // provider가 abort를 무시해도 이전 세대 결과는 현재 팔레트에 반영하지 않는다.
+        if (abort.signal.aborted || generation !== searchGenerationRef.current) return;
+        setRailSearchGroups(nextGroups);
+      });
+    }, RAIL_SEARCH_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      abort.abort();
+    };
+  }, [commandMode, query, railPanels, state.activeTheaterId, state.operationSearchOpen]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;
@@ -105,6 +145,20 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
     // 최대화 해제는 이동 경로(operations.tsx의 pendingOperationFocus 소비)에 위임한다 — 최대화 중이면 유지·교체.
     focusOperation(operationId);
     navigate("/operations");
+    closeOperationSearch();
+  };
+
+  const selectRailResult = async (panelId: string, result: RailSearchResult) => {
+    // activate가 plugin-local 논리 타깃을 먼저 기록한 뒤에만 host route/rail을 연다.
+    previousFocusRef.current = null;
+    try {
+      await result.activate();
+    } catch {
+      return;
+    }
+    navigate("/operations");
+    openRailPanel(panelId);
+    setRailChromeExpanded(true);
     closeOperationSearch();
   };
 
@@ -256,9 +310,15 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
         return;
       }
       const selected = filteredEntries[clampedSelectedIndex];
-      if (!selected) return;
+      if (selected) {
+        event.preventDefault();
+        selectEntry(selected.operationId);
+        return;
+      }
+      const panelEntry = railSearchEntries[clampedSelectedIndex - filteredEntries.length];
+      if (!panelEntry) return;
       event.preventDefault();
-      selectEntry(selected.operationId);
+      void selectRailResult(panelEntry.group.panelId, panelEntry.result);
       return;
     }
     if (event.key === "Tab") trapFocus(event, cardRef.current);
@@ -302,13 +362,14 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
               <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">Commands</h2>
               {filteredCommands.map((command, index) => {
                 const active = index === clampedSelectedIndex;
+                const resultKey = commandResultKey(command.commandId);
                 return (
                   <button
                     id={commandOptionId(command.commandId)}
                     key={command.commandId}
                     ref={(node) => {
-                      if (node) resultRefs.current.set(command.commandId, node);
-                      else resultRefs.current.delete(command.commandId);
+                      if (node) resultRefs.current.set(resultKey, node);
+                      else resultRefs.current.delete(resultKey);
                     }}
                     type="button"
                     className={`operation-search-result ${active ? "is-active" : ""}`}
@@ -326,43 +387,83 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
                 );
               })}
             </section>
-          ) : <p className="operation-search-empty">No matching commands.</p>) : groups.length > 0 ? groups.map((group) => {
-            const headingId = operationGroupHeadingId(group.theaterId);
-            return (
-            <section className="operation-search-section" key={group.theaterId ?? UNASSIGNED_GROUP_KEY} role="group" aria-labelledby={headingId}>
-              <h2 id={headingId} className="operation-search-section-heading">{highlightText(group.theaterLabel, tokens)}</h2>
-              {group.entries.map((entry) => {
-                const index = filteredEntries.indexOf(entry);
-                const active = index === clampedSelectedIndex;
+          ) : <p className="operation-search-empty">No matching commands.</p>) : (
+            groups.length > 0 || railSearchGroups.length > 0 ? <>
+              {groups.map((group) => {
+                const headingId = operationGroupHeadingId(group.theaterId);
                 return (
-                  <button
-                    id={operationOptionId(entry.operationId)}
-                    key={entry.operationId}
-                    ref={(node) => {
-                      if (node) resultRefs.current.set(entry.operationId, node);
-                      else resultRefs.current.delete(entry.operationId);
-                    }}
-                    type="button"
-                    className={`operation-search-result ${active ? "is-active" : ""}`}
-                    role="option"
-                    aria-selected={active}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => selectEntry(entry.operationId)}
-                  >
-                    <span className="operation-search-result-text">
-                      <strong>{highlightText(entry.operationName, tokens)}</strong>
-                      <small>{operationMeta(entry)}</small>
-                    </span>
-                    {entry.activity !== "idle" ? (
-                      <span className={`operation-search-status operation-search-status--${entry.activity}`}>{entry.activity}</span>
-                    ) : null}
-                    <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
-                  </button>
+                  <section className="operation-search-section" key={group.theaterId ?? UNASSIGNED_GROUP_KEY} role="group" aria-labelledby={headingId}>
+                    <h2 id={headingId} className="operation-search-section-heading">{highlightText(group.theaterLabel, tokens)}</h2>
+                    {group.entries.map((entry) => {
+                      const index = filteredEntries.indexOf(entry);
+                      const active = index === clampedSelectedIndex;
+                      const resultKey = operationResultKey(entry.operationId);
+                      return (
+                        <button
+                          id={resultOptionId(resultKey)}
+                          key={entry.operationId}
+                          ref={(node) => {
+                            if (node) resultRefs.current.set(resultKey, node);
+                            else resultRefs.current.delete(resultKey);
+                          }}
+                          type="button"
+                          className={`operation-search-result ${active ? "is-active" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                          onMouseEnter={() => setSelectedIndex(index)}
+                          onClick={() => selectEntry(entry.operationId)}
+                        >
+                          <span className="operation-search-result-text">
+                            <strong>{highlightText(entry.operationName, tokens)}</strong>
+                            <small>{operationMeta(entry)}</small>
+                          </span>
+                          {entry.activity !== "idle" ? (
+                            <span className={`operation-search-status operation-search-status--${entry.activity}`}>{entry.activity}</span>
+                          ) : null}
+                          <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
+                        </button>
+                      );
+                    })}
+                  </section>
                 );
               })}
-            </section>
-            );
-          }) : <p className="operation-search-empty">No matching Operations.</p>}
+              {railSearchGroups.map((group) => {
+                const headingId = railGroupHeadingId(group.panelId);
+                return (
+                  <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
+                    <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
+                    {group.results.map((result) => {
+                      const index = filteredEntries.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+                      const active = index === clampedSelectedIndex;
+                      const resultKey = railResultKey(group.panelId, result.id);
+                      return (
+                        <button
+                          id={resultOptionId(resultKey)}
+                          key={result.id}
+                          ref={(node) => {
+                            if (node) resultRefs.current.set(resultKey, node);
+                            else resultRefs.current.delete(resultKey);
+                          }}
+                          type="button"
+                          className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                          onMouseEnter={() => setSelectedIndex(index)}
+                          onClick={() => { void selectRailResult(group.panelId, result); }}
+                        >
+                          <span className="operation-search-result-text">
+                            <strong>{highlightText(result.title, tokens)}</strong>
+                            {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                          </span>
+                          <span className="operation-search-panel-open">open</span>
+                        </button>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+            </> : <p className="operation-search-empty">No matching Operations or panel content.</p>
+          )}
         </div>
       </section>
     </div>
@@ -401,12 +502,28 @@ function operationGroupHeadingId(theaterId: string | null): string {
   return `operation-search-heading-${domIdPart(theaterId ?? UNASSIGNED_GROUP_KEY)}`;
 }
 
-function operationOptionId(operationId: string): string {
-  return `operation-search-option-${domIdPart(operationId)}`;
+function commandOptionId(commandId: string): string {
+  return resultOptionId(commandResultKey(commandId));
 }
 
-function commandOptionId(commandId: string): string {
-  return `operation-search-command-${domIdPart(commandId)}`;
+function resultOptionId(resultKey: string): string {
+  return `operation-search-option-${domIdPart(resultKey)}`;
+}
+
+function operationResultKey(operationId: string): string {
+  return `operation:${operationId}`;
+}
+
+function commandResultKey(commandId: string): string {
+  return `command:${commandId}`;
+}
+
+function railResultKey(panelId: string, resultId: string): string {
+  return `panel:${panelId}:${resultId}`;
+}
+
+function railGroupHeadingId(panelId: string): string {
+  return `operation-search-heading-panel-${domIdPart(panelId)}`;
 }
 
 function domIdPart(value: string): string {

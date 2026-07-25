@@ -11,6 +11,7 @@ import { HunkView } from "./hunk-view.js";
 import { formatCommitTime, refBadges } from "./log-parse.js";
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
+import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./search-navigation.js";
 
 type LoadState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly truncated: boolean } | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
@@ -37,10 +38,10 @@ export function shouldShowWip(wip: { readonly files: number }, filterText: strin
 
 function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
 
-export function CommitRow({ entry, checkouts, selected, graphNode, onSelect }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly graphNode: import("./graph-layout.js").GraphNode; readonly onSelect: (entry: LogCommitEntry) => void }) {
+export function CommitRow({ entry, checkouts, selected, graphNode, onSelect, rowRef }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly graphNode: import("./graph-layout.js").GraphNode; readonly onSelect: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void }) {
   const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.
-  return <button type="button" className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}`} onClick={() => onSelect(entry)}><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout && <CheckoutIcon current={checkout.isCurrent} />}{badge.label}</span>; })}{detached && <span className="history-badge history-badge--worktree"><CheckoutIcon current={detached.isCurrent} />detached</span>}</span><span className="history-commit-subject" title={entry.subject}>{entry.subject}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt)}</span><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} /></span></button>;
+  return <button ref={rowRef} type="button" className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}`} onClick={() => onSelect(entry)}><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout && <CheckoutIcon current={checkout.isCurrent} />}{badge.label}</span>; })}{detached && <span className="history-badge history-badge--worktree"><CheckoutIcon current={detached.isCurrent} />detached</span>}</span><span className="history-commit-subject" title={entry.subject}>{entry.subject}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt)}</span><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} /></span></button>;
 }
 
 function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onClose }: { readonly ctx: RailPanelContext; readonly repoRel: string; readonly target: CommitTarget; readonly workspace: boolean; readonly onSelectCommit: (target: CommitTarget) => void; readonly onClose: () => void }) {
@@ -121,10 +122,29 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
   const [dockHeight, setDockHeight] = useState(readWorkspaceDockHeight);
   const [isDragging, setIsDragging] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const searchTarget = useRepositorySearchTarget();
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
   useEffect(() => { setTarget(null); }, [refFilter]);
+  useEffect(() => {
+    if (
+      !searchTarget
+      || searchTarget.theaterId !== ctx.theaterId
+      || searchTarget.repoRel !== repoRel
+      || state.kind !== "ok"
+    ) return;
+    const entry = state.commits.find((commit) => commit.fullHash === searchTarget.fullHash);
+    if (!entry) return;
+    setFilterText("");
+    setTarget({ fullHash: entry.fullHash, entry });
+    consumeRepositorySearchTarget(searchTarget);
+  }, [ctx.theaterId, repoRel, searchTarget, state]);
+  useLayoutEffect(() => {
+    if (!target) return;
+    rowRefs.current.get(target.fullHash)?.scrollIntoView({ block: "nearest" });
+  }, [target]);
   // 숨은 마운트는 상태 보존용일 뿐이므로, 첫 활성화 전에는 log 조회 비용을 지불하지 않는다
   const [everActive, setEverActive] = useState(active);
   useEffect(() => { if (active) setEverActive(true); }, [active]);
@@ -189,7 +209,7 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
       <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder="Filter…" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{refFilter && <button type="button" className="repository-ref-chip" onClick={onClearRef}>{refFilter} ✕</button>}{state.kind === "ok" && <span className="history-count">{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span>}</div>
-      <div className="history-list">{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>Uncommitted changes <span>{wip.files} files · +{wip.additions} −{wip.deletions}</span></button>}{state.kind === "loading" && <div className="history-empty">Loading…</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">No history</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">No matching items</div>}{state.kind === "ok" && layout && visible.map((entry, index) => <CommitRow key={entry.fullHash} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} />)}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) && <div className="history-truncated">History capped at 200 commits.</div>}</div>
+      <div className="history-list">{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>Uncommitted changes <span>{wip.files} files · +{wip.additions} −{wip.deletions}</span></button>}{state.kind === "loading" && <div className="history-empty">Loading…</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>Retry</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">No history</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">No matching items</div>}{state.kind === "ok" && layout && visible.map((entry, index) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} />)}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) && <div className="history-truncated">History capped at 200 commits.</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
     {target && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? "Resize commit detail dock" : "Resize commit log"} onPointerDown={handleDivider} /><div className="history-detail-pane"><CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={setTarget} onClose={() => setTarget(null)} /></div></>}
