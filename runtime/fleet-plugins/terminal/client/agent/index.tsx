@@ -67,6 +67,7 @@ const FONT_META_KEYS = {
 const ANALYSIS_READY_POLL_MS = 5_000;
 export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
 const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
+const ANALYST_COMPANION_IDS = [ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
 const AGENT_COMPANION_IDS = [CARRIER_STREAMS_COMPANION_ID, ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
 type AnalysisReadiness = "unknown" | "ready" | "not-ready";
 
@@ -287,7 +288,11 @@ function isCompanionPanelVisible(context: OperationRenderContext, companionId: s
   return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
 }
 
-function toggleCompanionPanel(context: OperationRenderContext, companionId: string): void {
+function toggleCompanionPanel(
+  context: OperationRenderContext,
+  companionId: string,
+  clusterIds: readonly string[] = [companionId],
+): void {
   if (!context.onSetCompanionPanelVisible) {
     context.onRequestCompanions?.(!context.companionsOpen);
     return;
@@ -299,9 +304,12 @@ function toggleCompanionPanel(context: OperationRenderContext, companionId: stri
     context.onSetCompanionPanelVisible(companionId, true);
     return;
   }
-  context.onSetCompanionPanelVisible(companionId, false);
-  const visibleCount = AGENT_COMPANION_IDS.filter((id) => isCompanionPanelVisible(context, id)).length;
-  if (visibleCount <= 1) context.onRequestCompanions?.(false);
+  // Artifacts는 Chat 안의 chip으로만 여닫히므로 Chat만 닫으면 닫을 수단이 사라진다.
+  for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
+  const remainingVisibleCount = AGENT_COMPANION_IDS
+    .filter((id) => !clusterIds.includes(id) && isCompanionPanelVisible(context, id))
+    .length;
+  if (remainingVisibleCount === 0) context.onRequestCompanions?.(false);
 }
 
 function SessionAnalystHandle({
@@ -325,7 +333,7 @@ function SessionAnalystHandle({
       aria-disabled={!ready}
       disabled={!ready}
       title={ready ? undefined : t("terminal.analyst.sendMessageFirst")}
-      onClick={() => { if (ready) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID); }}
+      onClick={() => { if (ready) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS); }}
     >
       {working ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
       <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>

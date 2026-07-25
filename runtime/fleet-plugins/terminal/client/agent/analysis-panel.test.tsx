@@ -61,7 +61,7 @@ describe("Session Analyst contract", () => {
     expect(chat).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
     expect(source.match(/hideCaption: true/g)).toHaveLength(3);
     expect(source.match(/defaultHidden: true/g)).toHaveLength(3);
-    expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID)");
+    expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS)");
     expect(source).toContain("toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)");
     expect(source).toContain("previousCompanionsOpenRef");
     // dispose 경합에서 orphan store를 만들지 않도록 re-arm은 조회 전용 API만 사용한다.
