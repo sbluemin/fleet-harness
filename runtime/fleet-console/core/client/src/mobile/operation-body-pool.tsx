@@ -27,7 +27,12 @@ export interface OperationBodyConfig {
 
 interface PoolRegistry {
   readonly publish: (operationId: string, config: OperationBodyConfig) => void;
-  readonly attach: (operationId: string, slot: HTMLDivElement | null, lastVisibleSize?: OperationBodySize) => void;
+  readonly attach: (
+    operationId: string,
+    slot: HTMLDivElement | null,
+    lastVisibleSize?: OperationBodySize,
+    lastVisibleZoom?: number,
+  ) => void;
 }
 
 interface OperationBodySize {
@@ -49,6 +54,8 @@ export function OperationBodySlot({ operationId, config, className = "" }: {
   const registry = useContext(PoolRegistryContext);
   if (!registry) throw new Error("OperationBodySlot must be rendered inside OperationBodyPool");
   const slotRef = useRef<HTMLDivElement | null>(null);
+  const configRef = useRef(config);
+  configRef.current = config;
   useLayoutEffect(() => {
     registry.publish(operationId, config);
   }, [config, operationId, registry]);
@@ -62,7 +69,12 @@ export function OperationBodySlot({ operationId, config, className = "" }: {
     slotRef.current = null;
     const width = previous?.clientWidth ?? 0;
     const height = previous?.clientHeight ?? 0;
-    registry.attach(operationId, null, width > 0 && height > 0 ? { width, height } : undefined);
+    registry.attach(
+      operationId,
+      null,
+      width > 0 && height > 0 ? { width, height } : undefined,
+      configRef.current.zoom,
+    );
   }, [operationId, registry]);
   return <div className={className} ref={attach} data-operation-body-slot={operationId} />;
 }
@@ -77,6 +89,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
   const configsRef = useRef(new Map<string, OperationBodyConfig>());
   const slotsRef = useRef(new Map<string, HTMLDivElement>());
   const lastVisibleSizesRef = useRef(new Map<string, OperationBodySize>());
+  const lastVisibleZoomsRef = useRef(new Map<string, number>());
   const [slotRevision, setSlotRevision] = useState(0);
   const parkingRef = useRef<HTMLDivElement | null>(null);
   const attachParking = useCallback((element: HTMLDivElement | null) => {
@@ -91,7 +104,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
       configsRef.current.set(operationId, config);
       setSlotRevision((revision) => revision + 1);
     },
-    attach(operationId, slot, lastVisibleSize) {
+    attach(operationId, slot, lastVisibleSize, lastVisibleZoom) {
       const previous = slotsRef.current.get(operationId) ?? null;
       if (previous === slot) return;
       if (slot) slotsRef.current.set(operationId, slot);
@@ -99,6 +112,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
         slotsRef.current.delete(operationId);
         configsRef.current.delete(operationId);
         if (lastVisibleSize) lastVisibleSizesRef.current.set(operationId, lastVisibleSize);
+        if (lastVisibleZoom !== undefined) lastVisibleZoomsRef.current.set(operationId, lastVisibleZoom);
       }
       setSlotRevision((revision) => revision + 1);
     },
@@ -113,6 +127,10 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
           if (!descriptor?.render) return null;
           const config = configsRef.current.get(operation.id) ?? defaultConfig(operation);
           const parked = !slotsRef.current.has(operation.id);
+          const lastVisibleZoom = lastVisibleZoomsRef.current.get(operation.id);
+          const bodyConfig = parked && lastVisibleZoom !== undefined
+            ? { ...config, zoom: lastVisibleZoom }
+            : config;
           const parkingSize = lastVisibleSizesRef.current.get(operation.id) ?? {
             width: config.geometry.width,
             height: config.geometry.height,
@@ -122,7 +140,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
               key={operation.id}
               operation={operation}
               descriptor={descriptor}
-              config={config}
+              config={bodyConfig}
               capabilities={capabilities}
               slot={slotsRef.current.get(operation.id) ?? parkingRef.current}
               parked={parked}

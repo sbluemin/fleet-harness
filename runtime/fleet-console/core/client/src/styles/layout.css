@@ -79,6 +79,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-left {
+  grid-column: 1;
   width: var(--command-band-left-width, 280px);
   gap: var(--space-1);
   padding-inline: var(--space-2);
@@ -228,12 +229,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-center {
+  grid-column: 2;
   justify-content: center;
   gap: var(--space-3);
   padding-inline: var(--space-3);
 }
 
 .command-band-right {
+  grid-column: 3;
   justify-content: flex-end;
   gap: var(--space-1);
   padding-inline: var(--space-2);
