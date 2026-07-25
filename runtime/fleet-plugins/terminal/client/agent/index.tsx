@@ -534,29 +534,35 @@ function CarrierStreamColumn({
       <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
         <div ref={scroll.contentRef} className="carrier-stream-column__content">
           {request ? <div className="carrier-stream-column__request">{request}</div> : null}
+          {track.tools.length > 0 || reasoning ? (
+            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`Activity for ${track.displayName}`}>
+              {phase.tone === "live" ? <span className="carrier-stream-column__activity-scan" aria-hidden="true" /> : null}
+              <div className="carrier-stream-column__activity-list" role="list">
+                {track.tools.map((tool) => {
+                  const target = describeToolTarget(tool.input);
+                  const tone = resolveToolTone(tool.status);
+                  return (
+                    <div key={tool.id} className="carrier-stream-column__activity-row" data-tone={tone} role="listitem">
+                      <i aria-hidden="true" />
+                      <strong>{tool.name ?? tool.id}</strong>
+                      {target ? <span>{target}</span> : null}
+                    </div>
+                  );
+                })}
+                {reasoning ? (
+                  <div className="carrier-stream-column__activity-row" data-tone="live" role="listitem" aria-live="polite">
+                    <i aria-hidden="true" />
+                    <strong>Reasoning…</strong>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
           {track.text ? (
             <div className="carrier-stream-column__answer">
               <span aria-hidden="true">✳</span>
               <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} />
-            </div>
-          ) : null}
-          {reasoning ? (
-            <div className="carrier-stream-column__reasoning" role="status"><i aria-hidden="true" />Reasoning…</div>
-          ) : null}
-          {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
-          {track.tools.length > 0 ? (
-            <div className="carrier-stream-column__tools" role="list" aria-label={`Tools used by ${track.displayName}`}>
-              {track.tools.map((tool) => {
-                const target = describeToolTarget(tool.input);
-                const tone = resolveToolTone(tool.status);
-                return (
-                  <span key={tool.id} className="carrier-stream-column__tool" data-tone={tone} role="listitem">
-                    <i aria-hidden="true" />
-                    <strong>{tool.name ?? tool.id}</strong>
-                    {target ? <span>{target}</span> : null}
-                  </span>
-                );
-              })}
             </div>
           ) : null}
         </div>
