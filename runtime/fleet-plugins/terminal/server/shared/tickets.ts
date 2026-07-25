@@ -12,6 +12,8 @@ export interface TerminalTicketRegistry {
   readonly ttlMs: number;
   issue(context: TerminalTicketContext): TerminalTicket;
   consume(ticket: string | null): TerminalTicketContext | null;
+  /** Drop every outstanding (unconsumed) ticket for the given session identity. */
+  invalidateForSession(sessionId: string): void;
   prune(): void;
 }
 
@@ -47,6 +49,12 @@ export function createPluginTerminalTicketRegistry(deps: TerminalTicketRegistryD
     return stored.context;
   }
 
+  function invalidateForSession(sessionId: string): void {
+    for (const [ticket, stored] of tickets) {
+      if (stored.context.sessionId === sessionId) tickets.delete(ticket);
+    }
+  }
+
   function prune(): void {
     const current = now();
     for (const [ticket, stored] of tickets) {
@@ -54,5 +62,5 @@ export function createPluginTerminalTicketRegistry(deps: TerminalTicketRegistryD
     }
   }
 
-  return { ttlMs, issue, consume, prune };
+  return { ttlMs, issue, consume, invalidateForSession, prune };
 }

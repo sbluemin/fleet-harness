@@ -123,7 +123,7 @@ function createHarness(body: Record<string, unknown>) {
   const eventListeners = new Map<string, Array<(payload: unknown) => void>>();
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   let route: RouteHandler | undefined;
-  let lifecycleCleanup: (() => void | Promise<void>) | undefined;
+  const lifecycleCleanups: Array<() => void | Promise<void>> = [];
   let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
   let titleCallback: ((operationId: string, title: string) => unknown) | undefined;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
@@ -132,12 +132,14 @@ function createHarness(body: Record<string, unknown>) {
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
     issueTicket: () => ({ ticket: "ticket", ttlMs: 1_000 }),
+    invalidateTicketsForSession: () => {},
     canAttach: () => true,
     attach,
     write,
     terminate,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
+    getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {
       exitCallback = callback;
@@ -236,7 +238,7 @@ function createHarness(body: Record<string, unknown>) {
       },
       lifecycle: {
         registerCleanup: (cleanup: () => void | Promise<void>) => {
-          lifecycleCleanup = cleanup;
+          lifecycleCleanups.push(cleanup);
           return () => {};
         },
       },
@@ -245,11 +247,18 @@ function createHarness(body: Record<string, unknown>) {
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
-  registerAgentRoutes(ctx, terminalRuntime, { authService: {} as never, globalOptionsService: {} as never });
+  registerAgentRoutes(ctx, terminalRuntime, {
+    authService: {} as never,
+    globalOptionsService: {
+      load: () => ({ version: 1, agentIdleDormantMinutes: null }),
+      save: (data) => data,
+      update: (mutate) => mutate({ version: 1 }),
+    },
+  });
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;
     else process.env.FLEET_TERMINAL_CMD = previousTerminalCommand;
-    await lifecycleCleanup?.();
+    for (const cleanup of [...lifecycleCleanups].reverse()) await cleanup();
   });
 
   return {

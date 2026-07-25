@@ -597,9 +597,76 @@ function GeneralSection() {
   return (
     <>
       <SystemPromptSettingsBlock />
+      <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <TerminalRendererCard terminalRenderer={terminalRenderer} />
     </>
+  );
+}
+
+const IDLE_AGENT_DORMANT_OPTIONS = [
+  { value: "off", label: "Off" },
+  { value: "30", label: "30 minutes" },
+  { value: "60", label: "1 hour" },
+  { value: "120", label: "2 hours" },
+  { value: "240", label: "4 hours" },
+] as const;
+
+function IdleAgentSessionsSettingsBlock() {
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  const selectValue = state?.agentIdleDormantMinutes === null
+    ? "off"
+    : state?.agentIdleDormantMinutes !== undefined
+      ? String(state.agentIdleDormantMinutes)
+      : "60";
+  const idleOptions = (() => {
+    const options: Array<{ value: string; label: string }> = IDLE_AGENT_DORMANT_OPTIONS.map((option) => ({
+      value: option.value,
+      label: option.label,
+    }));
+    const minutes = state?.agentIdleDormantMinutes;
+    if (minutes === null || minutes === undefined) return options;
+    const value = String(minutes);
+    if (options.some((option) => option.value === value)) return options;
+    options.push({ value, label: `${minutes} minutes` });
+    return options;
+  })();
+
+  return (
+    <section className="global-settings-card" aria-label="Idle agent sessions">
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {state ? (
+        <div className="global-settings-row">
+          <div className="global-settings-row-text">
+            <p className="global-settings-resp-title" id="idle-agent-sessions-label">Idle agent sessions</p>
+            <p className="global-settings-help" id="idle-agent-sessions-help">
+              Automatically move idle agent terminals to Dormant after the selected period. Dormant sessions keep their conversation and resume with one click. Shell terminals are never affected. Persists on the Console server.
+            </p>
+          </div>
+          <Select
+            aria-labelledby="idle-agent-sessions-label"
+            value={selectValue}
+            disabled={saving}
+            options={idleOptions}
+            onChange={(raw) => {
+              const next = raw === "off" ? null : Number(raw);
+              void setSystemPromptSettingsField("agentIdleDormantMinutes", next);
+            }}
+          />
+        </div>
+      ) : (
+        <p className="global-settings-help">{settings.loading ? "Loading settings." : "Settings unavailable."}</p>
+      )}
+    </section>
   );
 }
 

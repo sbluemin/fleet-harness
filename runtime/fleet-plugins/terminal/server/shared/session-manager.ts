@@ -16,6 +16,8 @@ export interface TerminalSessionManagerDeps {
   readonly resolveTitleListener?: (context: TerminalTicketContext) => TerminalTitleListener | undefined;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
   readonly onSessionExit?: (sessionId: string) => unknown;
+  /** Monotonic clock for idle tracking. Defaults to `performance.now`. */
+  readonly now?: () => number;
 }
 
 interface TerminalSession {
@@ -36,6 +38,8 @@ interface TerminalSession {
   // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
   graceTimer: ReturnType<typeof setTimeout> | null;
   terminalQueryResidual: string;
+  // 인메모리 유후 추적(서버 monotonic). 생성 시 시드되고 attach / PTY 출력 / binary 입력 / 서버 주입 write에서 갱신.
+  lastActivityAt: number | undefined;
 }
 
 interface KillSessionOptions {
@@ -68,6 +72,7 @@ const SECONDARY_DEVICE_ATTRIBUTES_RESPONSE = `${ANSI_CSI_PREFIX}>0;0;0c`;
 export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): TerminalSessionManager {
   const startShell = deps.startShell ?? startTerminalShell;
   const scrollbackLimit = deps.scrollbackLimit ?? DEFAULT_SCROLLBACK_LIMIT;
+  const now = deps.now ?? (() => performance.now());
   const sessions = new Map<string, TerminalSession>();
   const pendingSessions = new Map<string, Promise<TerminalSession>>();
 
@@ -84,6 +89,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       session.activeSocket.close(4000, "terminal_replaced");
     }
     session.activeSocket = socket;
+    touchActivity(session);
     session.pty.resize(session.cols, session.rows);
     replayScrollback(session, socket);
     socket.on("message", (data, isBinary) => handleSocketMessage(session, data, isBinary));
@@ -110,6 +116,11 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     return sessions.get(sessionId)?.renameCommand;
   }
 
+  function getSessionLastActivityAt(sessionId: string): number | null {
+    const session = sessions.get(sessionId);
+    return session?.lastActivityAt === undefined ? null : session.lastActivityAt;
+  }
+
   async function resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null> {
     const session = sessions.get(sessionId);
     const resolver = session?.sessionIdentityResolver;
@@ -128,6 +139,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     const session = sessions.get(sessionId);
     if (!session || typeof session.pty.write !== "function") return false;
     try {
+      // 서버 주입 입력(reminder·rename)도 활동이다 — 직렬화된 주입 큐가 길어져도
+      // 각 write가 다음 write(250ms)까지 유후 타이머를 밀어내 세션이 살아있는다.
+      touchActivity(session);
       session.pty.write(data);
       return true;
     } catch {
@@ -203,6 +217,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       rows: DEFAULT_ROWS,
       graceTimer: null,
       terminalQueryResidual: "",
+      // 생성 시각으로 시드한다 — 조용한 PTY가 attach 전에 고아가 되어도 sweeper가 유후 판정할 수 있게 한다.
+      lastActivityAt: now(),
     };
     try {
       const dataDisposable = pty.onData((data) => handlePtyData(session, data));
@@ -224,6 +240,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function handlePtyData(session: TerminalSession, data: string): void {
+    touchActivity(session);
     const buffer = Buffer.from(data, "utf8");
     respondToTerminalQueries(session, buffer);
     observeOscTitles(session, buffer);
@@ -251,10 +268,15 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   function handleSocketMessage(session: TerminalSession, data: TerminalSocketData, isBinary: boolean): void {
     if (isBinary) {
+      touchActivity(session);
       session.pty.write(toBuffer(data).toString("utf8"));
       return;
     }
     handleControlFrame(session, toBuffer(data).toString("utf8"));
+  }
+
+  function touchActivity(session: TerminalSession): void {
+    session.lastActivityAt = now();
   }
 
   function handleControlFrame(session: TerminalSession, text: string): void {
@@ -319,7 +341,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, resolveSessionIdentity, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

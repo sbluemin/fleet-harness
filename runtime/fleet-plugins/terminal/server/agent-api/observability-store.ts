@@ -338,7 +338,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     session.status = "dormant";
     session.providerSession = providerSession;
     delete session.modelActivity;
-    delete session.attentionPending;
+    // attentionPending은 보존한다 — dormant 사이드바 "입력 대기" 배지가 Resume 전까지 유지되어야 한다.
+    // resume 실패 롤백용 updateTerminalSessionStatus("dormant") 분기는 기존처럼 attention을 지운다.
     return toTerminalSessionInfo(session);
   }
 

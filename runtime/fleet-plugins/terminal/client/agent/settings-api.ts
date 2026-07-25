@@ -6,11 +6,13 @@ export interface KimiModelSetting {
 export interface SystemPromptSettingsState {
   readonly enableMetaphor: boolean;
   readonly kimiModel: KimiModelSetting | null;
+  readonly agentIdleDormantMinutes: number | null;
 }
 
 export type SystemPromptSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly kimiModel: KimiModelSetting };
+  | { readonly kimiModel: KimiModelSetting }
+  | { readonly agentIdleDormantMinutes: number | null };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -56,13 +58,20 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || typeof payload.enableMetaphor !== "boolean"
+    || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
     enableMetaphor: payload.enableMetaphor,
     kimiModel: assertKimiModelSetting(payload.kimiModel),
+    agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
   };
+}
+
+function isAgentIdleDormantMinutes(value: unknown): value is number | null {
+  if (value === null) return true;
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
 }
 
 // kimiModel은 선택 필드다. null/부재는 null로, 형태가 깨진 값은 서버 계약 위반이지만

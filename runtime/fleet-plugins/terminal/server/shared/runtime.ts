@@ -11,12 +11,14 @@ import { createPluginTerminalUpgradeHandler } from "./ws.js";
 export interface TerminalRuntime {
   readonly handleUpgrade: UpgradeHandler;
   issueTicket(context: TerminalTicketContext): TerminalTicket;
+  invalidateTicketsForSession(sessionId: string): void;
   canAttach(operationId: string): boolean;
   attach(context: TerminalTicketContext): Promise<void>;
   write(operationId: string, data: string): boolean;
   terminate(operationId: string): boolean;
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
+  getSessionLastActivityAt(operationId: string): number | null;
   resolveSessionIdentity(operationId: string, providerSessionId: string): Promise<string | null>;
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
   onTitle(operationType: string, callback: TerminalTitleListener): () => void;
@@ -58,6 +60,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
   return {
     handleUpgrade: upgrade.handleUpgrade,
     issueTicket: (context) => tickets.issue(context),
+    invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: (operationId) => sessions.canAttach(operationId),
     attach: async (context) => {
       await sessions.createSession(context);
@@ -66,6 +69,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     terminate: (operationId) => sessions.terminate(operationId),
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
+    getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),
     resolveSessionIdentity: (operationId, providerSessionId) => sessions.resolveSessionIdentity(operationId, providerSessionId),
     onExit: (callback) => {
       terminalExitListeners.add(callback);

@@ -134,6 +134,64 @@ describe("data-dir settings store", () => {
     });
   });
 
+  it("preserves valid agentIdleDormantMinutes and drops invalid values", () => {
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: 60,
+    })).toEqual({
+      changed: false,
+      data: {
+        version: 1,
+        agentIdleDormantMinutes: 60,
+      },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: null,
+    })).toEqual({
+      changed: false,
+      data: {
+        version: 1,
+        agentIdleDormantMinutes: null,
+      },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: 0,
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: -5,
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: 1.5,
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: Number.POSITIVE_INFINITY,
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      agentIdleDormantMinutes: "60",
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+  });
+
   it("drops legacy codex launch modes", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,

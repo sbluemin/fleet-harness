@@ -75,6 +75,7 @@ export interface TerminalSessionManager {
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
+  getSessionLastActivityAt(sessionId: string): number | null;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;
   stop(): Promise<void>;

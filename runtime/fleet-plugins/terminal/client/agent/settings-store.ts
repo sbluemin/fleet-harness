@@ -1,6 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { fetchSystemPromptSettings, saveSystemPromptSettings, type SystemPromptSettingsState } from "./settings-api.js";
+import { fetchSystemPromptSettings, saveSystemPromptSettings, type SystemPromptSettingsState, type SystemPromptSettingsUpdate } from "./settings-api.js";
 
 export type SystemPromptSettingsField = keyof SystemPromptSettingsState;
 
@@ -63,9 +63,7 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
   // 진행 중인 로드 응답이 이 저장 결과를 덮지 않도록 세대값을 올린다.
   loadGeneration += 1;
   const optimistic = { ...current, [field]: value };
-  const update = field === "enableMetaphor"
-    ? { enableMetaphor: optimistic.enableMetaphor }
-    : { kimiModel: optimistic.kimiModel! };
+  const update = toSettingsUpdate(field, optimistic);
   setSnapshot({ state: optimistic, savingField: field, error: null });
   try {
     const state = await saveSystemPromptSettings(update);
@@ -75,6 +73,12 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
     setSnapshot({ state: current, savingField: null, error: toErrorMessage(error) });
     return false;
   }
+}
+
+function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
+  if (field === "enableMetaphor") return { enableMetaphor: state.enableMetaphor };
+  if (field === "agentIdleDormantMinutes") return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
+  return { kimiModel: state.kimiModel! };
 }
 
 function setSnapshot(patch: Partial<SystemPromptSettingsStoreState>): void {
