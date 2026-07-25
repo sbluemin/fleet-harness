@@ -154,14 +154,22 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
     if (viewMode.effective === "mobile") {
-      setActiveOperation(operationId);
+      const operation = state.operations.find((candidate) => candidate.id === operationId && candidate.theaterId === state.activeTheaterId);
+      if (operation) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("op", operationId);
+        if (new URL(window.location.href).searchParams.get("op") !== operationId) {
+          window.history.pushState({ ...window.history.state, fleetMobileOperation: true }, "", url);
+        }
+        window.dispatchEvent(new Event("popstate"));
+      }
       consumeOperationFocus();
       return;
     }
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
     consumeOperationFocus();
-  }, [focusMapOperation, registry.operationKinds, state.pendingOperationFocus, viewMode.effective]);
+  }, [focusMapOperation, registry.operationKinds, state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);

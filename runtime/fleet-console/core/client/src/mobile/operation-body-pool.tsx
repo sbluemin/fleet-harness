@@ -27,7 +27,12 @@ export interface OperationBodyConfig {
 
 interface PoolRegistry {
   readonly publish: (operationId: string, config: OperationBodyConfig) => void;
-  readonly attach: (operationId: string, slot: HTMLDivElement | null) => void;
+  readonly attach: (operationId: string, slot: HTMLDivElement | null, lastVisibleSize?: OperationBodySize) => void;
+}
+
+interface OperationBodySize {
+  readonly width: number;
+  readonly height: number;
 }
 
 const PoolRegistryContext = createContext<PoolRegistry | null>(null);
@@ -43,11 +48,21 @@ export function OperationBodySlot({ operationId, config, className = "" }: {
 }) {
   const registry = useContext(PoolRegistryContext);
   if (!registry) throw new Error("OperationBodySlot must be rendered inside OperationBodyPool");
+  const slotRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     registry.publish(operationId, config);
   }, [config, operationId, registry]);
   const attach = useCallback((element: HTMLDivElement | null) => {
-    registry.attach(operationId, element);
+    if (element) {
+      slotRef.current = element;
+      registry.attach(operationId, element);
+      return;
+    }
+    const previous = slotRef.current;
+    slotRef.current = null;
+    const width = previous?.clientWidth ?? 0;
+    const height = previous?.clientHeight ?? 0;
+    registry.attach(operationId, null, width > 0 && height > 0 ? { width, height } : undefined);
   }, [operationId, registry]);
   return <div className={className} ref={attach} data-operation-body-slot={operationId} />;
 }
@@ -61,6 +76,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
 }) {
   const configsRef = useRef(new Map<string, OperationBodyConfig>());
   const slotsRef = useRef(new Map<string, HTMLDivElement>());
+  const lastVisibleSizesRef = useRef(new Map<string, OperationBodySize>());
   const [slotRevision, setSlotRevision] = useState(0);
   const parkingRef = useRef<HTMLDivElement | null>(null);
   const attachParking = useCallback((element: HTMLDivElement | null) => {
@@ -75,13 +91,14 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
       configsRef.current.set(operationId, config);
       setSlotRevision((revision) => revision + 1);
     },
-    attach(operationId, slot) {
+    attach(operationId, slot, lastVisibleSize) {
       const previous = slotsRef.current.get(operationId) ?? null;
       if (previous === slot) return;
       if (slot) slotsRef.current.set(operationId, slot);
       else {
         slotsRef.current.delete(operationId);
         configsRef.current.delete(operationId);
+        if (lastVisibleSize) lastVisibleSizesRef.current.set(operationId, lastVisibleSize);
       }
       setSlotRevision((revision) => revision + 1);
     },
@@ -94,14 +111,22 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
         {operations.map((operation) => {
           const descriptor = operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
           if (!descriptor?.render) return null;
+          const config = configsRef.current.get(operation.id) ?? defaultConfig(operation);
+          const parked = !slotsRef.current.has(operation.id);
+          const parkingSize = lastVisibleSizesRef.current.get(operation.id) ?? {
+            width: config.geometry.width,
+            height: config.geometry.height,
+          };
           return (
             <PooledOperationBody
               key={operation.id}
               operation={operation}
               descriptor={descriptor}
-              config={configsRef.current.get(operation.id) ?? defaultConfig(operation)}
+              config={config}
               capabilities={capabilities}
               slot={slotsRef.current.get(operation.id) ?? parkingRef.current}
+              parked={parked}
+              parkingSize={parkingSize}
               slotRevision={slotRevision}
             />
           );
@@ -133,12 +158,14 @@ function sameBodyConfig(previous: OperationBodyConfig | undefined, next: Operati
     && previous.onSetCompanionPanelVisible === next.onSetCompanionPanelVisible;
 }
 
-function PooledOperationBody({ operation, descriptor, config, capabilities, slot }: {
+function PooledOperationBody({ operation, descriptor, config, capabilities, slot, parked, parkingSize }: {
   readonly operation: OperationNode;
   readonly descriptor: OperationKindDescriptor;
   readonly config: OperationBodyConfig;
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly slot: HTMLDivElement | null;
+  readonly parked: boolean;
+  readonly parkingSize: OperationBodySize;
   readonly slotRevision: number;
 }) {
   const mountNode = useMemo(() => {
@@ -152,8 +179,15 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
 
   useLayoutEffect(() => {
     if (!slot || mountNode.parentElement === slot) return;
+    if (parked) {
+      mountNode.style.width = `${parkingSize.width}px`;
+      mountNode.style.height = `${parkingSize.height}px`;
+    } else {
+      mountNode.style.removeProperty("width");
+      mountNode.style.removeProperty("height");
+    }
     slot.appendChild(mountNode);
-  }, [mountNode, slot]);
+  }, [mountNode, parked, parkingSize.height, parkingSize.width, slot]);
 
   // mountNode는 명령형으로 만든 DOM이라 portal 내용이 unmount돼도 React가 회수하지 않는다.
   // 정리는 이 전용 effect가 맡는다 — 위 슬롯 이동 effect의 cleanup에 넣으면 slot이 바뀔 때마다

@@ -266,8 +266,6 @@
   position: fixed;
   left: -10000px;
   top: 0;
-  width: 560px;
-  height: 360px;
   visibility: hidden;
   pointer-events: none;
   overflow: hidden;
