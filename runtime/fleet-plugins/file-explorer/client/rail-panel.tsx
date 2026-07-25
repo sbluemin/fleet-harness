@@ -22,6 +22,7 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 export const fileExplorerPanel: RailPanelDescriptor = {
   id: "file-explorer",
   title: "Files",
+  defaultWidth: 360,
   icon: FileExplorerIcon,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
 };

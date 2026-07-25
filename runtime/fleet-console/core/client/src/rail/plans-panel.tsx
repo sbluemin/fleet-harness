@@ -59,6 +59,7 @@ const PLANS_EXTRA_WIDTH = 360;
 export const plansPanel: RailPanelDescriptor = {
   id: "plans",
   title: "Plans",
+  defaultWidth: 360,
   icon: PlansIcon,
   render: (ctx) => <PlansPanel {...ctx} />,
 };

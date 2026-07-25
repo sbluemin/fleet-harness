@@ -27,6 +27,7 @@ interface CodexWorkspaceState {
 export const codexPanel: RailPanelDescriptor = {
   id: "codex",
   title: "Codex",
+  defaultWidth: 420,
   icon: () => <CodexIcon />,
   render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} />,
 };

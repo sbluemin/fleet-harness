@@ -144,6 +144,7 @@ function SkillsIcon() {
 export const skillsPanel: RailPanelDescriptor = {
   id: "skills",
   title: "Skills",
+  defaultWidth: 360,
   icon: SkillsIcon,
   render: (ctx: RailPanelContext) => <SkillsPanel ctx={ctx} />,
 };

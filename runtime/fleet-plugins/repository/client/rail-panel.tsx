@@ -519,6 +519,7 @@ function RepositoryIcon() {
 export const repositoryPanel: RailPanelDescriptor = {
   id: "repository",
   title: "Repository",
+  defaultWidth: 420,
   icon: () => <RepositoryIcon />,
   render: (ctx: RailPanelContext) => <RepositoryPanel ctx={ctx} />,
 };

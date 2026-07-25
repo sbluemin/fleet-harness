@@ -18,7 +18,8 @@ interface RightRailProps {
 
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
-const PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
+const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
+const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
 const FALLBACK_THEATER_LABEL = "Theater";
 const OVERLAY_ALPHA_PRESETS: readonly { readonly label: string; readonly value: RailOverlayAlpha }[] = [
   { label: "Solid", value: 100 },
@@ -27,15 +28,62 @@ const OVERLAY_ALPHA_PRESETS: readonly { readonly label: string; readonly value: 
   { label: "60", value: 60 },
 ];
 
-function readStoredPanelWidth(): number {
+function readStoredPanelWidths(): Record<string, number> {
   try {
-    const v = localStorage.getItem(PREFS_PANEL_WIDTH);
-    if (v !== null) {
-      const n = parseInt(v, 10);
-      if (!isNaN(n) && n >= MIN_PANEL_WIDTH) return n;
+    const raw = localStorage.getItem(PREFS_PANEL_WIDTHS);
+    if (raw === null) return Object.create(null) as Record<string, number>;
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return Object.create(null) as Record<string, number>;
+
+    const widths: Record<string, number> = Object.create(null);
+    for (const [panelId, width] of Object.entries(parsed)) {
+      if (typeof width === "number" && Number.isFinite(width) && width >= MIN_PANEL_WIDTH) {
+        widths[panelId] = Math.round(width);
+      }
     }
+    return widths;
   } catch { /* ignore */ }
-  return DEFAULT_PANEL_WIDTH;
+  return Object.create(null) as Record<string, number>;
+}
+
+function readStoredPanelWidthsWithLegacyMigration(activePanelId: string | null): Record<string, number> {
+  const widths = readStoredPanelWidths();
+  if (activePanelId === null) return widths;
+
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_PREFS_PANEL_WIDTH);
+    if (legacyRaw === null) return widths;
+
+    const legacyWidth = Number(legacyRaw);
+    if (Number.isFinite(legacyWidth) && legacyWidth >= MIN_PANEL_WIDTH) {
+      widths[activePanelId] = Math.round(legacyWidth);
+      localStorage.setItem(PREFS_PANEL_WIDTHS, JSON.stringify(widths));
+    }
+    localStorage.removeItem(LEGACY_PREFS_PANEL_WIDTH);
+  } catch { /* ignore */ }
+  return widths;
+}
+
+function resolvePanelWidth(
+  activePanelId: string | null,
+  defaultWidth: number | undefined,
+  maxWidth: number,
+  storedWidths: Record<string, number>,
+): number {
+  const rememberedWidth = activePanelId === null ? undefined : storedWidths[activePanelId];
+  if (rememberedWidth !== undefined && rememberedWidth >= MIN_PANEL_WIDTH && rememberedWidth <= maxWidth) {
+    return rememberedWidth;
+  }
+  return Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Math.round(defaultWidth ?? DEFAULT_PANEL_WIDTH)));
+}
+
+function saveStoredPanelWidth(activePanelId: string | null, width: number): void {
+  if (activePanelId === null) return;
+  try {
+    const widths = readStoredPanelWidths();
+    widths[activePanelId] = Math.round(width);
+    localStorage.setItem(PREFS_PANEL_WIDTHS, JSON.stringify(widths));
+  } catch { /* ignore */ }
 }
 
 export function RightRail({ theaterId, api }: RightRailProps) {
@@ -57,13 +105,63 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
   const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth));
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
 
-  const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
+  const migrationPendingRef = useRef(activePanel === null);
+  const interpretedPanelIdRef = useRef(activePanel?.id ?? null);
+  const [panelWidth, setPanelWidthState] = useState(() => {
+    const storedWidths = readStoredPanelWidthsWithLegacyMigration(activePanel?.id ?? null);
+    return resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
+  });
+  const desiredWidthRef = useRef(panelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
+
+  useLayoutEffect(() => {
+    const onResize = () => {
+      const next = window.innerWidth;
+      setViewportWidth((current) => current === next ? current : next);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useLayoutEffect(() => {
+    const nextPanelId = activePanel?.id ?? null;
+    if (interpretedPanelIdRef.current === nextPanelId) {
+      if (isDragging || activePanel === null || activeId === null) return;
+      const rememberedWidth = readStoredPanelWidths()[activeId];
+      if (rememberedWidth === undefined || rememberedWidth > maxPanelWidth || rememberedWidth === desiredWidthRef.current) return;
+      desiredWidthRef.current = rememberedWidth;
+      panelWidthRef.current = rememberedWidth;
+      setPanelWidthState(rememberedWidth);
+      return;
+    }
+    interpretedPanelIdRef.current = nextPanelId;
+    const canMigrate = activePanel !== null;
+    const storedWidths = migrationPendingRef.current && canMigrate
+      ? readStoredPanelWidthsWithLegacyMigration(activeId)
+      : readStoredPanelWidths();
+    if (canMigrate) migrationPendingRef.current = false;
+    const next = resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
+    desiredWidthRef.current = next;
+    panelWidthRef.current = next;
+    setPanelWidthState(next);
+  }, [activeId, activePanel?.id, activePanel?.defaultWidth, isDragging, maxPanelWidth]);
+
+  useLayoutEffect(() => {
+    const desiredWidth = isDragging ? panelWidthRef.current : desiredWidthRef.current;
+    const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, desiredWidth));
+    if (next === panelWidthRef.current) return;
+    panelWidthRef.current = next;
+    setPanelWidthState(next);
+  }, [isDragging, maxPanelWidth]);
 
   useLayoutEffect(() => {
     if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
@@ -94,8 +192,8 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
     const onMove = (ev: PointerEvent) => {
       const dx = startX - ev.clientX;
-      const maxWidth = window.innerWidth - 148 - extraWidthRef.current;
-      const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, startWidth + dx));
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current));
+      const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Math.round(startWidth + dx)));
       panelWidthRef.current = next;
       setPanelWidthState(next);
     };
@@ -103,12 +201,43 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      desiredWidthRef.current = panelWidthRef.current;
       setIsDragging(false);
-      try { localStorage.setItem(PREFS_PANEL_WIDTH, String(panelWidthRef.current)); } catch { /* ignore */ }
+      saveStoredPanelWidth(activeIdRef.current, desiredWidthRef.current);
     };
 
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
+  }, []);
+
+  const handleResizeKeyDown = useCallback((event: React.KeyboardEvent) => {
+    let next: number;
+    const step = event.shiftKey ? 64 : 16;
+    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current));
+
+    switch (event.key) {
+      case "ArrowLeft":
+        next = panelWidthRef.current + step;
+        break;
+      case "ArrowRight":
+        next = panelWidthRef.current - step;
+        break;
+      case "Home":
+        next = MIN_PANEL_WIDTH;
+        break;
+      case "End":
+        next = currentMaxWidth;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, Math.round(next)));
+    desiredWidthRef.current = next;
+    panelWidthRef.current = next;
+    setPanelWidthState(next);
+    saveStoredPanelWidth(activeIdRef.current, desiredWidthRef.current);
   }, []);
 
   const ctx: RailPanelContext = useMemo(() => ({
@@ -136,11 +265,19 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           ? { "--right-rail-overlay-alpha": overlayAlpha / 100 } as CSSProperties
           : undefined}
       >
-        {hasPanel && (
+        {activePanel && (
           <div
             className="right-rail-resize-handle"
             onPointerDown={handleResizeDragStart}
-            aria-hidden="true"
+            onKeyDown={handleResizeKeyDown}
+            role="separator"
+            aria-orientation="vertical"
+            tabIndex={0}
+            aria-label={`Resize ${activePanel.title} panel`}
+            aria-controls={`rail-panel-${activePanel.id}`}
+            aria-valuenow={Math.round(panelWidth)}
+            aria-valuemin={MIN_PANEL_WIDTH}
+            aria-valuemax={maxPanelWidth}
           />
         )}
         {activePanel && (
@@ -216,7 +353,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activeId,
           ✕
         </button>
       </div>
-      <div className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
+      <div id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
         {activePanel.render(ctx)}
       </div>
     </>
