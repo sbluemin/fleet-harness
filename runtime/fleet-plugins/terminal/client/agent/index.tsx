@@ -22,7 +22,7 @@ import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone } from "./helpers.js";
+import { deriveTrackPhase, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
@@ -493,6 +493,7 @@ function CarrierStreamColumn({
   // 성공 트랙 컬럼이 잡 실패 문구를 떠안는 오표기를 막는다(트랙 자체 오류는 항상 표시).
   const error = track.error ?? (phase.tone === "error" ? job.error ?? job.summary : undefined);
   const phaseLabel = analysisCopy(language, TRACK_PHASE_COPY_KEYS[phase.tone]);
+  const latestTool = track.tools.length > 0 ? track.tools[track.tools.length - 1] : undefined;
 
   if (completed && !expanded) {
     return (
@@ -518,41 +519,36 @@ function CarrierStreamColumn({
         {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
         <strong title={track.displayName}>{track.displayName}</strong>
         <span className="carrier-stream-column__phase" data-tone={phase.tone}>{phaseLabel}</span>
-        <time>{elapsed}</time>
         {completed ? <button type="button" aria-label={`${analysisCopy(language, "Collapse completed stream")} · ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
       </header>
       <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
         <div ref={scroll.contentRef} className="carrier-stream-column__content">
           {request ? <div className="carrier-stream-column__request">{request}</div> : null}
-          {track.tools.length > 0 || reasoning ? (
-            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`${analysisCopy(language, "Activity")} · ${track.displayName}`}>
-              {phase.tone === "live" ? <span className="carrier-stream-column__activity-scan" aria-hidden="true" /> : null}
-              <div className="carrier-stream-column__activity-list" role="list">
-                {track.tools.map((tool) => {
-                  const target = describeToolTarget(tool.input);
-                  const tone = resolveToolTone(tool.status);
-                  return (
-                    <div key={tool.id} className="carrier-stream-column__activity-row" data-tone={tone} role="listitem">
-                      <i aria-hidden="true" />
-                      <strong>{tool.name ?? tool.id}</strong>
-                      {target ? <span>{target}</span> : null}
-                    </div>
-                  );
-                })}
-                {reasoning ? (
-                  <div className="carrier-stream-column__activity-row" data-tone="live" role="listitem" aria-live="polite">
-                    <i aria-hidden="true" />
-                    <strong>{analysisCopy(language, "Reasoning…")}</strong>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-          {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
           {track.text ? (
             <div className="carrier-stream-column__answer">
               <span aria-hidden="true">✳</span>
               <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} />
+            </div>
+          ) : null}
+          {reasoning ? (
+            <div className="carrier-stream-column__reasoning" aria-live="polite">
+              <i aria-hidden="true" />
+              <span>{analysisCopy(language, "Reasoning…")}</span>
+            </div>
+          ) : null}
+          {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
+          {latestTool ? (
+            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`${analysisCopy(language, "Activity")} · ${track.displayName}`}>
+              {phase.tone === "live" ? <span className="carrier-stream-column__activity-scan" aria-hidden="true" /> : null}
+              <div className="carrier-stream-column__activity-main">
+                <span className="carrier-stream-column__activity-orbit" data-tone={resolveToolTone(latestTool.status)} aria-hidden="true" />
+                <span className="carrier-stream-column__activity-copy">
+                  <strong>{analysisCopy(language, "Using {title}", { title: latestTool.name ?? latestTool.id })}</strong>
+                  <small>{analysisCopy(language, "Tool status: {status}", { status: latestTool.status })}</small>
+                  <small>{analysisCopy(language, "Last confirmed activity only")}</small>
+                </span>
+                <time>{elapsed}</time>
+              </div>
             </div>
           ) : null}
         </div>
