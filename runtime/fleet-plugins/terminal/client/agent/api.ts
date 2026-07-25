@@ -115,6 +115,8 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     cliLabel: typeof payload.cliLabel === "string" ? payload.cliLabel : undefined,
     status: payload.status,
     turnState: payload.turnState === "running" || payload.turnState === "ended" ? payload.turnState : "none",
+    modelActivity: payload.modelActivity === "working" || payload.modelActivity === "not-working" ? payload.modelActivity : undefined,
+    attentionPending: typeof payload.attentionPending === "boolean" ? payload.attentionPending : undefined,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,

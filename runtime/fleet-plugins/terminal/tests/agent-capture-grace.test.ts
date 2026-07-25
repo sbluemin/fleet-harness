@@ -71,6 +71,7 @@ function createHarness(body: Record<string, unknown>) {
         if (exitCallback === callback) exitCallback = undefined;
       };
     },
+    onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
     stop: async () => {},
   };

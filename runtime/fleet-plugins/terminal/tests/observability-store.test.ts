@@ -314,6 +314,70 @@ describe("agent observability DTO boundary", () => {
   });
 });
 
+describe("agent activity observability state", () => {
+  function createStore() {
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: "/workspace/project", cliId: "claude", createdAt: 1_000 });
+    return store;
+  }
+
+  it("projects only classified activity and pending attention into browser DTOs", () => {
+    const store = createStore();
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+
+    const notWorking = store.setTerminalSessionModelActivity("session-a", "not-working");
+    expect(notWorking).toMatchObject({ modelActivity: "not-working" });
+    if (notWorking) store.notifySessionUpdated(notWorking);
+    expect(store.setTerminalSessionModelActivity("session-a", "not-working")).toBeNull();
+
+    store.notifySessionAttention(notWorking!, "permission_prompt");
+    expect(store.getTerminalSessionInfo("session-a")).toMatchObject({
+      modelActivity: "not-working",
+      attentionPending: true,
+    });
+
+    const working = store.setTerminalSessionModelActivity("session-a", "working");
+    expect(working).toMatchObject({ modelActivity: "working" });
+    expect(working).not.toHaveProperty("attentionPending");
+    if (working) store.notifySessionUpdated(working);
+    expect(store.setTerminalSessionModelActivity("session-a", "working")).toBeNull();
+
+    expect(frames.map((frame) => (frame as { readonly type: string }).type)).toEqual([
+      "session:updated",
+      "session:attention",
+      "session:updated",
+    ]);
+    const serialized = JSON.stringify({ durable: store.listDurableOperations(), frames });
+    expect(serialized).not.toContain("raw title");
+    expect(JSON.stringify(store.listDurableOperations())).not.toContain("modelActivity");
+    expect(JSON.stringify(store.listDurableOperations())).not.toContain("attentionPending");
+  });
+
+  it("clears attention on either turn phase and clears both transient axes on dormant transition", () => {
+    const store = createStore();
+    const initial = store.getTerminalSessionInfo("session-a")!;
+    store.setTerminalSessionModelActivity("session-a", "not-working");
+    store.notifySessionAttention(initial, "permission_prompt");
+
+    expect(store.setTerminalSessionTurnState("session-a", "running")).not.toHaveProperty("attentionPending");
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "elicitation_dialog");
+    expect(store.setTerminalSessionTurnState("session-a", "ended")).not.toHaveProperty("attentionPending");
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "idle_prompt");
+    expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("attentionPending");
+
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "permission_prompt");
+    const dormant = store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    });
+    expect(dormant).toMatchObject({ status: "dormant" });
+    expect(dormant).not.toHaveProperty("modelActivity");
+    expect(dormant).not.toHaveProperty("attentionPending");
+  });
+});
+
 describe("agent operation title precedence", () => {
   function createStore() {
     return createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });

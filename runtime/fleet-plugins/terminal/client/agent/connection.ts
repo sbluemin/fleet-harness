@@ -7,7 +7,7 @@ import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
 import { applyJobsSnapshot, applyObservedEvent, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
 
-interface AgentConnectionOptions {
+export interface AgentConnectionOptions {
   readonly operations: ClientOperationsCapability;
   readonly notifications: ClientNotificationsCapability;
   readonly status: ClientOperationStatusCapability;
@@ -85,8 +85,11 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
   }
 }
 
-function sessionActivity(session: SessionInfo): OperationActivity {
+export function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.status === "dormant") return "dormant";
+  if (session.attentionPending === true) return "awaiting";
+  if (session.modelActivity === "working") return "running";
+  if (session.modelActivity === "not-working") return hasActiveCarrierStream(session) ? "running" : "idle";
   if (session.turnState === "running") return "running";
   // 턴이 종료(ended)됐어도 캐리어 스트리밍이 진행 중이면 running을 유지한다.
   if (session.turnState === "ended") return hasActiveCarrierStream(session) ? "running" : "idle";
@@ -101,7 +104,7 @@ function hasActiveCarrierStream(session: SessionInfo): boolean {
 // status를 반영하고, idle/awaiting로 전이될 때만 notification을 보낸다.
 // 같은 상태 반복은 알리지 않는다. idle 종료 알림은 실제 턴 완료(running/awaiting -> idle)에서만 보내며,
 // dormant -> idle(세션 재개)이나 초기 관측(undefined -> idle)은 턴 완료가 아니므로 제외한다.
-function applyActivity(options: AgentConnectionOptions, sessionId: string, activity: OperationActivity): void {
+export function applyActivity(options: AgentConnectionOptions, sessionId: string, activity: OperationActivity): void {
   const previous = lastActivity.get(sessionId);
   options.status.set(sessionId, activity);
   lastActivity.set(sessionId, activity);
@@ -115,7 +118,7 @@ function applyActivity(options: AgentConnectionOptions, sessionId: string, activ
 
 // 특정 테넌트의 캐리어 job 상태가 바뀌면, 그 테넌트에 연결된 세션의 activity를 다시 계산해 반영한다.
 // (예: 턴 종료 후 마지막 스트리밍 job이 끝나면 running -> idle로 전이)
-function reevaluateSessionsForTenant(options: AgentConnectionOptions, tenantId: string): void {
+export function reevaluateSessionsForTenant(options: AgentConnectionOptions, tenantId: string): void {
   const { sessions } = getAgentState();
   for (const session of Object.values(sessions)) {
     if (session.tenantId !== tenantId) continue;

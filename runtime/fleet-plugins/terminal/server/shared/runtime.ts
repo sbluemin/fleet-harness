@@ -5,7 +5,7 @@ import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalSessionManager } from "./session-manager.js";
 import { createPluginTerminalTicketRegistry } from "./tickets.js";
-import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec } from "./terminal-types.js";
+import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalTitleListener } from "./terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "./ws.js";
 
 export interface TerminalRuntime {
@@ -19,6 +19,7 @@ export interface TerminalRuntime {
   getRenameCommand(operationId: string): string | undefined;
   resolveSessionIdentity(operationId: string, providerSessionId: string): Promise<string | null>;
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
+  onTitle(operationType: string, callback: TerminalTitleListener): () => void;
   registerLaunchResolver(operationType: string, resolver: TerminalLaunchResolver): () => void;
   stop(): Promise<void>;
 }
@@ -30,12 +31,20 @@ const SHELL_OPERATION_TYPE = "shell";
 export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRuntime {
   const tickets = createPluginTerminalTicketRegistry();
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
+  const terminalTitleListeners = new Map<string, Set<TerminalTitleListener>>();
   const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
   const defaultTerminalLaunch = createShellTerminalLaunchResolver();
   terminalLaunchResolvers.set(SHELL_OPERATION_TYPE, (cwd, context) => defaultTerminalLaunch(cwd, { ...context, kind: "shell" }));
   const sessions = createTerminalSessionManager({
     launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
     startShell: startTerminalShell,
+    resolveTitleListener: (context) => {
+      const operationType = context.operationType;
+      if (!operationType || !terminalTitleListeners.has(operationType)) return undefined;
+      return (sessionId, title) => {
+        for (const listener of terminalTitleListeners.get(operationType) ?? []) listener(sessionId, title);
+      };
+    },
     onSessionExit: async (sessionId) => {
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },
@@ -62,6 +71,15 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       terminalExitListeners.add(callback);
       return () => terminalExitListeners.delete(callback);
     },
+    onTitle: (operationType, callback) => {
+      const listeners = terminalTitleListeners.get(operationType) ?? new Set<TerminalTitleListener>();
+      listeners.add(callback);
+      terminalTitleListeners.set(operationType, listeners);
+      return () => {
+        listeners.delete(callback);
+        if (listeners.size === 0) terminalTitleListeners.delete(operationType);
+      };
+    },
     registerLaunchResolver: (operationType, resolver) => {
       terminalLaunchResolvers.set(operationType, resolver);
       return () => {
@@ -72,6 +90,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       upgrade.close();
       await sessions.stop();
       terminalExitListeners.clear();
+      terminalTitleListeners.clear();
       terminalLaunchResolvers.clear();
     },
   };

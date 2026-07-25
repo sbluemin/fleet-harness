@@ -8,6 +8,7 @@ export type {
   TerminalSocketData,
   TerminalTicket,
   TerminalTicketContext,
+  TerminalTitleListener,
 } from "./terminal-types.js";
 export { createPluginTerminalTicketRegistry } from "./tickets.js";
 export type { TerminalTicketRegistry, TerminalTicketRegistryDeps } from "./tickets.js";

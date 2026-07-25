@@ -2,6 +2,8 @@ export type AgentSessionStatus = "starting" | "terminal-only" | "registered" | "
 
 export type AgentTurnState = "none" | "running" | "ended";
 
+export type AgentModelActivity = "working" | "not-working";
+
 export type AgentAttentionReason =
   | "idle_prompt"
   | "permission_prompt"
@@ -49,6 +51,8 @@ export interface AgentTerminalSessionInfo {
   readonly cliLabel?: string;
   readonly status: AgentSessionStatus;
   readonly turnState: AgentTurnState;
+  readonly modelActivity?: AgentModelActivity;
+  readonly attentionPending?: boolean;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;
