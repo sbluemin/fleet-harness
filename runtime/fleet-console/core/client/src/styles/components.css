@@ -2453,9 +2453,11 @@
   opacity: 0.55;
 }
 
+/* 이름은 내용 폭만 차지한다. 예전처럼 남는 공간을 전부 흡수하면 배지가 행 끝으로 밀려
+   이름과 떨어지고, 좁은 행에서는 공간 다툼에 져 잘려 나간다. */
 .side-bar-theater-name {
-  flex: 1 1 100%;
-  min-width: 64px;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2501,8 +2503,11 @@
   color: var(--text-secondary);
 }
 
+/* 이름+배지 묶음은 좌측에 붙고, 남는 공간은 전부 이 auto margin이 흡수해 ⌄와 행 컨트롤을
+   우측 끝에 고정한다. */
 .side-bar-theater-chevron {
   flex: none;
+  margin-left: auto;
   width: 12px;
   height: 12px;
   color: var(--text-tertiary);
