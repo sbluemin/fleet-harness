@@ -116,6 +116,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     const storedWidths = readStoredPanelWidthsWithLegacyMigration(activePanel?.id ?? null, maxPanelWidth);
     return resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
   });
+  const desiredWidthRef = useRef(panelWidth);
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -127,16 +128,18 @@ export function RightRail({ theaterId, api }: RightRailProps) {
       : readStoredPanelWidths();
     if (canMigrate) migrationPendingRef.current = false;
     const next = resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
+    desiredWidthRef.current = next;
     panelWidthRef.current = next;
     setPanelWidthState(next);
   }, [activeId, activePanel?.id, activePanel?.defaultWidth]);
 
   useLayoutEffect(() => {
-    const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, panelWidthRef.current));
+    const desiredWidth = isDragging ? panelWidthRef.current : desiredWidthRef.current;
+    const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, desiredWidth));
     if (next === panelWidthRef.current) return;
     panelWidthRef.current = next;
     setPanelWidthState(next);
-  }, [maxPanelWidth]);
+  }, [isDragging, maxPanelWidth]);
 
   useLayoutEffect(() => {
     if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
@@ -176,8 +179,9 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      desiredWidthRef.current = panelWidthRef.current;
       setIsDragging(false);
-      saveStoredPanelWidth(activeIdRef.current, panelWidthRef.current);
+      saveStoredPanelWidth(activeIdRef.current, desiredWidthRef.current);
     };
 
     document.addEventListener("pointermove", onMove);
@@ -208,9 +212,10 @@ export function RightRail({ theaterId, api }: RightRailProps) {
 
     event.preventDefault();
     next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, Math.round(next)));
+    desiredWidthRef.current = next;
     panelWidthRef.current = next;
     setPanelWidthState(next);
-    saveStoredPanelWidth(activeIdRef.current, next);
+    saveStoredPanelWidth(activeIdRef.current, desiredWidthRef.current);
   }, []);
 
   const ctx: RailPanelContext = useMemo(() => ({

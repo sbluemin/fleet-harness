@@ -162,6 +162,20 @@ describe("Right Rail panel width", () => {
     expect(storedPanelWidths()).toEqual({ plans: 402 });
   });
 
+  it("restores the desired width when capacity returns without persisting the temporary clamp", () => {
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 900 }));
+    renderRail();
+    expect(reportedPanelWidth()).toBe(900);
+
+    act(() => requestRailPanelExtraWidth("plans", 360));
+    expect(reportedPanelWidth()).toBe(692);
+    expect(storedPanelWidths()).toEqual({ plans: 900 });
+
+    act(() => requestRailPanelExtraWidth("plans", null));
+    expect(reportedPanelWidth()).toBe(900);
+    expect(storedPanelWidths()).toEqual({ plans: 900 });
+  });
+
   it("exposes separator values and persists keyboard resizing with the right-rail direction", () => {
     renderRail();
     const handle = resizeHandle();
