@@ -431,7 +431,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "codex.reading.current": "현재",
   "codex.reading.proposed": "제안",
   "codex.reading.noConflicts": "충돌이 없습니다.",
-  "codex.reading.schema": "Schema",
+  "codex.reading.schema": "스키마",
   "codex.reading.workspaceSchema": "워크스페이스 Schema",
 
   "codex.meta.updated": "업데이트 {date}",
@@ -443,7 +443,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
 
   "codex.nav.catalogAria": "Codex 카탈로그",
   "codex.nav.entries": "항목",
-  "codex.nav.schema": "Schema",
+  "codex.nav.schema": "스키마",
   "codex.nav.searchPlaceholder": "항목 검색",
   "codex.nav.searchAria": "Codex 항목 검색",
   "codex.nav.reviewQueue": "검토 대기열",

@@ -68,11 +68,10 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "CLI",
   "Model",
   "Effort",
-  // Codex 패치 종류·Schema·op 뱃지(프로토콜 토큰)
+  // Codex 패치 종류·op 뱃지(프로토콜 토큰)
   "Create",
   "Update",
   "Patch",
-  "Schema",
   "CREATE",
   "UPDATE",
   // 이관 전부터 EN UI에 한국어가 있던 충돌 해소 라벨
