@@ -27,6 +27,11 @@ interface PlansReadBody extends PlansListBody {
   readonly name?: unknown;
 }
 
+interface PlansSearchBody extends PlansListBody {
+  readonly query?: unknown;
+  readonly limit?: unknown;
+}
+
 export function createPlansRouter(deps: PlansRouteDeps): (context: PlansRouteContext) => Promise<boolean> {
   return async function handlePlansRoute(context: PlansRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
@@ -38,12 +43,60 @@ export function createPlansRouter(deps: PlansRouteDeps): (context: PlansRouteCon
       await handlePlansRead(req, res, deps);
       return true;
     }
+    if (pathname === "/api/v1/plans/search") {
+      await handlePlansSearch(req, res, deps);
+      return true;
+    }
     if (pathname === "/api/v1/plans/events") {
       await handlePlansEvents(req, res, deps);
       return true;
     }
     return false;
   };
+}
+
+async function handlePlansSearch(req: http.IncomingMessage, res: http.ServerResponse, deps: PlansRouteDeps): Promise<void> {
+  if (req.method !== "POST") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  const body = await deps.readJsonBody<PlansSearchBody>(req);
+  if (
+    !isPlainObject(body)
+    || typeof body.theaterId !== "string"
+    || typeof body.query !== "string"
+    || body.query.trim() === ""
+    || !Number.isInteger(body.limit)
+    || (body.limit as number) < 1
+    || (body.limit as number) > 8
+    || "relPath" in body
+  ) {
+    deps.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+  const theaterPath = deps.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) {
+    deps.writeJson(res, 404, { error: "theater_not_found" });
+    return;
+  }
+  try {
+    const context = await resolveTheaterRoot(theaterPath);
+    const tokens = body.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    const plans = (await listPlansForWorkspace(deps.dataDir, context.realRoot))
+      .filter((plan) => {
+        const text = `${plan.name}\n${plan.title}`.toLocaleLowerCase();
+        return tokens.every((token) => text.includes(token));
+      })
+      .slice(0, body.limit as number)
+      .map((plan) => ({ name: plan.name, title: plan.title }));
+    deps.writeJson(res, 200, { plans });
+  } catch (error) {
+    writePlanStoreError(res, deps, error);
+  }
 }
 
 async function handlePlansEvents(req: http.IncomingMessage, res: http.ServerResponse, deps: PlansRouteDeps): Promise<void> {

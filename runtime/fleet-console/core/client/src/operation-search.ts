@@ -1,4 +1,5 @@
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "./types.js";
@@ -19,7 +20,70 @@ export interface OperationSearchGroup {
   readonly entries: readonly OperationSearchEntry[];
 }
 
+export interface RailSearchGroup {
+  readonly panelId: string;
+  readonly panelTitle: string;
+  readonly results: readonly RailSearchResult[];
+}
+
+export const RAIL_SEARCH_DEBOUNCE_MS = 150;
+export const RAIL_SEARCH_PROVIDER_TIMEOUT_MS = 500;
+export const RAIL_SEARCH_PROVIDER_LIMIT = 8;
+
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
+
+export async function searchRailPanels(
+  panels: readonly RailPanelDescriptor[],
+  query: string,
+  theaterId: string,
+  signal: AbortSignal,
+): Promise<readonly RailSearchGroup[]> {
+  const groups = await Promise.all(panels.map(async (panel): Promise<RailSearchGroup | null> => {
+    if (!panel.search) return null;
+    const results = await searchRailPanel(panel, query, theaterId, signal);
+    if (!results || results.length === 0) return null;
+    return {
+      panelId: panel.id,
+      panelTitle: panel.title,
+      results: results.slice(0, RAIL_SEARCH_PROVIDER_LIMIT),
+    };
+  }));
+  return groups.filter((group): group is RailSearchGroup => group !== null);
+}
+
+async function searchRailPanel(
+  panel: RailPanelDescriptor,
+  query: string,
+  theaterId: string,
+  parentSignal: AbortSignal,
+): Promise<readonly RailSearchResult[] | null> {
+  if (!panel.search || parentSignal.aborted) return null;
+  const controller = new AbortController();
+  let stopSearch: (() => void) | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const stopped = new Promise<null>((resolve) => {
+      stopSearch = () => {
+        controller.abort();
+        resolve(null);
+      };
+      parentSignal.addEventListener("abort", stopSearch, { once: true });
+      timeoutId = setTimeout(stopSearch, RAIL_SEARCH_PROVIDER_TIMEOUT_MS);
+    });
+    const request = Promise.resolve()
+      .then(() => panel.search!({
+        query,
+        theaterId,
+        limit: RAIL_SEARCH_PROVIDER_LIMIT,
+        signal: controller.signal,
+      }))
+      .then((results) => results, () => null);
+    return await Promise.race([request, stopped]);
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    if (stopSearch) parentSignal.removeEventListener("abort", stopSearch);
+  }
+}
 
 export function buildOperationSearchEntries(current: ConsoleState): readonly OperationSearchEntry[] {
   const theaters = new Map(current.theaters.map((theater) => [theater.id, theater]));

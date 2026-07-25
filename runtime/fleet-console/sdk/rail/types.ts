@@ -19,11 +19,28 @@ export interface RailPanelContext {
   readonly requestExtraWidth?: (px: number | null) => void;
 }
 
+export interface RailSearchRequest {
+  readonly query: string;
+  readonly theaterId: string;
+  readonly limit: number;
+  readonly signal: AbortSignal;
+}
+
+export interface RailSearchResult {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly activate: () => void | Promise<void>;
+}
+
+export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonly RailSearchResult[]>;
+
 export interface RailPanelDescriptor {
   readonly id: string;
   readonly title: string;
   readonly icon: ReactNode | (() => ReactNode);
   readonly render: (ctx: RailPanelContext) => ReactNode;
+  readonly search?: RailSearchProvider;
   readonly side?: "right";
   /** @deprecated Core ignores this field; every panel is Theater-root scoped. */
   readonly pathAware?: boolean;

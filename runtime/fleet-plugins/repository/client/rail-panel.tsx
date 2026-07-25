@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
+import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
 import { CompareView } from "./compare-view.js";
@@ -13,6 +13,7 @@ import { HunkView } from "./hunk-view.js";
 import { HistoryPanel } from "./history-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
 import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
+import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./search-navigation.js";
 
 type ViewMode = "list" | "tree";
 
@@ -166,6 +167,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 —
   // epoch를 key에 섞어 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 재설정한다.
   const [historyLandingEpoch, setHistoryLandingEpoch] = useState(0);
+  const searchTarget = useRepositorySearchTarget();
   const selectedFile = useSelectedFile(ctx.theaterId ?? null, repoRel);
   const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
   const listPaneWidthRef = useRef(listPaneWidth);
@@ -211,6 +213,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setRepoRel(nextRepoRel);
     setSource(landing);
   }, [ctx.theaterId, setSource]);
+  useEffect(() => {
+    if (!searchTarget || searchTarget.theaterId !== ctx.theaterId) return;
+    setRefFilter(null);
+    if (repoRelRef.current !== searchTarget.repoRel) {
+      transitionRepository(searchTarget.repoRel, true, "history");
+      return;
+    }
+    setSource("history");
+  }, [ctx.theaterId, searchTarget, setSource, transitionRepository]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     let cancelled = false;
@@ -522,4 +533,21 @@ export const repositoryPanel: RailPanelDescriptor = {
   defaultWidth: 420,
   icon: () => <RepositoryIcon />,
   render: (ctx: RailPanelContext) => <RepositoryPanel ctx={ctx} />,
+  search: async ({ query, theaterId, limit, signal }) => {
+    const repoRel = readStoredRepositoryRel(theaterId);
+    const response = await fetch("/plugins/repository/palette-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId, repoRel, query, limit }),
+      signal,
+    });
+    if (!response.ok) throw new Error("repository_search_failed");
+    const result = await response.json() as RepositorySearchResult;
+    return result.commits.map((commit) => ({
+      id: `${result.repoRel}:${commit.fullHash}`,
+      title: commit.subject,
+      subtitle: commit.shortHash,
+      activate: () => activateRepositorySearchTarget(theaterId, result.repoRel, commit.fullHash),
+    }));
+  },
 };

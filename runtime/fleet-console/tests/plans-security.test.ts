@@ -121,6 +121,21 @@ describe("Plans handlers — security", () => {
     expect(response.body).toMatchObject({ tasksDone: 2, tasksTotal: 3 });
   });
 
+  it("searches plan names without exposing workspace filesystem paths", async () => {
+    const plansPath = workspacePlansPath(theaterPath);
+    await fs.promises.writeFile(path.join(plansPath, "needle-plan.md"), "# Needle Plan");
+    const { ctx, responses } = createContext({ theaterId: "theater", query: "needle", limit: 8 }, () => theaterPath);
+
+    await handlePlansSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toEqual([{
+      status: 200,
+      body: { plans: [expect.objectContaining({ name: "needle-plan.md", title: "Needle Plan" })] },
+    }]);
+    expect(JSON.stringify(responses)).not.toContain(plansPath);
+    expect(JSON.stringify(responses)).not.toContain(await fs.promises.realpath(theaterPath));
+  });
+
   it("keeps Plans Theater-wide and excludes nested workspace Plans", async () => {
     const nestedPath = path.join(theaterPath, "worktrees", "feature");
     await fs.promises.mkdir(nestedPath, { recursive: true });
@@ -285,4 +300,8 @@ async function handlePlansList(req: http.IncomingMessage, res: http.ServerRespon
 
 async function handlePlansRead(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {
   await ctx.router({ req, res, pathname: "/api/v1/plans/read" });
+}
+
+async function handlePlansSearch(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {
+  await ctx.router({ req, res, pathname: "/api/v1/plans/search" });
 }

@@ -6422,6 +6422,10 @@
   gap: 2px;
 }
 
+.operation-search-panel-section {
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
+}
+
 .operation-search-section-heading {
   display: flex;
   align-items: center;
@@ -6593,6 +6597,16 @@
 
 .operation-search-result.is-active .operation-search-command-glyph {
   color: var(--brass-bright);
+}
+
+.operation-search-panel-open {
+  flex: none;
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .operation-search-empty {

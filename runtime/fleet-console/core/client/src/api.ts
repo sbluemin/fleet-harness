@@ -56,6 +56,15 @@ export interface PlansListResult {
   readonly plans: readonly PlanListItem[];
 }
 
+export interface PlanSearchItem {
+  readonly name: string;
+  readonly title: string;
+}
+
+export interface PlansSearchResult {
+  readonly plans: readonly PlanSearchItem[];
+}
+
 export interface ReleaseNotesFetchOptions {
   readonly force?: boolean;
   readonly locale?: ReleaseNotesLocale;
@@ -200,6 +209,17 @@ export async function fetchPlanRead(theaterId: string, name: string, signal?: Ab
   });
   await assertOk(response);
   return await response.json() as PlanReadResult;
+}
+
+export async function fetchPlansSearch(theaterId: string, query: string, limit: number, signal?: AbortSignal): Promise<PlansSearchResult> {
+  const response = await fetch("/api/v1/plans/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theaterId, query, limit }),
+    signal,
+  });
+  await assertOk(response);
+  return await response.json() as PlansSearchResult;
 }
 
 export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<void> {

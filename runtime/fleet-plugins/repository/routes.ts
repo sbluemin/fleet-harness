@@ -9,6 +9,7 @@ import { handleRepositoryLog } from "./server/log.js";
 import { handleRepositoryRefs } from "./server/refs.js";
 import { handleRepositoryRepos } from "./server/repos.js";
 import { createRepositoryRowBadgeProvider } from "./server/row-badges.js";
+import { handleRepositorySearch } from "./server/search.js";
 import { handleRepositoryWorktrees } from "./server/worktrees.js";
 
 export default definePlugin({
@@ -37,6 +38,10 @@ export default definePlugin({
     });
     registerRouter(ctx, "log", async ({ req, res }) => {
       await handleRepositoryLog(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "palette-search", async ({ req, res }) => {
+      await handleRepositorySearch(req, res, ctx);
       return true;
     });
     registerRouter(ctx, "refs", async ({ req, res }) => { await handleRepositoryRefs(req, res, ctx); return true; });

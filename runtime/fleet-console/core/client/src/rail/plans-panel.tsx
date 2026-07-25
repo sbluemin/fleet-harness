@@ -5,12 +5,14 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "@fleet-console/markdown/styles.css";
-import { fetchPlanRead, fetchPlansList, type PlanListItem, type PlanReadResult } from "../api.js";
+import { fetchPlanRead, fetchPlansList, fetchPlansSearch, type PlanListItem, type PlanReadResult } from "../api.js";
 import "./plans.css";
 import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planLaneHeadingMatches, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
 import { subscribeToPlanChanges } from "./plans-events.js";
+import { activatePlansSearchTarget, consumePlansSearchTarget, usePlansSearchTarget } from "./plans-search-navigation.js";
 
 interface PlansListProps {
+  readonly revealName: string | null;
   readonly selectedName: string | null;
   readonly state: PlansListState;
   readonly onRetry: () => void;
@@ -62,6 +64,15 @@ export const plansPanel: RailPanelDescriptor = {
   defaultWidth: 360,
   icon: PlansIcon,
   render: (ctx) => <PlansPanel {...ctx} />,
+  search: async ({ query, theaterId, limit, signal }) => {
+    const result = await fetchPlansSearch(theaterId, query, limit, signal);
+    return result.plans.map((plan) => ({
+      id: plan.name,
+      title: plan.title,
+      subtitle: plan.name,
+      activate: () => activatePlansSearchTarget(theaterId, plan.name),
+    }));
+  },
 };
 
 function PlansPanel(ctx: RailPanelContext) {
@@ -78,6 +89,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const [listRetry, setListRetry] = useState(0);
   const [readerRetry, setReaderRetry] = useState(0);
   const [pulsedNames, setPulsedNames] = useState<ReadonlySet<string>>(() => new Set());
+  const [revealName, setRevealName] = useState<string | null>(null);
+  const searchTarget = usePlansSearchTarget();
   const listRequestRef = useRef(0);
   const readerRequestRef = useRef(0);
   const listSignaturesRef = useRef<Map<string, string> | null>(null);
@@ -94,6 +107,13 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const selectedNameRef = useRef<string | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
+
+  useEffect(() => {
+    if (!searchTarget || searchTarget.theaterId !== theaterId || !theaterId) return;
+    setSelectedPlan({ theaterId, name: searchTarget.name });
+    setRevealName(searchTarget.name);
+    consumePlansSearchTarget(searchTarget);
+  }, [searchTarget, theaterId]);
 
   useEffect(() => {
     selectedNameRef.current = selectedName;
@@ -224,6 +244,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
         {selectedName && <PlanReader state={readerState} onClose={handleClose} onRetry={retryReader} />}
         {selectedName && <div className="plans-divider" aria-hidden="true" />}
         <PlansList
+          revealName={revealName}
           selectedName={selectedName}
           state={listState}
           onRetry={retryList}
@@ -235,11 +256,20 @@ function PlansPanelBody(ctx: RailPanelContext) {
   );
 }
 
-function PlansList({ selectedName, state, onRetry, onSelect, pulsedNames }: PlansListProps) {
+function PlansList({ revealName, selectedName, state, onRetry, onSelect, pulsedNames }: PlansListProps) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<PlanStatusFilter>("all");
   const [copiedName, setCopiedName] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (!revealName) return;
+    setQuery("");
+    setStatus("all");
+  }, [revealName]);
+  useLayoutEffect(() => {
+    if (!revealName || state.kind !== "ready") return;
+    rowRefs.current.get(revealName)?.scrollIntoView({ block: "nearest" });
+  }, [revealName, state]);
   if (state.kind === "no-theater") {
     return <div className="plans-list-pane"><EmptyState>Select a Theater to browse plans.</EmptyState></div>;
   }

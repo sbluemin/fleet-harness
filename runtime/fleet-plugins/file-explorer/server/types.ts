@@ -18,3 +18,11 @@ export interface FileReadResult {
   readonly truncated?: boolean;
   readonly binary?: boolean;
 }
+
+export interface FileSearchItem {
+  readonly relativePath: string;
+}
+
+export interface FileSearchResult {
+  readonly files: readonly FileSearchItem[];
+}

@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { Scope, SkillListItem } from "../server/types.js";
+import type { InstalledSkillSearchResult, Scope, SkillListItem } from "../server/types.js";
 import { FindTab } from "./find-tab.js";
 import { InstalledTab } from "./installed-tab.js";
 import { ReadingOverlay } from "./reading-overlay.js";
@@ -11,10 +11,13 @@ import {
   hasInstalledStateForContext,
   resetProjectContextState,
   setActiveTab,
+  setFilterText,
   setInstallFormOpenId,
+  setScope,
   skillsContextKey,
   useSkillsStore,
 } from "./skills-store.js";
+import { activateSkillSearchTarget, consumeSkillSearchTarget, useSkillSearchTarget } from "./search-navigation.js";
 import { Toast } from "./toast.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -45,12 +48,33 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   const [readMoreEntry, setReadMoreEntry] = useState<ReadMoreEntry | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [installedRefreshKey, setInstalledRefreshKey] = useState(0);
+  const searchTarget = useSkillSearchTarget();
 
   const installedCount = hasInstalledStateForContext(state, contextKey) ? state.installedList.length : 0;
 
   useLayoutEffect(() => {
     resetProjectContextState(contextKey);
   }, [contextKey]);
+
+  useLayoutEffect(() => {
+    if (!searchTarget || searchTarget.theaterId !== theaterId) return;
+    setActiveTab("installed");
+    setScope(searchTarget.scope);
+    setFilterText("");
+  }, [searchTarget, theaterId]);
+
+  useLayoutEffect(() => {
+    if (
+      !searchTarget
+      || searchTarget.theaterId !== theaterId
+      || !hasInstalledStateForContext(state, contextKey)
+      || state.installedLoading
+    ) return;
+    const skill = state.installedList.find((candidate) => candidate.name === searchTarget.name && candidate.scope === searchTarget.scope);
+    if (!skill) return;
+    setReadMoreEntry({ skill, isInstalled: true });
+    consumeSkillSearchTarget(searchTarget);
+  }, [contextKey, searchTarget, state, theaterId]);
 
   const handleReadMoreInstalled = useCallback((skill: SkillListItem) => {
     setReadMoreEntry({ skill, isInstalled: true });
@@ -147,4 +171,20 @@ export const skillsPanel: RailPanelDescriptor = {
   defaultWidth: 360,
   icon: SkillsIcon,
   render: (ctx: RailPanelContext) => <SkillsPanel ctx={ctx} />,
+  search: async ({ query, theaterId, limit, signal }) => {
+    const response = await fetch("/plugins/skills/palette-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId, query, limit }),
+      signal,
+    });
+    if (!response.ok) throw new Error("skills_search_failed");
+    const result = await response.json() as InstalledSkillSearchResult;
+    return result.skills.map((skill) => ({
+      id: `${skill.scope}:${skill.name}`,
+      title: skill.name,
+      subtitle: skill.scope,
+      activate: () => activateSkillSearchTarget(theaterId, skill.name, skill.scope),
+    }));
+  },
 };

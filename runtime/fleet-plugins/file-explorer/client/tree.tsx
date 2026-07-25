@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
+import type { FileSearchTarget } from "./search-navigation.js";
 
 import { FileIcon, FolderIcon } from "./file-icon.js";
 export interface PluginFilesClient {
@@ -12,6 +13,7 @@ interface FileTreeProps {
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
+  readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
 }
 
@@ -171,7 +173,7 @@ export function resolveTreeNavigation(rows: readonly FlatRow[], index: number, k
   return { kind: "none" };
 }
 
-export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect }: FileTreeProps) {
+export function FileTree({ contextKey, files, theaterId, selectedPath, revealTarget, onSelect }: FileTreeProps) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -187,6 +189,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
   const treeRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
+  const revealedRequestRef = useRef(0);
 
   // SSE 핸들러가 최신 상태를 참조하도록 ref로 유지
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
@@ -227,6 +230,43 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
       setError(e instanceof Error ? e.message : "Unable to load folder");
     });
   }, [contextKey, theaterId, currentPath, files]);
+
+  useEffect(() => {
+    if (!revealTarget || revealTarget.theaterId !== theaterId || revealTarget.requestId <= revealedRequestRef.current) return;
+    let active = true;
+    const requestContextKey = contextKey;
+    const loadRevealPath = async () => {
+      const rootResult = await files.listFolder();
+      const nextResults = new Map<string, FolderListResult>();
+      const nextExpanded = new Set<string>();
+      const parts = revealTarget.relativePath.split("/").filter(Boolean);
+      let parentPath = "";
+      for (const part of parts.slice(0, -1)) {
+        parentPath = parentPath ? `${parentPath}/${part}` : part;
+        const folderResult = await files.listFolder(parentPath);
+        nextResults.set(parentPath, folderResult);
+        nextExpanded.add(parentPath);
+      }
+      if (!active || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      setFilterText("");
+      setFilterCollapsedDirs(new Set());
+      if (parts.some((part) => part.startsWith("."))) {
+        setShowHidden(true);
+        saveShowHidden(true);
+      }
+      setCurrentPath("");
+      setResult(rootResult);
+      setChildResults((current) => {
+        const next = new Map(current);
+        for (const [relativePath, folderResult] of nextResults) next.set(relativePath, folderResult);
+        return next;
+      });
+      setExpandedDirs((current) => new Set([...current, ...nextExpanded]));
+      setCursorPath(revealTarget.relativePath);
+    };
+    void loadRevealPath().catch(() => undefined);
+    return () => { active = false; };
+  }, [contextKey, files, revealTarget, theaterId]);
 
   useEffect(() => {
     const requestId = ++filterRequestRef.current;
@@ -422,6 +462,23 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
     pendingFocusPathRef.current = null;
     rowRefs.current.get(path)?.focus();
   }, [renderedCursorPath, visibleRows]);
+
+  useLayoutEffect(() => {
+    if (!revealTarget || revealTarget.requestId <= revealedRequestRef.current) return;
+    const rowIndex = flatRows.findIndex((row) => row.entry.relativePath === revealTarget.relativePath);
+    if (rowIndex < 0) return;
+    setCursorPath(revealTarget.relativePath);
+    if (shouldVirtualize && (rowIndex < startIdx || rowIndex >= endIdx)) {
+      const nextScrollTop = Math.max(0, rowIndex * ROW_HEIGHT);
+      if (treeRef.current) treeRef.current.scrollTop = nextScrollTop;
+      setScrollTop(nextScrollTop);
+      return;
+    }
+    const row = rowRefs.current.get(revealTarget.relativePath);
+    if (!row) return;
+    row.scrollIntoView({ block: "nearest" });
+    revealedRequestRef.current = revealTarget.requestId;
+  }, [endIdx, flatRows, revealTarget, shouldVirtualize, startIdx, visibleRows]);
 
   const focusRow = (rowIndex: number) => {
     const row = flatRows[rowIndex];
@@ -699,5 +756,13 @@ function readShowHidden(): boolean {
     return localStorage.getItem(PREFS_SHOW_HIDDEN) === "1";
   } catch {
     return false;
+  }
+}
+
+function saveShowHidden(showHidden: boolean): void {
+  try {
+    localStorage.setItem(PREFS_SHOW_HIDDEN, showHidden ? "1" : "0");
+  } catch {
+    // localStorage 접근 실패 무시
   }
 }

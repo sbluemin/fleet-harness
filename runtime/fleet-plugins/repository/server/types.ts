@@ -67,6 +67,17 @@ export interface LogResult {
   readonly truncated?: boolean;
 }
 
+export interface RepositorySearchItem {
+  readonly fullHash: string;
+  readonly shortHash: string;
+  readonly subject: string;
+}
+
+export interface RepositorySearchResult {
+  readonly repoRel: string;
+  readonly commits: readonly RepositorySearchItem[];
+}
+
 export interface CommitParent {
   readonly full: string;
   readonly short: string;

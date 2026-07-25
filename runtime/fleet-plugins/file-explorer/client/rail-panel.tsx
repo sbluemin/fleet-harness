@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { FileReadResult, FolderEntry, FolderListResult } from "../server/types.js";
+import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
 import { FileTree, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
@@ -16,6 +16,7 @@ import {
   resolveExtraWidth,
 } from "./layout.js";
 import { setSelectedPath, setTreePaneWidth, setViewState, useFileExplorerViewState } from "./view-store.js";
+import { activateFileSearchTarget, consumeFileSearchTarget, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
@@ -25,6 +26,22 @@ export const fileExplorerPanel: RailPanelDescriptor = {
   defaultWidth: 360,
   icon: FileExplorerIcon,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
+  search: async ({ query, theaterId, limit, signal }) => {
+    const response = await fetch("/plugins/file-explorer/files/palette-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId, query, limit }),
+      signal,
+    });
+    if (!response.ok) throw new Error("file_search_failed");
+    const result = await response.json() as FileSearchResult;
+    return result.files.map((file) => ({
+      id: file.relativePath,
+      title: file.relativePath.split("/").at(-1) ?? file.relativePath,
+      subtitle: file.relativePath,
+      activate: () => activateFileSearchTarget(theaterId, file.relativePath),
+    }));
+  },
 };
 
 function makeFilesClient(theaterId: string | null): PluginFilesClient {
@@ -53,6 +70,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
+  const searchTarget = useFileSearchTarget();
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
@@ -101,6 +120,12 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       }
     }
   }, [contextScope, theaterId]);
+  useLayoutEffect(() => {
+    if (!searchTarget || searchTarget.theaterId !== theaterId) return;
+    setRevealTarget(searchTarget);
+    void openFilePath(searchTarget.relativePath);
+    consumeFileSearchTarget(searchTarget);
+  }, [openFilePath, searchTarget, theaterId]);
   const handleSelect = useCallback(async (entry: FolderEntry) => {
     if (entry.kind !== "file") return;
     await openFilePath(entry.relativePath, entry.name);
@@ -202,6 +227,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           theaterId={theaterId}
           contextKey={contextScope}
           selectedPath={selectedPath}
+          revealTarget={revealTarget}
           onSelect={handleSelect}
         />
       </div>
