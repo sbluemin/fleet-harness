@@ -135,7 +135,7 @@ function listCssFiles(root: URL): string[] {
 function listProductCssFiles(): string[] {
   return [
     ...CSS_SOURCE_ROOTS.flatMap(listCssFiles),
-    ...STANDALONE_CSS_SOURCES.map(fileURLToPath),
+    ...STANDALONE_CSS_SOURCES.map((source) => fileURLToPath(source)),
   ].sort();
 }
 
