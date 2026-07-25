@@ -318,9 +318,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   function setTerminalSessionModelActivity(sessionId: string, modelActivity: AgentModelActivity): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
-    if (!session || session.modelActivity === modelActivity) return null;
+    if (!session) return null;
+    const clearsAttention = modelActivity === "working" && session.attentionPending === true;
+    if (session.modelActivity === modelActivity && !clearsAttention) return null;
     session.modelActivity = modelActivity;
-    if (modelActivity === "working") delete session.attentionPending;
+    if (clearsAttention) delete session.attentionPending;
     return toTerminalSessionInfo(session);
   }
 

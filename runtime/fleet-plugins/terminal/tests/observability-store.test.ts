@@ -376,6 +376,27 @@ describe("agent activity observability state", () => {
     expect(dormant).not.toHaveProperty("modelActivity");
     expect(dormant).not.toHaveProperty("attentionPending");
   });
+
+  it("emits exactly one update when repeated working clears late attention", () => {
+    const store = createStore();
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+    const firstWorking = store.setTerminalSessionModelActivity("session-a", "working")!;
+    store.notifySessionUpdated(firstWorking);
+    store.notifySessionAttention(firstWorking, "permission_prompt");
+
+    const cleared = store.setTerminalSessionModelActivity("session-a", "working");
+    expect(cleared).toMatchObject({ modelActivity: "working" });
+    expect(cleared).not.toHaveProperty("attentionPending");
+    if (cleared) store.notifySessionUpdated(cleared);
+    expect(store.setTerminalSessionModelActivity("session-a", "working")).toBeNull();
+
+    expect(frames.map((frame) => (frame as { readonly type: string }).type)).toEqual([
+      "session:updated",
+      "session:attention",
+      "session:updated",
+    ]);
+  });
 });
 
 describe("agent operation title precedence", () => {

@@ -22,7 +22,7 @@ const CLAUDE_NOT_WORKING = 0x2733;
 export function classifyOscAgentActivity(
   cliId: AgentCliId,
   title: string,
-  codexWorkingSeen = false,
+  codexWorkingBaseline?: string,
 ): OscAgentActivityClassification {
   const first = title.codePointAt(0);
   if (first === undefined) return "unknown";
@@ -30,22 +30,23 @@ export function classifyOscAgentActivity(
   if (cliId === "claude" || cliId === "claude-kimi") {
     return first === CLAUDE_NOT_WORKING ? "not-working" : "unknown";
   }
-  if (!codexWorkingSeen) return "unknown";
-  return isOrdinaryTitlePrefix(first) ? "not-working" : "unknown";
+  if (codexWorkingBaseline === undefined) return "unknown";
+  return title === codexWorkingBaseline ? "not-working" : "unknown";
 }
 
 export function createOscAgentActivityTracker(options: OscAgentActivityTrackerOptions): OscAgentActivityTracker {
-  let codexWorkingSeen = false;
+  let codexWorkingBaseline: string | undefined;
   let committed: AgentModelActivity | undefined;
   let pendingNotWorking: ReturnType<typeof setTimeout> | undefined;
 
   function observeTitle(title: string): void {
-    const classification = classifyOscAgentActivity(options.cliId, title, codexWorkingSeen);
+    const classification = classifyOscAgentActivity(options.cliId, title, codexWorkingBaseline);
     if (classification === "unknown") return;
     if (classification === "working") {
-      codexWorkingSeen = true;
+      if (options.cliId === "codex") codexWorkingBaseline = readWorkingTitleBody(title);
       cancelPendingNotWorking();
-      commit("working");
+      committed = "working";
+      options.onActivity("working");
       return;
     }
     if (committed === "not-working" || pendingNotWorking) return;
@@ -69,13 +70,15 @@ export function createOscAgentActivityTracker(options: OscAgentActivityTrackerOp
 
   function reset(): void {
     cancelPendingNotWorking();
-    codexWorkingSeen = false;
+    codexWorkingBaseline = undefined;
     committed = undefined;
   }
 
   return { observeTitle, reset };
 }
 
-function isOrdinaryTitlePrefix(codePoint: number): boolean {
-  return codePoint > 0x20 && !(codePoint >= 0x7f && codePoint <= 0x9f);
+function readWorkingTitleBody(title: string): string {
+  const first = title.codePointAt(0);
+  if (first === undefined) return "";
+  return title.slice(String.fromCodePoint(first).length).trimStart();
 }

@@ -18,6 +18,7 @@ const cleanups: Array<() => void | Promise<void>> = [];
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -41,6 +42,54 @@ describe("agent provider capture grace", () => {
     harness.emitHostEvent("operation:purged", { operationId: sessionId, pluginId: "terminal", type: "agent" });
     expect(fs.existsSync(capturePath)).toBe(false);
   });
+
+  it("cancels pending OSC activity when a session is removed", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ cliId: "codex" });
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+    harness.emitTitle(sessionId, "⠏ project");
+    harness.emitTitle(sessionId, "project");
+
+    await harness.deleteSession(sessionId);
+    vi.advanceTimersByTime(400);
+
+    expect(await harness.getSessions()).toEqual([]);
+  });
+
+  it("cancels pending OSC activity before a PTY exit makes the session dormant", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ cliId: "codex" });
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+    harness.markProviderSession(sessionId);
+    harness.emitTitle(sessionId, "⠏ project");
+    harness.emitTitle(sessionId, "project");
+
+    await harness.emitExit(sessionId);
+    vi.advanceTimersByTime(400);
+
+    expect(await harness.getSessions()).toEqual([
+      expect.objectContaining({ sessionId, status: "dormant" }),
+    ]);
+    expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+  });
+
+  it("cancels pending OSC activity before resume spawns a replacement PTY", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ cliId: "codex" });
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+    harness.markProviderSession(sessionId);
+    harness.emitTitle(sessionId, "⠏ project");
+    harness.emitTitle(sessionId, "project");
+
+    await harness.resumeSession(sessionId);
+    vi.advanceTimersByTime(400);
+
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, status: "terminal-only" });
+    expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+  });
 });
 
 function createHarness(body: Record<string, unknown>) {
@@ -52,6 +101,7 @@ function createHarness(body: Record<string, unknown>) {
   let route: RouteHandler | undefined;
   let lifecycleCleanup: (() => void | Promise<void>) | undefined;
   let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
+  let titleCallback: ((operationId: string, title: string) => unknown) | undefined;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
   const write = vi.fn<(sessionId: string, data: string) => boolean>(() => true);
   const terminate = vi.fn(() => true);
@@ -71,7 +121,12 @@ function createHarness(body: Record<string, unknown>) {
         if (exitCallback === callback) exitCallback = undefined;
       };
     },
-    onTitle: () => () => {},
+    onTitle: (_operationType, callback) => {
+      titleCallback = callback;
+      return () => {
+        if (titleCallback === callback) titleCallback = undefined;
+      };
+    },
     registerLaunchResolver: () => () => {},
     stop: async () => {},
   };
@@ -184,6 +239,10 @@ function createHarness(body: Record<string, unknown>) {
       for (const listener of eventListeners.get(channel) ?? []) listener(payload);
     },
     responses,
+    emitTitle: (sessionId: string, title: string) => {
+      if (!titleCallback) throw new Error("Terminal title callback was not registered");
+      titleCallback(sessionId, title);
+    },
     terminate,
     write,
     emitExit: async (sessionId: string) => {
@@ -206,6 +265,18 @@ function createHarness(body: Record<string, unknown>) {
         res: {} as http.ServerResponse,
         pathname: `/plugins/terminal/agent/sessions/${sessionId}`,
       });
+    },
+    getSessions: async (): Promise<readonly Record<string, unknown>[]> => {
+      if (!route) throw new Error("Agent route was not registered");
+      const responseCount = responses.length;
+      await route({
+        req: { method: "GET", url: "/plugins/terminal/agent/sessions" } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        pathname: "/plugins/terminal/agent/sessions",
+      });
+      const response = responses[responseCount];
+      const body = response?.body as { readonly sessions?: readonly Record<string, unknown>[] } | undefined;
+      return body?.sessions ?? [];
     },
     postSessions: async () => {
       if (!route) throw new Error("Agent route was not registered");
