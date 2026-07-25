@@ -75,7 +75,6 @@ export function GraphGutter({ node }: GraphGutterProps) {
           y2={cy - NODE_R}
           stroke={laneColor(node.lane)}
           strokeWidth={1.5}
-          strokeDasharray={node.gapAbove ? "2 2" : undefined}
         />
       )}
 
@@ -88,7 +87,6 @@ export function GraphGutter({ node }: GraphGutterProps) {
           y2={ROW_HEIGHT}
           stroke={laneColor(node.lane)}
           strokeWidth={1.5}
-          strokeDasharray={node.gapBelow ? "2 2" : undefined}
         />
       )}
 

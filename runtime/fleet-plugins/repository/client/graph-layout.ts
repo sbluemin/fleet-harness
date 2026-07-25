@@ -8,9 +8,7 @@ export interface GraphNode {
   readonly collapsed: boolean;
   readonly isHead: boolean;
   readonly connectAbove: boolean;
-  readonly gapAbove: boolean;
   readonly connectBelow: boolean;
-  readonly gapBelow: boolean;
   readonly passThroughLanes: readonly number[];
   readonly mergeFromLanes: readonly number[];
   readonly branchToLanes: readonly number[];
@@ -37,8 +35,6 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
   const known = new Set(commits.map((c) => c.fullHash));
   // laneHeads[i]: 레인 i가 다음에 매치되기를 기다리는 부모 커밋 해시. null = 비어있음(재사용 가능)
   const laneHeads: (string | null)[] = [];
-  // laneLastNodeRow[i]: 레인 i에 마지막으로 노드를 놓은 행 인덱스. gap 점선을 위아래 대칭으로 잇기 위한 역참조.
-  const laneLastNodeRow: number[] = [];
   const nodes: GraphNode[] = [];
   let collapsed = false;
   let maxLaneIndex = 0;
@@ -56,16 +52,12 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
     let myLane: number;
     let usesCollapsedBucket = false;
-    let gapAbove = false;
     const mergeFromLanes: number[] = [];
 
     if (matched.length === 0) {
       const danglingLane = laneHeads.findIndex((head) => head !== null && !known.has(head));
       if (danglingLane >= 0) {
         myLane = danglingLane;
-        gapAbove = true;
-        const prevRow = laneLastNodeRow[myLane];
-        if (prevRow !== undefined) nodes[prevRow] = { ...nodes[prevRow]!, gapBelow: true };
       } else {
         // 새 레인 개설: 빈 슬롯 재사용 또는 append
         const freeSlot = laneHeads.indexOf(null);
@@ -138,15 +130,12 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
       activeLaneCount: rowMaxLaneIndex + 1,
       collapsed,
       isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")),
-      connectAbove: matched.length > 0 || gapAbove,
-      gapAbove,
-      connectBelow: parents.length > 0 && laneHeads[myLane] === parents[0],
-      gapBelow: false,
+      connectAbove: matched.length > 0,
+      connectBelow: parents.length > 0 && laneHeads[myLane] === parents[0] && known.has(parents[0]!),
       passThroughLanes,
       mergeFromLanes,
       branchToLanes,
     });
-    laneLastNodeRow[myLane] = idx;
   }
 
   return { nodes, activeLaneCount: maxLaneIndex + 1, collapsed };

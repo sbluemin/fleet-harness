@@ -237,15 +237,15 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     expect(layout.nodes[2]?.activeLaneCount).toBe(8);
   });
 
-  it("⑩ 목록에서 부모가 생략되면 dangling 레인을 점선 구간으로 이어 붙인다", () => {
+  it("⑩ 목록에서 부모가 생략되면 dangling 레인을 재사용하되 연결하지 않는다", () => {
     const layout = layoutGraph([
       makeCommit({ fullHash: "A", parents: ["X"] }),
       makeCommit({ fullHash: "C", parents: ["D"] }),
     ]);
 
+    expect(layout.nodes[0]?.connectBelow).toBe(false);
     expect(layout.nodes[1]?.lane).toBe(0);
-    expect(layout.nodes[1]?.gapAbove).toBe(true);
-    expect(layout.nodes[1]?.connectAbove).toBe(true);
+    expect(layout.nodes[1]?.connectAbove).toBe(false);
     expect(layout.nodes[1]?.passThroughLanes).toEqual([]);
     expect(layout.activeLaneCount).toBe(1);
   });
@@ -259,18 +259,6 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     ]);
 
     expect(layout.nodes[1]?.lane).toBe(1);
-    expect(layout.nodes[1]?.gapAbove).toBe(false);
-  });
-
-  it("⑫ gap 구간의 점선이 상하 대칭이다", () => {
-    const layout = layoutGraph([
-      makeCommit({ fullHash: "A", parents: ["X"] }),
-      makeCommit({ fullHash: "C", parents: ["D"] }),
-    ]);
-
-    expect(layout.nodes[0]?.gapBelow).toBe(true);
-    expect(layout.nodes[0]?.connectBelow).toBe(true);
-    expect(layout.nodes[1]?.gapAbove).toBe(true);
   });
 
   it("⑬ dangling 레인은 pass-through 유령선으로 남지 않는다", () => {
