@@ -172,7 +172,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
                 </button>
               </div>
             ) : null}
-            <div className="whatsnew-language-picker" role="group" aria-label="Release notes language">
+            <div className="whatsnew-language-picker" role="group" aria-label="Display language">
               {(["en", "ko"] as const).map((nextLocale) => (
                 <button
                   key={nextLocale}

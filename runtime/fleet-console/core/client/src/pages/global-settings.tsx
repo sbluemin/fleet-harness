@@ -405,10 +405,10 @@ function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsSta
   return (
     <div className="global-settings-row is-stack language-settings-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">Release notes language</p>
-        <p className="global-settings-help">Choose the language for What's New. Auto follows this browser's language.</p>
+        <p className="global-settings-resp-title">Display language</p>
+        <p className="global-settings-help">Choose the language used across Console surfaces. Auto follows this browser's language.</p>
       </div>
-      <div className="segmented language-picker" role="group" aria-label="Release notes language">
+      <div className="segmented language-picker" role="group" aria-label="Display language">
         {LANGUAGES.map((language) => {
           const isActive = state.language === language.id;
           return (
