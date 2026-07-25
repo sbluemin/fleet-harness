@@ -16,7 +16,7 @@ export const MAX_THEATER_ROW_BADGE_TEXT_LENGTH = 80;
 export const MAX_THEATER_ROW_BADGE_ARIA_LABEL_LENGTH = 160;
 
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u;
-const ABSOLUTE_PATH_PATTERN = /^(?:\/|\\\\|[a-zA-Z]:[\\/]|file:\/\/)/u;
+const ABSOLUTE_PATH_PATTERN = /(?:^|\s)(?:\/|\\\\|[a-zA-Z]:[\\/]|file:\/\/)/u;
 const BADGE_TONES = new Set<TheaterRowBadgeTone>(["neutral", "info", "warn", "positive"]);
 
 export interface TheaterRowBadgeRegistry {
@@ -113,11 +113,12 @@ export async function resolveTheaterRowBadges(
       const timeoutMs = Math.min(providerTimeoutMs, remainingMs);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
       try {
+        const providerResult = provider({ theaterIds, signal: controller.signal });
         const value = await Promise.race([
-          Promise.resolve().then(() => provider({ theaterIds, signal: controller.signal })),
+          providerResult,
           waitForAbort(controller.signal),
         ]);
-        if (!controller.signal.aborted) results.push(value);
+        results.push(value);
       } catch {
         // 한 provider의 실패는 다른 provider의 결과를 막지 않는다.
       } finally {

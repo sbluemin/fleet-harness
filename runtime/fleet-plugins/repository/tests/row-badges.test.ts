@@ -60,6 +60,61 @@ describe("repository Theater row badges", () => {
     expect(statusBadges(status)[1]).toEqual({ id: "changed", text: "4 changed", tone: "warn" });
   });
 
+  it("reports truncated changed counts as a lower bound and never clean", () => {
+    const changed = parsePorcelainV2Status([
+      "# branch.oid 1234567890abcdef",
+      "# branch.head main",
+      "? first",
+      "? second",
+      "",
+    ].join("\0"), true);
+    const noVisibleChanges = parsePorcelainV2Status([
+      "# branch.oid 1234567890abcdef",
+      "# branch.head main",
+      "",
+    ].join("\0"), true);
+
+    expect(statusBadges(changed)[1]).toEqual({ id: "changed", text: "2+ changed", tone: "warn" });
+    expect(statusBadges(noVisibleChanges)[1]).toEqual({ id: "changed", text: "0+ changed", tone: "warn" });
+  });
+
+  it("preserves completed Theater badges when another Theater fails or is aborted", async () => {
+    const controller = new AbortController();
+    const executeGit = vi.fn((
+      _args: readonly string[],
+      options: { readonly cwd: string; readonly signal?: AbortSignal },
+    ) => {
+      if (options.cwd === "/repo/fast") {
+        return Promise.resolve({
+          stdout: "# branch.oid 1234567890abcdef\0# branch.head main\0",
+          truncated: false,
+        });
+      }
+      if (options.cwd === "/repo/failed") return Promise.reject(new Error("git failed"));
+      return new Promise<never>((_, reject) => {
+        options.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    });
+    const provider = createRepositoryRowBadgeProvider(
+      (theaterId) => `/repo/${theaterId}`,
+      executeGit,
+    );
+    const resultPromise = provider({
+      theaterIds: ["fast", "slow", "failed"],
+      signal: controller.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    await expect(resultPromise).resolves.toEqual([{
+      theaterId: "fast",
+      badges: [
+        { id: "branch", text: "main", tone: "neutral" },
+        { id: "changed", text: "clean", tone: "positive" },
+      ],
+    }]);
+  });
+
   it("runs one fixed-argument git process for each known Theater root", async () => {
     const executeGit = vi.fn(async (
       _args: readonly string[],

@@ -20,29 +20,54 @@ interface RepositoryStatus {
   readonly ahead: number;
   readonly behind: number;
   readonly changed: number;
+  readonly truncated: boolean;
 }
 
 export function createRepositoryRowBadgeProvider(
   resolveTheaterPath: (theaterId: string) => string | null,
   executeGit: GitRunner = runGit,
 ): TheaterRowBadgeProvider {
-  return async ({ theaterIds, signal }) => {
-    const contributions = await Promise.all(theaterIds.map(async (theaterId): Promise<TheaterRowBadgeContribution | null> => {
+  return ({ theaterIds, signal }) => new Promise((resolve) => {
+    const contributions = new Map<string, TheaterRowBadgeContribution>();
+    let pending = 0;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", finish);
+      resolve(theaterIds.flatMap((theaterId) => {
+        const contribution = contributions.get(theaterId);
+        return contribution ? [contribution] : [];
+      }));
+    };
+    signal.addEventListener("abort", finish, { once: true });
+    if (signal.aborted) {
+      finish();
+      return;
+    }
+    for (const theaterId of theaterIds) {
       const cwd = resolveTheaterPath(theaterId);
-      if (!cwd || signal.aborted) return null;
-      try {
-        const result = await executeGit(STATUS_ARGS, { cwd, signal });
-        if (signal.aborted) return null;
-        return { theaterId, badges: statusBadges(parsePorcelainV2Status(result.stdout)) };
-      } catch {
-        return null;
-      }
-    }));
-    return contributions.filter((contribution): contribution is TheaterRowBadgeContribution => contribution !== null);
-  };
+      if (!cwd) continue;
+      pending += 1;
+      void executeGit(STATUS_ARGS, { cwd, signal })
+        .then((result) => {
+          if (settled) return;
+          contributions.set(theaterId, {
+            theaterId,
+            badges: statusBadges(parsePorcelainV2Status(result.stdout, result.truncated)),
+          });
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          pending -= 1;
+          if (pending === 0) finish();
+        });
+    }
+    if (pending === 0) finish();
+  });
 }
 
-export function parsePorcelainV2Status(stdout: string): RepositoryStatus {
+export function parsePorcelainV2Status(stdout: string, truncated = false): RepositoryStatus {
   let oid: string | null = null;
   let head: string | null = null;
   let upstream: string | null = null;
@@ -84,7 +109,7 @@ export function parsePorcelainV2Status(stdout: string): RepositoryStatus {
     }
   }
 
-  return { oid, head, upstream, ahead, behind, changed };
+  return { oid, head, upstream, ahead, behind, changed, truncated };
 }
 
 export function statusBadges(status: RepositoryStatus): readonly TheaterRowBadge[] {
@@ -93,7 +118,9 @@ export function statusBadges(status: RepositoryStatus): readonly TheaterRowBadge
     : status.head ?? status.oid?.slice(0, 7) ?? "unknown";
   const badges: TheaterRowBadge[] = [
     { id: "branch", text: branch, tone: "neutral" },
-    status.changed > 0
+    status.truncated
+      ? { id: "changed", text: `${status.changed}+ changed`, tone: "warn" }
+      : status.changed > 0
       ? { id: "changed", text: `${status.changed} changed`, tone: "warn" }
       : { id: "changed", text: "clean", tone: "positive" },
   ];

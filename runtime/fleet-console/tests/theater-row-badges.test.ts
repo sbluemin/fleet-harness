@@ -28,6 +28,12 @@ describe("Theater row badge host", () => {
           { id: "C:\\secret\\repo", text: "windows" },
           { id: "control", text: "main\u0000secret" },
           { id: "absolute-aria", text: "main", ariaLabel: "\\\\server\\share" },
+          { id: "embedded-posix", text: "Repository: /home/alice/project" },
+          { id: "embedded-drive", text: "Repository: C:\\work\\project" },
+          { id: "embedded-unc", text: "Repository: \\\\server\\share" },
+          { id: "embedded-file-url", text: "Repository: file:///home/alice/project" },
+          { id: "remote-branch", text: "origin/canary", tone: "neutral" },
+          { id: "feature-branch", text: "feat/foo", tone: "neutral" },
           { id: "safe", text: "clean", tone: "positive", cwd: "/private/repo" },
         ] },
       ],
@@ -36,7 +42,11 @@ describe("Theater row badge host", () => {
     expect(result[0]?.badges).toHaveLength(MAX_THEATER_ROW_BADGES);
     expect(result[1]).toEqual({
       theaterId: "known-path",
-      badges: [{ id: "safe", text: "clean", tone: "positive" }],
+      badges: [
+        { id: "remote-branch", text: "origin/canary", tone: "neutral" },
+        { id: "feature-branch", text: "feat/foo", tone: "neutral" },
+        { id: "safe", text: "clean", tone: "positive" },
+      ],
     });
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain("unknown");
@@ -59,6 +69,22 @@ describe("Theater row badge host", () => {
 
     await expect(resolveTheaterRowBadges(
       [timeout, failure, success],
+      ["known"],
+      { providerTimeoutMs: 20, deadlineMs: 100 },
+    )).resolves.toEqual([
+      { theaterId: "known", badges: [{ id: "branch", text: "main" }] },
+    ]);
+  });
+
+  it("accepts contributions finalized before a provider abort", async () => {
+    const partial: TheaterRowBadgeProvider = ({ signal }) => new Promise((resolve) => {
+      signal.addEventListener("abort", () => resolve([
+        { theaterId: "known", badges: [{ id: "branch", text: "main" }] },
+      ]), { once: true });
+    });
+
+    await expect(resolveTheaterRowBadges(
+      [partial],
       ["known"],
       { providerTimeoutMs: 20, deadlineMs: 100 },
     )).resolves.toEqual([
