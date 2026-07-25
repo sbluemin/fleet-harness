@@ -226,11 +226,18 @@ export async function handleRepositoryLog(
       .filter((sha) => WORKTREE_SHA_RE.test(sha) && !/^0+$/.test(sha));
     // unborn(orphan) 체크아웃에서는 명시 HEAD 인자가 로그 전체를 실패시키므로 rev-list 성공 여부로 게이트한다
     const headRevs = headRevList ? ["HEAD"] : [];
+    // Theater가 저장소 루트가 아니면(더 큰 워크트리의 하위 디렉터리) pathspec이 Theater 스코프를 지탱하므로 유지한다.
+    // 루트일 때만 생략한다 — pathspec이 붙으면 git 기본 history simplification이 TREESAME 커밋(변경 없는 빈 커밋 등)을
+    // 목록에서 지우는데 %P는 원본 부모를 그대로 뱉어, 클라이언트 레인 매칭이 끊기고 없는 분기가 그려지기 때문이다.
+    // 생략하는 쪽에서도 "--" 종결자는 남긴다 — 없으면 'HEAD'라는 이름의 파일이 있는 저장소에서
+    // rev/경로 모호성으로 로그 전체가 실패한다.
+    const [realGitCwd, realToplevel] = await Promise.all([normalizeWorktreePath(gitCwd), normalizeWorktreePath(currentWorktreePath)]);
+    const scopePathspec = realToplevel !== "" && realGitCwd === realToplevel ? [] : ["."];
     const result = resolvedRef
-      ? await runGit(["log", resolvedRef, "--date-order", "-n", "200", "--relative", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", "."], { cwd: gitCwd })
+      ? await runGit(["log", resolvedRef, "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
       : await runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--relative", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", "."],
+        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
         { cwd: gitCwd },
       );
     const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);

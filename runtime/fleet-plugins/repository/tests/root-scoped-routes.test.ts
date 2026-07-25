@@ -339,6 +339,33 @@ describe("Repository Theater-root Git routes", () => {
     ]));
   });
 
+  it("하위 디렉터리 Theater의 history는 Theater 밖 커밋을 제외한다", async () => {
+    const outerRepo = path.join(tmpDir, "outer-repo");
+    const theaterPath = path.join(outerRepo, "theater");
+    const outsidePath = path.join(outerRepo, "outside");
+    await fs.mkdir(theaterPath, { recursive: true });
+    await fs.mkdir(outsidePath, { recursive: true });
+    await initGitRepo(outerRepo);
+
+    await fs.writeFile(path.join(theaterPath, "inside.txt"), "inside\n");
+    await runGit(["add", "."], { cwd: outerRepo });
+    await runGit(["commit", "-m", "inside Theater commit"], { cwd: outerRepo });
+    await fs.writeFile(path.join(outsidePath, "outside.txt"), "outside\n");
+    await runGit(["add", "."], { cwd: outerRepo });
+    await runGit(["commit", "-m", "outside Theater commit"], { cwd: outerRepo });
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(theaterPath, { theaterId: "theater" }, writes),
+    );
+
+    const subjects = readPayload<LogPayload>(writes).commits.map((commit) => commit.subject);
+    expect(subjects).toContain("inside Theater commit");
+    expect(subjects).not.toContain("outside Theater commit");
+  });
+
   it("returns a root-relative commit file and neutralizes option-like paths", async () => {
     const fileWrites: JsonWrite[] = [];
     await handleRepositoryCommitFile(
