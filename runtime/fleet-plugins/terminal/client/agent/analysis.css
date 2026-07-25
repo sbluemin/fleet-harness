@@ -25,7 +25,9 @@
 .carrier-streams__state.is-live { color: var(--aurora); }
 .carrier-streams__state.is-live i { background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
 .carrier-streams__board { display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 10px; scrollbar-width: thin; }
-.carrier-stream-column { position: relative; box-sizing: border-box; display: flex; flex: none; width: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--hairline); border-radius: 13px; background: var(--ink-deep); color: var(--text-primary); }
+/* 행은 보드 가용 높이를 나눠 갖는다 — flex-basis는 반드시 0이어야 한다. auto면 shrink 모드로 들어가
+   짧은 행이 하한까지 눌린다. max-content 상한이 짧은 행의 남는 몫을 긴 행으로 재분배한다. */
+.carrier-stream-column { position: relative; box-sizing: border-box; display: flex; flex: 1 1 0; width: 100%; min-width: 0; min-height: 240px; max-height: max-content; flex-direction: column; overflow: hidden; border: 1px solid var(--hairline); border-radius: 13px; background: var(--ink-deep); color: var(--text-primary); }
 .carrier-stream-column[data-tone="live"] { border-color: color-mix(in oklch, var(--aurora) 36%, var(--hairline)); }
 .carrier-stream-column[data-tone="done"] { border-color: color-mix(in oklch, var(--positive) 34%, var(--hairline)); }
 .carrier-stream-column[data-tone="error"] { border-color: color-mix(in oklch, var(--coral) 42%, var(--hairline)); }
@@ -42,7 +44,7 @@
 .carrier-stream-column__phase { color: var(--aurora); font-weight: var(--weight-bold); font-size: 9px; line-height: 1; font-family: var(--font-mono); letter-spacing: .08em; }
 .carrier-stream-column__phase[data-tone="done"] { color: var(--positive); }
 .carrier-stream-column__phase[data-tone="error"] { color: var(--coral); }
-.carrier-stream-column__body { max-height: 320px; min-height: 0; flex: 1; overflow-y: auto; outline: none; scrollbar-width: thin; }
+.carrier-stream-column__body { min-height: 0; flex: 1; overflow-y: auto; outline: none; scrollbar-width: thin; }
 .carrier-stream-column__body:focus-visible { box-shadow: inset 0 0 0 2px var(--brass-bright); }
 .carrier-stream-column__content { display: flex; min-height: 100%; flex-direction: column; gap: 12px; padding: 12px; }
 /* 출격 명령서 — 채팅 말풍선이 아니라 캐리어에게 발부된 명령 블록. 정체성은 spine+wash 문법

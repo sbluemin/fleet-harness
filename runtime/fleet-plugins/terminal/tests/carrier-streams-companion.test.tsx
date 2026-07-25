@@ -111,7 +111,8 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).not.toContain("another private thought");
     expect(container?.querySelector('[data-captain="genesis"]')).not.toBeNull();
     expect(ANALYSIS_CSS).toMatch(/\.carrier-streams__board \{[^}]*flex-direction: column;[^}]*gap: 10px;[^}]*overflow-x: hidden;[^}]*overflow-y: auto;/);
-    expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column \{[^}]*flex: none;[^}]*width: 100%;/);
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column \{[^}]*flex: 1 1 0;[^}]*width: 100%;[^}]*min-height: 240px;[^}]*max-height: max-content;/);
+    expect(ANALYSIS_CSS).not.toMatch(/\.carrier-stream-column__body \{[^}]*max-height:/);
     expect(ANALYSIS_CSS).not.toContain("flex: 1 0 250px");
     expect(ANALYSIS_CSS).not.toContain("max-width: 420px");
     const firstColumn = columns?.[0];
