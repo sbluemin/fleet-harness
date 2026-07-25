@@ -139,6 +139,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     const session = sessions.get(sessionId);
     if (!session || typeof session.pty.write !== "function") return false;
     try {
+      // 서버 주입 입력(reminder·rename)도 활동이다 — 직렬화된 주입 큐가 길어져도
+      // 각 write가 다음 write(250ms)까지 유후 타이머를 밀어내 세션이 살아있는다.
+      touchActivity(session);
       session.pty.write(data);
       return true;
     } catch {

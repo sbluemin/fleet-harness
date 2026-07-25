@@ -36,6 +36,11 @@ describe("session-manager lastActivityAt", () => {
     expect(manager.getSessionLastActivityAt("agent-a")).toBe(3_000);
     expect(ptys.get("agent-a")?.resized.at(-1)).toEqual({ cols: 120, rows: 40 });
 
+    // 서버 주입 입력(reminder·rename)도 활동으로 갱신한다.
+    clock = 5_000;
+    expect(manager.writeToSession("agent-a", "injected-reminder")).toBe(true);
+    expect(manager.getSessionLastActivityAt("agent-a")).toBe(5_000);
+
     await manager.stop();
   });
 
