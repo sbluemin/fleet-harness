@@ -640,6 +640,49 @@ describe('CodexAppServerConnection lifecycle', () => {
     expect(connection.sessionId).toBe(threadId);
   });
 
+  it('loadSession이 unarchive 후 resume 재시도 실패 시 thread/archive로 되돌린다', async () => {
+    const threadId = '019f9884-64b3-78f2-8b54-e9901b6ce4d2';
+    const resumeErrorMessage = 'Invalid request: unknown variant `not-a-sandbox`, expected one of `read-only`, `workspace-write`, `danger-full-access`';
+    const connectPromise = connection.connect({ skipThreadStart: true });
+    child.stdout.emit(
+      'data',
+      `${jsonRpcResult(1, {
+        userAgent: 'codex/test',
+        codexHome: '/tmp/codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      })}\n`,
+    );
+    await connectPromise;
+
+    const loadPromise = connection.loadSession(threadId);
+    await flushMicrotask();
+    child.stdout.emit(
+      'data',
+      `${jsonRpcError(2, `session ${threadId} is archived. Run \`codex unarchive ${threadId}\` to unarchive it first.`)}\n`,
+    );
+    await flushMicrotask();
+    child.stdout.emit('data', `${jsonRpcResult(3, { thread: { id: threadId } })}\n`);
+    await flushMicrotask();
+    child.stdout.emit('data', `${jsonRpcError(4, resumeErrorMessage)}\n`);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'thread/archive',
+      params: { threadId },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(5, {})}\n`);
+
+    await expect(loadPromise).rejects.toThrow(resumeErrorMessage);
+
+    expect(readOutgoingMethods(child)).toEqual([
+      'initialize',
+      'thread/resume',
+      'thread/unarchive',
+      'thread/resume',
+      'thread/archive',
+    ]);
+  });
+
   it('stderr를 log/logEntry로 전달한다', async () => {
     const logs: string[] = [];
     const entries: string[] = [];

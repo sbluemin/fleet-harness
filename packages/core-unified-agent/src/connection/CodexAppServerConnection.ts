@@ -330,7 +330,16 @@ export class CodexAppServerConnection extends BaseConnection {
             { cause: unarchiveError },
           );
         }
-        response = await this.sendThreadResumeRequest(threadId, options);
+        try {
+          response = await this.sendThreadResumeRequest(threadId, options);
+        } catch (resumeError) {
+          await this.sendRequest<CodexThreadArchiveResponse>(
+            CODEX_METHODS.THREAD_ARCHIVE,
+            { threadId },
+            SESSION_TEARDOWN_TIMEOUT_MS,
+          ).catch(() => {});
+          throw resumeError;
+        }
       } else {
         const rolloutPath = this.findRolloutPathForThreadId(threadId);
         if (!rolloutPath || !isMissingRolloutError(error, threadId)) {
