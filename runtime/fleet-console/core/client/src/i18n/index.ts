@@ -28,5 +28,7 @@ export function getT(locale: ConsoleLocale): Translate<CoreMessageKey> {
 
 export type { CoreMessageKey };
 export { CORE_MESSAGES } from "./messages/index.js";
+export { diagramHydratorLabels, markdownCopyOptions } from "./markdown-ui.js";
 export { formatAbsoluteDateTime, formatDate, formatRelativeTime, formatTimeOfDay } from "./format.js";
+export { renderMessage } from "./rich.js";
 export { translateServerError } from "./server-errors.js";

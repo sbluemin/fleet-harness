@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { getGlobalSettingsStoreState } from "../global-settings-store.js";
-import { getT } from "../i18n/index.js";
+import { getT, markdownCopyOptions } from "../i18n/index.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
   applyCowork, cancelCowork, closeCowork, CoworkRequestError, createCoworkSession,
@@ -168,7 +168,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (!engaged) { options.body.innerHTML = publishedHtml; return; }
     options.body.innerHTML = diffVisible
       ? `<div class="cowork-rendered-diff" aria-label="${escapeAttribute(t("codex.cowork.draftChangesAria"))}">${renderRenderedDiff(stripFrontmatter(session!.baseDraft), stripFrontmatter(session!.draft))}</div>`
-      : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id) }).html;
+      : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id), ...markdownCopyOptions(t) }).html;
   };
 
   const renderAnchor = () => {
@@ -253,7 +253,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   const renderReplyMarkdown = () => {
     if (renderedReplyText === reply) return;
     renderedReplyText = reply;
-    renderedReplyHtml = reply ? renderMarkdown(reply).html : "";
+    renderedReplyHtml = reply ? renderMarkdown(reply, markdownCopyOptions(consoleT())).html : "";
   };
 
   const patchRevisionOutput = () => {
@@ -804,7 +804,7 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
 // 흐림+취소선으로 문서 흐름 안에 표시된다.
 function renderRenderedDiff(base: string, draft: string): string {
   return diffDraftBlocks(base, draft).map(block => {
-    const html = renderMarkdown(block.markdown, { resolveWikiLink: (id) => entryPath(id) }).html;
+    const html = renderMarkdown(block.markdown, { resolveWikiLink: (id) => entryPath(id), ...markdownCopyOptions(consoleT()) }).html;
     return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
   }).join("");
 }

@@ -1,6 +1,8 @@
+import type { LocalizedText } from "../i18n/types.js";
+
 export interface NotificationKindDescriptor {
   readonly id: string;
-  readonly title: string;
+  readonly title: LocalizedText;
 }
 
 export interface ClientNotification {

@@ -3,7 +3,7 @@ import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { getGlobalSettingsStoreState } from "../global-settings-store.js";
-import { formatRelativeTime, getT, type CoreMessageKey } from "../i18n/index.js";
+import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, type CoreMessageKey } from "../i18n/index.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
   decideDrydock,
@@ -101,7 +101,7 @@ export function mountReadingInto(
   let currentDetailMeta: DrydockMeta | null = null;
   let currentDetailPatchId: string | null = null;
 
-  installDiagramHydrator(readContainer);
+  installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
 
   function handleClick(event: MouseEvent): void {
     const target = event.target;
@@ -225,9 +225,11 @@ export function mountReadingInto(
       if (destroyed) return;
 
       const { index } = getState();
+      const t = consoleT();
       const { html: markdownHtml, toc } = renderMarkdown(entry.body, {
         omitDuplicateTitle: entry.frontmatter.title,
         resolveWikiLink: (id) => entryPath(id),
+        ...markdownCopyOptions(t),
       });
 
       readContainer.innerHTML = `
@@ -285,9 +287,11 @@ export function mountReadingInto(
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
 
+        const t = consoleT();
         const { html: markdownHtml, toc } = renderMarkdown(detail.wikiEntry.body, {
           omitDuplicateTitle: detail.wikiEntry.title,
           resolveWikiLink: (id) => entryPath(id),
+          ...markdownCopyOptions(t),
         });
 
         readContainer.innerHTML = renderPatchDetail(detail, markdownHtml);
@@ -338,8 +342,8 @@ export function mountReadingInto(
     try {
       const document = await fetchSchemaDocument(theaterId, templateId);
       if (destroyed || requestEpoch !== schemaRequestEpoch || theaterId !== liveOpts.theaterId) return;
-      const { html, toc } = renderMarkdown(document.content);
       const t = consoleT();
+      const { html, toc } = renderMarkdown(document.content, markdownCopyOptions(t));
       const schemaLabel = templateId ?? t("codex.reading.workspaceSchema");
       readContainer.innerHTML = `<article class="document"><header class="document-header"><nav class="breadcrumb"><ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.schema"))}</span></li><li><span aria-current="page">${escapeHtml(schemaLabel)}</span></li></ol></nav><h1>${escapeHtml(schemaLabel)}</h1><span class="queue-dl-mono">${escapeHtml(document.ref)}</span></header><div class="markdown-body" id="codex-reader-body">${html}</div></article>`;
       opts.tocContainer.innerHTML = renderTocSheet(toc);

@@ -50,18 +50,6 @@ export function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; reado
   ];
 }
 
-/** @deprecated Prefer buildPaletteThemes(t). Rebuilds for the current locale on each access. */
-export const PALETTE_THEMES: readonly { readonly id: ThemeId; readonly label: string }[] = new Proxy(
-  [] as { readonly id: ThemeId; readonly label: string }[],
-  {
-    get(_target, prop) {
-      const themes = buildPaletteThemes(consoleT());
-      const value = Reflect.get(themes, prop, themes);
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(themes) : value;
-    },
-  },
-);
-
 export function isCommandModeInput(value: string): boolean {
   return value.startsWith(">");
 }

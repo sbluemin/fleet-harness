@@ -1,9 +1,12 @@
+import { createElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { createTranslator, resolveLocalizedText } from "../sdk/i18n/translate.js";
 import type { MessageCatalog } from "../sdk/i18n/types.js";
 import { formatRelativeTime } from "../core/client/src/i18n/format.js";
 import { getT } from "../core/client/src/i18n/index.js";
+import { renderMessage } from "../core/client/src/i18n/rich.js";
 import { translateServerError } from "../core/client/src/i18n/server-errors.js";
 
 const CATALOG = {
@@ -62,5 +65,42 @@ describe("translateServerError", () => {
     expect(translateServerError("Unauthorized", t)).toBe("권한이 없습니다");
     expect(translateServerError("Internal server error", t)).toBe("서버 내부 오류가 발생했습니다");
     expect(translateServerError("Something else", t)).toBe("Something else");
+  });
+});
+
+describe("renderMessage", () => {
+  function markup(nodes: ReactNode[]): string {
+    return renderToStaticMarkup(createElement("span", null, ...nodes));
+  }
+
+  it("interleaves string fragments with React nodes for {name} placeholders", () => {
+    const html = markup(
+      renderMessage("Port {port} fell back to a {mode} port on {host}.", {
+        port: createElement("strong", null, "8080"),
+        mode: createElement("strong", null, "Dynamic"),
+        host: createElement("strong", null, "127.0.0.1:4310"),
+      }),
+    );
+    expect(html).toBe(
+      "<span>Port <strong>8080</strong> fell back to a <strong>Dynamic</strong> port on <strong>127.0.0.1:4310</strong>.</span>",
+    );
+  });
+
+  it("leaves missing placeholders intact", () => {
+    const html = markup(
+      renderMessage("Next restart will try {port}.", {
+        other: createElement("strong", null, "x"),
+      }),
+    );
+    expect(html).toBe("<span>Next restart will try {port}.</span>");
+  });
+
+  it("assigns stable keys so mixed arrays are valid React children", () => {
+    const parts = renderMessage("A {x} B {y}", {
+      x: createElement("em", null, "1"),
+      y: createElement("em", null, "2"),
+    });
+    const keyed = parts.filter((part) => typeof part === "object" && part !== null && "key" in part);
+    expect(keyed.map((part) => (part as { key: string }).key)).toEqual(["rich:x:0", "rich:y:1"]);
   });
 });

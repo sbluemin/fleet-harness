@@ -1,8 +1,6 @@
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { getGlobalSettingsStoreState } from "./global-settings-store.js";
-import { getT, type CoreMessageKey } from "./i18n/index.js";
-import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
+import type { CoreMessageKey } from "./i18n/index.js";
 
 export interface ShortcutEntry {
   readonly combos: readonly (readonly string[])[];
@@ -66,25 +64,3 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
     },
   ];
 }
-
-function resolveActiveLocale() {
-  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
-  const navigatorLanguage =
-    typeof navigator !== "undefined" && typeof navigator.language === "string"
-      ? navigator.language.toLowerCase()
-      : "";
-  return resolveConsoleLanguage(preference, navigatorLanguage);
-}
-
-export function getShortcutGroups(): readonly ShortcutGroup[] {
-  return buildShortcutGroups(getT(resolveActiveLocale()));
-}
-
-/** @deprecated Prefer buildShortcutGroups(t). Rebuilds for the current locale on each access. */
-export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = new Proxy([] as ShortcutGroup[], {
-  get(_target, prop) {
-    const groups = getShortcutGroups();
-    const value = Reflect.get(groups, prop, groups);
-    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(groups) : value;
-  },
-});

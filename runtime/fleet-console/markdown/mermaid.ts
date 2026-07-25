@@ -39,6 +39,54 @@ interface SvgSize {
   height: number;
 }
 
+/** 다이어그램 UI 라벨. 미지정 시 영어 기본값을 쓴다(하위호환). */
+export interface DiagramHydratorLabels {
+  readonly renderFailed?: (message: string) => string;
+  readonly openExpandedAria?: string;
+  readonly lightboxTitle?: string;
+  readonly close?: string;
+  readonly closeExpandedAria?: string;
+  readonly zoomControlsAria?: string;
+  readonly zoomOutAria?: string;
+  readonly zoomInAria?: string;
+  readonly fit?: string;
+  readonly fitAria?: string;
+  readonly reset?: string;
+  readonly resetAria?: string;
+}
+
+type ResolvedDiagramLabels = {
+  readonly renderFailed: (message: string) => string;
+  readonly openExpandedAria: string;
+  readonly lightboxTitle: string;
+  readonly close: string;
+  readonly closeExpandedAria: string;
+  readonly zoomControlsAria: string;
+  readonly zoomOutAria: string;
+  readonly zoomInAria: string;
+  readonly fit: string;
+  readonly fitAria: string;
+  readonly reset: string;
+  readonly resetAria: string;
+};
+
+const DEFAULT_DIAGRAM_LABELS: ResolvedDiagramLabels = {
+  renderFailed: (message) => `Diagram render failed: ${message}`,
+  openExpandedAria: "Open diagram in expanded view",
+  lightboxTitle: "MANIFEST · DIAGRAM",
+  close: "Close",
+  closeExpandedAria: "Close expanded diagram",
+  zoomControlsAria: "Diagram zoom controls",
+  zoomOutAria: "Zoom out",
+  zoomInAria: "Zoom in",
+  fit: "Fit",
+  fitAria: "Fit diagram to viewport",
+  reset: "Reset",
+  resetAria: "Reset diagram zoom",
+};
+
+let diagramLabels: ResolvedDiagramLabels = DEFAULT_DIAGRAM_LABELS;
+
 const PENDING_SELECTOR = ".diagram-block[data-mermaid-source]:not([data-diagram-state='rendered']):not([data-diagram-state='error'])";
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -95,7 +143,9 @@ export function cssColorToHex(value: string): string {
   return oklchToHex(oklch);
 }
 
-export function installDiagramHydrator(root: ParentNode): void {
+export function installDiagramHydrator(root: ParentNode, labels?: DiagramHydratorLabels): void {
+  // 로케일 전환 시 동일 root 재설치에도 라벨만 갱신할 수 있게, WeakSet 가드보다 먼저 반영한다.
+  if (labels) diagramLabels = { ...DEFAULT_DIAGRAM_LABELS, ...labels };
   if (hydratedRoots.has(root)) return;
   hydratedRoots.add(root);
   scan(root);
@@ -159,7 +209,7 @@ async function hydrate(placeholder: HTMLElement): Promise<void> {
 
 function setError(placeholder: HTMLElement, message: string): void {
   placeholder.dataset.diagramState = "error";
-  placeholder.textContent = `Diagram render failed: ${message}`;
+  placeholder.textContent = diagramLabels.renderFailed(message);
 }
 
 function sanitizeSvg(svg: string): string {
@@ -368,7 +418,7 @@ function recalculateSvgViewBox(placeholder: HTMLElement): void {
 
 function bindDiagramInteraction(placeholder: HTMLElement): void {
   placeholder.tabIndex = 0;
-  placeholder.setAttribute("aria-label", "Open diagram in expanded view");
+  placeholder.setAttribute("aria-label", diagramLabels.openExpandedAria);
   updateDiagramRole(placeholder);
   if (placeholder.dataset[INTERACTION_HANDLER_FLAG] === "true") return;
   placeholder.dataset[INTERACTION_HANDLER_FLAG] = "true";
@@ -419,24 +469,24 @@ function openDiagramLightbox(trigger: HTMLElement): void {
 
   const title = document.createElement("h2");
   title.id = titleId;
-  title.textContent = "MANIFEST · DIAGRAM";
+  title.textContent = diagramLabels.lightboxTitle;
 
   const closeButton = document.createElement("button");
   closeButton.className = "diagram-lightbox__close";
   closeButton.type = "button";
-  closeButton.setAttribute("aria-label", "Close expanded diagram");
-  closeButton.textContent = "Close";
+  closeButton.setAttribute("aria-label", diagramLabels.closeExpandedAria);
+  closeButton.textContent = diagramLabels.close;
 
   const controls = document.createElement("div");
   controls.className = "diagram-lightbox__controls";
-  controls.setAttribute("aria-label", "Diagram zoom controls");
-  const zoomOutButton = createZoomButton("−", "Zoom out", "out");
+  controls.setAttribute("aria-label", diagramLabels.zoomControlsAria);
+  const zoomOutButton = createZoomButton("−", diagramLabels.zoomOutAria, "out");
   const zoomReadout = document.createElement("span");
   zoomReadout.className = "diagram-lightbox__zoom-readout";
   zoomReadout.setAttribute("aria-live", "polite");
-  const zoomInButton = createZoomButton("+", "Zoom in", "in");
-  const fitButton = createZoomButton("Fit", "Fit diagram to viewport", "fit");
-  const resetButton = createZoomButton("Reset", "Reset diagram zoom", "reset");
+  const zoomInButton = createZoomButton("+", diagramLabels.zoomInAria, "in");
+  const fitButton = createZoomButton(diagramLabels.fit, diagramLabels.fitAria, "fit");
+  const resetButton = createZoomButton(diagramLabels.reset, diagramLabels.resetAria, "reset");
   controls.append(zoomOutButton, zoomReadout, zoomInButton, fitButton, resetButton);
 
   const viewport = document.createElement("div");

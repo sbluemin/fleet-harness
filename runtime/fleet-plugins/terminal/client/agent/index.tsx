@@ -99,22 +99,21 @@ export const agentSettingsSection = defineSettingsSection({
 
 export const agentAttentionNotification = defineNotificationKind({
   id: "agent.attention",
-  // NotificationKindDescriptor.title 은 아직 string 전용 — 카탈로그 en 값을 고정 배선한다.
-  title: getT("en")("terminal.notifications.agentInputWaiting"),
+  title: (locale) => getT(locale)("terminal.notifications.agentInputWaiting"),
 });
 
 // id에 ".end"를 포함시켜 core mapNotificationKind가 이 알림을 "ended"(turn 종료)로 분류하게 한다.
 // (idle 전이는 에이전트 턴 종료이므로 ALERTS의 ended 상태로 분류해야 한다.)
 export const agentEndedNotification = defineNotificationKind({
   id: "agent.ended",
-  title: getT("en")("terminal.notifications.agentTurnEnded"),
+  title: (locale) => getT(locale)("terminal.notifications.agentTurnEnded"),
 });
 
 // resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
 // ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
 export const agentResumeFailedNotification = defineNotificationKind({
   id: "agent.resume-failed",
-  title: getT("en")("terminal.notifications.resumeFailed"),
+  title: (locale) => getT(locale)("terminal.notifications.resumeFailed"),
 });
 
 export const agentPlugin = definePlugin({

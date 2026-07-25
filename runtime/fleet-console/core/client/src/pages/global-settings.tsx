@@ -9,7 +9,7 @@ import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
-import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
+import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "../store.js";
@@ -549,9 +549,15 @@ function ConsolePortSettings({
 
         {fallbackActive && runtimeRequestedPort ? (
           <div className="console-port-warning" role="status">
-            {t("settings.port.fallback", { port: String(runtimeRequestedPort), host: `127.0.0.1:${effectivePort || "..."}` })}{" "}
+            {renderMessage(t("settings.port.fallback"), {
+              port: <strong>{runtimeRequestedPort}</strong>,
+              mode: <strong>{t("settings.port.dynamic")}</strong>,
+              host: <strong>{`127.0.0.1:${effectivePort || "..."}`}</strong>,
+            })}{" "}
             {nextRestartStatic
-              ? t("settings.port.nextRestartStatic", { port: String(state.consoleStaticPort) })
+              ? renderMessage(t("settings.port.nextRestartStatic"), {
+                  port: <strong>{state.consoleStaticPort}</strong>,
+                })
               : t("settings.port.nextRestartDynamic")}
           </div>
         ) : null}

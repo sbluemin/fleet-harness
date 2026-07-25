@@ -7,7 +7,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import "@fleet-console/markdown/styles.css";
 import { fetchPlanRead, fetchPlansList, fetchPlansSearch, type PlanListItem, type PlanReadResult } from "../api.js";
-import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
+import { diagramHydratorLabels, getT, markdownCopyOptions, useT, type CoreMessageKey } from "../i18n/index.js";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import "./plans.css";
 import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planLaneHeadingMatches, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
@@ -412,7 +412,7 @@ function PlanDocument({ plan, language, onClose }: PlanDocumentProps) {
   // plan 본문은 신뢰 불가 입력이다 — 렌더 HTML을 mount하기 전에 원격 이미지(추적 픽셀·IP 노출)와
   // 비-http 로컬 href(SPA hijack)를 무력화한다. 준거: file-explorer MarkdownViewer의 mount-전 처리.
   const html = useMemo(() => {
-    const doc = new DOMParser().parseFromString(renderMarkdown(plan.content).html, "text/html");
+    const doc = new DOMParser().parseFromString(renderMarkdown(plan.content, markdownCopyOptions(t)).html, "text/html");
     neutralizePlanDom(doc.body, t);
     return doc.body.innerHTML;
   }, [plan.content, t]);
