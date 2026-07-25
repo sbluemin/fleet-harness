@@ -4,18 +4,11 @@ interface RailStore {
   readonly activeRailPanelId: string | null;
   readonly railChromeExpanded: boolean;
   readonly panelExtraWidth: number;
-  readonly currentPanelWidth: number | null;
-  readonly presetPanelWidthRequest: RailPresetPanelWidthRequest | null;
   readonly panelBehavior: "push" | "overlay";
   readonly overlayAlpha: RailOverlayAlpha;
 }
 
 export type RailOverlayAlpha = 100 | 90 | 75 | 60;
-export interface RailPresetPanelWidthRequest {
-  readonly panelId: string;
-  readonly width: number;
-  readonly revision: number;
-}
 
 type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
@@ -28,8 +21,6 @@ let store: RailStore = {
   activeRailPanelId: readStoredPanelId(),
   railChromeExpanded: readStoredChromeExpanded(),
   panelExtraWidth: 0,
-  currentPanelWidth: null,
-  presetPanelWidthRequest: null,
   panelBehavior: readStoredPanelBehavior(),
   overlayAlpha: readStoredOverlayAlpha(),
 };
@@ -72,40 +63,6 @@ export function setRailChromeExpanded(expanded: boolean): void {
   saveStoredChromeExpanded(expanded);
 }
 
-export function applyRailPreset(input: {
-  readonly activePanelId: string | null;
-  readonly chromeExpanded: boolean;
-  readonly panelWidth: number | null;
-}): void {
-  const request = input.activePanelId !== null && input.panelWidth !== null
-    ? {
-      panelId: input.activePanelId,
-      width: input.panelWidth,
-      revision: (store.presetPanelWidthRequest?.revision ?? 0) + 1,
-    }
-    : null;
-  setStore({
-    ...store,
-    activeRailPanelId: input.activePanelId,
-    railChromeExpanded: input.chromeExpanded,
-    panelExtraWidth: 0,
-    presetPanelWidthRequest: request,
-  });
-  saveStoredPanelId(input.activePanelId);
-  saveStoredChromeExpanded(input.chromeExpanded);
-}
-
-export function publishRailPanelWidth(panelId: string | null, width: number | null): void {
-  const nextWidth = panelId === store.activeRailPanelId ? width : null;
-  if (store.currentPanelWidth === nextWidth) return;
-  setStore({ ...store, currentPanelWidth: nextWidth });
-}
-
-export function consumeRailPresetPanelWidth(revision: number): void {
-  if (store.presetPanelWidthRequest?.revision !== revision) return;
-  setStore({ ...store, presetPanelWidthRequest: null });
-}
-
 export function toggleRailChrome(): void {
   setRailChromeExpanded(!store.railChromeExpanded);
 }
@@ -145,10 +102,6 @@ export function useRailChromeExpanded(): boolean {
 
 export function useRailPanelExtraWidth(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
-}
-
-export function useRailPresetPanelWidthRequest(): RailPresetPanelWidthRequest | null {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).presetPanelWidthRequest;
 }
 
 export function useRailPanelBehavior(): "push" | "overlay" {

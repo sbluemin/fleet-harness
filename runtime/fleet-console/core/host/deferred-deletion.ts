@@ -1,11 +1,10 @@
 import crypto from "node:crypto";
 
-import type { DurableDeletionTombstone, DurableOperationGroup, DurableWorkspacePreset } from "./durable-state.js";
+import type { DurableDeletionTombstone, DurableOperationGroup } from "./durable-state.js";
 import type { OperationNode, OperationStore } from "./operations/types.js";
 import { DELETION_GRACE_MS } from "./operations/types.js";
 import type { TheaterRegistration } from "./theaters.js";
 import type { TheaterRegistry } from "./theaters.js";
-import type { WorkspacePresetStore } from "./workspace-presets/store.js";
 
 export interface DeferredDeletionReceipt {
   readonly deletionId: string;
@@ -50,7 +49,6 @@ export interface DeferredDeletionCoordinator {
 interface DeferredDeletionCoordinatorDeps {
   readonly operations: OperationStore;
   readonly theaters: TheaterRegistry;
-  readonly workspacePresets: WorkspacePresetStore;
   readonly save: (tombstones: readonly DurableDeletionTombstone[]) => void;
   readonly publish: (channel: string, payload: unknown) => void;
   readonly unregisterTheaterWorkspaces: (theaterId: string) => void;
@@ -123,10 +121,8 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const previousTheaters = deps.theaters.list();
     const previousOperations = deps.operations.list();
     const previousGroups = deps.operations.listAllGroups();
-    const previousWorkspacePresets = deps.workspacePresets.list();
     const deletedOperations = deps.operations.listByTheater(theaterId);
     const deletedGroups = deps.operations.listGroups(theaterId);
-    const deletedWorkspacePresets = deps.workspacePresets.list(theaterId);
     const deletedAt = now();
     const tombstone: DurableDeletionTombstone = {
       deletionId: randomId(),
@@ -137,19 +133,16 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       theater,
       operations: deletedOperations,
       groups: deletedGroups,
-      workspacePresets: deletedWorkspacePresets,
     };
     const nextTombstones = [...tombstones, tombstone];
     deps.theaters.remove(theaterId);
     deps.operations.deleteByTheater(theaterId);
-    deps.workspacePresets.deleteByTheater(theaterId);
     try {
       deps.save(nextTombstones);
     } catch (error) {
       deps.theaters.restore(previousTheaters);
       deps.operations.replace(previousOperations);
       deps.operations.replaceGroups(previousGroups);
-      deps.workspacePresets.replace(previousWorkspacePresets);
       throw error;
     }
     tombstones = nextTombstones;
@@ -188,26 +181,22 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     await deps.validateTheaterRestore(tombstone.theater);
     if (deps.theaters.get(tombstone.targetId)
       || tombstone.operations.some((operation) => deps.operations.get(operation.id))
-      || hasGroupConflict(tombstone.groups, deps.operations.listAllGroups())
-      || hasWorkspacePresetConflict(tombstone.workspacePresets, deps.workspacePresets.list())) {
+      || hasGroupConflict(tombstone.groups, deps.operations.listAllGroups())) {
       throw new DeferredDeletionError(409, "restore_conflict");
     }
     const previousTheaters = deps.theaters.list();
     const previousOperations = deps.operations.list();
     const previousGroups = deps.operations.listAllGroups();
-    const previousWorkspacePresets = deps.workspacePresets.list();
     const nextTombstones = tombstones.filter((item) => item.deletionId !== deletionId);
     deps.theaters.restore([...previousTheaters, tombstone.theater]);
     deps.operations.replace([...previousOperations, ...tombstone.operations]);
     deps.operations.replaceGroups([...previousGroups, ...tombstone.groups]);
-    deps.workspacePresets.replace([...previousWorkspacePresets, ...tombstone.workspacePresets]);
     try {
       deps.save(nextTombstones);
     } catch (error) {
       deps.theaters.restore(previousTheaters);
       deps.operations.replace(previousOperations);
       deps.operations.replaceGroups(previousGroups);
-      deps.workspacePresets.replace(previousWorkspacePresets);
       throw error;
     }
     tombstones = nextTombstones;
@@ -317,9 +306,4 @@ function toReceipt(tombstone: DurableDeletionTombstone): DeferredDeletionReceipt
 function hasGroupConflict(groups: readonly DurableOperationGroup[], existing: readonly DurableOperationGroup[]): boolean {
   const existingIds = new Set(existing.map((group) => group.id));
   return groups.some((group) => existingIds.has(group.id));
-}
-
-function hasWorkspacePresetConflict(presets: readonly DurableWorkspacePreset[], existing: readonly DurableWorkspacePreset[]): boolean {
-  const existingIds = new Set(existing.map((preset) => preset.id));
-  return presets.some((preset) => existingIds.has(preset.id));
 }

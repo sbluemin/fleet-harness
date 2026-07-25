@@ -45,13 +45,11 @@ vi.mock("../core/client/src/rail/use-codex-split-extra-width.js", () => ({
 
 import { RightRail } from "../core/client/src/rail/right-rail.js";
 import {
-  applyRailPreset,
   getRailStoreSnapshot,
   requestRailPanelExtraWidth,
   setActiveRailPanel,
   setRailOverlayAlpha,
   setRailPanelBehavior,
-  setRailChromeExpanded,
 } from "../core/client/src/rail/rail-store.js";
 
 let container: HTMLDivElement;
@@ -66,7 +64,6 @@ beforeEach(() => {
   requestRailPanelExtraWidth("plans", null);
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
-  setRailChromeExpanded(true);
   container = document.createElement("div");
   document.body.replaceChildren(container);
   root = createRoot(container);
@@ -107,22 +104,6 @@ describe("Right Rail overlay opacity presets", () => {
 });
 
 describe("Right Rail panel width", () => {
-  it("applies preset width before remembered/default values, updates memory, and leaves the preset immutable after manual resize", () => {
-    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 508 }));
-    renderRail();
-    const presetRail = { activePanelId: "plans", chromeExpanded: true, panelWidth: 620 } as const;
-
-    act(() => applyRailPreset(presetRail));
-
-    expect(renderedPanelWidth()).toBe(620);
-    expect(storedPanelWidths()).toEqual({ plans: 620 });
-
-    dispatchResizeKey(resizeHandle(), "ArrowLeft");
-    expect(renderedPanelWidth()).toBe(636);
-    expect(storedPanelWidths()).toEqual({ plans: 636 });
-    expect(presetRail.panelWidth).toBe(620);
-  });
-
   it("resolves remembered width before descriptor defaultWidth and the 312 fallback", () => {
     window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 508 }));
     renderRail();

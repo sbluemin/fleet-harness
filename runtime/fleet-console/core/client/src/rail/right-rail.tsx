@@ -7,7 +7,7 @@ import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { getState, subscribe } from "../store.js";
-import { closeRailPanel, consumeRailPresetPanelWidth, publishRailPanelWidth, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, useRailPresetPanelWidthRequest, type RailOverlayAlpha } from "./rail-store.js";
+import { closeRailPanel, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -97,7 +97,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const railChromeExpanded = useRailChromeExpanded();
   const panelBehavior = useRailPanelBehavior();
   const overlayAlpha = useRailOverlayAlpha();
-  const presetPanelWidthRequest = useRailPresetPanelWidthRequest();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const previousPanelBehaviorRef = useRef(panelBehavior);
   const pluginPanels = useRailPanels();
@@ -157,26 +156,12 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   }, [activeId, activePanel?.id, activePanel?.defaultWidth, isDragging, maxPanelWidth]);
 
   useLayoutEffect(() => {
-    if (!presetPanelWidthRequest || activePanel?.id !== presetPanelWidthRequest.panelId) return;
-    const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, Math.round(presetPanelWidthRequest.width)));
-    desiredWidthRef.current = next;
-    panelWidthRef.current = next;
-    setPanelWidthState(next);
-    saveStoredPanelWidth(activePanel.id, next);
-    consumeRailPresetPanelWidth(presetPanelWidthRequest.revision);
-  }, [activePanel?.id, maxPanelWidth, presetPanelWidthRequest]);
-
-  useLayoutEffect(() => {
     const desiredWidth = isDragging ? panelWidthRef.current : desiredWidthRef.current;
     const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, desiredWidth));
     if (next === panelWidthRef.current) return;
     panelWidthRef.current = next;
     setPanelWidthState(next);
   }, [isDragging, maxPanelWidth]);
-
-  useLayoutEffect(() => {
-    publishRailPanelWidth(activePanel?.id ?? null, activePanel ? panelWidth : null);
-  }, [activePanel, panelWidth]);
 
   useLayoutEffect(() => {
     if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
