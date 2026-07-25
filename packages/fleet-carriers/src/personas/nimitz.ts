@@ -50,7 +50,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 2: Composition ──
   permissions: [
     "CRITICAL: Strictly read-only. NEVER delegate code modification or file editing to this carrier.",
-    "CRITICAL: NEVER dispatch Nimitz without prior reconnaissance — if recon is needed, dispatch vanguard/tempest FIRST. Hard prerequisite, not a suggestion.",
+    "CRITICAL: NEVER dispatch Nimitz without prior reconnaissance — if recon is needed, dispatch vanguard FIRST. Hard prerequisite, not a suggestion.",
     "Full access to read the codebase and execute read-only commands for analysis.",
     "MUST NOT decompose work into task waves, delivery schedules, or implementation checklists — handoff belongs to the host.",
   ],

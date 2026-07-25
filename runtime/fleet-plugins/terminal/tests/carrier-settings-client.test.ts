@@ -24,7 +24,7 @@ const options = {
   cliTypes: [{ id: "codex", displayName: "Codex", defaultModel: "gpt-5", models: [{ modelId: "gpt-5", name: "GPT-5" }] }],
   taskForceConstraints: { minBackends: 2 },
 };
-const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard", "tempest"] as const;
+const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"] as const;
 const interactiveOptions = {
   cliTypes: [
     {
@@ -124,8 +124,8 @@ describe("Terminal Carrier Settings client", () => {
     const strip = container!.querySelector<HTMLElement>('[role="group"][aria-label="Carrier list"]');
     const chips = [...container!.querySelectorAll<HTMLButtonElement>(".terminal-carriers-chip")];
     expect(strip).not.toBeNull();
-    expect(chips).toHaveLength(7);
-    expect(captainIds).toHaveLength(7);
+    expect(chips).toHaveLength(6);
+    expect(captainIds).toHaveLength(6);
     expect(chips[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(chips.slice(1).every((chip) => chip.getAttribute("aria-pressed") === "false")).toBe(true);
     expect(chips[0]?.querySelector(".terminal-carriers-live-dot.is-live")).not.toBeNull();

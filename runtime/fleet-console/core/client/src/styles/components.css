@@ -4981,7 +4981,6 @@
 .job-dock-captain-dot[data-captain="ohio"] { background: var(--captain-ohio); }
 .job-dock-captain-dot[data-captain="sentinel"] { background: var(--captain-sentinel); }
 .job-dock-captain-dot[data-captain="vanguard"] { background: var(--captain-vanguard); }
-.job-dock-captain-dot[data-captain="tempest"] { background: var(--captain-tempest); }
 
 .job-dock-captain-tag {
   flex: 1;
@@ -5137,7 +5136,6 @@
 .job-dock-card[data-captain="ohio"] { border-left-color: var(--captain-ohio); }
 .job-dock-card[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); }
 .job-dock-card[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); }
-.job-dock-card[data-captain="tempest"] { border-left-color: var(--captain-tempest); }
 
 .job-dock-card-who {
   display: inline-flex;

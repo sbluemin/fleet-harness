@@ -562,7 +562,7 @@ describe("resolveJobSignature (CLI 시그니처 해석)", () => {
 // ── resolveCarrierCaptain 유닛 테스트 ────────────────────────────────────────
 
 describe("resolveCarrierCaptain (캡틴 해석)", () => {
-  it.each([["nimitz"], ["kirov"], ["genesis"], ["ohio"], ["sentinel"], ["vanguard"], ["tempest"]] as const)(
+  it.each([["nimitz"], ["kirov"], ["genesis"], ["ohio"], ["sentinel"], ["vanguard"]] as const)(
     "로스터 캡틴 %s → %s",
     (id) => {
       expect(resolveCarrierCaptain(id)).toBe(id);
@@ -571,6 +571,7 @@ describe("resolveCarrierCaptain (캡틴 해석)", () => {
 
   it("제거된 roster id(chronicle) → undefined", () => {
     expect(resolveCarrierCaptain("chronicle")).toBeUndefined();
+    expect(resolveCarrierCaptain("tempest")).toBeUndefined();
   });
 
   it("로스터 외 id → undefined", () => {

@@ -69,12 +69,8 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <threat_model?> optional: Assumed attacker capability — unauth user, compromised dep, insider (security mode).
   - <fix_mode?> optional: 'report' (default) for findings only, or 'fix' to apply corrections.
 - **vanguard** (Vanguard · Reconnaissance Specialist) — wrap request content in these blocks (? = optional):
-  - <objective> required: What intelligence is needed — question to answer or target to locate.
-  - <search_space?> optional: Directories, files, URLs, or domains to focus the search on.
-  - <hints?> optional: Known symbols, keywords, file patterns, or prior findings to narrow the scan.
+  - <objective> required: What codebase intelligence is needed — question to answer, behavior to trace, or target to locate.
+  - <search_space?> optional: Local directories or files, repository references or URLs, and domains to inspect.
+  - <hints?> optional: Known symbols, paths, branches or tags, keywords, file patterns, or prior findings to narrow the scan.
+  - <constraints?> optional: Source or version requirements, time limits, and areas or sources to exclude.
   - <depth?> optional: 'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'.
-- **tempest** (Tempest · External Intelligence) — wrap request content in these blocks (? = optional):
-  - <target_repo> required: Repository to investigate (owner/repo format or full URL).
-  - <objective> required: What intelligence is needed — feature, pattern, API usage, or implementation detail.
-  - <focus_areas?> optional: Specific directories, files, symbols, or code patterns to prioritize.
-  - <constraints?> optional: Time constraints, specific branches/tags, or areas to exclude.

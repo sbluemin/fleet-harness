@@ -10,7 +10,7 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 // ───── UI strings ─────
 const UI = {
   navHierarchy: { ko: "지휘 체계", en: "Command Chain" },
-  navCaptains:  { ko: "7 함장", en: "7 Captains" },
+  navCaptains:  { ko: "6 함장", en: "6 Captains" },
   navProtocol:  { ko: "4 모드", en: "4 Modes" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
@@ -21,7 +21,7 @@ const UI = {
   heroDescAdmiral:{ ko: "대원수", en: "Admiral of the Navy" },
   heroDescMid:    { ko: "로서 임무를 부여하고, 호스트인 ", en: ", while the host — the " },
   heroDescHost:   { ko: "제독", en: "Admiral" },
-  heroDescMid2:   { ko: "이 7명의 ", en: " — delegates to seven " },
+  heroDescMid2:   { ko: "이 6명의 ", en: " — delegates to six " },
   heroDescCap:    { ko: "함장", en: "Captains" },
   heroDescTail:   { ko: "에게 책임을 위임해 작전을 종결합니다.", en: " who close the operation." },
 
@@ -45,8 +45,8 @@ const UI = {
   backendsTitle: { ko: ["네 개의 CLI,", "한 명의 제독."], en: ["Four CLIs,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작전을 수행하지 않는다. 각 백엔드는 자신이 가장 잘하는 항해를 맡는다.", en: "No single model runs every mission. Each backend takes the voyage it sails best." },
 
-  captainsEy:    { ko: "Captains Roster · 07", en: "Captains Roster · 07" },
-  captainsTitle: { ko: ["일곱 명의 함장,", "겹치지 않는 일곱 개의 책임."], en: ["Seven captains,", "seven non-overlapping duties."] },
+  captainsEy:    { ko: "Captains Roster · 06", en: "Captains Roster · 06" },
+  captainsTitle: { ko: ["여섯 명의 함장,", "겹치지 않는 여섯 개의 책임."], en: ["Six captains,", "six non-overlapping duties."] },
   captainsLede:  { ko: "함장은 장식이 아닌 운영 계약이다. 좌측에서 함장을 선택하면 임무 강령과 책임 명세가 펼쳐진다.", en: "Captains aren't decoration — they're operational contracts. Pick one to see its mission and duties." },
   captainsAria:  { ko: "함장 명단", en: "Captains list" },
   captainCap:    { ko: "Captain", en: "Captain" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 4 CLI · 7 Captains · 4 Modes", en: "· 4 CLI · 7 Captains · 4 Modes" },
+  countMeta:   { ko: "· 4 CLI · 6 Captains · 4 Modes", en: "· 4 CLI · 6 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -98,7 +98,7 @@ const HIERARCHY = [
     rank: "Tier 03",
     role: { ko: "함장", en: "Captain" },
     en: "Captain · CLI AGENT",
-    desc: { ko: "7명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Seven specialists, each running a single CLI backend within their domain to execute the operation." },
+    desc: { ko: "6명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Six specialists, each running a single CLI backend within their domain to execute the operation." },
   },
 ];
 
@@ -112,28 +112,18 @@ const CLI_BACKENDS = [
 const CAPTAINS = [
   {
     id: "Vanguard",
-    role: { ko: "Scout Specialist", en: "Scout Specialist" },
+    role: { ko: "Reconnaissance Specialist", en: "Reconnaissance Specialist" },
     cli: "Claude Code",
     color: "#5fd673",
-    mission: { ko: "안개를 먼저 가르는 자. 함대 어떤 작전보다 먼저 정찰을 띄운다.", en: "First to part the fog. Sails ahead of every fleet operation." },
+    mission: {
+      ko: "로컬과 원격을 가리지 않고 코드베이스 사실을 수집한다. 코드를 수정하거나 판단을 대신하지 않고 다음 결정을 위한 근거를 가져온다.",
+      en: "Collects codebase facts wherever the source lives — local or remote. Returns evidence for the next decision without editing code or making the decision.",
+    },
     duties: [
-      { ko: "코드베이스 정찰 — 디렉터리·심볼·호출 그래프 추적", en: "Codebase reconnaissance — directories, symbols, call graphs." },
-      { ko: "분산 정찰 — 서브-스카우트 동시 파견으로 면적 확보", en: "Distributed scouting — parallel sub-scouts cover ground fast." },
-      { ko: "웹 리서치 — 외부 레퍼런스·표준·라이브러리 문서 수집", en: "Web research — external references, standards, library docs." },
-      { ko: "지식 갭 좌표화 — Reconnaissance 단계 입력으로 환원", en: "Map knowledge gaps — feed them into the Reconnaissance phase." },
-    ],
-  },
-  {
-    id: "Tempest",
-    role: { ko: "External Intelligence Strike", en: "External Intelligence Strike" },
-    cli: "Claude Code",
-    color: "#3dd5f3",
-    mission: { ko: "수평선 너머의 코드를 가져온다. 외부 저장소·API·SDK는 모두 그의 사정거리.", en: "Brings back code from beyond the horizon. External repos, APIs, SDKs are all in range." },
-    duties: [
-      { ko: "GitHub 외부 저장소 조사 및 비교 분석", en: "External GitHub repository survey and comparative analysis." },
-      { ko: "API·SDK 시그니처와 의미론 분석", en: "API/SDK signature and semantic analysis." },
-      { ko: "라이선스·종속성 영향 평가", en: "License and dependency impact assessment." },
-      { ko: "외부 레퍼런스 → 내부 적용 가능성 보고", en: "Reports on whether external references can be adopted internally." },
+      { ko: "로컬·원격 코드베이스 정찰 — 디렉터리·심볼·호출 그래프 추적", en: "Local and remote codebase reconnaissance — directories, symbols, call graphs." },
+      { ko: "외부 저장소 심층 조사 — 읽기 전용 API·공개 코드 검색·임시 clone", en: "External repository deep dives — read-only APIs, public code search, temporary clones." },
+      { ko: "API·SDK 사용 패턴과 웹·외부 레퍼런스 수집", en: "API and SDK usage patterns plus web and external references." },
+      { ko: "출처 기반 보고 — 로컬 절대 경로, 원격 소스 참조, 신뢰도", en: "Source-linked reporting — local absolute paths, remote source references, confidence." },
     ],
   },
   {
@@ -298,7 +288,7 @@ const DIFFS = [
     n: "02",
     name: "Naval Metaphor as Contract",
     kr: { ko: "운영 가능한 해군 메타포", en: "An Operational Naval Metaphor" },
-    body: { ko: "장식이 아니다. 7명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the seven captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
+    body: { ko: "장식이 아니다. 6명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the six captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
   },
   {
     n: "03",
@@ -351,7 +341,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "4 CLI 백엔드 동시 지휘", en: "Four CLI backends commanded together" },
-      { ko: "7 함장 명시적 책임 분리", en: "Seven captains, distinct duties" },
+      { ko: "6 함장 명시적 책임 분리", en: "Six captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
     verdict: { ko: "처음부터 함대로 설계되었다.", en: "Designed as a fleet from day one." },
@@ -393,16 +383,16 @@ function Nav() {
 
 // ───── Hero ─────
 function Hero() {
-  const nodeCount = 7;
+  const nodeCount = 6;
   const radius = 38;
   const nodes = Array.from({ length: nodeCount }, (_, i) => {
     const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
     return {
       x: 50 + Math.cos(angle) * radius,
       y: 50 + Math.sin(angle) * radius,
-      label: ["VG", "TP", "NM", "KV", "GN", "OH", "SN"][i],
-      full: ["Vanguard", "Tempest", "Nimitz", "Kirov", "Genesis", "Ohio", "Sentinel"][i],
-      color: ["#5fd673", "#3dd5f3", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa", "#fb7185"][i],
+      label: ["VG", "NM", "KV", "GN", "OH", "SN"][i],
+      full: ["Vanguard", "Nimitz", "Kirov", "Genesis", "Ohio", "Sentinel"][i],
+      color: ["#5fd673", "#d4af37", "#e8a854", "#ff6b6b", "#a78bfa", "#fb7185"][i],
     };
   });
 
@@ -440,7 +430,7 @@ function Hero() {
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaCaptains)}</div>
-                <div className="value"><em>7</em> · {t(UI.metaCaptainsVal)}</div>
+                <div className="value"><em>6</em> · {t(UI.metaCaptainsVal)}</div>
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaProtocol)}</div>

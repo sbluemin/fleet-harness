@@ -15,8 +15,6 @@ import {
   OHIO_METADATA,
   SENTINEL_DEFAULTS,
   SENTINEL_METADATA,
-  TEMPEST_DEFAULTS,
-  TEMPEST_METADATA,
   VANGUARD_DEFAULTS,
   VANGUARD_METADATA,
 } from "./personas/index.js";
@@ -33,7 +31,6 @@ const DEFAULT_CARRIER_REGISTRATIONS: readonly DefaultCarrierRegistration[] = [
   { defaults: OHIO_DEFAULTS, metadata: OHIO_METADATA },
   { defaults: SENTINEL_DEFAULTS, metadata: SENTINEL_METADATA },
   { defaults: VANGUARD_DEFAULTS, metadata: VANGUARD_METADATA },
-  { defaults: TEMPEST_DEFAULTS, metadata: TEMPEST_METADATA },
 ];
 
 export const DEFAULT_CARRIER_COUNT = DEFAULT_CARRIER_REGISTRATIONS.length;
