@@ -15,7 +15,7 @@ import {
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
-import { getLoadedTheaterId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import {
@@ -153,7 +153,11 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
         // Operations 미마운트 경로(/settings 등)에서는 canvas store가 아직 Theater를 로드하지 않아
         // 액션이 no-op이 된다(Codex P2). 동일 Theater 재로드는 flush 후 저장값 재독이라 안전하다.
         ensurePaletteCanvasTheater(state);
-        minimizeOperations(state.operations.filter((op) => op.theaterId === state.activeTheaterId).map((op) => op.id));
+        // minimizeOperations는 geometry 맵에 없는 id를 버리므로, 페이지와 같이 현재 op의 기본
+        // geometry를 먼저 심는다 — persisted canvas가 없는 신규 op도 최소화 대상이 된다.
+        const theaterOperations = state.operations.filter((op) => op.theaterId === state.activeTheaterId);
+        for (const operation of theaterOperations) ensureDefaultGeometry(operation.id);
+        minimizeOperations(theaterOperations.map((op) => op.id));
         break;
       }
       case "toggle-formation": {
