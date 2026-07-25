@@ -359,11 +359,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    // body는 선택이다: { fresh: true }이면 저장된 provider 세션을 버리고 같은 Operation에서
+    // 완전히 새 세션을 시작한다(Resume 실패 후의 Start fresh 경로). body 없음/파싱 실패는 일반 resume.
+    const body = await ctx.host.http.readJsonBody<{ readonly fresh?: unknown }>(req);
+    const fresh = body?.fresh === true;
     const node = ctx.host.operations.get(sessionId);
     const payload = node?.payload;
     const cliId = readOptionalAgentCliId(payload?.cliId, res);
     const providerSession = readProviderSession(payload);
-    if (!node || cliId === false || !cliId || !providerSession) {
+    if (!node || cliId === false || !cliId || (!fresh && !providerSession)) {
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
@@ -383,13 +387,14 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         pluginId: node.pluginId,
         theaterId: node.theaterId,
         cliId,
-        resumeSessionId: providerSession.sessionId,
+        ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(node.payload, cwd, resumed, providerSession, observability.getDurableOperation(sessionId)?.providerTitle) });
+      // fresh 시작은 providerSession을 payload에서 떼어낸다 — 새 provider 세션은 capture hook이 다시 쓴다.
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(node.payload, cwd, resumed, fresh ? undefined : providerSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
       invalidateInitialPromptGeneration(sessionId);
