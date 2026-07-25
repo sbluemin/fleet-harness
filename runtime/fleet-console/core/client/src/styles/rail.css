@@ -77,9 +77,17 @@
   inset: 0;
   z-index: 0;
   border-radius: inherit;
+  /* maritime/carbon 테마의 --surface-glass-strong은 78~80% 알파의 반투명 토큰이라 glass 층만으로는
+     Solid(100) 프리셋에서도 Map이 비쳐 보인다. 최하단에 불투명 --ink-deep 언더레이를 깔아
+     프리셋 100=완전 불투명을 보장하고, glass 믹스의 제2 성분이 이미 --ink-deep이므로 색조는 유지된다.
+     감쇠는 ::before 전체 opacity로만 적용되어 프리셋 라벨(100/90/75/60)이 실제 불투명도와 일치한다. */
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
-    color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep))
+    ),
+    var(--ink-deep);
   opacity: var(--right-rail-overlay-alpha, 1);
   pointer-events: none;
 }

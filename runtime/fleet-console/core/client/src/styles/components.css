@@ -3963,7 +3963,14 @@
   padding: 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — maritime/carbon의 반투명
+     glass 토큰에서도 뒤 콘텐츠가 비치지 않는다(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-anchor);
 }
 
@@ -4099,7 +4106,14 @@
   padding: 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — maritime/carbon의 반투명
+     glass 토큰에서도 뒤 콘텐츠가 비치지 않는다(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-anchor);
 }
 
@@ -5299,7 +5313,14 @@
   padding: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
+  /* 팝업 판독성 계약: glass/pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의
+     canonical 주석 참조) — operation-launch·캔버스 컨텍스트 메뉴가 이 규칙을 상속한다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
 }
 
@@ -5638,7 +5659,8 @@
   background:
     radial-gradient(120% 80% at 50% -12%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 58%),
     radial-gradient(70% 80% at 100% 20%, color-mix(in oklch, var(--aurora) 8%, transparent), transparent 62%),
-    var(--surface-glass-strong);
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
 }
 
@@ -5889,7 +5911,10 @@
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
-  background: var(--surface-glass-strong);
+  /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
   pointer-events: auto;
 }
@@ -6035,7 +6060,13 @@
   padding: var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--surface-pillar) 92%, transparent);
+  /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-pillar) 92%, transparent),
+      color-mix(in oklch, var(--surface-pillar) 92%, transparent)
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
 }
 
@@ -6337,7 +6368,8 @@
   border-radius: var(--radius-xl);
   background:
     radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
-    var(--surface-glass-strong);
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
 }
 
@@ -7216,7 +7248,13 @@ body[data-codex-side="true"] .command-card {
 }
 
 /* 기존 glass 카드와 동일한 질감: surface-glass 토큰 + backdrop blur(18px).
-   고정 ink 색상을 걷어내 maritime/carbon 테마를 그대로 추종한다. */
+   고정 ink 색상을 걷어내 maritime/carbon 테마를 그대로 추종한다.
+   canonical 팝업 판독성 계약: 두 테마의 --surface-glass-strong은 78~80% 알파의 반투명
+   토큰이라 glass 층만으로는 scrim 뒤 콘텐츠가 비쳐 판독을 해친다. 모든 scrim 동반
+   모달·팝업 카드는 glass 층 아래 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을
+   보장한다 — 언더레이는 glass가 불투명인 instrument에서는 묻혀 무회귀이고, glass 믹스가
+   이미 --ink-deep 계열 위에 놓이는 색조라 색 이동도 없다. 비팝업 glass 표면(패널·카드)은
+   테마의 반투명 glass 미학을 그대로 유지한다. */
 .whatsnew-card {
   position: relative;
   z-index: 1;
@@ -7227,7 +7265,9 @@ body[data-codex-side="true"] .command-card {
   overflow: hidden;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
-  background: var(--surface-glass-strong);
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating), 0 0 44px -30px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -7919,10 +7959,15 @@ body[data-codex-side="true"] .command-card {
   overflow: hidden;
   /* Reading 오버레이는 우현 rail 카드와 동일한 carbon glass 표면을 쓴다(별도 블루
      그라디언트는 콘솔의 carbon dark 톤과 어긋났음): surface-glass-strong + ink-deep
-     + 우상단 brass 코너 + 단일 blur 레이어. */
+     + 우상단 brass 코너 + 단일 blur 레이어.
+     팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
-    color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep))
+    ),
+    var(--ink-deep);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
   /* entrance motion-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
      일반 entrance motion는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
@@ -8309,7 +8354,10 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: 4px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-sm);
-  background: var(--surface-glass-strong);
+  /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
 }
 

@@ -651,10 +651,47 @@ describe("Instrument core design contract", () => {
     const railStore = source("rail/rail-store.ts");
     expect(rail).toContain(".right-rail.is-overlay");
     expect(rail).toContain(".right-rail.is-switching");
+    // Doctrine: the overlay slot ::before composites its glass layers over an opaque
+    // var(--ink-deep) final layer — maritime/carbon --surface-glass-strong is a 78~80%
+    // alpha token, so without the underlay the Solid(100) preset can never be opaque.
+    expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--ink-deep\);/);
     expect(rightRail).toContain("useRailPanelBehavior");
     expect(rightRail).toContain("right-rail-float-toggle");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
+  });
+
+  it("pins the popup opacity underlay contract", () => {
+    const components = source("styles/components.css");
+    const layout = source("styles/layout.css");
+    const skillsCss = externalSource(SKILLS_CSS_PATH);
+    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
+    // Doctrine: scrim-backed popup cards and floating menus composite their glass layers
+    // over an opaque var(--ink-deep) final layer — maritime/carbon glass tokens carry
+    // 60~80% alpha, so without the underlay popups bleed the canvas through and legibility
+    // collapses (canonical doctrine comment: .whatsnew-card in components.css). Non-popup
+    // glass surfaces keep the themes' translucent glass identity untouched.
+    const componentsPopupSelectors = [
+      ".whatsnew-card",
+      ".commissioning-card",
+      ".directory-browser-card",
+      ".codex-reading-sheet",
+      ".app-toast",
+      ".brand-foot-dropup-menu",
+      ".group-context-menu-card",
+      ".accent-popover-card",
+      ".theater-menu",
+      ".operation-search-card",
+    ];
+    for (const selector of componentsPopupSelectors) {
+      const scoped = selector.replace(/\./g, "\\.");
+      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--ink-deep\\);`));
+    }
+    expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--ink-deep\);/);
+    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--ink-deep\);/);
+    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--ink-deep\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--ink-deep\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--ink-deep\);/);
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
@@ -891,13 +928,6 @@ describe("Instrument core design contract", () => {
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
         expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id)[a-z-]*:$/);
-      }
-      // Surface 불투명 계약: maritime/carbon의 surface-glass/-strong/pillar는 알파를 갖지 않는다.
-      // 반투명 surface 토큰은 scrim 동반 모달·팝업의 비침 회귀 뿌리였고(instrument는 불투명 별칭),
-      // 반투명 효과는 호출부의 color-mix(..., transparent)만 명시적으로 소유한다.
-      const surfaceDeclarations = block.match(/^\s{2}--surface-(?:glass|glass-strong|pillar):[^;]+;/gm) ?? [];
-      for (const declaration of surfaceDeclarations) {
-        expect(declaration).not.toContain("/");
       }
     }
     expect(theme).not.toMatch(/body::(?:before|after)/);
