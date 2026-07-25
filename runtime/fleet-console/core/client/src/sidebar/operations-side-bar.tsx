@@ -12,7 +12,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
-import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
+import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, resolveOperationActivity, sortOperationsByOrder } from "../store.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
@@ -326,7 +326,7 @@ export function OperationsSideBar({
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
-      status: operationStatus[operation.id],
+      status: resolveOperationActivity(operation, operationStatus),
       icon,
     };
   });
@@ -345,7 +345,7 @@ export function OperationsSideBar({
   );
   const currentOrder = allEntries.map((entry) => entry.operation.id);
   const statusSignature = operations
-    .map((operation) => `${operation.id}:${normalizeOperationStatus(operationStatus[operation.id])}`)
+    .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationStatus)}`)
     .join("\0");
 
   const clearCloseArmTimer = useCallback(() => {
@@ -381,7 +381,7 @@ export function OperationsSideBar({
 
   useEffect(() => {
     const nextStatuses = new Map(
-      operations.map((operation) => [operation.id, normalizeOperationStatus(operationStatus[operation.id])] as const),
+      operations.map((operation) => [operation.id, resolveOperationActivity(operation, operationStatus)] as const),
     );
     const previousStatuses = previousOperationStatusRef.current;
     previousOperationStatusRef.current = nextStatuses;
@@ -1122,7 +1122,9 @@ export function groupOperationsByStatus(entries: readonly SideBarEntry[]): Statu
   return STATUS_SECTION_ORDER.map(({ status, label }) => ({
     status,
     label,
-    entries: entries.filter((entry) => normalizeOperationStatus(entry.status) === status),
+    // entry.status는 엔트리 생성 시점에 resolveOperationActivity로 이미 해소된다.
+    // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
+    entries: entries.filter((entry) => (entry.status ?? "idle") === status),
   }));
 }
 
@@ -1131,10 +1133,6 @@ export function hasAwaitingOperation(
   operationStatus: Readonly<Record<string, OperationActivity>>,
 ): boolean {
   return operations.some((operation) => operationStatus[operation.id] === "awaiting");
-}
-
-function normalizeOperationStatus(status: OperationActivity | undefined): SideBarStatus {
-  return status ?? "idle";
 }
 
 function resolveEntryGroupMark(
@@ -1171,7 +1169,7 @@ function buildTheaterEntries({
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
-      status: operationStatus[operation.id],
+      status: resolveOperationActivity(operation, operationStatus),
       icon,
     };
   });

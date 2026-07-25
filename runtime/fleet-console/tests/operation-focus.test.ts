@@ -144,6 +144,32 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
     expect(order).toEqual(["plain"]);
   });
 
+  it("ranks a restored operation with providerSession but no live status as dormant", () => {
+    const restored = { ...makeOperation("restored", null, 1), payload: { providerSession: { provider: "claude", sessionId: "s1" } } };
+    const operations = [makeOperation("plain", null, 2), restored];
+    const order = statusCycleOperationIds(
+      operations,
+      ["restored", "plain"],
+      {},
+      [],
+      () => false,
+    );
+    // idle(plain) → dormant(restored) 랭크 순서여야 사이드바 STATUS 섹션과 일치한다.
+    expect(order).toEqual(["plain", "restored"]);
+  });
+
+  it("lets a live status entry win over the providerSession dormant fallback", () => {
+    const restored = { ...makeOperation("restored", null, 1), payload: { providerSession: { provider: "claude", sessionId: "s1" } } };
+    const order = statusCycleOperationIds(
+      [restored, makeOperation("plain", null, 2)],
+      ["restored", "plain"],
+      { restored: "running" },
+      [],
+      () => false,
+    );
+    expect(order).toEqual(["restored", "plain"]);
+  });
+
   it("excludes explicitly collapsed status sections, restores them when expanded, and leaves GROUP cycling unchanged", () => {
     resetSideBarStatusSectionCollapseForTests();
     const operations = [
