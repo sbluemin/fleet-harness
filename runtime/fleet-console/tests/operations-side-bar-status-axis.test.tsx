@@ -9,6 +9,7 @@ import { getSnapshot, loadForTheater, setOperationOrder } from "../core/client/s
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
 import {
   getIdleUnseenIds,
+  getStatusTransitionTick,
   resetSideBarStatusRecencyForTests,
   resetSideBarStatusSectionCollapseForTests,
   setSideBarCollapsed,
@@ -321,6 +322,37 @@ describe("OperationsSideBar STATUS axis", () => {
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="initial"]').querySelector(".side-bar-chip-unseen")).toBeNull();
     expect(container?.querySelector(".side-bar-status-header__unseen")).toBeNull();
+  });
+
+  it("baselines the first live status of a restored Operation before tracking later transitions", () => {
+    const operation = {
+      ...makeOperation("restored", null),
+      payload: { resumeAvailable: true },
+    };
+    setSideBarStatusAxis(true);
+    renderSideBar([operation]);
+
+    expect(required<HTMLElement>('[data-side-bar-chip-id="restored"]').closest(".side-bar-status-section--dormant")).not.toBeNull();
+
+    act(() => setConsoleState({ operationStatus: { restored: "idle" } }));
+
+    const firstLiveChip = required<HTMLElement>('[data-side-bar-chip-id="restored"]');
+    expect(getStatusTransitionTick("restored")).toBeUndefined();
+    expect(firstLiveChip.querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(firstLiveChip.className).not.toContain("side-bar-chip--status-landed");
+    expect(container?.querySelector(".side-bar-status-section--idle .side-bar-status-header__unseen")).toBeNull();
+
+    act(() => setConsoleState({ operationStatus: { restored: "running" } }));
+    const runningTick = getStatusTransitionTick("restored");
+    expect(runningTick).toBeDefined();
+
+    act(() => setConsoleState({ operationStatus: { restored: "idle" } }));
+
+    const transitionedChip = required<HTMLElement>('[data-side-bar-chip-id="restored"]');
+    expect(getStatusTransitionTick("restored")).toBeGreaterThan(runningTick ?? 0);
+    expect(transitionedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    expect(transitionedChip.className).toContain("side-bar-chip--status-landed");
+    expect(required<HTMLElement>(".side-bar-status-section--idle .side-bar-status-header__unseen").textContent).toBe("1");
   });
 
   it("uses the Theater name row for persisted collapse and exposes the split control accessibility contract", () => {

@@ -310,6 +310,7 @@ export function OperationsSideBar({
   const closeArmTimeoutRef = useRef<number | null>(null);
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const previousOperationStatusRef = useRef<ReadonlyMap<string, SideBarStatus>>(new Map());
+  const baselinedLiveStatusIdsRef = useRef<Set<string>>(new Set());
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -435,10 +436,21 @@ export function OperationsSideBar({
     );
     const previousStatuses = previousOperationStatusRef.current;
     previousOperationStatusRef.current = nextStatuses;
+    const firstLiveIds = operations
+      .filter((operation) => {
+        if (operationStatus[operation.id] === undefined || baselinedLiveStatusIdsRef.current.has(operation.id)) {
+          return false;
+        }
+        baselinedLiveStatusIdsRef.current.add(operation.id);
+        return true;
+      })
+      .map((operation) => operation.id);
     const movedIds = operations
       .filter((operation) => {
         const previous = previousStatuses.get(operation.id);
-        return previous !== undefined && previous !== nextStatuses.get(operation.id);
+        return previous !== undefined
+          && previous !== nextStatuses.get(operation.id)
+          && !firstLiveIds.includes(operation.id);
       })
       .map((operation) => operation.id);
     recordStatusTransitions(movedIds);
