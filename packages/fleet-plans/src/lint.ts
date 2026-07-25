@@ -37,6 +37,10 @@ const MANIFEST_LANE_PATTERN = /^- Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — /;
 const OWNERSHIP_LANE_PATTERN = /^- (W[1-9]\d*-[A-Z][A-Z0-9]*)(?=\s|$)/;
 /** Policy-like Dispatch Manifest line: list dash, optional Markdown whitespace, then Full/plan with flexible separators. */
 const FULL_PLAN_POLICY_LIKE_PATTERN = /^-\s*full[\s\t-]*plan\b/i;
+const CANONICAL_FULL_PLAN_POLICY =
+  "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+const LEGACY_FULL_PLAN_POLICY =
+  "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
 
 interface MutableLane {
   dependencyStartConditions: string[];
@@ -93,13 +97,41 @@ export interface PlanExecutionStructure {
 }
 
 export function lintPlanMarkdown(markdown: string): PlanLintResult {
+  return lintPlanMarkdownWithLegacyPolicy(markdown, true);
+}
+
+/** write 경로 전용 — 레거시 Ohio full-plan 정책 허용 여부를 호출측(잠금 경계)에서 넘긴다. */
+export function lintPlanMarkdownForWrite(
+  markdown: string,
+  allowLegacyFullPlanPolicy: boolean,
+): PlanLintResult {
+  return lintPlanMarkdownWithLegacyPolicy(markdown, allowLegacyFullPlanPolicy);
+}
+
+/** 정확히 폐기된 Ohio full-plan 정책 한 줄만 Full-plan 정책으로 쓰였는지 판별한다. */
+export function planMarkdownUsesExactLegacyFullPlanPolicy(markdown: string): boolean {
+  const fullPlanPolicyLines = normalizeMarkdown(markdown)
+    .split("\n")
+    .filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
+  return fullPlanPolicyLines.length === 1 && fullPlanPolicyLines[0] === LEGACY_FULL_PLAN_POLICY;
+}
+
+function lintPlanMarkdownWithLegacyPolicy(
+  markdown: string,
+  allowLegacyFullPlanPolicy: boolean,
+): PlanLintResult {
   const lines = normalizeMarkdown(markdown).split("\n");
   const diagnostics: PlanDiagnostic[] = [];
   const headingLines = validateRequiredHeadings(lines, diagnostics);
   const lanes = parseLanes(lines, headingLines, diagnostics);
   const tasks = parseTasks(lines, lanes, diagnostics);
   validateTopology(sectionBodyLines(lines, headingLines, "# Execution Topology"), lanes, diagnostics);
-  validateManifest(sectionBodyLines(lines, headingLines, "# Dispatch Manifest"), lanes, diagnostics);
+  validateManifest(
+    sectionBodyLines(lines, headingLines, "# Dispatch Manifest"),
+    lanes,
+    diagnostics,
+    allowLegacyFullPlanPolicy,
+  );
   validateOwnership(sectionBodyLines(lines, headingLines, "# File Ownership"), lanes, diagnostics);
   validateLaneConcurrency(lanes, diagnostics);
   validateSectionBodies(lines, headingLines, diagnostics);
@@ -323,7 +355,12 @@ function parseTasks(lines: readonly string[], lanes: MutableLane[], diagnostics:
   return tasks;
 }
 
-function validateManifest(manifestLines: readonly string[], lanes: readonly MutableLane[], diagnostics: PlanDiagnostic[]): void {
+function validateManifest(
+  manifestLines: readonly string[],
+  lanes: readonly MutableLane[],
+  diagnostics: PlanDiagnostic[],
+  allowLegacyFullPlanPolicy: boolean,
+): void {
   const manifestIds = new Set<string>();
   for (const line of manifestLines) {
     const match = MANIFEST_LANE_PATTERN.exec(line);
@@ -340,18 +377,20 @@ function validateManifest(manifestLines: readonly string[], lanes: readonly Muta
       addDiagnostic(diagnostics, "MANIFEST_UNKNOWN_LANE", `Dispatch Manifest references unknown lane ${id}`);
     }
   }
-  const canonicalPolicy = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
-  const legacyPolicy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
   const fullPlanPolicyLines = manifestLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
   const policy = fullPlanPolicyLines[0];
-  if (
-    fullPlanPolicyLines.length !== 1
-    || (policy !== canonicalPolicy && policy !== legacyPolicy)
-  ) {
+  const policyAccepted = fullPlanPolicyLines.length === 1
+    && (
+      policy === CANONICAL_FULL_PLAN_POLICY
+      || (allowLegacyFullPlanPolicy && policy === LEGACY_FULL_PLAN_POLICY)
+    );
+  if (!policyAccepted) {
     addDiagnostic(
       diagnostics,
       "FULL_PLAN_POLICY",
-      `Dispatch Manifest must contain exactly one of: ${canonicalPolicy} | ${legacyPolicy}`,
+      allowLegacyFullPlanPolicy
+        ? `Dispatch Manifest must contain exactly one of: ${CANONICAL_FULL_PLAN_POLICY} | ${LEGACY_FULL_PLAN_POLICY}`
+        : `Dispatch Manifest must contain exactly: ${CANONICAL_FULL_PLAN_POLICY}`,
     );
   }
 }

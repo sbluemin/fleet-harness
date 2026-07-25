@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { lintPlanMarkdown } from "../src/lint.js";
+import { lintPlanMarkdown, lintPlanMarkdownForWrite } from "../src/lint.js";
 import { buildValidPlan } from "./fixtures.js";
 
 describe("lintPlanMarkdown", () => {
@@ -102,6 +102,18 @@ describe("lintPlanMarkdown", () => {
 
     expect(result.valid).toBe(true);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects the exact legacy Ohio full-plan policy on the strict write-path helper", () => {
+    const canonical = "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const legacy = "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+    const result = lintPlanMarkdownForWrite(buildValidPlan().replace(canonical, legacy), false);
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: "FULL_PLAN_POLICY",
+      message: `Dispatch Manifest must contain exactly: ${canonical}`,
+    }));
   });
 
   it("rejects both canonical and legacy full-plan policy lines together", () => {
