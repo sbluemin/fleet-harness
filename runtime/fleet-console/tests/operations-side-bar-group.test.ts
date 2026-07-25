@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
@@ -11,8 +12,10 @@ import {
   markIdleUnseen,
   recordStatusTransitions,
   resetSideBarStatusRecencyForTests,
+  subscribeOperationActivityTracking,
   trackOperationActivityTransitions,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
+import { setState as setConsoleState } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 function makeNode(id: string, groupId?: string | null): OperationNode {
@@ -426,6 +429,34 @@ describe("groupOperationsByStatus", () => {
       activeOperationId: "focused",
     })).toEqual([]);
     expect(getIdleUnseenIds().has("focused")).toBe(false);
+  });
+
+  it("tracks both synchronous store emissions instead of observing only the batched final snapshot", () => {
+    const operation = makeNode("streamed");
+    const unsubscribe = subscribeOperationActivityTracking();
+
+    try {
+      act(() => {
+        setConsoleState({
+          operations: [operation],
+          operationStatus: { streamed: "running" },
+          activeTheaterId: operation.theaterId,
+          activeOperationId: null,
+        });
+        setConsoleState({ operationStatus: { streamed: "idle" } });
+      });
+
+      expect(getStatusTransitionTick(operation.id)).toBeDefined();
+      expect(getIdleUnseenIds().has(operation.id)).toBe(true);
+    } finally {
+      unsubscribe();
+      setConsoleState({
+        operations: [],
+        operationStatus: {},
+        activeTheaterId: null,
+        activeOperationId: null,
+      });
+    }
   });
 
   it("detects the GROUP-axis live tick only for an explicit awaiting status", () => {

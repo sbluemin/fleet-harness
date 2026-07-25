@@ -3,6 +3,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { resolveOperationActivity } from "../operation-activity.js";
+import { getState, subscribe } from "../store.js";
 import type { OperationNode } from "../types.js";
 
 interface SideBarState {
@@ -38,6 +39,7 @@ let statusTransitionTicks = new Map<string, number>();
 let idleUnseenIds = new Set<string>();
 let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
+let pendingStatusLandingIds = new Set<string>();
 
 export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
 
@@ -201,6 +203,7 @@ export function trackOperationActivityTransitions(input: {
     .map((operation) => operation.id);
 
   recordStatusTransitions(movedIds);
+  movedIds.forEach((id) => pendingStatusLandingIds.add(id));
   for (const operation of input.operations) {
     if (!movedIds.includes(operation.id)) continue;
     if (nextStatuses.get(operation.id) === "idle") {
@@ -221,6 +224,24 @@ export function trackOperationActivityTransitions(input: {
   return movedIds;
 }
 
+export function consumeStatusLandings(): readonly string[] {
+  const landedIds = Array.from(pendingStatusLandingIds);
+  pendingStatusLandingIds = new Set();
+  return landedIds;
+}
+
+export function subscribeOperationActivityTracking(): () => void {
+  return subscribe(() => {
+    const state = getState();
+    trackOperationActivityTransitions({
+      operations: state.operations,
+      operationStatus: state.operationStatus,
+      activeTheaterId: state.activeTheaterId,
+      activeOperationId: state.activeOperationId,
+    });
+  });
+}
+
 export function resetSideBarStatusSectionCollapseForTests(): void {
   userCollapsedStatusSections = new Set();
   userExpandedStatusSections = new Set();
@@ -232,6 +253,7 @@ export function resetSideBarStatusRecencyForTests(): void {
   idleUnseenIds = new Set();
   previousActivityById = new Map();
   baselinedLiveActivityIds = new Set();
+  pendingStatusLandingIds = new Set();
 }
 
 function statusSectionKey(theaterId: string, status: SideBarStatus): string {

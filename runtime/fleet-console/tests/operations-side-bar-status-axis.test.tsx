@@ -277,7 +277,7 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(runningIds).toEqual(["latest", "earlier", "untouched-first", "untouched-second"]);
   });
 
-  it("renders an idle transition recorded while the SideBar was unmounted", () => {
+  it("renders synchronous running to idle recorded while unmounted without retroactive landing flash", () => {
     const operations = [
       makeOperation("untouched", null),
       makeOperation("recorded", null),
@@ -305,7 +305,9 @@ describe("OperationsSideBar STATUS axis", () => {
       (chip) => chip.dataset.sideBarChipId,
     );
     expect(idleChips).toEqual(["recorded", "untouched"]);
-    expect(required<HTMLElement>('[data-side-bar-chip-id="recorded"] .side-bar-chip-unseen')).not.toBeNull();
+    const recordedChip = required<HTMLElement>('[data-side-bar-chip-id="recorded"]');
+    expect(recordedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    expect(recordedChip.className).not.toContain("side-bar-chip--status-landed");
     expect(required<HTMLElement>(".side-bar-status-section--idle .side-bar-status-header__unseen").textContent).toBe("1");
   });
 

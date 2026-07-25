@@ -24,6 +24,7 @@ import {
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import {
+  consumeStatusLandings,
   getIdleUnseenIds,
   setSideBarCollapsed,
   setSideBarWidth,
@@ -307,6 +308,7 @@ export function OperationsSideBar({
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
+  const didMountStatusLandingRef = useRef(false);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -426,33 +428,38 @@ export function OperationsSideBar({
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
 
-  // React passive effect는 자식부터 실행된다. 사이드바가 마운트된 전이는 여기서 기록+flash하고
-  // 뒤이은 App effect는 멱등 no-op이 되며, 사이드바가 언마운트된 라우트에서는 App effect가 기록한다.
+  // App의 동기 store 구독이 렌더 배칭 전의 각 전이를 기록한다. 아래 백업 호출은 App 없는
+  // jsdom 경로를 자기완결적으로 유지하고, pending landing만 사이드바 표시 수명주기로 소비한다.
   useEffect(() => {
-    const movedIds = trackOperationActivityTransitions({
+    trackOperationActivityTransitions({
       operations,
       operationStatus,
       activeTheaterId,
       activeOperationId,
     });
+    const landedIds = consumeStatusLandings();
+    if (!didMountStatusLandingRef.current) {
+      didMountStatusLandingRef.current = true;
+      return;
+    }
     if (!statusAxis) {
       for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
       statusLandingTimeoutsRef.current.clear();
       setStatusLandingIds((current) => current.size === 0 ? current : new Set());
       return;
     }
-    if (movedIds.length === 0) return;
+    if (landedIds.length === 0) return;
     // 이동 배치별 독립 타이머: 기존 flash를 취소하지 않고 병합했다가 이 배치의 ID만 만료시킨다.
     setStatusLandingIds((current) => {
       const next = new Set(current);
-      for (const id of movedIds) next.add(id);
+      for (const id of landedIds) next.add(id);
       return next;
     });
     const timeoutId = window.setTimeout(() => {
       statusLandingTimeoutsRef.current.delete(timeoutId);
       setStatusLandingIds((current) => {
         const next = new Set(current);
-        for (const id of movedIds) next.delete(id);
+        for (const id of landedIds) next.delete(id);
         return next.size === current.size ? current : next;
       });
     }, STATUS_LANDING_DURATION_MS);

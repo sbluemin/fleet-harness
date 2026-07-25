@@ -581,10 +581,10 @@ describe("Instrument core design contract", () => {
     expect(operations).toContain("toggleSideBarStatusAxis();");
     expect(sidebar).toContain('title="Sort by status (Alt+S)"');
     expect(sidebar).toContain("groupOperationsByStatus(allEntries, getStatusTransitionTick)");
-    expect(sidebar).toContain("const movedIds = trackOperationActivityTransitions({");
+    expect(sidebar).toContain("trackOperationActivityTransitions({");
+    expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
-    expect(app).toContain("trackOperationActivityTransitions({");
-    expect(app).toContain("}, [state.operations, state.operationStatus, state.activeTheaterId, state.activeOperationId]);");
+    expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
     expect(sidebar).toContain("if (!statusAxis) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
     expect(chip).toContain('className="side-bar-chip-unseen"');
@@ -593,6 +593,7 @@ describe("Instrument core design contract", () => {
     expect(sideBarStore).toContain("let idleUnseenIds = new Set<string>();");
     expect(sideBarStore).toContain("let previousActivityById = new Map<string, SideBarStatus>();");
     expect(sideBarStore).toContain("let baselinedLiveActivityIds = new Set<string>();");
+    expect(sideBarStore).toContain("let pendingStatusLandingIds = new Set<string>();");
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
     expect(sideBarStore).not.toContain("fleet-console.operations.status");
 
