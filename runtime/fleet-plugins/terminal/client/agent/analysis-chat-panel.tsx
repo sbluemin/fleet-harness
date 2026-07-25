@@ -178,7 +178,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               {state.entries.map((entry, index) => (
                 <li className={`session-analyst__message session-analyst__message--${entry.role}`} key={`${entry.role}-${index}`}>
                   {entry.role === "analyst"
-                    ? <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={state.busy && index === state.entries.length - 1} />
+                    ? <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={state.busy && index === state.entries.length - 1} language={language} />
                     : entry.text}
                 </li>
               ))}

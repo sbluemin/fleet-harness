@@ -529,7 +529,7 @@ function CarrierStreamColumn({
           {track.text ? (
             <div className="carrier-stream-column__answer">
               <span aria-hidden="true">✳</span>
-              <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} />
+              <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} language={language} />
             </div>
           ) : null}
           {reasoning ? (

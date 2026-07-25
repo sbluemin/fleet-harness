@@ -454,7 +454,7 @@ function PlanDocument({ plan, language, onClose }: PlanDocumentProps) {
   useEffect(() => {
     const root = markdownRootRef.current;
     if (!root) return;
-    installDiagramHydrator(root);
+    installDiagramHydrator(root, diagramHydratorLabels(t));
     neutralizePlanDom(root, t);
     const observer = new MutationObserver(() => neutralizePlanDom(root, t));
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
