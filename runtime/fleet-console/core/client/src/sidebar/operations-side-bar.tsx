@@ -400,7 +400,7 @@ export function OperationsSideBar({
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
-      const status = normalizeOperationStatus(operationStatus[operation.id]);
+      const status = resolveOperationActivity(operation, operationStatus);
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
         toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
       }

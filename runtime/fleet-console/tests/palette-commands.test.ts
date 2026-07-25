@@ -146,6 +146,7 @@ describe("buildPaletteCommands", () => {
   it("omits Minimize all when the active Theater has no operations", () => {
     const commands = buildPaletteCommands(makeState(), []);
     expect(commands.some((command) => command.commandId === "minimize-all-operations")).toBe(false);
+  });
 
   it("shows the four exact chip-menu Operation actions only for an active Operation in the active Theater", () => {
     const withoutActive = buildPaletteCommands(makeState(), []);
