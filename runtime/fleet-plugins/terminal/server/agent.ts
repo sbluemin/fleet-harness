@@ -44,6 +44,7 @@ interface AgentRouteDeps {
 const AGENT_OPERATION_TYPE = "agent";
 const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
+const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const TERMINAL_PLUGIN_ID = "terminal";
 
@@ -156,6 +157,10 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       }
     }
     injectRenameCommand(payload.operationId, payload.title);
+  });
+  const unsubscribePurge = ctx.host.events.subscribe(OPERATION_PURGED_EVENT_CHANNEL, (payload) => {
+    if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
+    unlinkProviderSessionCapture(payload.operationId, { capturesDir: ctx.host.paths.capturesDir });
   });
   const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
@@ -546,13 +551,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
     ctx.host.operations.delete(sessionId);
-    unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
+    // capture는 여기서 지우지 않는다 — 삭제가 유예되는 동안 undo가 복원해도 transcript가 없는
+    // 껍데기가 되기 때문이다. 실제 정리는 유예가 만료되는 operation:purged에서 한다.
   }
 
   async function cleanup(): Promise<void> {
     reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeRestore();
+    unsubscribePurge();
     unsubscribeReminder();
     unsubscribeStream();
     await runtime.cleanup();
