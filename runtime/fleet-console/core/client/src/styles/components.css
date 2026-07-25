@@ -2454,11 +2454,51 @@
 }
 
 .side-bar-theater-name {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 100%;
+  min-width: 64px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.side-bar-theater-badges {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 3px;
+  min-width: 0;
+  max-width: min(42%, 180px);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.side-bar-theater-badge {
+  flex: none;
+  max-width: 96px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  text-overflow: ellipsis;
+}
+
+.side-bar-theater-badge--info {
+  border-color: color-mix(in oklch, var(--aurora) 42%, var(--surface-rim));
+  color: var(--text-secondary);
+}
+
+.side-bar-theater-badge--warn {
+  border-color: color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
+  color: var(--text-primary);
+}
+
+.side-bar-theater-badge--positive {
+  border-color: color-mix(in oklch, var(--positive) 44%, var(--surface-rim));
+  color: var(--text-secondary);
 }
 
 .side-bar-theater-chevron {

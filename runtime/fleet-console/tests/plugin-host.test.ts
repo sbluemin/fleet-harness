@@ -25,6 +25,9 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     registerPayloadSanitizer: () => () => {},
     registerLaunchCatalog: () => () => {},
   },
+  theaters: {
+    registerRowBadgeProvider: () => () => {},
+  },
   events: {
     publish: () => {},
     subscribe: () => () => {},
