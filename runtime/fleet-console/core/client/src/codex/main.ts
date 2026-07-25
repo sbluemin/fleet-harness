@@ -52,5 +52,8 @@ export function mountNavigatorApp(
       void loadInitialData();
       controller.setTheater(theaterId);
     },
+    refreshLocale(): void {
+      controller.refreshLocale();
+    },
   };
 }

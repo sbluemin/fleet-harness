@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { getT, useConsoleLocale, useT } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
   mountNavigatorInto,
   mountReaderInto,
+  refreshCodexLocale,
   setNavigatorTheater,
   setOnRequestOpenReader,
   teardownCodex,
@@ -26,7 +29,7 @@ interface CodexWorkspaceState {
 
 export const codexPanel: RailPanelDescriptor = {
   id: "codex",
-  title: "Codex",
+  title: (locale: ConsoleLocale) => getT(locale)("rail.codex.title"),
   defaultWidth: 420,
   icon: () => <CodexIcon />,
   render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} />,
@@ -35,11 +38,14 @@ export const codexPanel: RailPanelDescriptor = {
 // ─── Components ───────────────────────────────────────────────────────────────
 
 function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
+  const t = useT();
+  const locale = useConsoleLocale();
   const state = useConsoleState();
   const navRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
   const latestContextKeyRef = useRef("");
+  const localeRef = useRef(locale);
   const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(null);
 
   const reader = state.codexReader;
@@ -81,6 +87,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   useEffect(() => () => teardownCodex(), []);
 
   // navigator 마운트 + onRequest 등록 — hasReader 전환 시 navRef 컨테이너가 바뀌므로 재배치
+  // locale을 deps에 넣어 로케일 전환 시 effect를 다시 돌린다(싱글톤은 재배치만; 문구는 refreshCodexLocale).
   useEffect(() => {
     if (!shouldMountCodex || !workspaceId) return;
     const node = navRef.current;
@@ -95,7 +102,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     return () => {
       setOnRequestOpenReader(null);
     };
-  }, [shouldMountCodex, workspaceId, hasReader]);
+  }, [shouldMountCodex, workspaceId, hasReader, locale]);
 
   // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾼다.
   useEffect(() => {
@@ -123,7 +130,14 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
         openCodexReader({ kind: "drydock", patchId: undefined });
       },
     });
-  }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey]);
+  }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey, locale]);
+
+  // 로케일 변경 시 imperative DOM 문구를 갱신한다(문서·스크롤 보존).
+  useEffect(() => {
+    if (localeRef.current === locale) return;
+    localeRef.current = locale;
+    refreshCodexLocale();
+  }, [locale]);
 
   // hasReader=false 시 reader 호스트 노드 정리
   useEffect(() => {
@@ -145,16 +159,16 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
           <button
             className="codex-doc-expand"
             type="button"
-            aria-label="Expand reading sheet"
+            aria-label={t("rail.codex.expandAria")}
             data-codex-expand="true"
             onClick={expandCodexReader}
           >
-            ⤢ Expand
+            {t("rail.codex.expand")}
           </button>
           <button
             className="codex-reading-sheet-close"
             type="button"
-            aria-label="Close document pane"
+            aria-label={t("rail.codex.closePaneAria")}
             onClick={closeCodexReader}
           >
             ✕
@@ -175,20 +189,21 @@ function CodexEmpty({
   readonly activeTheater: { readonly label: string } | null;
   readonly hasTheaters: boolean;
 }) {
+  const t = useT();
   if (!hasTheaters) {
     return (
       <section className="codex-empty-state">
-        <p className="codex-empty-eyebrow">Codex</p>
-        <h1>Add a Theater</h1>
-        <p>Use the top bar Theater control to choose a project root before opening Codex.</p>
+        <p className="codex-empty-eyebrow">{t("rail.codex.emptyEyebrow")}</p>
+        <h1>{t("rail.codex.addTheater")}</h1>
+        <p>{t("rail.codex.addTheaterHint")}</p>
       </section>
     );
   }
   return (
     <section className="codex-empty-state">
-      <p className="codex-empty-eyebrow">Codex unavailable</p>
-      <h1>{activeTheater?.label || "This Theater"}</h1>
-      <p>Fleet Wiki data could not be loaded for this Theater.</p>
+      <p className="codex-empty-eyebrow">{t("rail.codex.unavailable")}</p>
+      <h1>{activeTheater?.label || t("rail.codex.thisTheater")}</h1>
+      <p>{t("rail.codex.wikiUnavailable")}</p>
     </section>
   );
 }

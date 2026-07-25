@@ -329,7 +329,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("getState().theaters.find");
     expect(rightRail).toContain("theater.id === theaterId");
     expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, activeId]");
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, activeId]");
     expect(rightRail).not.toContain("selectPathContext");
     expect(rightRail).not.toContain(".pathAware");
   });
@@ -343,12 +343,12 @@ describe("Instrument core design contract", () => {
     const canvas = source("canvas/canvas.tsx");
     const components = source("styles/components.css");
     const contextMenu = source("canvas/canvas-context-menu.tsx");
-    expect(minimap).toContain(">Map<");
+    expect(minimap).toContain('{t("canvas.minimap.label")}');
     expect(minimap).toContain("onPointerMove={onPointerMove}");
     expect(minimap).toContain("onJump({");
     expect(minimap).toContain("fleet-console.map.radarCollapsed");
-    expect(minimap).toContain('aria-label="Open Map"');
-    expect(minimap).toContain('aria-label="Collapse Map"');
+    expect(minimap).toContain('aria-label={t("canvas.minimap.open")}');
+    expect(minimap).toContain('aria-label={t("canvas.minimap.collapse")}');
     expect(minimap).toContain("canvas-minimap-fab");
     expect(minimap).toContain("canvas-minimap-toggle");
     expect(canvas).toContain("<CanvasMinimap");
@@ -359,7 +359,7 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
-    expect(contextMenu).toContain('<p className="canvas-context-menu-section">Launch</p>');
+    expect(contextMenu).toContain('<p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>');
     expect(contextMenu).not.toContain("CanvasContextMenuMode");
     expect(contextMenu).not.toContain("canvas-context-menu-tabs");
     expect(contextMenu).not.toContain("Formation view");
@@ -580,8 +580,8 @@ describe("Instrument core design contract", () => {
 
     expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
     expect(operations).toContain("toggleSideBarStatusAxis();");
-    expect(sidebar).toContain('title="Sort by status (Alt+S)"');
-    expect(sidebar).toContain("groupOperationsByStatus(allEntries, getStatusTransitionTick)");
+    expect(sidebar).toContain('title={t("sidebar.theater.sortByStatusTitle")}');
+    expect(sidebar).toContain("groupOperationsByStatus(allEntries, getStatusTransitionTick, t)");
     expect(sidebar).toContain("trackOperationActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
@@ -645,8 +645,8 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">`);
-    expect(commandBand).toContain('aria-label="Reset canvas view"');
+      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label={t("chrome.commandBand.formationView")}>`);
+    expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
     expect(commandBand).toContain("disabled={state.activeTheaterId === null}");
@@ -664,7 +664,7 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain('className="side-bar-ghost-theater-row"');
     expect(sidebar).toContain('className="side-bar-ghost-theater-anchor"');
     expect(sidebar).not.toContain('className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater} aria-label');
-    expect(sidebar).toContain('aria-label="Theaters and operations"');
+    expect(sidebar).toContain('aria-label={t("sidebar.list.aria")}');
     expect(sidebar).not.toContain("restoreMinimized");
     expect(sidebar).not.toContain("Formation view including minimized panels");
     expect(components).toContain(".side-bar-ghost-theater-anchor {");
@@ -714,7 +714,7 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain("--command-band-carrier");
     expect(commandBand).toContain("useFullscreenCommandBand");
     expect(commandBand).toContain('className={`command-band-edge-reveal${fullscreen.isFullscreen ? " is-fullscreen" : ""}`}');
-    expect(commandBand).toContain('aria-label="Show command band"');
+    expect(commandBand).toContain('aria-label={t("chrome.commandBand.showCommandBand")}');
     expect(commandBand).toContain('aria-pressed={fullscreen.isPinned}');
     expect(commandBand).toContain("inert={commandBandHidden || undefined}");
     expect(commandBand).toContain("onKeyDown={(event) => { if (event.key === \"Tab\") fullscreen.reveal(); }}");
@@ -887,8 +887,8 @@ describe("Instrument core design contract", () => {
 
     expect(source("canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
     expect(brandFoot).toContain('className="brand-foot-dropup-menu" role="menu"');
-    expect(brandFoot).toContain("System Menu");
-    expect(brandFoot).toContain("Keyboard Shortcuts");
+    expect(brandFoot).toContain('t("chrome.brandFoot.systemMenu")');
+    expect(brandFoot).toContain('t("chrome.brandFoot.keyboardShortcuts")');
     expect(brandFoot).toContain("openWhatsNew");
     expect(components).toContain(".side-bar-brand-foot {");
 
@@ -924,7 +924,7 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).toContain('className="canvas-operation-glance-hud"');
     expect(operationFrame).toContain("restoreIdentityFocusRef.current = true;");
     expect(operationFrame).toContain("identityTriggerRef.current?.focus()");
-    expect(operationFrame).toContain("Double-click, Enter, or F2 to rename");
+    expect(operationFrame).toContain('t("canvas.frame.renameTitle"');
     expect(source("canvas/canvas.tsx")).toContain("onRename: (operationId: string, title: string) => void;");
     expect(source("pages/operations.tsx")).toContain("onRename={handleRename}");
     expect(components).toContain(".canvas-operation-identity-name,");

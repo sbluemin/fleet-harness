@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { loadApiCatalog, useApiCatalogStore } from "../backend-api-catalog-store.js";
+import { useT, type CoreMessageKey } from "../i18n/index.js";
 import type { ApiCatalogEntry } from "../types.js";
 
 interface ApiCatalogGroup {
@@ -17,9 +18,10 @@ interface ApiCatalogRowProps {
 }
 
 export function BackendApiSection() {
+  const t = useT();
   const store = useApiCatalogStore();
   const [expanded, setExpanded] = useState(true);
-  const groups = useMemo(() => groupApiCatalog(store.state ?? []), [store.state]);
+  const groups = useMemo(() => groupApiCatalog(store.state ?? [], t("chrome.backendApi.uncategorized")), [store.state, t]);
   const count = store.state?.length ?? 0;
   const categoryCount = groups.length;
 
@@ -30,15 +32,15 @@ export function BackendApiSection() {
   }, []);
 
   return (
-    <section className="global-settings-card backend-api-section" aria-label="Backend API catalog">
+    <section className="global-settings-card backend-api-section" aria-label={t("chrome.backendApi.sectionAria")}>
       <div className={`backend-api-control settings-disclosure-control ${expanded ? "is-expanded" : ""}`}>
         <div className="settings-disclosure-head">
           <div className="backend-api-head">
-            <p className="global-settings-resp-title">Backend API</p>
+            <p className="global-settings-resp-title">{t("chrome.backendApi.title")}</p>
             <p className="global-settings-help">
               {count > 0
-                ? `${count} loopback route${count === 1 ? "" : "s"} across ${categoryCount} categor${categoryCount === 1 ? "y" : "ies"} reported by backend introspection.`
-                : "Backend introspection route list for this console."}
+                ? t(routeSummaryKey(count, categoryCount), { count, categoryCount })
+                : t("chrome.backendApi.emptyHelp")}
             </p>
           </div>
           <div className="settings-disclosure-actions">
@@ -48,25 +50,31 @@ export function BackendApiSection() {
               aria-expanded={expanded}
               onClick={() => setExpanded((value) => !value)}
             >
-              {expanded ? "Hide" : "Show"}
+              {expanded ? t("chrome.backendApi.hide") : t("chrome.backendApi.show")}
             </button>
           </div>
         </div>
       </div>
 
       {store.error ? <p className="global-settings-error" role="alert">{store.error}</p> : null}
-      {store.loading && !store.state ? <p className="global-settings-help">Loading backend API catalog.</p> : null}
+      {store.loading && !store.state ? <p className="global-settings-help">{t("chrome.backendApi.loading")}</p> : null}
 
       {expanded ? (
         <div className="backend-api-groups">
           {groups.length > 0 ? groups.map((group) => <ApiCatalogGroupView key={group.category} group={group} />) : null}
-          {store.state && groups.length === 0 ? <p className="global-settings-help">No backend API routes reported.</p> : null}
+          {store.state && groups.length === 0 ? <p className="global-settings-help">{t("chrome.backendApi.noRoutes")}</p> : null}
         </div>
       ) : null}
 
-      <p className="global-settings-foot">Console backend routes are fetched from GET /api/v1/settings/api-catalog, so newly registered routes appear here automatically. The Codex/Fleet Wiki API surface is not included.</p>
+      <p className="global-settings-foot">{t("chrome.backendApi.foot")}</p>
     </section>
   );
+}
+
+function routeSummaryKey(count: number, categoryCount: number): CoreMessageKey {
+  const routes = count === 1 ? "one" : "other";
+  const categories = categoryCount === 1 ? "one" : "other";
+  return `chrome.backendApi.routeSummary_${routes}_${categories}` as CoreMessageKey;
 }
 
 function ApiCatalogGroupView({ group }: ApiCatalogGroupProps) {
@@ -94,10 +102,10 @@ function ApiCatalogRow({ entry }: ApiCatalogRowProps) {
   );
 }
 
-function groupApiCatalog(entries: readonly ApiCatalogEntry[]): readonly ApiCatalogGroup[] {
+function groupApiCatalog(entries: readonly ApiCatalogEntry[], uncategorizedLabel: string): readonly ApiCatalogGroup[] {
   const groups = new Map<string, ApiCatalogEntry[]>();
   for (const entry of entries) {
-    const category = entry.category.trim() || "Uncategorized";
+    const category = entry.category.trim() || uncategorizedLabel;
     const group = groups.get(category);
     if (group) {
       group.push(entry);

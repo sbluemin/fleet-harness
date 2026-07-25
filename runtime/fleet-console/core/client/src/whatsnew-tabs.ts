@@ -1,4 +1,9 @@
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import { getGlobalSettingsStoreState } from "./global-settings-store.js";
+import { getT, type CoreMessageKey } from "./i18n/index.js";
 import type { ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes } from "./types.js";
+import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
 export type WhatsNewTabId = "overview" | "all-updates" | "other-updates" | ReleaseNoteProduct;
 
@@ -14,23 +19,36 @@ export interface WhatsNewOverviewItem {
   readonly summary: string;
 }
 
-const PRODUCT_TABS: readonly (WhatsNewTab & { readonly id: ReleaseNoteProduct })[] = [
-  { id: "fleet-cli", label: "Fleet CLI" },
-  { id: "fleet-console", label: "Fleet Console" },
-  { id: "fleet-desktop", label: "Fleet Desktop" },
-  { id: "fleet-plugin", label: "Fleet Plugin" },
-  { id: "fleet-core", label: "Fleet Core" },
-];
+type T = Translate<CoreMessageKey>;
 
-const OVERVIEW_TAB: WhatsNewTab = { id: "overview", label: "Overview" };
-const ALL_UPDATES_TAB: WhatsNewTab = { id: "all-updates", label: "All updates" };
-const OTHER_UPDATES_TAB: WhatsNewTab = { id: "other-updates", label: "Other updates" };
+export function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: ReleaseNoteProduct })[] {
+  return [
+    { id: "fleet-cli", label: t("whatsnew.tab.fleetCli") },
+    { id: "fleet-console", label: t("whatsnew.tab.fleetConsole") },
+    { id: "fleet-desktop", label: t("whatsnew.tab.fleetDesktop") },
+    { id: "fleet-plugin", label: t("whatsnew.tab.fleetPlugin") },
+    { id: "fleet-core", label: t("whatsnew.tab.fleetCore") },
+  ];
+}
+
+export function buildOverviewTab(t: T): WhatsNewTab {
+  return { id: "overview", label: t("whatsnew.tab.overview") };
+}
+
+export function buildAllUpdatesTab(t: T): WhatsNewTab {
+  return { id: "all-updates", label: t("whatsnew.tab.allUpdates") };
+}
+
+export function buildOtherUpdatesTab(t: T): WhatsNewTab {
+  return { id: "other-updates", label: t("whatsnew.tab.otherUpdates") };
+}
 
 export function deriveWhatsNewTabs(note: ReleaseNotes): readonly WhatsNewTab[] {
+  const t = consoleT();
   const hasLegacyItems = note.sections.some((section) => section.items.some((item) => item.product === undefined));
-  const productTabs = PRODUCT_TABS.filter((tab) => note.sections.some((section) => section.items.some((item) => item.product === tab.id)));
-  if (productTabs.length === 0) return [OVERVIEW_TAB, ALL_UPDATES_TAB];
-  return hasLegacyItems ? [OVERVIEW_TAB, ...productTabs, OTHER_UPDATES_TAB] : [OVERVIEW_TAB, ...productTabs];
+  const productTabs = buildProductTabs(t).filter((tab) => note.sections.some((section) => section.items.some((item) => item.product === tab.id)));
+  if (productTabs.length === 0) return [buildOverviewTab(t), buildAllUpdatesTab(t)];
+  return hasLegacyItems ? [buildOverviewTab(t), ...productTabs, buildOtherUpdatesTab(t)] : [buildOverviewTab(t), ...productTabs];
 }
 
 export function filterWhatsNewSections(note: ReleaseNotes, tabId: WhatsNewTabId): readonly ReleaseNoteSection[] {
@@ -44,7 +62,8 @@ export function filterWhatsNewSections(note: ReleaseNotes, tabId: WhatsNewTabId)
 }
 
 export function deriveWhatsNewOverview(note: ReleaseNotes): readonly WhatsNewOverviewItem[] {
-  const productItems = PRODUCT_TABS.flatMap((tab) => {
+  const t = consoleT();
+  const productItems = buildProductTabs(t).flatMap((tab) => {
     const items = note.sections.flatMap((section) => section.items.filter((item) => item.product === tab.id));
     return items.length === 0 ? [] : [{ id: tab.id, label: tab.label, count: items.length, summary: items[0]!.text }];
   });
@@ -54,7 +73,7 @@ export function deriveWhatsNewOverview(note: ReleaseNotes): readonly WhatsNewOve
     ...productItems,
     {
       id: productItems.length === 0 ? "all-updates" : "other-updates",
-      label: productItems.length === 0 ? "Pre-product-grouping updates" : "Other updates",
+      label: productItems.length === 0 ? t("whatsnew.tab.preProductGrouping") : t("whatsnew.tab.otherUpdates"),
       count: legacyItems.length,
       summary: legacyItems[0]!.text,
     },
@@ -63,4 +82,17 @@ export function deriveWhatsNewOverview(note: ReleaseNotes): readonly WhatsNewOve
 
 export function isWhatsNewTabAvailable(note: ReleaseNotes, tabId: WhatsNewTabId): boolean {
   return deriveWhatsNewTabs(note).some((tab) => tab.id === tabId);
+}
+
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
+
+function consoleT(): T {
+  return getT(resolveActiveLocale());
 }

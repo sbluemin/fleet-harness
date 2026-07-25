@@ -1,5 +1,6 @@
 import { Fragment, useEffect, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 
+import { useT } from "../i18n/index.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationNode, TheaterInfo } from "../types.js";
 
@@ -49,6 +50,7 @@ interface CommandBandOperationMenuProps {
 }
 
 export function CommandBandTheaterMenu({ theaters, operations, activeTheaterId, addingTheater, onSelectTheater, onAddTheater, style, containerRef }: CommandBandTheaterMenuProps) {
+  const t = useT();
   const sections: readonly (readonly CommandBandMenuEntry[])[] = [
     theaters.map((theater) => {
       const count = operations.filter((operation) => operation.theaterId === theater.id).length;
@@ -58,23 +60,24 @@ export function CommandBandTheaterMenu({ theaters, operations, activeTheaterId, 
         label: theater.label,
         checked: theater.id === activeTheaterId,
         mark: theaterInitials(theater.label),
-        meta: `${count} ${count === 1 ? "op" : "ops"}`,
+        meta: t(count === 1 ? "chrome.commandBand.opCount_one" : "chrome.commandBand.opCount_other", { count }),
         onSelect: () => onSelectTheater(theater.id),
       };
     }),
     [{
       key: "__add-theater__",
       role: "menuitem" as const,
-      label: "Add Theater…",
+      label: t("chrome.commandBand.addTheater"),
       action: true,
       disabled: addingTheater,
       onSelect: onAddTheater,
     }],
   ];
-  return <CommandBandMenu menuLabel="Switch Theater" sections={sections} style={style} containerRef={containerRef} />;
+  return <CommandBandMenu menuLabel={t("chrome.commandBand.switchTheater")} sections={sections} style={style} containerRef={containerRef} />;
 }
 
 export function CommandBandOperationMenu({ operations, activeOperationId, theaterLabel, onSelectOperation, onRenameOperation, onNewOperation, style, containerRef }: CommandBandOperationMenuProps) {
+  const t = useT();
   const sections: readonly (readonly CommandBandMenuEntry[])[] = [
     operations.map((operation) => ({
       key: operation.id,
@@ -88,13 +91,13 @@ export function CommandBandOperationMenu({ operations, activeOperationId, theate
       ...(onRenameOperation !== null ? [{
         key: "__rename-operation__",
         role: "menuitem" as const,
-        label: "Rename current operation…",
+        label: t("chrome.commandBand.renameCurrentOperation"),
         onSelect: onRenameOperation,
       }] : []),
       {
         key: "__new-operation__",
         role: "menuitem" as const,
-        label: `New Operation in ${theaterLabel}…`,
+        label: t("chrome.commandBand.newOperationIn", { theater: theaterLabel }),
         action: true,
         onSelect: onNewOperation,
       },
@@ -102,9 +105,9 @@ export function CommandBandOperationMenu({ operations, activeOperationId, theate
   ];
   return (
     <CommandBandMenu
-      menuLabel="Switch operation"
+      menuLabel={t("chrome.commandBand.switchOperation")}
       sections={sections}
-      emptyNote={operations.length === 0 ? "No operations in this Theater" : null}
+      emptyNote={operations.length === 0 ? t("chrome.commandBand.noOperationsInTheater") : null}
       style={style}
       containerRef={containerRef}
     />

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
+import { useT } from "../i18n/index.js";
 import type { OperationGroup, OperationNode } from "../types.js";
 import { AccentToneList } from "./accent-popover.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -39,6 +40,7 @@ const POPOVER_GAP = 8;
 const POPOVER_ESTIMATED_HEIGHT = 320;
 
 export function GroupContextMenu(props: GroupContextMenuProps) {
+  const t = useT();
   const { anchor, onClose } = props;
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
 
@@ -73,7 +75,7 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
         <div
           className="group-context-menu-card"
           role="menu"
-          aria-label={props.kind === "chip" ? "Operation options" : `${props.group.name} options`}
+          aria-label={props.kind === "chip" ? t("canvas.groupMenu.operationOptions") : t("canvas.groupMenu.groupOptions", { name: props.group.name })}
           style={style}
           onPointerDown={(e) => e.stopPropagation()}
         >
@@ -102,8 +104,9 @@ function ChipMenuContent({
   actions: GroupContextMenuChipActions;
   onClose: () => void;
 }) {
+  const t = useT();
   const [showNewInput, setShowNewInput] = useState(false);
-  const [newName, setNewName] = useState(`Group ${groups.length + 1}`);
+  const [newName, setNewName] = useState(() => t("canvas.groupMenu.defaultName", { n: groups.length + 1 }));
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -120,7 +123,7 @@ function ChipMenuContent({
 
   return (
     <>
-      <div className="group-context-menu-section-label">Group</div>
+      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionGroup")}</div>
       {groups.map((group) => {
         const color = resolveAccentColor(group.color);
         const isSelected = operation.groupId === group.id;
@@ -157,8 +160,8 @@ function ChipMenuContent({
             if (e.key === "Escape") { e.preventDefault(); setShowNewInput(false); }
           }}
           onBlur={() => setShowNewInput(false)}
-          aria-label="New group name"
-          placeholder="Group name"
+          aria-label={t("canvas.groupMenu.newGroupNameAria")}
+          placeholder={t("canvas.groupMenu.groupNamePlaceholder")}
         />
       ) : (
         <button
@@ -167,11 +170,11 @@ function ChipMenuContent({
           role="menuitem"
           onClick={() => setShowNewInput(true)}
         >
-          <span className="group-context-menu-item__new-label">＋ New group</span>
+          <span className="group-context-menu-item__new-label">{t("canvas.groupMenu.newGroup")}</span>
         </button>
       )}
       <div className="group-context-menu-divider" aria-hidden="true" />
-      <div className="group-context-menu-section-label">Accent</div>
+      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionAccent")}</div>
       <AccentToneList
         accentKey={accentKey}
         includeNone
@@ -190,6 +193,7 @@ function GroupHeaderMenuContent({
   actions: GroupContextMenuHeaderActions;
   onClose: () => void;
 }) {
+  const t = useT();
   const [renameValue, setRenameValue] = useState(group.name);
   const [ungroupArmed, setUngroupArmed] = useState(false);
   const composingRef = useRef(false);
@@ -204,7 +208,7 @@ function GroupHeaderMenuContent({
   return (
     <>
       {/* 그룹 색은 durable 스키마상 팔레트 키 중 하나로 필수다(무색 그룹 미지원). None 항목은 제공하지 않는다. */}
-      <div className="group-context-menu-section-label">Color</div>
+      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionColor")}</div>
       <AccentToneList
         accentKey={group.color}
         includeNone={false}
@@ -214,7 +218,7 @@ function GroupHeaderMenuContent({
         }}
       />
       <div className="group-context-menu-divider" aria-hidden="true" />
-      <div className="group-context-menu-section-label">Rename</div>
+      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionRename")}</div>
       <input
         className="group-context-menu-new-input"
         type="text"
@@ -227,7 +231,7 @@ function GroupHeaderMenuContent({
           if (e.key === "Escape") { e.preventDefault(); onClose(); }
         }}
         onBlur={confirmRename}
-        aria-label="Group name"
+        aria-label={t("canvas.groupMenu.groupNameAria")}
       />
       <div className="group-context-menu-divider" aria-hidden="true" />
       <button
@@ -239,9 +243,9 @@ function GroupHeaderMenuContent({
           actions.onUngroupAll();
           onClose();
         }}
-        aria-label={ungroupArmed ? "Confirm: remove all members and delete group" : "Ungroup all members and delete group"}
+        aria-label={ungroupArmed ? t("canvas.groupMenu.confirmUngroupAria") : t("canvas.groupMenu.ungroupAria")}
       >
-        {ungroupArmed ? "Confirm ungroup all?" : "Ungroup all"}
+        {ungroupArmed ? t("canvas.groupMenu.confirmUngroupAll") : t("canvas.groupMenu.ungroupAll")}
       </button>
     </>
   );

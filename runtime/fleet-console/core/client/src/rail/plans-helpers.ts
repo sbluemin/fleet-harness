@@ -1,3 +1,8 @@
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+
+import { formatRelativeTime as formatRelativeTimeLocale } from "../i18n/format.js";
+import { getT } from "../i18n/index.js";
+
 export type WaveProgressState = "complete" | "in-progress" | "not-started";
 
 // dispatch 준비도는 자유 텍스트 start condition을 해석하지 않는다 — "wave 선언 순서 + 체크박스 완료"만으로 산출하는 결정론 근사다.
@@ -43,21 +48,10 @@ export function planLaneHeadingMatches(renderedHeading: string, laneHeading: str
   return strip(renderedHeading) === strip(laneHeading);
 }
 
-export function formatRelativeTime(updatedAt: string, now = Date.now()): string {
+export function formatRelativeTime(updatedAt: string, locale: ConsoleLocale, now = Date.now()): string {
   const timestamp = Date.parse(updatedAt);
-  if (!Number.isFinite(timestamp)) return "Unknown";
-
-  const elapsedSeconds = Math.max(0, Math.floor((now - timestamp) / 1_000));
-  if (elapsedSeconds < 60) return "just now";
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h ago`;
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return `${elapsedDays}d ago`;
+  if (!Number.isFinite(timestamp)) return getT(locale)("common.unknown");
+  return formatRelativeTimeLocale(timestamp, locale, now);
 }
 
 export function getProgressPercent(tasksDone: number, tasksTotal: number): number | null {

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
@@ -200,16 +202,18 @@ const STATUS_LANDING_DURATION_MS = 500;
 
 interface StatusSection {
   readonly status: SideBarStatus;
-  readonly label: "AWAITING" | "RUNNING" | "IDLE" | "DORMANT";
+  readonly label: string;
   readonly entries: readonly SideBarEntry[];
 }
 
-const STATUS_SECTION_ORDER: readonly Omit<StatusSection, "entries">[] = [
-  { status: "awaiting", label: "AWAITING" },
-  { status: "running", label: "RUNNING" },
-  { status: "idle", label: "IDLE" },
-  { status: "dormant", label: "DORMANT" },
-];
+function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<StatusSection, "entries">[] {
+  return [
+    { status: "awaiting", label: t("sidebar.status.awaiting") },
+    { status: "running", label: t("sidebar.status.running") },
+    { status: "idle", label: t("sidebar.status.idle") },
+    { status: "dormant", label: t("sidebar.status.dormant") },
+  ];
+}
 
 function StatusSectionSlot({
   theaterId,
@@ -222,6 +226,7 @@ function StatusSectionSlot({
   readonly unseenCount?: number;
   readonly children: ReactNode;
 }) {
+  const t = useT();
   const empty = section.entries.length === 0;
   const collapsed = useSideBarStatusSectionCollapsed(theaterId, section.status, empty);
   return (
@@ -238,8 +243,8 @@ function StatusSectionSlot({
           className="side-bar-status-header__toggle"
           onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty)}
           aria-expanded={!collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} section ${section.label}`}
-          title={collapsed ? "Expand" : "Collapse"}
+          aria-label={collapsed ? t("sidebar.status.expandSection", { label: section.label }) : t("sidebar.status.collapseSection", { label: section.label })}
+          title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
         >
           <StatusSectionCollapseArrow collapsed={collapsed} />
         </button>
@@ -249,8 +254,8 @@ function StatusSectionSlot({
         <span className="side-bar-status-header__count">{section.entries.length}</span>
       </div>
       {!collapsed ? (
-        <ol className="side-bar-group-chips" aria-label={`${section.label} operations`}>
-          {empty ? <li className="side-bar-status-empty-hint">No operations</li> : children}
+        <ol className="side-bar-group-chips" aria-label={t("sidebar.status.sectionOperations", { label: section.label })}>
+          {empty ? <li className="side-bar-status-empty-hint">{t("sidebar.status.noOperations")}</li> : children}
         </ol>
       ) : null}
     </li>
@@ -299,6 +304,7 @@ export function OperationsSideBar({
   onCancelAddTheater,
   onForgetTheater,
 }: OperationsSideBarProps) {
+  const t = useT();
   const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
@@ -352,7 +358,7 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
-  const statusSections = groupOperationsByStatus(allEntries, getStatusTransitionTick);
+  const statusSections = groupOperationsByStatus(allEntries, getStatusTransitionTick, t);
   const idleUnseenIds = getIdleUnseenIds();
   const isIdleUnseen = (id: string) => id !== activeOperationId && idleUnseenIds.has(id);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
@@ -477,8 +483,9 @@ export function OperationsSideBar({
   useEffect(() => {
     if (!launchMenuRequest) return;
     consumeOperationLaunchMenu();
+    // aria-label은 로케일마다 달라지므로 고정 클래스로 런치 버튼을 찾는다.
     const launchButton = rootRef.current?.querySelector<HTMLButtonElement>(
-      '.side-bar-theater-section--active .side-bar-theater-row-btn[aria-label^="New Operation in"]',
+      ".side-bar-theater-section--active .side-bar-theater-launch-btn",
     );
     const rect = launchButton?.getBoundingClientRect();
     setActiveContextMenu(null);
@@ -831,7 +838,7 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Theaters and operations">
+      <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
@@ -932,7 +939,7 @@ export function OperationsSideBar({
                 onPointerDragStart={beginTheaterPointerDrag}
               />
               {!theaterCollapsed ? (
-              <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
+              <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
                 {statusAxis ? statusSections.map((section) => (
                   <StatusSectionSlot
                     key={section.status}
@@ -1014,8 +1021,8 @@ export function OperationsSideBar({
                   onPointerDragStart={beginGroupPointerDrag}
                 />
               ) : hasCustomGroups && section.entries.length > 0 ? (
-                <div className="side-bar-ungrouped-label" aria-label="Ungrouped operations">
-                  <span>Ungrouped</span>
+                <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
+                  <span>{t("sidebar.ungrouped.label")}</span>
                 </div>
               ) : null}
               {!isCollapsed ? (
@@ -1027,7 +1034,7 @@ export function OperationsSideBar({
                       : "",
                   ].filter(Boolean).join(" ")}
                   data-group-section-id={section.groupId ?? "__ungrouped__"}
-                  aria-label={section.group ? section.group.name : "Ungrouped"}
+                  aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}
                 >
                   {section.entries.map((entry) => {
                     const globalIndex = allEntries.indexOf(entry);
@@ -1078,7 +1085,7 @@ export function OperationsSideBar({
         <li>
           <button type="button" className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater}>
             <span className="side-bar-ghost-theater-anchor" aria-hidden="true"><PlusIcon /></span>
-            <span className="side-bar-ghost-theater-label">New Theater</span>
+            <span className="side-bar-ghost-theater-label">{t("sidebar.theater.newTheater")}</span>
           </button>
         </li>
       </ol>
@@ -1190,8 +1197,9 @@ export function groupOperations(
 export function groupOperationsByStatus(
   entries: readonly SideBarEntry[],
   getTick?: (id: string) => number | undefined,
+  t: Translate<CoreMessageKey> = getT("en"),
 ): StatusSection[] {
-  return STATUS_SECTION_ORDER.map(({ status, label }) => ({
+  return buildStatusSectionOrder(t).map(({ status, label }) => ({
     status,
     label,
     // entry.status는 엔트리 생성 시점에 resolveOperationActivity로 이미 해소된다.
@@ -1274,6 +1282,7 @@ function TheaterSectionHeader({
   onContextMenu,
   onPointerDragStart,
 }: TheaterSectionHeaderProps) {
+  const t = useT();
   const suppressClickRef = useRef(false);
   const headerClassName = [
     "side-bar-theater-header",
@@ -1343,18 +1352,18 @@ function TheaterSectionHeader({
       onPointerUp={handlePointerUp}
       aria-current={active ? "true" : undefined}
       aria-expanded={!collapsed}
-      title={active ? (collapsed ? `Expand ${theater.label}` : `Collapse ${theater.label}`) : `Switch to ${theater.label}`}
+      title={active ? (collapsed ? t("sidebar.theater.expand", { theater: theater.label }) : t("sidebar.theater.collapse", { theater: theater.label })) : t("sidebar.theater.switchTo", { theater: theater.label })}
     >
       <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
       <span className="side-bar-theater-name">{theater.label}</span>
       <ChevronIcon collapsed={collapsed} />
-      <span className="side-bar-theater-row-controls" role="group" aria-label={`${theater.label} controls`}>
+      <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
         <button
           type="button"
           className="side-bar-status-axis-toggle"
-          aria-label="Sort by status"
+          aria-label={t("sidebar.theater.sortByStatus")}
           aria-pressed={statusAxis}
-          title="Sort by status (Alt+S)"
+          title={t("sidebar.theater.sortByStatusTitle")}
           onClick={(event) => {
             event.stopPropagation();
             onToggleStatusAxis();
@@ -1363,12 +1372,12 @@ function TheaterSectionHeader({
           <StatusListIcon />
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
         </button>
-        <span className="side-bar-theater-split-control" role="group" aria-label={`${theater.label} operation controls`}>
+        <span className="side-bar-theater-split-control" role="group" aria-label={t("sidebar.theater.operationControlsAria", { theater: theater.label })}>
           <button
             type="button"
             className="side-bar-theater-row-btn side-bar-theater-launch-btn side-bar-theater-split-plus"
-            aria-label={`New Operation in ${theater.label}`}
-            title={`New Operation in ${theater.label}`}
+            aria-label={t("sidebar.theater.newOperation", { theater: theater.label })}
+            title={t("sidebar.theater.newOperation", { theater: theater.label })}
             onClick={(event) => onOpenLaunch(event, theater.id)}
           >
             <PlusIcon />
@@ -1376,10 +1385,10 @@ function TheaterSectionHeader({
           <button
             type="button"
             className="side-bar-theater-row-btn side-bar-theater-split-caret"
-            aria-label="Theater actions"
+            aria-label={t("sidebar.theater.actions")}
             aria-haspopup="menu"
             aria-expanded={statusActionsOpen}
-            title="Theater actions"
+            title={t("sidebar.theater.actions")}
             onClick={(event) => {
               event.stopPropagation();
               onOpenActions(event.currentTarget.getBoundingClientRect(), event.currentTarget);
@@ -1417,8 +1426,9 @@ function TheaterInactiveSection({
   onContextMenu,
   onPointerDragStart,
 }: TheaterInactiveSectionProps) {
+  const t = useT();
   const sections = groupOperations(entries, groups, []);
-  const statusSections = groupOperationsByStatus(entries, getStatusTransitionTick);
+  const statusSections = groupOperationsByStatus(entries, getStatusTransitionTick, t);
   const idleUnseenIds = getIdleUnseenIds();
   const hasCustomGroups = sections.some((section) => section.group !== null);
   return (
@@ -1449,7 +1459,7 @@ function TheaterInactiveSection({
         onPointerDragStart={onPointerDragStart}
       />
       {!collapsed && (statusAxis ? statusSections.length : sections.length) > 0 ? (
-        <ol className="side-bar-theater-groups" aria-label={`${theater.label} operations`}>
+        <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
           {statusAxis ? statusSections.map((section) => (
             <StatusSectionSlot
               key={section.status}
@@ -1513,12 +1523,12 @@ function TheaterInactiveSection({
                     onPointerDragStart={() => {}}
                   />
                 ) : hasCustomGroups && section.entries.length > 0 ? (
-                  <div className="side-bar-ungrouped-label" aria-label="Ungrouped operations">
-                    <span>Ungrouped</span>
+                  <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
+                    <span>{t("sidebar.ungrouped.label")}</span>
                   </div>
                 ) : null}
                 {!isCollapsed ? (
-                  <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : "Ungrouped"}>
+                  <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}>
                     {section.entries.map((entry, index) => {
                       const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                       const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
@@ -1557,8 +1567,9 @@ function TheaterInactiveSection({
 }
 
 function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForgetTheater, onClose }: TheaterActionsMenuProps) {
+  const t = useT();
   const [showNewInput, setShowNewInput] = useState(false);
-  const [newName, setNewName] = useState(`Group ${groupCount + 1}`);
+  const [newName, setNewName] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -1604,7 +1615,7 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
         ref={menuRef}
         className="theater-menu side-bar-theater-menu"
         role="menu"
-        aria-label={`${theater.label} actions`}
+        aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })}
         style={{
           position: "fixed",
           left: anchor.left,
@@ -1626,8 +1637,8 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
               if (event.key === "Escape") { event.preventDefault(); setShowNewInput(false); }
             }}
             onBlur={() => setShowNewInput(false)}
-            aria-label="New group name"
-            placeholder="Group name"
+            aria-label={t("sidebar.theater.newGroupNameAria")}
+            placeholder={t("sidebar.theater.groupNamePlaceholder")}
           />
         ) : (
           <button
@@ -1637,7 +1648,7 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
             onClick={() => setShowNewInput(true)}
           >
             <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
-            <span className="theater-menu-label">New group…</span>
+            <span className="theater-menu-label">{t("sidebar.theater.newGroup")}</span>
           </button>
         )}
         <div className="theater-menu-divider" aria-hidden="true" />
@@ -1648,7 +1659,7 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
           onClick={onForgetTheater}
         >
           <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
-          <span className="theater-menu-label">Forget Theater</span>
+          <span className="theater-menu-label">{t("sidebar.theater.forget")}</span>
         </button>
       </div>
     </div>,

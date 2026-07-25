@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { createPortal } from "react-dom";
 
 import { ApiError, listTheaterFolders, type TheaterFolderListResponse } from "../api.js";
+import { useT } from "../i18n/index.js";
 
 interface DirectoryBrowserModalProps {
   readonly open: boolean;
@@ -18,6 +19,7 @@ interface BreadcrumbSegment {
 const LIST_ID = "directory-browser-sectors";
 
 export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBrowserModalProps) {
+  const t = useT();
   const [listing, setListing] = useState<TheaterFolderListResponse | null>(null);
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,26 +136,26 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
 
   return createPortal(
     <div className="directory-browser-overlay" role="presentation">
-      <button type="button" className="directory-browser-scrim" aria-label="Close" onClick={onCancel} />
+      <button type="button" className="directory-browser-scrim" aria-label={t("common.close")} onClick={onCancel} />
       <section
         className="directory-browser-card"
         role="dialog"
         aria-modal="true"
-        aria-label="Add Theater"
+        aria-label={t("chrome.directoryBrowser.dialogAria")}
         onKeyDown={handleKeyDown}
       >
         <header className="directory-browser-header">
           <span className="directory-browser-sigil" aria-hidden="true"><TheaterSigil /></span>
           <div className="directory-browser-heading">
-            <span className="directory-browser-kicker">Project folder</span>
-            <h2>Add Theater</h2>
+            <span className="directory-browser-kicker">{t("chrome.directoryBrowser.kicker")}</span>
+            <h2>{t("chrome.directoryBrowser.title")}</h2>
           </div>
-          <button type="button" className="directory-browser-close" onClick={onCancel} aria-label="Close">×</button>
+          <button type="button" className="directory-browser-close" onClick={onCancel} aria-label={t("common.close")}>×</button>
         </header>
 
         {showRoots ? (
-          <div className="directory-browser-roots" role="group" aria-label="Drives">
-            <span className="directory-browser-kicker">Locations</span>
+          <div className="directory-browser-roots" role="group" aria-label={t("chrome.directoryBrowser.drives")}>
+            <span className="directory-browser-kicker">{t("chrome.directoryBrowser.locations")}</span>
             <div className="directory-browser-root-chips">
               {roots.map((root) => {
                 const isActive = activeDrive != null && getDrivePrefix(root) === activeDrive;
@@ -178,7 +180,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           </div>
         ) : null}
 
-        <nav className="directory-browser-course" aria-label="Path">
+        <nav className="directory-browser-course" aria-label={t("chrome.directoryBrowser.path")}>
           {breadcrumb.map((segment, index) => {
             const isLast = index === breadcrumb.length - 1;
             return (
@@ -206,8 +208,8 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
               ref={filterRef}
               type="text"
               className="directory-browser-filter-input"
-              placeholder="Filter folders…"
-              aria-label="Filter folders"
+              placeholder={t("chrome.directoryBrowser.filterPlaceholder")}
+              aria-label={t("chrome.directoryBrowser.filterAria")}
               aria-controls={LIST_ID}
               value={query}
               spellCheck={false}
@@ -222,11 +224,11 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
             type="button"
             className="directory-browser-up"
             disabled={listing?.parentPath == null || loadingPath !== null}
-            title="Up one folder (Backspace)"
+            title={t("chrome.directoryBrowser.upTitle")}
             onClick={goUp}
           >
             <UpGlyph />
-            <span>Up</span>
+            <span>{t("chrome.directoryBrowser.up")}</span>
           </button>
         </div>
 
@@ -234,8 +236,8 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           <input
             type="text"
             className="directory-browser-jump-input"
-            placeholder="Or jump to a path — e.g. D:\\projects"
-            aria-label="Jump to absolute path"
+            placeholder={t("chrome.directoryBrowser.jumpPlaceholder")}
+            aria-label={t("chrome.directoryBrowser.jumpAria")}
             value={jumpPath}
             spellCheck={false}
             autoComplete="off"
@@ -255,7 +257,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
             onClick={jumpToPath}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            Go
+            {t("chrome.directoryBrowser.go")}
           </button>
         </div>
 
@@ -265,15 +267,15 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           className="directory-browser-list"
           id={LIST_ID}
           role="listbox"
-          aria-label="Folders"
+          aria-label={t("chrome.directoryBrowser.folders")}
           aria-busy={loadingPath !== null}
           aria-activedescendant={activeRowId}
           ref={listRef}
         >
           {loadingPath !== null ? (
-            <p className="directory-browser-state is-live"><span className="directory-browser-scan-dot" aria-hidden="true" />Loading folders…</p>
+            <p className="directory-browser-state is-live"><span className="directory-browser-scan-dot" aria-hidden="true" />{t("chrome.directoryBrowser.loadingFolders")}</p>
           ) : filtered.length === 0 ? (
-            <p className="directory-browser-state">{query !== "" ? "No folders match the filter." : "No folders available."}</p>
+            <p className="directory-browser-state">{query !== "" ? t("chrome.directoryBrowser.noMatch") : t("chrome.directoryBrowser.noFolders")}</p>
           ) : (
             filtered.map((entry, index) => (
               <div
@@ -295,29 +297,29 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
                 {entry.accessible ? (
                   <span className="directory-browser-sector-advance" aria-hidden="true">›</span>
                 ) : (
-                  <span className="directory-browser-sector-lock"><LockGlyph /> Locked</span>
+                  <span className="directory-browser-sector-lock"><LockGlyph /> {t("chrome.directoryBrowser.locked")}</span>
                 )}
               </div>
             ))
           )}
         </div>
 
-        {listing?.truncated ? <p className="directory-browser-note">Showing the first 500 folders.</p> : null}
+        {listing?.truncated ? <p className="directory-browser-note">{t("chrome.directoryBrowser.truncated")}</p> : null}
 
         <footer className="directory-browser-actions">
           <div className="directory-browser-target">
-            <span className="directory-browser-target-label">Theater Root</span>
-            <span className="directory-browser-target-path" title={currentPath ?? ""}>{currentPath ?? "Loading…"}</span>
+            <span className="directory-browser-target-label">{t("chrome.directoryBrowser.theaterRoot")}</span>
+            <span className="directory-browser-target-path" title={currentPath ?? ""}>{currentPath ?? t("common.loading")}</span>
           </div>
           <div className="directory-browser-buttons">
-            <button type="button" className="directory-browser-button" onClick={onCancel}>Cancel</button>
+            <button type="button" className="directory-browser-button" onClick={onCancel}>{t("common.cancel")}</button>
             <button
               type="button"
               className="directory-browser-button is-primary"
               disabled={currentPath === null || loadingPath !== null}
               onClick={() => currentPath && onConfirm(currentPath)}
             >
-              Add Theater
+              {t("chrome.directoryBrowser.addTheater")}
             </button>
           </div>
         </footer>

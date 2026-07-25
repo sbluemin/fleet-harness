@@ -4,6 +4,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import type { InstalledSkillSearchResult, Scope, SkillListItem } from "../server/types.js";
 import { FindTab } from "./find-tab.js";
+import { getT } from "./i18n/index.js";
 import { InstalledTab } from "./installed-tab.js";
 import { ReadingOverlay } from "./reading-overlay.js";
 import "./skills.css";
@@ -42,6 +43,7 @@ function SkillsPanel({ ctx }: SkillsPanelProps) {
 
 function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   const { theaterId } = ctx;
+  const t = getT(ctx.language);
   const state = useSkillsStore();
   const { activeTab } = state;
   const contextKey = skillsContextKey(ctx.theaterId);
@@ -85,10 +87,14 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   }, []);
 
   const handleInstallSuccess = useCallback((skillName: string, scope: Scope) => {
-    setToastMessage(`Installed ${skillName} to ${scope}`);
+    // en 토스트는 소문자 scope 토큰을 유지하고, ko는 번역된 스코프 라벨을 넣는다.
+    const scopeLabel = (ctx.language ?? "en") === "en"
+      ? scope
+      : t(scope === "project" ? "skills.scope.project" : "skills.scope.global");
+    setToastMessage(t("skills.toast.installed", { name: skillName, scope: scopeLabel }));
     setInstalledRefreshKey((k) => k + 1);
     setActiveTab("installed");
-  }, []);
+  }, [ctx.language, t]);
 
   const handleOverlayInstall = useCallback(() => {
     if (readMoreEntry?.registryId) {
@@ -100,7 +106,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
 
   return (
     <div className="skills-root">
-      <div className="skills-tab-bar" role="tablist" aria-label="Skills panels">
+      <div className="skills-tab-bar" role="tablist" aria-label={t("skills.tab.panelsAria")}>
         <button
           type="button"
           role="tab"
@@ -108,7 +114,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
           className={`skills-tab-btn${activeTab === "installed" ? " is-active" : ""}`}
           onClick={() => setActiveTab("installed")}
         >
-          Installed{installedCount > 0 ? ` ${installedCount}` : ""}
+          {t("skills.tab.installed")}{installedCount > 0 ? ` ${installedCount}` : ""}
         </button>
         <button
           type="button"
@@ -117,7 +123,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
           className={`skills-tab-btn${activeTab === "find" ? " is-active" : ""}`}
           onClick={() => setActiveTab("find")}
         >
-          Find
+          {t("skills.tab.find")}
         </button>
       </div>
 
@@ -126,12 +132,15 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
           theaterId={theaterId}
           onReadMore={handleReadMoreInstalled}
           refreshKey={installedRefreshKey}
+          t={t}
+          language={ctx.language}
         />
       ) : (
         <FindTab
           theaterId={theaterId}
           onReadMore={handleReadMoreFind}
           onInstallSuccess={handleInstallSuccess}
+          t={t}
         />
       )}
 
@@ -143,6 +152,8 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         theaterId={theaterId}
         onClose={() => setReadMoreEntry(null)}
         onInstall={handleOverlayInstall}
+        t={t}
+        language={ctx.language}
       />
     </div>
   );
@@ -167,7 +178,7 @@ function SkillsIcon() {
 
 export const skillsPanel: RailPanelDescriptor = {
   id: "skills",
-  title: "Skills",
+  title: (locale) => getT(locale)("skills.panel.title"),
   defaultWidth: 360,
   icon: SkillsIcon,
   render: (ctx: RailPanelContext) => <SkillsPanel ctx={ctx} />,

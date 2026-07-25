@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openWhatsNew } from "../store.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
@@ -40,10 +43,12 @@ export function SideBarBrandFoot() {
 }
 
 export function FleetBrandHome({ className = "brand-foot-home" }: { readonly className?: string }) {
-  return <Link className={className} to="/operations" aria-label="Operations"><BrandMarkIcon /><span className="brand-foot-wordmark">Fleet</span></Link>;
+  const t = useT();
+  return <Link className={className} to="/operations" aria-label={t("chrome.brandFoot.operations")}><BrandMarkIcon /><span className="brand-foot-wordmark">Fleet</span></Link>;
 }
 
 function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion: string | null; readonly updateAvailable: boolean }) {
+  const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -74,17 +79,17 @@ function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion
         onClick={() => setOpen((previous) => !previous)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="System Menu"
-        title="System Menu"
+        aria-label={t("chrome.brandFoot.systemMenu")}
+        title={t("chrome.brandFoot.systemMenu")}
       >
         <SettingsGlyph />
-        <span>System Menu</span>
+        <span>{t("chrome.brandFoot.systemMenu")}</span>
       </button>
       {open ? (
-        <div ref={menuRef} className="brand-foot-dropup-menu" role="menu" aria-label="System Menu">
+        <div ref={menuRef} className="brand-foot-dropup-menu" role="menu" aria-label={t("chrome.brandFoot.systemMenu")}>
           <button type="button" role="menuitem" onClick={() => go("/settings")}>
             <SettingsGlyph />
-            <span>Settings</span>
+            <span>{t("chrome.brandFoot.settings")}</span>
           </button>
           {updateAvailable ? <><div className="brand-foot-menu-divider" role="separator" /><UpdateApplyControl latestVersion={latestVersion} /></> : null}
         </div>
@@ -94,6 +99,7 @@ function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion
 }
 
 function HelpMenu({ releaseDisabled, version }: { readonly releaseDisabled: boolean; readonly version: string }) {
+  const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -103,10 +109,10 @@ function HelpMenu({ releaseDisabled, version }: { readonly releaseDisabled: bool
   useFooterDropupKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
 
   return <div ref={rootRef} className="brand-foot-dropup brand-foot-help-menu">
-    <button ref={triggerRef} type="button" className="brand-foot-help-trigger" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label="Help" title="Help"><HelpGlyph /></button>
-    {open ? <div ref={menuRef} className="brand-foot-dropup-menu brand-foot-help-dropup-menu" role="menu" aria-label="Help">
-      <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>What's New</span></button>
-      <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>Keyboard Shortcuts</span></button>
+    <button ref={triggerRef} type="button" className="brand-foot-help-trigger" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.brandFoot.help")} title={t("chrome.brandFoot.help")}><HelpGlyph /></button>
+    {open ? <div ref={menuRef} className="brand-foot-dropup-menu brand-foot-help-dropup-menu" role="menu" aria-label={t("chrome.brandFoot.help")}>
+      <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.brandFoot.whatsNew")}</span></button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.brandFoot.keyboardShortcuts")}</span></button>
       <div className="brand-foot-menu-divider" role="separator" />
       <GithubLinks menuItem version={version} />
     </div> : null}
@@ -154,10 +160,11 @@ function useFooterDropupKeyboard(rootRef: RefObject<HTMLDivElement | null>, trig
 }
 
 function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string | null }) {
+  const t = useT();
   const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const completionTimerRef = useRef<number | null>(null);
-  const copy = resolveUpdateApplyCopy(applyState, errorCode, latestVersion);
+  const copy = resolveUpdateApplyCopy(applyState, errorCode, latestVersion, t);
 
   useEffect(() => () => {
     if (completionTimerRef.current !== null) window.clearTimeout(completionTimerRef.current);
@@ -205,14 +212,15 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
 }
 
 function GithubLinks({ menuItem = false, version }: { readonly menuItem?: boolean; readonly version: string }) {
+  const t = useT();
   const stars = useGithubStars();
   const hasCount = stars.count !== null;
   return (
-    <div className="brand-foot-github" role="group" aria-label="GitHub">
-      <a className="brand-foot-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label="Open GitHub repository" title="GitHub repository">
+    <div className="brand-foot-github" role="group" aria-label={t("chrome.brandFoot.github")}>
+      <a className="brand-foot-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label={t("chrome.brandFoot.openGithub")} title={t("chrome.brandFoot.githubRepo")}>
         <GithubMarkIcon />
       </a>
-      <a className="brand-foot-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label={hasCount ? `GitHub stars ${stars.count!.toLocaleString()}` : "Star on GitHub"} title="Star on GitHub">
+      <a className="brand-foot-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label={hasCount ? t("chrome.brandFoot.githubStars", { count: stars.count!.toLocaleString() }) : t("chrome.brandFoot.starOnGithub")} title={t("chrome.brandFoot.starOnGithub")}>
         <StarIcon />
         {hasCount ? <span className="brand-foot-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
       </a>
@@ -221,22 +229,29 @@ function GithubLinks({ menuItem = false, version }: { readonly menuItem?: boolea
   );
 }
 
-export function resolveUpdateApplyCopy(applyState: UpdateApplyState, errorCode: string | null, latestVersion: string | null): UpdateApplyCopy {
-  const latest = latestVersion ? `Latest version ${latestVersion}` : "Update available";
-  if (applyState === "applying") return { label: "Requesting", title: "Requesting the console update.", tone: "live", disabled: true };
-  if (applyState === "accepted") return { label: "Updating", title: "The console will restart and open in a new window.", tone: "live", disabled: true };
-  if (applyState === "completed") return { label: "Done", title: "Continue in the newly opened console window.", tone: "live", disabled: true };
-  if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode);
-  if (applyState === "error") return { label: "Retry", title: "The update request failed. Try again.", tone: "error", disabled: false };
-  return { label: "Update", title: latest, tone: "warn", disabled: false };
+export function resolveUpdateApplyCopy(
+  applyState: UpdateApplyState,
+  errorCode: string | null,
+  latestVersion: string | null,
+  t: Translate<CoreMessageKey>,
+): UpdateApplyCopy {
+  const latest = latestVersion
+    ? t("chrome.brandFoot.update.latestVersion", { version: latestVersion })
+    : t("chrome.brandFoot.update.available");
+  if (applyState === "applying") return { label: t("chrome.brandFoot.update.requesting"), title: t("chrome.brandFoot.update.requestingTitle"), tone: "live", disabled: true };
+  if (applyState === "accepted") return { label: t("chrome.brandFoot.update.updating"), title: t("chrome.brandFoot.update.updatingTitle"), tone: "live", disabled: true };
+  if (applyState === "completed") return { label: t("chrome.brandFoot.update.done"), title: t("chrome.brandFoot.update.doneTitle"), tone: "live", disabled: true };
+  if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode, t);
+  if (applyState === "error") return { label: t("common.retry"), title: t("chrome.brandFoot.update.retryTitle"), tone: "error", disabled: false };
+  return { label: t("chrome.brandFoot.update.update"), title: latest, tone: "warn", disabled: false };
 }
 
-function resolveBlockedUpdateApplyCopy(errorCode: string | null): UpdateApplyCopy {
-  if (errorCode === "local_channel") return { label: "Local", title: "Local development builds are not updated from the console.", tone: "blocked", disabled: true };
-  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: "Update and Restart", title: "This managed Console installation updates through Fleet Console Desktop. Use Desktop Update and Restart.", tone: "blocked", disabled: true };
-  if (errorCode === "update_already_in_progress") return { label: "Busy", title: "Another update is already in progress.", tone: "blocked", disabled: true };
-  if (errorCode === "update_not_available") return { label: "Current", title: "The server re-check found no update to apply.", tone: "blocked", disabled: true };
-  return { label: "Blocked", title: "The console is not ready to start an update. Try again shortly.", tone: "error", disabled: false };
+function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<CoreMessageKey>): UpdateApplyCopy {
+  if (errorCode === "local_channel") return { label: t("chrome.brandFoot.update.local"), title: t("chrome.brandFoot.update.localTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.brandFoot.update.updateAndRestart"), title: t("chrome.brandFoot.update.managedTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "update_already_in_progress") return { label: t("chrome.brandFoot.update.busy"), title: t("chrome.brandFoot.update.busyTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "update_not_available") return { label: t("chrome.brandFoot.update.current"), title: t("chrome.brandFoot.update.currentTitle"), tone: "blocked", disabled: true };
+  return { label: t("chrome.brandFoot.update.blocked"), title: t("chrome.brandFoot.update.blockedTitle"), tone: "error", disabled: false };
 }
 
 function isBlockedUpdateApplyError(code: string): boolean {

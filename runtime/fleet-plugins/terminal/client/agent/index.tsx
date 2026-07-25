@@ -10,11 +10,12 @@ import type { OperationRenderContext, PluginInstallContext } from "@fleet-consol
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-font.js";
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
-import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
+import type { TerminalFontId, TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
-import { analysisCopy, type AnalysisLanguage } from "./analysis-i18n.js";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
@@ -46,26 +47,23 @@ interface ProviderRowProps {
   readonly busy: boolean;
 }
 
-interface RendererOption {
-  readonly id: TerminalRenderer;
-  readonly label: string;
-}
-
 interface PinnedScrollLocal {
   readonly containerRef: React.RefObject<HTMLDivElement | null>;
   readonly contentRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const RENDERERS: readonly RendererOption[] = [
-  { id: "webgl", label: "WebGL" },
-  { id: "dom", label: "DOM" },
-];
+const RENDERER_IDS = ["webgl", "dom"] as const satisfies readonly TerminalRenderer[];
 
 const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
 const PIN_SLACK_PX = 56;
 const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
-const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
+const FONT_META_KEYS = {
+  cascadia: "terminal.settings.fontMetaCascadia",
+  jetbrains: "terminal.settings.fontMetaJetbrains",
+  "fira-code": "terminal.settings.fontMetaFiraCode",
+  "source-code-pro": "terminal.settings.fontMetaSourceCodePro",
+} as const satisfies Record<TerminalFontId, TerminalMessageKey>;
 const ANALYSIS_READY_POLL_MS = 5_000;
 export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
 const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
@@ -73,54 +71,54 @@ const AGENT_COMPANION_IDS = [CARRIER_STREAMS_COMPANION_ID, ANALYST_CHAT_COMPANIO
 type AnalysisReadiness = "unknown" | "ready" | "not-ready";
 
 const TRACK_PHASE_COPY_KEYS = {
-  live: "LIVE",
-  done: "DONE",
-  error: "ERROR",
+  live: "terminal.streams.status.live",
+  done: "terminal.streams.status.done",
+  error: "terminal.streams.status.error",
 } as const;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
   type: "agent",
-  title: "Agent",
+  title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
   canOpenCompanions: () => true,
   companions: [
-    { id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true, defaultHidden: true, render: (context) => <CarrierStreamsPanel context={context} /> },
-    { id: ANALYST_CHAT_COMPANION_ID, title: "Session Analyst", hideCaption: true, defaultHidden: true, render: (context) => <AnalystChatPanel context={context} /> },
-    { id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
+    { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, render: (context) => <CarrierStreamsPanel context={context} /> },
+    { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystChatPanel context={context} /> },
+    { id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
 });
 
 export const generalSettingsSection = defineSettingsSection({
   id: "general",
-  title: "General",
+  title: (locale) => getT(locale)("terminal.settings.general"),
   render: () => <GeneralSection />,
 });
 
 export const agentSettingsSection = defineSettingsSection({
   id: "agent-cli",
-  title: "Agent CLI",
+  title: (locale) => getT(locale)("terminal.settings.agentCli"),
   render: () => <AgentCliSection />,
 });
 
 export const agentAttentionNotification = defineNotificationKind({
   id: "agent.attention",
-  title: "Agent input waiting",
+  title: (locale) => getT(locale)("terminal.notifications.agentInputWaiting"),
 });
 
 // id에 ".end"를 포함시켜 core mapNotificationKind가 이 알림을 "ended"(turn 종료)로 분류하게 한다.
 // (idle 전이는 에이전트 턴 종료이므로 ALERTS의 ended 상태로 분류해야 한다.)
 export const agentEndedNotification = defineNotificationKind({
   id: "agent.ended",
-  title: "Agent turn ended",
+  title: (locale) => getT(locale)("terminal.notifications.agentTurnEnded"),
 });
 
 // resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
 // ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
 export const agentResumeFailedNotification = defineNotificationKind({
   id: "agent.resume-failed",
-  title: "Resume failed",
+  title: (locale) => getT(locale)("terminal.notifications.resumeFailed"),
 });
 
 export const agentPlugin = definePlugin({
@@ -317,20 +315,21 @@ function SessionAnalystHandle({
 }) {
   const open = isCompanionPanelVisible(context, ANALYST_CHAT_COMPANION_ID);
   const language = context.language ?? "en";
+  const t = getT(language);
   return (
     <button
       type="button"
       className={`session-analyst-handle${ready ? "" : " is-waiting"}${working ? " is-live" : ""}`}
-      aria-label={analysisCopy(language, open ? "Exit Session Analyst" : "Open Session Analyst")}
+      aria-label={t(open ? "terminal.analyst.exit" : "terminal.analyst.open")}
       aria-pressed={open}
       aria-disabled={!ready}
       disabled={!ready}
-      title={ready ? undefined : analysisCopy(language, "Send a message in this session first")}
+      title={ready ? undefined : t("terminal.analyst.sendMessageFirst")}
       onClick={() => { if (ready) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID); }}
     >
       {working ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
       <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
-      <span className="session-analyst-handle__label">{analysisCopy(language, open ? "EXIT" : "ANALYZE")}</span>
+      <span className="session-analyst-handle__label">{t(open ? "terminal.handle.exit" : "terminal.handle.analyze")}</span>
     </button>
   );
 }
@@ -338,17 +337,18 @@ function SessionAnalystHandle({
 function CarrierStreamsHandle({ context, live }: { readonly context: OperationRenderContext; readonly live: boolean }) {
   const open = isCompanionPanelVisible(context, CARRIER_STREAMS_COMPANION_ID);
   const language = context.language ?? "en";
+  const t = getT(language);
   return (
     <button
       type="button"
       className={`session-analyst-handle session-analyst-handle--streams${live ? " is-live" : ""}`}
-      aria-label={analysisCopy(language, open ? "Exit Carrier Streams" : "Open Carrier Streams")}
+      aria-label={t(open ? "terminal.streams.exit" : "terminal.streams.open")}
       aria-pressed={open}
       onClick={() => toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
     >
       {live ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
       <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
-      <span className="session-analyst-handle__label">{analysisCopy(language, open ? "EXIT" : "STREAMS")}</span>
+      <span className="session-analyst-handle__label">{t(open ? "terminal.handle.exit" : "terminal.handle.streams")}</span>
     </button>
   );
 }
@@ -415,6 +415,7 @@ function CarrierStreamsPanel({ context }: { readonly context: OperationRenderCon
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const jobs = sessionJobs(session);
   const language = context.language ?? "en";
+  const t = getT(language);
   const [expandedCompletedTrackIds, setExpandedCompletedTrackIds] = React.useState<readonly string[]>([]);
   // 스토어는 종결 잡을 세션 내내 보존한다 — 완료 트랙은 시한부 잔존이 아니라
   // 접힌 스트립으로 세션 끝까지 남아 클릭 전개(보존 기록 열람)를 보장한다.
@@ -425,20 +426,20 @@ function CarrierStreamsPanel({ context }: { readonly context: OperationRenderCon
   const liveTrackCount = countLiveTracks(jobs);
 
   return (
-    <section className="carrier-streams" aria-label="Carrier Streams">
+    <section className="carrier-streams" aria-label={t("terminal.companion.carrierStreams")}>
       <header className="session-analyst__panel-head carrier-streams__panel-head">
         <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
-        <span className="session-analyst__panel-copy"><strong>Carrier Streams</strong><small>{analysisCopy(language, "This operation · live carrier output")}</small></span>
+        <span className="session-analyst__panel-copy"><strong>{t("terminal.companion.carrierStreams")}</strong><small>{t("terminal.streams.subtitle")}</small></span>
         <span className={`carrier-streams__state${liveTrackCount > 0 ? " is-live" : ""}`}>
           <i aria-hidden="true" />{liveTrackCount > 0
-            ? `${liveTrackCount} ${analysisCopy(language, "LIVE")}`
-            : analysisCopy(language, "IDLE")}
+            ? `${liveTrackCount} ${t("terminal.streams.status.live")}`
+            : t("terminal.streams.status.idle")}
         </span>
       </header>
       {tracks.length === 0 ? (
         <div className="carrier-streams__empty">
-          <strong>{analysisCopy(language, "No carriers streaming.")}</strong>
-          <span>{analysisCopy(language, "The next dispatch from this operation appears here the moment it begins.")}</span>
+          <strong>{t("terminal.streams.emptyTitle")}</strong>
+          <span>{t("terminal.streams.emptyBody")}</span>
         </div>
       ) : (
         <div className="carrier-streams__board">
@@ -476,10 +477,11 @@ function CarrierStreamColumn({
 }: {
   readonly job: JobView;
   readonly track: TrackView;
-  readonly language: AnalysisLanguage;
+  readonly language: ConsoleLocale;
   readonly expanded: boolean;
   readonly onToggleCompleted: () => void;
 }) {
+  const t = getT(language);
   const phase = deriveTrackPhase(track, job.status);
   const captain = resolveCarrierCaptain(job.ownerCarrierId);
   const elapsed = useElapsed(track.startedAt ?? job.startedAt, track.finishedAt ?? job.finishedAt);
@@ -492,7 +494,7 @@ function CarrierStreamColumn({
   // 잡 레벨 오류/요약 폴백은 이 트랙의 phase가 error일 때만 — 혼합 결과 잡에서
   // 성공 트랙 컬럼이 잡 실패 문구를 떠안는 오표기를 막는다(트랙 자체 오류는 항상 표시).
   const error = track.error ?? (phase.tone === "error" ? job.error ?? job.summary : undefined);
-  const phaseLabel = analysisCopy(language, TRACK_PHASE_COPY_KEYS[phase.tone]);
+  const phaseLabel = t(TRACK_PHASE_COPY_KEYS[phase.tone]);
   const latestTool = track.tools.length > 0 ? track.tools[track.tools.length - 1] : undefined;
 
   if (completed && !expanded) {
@@ -501,12 +503,12 @@ function CarrierStreamColumn({
         type="button"
         className="carrier-stream-column carrier-stream-column--collapsed"
         data-captain={captain}
-        aria-label={`${analysisCopy(language, "Expand completed stream")} · ${track.displayName}`}
+        aria-label={`${t("terminal.streams.expand")} · ${track.displayName}`}
         onClick={onToggleCompleted}
       >
         {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
         <strong>{track.displayName}</strong>
-        <span className="carrier-stream-column__phase" data-tone="done">{analysisCopy(language, "DONE")}</span>
+        <span className="carrier-stream-column__phase" data-tone="done">{t("terminal.streams.status.done")}</span>
         <time>{elapsed}</time>
       </button>
     );
@@ -519,38 +521,38 @@ function CarrierStreamColumn({
         {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
         <strong title={track.displayName}>{track.displayName}</strong>
         <span className="carrier-stream-column__phase" data-tone={phase.tone}>{phaseLabel}</span>
-        {completed ? <button type="button" aria-label={`${analysisCopy(language, "Collapse completed stream")} · ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
+        {completed ? <button type="button" aria-label={`${t("terminal.streams.collapse")} · ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
       </header>
       <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
         <div ref={scroll.contentRef} className="carrier-stream-column__content">
           {request ? (
             <div className="carrier-stream-column__request" data-captain={captain}>
-              <span className="carrier-stream-column__request-kicker">{analysisCopy(language, "Dispatch order")}</span>
+              <span className="carrier-stream-column__request-kicker">{t("terminal.streams.dispatchOrder")}</span>
               <p>{request}</p>
             </div>
           ) : null}
           {track.text ? (
             <div className="carrier-stream-column__answer">
               <span aria-hidden="true">✳</span>
-              <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} />
+              <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} language={language} />
             </div>
           ) : null}
           {reasoning ? (
             <div className="carrier-stream-column__reasoning" aria-live="polite">
               <i aria-hidden="true" />
-              <span>{analysisCopy(language, "Reasoning…")}</span>
+              <span>{t("terminal.streams.reasoning")}</span>
             </div>
           ) : null}
           {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
           {latestTool ? (
-            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`${analysisCopy(language, "Activity")} · ${track.displayName}`}>
+            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`${t("terminal.streams.activity")} · ${track.displayName}`}>
               {phase.tone === "live" ? <span className="carrier-stream-column__activity-scan" aria-hidden="true" /> : null}
               <div className="carrier-stream-column__activity-main">
                 <span className="carrier-stream-column__activity-orbit" data-tone={resolveToolTone(latestTool.status)} aria-hidden="true" />
                 <span className="carrier-stream-column__activity-copy">
-                  <strong>{analysisCopy(language, "Using {title}", { title: latestTool.name ?? latestTool.id })}</strong>
-                  <small>{analysisCopy(language, "Tool status: {status}", { status: latestTool.status })}</small>
-                  <small>{analysisCopy(language, "Last confirmed activity only")}</small>
+                  <strong>{t("terminal.analyst.activity.usingTool", { title: latestTool.name ?? latestTool.id })}</strong>
+                  <small>{t("terminal.analyst.activity.toolStatus", { status: latestTool.status })}</small>
+                  <small>{t("terminal.analyst.lastConfirmedOnly")}</small>
                 </span>
                 <time>{elapsed}</time>
               </div>
@@ -671,6 +673,7 @@ function IdleAgentSessionsSettingsBlock() {
 }
 
 function AgentCliSection() {
+  const t = getT(useTerminalLocale());
   const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -688,18 +691,18 @@ function AgentCliSection() {
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
-      <section className="global-settings-card" aria-label="Agent CLI Available">
+      <section className="global-settings-card" aria-label={t("terminal.settings.agentCliAvailable")}>
         <div className="agent-cli-head">
-          <p className="global-settings-resp-title">Agent CLI Available</p>
+          <p className="global-settings-resp-title">{t("terminal.settings.agentCliAvailable")}</p>
         </div>
-        <p className="global-settings-help">Whether each Agent CLI is installed and discoverable on this machine's PATH, with its detected version. Carriers can only run on an Agent CLI shown as available here.</p>
+        <p className="global-settings-help">{t("terminal.settings.agentCliHelp")}</p>
         {error ? <p className="settings-error">{error}</p> : null}
         <div className="agent-cli-list">
           {clis.map((cli) => (
             <AgentCliRow key={cli.id} cli={cli} />
           ))}
         </div>
-        <p className="global-settings-foot">Install or update a CLI, then reopen this page to re-check availability.</p>
+        <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
       </section>
       <ModelAuthBlock />
     </>
@@ -707,6 +710,7 @@ function AgentCliSection() {
 }
 
 function ModelAuthBlock() {
+  const t = getT(useTerminalLocale());
   const store = useModelAuthStore();
   const settings = useSystemPromptSettingsStore();
   const [kimiOptions, setKimiOptions] = React.useState<CarrierSettingsCliOption | null>(null);
@@ -744,16 +748,13 @@ function ModelAuthBlock() {
   };
 
   return (
-    <section className="global-settings-card" aria-label="Model sign-in">
+    <section className="global-settings-card" aria-label={t("terminal.auth.modelSignInAria")}>
       <div className="model-auth-head">
-        <p className="global-settings-resp-title">Settings for Kimi</p>
-        <p className="global-settings-help">
-          Register a Kimi API key to run carriers and terminal sessions through Claude Code against the Kimi endpoint.
-          The key is validated and stored locally, and is never returned to the browser.
-        </p>
+        <p className="global-settings-resp-title">{t("terminal.auth.settingsForKimi")}</p>
+        <p className="global-settings-help">{t("terminal.auth.kimiHelp")}</p>
       </div>
       {store.error ? <p className="global-settings-error" role="alert">{store.error}</p> : null}
-      {store.loading && !store.state ? <p className="global-settings-help">Loading sign-in state.</p> : null}
+      {store.loading && !store.state ? <p className="global-settings-help">{t("terminal.auth.loadingSignIn")}</p> : null}
       {store.state?.providers.map((provider) => (
         <ProviderRow key={provider.cli} provider={provider} busy={store.busyCli === provider.cli} />
       ))}
@@ -761,7 +762,7 @@ function ModelAuthBlock() {
         <div className="model-auth-row">
           <div className="terminal-carriers-runtime-row">
             <div className="terminal-carriers-field">
-              <span className="terminal-carriers-label" id="kimi-default-model-label">Default model</span>
+              <span className="terminal-carriers-label" id="kimi-default-model-label">{t("terminal.auth.defaultModel")}</span>
               <Select
                 aria-labelledby="kimi-default-model-label"
                 value={selectedModelId}
@@ -776,7 +777,7 @@ function ModelAuthBlock() {
             </div>
             {selectedModel?.effort ? (
               <div className="terminal-carriers-field">
-                <span className="terminal-carriers-label" id="kimi-default-effort-label">Default effort</span>
+                <span className="terminal-carriers-label" id="kimi-default-effort-label">{t("terminal.auth.defaultEffort")}</span>
                 <Select
                   aria-labelledby="kimi-default-effort-label"
                   value={selectedEffort ?? selectedModel.effort.default}
@@ -787,15 +788,16 @@ function ModelAuthBlock() {
               </div>
             ) : null}
           </div>
-          <p className="global-settings-help">Used for Kimi sessions without an explicit carrier model. Applies to newly launched sessions.</p>
+          <p className="global-settings-help">{t("terminal.auth.kimiModelHelp")}</p>
         </div>
       ) : null}
-      <p className="global-settings-foot">Sign-in changes apply to newly launched sessions. Running sessions keep their current credentials until relaunched.</p>
+      <p className="global-settings-foot">{t("terminal.auth.signInFoot")}</p>
     </section>
   );
 }
 
 function ProviderRow({ provider, busy }: ProviderRowProps) {
+  const t = getT(useTerminalLocale());
   const [apiKey, setApiKey] = React.useState("");
 
   const handleSignIn = async () => {
@@ -808,13 +810,13 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
       <div className="model-auth-row-head">
         <span className="model-auth-name">{provider.displayName}</span>
         <span className={`model-auth-status ${provider.signedIn ? "is-on" : ""}`}>
-          {provider.signedIn ? "Signed in" : "Not signed in"}
+          {provider.signedIn ? t("terminal.auth.signedIn") : t("terminal.auth.notSignedIn")}
         </span>
       </div>
       {provider.signedIn ? (
         <div className="model-auth-actions">
           <button type="button" className="model-auth-button" disabled={busy} onClick={() => void signOutModel(provider.cli)}>
-            {busy ? "Working…" : "Sign out"}
+            {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
           </button>
         </div>
       ) : (
@@ -828,16 +830,16 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
           <input
             type="password"
             className="model-auth-input"
-            placeholder="API key"
+            placeholder={t("terminal.auth.apiKey")}
             value={apiKey}
             autoComplete="off"
             spellCheck={false}
             disabled={busy}
-            aria-label={`${provider.displayName} API key`}
+            aria-label={t("terminal.auth.apiKeyAria", { name: provider.displayName })}
             onChange={(event) => setApiKey(event.target.value)}
           />
           <button type="submit" className="model-auth-button is-primary" disabled={busy || apiKey.trim().length === 0}>
-            {busy ? "Verifying…" : "Sign in"}
+            {busy ? t("terminal.auth.verifying") : t("terminal.auth.signIn")}
           </button>
         </form>
       )}
@@ -846,6 +848,7 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
 }
 
 function SystemPromptSettingsBlock() {
+  const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingField !== null;
@@ -857,24 +860,24 @@ function SystemPromptSettingsBlock() {
   }, []);
 
   return (
-    <section className="global-settings-card" aria-label="System Prompt">
+    <section className="global-settings-card" aria-label={t("terminal.settings.systemPromptAria")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <>
           <SettingToggleRow
-            title="Metaphor"
-            help="Adds concise Fleet wording to every session. Off uses the standard prompt."
-            onLabel="Enabled"
-            offLabel="Off"
+            title={t("terminal.settings.metaphor")}
+            help={t("terminal.settings.metaphorHelp")}
+            onLabel={t("terminal.settings.enabled")}
+            offLabel={t("terminal.settings.off")}
             value={state.enableMetaphor}
             disabled={saving}
             onToggle={() => void setSystemPromptSettingsField("enableMetaphor", !state.enableMetaphor)}
           />
         </>
       ) : (
-        <p className="global-settings-help">{settings.loading ? "Loading settings." : "Settings unavailable."}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
-      <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
+      <p className="global-settings-foot">{t("terminal.settings.systemPromptFoot")}</p>
     </section>
   );
 }
@@ -900,12 +903,13 @@ function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onT
 }
 
 function AgentCliRow({ cli }: { readonly cli: AgentCliStatus }) {
+  const t = getT(useTerminalLocale());
   return (
     <div className="agent-cli-row">
       <span className="agent-cli-name">{cli.displayName}</span>
       <span className="agent-cli-meta">
         {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
-        <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? "Available" : "Missing"}</span>
+        <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? t("terminal.settings.available") : t("terminal.settings.missing")}</span>
       </span>
     </div>
   );
@@ -919,6 +923,7 @@ async function resumeSession(sessionId: string, options?: { readonly fresh?: boo
 // dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
 // Alerts 알림(agent.resume-failed) 두 경로로 표면화한다 — 어느 쪽도 침묵하지 않는다.
 function DormantOperationView({ context, session }: { readonly context: OperationRenderContext; readonly session: SessionInfo }) {
+  const t = getT(context.language ?? "en");
   const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error">("idle");
   const resume = React.useCallback(async (fresh: boolean) => {
     setResumeState("resuming");
@@ -939,16 +944,16 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   if (resumeState === "error") {
     return (
       <div className="canvas-operation-dormant canvas-operation-dormant--error" role="alert">
-        <span className="canvas-operation-dormant-status">Dormant</span>
+        <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
         <p className="canvas-operation-dormant-error">
-          Couldn’t resume this session. The saved session for “{session.label || session.cwdLabel}” has expired.
+          {t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
         </p>
         <div className="canvas-operation-dormant-error-actions">
           <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
-            Try again
+            {t("terminal.dormant.tryAgain")}
           </button>
           <button type="button" className="canvas-operation-dormant-action canvas-operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
-            Start fresh
+            {t("terminal.dormant.startFresh")}
           </button>
         </div>
       </div>
@@ -957,9 +962,9 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
 
   return (
     <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(false); }}>
-      <span className="canvas-operation-dormant-status">Dormant</span>
+      <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
       <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
-        {resumeState === "resuming" ? "Resuming…" : "Resume"}
+        {resumeState === "resuming" ? t("terminal.dormant.resuming") : t("terminal.dormant.resume")}
       </span>
     </button>
   );
@@ -994,9 +999,10 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
 }
 
 function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {
+  const t = getT(useTerminalLocale());
   const [installedFonts, setInstalledFonts] = React.useState<readonly FontPickerInstalledFont[]>([]);
   const [isLoadingFonts, setIsLoadingFonts] = React.useState(true);
-  const [fontLoadError, setFontLoadError] = React.useState<string | null>(null);
+  const [fontLoadFailed, setFontLoadFailed] = React.useState(false);
   const selected = terminalFont.source === "curated" || !terminalFont.customName
     ? { source: "builtin" as const, id: terminalFont.source === "curated" ? terminalFont.id ?? DEFAULT_TERMINAL_FONT.id : DEFAULT_TERMINAL_FONT.id }
     : { source: "system" as const, familyName: terminalFont.customName };
@@ -1004,7 +1010,7 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
   React.useEffect(() => {
     const controller = new AbortController();
     setIsLoadingFonts(true);
-    setFontLoadError(null);
+    setFontLoadFailed(false);
     void fetchSystemFonts({ signal: controller.signal })
       .then((response) => {
         if (controller.signal.aborted) return;
@@ -1013,7 +1019,7 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
       .catch((error: unknown) => {
         if (controller.signal.aborted || isAbortError(error)) return;
         setInstalledFonts([]);
-        setFontLoadError("Installed system fonts are unavailable. Built-in fonts remain available.");
+        setFontLoadFailed(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoadingFonts(false);
@@ -1031,54 +1037,77 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
   };
 
   return (
-    <section className="global-settings-card" aria-label="Terminal Font">
+    <section className="global-settings-card" aria-label={t("terminal.settings.terminalFont")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">Terminal Font <span className="new-badge">New</span></p>
-          <p className="global-settings-help" id="terminal-font-help">Typeface and size for every terminal panel — agent-cli and shell alike. Applies live to all open terminals and persists on the Console server across browsers and restarts.</p>
+          <p className="global-settings-resp-title">{t("terminal.settings.terminalFont")} <span className="new-badge">{t("terminal.settings.terminalFontNew")}</span></p>
+          <p className="global-settings-help" id="terminal-font-help">{t("terminal.settings.terminalFontHelp")}</p>
         </div>
       </div>
       <div aria-describedby="terminal-font-help">
           <FontPicker
-            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: font.family, aliases: [font.familyName], description: font.meta }))}
+            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: font.family, aliases: [font.familyName], description: t(FONT_META_KEYS[font.id]) }))}
             installedFonts={installedFonts}
             selected={selected}
             selectedSystemFont={terminalFont.source === "custom" ? terminalFont.customName : null}
             fallbackStack={DEFAULT_TERMINAL_FONT.family}
-            previewText={TERMINAL_FONT_PREVIEW}
+            previewText={t("terminal.settings.terminalFontPreview")}
             size={terminalFont.size}
             sizeRange={TERMINAL_FONT_PICKER_SIZE_RANGE}
             loading={isLoadingFonts}
-            error={fontLoadError}
+            error={fontLoadFailed ? t("terminal.settings.fontLoadError") : null}
+            labels={{
+              browserAria: t("terminal.settings.fontPicker.browserAria"),
+              searchLabel: t("terminal.settings.fontPicker.searchLabel"),
+              searchPlaceholder: t("terminal.settings.fontPicker.searchPlaceholder"),
+              loading: t("terminal.settings.fontPicker.loading"),
+              choicesAria: t("terminal.settings.fontPicker.choicesAria"),
+              builtInGroup: t("terminal.settings.fontPicker.builtInGroup"),
+              installedGroup: t("terminal.settings.fontPicker.installedGroup"),
+              noMatch: t("terminal.settings.fontPicker.noMatch"),
+              preview: t("terminal.settings.fontPicker.preview"),
+              available: t("terminal.settings.fontPicker.available"),
+              unavailable: t("terminal.settings.fontPicker.unavailable"),
+              fontSizeAria: t("terminal.settings.fontPicker.fontSizeAria"),
+              decreaseSizeAria: t("terminal.settings.fontPicker.decreaseSizeAria"),
+              sizeValueAria: t("terminal.settings.fontPicker.sizeValueAria"),
+              increaseSizeAria: t("terminal.settings.fontPicker.increaseSizeAria"),
+              sizeSliderAria: t("terminal.settings.fontPicker.sizeSliderAria"),
+              monospace: t("terminal.settings.fontPicker.monospace"),
+              systemFont: t("terminal.settings.fontPicker.systemFont"),
+              savedSystemFont: t("terminal.settings.fontPicker.savedSystemFont"),
+            }}
             onSelectionChange={handleSelectionChange}
             onSizeCommit={setTerminalFontSize}
           />
       </div>
-      <p className="global-settings-foot">Font preferences apply immediately and are stored on the Console server, separate from session settings and shared across browsers after restart.</p>
+      <p className="global-settings-foot">{t("terminal.settings.terminalFontFoot")}</p>
     </section>
   );
 }
 
 function TerminalRendererCard({ terminalRenderer }: { readonly terminalRenderer: TerminalRenderer }) {
+  const t = getT(useTerminalLocale());
+  const labels = { webgl: t("terminal.settings.webgl"), dom: t("terminal.settings.dom") } as const;
   return (
-    <section className="global-settings-card" aria-label="Terminal Renderer">
+    <section className="global-settings-card" aria-label={t("terminal.settings.terminalRenderer")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">Terminal Renderer</p>
-          <p className="global-settings-help">WebGL paints the terminal on the GPU for sharper, faster output; DOM is a compatibility fallback. Switching applies to the live terminal instantly without dropping the session.</p>
+          <p className="global-settings-resp-title">{t("terminal.settings.terminalRenderer")}</p>
+          <p className="global-settings-help">{t("terminal.settings.terminalRendererHelp")}</p>
         </div>
-        <div className="segmented" role="group" aria-label="Terminal renderer">
-          {RENDERERS.map((renderer) => {
-            const isActive = renderer.id === terminalRenderer;
+        <div className="segmented" role="group" aria-label={t("terminal.settings.terminalRendererAria")}>
+          {RENDERER_IDS.map((rendererId) => {
+            const isActive = rendererId === terminalRenderer;
             return (
               <button
-                key={renderer.id}
+                key={rendererId}
                 type="button"
                 aria-pressed={isActive}
                 className={`segmented-option ${isActive ? "is-active" : ""}`}
-                onClick={() => setTerminalRenderer(renderer.id)}
+                onClick={() => setTerminalRenderer(rendererId)}
               >
-                {renderer.label}
+                {labels[rendererId]}
               </button>
             );
           })}

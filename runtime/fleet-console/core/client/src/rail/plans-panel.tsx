@@ -2,10 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "@fleet-console/markdown/styles.css";
 import { fetchPlanRead, fetchPlansList, fetchPlansSearch, type PlanListItem, type PlanReadResult } from "../api.js";
+import { diagramHydratorLabels, getT, markdownCopyOptions, useT, type CoreMessageKey } from "../i18n/index.js";
+import type { Translate } from "@fleet-console/sdk/i18n";
 import "./plans.css";
 import { filterPlans, formatRelativeTime, getLaneDispatchState, getProgressPercent, getWaveProgressState, normalizePlanHeading, planLaneHeadingMatches, planListSignature, type PlanStatusFilter } from "./plans-helpers.js";
 import { subscribeToPlanChanges } from "./plans-events.js";
@@ -15,6 +18,7 @@ interface PlansListProps {
   readonly revealTarget: PlansSearchTarget | null;
   readonly selectedName: string | null;
   readonly state: PlansListState;
+  readonly language: ConsoleLocale;
   readonly onRetry: () => void;
   readonly onRevealHandled: (target: PlansSearchTarget) => void;
   readonly onSelect: (name: string) => void;
@@ -23,12 +27,14 @@ interface PlansListProps {
 
 interface PlanReaderProps {
   readonly state: PlanReaderState;
+  readonly language: ConsoleLocale;
   readonly onClose: () => void;
   readonly onRetry: () => void;
 }
 
 interface PlanDocumentProps {
   readonly plan: PlanReadResult;
+  readonly language: ConsoleLocale;
   readonly onClose: () => void;
 }
 
@@ -61,7 +67,7 @@ const PLANS_EXTRA_WIDTH = 360;
 
 export const plansPanel: RailPanelDescriptor = {
   id: "plans",
-  title: "Plans",
+  title: (locale: ConsoleLocale) => getT(locale)("rail.plans.title"),
   defaultWidth: 360,
   icon: PlansIcon,
   render: (ctx) => <PlansPanel {...ctx} />,
@@ -84,6 +90,7 @@ function PlansPanel(ctx: RailPanelContext) {
 
 function PlansPanelBody(ctx: RailPanelContext) {
   const { requestExtraWidth, theaterId } = ctx;
+  const language = ctx.language ?? "en";
   const [listState, setListState] = useState<PlansListState>({ kind: "no-theater" });
   const [readerState, setReaderState] = useState<PlanReaderState>({ kind: "loading" });
   const [selectedPlan, setSelectedPlan] = useState<{ readonly theaterId: string; readonly name: string } | null>(null);
@@ -245,12 +252,13 @@ function PlansPanelBody(ctx: RailPanelContext) {
       <div className={`plans-root${selectedName ? " is-reader-open" : ""}`} onKeyDown={(event) => {
         if (event.key === "Escape" && selectedName) handleClose();
       }}>
-        {selectedName && <PlanReader state={readerState} onClose={handleClose} onRetry={retryReader} />}
+        {selectedName && <PlanReader state={readerState} language={language} onClose={handleClose} onRetry={retryReader} />}
         {selectedName && <div className="plans-divider" aria-hidden="true" />}
         <PlansList
           revealTarget={revealTarget}
           selectedName={selectedName}
           state={listState}
+          language={language}
           onRetry={retryList}
           onRevealHandled={handleRevealHandled}
           onSelect={handleSelect}
@@ -261,7 +269,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
   );
 }
 
-function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled, onSelect, pulsedNames }: PlansListProps) {
+function PlansList({ revealTarget, selectedName, state, language, onRetry, onRevealHandled, onSelect, pulsedNames }: PlansListProps) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<PlanStatusFilter>("all");
   const [copiedName, setCopiedName] = useState<string | null>(null);
@@ -281,17 +290,17 @@ function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled
     onRevealHandled(revealTarget);
   }, [onRevealHandled, query, revealTarget, state, status]);
   if (state.kind === "no-theater") {
-    return <div className="plans-list-pane"><EmptyState>Select a Theater to browse plans.</EmptyState></div>;
+    return <div className="plans-list-pane"><EmptyState>{t("rail.plans.selectTheater")}</EmptyState></div>;
   }
 
   if (state.kind === "loading") {
-    return <div className="plans-list-pane"><div className="plans-loading">Loading plans…</div></div>;
+    return <div className="plans-list-pane"><div className="plans-loading">{t("rail.plans.loadingList")}</div></div>;
   }
 
   if (state.kind === "error") {
     return (
       <div className="plans-list-pane">
-        <ErrorState message="Unable to load plans." onRetry={onRetry} />
+        <ErrorState message={t("rail.plans.loadListError")} onRetry={onRetry} />
       </div>
     );
   }
@@ -299,7 +308,7 @@ function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled
   if (state.plans.length === 0) {
     return (
       <div className="plans-list-pane">
-        <EmptyState detail="Workspace-scoped Fleet Plans appear here.">No plans yet.</EmptyState>
+        <EmptyState detail={t("rail.plans.emptyDetail")}>{t("rail.plans.empty")}</EmptyState>
       </div>
     );
   }
@@ -328,20 +337,20 @@ function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled
     <div className="plans-list-pane">
       <div className="plans-toolbar">
         <label className="plans-search-label">
-          <span>Search plans</span>
+          <span>{t("rail.plans.search")}</span>
           <input className="plans-search" value={query} onChange={(event) => setQuery(event.target.value)} />
         </label>
-        <div className="plans-filter-group" aria-label="Plan status">
+        <div className="plans-filter-group" aria-label={t("rail.plans.statusAria")}>
           {(["all", "in-progress", "complete"] as const).map((filter) => (
             <button key={filter} type="button" className={`plans-filter${status === filter ? " is-active" : ""}`} aria-pressed={status === filter} onClick={() => setStatus(filter)}>
-              {filter === "all" ? "ALL" : filter === "in-progress" ? "IN PROGRESS" : "COMPLETE"}
+              {filter === "all" ? t("rail.plans.filterAll") : filter === "in-progress" ? t("rail.plans.filterInProgress") : t("rail.plans.filterComplete")}
             </button>
           ))}
         </div>
-        <button type="button" className="plans-refresh" onClick={onRetry}>REFRESH</button>
+        <button type="button" className="plans-refresh" onClick={onRetry}>{t("rail.plans.refresh")}</button>
       </div>
-      <div className="plans-list" aria-label="Plans">
-        {visiblePlans.length === 0 && <EmptyState>No matching plans.</EmptyState>}
+      <div className="plans-list" aria-label={t("rail.plans.listAria")}>
+        {visiblePlans.length === 0 && <EmptyState>{t("rail.plans.noMatch")}</EmptyState>}
         {visiblePlans.map((plan, index) => {
           const progress = getProgressPercent(plan.tasksDone, plan.tasksTotal);
           const isComplete = progress === 100;
@@ -353,13 +362,13 @@ function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled
               <button ref={(node) => { if (node) rowRefs.current.set(plan.name, node); else rowRefs.current.delete(plan.name); }} type="button" className="plans-row-select" onClick={() => onSelect(plan.name)} onKeyDown={(event) => handleRowKeyDown(event, index)}>
                 <span className="plans-row-name">{plan.name}</span>
                 <span className="plans-row-meta">
-                  {plan.waveCount} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · {formatRelativeTime(plan.updatedAt)}
-                  {plan.executionMode === "parallel" ? " · parallel" : ""}
+                  {t("rail.plans.rowMeta", { waves: plan.waveCount, done: plan.tasksDone, total: plan.tasksTotal, relative: formatRelativeTime(plan.updatedAt, language) })}
+                  {plan.executionMode === "parallel" ? t("rail.plans.rowMetaParallel") : ""}
                 </span>
-                {progress !== null && <span className="plans-progress-track" aria-label={`${progress}% complete`}><span className={`plans-progress-fill${isComplete ? " is-complete" : ""}`} style={{ width: `${progress}%` }} /></span>}
+                {progress !== null && <span className="plans-progress-track" aria-label={t("rail.plans.progressAria", { progress })}><span className={`plans-progress-fill${isComplete ? " is-complete" : ""}`} style={{ width: `${progress}%` }} /></span>}
               </button>
-              <button type="button" className="plans-copy" onClick={(event) => copyPlanPath(event, plan.name)} aria-label={copiedName === plan.name ? `Copied plans/${plan.name}` : `Copy plans/${plan.name}`}>
-                {copiedName === plan.name ? "COPIED" : "COPY"}
+              <button type="button" className="plans-copy" onClick={(event) => copyPlanPath(event, plan.name)} aria-label={copiedName === plan.name ? t("rail.plans.copiedAria", { name: plan.name }) : t("rail.plans.copyAria", { name: plan.name })}>
+                {copiedName === plan.name ? t("rail.plans.copied") : t("rail.plans.copy")}
               </button>
             </div>
           );
@@ -369,15 +378,16 @@ function PlansList({ revealTarget, selectedName, state, onRetry, onRevealHandled
   );
 }
 
-function PlanReader({ state, onClose, onRetry }: PlanReaderProps) {
+function PlanReader({ state, language, onClose, onRetry }: PlanReaderProps) {
+  const t = useT();
   if (state.kind === "loading") {
     return (
       <div className="plans-reader-pane">
         <div className="plans-reader-head">
-          <span className="plans-reader-title">Plan</span>
+          <span className="plans-reader-title">{t("rail.plans.readerTitle")}</span>
           <CloseButton onClose={onClose} />
         </div>
-        <div className="plans-loading">Loading plan…</div>
+        <div className="plans-loading">{t("rail.plans.loadingPlan")}</div>
       </div>
     );
   }
@@ -386,25 +396,26 @@ function PlanReader({ state, onClose, onRetry }: PlanReaderProps) {
     return (
       <div className="plans-reader-pane">
         <div className="plans-reader-head">
-          <span className="plans-reader-title">Plan</span>
+          <span className="plans-reader-title">{t("rail.plans.readerTitle")}</span>
           <CloseButton onClose={onClose} />
         </div>
-        <ErrorState message="Unable to load plan." onRetry={onRetry} />
+        <ErrorState message={t("rail.plans.loadPlanError")} onRetry={onRetry} />
       </div>
     );
   }
 
-  return <PlanDocument plan={state.plan} onClose={onClose} />;
+  return <PlanDocument plan={state.plan} language={language} onClose={onClose} />;
 }
 
-function PlanDocument({ plan, onClose }: PlanDocumentProps) {
+function PlanDocument({ plan, language, onClose }: PlanDocumentProps) {
+  const t = useT();
   // plan 본문은 신뢰 불가 입력이다 — 렌더 HTML을 mount하기 전에 원격 이미지(추적 픽셀·IP 노출)와
   // 비-http 로컬 href(SPA hijack)를 무력화한다. 준거: file-explorer MarkdownViewer의 mount-전 처리.
   const html = useMemo(() => {
-    const doc = new DOMParser().parseFromString(renderMarkdown(plan.content).html, "text/html");
-    neutralizePlanDom(doc.body);
+    const doc = new DOMParser().parseFromString(renderMarkdown(plan.content, markdownCopyOptions(t)).html, "text/html");
+    neutralizePlanDom(doc.body, t);
     return doc.body.innerHTML;
-  }, [plan.content]);
+  }, [plan.content, t]);
   const markdownRootRef = useRef<HTMLDivElement | null>(null);
   const headingFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -432,23 +443,23 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
     if (!code) return;
     void navigator.clipboard?.writeText(code);
     const original = button.textContent;
-    button.textContent = "Copied";
+    button.textContent = t("rail.plans.codeCopied");
     window.setTimeout(() => {
       button.textContent = original;
     }, 1200);
-  }, []);
+  }, [t]);
 
   // mermaid 블록은 하이드레이터가 비동기로 SVG를 삽입한다 — mount-전 중화만으로는 비동기 삽입분이
   // 누락되므로, 삽입/속성 변화를 관찰해 즉시 재중화한다. 준거: file-explorer MarkdownViewer.
   useEffect(() => {
     const root = markdownRootRef.current;
     if (!root) return;
-    installDiagramHydrator(root);
-    neutralizePlanDom(root);
-    const observer = new MutationObserver(() => neutralizePlanDom(root));
+    installDiagramHydrator(root, diagramHydratorLabels(t));
+    neutralizePlanDom(root, t);
+    const observer = new MutationObserver(() => neutralizePlanDom(root, t));
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
     return () => observer.disconnect();
-  }, [html]);
+  }, [html, t]);
 
   useEffect(() => () => {
     if (headingFlashTimerRef.current) clearTimeout(headingFlashTimerRef.current);
@@ -460,14 +471,14 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
         <div className="plans-reader-heading">
           <h2 className="plans-reader-title">{plan.title}</h2>
           <span className="plans-reader-meta">
-            {plan.executionMode === "parallel" && <span className="plans-mode-badge">PARALLEL</span>}
-            {plan.waves.length} waves · {plan.tasksDone}/{plan.tasksTotal} tasks · updated {formatRelativeTime(plan.updatedAt)}
+            {plan.executionMode === "parallel" && <span className="plans-mode-badge">{t("rail.plans.parallelBadge")}</span>}
+            {t("rail.plans.readerMeta", { waves: plan.waves.length, done: plan.tasksDone, total: plan.tasksTotal, relative: formatRelativeTime(plan.updatedAt, language) })}
           </span>
         </div>
         <CloseButton onClose={onClose} />
       </div>
       <div className="plans-reader-body">
-        <div className="plans-wave-strip" aria-label="Wave progress">
+        <div className="plans-wave-strip" aria-label={t("rail.plans.waveProgressAria")}>
           {plan.waves.map((wave, waveIndex) => {
             const progressState = getWaveProgressState(wave.tasksDone, wave.tasksTotal);
             return (
@@ -482,7 +493,7 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
                         <div key={lane.id ?? `${wave.index}-${laneIndex}`} className={`plans-lane is-${laneState}`}>
                           <button type="button" className="plans-lane-id" onClick={() => jumpToHeading("h3", lane.heading)}>{lane.id ?? lane.heading}</button>
                           {lane.tasksTotal > 0 && <span className="plans-lane-count">{lane.tasksDone}/{lane.tasksTotal}</span>}
-                          {laneState === "ready" && <span className="plans-lane-ready">READY</span>}
+                          {laneState === "ready" && <span className="plans-lane-ready">{t("rail.plans.laneReady")}</span>}
                         </div>
                       );
                     })}
@@ -505,8 +516,9 @@ function PlanDocument({ plan, onClose }: PlanDocumentProps) {
 }
 
 function CloseButton({ onClose }: CloseButtonProps) {
+  const t = useT();
   return (
-    <button className="plans-close" type="button" aria-label="Close plan" onClick={onClose}>
+    <button className="plans-close" type="button" aria-label={t("rail.plans.closePlanAria")} onClick={onClose}>
       ✕
     </button>
   );
@@ -522,15 +534,16 @@ function EmptyState({ children, detail }: EmptyStateProps) {
 }
 
 function ErrorState({ message, onRetry }: ErrorStateProps) {
+  const t = useT();
   return (
     <div className="plans-error-state">
       <span>{message}</span>
-      <button className="plans-retry" type="button" onClick={onRetry}>Retry</button>
+      <button className="plans-retry" type="button" onClick={onRetry}>{t("common.retry")}</button>
     </div>
   );
 }
 
-function neutralizePlanDom(root: ParentNode): void {
+function neutralizePlanDom(root: ParentNode, t: Translate<CoreMessageKey>): void {
   for (const anchor of root.querySelectorAll("a[href]")) {
     const href = anchor.getAttribute("href") ?? "";
     if (!/^(https?:|mailto:|#)/i.test(href)) {
@@ -543,10 +556,13 @@ function neutralizePlanDom(root: ParentNode): void {
   // 상호작용 전에 메타데이터를 페치하므로, 로컬 복원 없이 전부 placeholder로 일관 차단한다.
   for (const element of root.querySelectorAll("img, video, audio, embed, object, iframe")) {
     const label = element.getAttribute("alt")?.trim() || element.getAttribute("title")?.trim();
-    const noun = element.tagName === "IMG" ? "Image" : "Media";
     const placeholder = element.ownerDocument.createElement("span");
     placeholder.className = "plans-md-blocked-image";
-    placeholder.textContent = label ? `${noun} blocked: ${label}` : `${noun} blocked`;
+    if (element.tagName === "IMG") {
+      placeholder.textContent = label ? t("rail.plans.imageBlockedNamed", { label }) : t("rail.plans.imageBlocked");
+    } else {
+      placeholder.textContent = label ? t("rail.plans.mediaBlockedNamed", { label }) : t("rail.plans.mediaBlocked");
+    }
     element.replaceWith(placeholder);
   }
   for (const element of root.querySelectorAll("source, track")) {

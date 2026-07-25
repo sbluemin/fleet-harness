@@ -29,8 +29,8 @@ describe("Codex schema UI contract", () => {
     const reader = await readFile(path.join(root, "core/client/src/codex/reading-controller.ts"), "utf8");
     const state = await readFile(path.join(root, "core/client/src/codex/state.ts"), "utf8");
     expect(navigator).toContain('data-mode="entries"'); expect(navigator).toContain('data-mode="schema"');
-    expect(navigator).toContain("Workspace schema"); expect(navigator).toContain("data-template-id");
-    expect(reader).toContain("renderMarkdown(document.content)");
+    expect(navigator).toContain('t("codex.nav.schema")'); expect(navigator).toContain("data-template-id");
+    expect(reader).toContain("renderMarkdown(document.content, markdownCopyOptions(t))");
     expect(reader).not.toContain("stageTemplateProposal"); expect(reader).not.toContain("approvePatch(");
     expect(navigator).toContain('disabled aria-disabled="true"');
     expect(navigator).toContain('catalog.schema.exists ?');

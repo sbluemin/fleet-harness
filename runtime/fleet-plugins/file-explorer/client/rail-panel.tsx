@@ -4,6 +4,8 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
+import { getT } from "./i18n/index.js";
+import { translateServerError } from "./i18n/server-errors.js";
 import { FileTree, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
@@ -22,7 +24,7 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
 export const fileExplorerPanel: RailPanelDescriptor = {
   id: "file-explorer",
-  title: "Files",
+  title: (locale) => getT(locale)("fileExplorer.panel.title"),
   defaultWidth: 360,
   icon: FileExplorerIcon,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
@@ -64,6 +66,7 @@ function makeFilesClient(theaterId: string | null): PluginFilesClient {
 
 function FileExplorerPanel(ctx: RailPanelContext) {
   const { theaterId } = ctx;
+  const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
   const { selectedPath, viewState, treePaneWidth } = useFileExplorerViewState(contextScope);
   const treePaneWidthRef = useRef(treePaneWidth);
@@ -78,7 +81,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
   const openFilePath = useCallback(async (relativePath: string, displayName?: string) => {
     if (!theaterId) {
-      setViewState(theaterId, { kind: "error", message: "no_theater" });
+      setViewState(theaterId, { kind: "error", message: translateServerError("no_theater", t) });
       return;
     }
     setSelectedPath(contextScope, relativePath);
@@ -112,14 +115,14 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       }
       setViewState(contextScope, { kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Unable to load file";
-      if (msg === "binary_file") {
+      const raw = e instanceof Error ? e.message : "Unable to load file";
+      if (raw === "binary_file") {
         setViewState(contextScope, { kind: "binary", name });
       } else {
-        setViewState(contextScope, { kind: "error", message: msg });
+        setViewState(contextScope, { kind: "error", message: translateServerError(raw, t) });
       }
     }
-  }, [contextScope, theaterId]);
+  }, [contextScope, t, theaterId]);
   useLayoutEffect(() => {
     if (!searchTarget || searchTarget.theaterId !== theaterId) return;
     setRevealTarget(searchTarget);
@@ -186,12 +189,12 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   ? "relativePath" in viewState ? viewState.relativePath : viewState.name
                   : ""}
               </span>
-              <button className="fexp-viewer-close" type="button" onClick={handleCloseViewer} aria-label="Close viewer">
+              <button className="fexp-viewer-close" type="button" onClick={handleCloseViewer} aria-label={t("fileExplorer.viewer.close")}>
                 ✕
               </button>
             </div>
             <div className="fexp-viewer-body">
-              {viewState.kind === "loading" && <div className="fexp-viewer-loading">Loading…</div>}
+              {viewState.kind === "loading" && <div className="fexp-viewer-loading">{t("fileExplorer.status.loading")}</div>}
               {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
               {viewState.kind === "code" && viewState.lang === "markdown" && (
                 <MarkdownViewer
@@ -200,16 +203,17 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   relativePath={viewState.relativePath}
                   theaterId={theaterId}
                   truncated={viewState.truncated}
+                  language={ctx.language}
                 />
               )}
               {viewState.kind === "code" && viewState.lang !== "markdown" && (
-                <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} />
+                <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} t={t} />
               )}
               {viewState.kind === "image" && (
                 <ImageViewer src={viewState.src} name={viewState.name} />
               )}
               {viewState.kind === "binary" && (
-                <BinaryViewer name={viewState.name} />
+                <BinaryViewer name={viewState.name} t={t} />
               )}
             </div>
           </div>
@@ -229,6 +233,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           selectedPath={selectedPath}
           revealTarget={revealTarget}
           onSelect={handleSelect}
+          t={t}
         />
       </div>
     </div>

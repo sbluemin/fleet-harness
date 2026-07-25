@@ -6,7 +6,8 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import type { CompareResult, DiffFileEntry } from "../server/types.js";
 import { ChangedFiles } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
-import { isRemoteHeadRef, type RepositoryRefItem, type RepositoryRefs } from "./rail-panel.js";
+import { getT } from "./i18n/index.js";
+import { isRemoteHeadRef, type RepositoryRefs } from "./rail-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth, installPointerDragLifecycle } from "./rail-layout.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -64,6 +65,7 @@ function saveCompareSelection(theaterId: string, repoRel: string, base: string, 
 // ─── CompareView ─────────────────────────────────────────────────────────────
 
 export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs, onFileOpenChange }: CompareViewProps) {
+  const t = getT(ctx.language);
   const [base, setBase] = useState("");
   const [head, setHead] = useState("");
   const [result, setResult] = useState<CompareState>({ kind: "idle" });
@@ -162,18 +164,18 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
   const headRefOptions = useMemo((): readonly SelectOption[] => {
     const options: SelectOption[] = [];
     if (showHeadOption) options.push({ value: "HEAD", label: "HEAD" });
-    for (const item of refs.branches) options.push({ value: item.ref, label: `LOCAL · ${item.label}` });
-    for (const item of remoteRefs) options.push({ value: item.ref, label: `REMOTES · ${item.label}` });
-    for (const item of refs.tags) options.push({ value: item.ref, label: `TAGS · ${item.label}` });
+    for (const item of refs.branches) options.push({ value: item.ref, label: t("repository.compare.optionLocal", { label: item.label }) });
+    for (const item of remoteRefs) options.push({ value: item.ref, label: t("repository.compare.optionRemotes", { label: item.label }) });
+    for (const item of refs.tags) options.push({ value: item.ref, label: t("repository.compare.optionTags", { label: item.label }) });
     return options;
-  }, [refs.branches, refs.tags, remoteRefs, showHeadOption]);
+  }, [refs.branches, refs.tags, remoteRefs, showHeadOption, t]);
   const baseRefOptions = useMemo(
-    (): readonly SelectOption[] => [{ value: "", label: "Select base…", disabled: true }, ...headRefOptions],
-    [headRefOptions],
+    (): readonly SelectOption[] => [{ value: "", label: t("repository.compare.selectBase"), disabled: true }, ...headRefOptions],
+    [headRefOptions, t],
   );
   const refSelect = (side: "base" | "head", value: string) => (
     <Select
-      label={side === "base" ? "Base ref" : "Head ref"}
+      label={side === "base" ? t("repository.compare.baseRef") : t("repository.compare.headRef")}
       value={value}
       options={side === "base" ? baseRefOptions : headRefOptions}
       onChange={(next) => chooseRef(side, next)}
@@ -191,24 +193,24 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
 
   return (
     <div className="repository-compare">
-      {refsError ? <div className="history-error">Unable to load refs<button type="button" className="repository-refresh-btn" onClick={onRetryRefs}>Retry</button></div> : <div className="repository-compare-controls">
+      {refsError ? <div className="history-error">{t("repository.discovery.loadRefsFailed")}<button type="button" className="repository-refresh-btn" onClick={onRetryRefs}>{t("repository.common.retry")}</button></div> : <div className="repository-compare-controls">
         {refSelect("base", base)}
         <span className="repository-compare-arrow" aria-hidden="true">…</span>
         {refSelect("head", head)}
-        <button type="button" className="repository-refresh-btn repository-compare-run" disabled={!canCompare} onClick={runCompare}>Compare</button>
+        <button type="button" className="repository-refresh-btn repository-compare-run" disabled={!canCompare} onClick={runCompare}>{t("repository.compare.run")}</button>
       </div>}
       <div ref={rootRef} className={`repository-root${selected ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selected ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
         {selected && compareSelection ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selected.path}</span><button type="button" onClick={() => setSelected(null)}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selected} mode="unified" compare={compareSelection} /></div> : null}
         {selected ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
         <div className="repository-list-pane repository-compare-results">
-          {result.kind === "idle" && <div className="history-empty">Select base and head refs, then run Compare.</div>}
-          {result.kind === "loading" && <div className="history-empty">Comparing…</div>}
-          {result.kind === "ok" && result.files.length === 0 && <div className="history-empty">No differences between the selected refs.</div>}
+          {result.kind === "idle" && <div className="history-empty">{t("repository.compare.idle")}</div>}
+          {result.kind === "loading" && <div className="history-empty">{t("repository.compare.comparing")}</div>}
+          {result.kind === "ok" && result.files.length === 0 && <div className="history-empty">{t("repository.compare.noDifferences")}</div>}
           {/* 무관 히스토리 ref 쌍은 오류가 아니라 안내로 표면화한다 */}
-          {result.kind === "error" && result.message === "no_merge_base" && <div className="history-empty">The selected refs share no common history.</div>}
+          {result.kind === "error" && result.message === "no_merge_base" && <div className="history-empty">{t("repository.compare.noMergeBase")}</div>}
           {(result.kind === "notice" || (result.kind === "error" && result.message !== "no_merge_base") || (result.kind === "ok" && result.files.length > 0)) && (
             <>
-              {result.kind === "ok" && result.mergeBase && <div className="repository-compare-meta">merge-base <span>{result.mergeBase}</span></div>}
+              {result.kind === "ok" && result.mergeBase && <div className="repository-compare-meta">{t("repository.compare.mergeBase")} <span>{result.mergeBase}</span></div>}
               <ChangedFiles
                 state={result.kind === "ok" ? { kind: "ok", files: result.files } : result}
                 onRetry={runCompare}
@@ -216,8 +218,9 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
                 selectedPath={selected?.path ?? null}
                 onSelect={setSelected}
                 filterText=""
+                t={t}
               />
-              {result.kind === "ok" && result.truncated && <div className="history-truncated">Comparison capped — file list truncated.</div>}
+              {result.kind === "ok" && result.truncated && <div className="history-truncated">{t("repository.compare.capped")}</div>}
             </>
           )}
         </div>

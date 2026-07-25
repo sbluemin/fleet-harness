@@ -5,38 +5,49 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 
 import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
-import { analysisCopy, translateAnalysisText, type AnalysisCopyKey, type AnalysisLanguage } from "./analysis-i18n.js";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
 import { useAnalysisStore } from "./analysis-store.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 
 const SUGGESTIONS = [
-  { icon: "◈", tone: "aurora", text: "Walk me through how this session unfolded" },
-  { icon: "●", tone: "aurora", text: "What is the agent doing right now?" },
-  { icon: "▲", tone: "coral", text: "Flag anything I should review" },
-  { icon: "≡", tone: "brass", text: "Draft a handoff brief" },
-] as const;
+  { icon: "◈", tone: "aurora", textKey: "terminal.analyst.suggestion.walkthrough" },
+  { icon: "●", tone: "aurora", textKey: "terminal.analyst.suggestion.whatDoing" },
+  { icon: "▲", tone: "coral", textKey: "terminal.analyst.suggestion.flagReview" },
+  { icon: "≡", tone: "brass", textKey: "terminal.analyst.suggestion.handoffBrief" },
+] as const satisfies readonly {
+  readonly icon: string;
+  readonly tone: string;
+  readonly textKey: TerminalMessageKey;
+}[];
 const FOLLOW_UPS = [
-  { icon: "◈", tone: "aurora", label: "Go deeper on the last answer", text: "Go deeper on your previous answer with more evidence citations." },
-  { icon: "▲", tone: "coral", label: "Check for intent drift", text: "Review this session for intent drift against my stated goals." },
-  { icon: "≡", tone: "brass", label: "Turn this into an artifact", text: "Turn your previous answer into a published artifact." },
-  { icon: "●", tone: "aurora", label: "What is the agent doing now?", text: "What is the agent doing right now?" },
-] as const;
+  { icon: "◈", tone: "aurora", labelKey: "terminal.analyst.followup.goDeeper", textKey: "terminal.analyst.prompt.goDeeper" },
+  { icon: "▲", tone: "coral", labelKey: "terminal.analyst.followup.intentDrift", textKey: "terminal.analyst.prompt.intentDrift" },
+  { icon: "≡", tone: "brass", labelKey: "terminal.analyst.followup.toArtifact", textKey: "terminal.analyst.prompt.toArtifact" },
+  { icon: "●", tone: "aurora", labelKey: "terminal.analyst.followup.whatDoingNow", textKey: "terminal.analyst.suggestion.whatDoing" },
+] as const satisfies readonly {
+  readonly icon: string;
+  readonly tone: string;
+  readonly labelKey: TerminalMessageKey;
+  readonly textKey: TerminalMessageKey;
+}[];
 const SLASH_COMMANDS = [
-  { command: "/now", descriptionKey: "Current state — what the agent is doing right now", templateKey: "What is the agent doing right now?" },
-  { command: "/drift", descriptionKey: "Intent drift review against settled goals", templateKey: "Review this session for intent drift against my stated goals." },
-  { command: "/brief", descriptionKey: "Handoff brief as an artifact", templateKey: "Draft a handoff brief and publish it as an artifact." },
-  { command: "/risks", descriptionKey: "Flag anything that needs review", templateKey: "Flag anything I should review before this work continues." },
-  { command: "/timeline", descriptionKey: "How the session unfolded, end to end", templateKey: "Walk me through how this session unfolded." },
+  { command: "/now", descriptionKey: "terminal.analyst.slash.now", templateKey: "terminal.analyst.suggestion.whatDoing" },
+  { command: "/drift", descriptionKey: "terminal.analyst.slash.drift", templateKey: "terminal.analyst.prompt.intentDrift" },
+  { command: "/brief", descriptionKey: "terminal.analyst.slash.brief", templateKey: "terminal.analyst.prompt.handoffBriefArtifact" },
+  { command: "/risks", descriptionKey: "terminal.analyst.slash.risks", templateKey: "terminal.analyst.prompt.flagReviewBeforeContinue" },
+  { command: "/timeline", descriptionKey: "terminal.analyst.slash.timeline", templateKey: "terminal.analyst.prompt.walkthrough" },
 ] as const satisfies readonly {
   readonly command: string;
-  readonly descriptionKey: AnalysisCopyKey;
-  readonly templateKey: AnalysisCopyKey;
+  readonly descriptionKey: TerminalMessageKey;
+  readonly templateKey: TerminalMessageKey;
 }[];
 export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
   const { state, dispatch, send, stop, reset } = useAnalysisStore(context);
   const language = context.language ?? "en";
+  const t = getT(language);
   const reducedMotion = usePrefersReducedMotion();
   const [slashSelection, setSlashSelection] = React.useState(0);
   const [slashDismissed, setSlashDismissed] = React.useState(false);
@@ -86,8 +97,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   }, []);
   React.useEffect(() => {
     const chat = chatRef.current;
-    if (chat) installDiagramHydrator(chat);
-  }, []);
+    if (chat) installDiagramHydrator(chat, diagramHydratorLabels(language));
+  }, [language]);
   React.useEffect(() => {
     const previousCount = previousArtifactCountRef.current;
     previousArtifactCountRef.current = artifactCount;
@@ -122,7 +133,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const selectSlashCommand = (index: number) => {
     const selected = slashMatches[index];
     if (!selected) return;
-    dispatch({ type: "set-draft", draft: analysisCopy(language, selected.templateKey) });
+    dispatch({ type: "set-draft", draft: t(selected.templateKey) });
     setSlashDismissed(true);
     setSlashSelection(0);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -136,17 +147,17 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   }, [language]);
 
   return (
-    <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label={analysisCopy(language, "Session Analyst chat")} data-phase={state.phase}>
+    <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label={t("terminal.analyst.chatAria")} data-phase={state.phase}>
       {supportsCompanionVisibility ? (
         <button
           ref={artifactsChipRef}
           type="button"
           className={`session-analyst-handle session-analyst-handle--artifacts${artifactCount === 0 ? " is-waiting" : ""}${artifactAuthoring ? " is-authoring" : ""}`}
-          aria-label={analysisCopy(language, artifactsVisible ? "Hide Artifacts" : "Open Artifacts")}
+          aria-label={t(artifactsVisible ? "terminal.analyst.hideArtifacts" : "terminal.analyst.openArtifacts")}
           aria-pressed={artifactsVisible}
           aria-disabled={artifactCount === 0}
           tabIndex={artifactCount === 0 ? -1 : undefined}
-          title={artifactAuthoring ? analysisCopy(language, "The analyst is authoring an artifact…") : artifactCount === 0 ? analysisCopy(language, "Artifacts the analyst publishes appear here") : undefined}
+          title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
           onClick={() => {
             if (!setCompanionPanelVisible || artifactCount === 0) return;
             if (artifactsVisible) dispatch({ type: "artifacts-chip-disarm" });
@@ -156,7 +167,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
           <span className="session-analyst-handle__chev" aria-hidden="true">{artifactsVisible ? "«" : "»"}</span>
           {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst-handle__count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
           {artifactAuthoring ? <span className="session-analyst-handle__count">…</span> : null}
-          <span className="session-analyst-handle__label">{analysisCopy(language, "ARTIFACTS")}</span>
+          <span className="session-analyst-handle__label">{t("terminal.analyst.artifactsHandle")}</span>
         </button>
       ) : null}
       <PanelHeader state={state} language={language} onReset={() => { void reset().catch(() => {}); }} />
@@ -167,7 +178,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               {state.entries.map((entry, index) => (
                 <li className={`session-analyst__message session-analyst__message--${entry.role}`} key={`${entry.role}-${index}`}>
                   {entry.role === "analyst"
-                    ? <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={state.busy && index === state.entries.length - 1} />
+                    ? <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={state.busy && index === state.entries.length - 1} language={language} />
                     : entry.text}
                 </li>
               ))}
@@ -176,14 +187,14 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             <div className="session-analyst__hero-wrap">
               <header className="session-analyst__hero">
                 <span className="session-analyst__sigil" aria-hidden="true">✳</span>
-                <h2>{analysisCopy(language, "Ask about this session")}</h2>
-                <p>{analysisCopy(language, "Review, explain, and summarize this session — without affecting the host agent.")}</p>
+                <h2>{t("terminal.analyst.askAboutSession")}</h2>
+                <p>{t("terminal.analyst.heroBody")}</p>
               </header>
               <div className="session-analyst__suggestions">
                 {SUGGESTIONS.map((suggestion) => (
-                  <button type="button" key={suggestion.text} onClick={() => void submit(analysisCopy(language, suggestion.text), false)}>
+                  <button type="button" key={suggestion.textKey} onClick={() => void submit(t(suggestion.textKey), false)}>
                     <span className="session-analyst__suggestion-icon" data-tone={suggestion.tone} aria-hidden="true">{suggestion.icon}</span>
-                    {analysisCopy(language, suggestion.text)}
+                    {t(suggestion.textKey)}
                   </button>
                 ))}
               </div>
@@ -205,21 +216,21 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
           <div className="session-analyst__queue" aria-live="polite">
             {state.queue.map((text, index) => (
               <div className="session-analyst__queue-item" key={`${text}-${index}`}>
-                <span className="session-analyst__queue-tag">{analysisCopy(language, "QUEUED")}</span>
+                <span className="session-analyst__queue-tag">{t("terminal.analyst.queued")}</span>
                 <span className="session-analyst__queue-text">{text}</span>
-                <button type="button" aria-label={analysisCopy(language, "Cancel queued question {index + 1}", { "index + 1": index + 1 })} onClick={() => dispatch({ type: "queue-cancel", index })}>✕</button>
+                <button type="button" aria-label={t("terminal.analyst.cancelQueued", { "index + 1": index + 1 })} onClick={() => dispatch({ type: "queue-cancel", index })}>✕</button>
               </div>
             ))}
           </div>
         ) : null}
         {state.phase === "complete" && !state.busy && hasInteracted ? (
           <div className="session-analyst__followups">
-            <span className="session-analyst__followups-label">{analysisCopy(language, "FOLLOW UP")}</span>
+            <span className="session-analyst__followups-label">{t("terminal.analyst.followUp")}</span>
             <div className="session-analyst__followups-row">
               {FOLLOW_UPS.map((item) => (
-                <button type="button" key={item.label} onClick={() => void submit(analysisCopy(language, item.text), false)}>
+                <button type="button" key={item.labelKey} onClick={() => void submit(t(item.textKey), false)}>
                   <span className="session-analyst__suggestion-icon" data-tone={item.tone} aria-hidden="true">{item.icon}</span>
-                  {analysisCopy(language, item.label)}
+                  {t(item.labelKey)}
                 </button>
               ))}
             </div>
@@ -227,8 +238,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
         ) : null}
         <form className={`session-analyst__composer ${hasInteracted ? "is-docked" : "is-initial"}${animateDock ? " is-docking" : ""}${state.busy ? " is-working" : ""}`} aria-busy={state.busy} onSubmit={(event) => { event.preventDefault(); void submit(state.draft, true); }}>
           {slashOpen ? (
-            <div id={slashListboxId} className="session-analyst__slash" role="listbox" aria-label={analysisCopy(language, "Analysis commands")}>
-              <span className="session-analyst__slash-heading">{analysisCopy(language, "Analysis commands")}</span>
+            <div id={slashListboxId} className="session-analyst__slash" role="listbox" aria-label={t("terminal.analyst.commands")}>
+              <span className="session-analyst__slash-heading">{t("terminal.analyst.commands")}</span>
               {slashMatches.map((item, index) => (
                 <button
                   type="button"
@@ -241,16 +252,16 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   onClick={() => selectSlashCommand(index)}
                 >
                   <span>{item.command}</span>
-                  <small>{analysisCopy(language, item.descriptionKey)}</small>
+                  <small>{t(item.descriptionKey)}</small>
                 </button>
               ))}
             </div>
           ) : null}
-          {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label={analysisCopy(language, "Initial analysis settings")}>
+          {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label={t("terminal.analyst.initialSettings")}>
             <span className="session-analyst__select">
               <Select
                 compact
-                label={analysisCopy(language, "Analysis CLI")}
+                label={t("terminal.analyst.cli")}
                 value={state.cliId}
                 disabled={state.started || state.selectionLocked || !state.catalog}
                 options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
@@ -260,7 +271,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             <span className="session-analyst__select">
               <Select
                 compact
-                label={analysisCopy(language, "Analysis model")}
+                label={t("terminal.analyst.model")}
                 value={state.model}
                 disabled={state.started || state.selectionLocked || !model}
                 options={cli?.models.map((item) => ({ value: item.id, label: item.label })) ?? []}
@@ -270,10 +281,10 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             <span className="session-analyst__select">
               <Select
                 compact
-                label={analysisCopy(language, "Analysis effort")}
+                label={t("terminal.analyst.effort")}
                 value={state.effort}
                 disabled={state.started || state.selectionLocked || !model || !model.effortLevels.length}
-                options={model?.effortLevels.length ? model.effortLevels.map((item) => ({ value: item, label: item })) : [{ value: "", label: analysisCopy(language, "n/a") }]}
+                options={model?.effortLevels.length ? model.effortLevels.map((item) => ({ value: item, label: item })) : [{ value: "", label: t("terminal.analyst.na") }]}
                 onChange={(effort) => dispatch({ type: "select-effort", effort })}
               />
             </span>
@@ -288,10 +299,10 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 textAlign: "center",
                 transition: reducedMotion ? "none" : "opacity var(--duration-base) var(--ease-glide)",
               }}
-            >{state.selectionSaved ? analysisCopy(language, "Saved") : ""}</span>
+            >{state.selectionSaved ? t("terminal.analyst.saved") : ""}</span>
           </div> : null}
           <div className="session-analyst__composer-surface">
-            <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>{analysisCopy(language, "Ask about this session")}</label>
+            <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>{t("terminal.analyst.askAboutSession")}</label>
             <textarea
               ref={textareaRef}
               id={`analysis-${context.operationId}`}
@@ -300,7 +311,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               aria-controls={slashListboxId}
               aria-activedescendant={activeSlashOption ? slashOptionId(activeSlashOption.command) : undefined}
               rows={1}
-              placeholder={analysisCopy(language, "Ask about the session… (/ for commands)")}
+              placeholder={t("terminal.analyst.composerPlaceholder")}
               value={state.draft}
               onChange={(event) => {
                 dispatch({ type: "set-draft", draft: event.target.value });
@@ -336,15 +347,15 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               }}
             />
             {state.busy ? (
-              <button type="button" className="session-analyst__send session-analyst__stop" aria-label={analysisCopy(language, "Stop")} onClick={() => void stop()}>
+              <button type="button" className="session-analyst__send session-analyst__stop" aria-label={t("terminal.analyst.stop")} onClick={() => void stop()}>
                 <span aria-hidden="true" />
               </button>
             ) : null}
-            <button type="submit" className="session-analyst__send" aria-label={analysisCopy(language, state.busy ? "Queue question" : "Send")} disabled={!state.draft.trim()}>
+            <button type="submit" className="session-analyst__send" aria-label={t(state.busy ? "terminal.analyst.queueQuestion" : "terminal.analyst.send")} disabled={!state.draft.trim()}>
               <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
             </button>
           </div>
-          {state.busy ? <div className="session-analyst__composer-hint">{analysisCopy(language, "Enter queues the question — it fires when the analyst is ready")}</div> : null}
+          {state.busy ? <div className="session-analyst__composer-hint">{t("terminal.analyst.queueHint")}</div> : null}
         </form>
       </div>
     </section>
@@ -362,42 +373,45 @@ function resizeAnalysisTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 }
 
-function copyCodeToClipboard(button: HTMLElement, code: string, language: AnalysisLanguage): void {
+function copyCodeToClipboard(button: HTMLElement, code: string, language: ConsoleLocale): void {
   const clipboard = navigator.clipboard;
   if (!clipboard) return;
   let write: Promise<void>;
   try { write = clipboard.writeText(code); } catch { return; }
   const original = button.textContent;
+  const t = getT(language);
   void write.then(() => {
     if (!button.isConnected) return;
-    button.textContent = analysisCopy(language, "Copied");
+    button.textContent = t("terminal.analyst.copied");
     window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1_200);
   }).catch(() => undefined);
 }
 
-function PanelHeader({ state, language, onReset }: { readonly state: AnalysisState; readonly language: AnalysisLanguage; readonly onReset: () => void }) {
+function PanelHeader({ state, language, onReset }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly onReset: () => void }) {
+  const t = getT(language);
   const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
   return (
     <header className="session-analyst__panel-head">
       <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
-      <span className="session-analyst__panel-copy"><strong>{analysisCopy(language, "Session Analyst")}</strong><small>{analysisCopy(language, "Read-only intelligence for this operation")}</small></span>
-      <button type="button" className="session-analyst__reset" aria-label={analysisCopy(language, "Reset Session Analyst")} onClick={onReset} disabled={!canReset}>{analysisCopy(language, "Reset")}</button>
+      <span className="session-analyst__panel-copy"><strong>{t("terminal.companion.sessionAnalyst")}</strong><small>{t("terminal.analyst.subtitle")}</small></span>
+      <button type="button" className="session-analyst__reset" aria-label={t("terminal.analyst.resetAria")} onClick={onReset} disabled={!canReset}>{t("terminal.analyst.reset")}</button>
       <span className="session-analyst__panel-state"><i aria-hidden="true" />{headerState(state, language)}</span>
     </header>
   );
 }
 
-function ArtifactAuthorCard({ state, language, onOpen }: { readonly state: AnalysisState; readonly language: AnalysisLanguage; readonly onOpen?: () => void }) {
+function ArtifactAuthorCard({ state, language, onOpen }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly onOpen?: () => void }) {
+  const t = getT(language);
   const authoringElapsedMs = useArtifactAuthoringElapsedMs(state.artifactAuthoring?.startedAt ?? null);
   if (state.artifactAuthoring) {
     return (
       <div className="session-analyst__author-card is-authoring">
         <div className="session-analyst__author-head">
           <span className="session-analyst__author-sigil" aria-hidden="true">✳</span>
-          <strong className="session-analyst__author-title">{analysisCopy(language, "Publishing an artifact")}</strong>
+          <strong className="session-analyst__author-title">{t("terminal.analyst.publishingArtifact")}</strong>
           <time className="session-analyst__author-time">{formatElapsed(authoringElapsedMs)}</time>
         </div>
-        <p className="session-analyst__author-sub">{analysisCopy(language, "The analyst is authoring artifact content. It opens in Artifacts when it lands.")}</p>
+        <p className="session-analyst__author-sub">{t("terminal.analyst.authoringBody")}</p>
         <div className="session-analyst__author-track" aria-hidden="true"><span /></div>
       </div>
     );
@@ -408,21 +422,22 @@ function ArtifactAuthorCard({ state, language, onOpen }: { readonly state: Analy
     <div className="session-analyst__author-card is-done">
       <div className="session-analyst__author-head">
         <span className="session-analyst__author-sigil" aria-hidden="true">◆</span>
-        <strong className="session-analyst__author-title">{analysisCopy(language, "Artifact published — {title}", { title: published.artifact.title })}</strong>
+        <strong className="session-analyst__author-title">{t("terminal.analyst.artifactPublished", { title: published.artifact.title })}</strong>
         {published.durationMs === null ? null : <time className="session-analyst__author-time">{formatElapsed(published.durationMs)}</time>}
-        {onOpen ? <button type="button" className="session-analyst__author-open" onClick={onOpen}>{analysisCopy(language, "Open in Artifacts")}</button> : null}
+        {onOpen ? <button type="button" className="session-analyst__author-open" onClick={onOpen}>{t("terminal.analyst.openInArtifacts")}</button> : null}
       </div>
     </div>
   );
 }
 
-function EvidencePulse({ state, language }: { readonly state: AnalysisState; readonly language: AnalysisLanguage }) {
+function EvidencePulse({ state, language }: { readonly state: AnalysisState; readonly language: ConsoleLocale }) {
+  const t = getT(language);
   const elapsedMs = useElapsedMs(state);
   const elapsed = formatElapsed(elapsedMs);
   const activity = activityLabel(state.latestActivity, language);
   if (state.phase === "complete") return null;
   if (state.phase === "stopped") {
-    return <div className="session-analyst__receipt is-stopped" role="status">{analysisCopy(language, "Stopped · last confirmed: {activity} · {elapsed}", { activity, elapsed })}</div>;
+    return <div className="session-analyst__receipt is-stopped" role="status">{t("terminal.analyst.stoppedReceipt", { activity, elapsed })}</div>;
   }
   const isError = state.phase === "error";
   const current = currentActivity(state.latestActivity, language);
@@ -431,37 +446,40 @@ function EvidencePulse({ state, language }: { readonly state: AnalysisState; rea
       {!isError ? <span className="session-analyst__pulse-scan" aria-hidden="true" /> : null}
       <div className="session-analyst__pulse-main">
         <span className="session-analyst__pulse-orbit" aria-hidden="true" />
-        <span className="session-analyst__pulse-copy"><strong key={`${state.phase}-${current.label}`}>{isError ? translateAnalysisText(language, state.error ?? "") : current.label}</strong><small>{isError ? language === "ko" ? activity : `Last confirmed activity: ${activity}` : current.note}</small></span>
+        <span className="session-analyst__pulse-copy"><strong key={`${state.phase}-${current.label}`}>{isError ? translateServerMessage(language, state.error ?? "") : current.label}</strong><small>{isError ? language === "ko" ? activity : `Last confirmed activity: ${activity}` : current.note}</small></span>
         <time>{elapsed}</time>
       </div>
-      <span className="session-analyst__truth-mark">{analysisCopy(language, "Last confirmed activity only")}</span>
+      <span className="session-analyst__truth-mark">{t("terminal.analyst.lastConfirmedOnly")}</span>
     </div>
   );
 }
 
-function currentActivity(activity: AnalysisActivity | null, language: AnalysisLanguage): { readonly label: string; readonly note: string } {
+function currentActivity(activity: AnalysisActivity | null, language: ConsoleLocale): { readonly label: string; readonly note: string } {
+  const t = getT(language);
   if (!activity || activity.kind === "starting") return {
-    label: analysisCopy(language, "Starting analyst"),
-    note: analysisCopy(language, activity?.connected ? "Analyst connection confirmed" : "Starting a new analysis session"),
+    label: t("terminal.analyst.activity.starting"),
+    note: t(activity?.connected ? "terminal.analyst.activity.connected" : "terminal.analyst.activity.startingSession"),
   };
-  if (activity.kind === "reasoning") return { label: analysisCopy(language, "Reasoning over session"), note: analysisCopy(language, "Thought event received · content hidden") };
-  if (activity.kind === "tool") return { label: analysisCopy(language, "Using {title}", { title: activity.title }), note: analysisCopy(language, "Tool status: {status}", { status: activity.status }) };
-  return { label: analysisCopy(language, "Writing answer"), note: analysisCopy(language, "Answer chunk received") };
+  if (activity.kind === "reasoning") return { label: t("terminal.analyst.activity.reasoning"), note: t("terminal.analyst.activity.thoughtHidden") };
+  if (activity.kind === "tool") return { label: t("terminal.analyst.activity.usingTool", { title: activity.title }), note: t("terminal.analyst.activity.toolStatus", { status: activity.status }) };
+  return { label: t("terminal.analyst.activity.writing"), note: t("terminal.analyst.activity.answerChunk") };
 }
 
-function activityLabel(activity: AnalysisActivity | null, language: AnalysisLanguage): string {
-  if (!activity || activity.kind === "starting") return analysisCopy(language, "Starting analyst");
-  if (activity.kind === "reasoning") return analysisCopy(language, "Reasoning over session");
-  if (activity.kind === "tool") return `${analysisCopy(language, "Using {title}", { title: activity.title })} (${activity.status})`;
-  return analysisCopy(language, "Writing answer");
+function activityLabel(activity: AnalysisActivity | null, language: ConsoleLocale): string {
+  const t = getT(language);
+  if (!activity || activity.kind === "starting") return t("terminal.analyst.activity.starting");
+  if (activity.kind === "reasoning") return t("terminal.analyst.activity.reasoning");
+  if (activity.kind === "tool") return `${t("terminal.analyst.activity.usingTool", { title: activity.title })} (${activity.status})`;
+  return t("terminal.analyst.activity.writing");
 }
 
-function headerState(state: AnalysisState, language: AnalysisLanguage): string {
-  if (state.phase === "error") return analysisCopy(language, "Needs attention");
-  if (state.busy) return analysisCopy(language, "Analyzing");
-  if (state.phase === "complete") return analysisCopy(language, "Complete");
-  if (state.phase === "stopped") return analysisCopy(language, "Stopped");
-  return analysisCopy(language, "Ready");
+function headerState(state: AnalysisState, language: ConsoleLocale): string {
+  const t = getT(language);
+  if (state.phase === "error") return t("terminal.analyst.state.needsAttention");
+  if (state.busy) return t("terminal.analyst.state.analyzing");
+  if (state.phase === "complete") return t("terminal.analyst.state.complete");
+  if (state.phase === "stopped") return t("terminal.analyst.state.stopped");
+  return t("terminal.analyst.state.ready");
 }
 
 function useElapsedMs(state: AnalysisState): number {

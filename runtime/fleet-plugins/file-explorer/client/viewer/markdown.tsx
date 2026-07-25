@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import "@fleet-console/markdown/styles.css";
 
+import {
+  diagramHydratorLabels,
+  getT,
+  markdownCopyOptions,
+  type FileExplorerMessageKey,
+} from "../i18n/index.js";
 import {
   buildFileExplorerImageSrc,
   isAllowedExternalMarkdownImageSrc,
@@ -18,43 +25,69 @@ interface MarkdownViewerProps {
   readonly relativePath: string;
   readonly theaterId: string | null;
   readonly truncated?: boolean;
+  readonly language: ConsoleLocale | undefined;
 }
 
 interface NeutralizeOptions {
   readonly allowLocalImageMarkers: boolean;
   readonly currentRelativePath: string;
   readonly theaterId: string | null;
+  readonly t: Translate<FileExplorerMessageKey>;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, truncated }: MarkdownViewerProps) {
+export function MarkdownViewer({
+  content,
+  onOpenPath,
+  relativePath,
+  theaterId,
+  truncated,
+  language,
+}: MarkdownViewerProps) {
+  const t = getT(language);
   // file-explorer는 신뢰할 수 없는 임의 .md를 미리보기하므로, 렌더 HTML을 DOM에 mount하기 전에
   // 위험 요소를 무력화한다. 로컬 이미지/링크는 안전한 console 내부 경로로만 되살리고, 외부
   // 이미지는 mount 전에 제거해야 추적(tracking pixel)·IP 노출을 막을 수 있다.
   const html = useMemo(() => {
-    const rendered = renderMarkdown(content).html;
+    const rendered = renderMarkdown(content, markdownCopyOptions(t)).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
-    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId });
+    neutralizeUntrustedDom(doc.body, {
+      allowLocalImageMarkers: false,
+      currentRelativePath: relativePath,
+      theaterId,
+      t,
+    });
     return doc.body.innerHTML;
-  }, [content, relativePath, theaterId]);
+  }, [content, relativePath, theaterId, t]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    installDiagramHydrator(root);
+    // 로케일 변경 시에도 라벨이 갱신되도록 매번 호출한다(hydrator는 root 재설치 시 라벨만 반영).
+    installDiagramHydrator(root, diagramHydratorLabels(t));
     // Mermaid 하이드레이터가 비동기로 삽입하는 노드/속성(SPA href 등)도 즉시 무력화한다
     // (mount 전 사전 처리만으로는 비동기 삽입분이 누락되기 때문).
-    neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId });
-    const observer = new MutationObserver(() => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId }));
+    neutralizeUntrustedDom(root, {
+      allowLocalImageMarkers: true,
+      currentRelativePath: relativePath,
+      theaterId,
+      t,
+    });
+    const observer = new MutationObserver(() => neutralizeUntrustedDom(root, {
+      allowLocalImageMarkers: true,
+      currentRelativePath: relativePath,
+      theaterId,
+      t,
+    }));
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
     return () => observer.disconnect();
-  }, [html, relativePath, theaterId]);
+  }, [html, relativePath, theaterId, t]);
 
   // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 처리한다.
   // codex는 자체 위임 핸들러를 두지만 file-explorer엔 없어 버튼이 무동작이었다 —
-  // pre[data-code]의 원본 코드를 클립보드에 복사하고 잠시 "Copied" 피드백을 표시한다.
+  // pre[data-code]의 원본 코드를 클립보드에 복사하고 잠시 복사됨 피드백을 표시한다.
   const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const button = (e.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
     if (!button) return;
@@ -62,11 +95,11 @@ export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, t
     if (!code) return;
     void navigator.clipboard?.writeText(code);
     const original = button.textContent;
-    button.textContent = "Copied";
+    button.textContent = t("fileExplorer.markdown.copied");
     window.setTimeout(() => {
       button.textContent = original;
     }, 1200);
-  }, []);
+  }, [t]);
   const handleLinkClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     const localLink = target.closest<HTMLElement>("[data-fexp-open-path]");
@@ -93,7 +126,7 @@ export function MarkdownViewer({ content, onOpenPath, relativePath, theaterId, t
 
   return (
     <div className="fexp-md-wrap">
-      {truncated && <div className="fexp-truncated-badge">File is too large — showing a partial preview</div>}
+      {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
       <div
         ref={rootRef}
         className="markdown-body"
@@ -156,14 +189,16 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
       continue;
     }
     element.removeAttribute("src");
-    if (element.tagName === "IMG") replaceBlockedImage(element);
+    if (element.tagName === "IMG") replaceBlockedImage(element, options.t);
   }
 }
 
-function replaceBlockedImage(element: Element): void {
+function replaceBlockedImage(element: Element, t: Translate<FileExplorerMessageKey>): void {
   const alt = element.getAttribute("alt")?.trim();
   const placeholder = element.ownerDocument.createElement("span");
   placeholder.className = "fexp-md-blocked-image";
-  placeholder.textContent = alt ? `Image blocked: ${alt}` : "Image blocked";
+  placeholder.textContent = alt
+    ? t("fileExplorer.viewer.imageBlockedNamed", { alt })
+    : t("fileExplorer.viewer.imageBlocked");
   element.replaceWith(placeholder);
 }

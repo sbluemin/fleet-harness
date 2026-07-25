@@ -1,10 +1,16 @@
+import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+
+import { getGlobalSettingsStoreState } from "./global-settings-store.js";
+import type { CoreMessageKey } from "./i18n/index.js";
 import { searchTokens } from "./operation-search.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, ThemeId } from "./types.js";
+import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
 export interface PaletteRailPanelInfo {
   readonly id: string;
-  readonly title: string;
+  readonly title: LocalizedText;
 }
 
 export type PaletteCommandAction =
@@ -34,11 +40,15 @@ export interface PaletteCommandEntry {
   readonly action: PaletteCommandAction;
 }
 
-export const PALETTE_THEMES: readonly { readonly id: ThemeId; readonly label: string }[] = [
-  { id: "instrument", label: "Instrument" },
-  { id: "maritime", label: "Maritime" },
-  { id: "carbon", label: "Carbon" },
-];
+type T = Translate<CoreMessageKey>;
+
+export function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; readonly label: string }[] {
+  return [
+    { id: "instrument", label: t("palette.theme.instrument") },
+    { id: "maritime", label: t("palette.theme.maritime") },
+    { id: "carbon", label: t("palette.theme.carbon") },
+  ];
+}
 
 export function isCommandModeInput(value: string): boolean {
   return value.startsWith(">");
@@ -48,8 +58,13 @@ export function commandModeQuery(value: string): string {
   return value.slice(1);
 }
 
-export function buildPaletteCommands(current: ConsoleState, railPanels: readonly PaletteRailPanelInfo[]): readonly PaletteCommandEntry[] {
+export function buildPaletteCommands(
+  current: ConsoleState,
+  railPanels: readonly PaletteRailPanelInfo[],
+  t: T,
+): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
+  const language = resolveActiveLocale();
   const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
   const activeOperation = current.operations.find(
     (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
@@ -57,7 +72,7 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
   for (const theater of current.theaters) {
     commands.push({
       commandId: `switch-theater:${theater.id}`,
-      label: `Switch theater: ${theater.label}`,
+      label: t("palette.switchTheater", { label: theater.label }),
       current: theater.id === current.activeTheaterId,
       action: { kind: "switch-theater", theaterId: theater.id },
     });
@@ -65,7 +80,7 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
   if (activeTheater) {
     commands.push({
       commandId: "new-operation",
-      label: `New Operation in ${activeTheater.label}`,
+      label: t("palette.newOperation", { label: activeTheater.label }),
       current: false,
       action: { kind: "new-operation" },
     });
@@ -76,14 +91,14 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
       if (resolveOperationActivity(operation, current.operationStatus) === "dormant") {
         commands.push({
           commandId: `resume-operation:${operation.id}`,
-          label: `Resume operation: ${operation.title}`,
+          label: t("palette.resumeOperation", { title: operation.title }),
           current: false,
           action: { kind: "resume-operation", operationId: operation.id },
         });
       }
       commands.push({
         commandId: `close-operation:${operation.id}`,
-        label: `Close operation: ${operation.title}`,
+        label: t("palette.closeOperation", { title: operation.title }),
         current: false,
         action: { kind: "close-operation", operationId: operation.id },
       });
@@ -91,20 +106,20 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
     if (theaterOperations.length > 0) {
       commands.push({
         commandId: "minimize-all-operations",
-        label: "Minimize all Operations",
+        label: t("palette.minimizeAll"),
         current: false,
         action: { kind: "minimize-all-operations" },
       });
     }
     commands.push({
       commandId: "toggle-formation",
-      label: "Toggle Formation view",
+      label: t("palette.toggleFormation"),
       current: false,
       action: { kind: "toggle-formation" },
     });
     commands.push({
       commandId: "toggle-status-axis",
-      label: "Toggle status axis",
+      label: t("palette.toggleStatusAxis"),
       current: false,
       action: { kind: "toggle-status-axis" },
     });
@@ -113,25 +128,25 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
     commands.push(
       {
         commandId: "rename-operation",
-        label: "Rename operation…",
+        label: t("palette.renameOperation"),
         current: false,
         action: { kind: "rename-operation", operationId: activeOperation.id },
       },
       {
         commandId: "assign-operation-group",
-        label: "Assign group…",
+        label: t("palette.assignGroup"),
         current: false,
         action: { kind: "assign-operation-group", operationId: activeOperation.id },
       },
       {
         commandId: "set-operation-accent",
-        label: "Set accent…",
+        label: t("palette.setAccent"),
         current: false,
         action: { kind: "set-operation-accent", operationId: activeOperation.id },
       },
       {
         commandId: "minimize-operation",
-        label: "Minimize operation",
+        label: t("palette.minimizeOperation"),
         current: false,
         action: { kind: "minimize-operation", operationId: activeOperation.id },
       },
@@ -140,47 +155,47 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
   for (const panel of railPanels) {
     commands.push({
       commandId: `open-rail-panel:${panel.id}`,
-      label: `Open panel: ${panel.title}`,
+      label: t("palette.openPanel", { title: resolveLocalizedText(panel.title, language) }),
       current: false,
       action: { kind: "open-rail-panel", panelId: panel.id },
     });
   }
   commands.push({
     commandId: "toggle-rail",
-    label: "Toggle Activity Rail",
+    label: t("palette.toggleRail"),
     current: false,
     action: { kind: "toggle-rail" },
   });
   commands.push({
     commandId: "toggle-sidebar",
-    label: "Toggle sidebar",
+    label: t("palette.toggleSidebar"),
     current: false,
     action: { kind: "toggle-sidebar" },
   });
-  for (const theme of PALETTE_THEMES) {
+  for (const theme of buildPaletteThemes(t)) {
     commands.push({
       commandId: `switch-theme:${theme.id}`,
-      label: `Switch theme: ${theme.label}`,
+      label: t("palette.switchTheme", { label: theme.label }),
       current: theme.id === current.activeTheme,
       action: { kind: "switch-theme", theme: theme.id },
     });
   }
   commands.push({
     commandId: "open-settings",
-    label: "Open Settings",
+    label: t("palette.openSettings"),
     current: false,
     action: { kind: "open-settings" },
   });
   commands.push({
     commandId: "open-keyboard-shortcuts",
-    label: "Open keyboard shortcuts",
+    label: t("palette.openKeyboardShortcuts"),
     current: false,
     action: { kind: "open-keyboard-shortcuts" },
   });
   if (current.releaseNotes.length > 0) {
     commands.push({
       commandId: "whats-new",
-      label: "What's new",
+      label: t("palette.whatsNew"),
       current: false,
       action: { kind: "whats-new" },
     });
@@ -195,4 +210,13 @@ export function filterPaletteCommands(commands: readonly PaletteCommandEntry[], 
     const haystack = command.label.toLocaleLowerCase();
     return tokens.every((token) => haystack.includes(token));
   });
+}
+
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
 }

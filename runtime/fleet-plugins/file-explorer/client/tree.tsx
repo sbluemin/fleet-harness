@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import type { FolderEntry, FolderListResult } from "../server/types.js";
+import type { FileExplorerMessageKey } from "./i18n/index.js";
+import { translateServerError } from "./i18n/server-errors.js";
 import type { FileSearchTarget } from "./search-navigation.js";
 
 import { FileIcon, FolderIcon } from "./file-icon.js";
@@ -15,6 +19,7 @@ interface FileTreeProps {
   readonly selectedPath: string | null;
   readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
+  readonly t: Translate<FileExplorerMessageKey>;
 }
 
 export interface FlatRow {
@@ -173,7 +178,7 @@ export function resolveTreeNavigation(rows: readonly FlatRow[], index: number, k
   return { kind: "none" };
 }
 
-export function FileTree({ contextKey, files, theaterId, selectedPath, revealTarget, onSelect }: FileTreeProps) {
+export function FileTree({ contextKey, files, theaterId, selectedPath, revealTarget, onSelect, t }: FileTreeProps) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -227,9 +232,10 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
       setError(null);
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-      setError(e instanceof Error ? e.message : "Unable to load folder");
+      const raw = e instanceof Error ? e.message : "Unable to load folder";
+      setError(translateServerError(raw, t));
     });
-  }, [contextKey, theaterId, currentPath, files]);
+  }, [contextKey, theaterId, currentPath, files, t]);
 
   useEffect(() => {
     if (!revealTarget || revealTarget.theaterId !== theaterId || revealTarget.requestId <= revealedRequestRef.current) return;
@@ -416,7 +422,8 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
       setError(null);
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-      setError(e instanceof Error ? e.message : "Unable to load folder");
+      const raw = e instanceof Error ? e.message : "Unable to load folder";
+      setError(translateServerError(raw, t));
     });
     // 펼쳐진 모든 폴더 재조회
     for (const relPath of expandedDirs) {
@@ -425,7 +432,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
         setChildResults((prev) => new Map(prev).set(relPath, r));
       }).catch(() => {});
     }
-  }, [contextKey, files, currentPath, expandedDirs, theaterId]);
+  }, [contextKey, files, currentPath, expandedDirs, theaterId, t]);
 
   const low = filterText.toLowerCase();
 
@@ -564,11 +571,11 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
     activateRow(row);
   };
 
-  if (!theaterId) return <div className="fexp-tree-empty">Select a Theater</div>;
+  if (!theaterId) return <div className="fexp-tree-empty">{t("fileExplorer.status.selectTheater")}</div>;
   // 전체 에러 화면은 보여줄 트리가 아예 없을 때(초기 로드 실패)만 —
   // 이전 result가 있으면 트리를 유지해 ↻ 재시도 경로를 보존한다
   if (error && !result) return <div className="fexp-tree-error">{error}</div>;
-  if (!result) return <div className="fexp-tree-loading">Loading…</div>;
+  if (!result) return <div className="fexp-tree-loading">{t("fileExplorer.status.loading")}</div>;
 
   return (
     <div className="fexp-tree-container">
@@ -576,13 +583,13 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
         <input
           type="text"
           className="fexp-filter-input"
-          placeholder="Filter…"
+          placeholder={t("fileExplorer.filter.placeholder")}
           value={filterText}
           onChange={(e) => {
             setFilterText(e.target.value);
             setFilterCollapsedDirs(new Set());
           }}
-          aria-label="Filter files"
+          aria-label={t("fileExplorer.filter.aria")}
         />
         {filterText && (
           <button
@@ -592,7 +599,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
               setFilterText("");
               setFilterCollapsedDirs(new Set());
             }}
-            aria-label="Clear filter"
+            aria-label={t("fileExplorer.filter.clear")}
           >
             ✕
           </button>
@@ -601,8 +608,8 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
           type="button"
           className="fexp-refresh-btn"
           onClick={handleRefresh}
-          aria-label="Refresh file tree"
-          title="Refresh file tree"
+          aria-label={t("fileExplorer.tree.refresh")}
+          title={t("fileExplorer.tree.refresh")}
         >
           ↻
         </button>
@@ -611,8 +618,8 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
           className={`fexp-hidden-toggle${showHidden ? " is-active" : ""}`}
           onClick={handleToggleHidden}
           aria-pressed={showHidden}
-          aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
-          title={showHidden ? "Hide hidden files" : "Show hidden files"}
+          aria-label={showHidden ? t("fileExplorer.tree.hideHidden") : t("fileExplorer.tree.showHidden")}
+          title={showHidden ? t("fileExplorer.tree.hideHidden") : t("fileExplorer.tree.showHidden")}
         >
           {showHidden ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -632,7 +639,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
         ref={treeRef}
         className="fexp-tree"
         role="tree"
-        aria-label="File tree"
+        aria-label={t("fileExplorer.tree.aria")}
         onScroll={shouldVirtualize ? handleScroll : undefined}
       >
         {false && result?.parentRelativePath !== null && !filterText && (
@@ -640,7 +647,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
             className="fexp-tree-up"
             type="button"
             onClick={() => setCurrentPath(result?.parentRelativePath ?? "")}
-            aria-label="Parent folder"
+            aria-label={t("fileExplorer.tree.parentFolder")}
           >
             ↑ ..
           </button>
@@ -673,13 +680,13 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
           ))
         )}
         {flatRows.length === 0 && filterText && (
-          <div className="fexp-tree-empty">No matching items</div>
+          <div className="fexp-tree-empty">{t("fileExplorer.status.noMatchingItems")}</div>
         )}
         {flatRows.length === 0 && !filterText && result.entries.length === 0 && (
-          <div className="fexp-tree-empty">This folder is empty</div>
+          <div className="fexp-tree-empty">{t("fileExplorer.status.emptyFolder")}</div>
         )}
         {hasOnlyHiddenEntries && (
-          <div className="fexp-tree-empty">Only hidden items — use the eye icon to show them</div>
+          <div className="fexp-tree-empty">{t("fileExplorer.status.onlyHiddenItems")}</div>
         )}
       </div>
     </div>

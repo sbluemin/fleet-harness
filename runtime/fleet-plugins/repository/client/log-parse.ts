@@ -1,4 +1,7 @@
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+
 import type { LogCommitEntry } from "../server/types.js";
+import { getT } from "./i18n/index.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -11,7 +14,7 @@ export interface RefBadge {
 
 // ─── functions ───────────────────────────────────────────────────────────────
 
-export function formatCommitTime(authorAt: number, now = new Date()): string {
+export function formatCommitTime(authorAt: number, now = new Date(), locale: ConsoleLocale | undefined = "en"): string {
   const date = new Date(authorAt * 1000);
   if (!Number.isFinite(date.getTime())) return "—";
 
@@ -19,9 +22,10 @@ export function formatCommitTime(authorAt: number, now = new Date()): string {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfCommit = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const dayOffset = Math.round((startOfToday - startOfCommit) / 86_400_000);
+  const t = getT(locale);
 
-  if (dayOffset === 0) return `Today ${time}`;
-  if (dayOffset === 1) return `Yesterday ${time}`;
+  if (dayOffset === 0) return t("repository.time.today", { time });
+  if (dayOffset === 1) return t("repository.time.yesterday", { time });
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 

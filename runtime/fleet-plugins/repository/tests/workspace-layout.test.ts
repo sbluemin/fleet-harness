@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { getT } from "../client/i18n/index.js";
 import {
   PREFS_WORKSPACE_DOCK_HEIGHT,
   PREFS_WORKSPACE_TREE_WIDTH,
@@ -82,7 +83,7 @@ describe("Repository workspace layout", () => {
       branches: 9,
       tags: 4,
       stashes: 1,
-    })).toEqual([
+    }, getT("en"))).toEqual([
       { id: "context", label: "CONTEXT", count: 3 },
       { id: "working", label: "WORKING", count: 5 },
       { id: "worktrees", label: "WORKTREES", count: 2 },

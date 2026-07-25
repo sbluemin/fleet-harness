@@ -1,5 +1,17 @@
 import type { EntryFrontmatter, SearchEntry } from "../api";
+import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
+import { formatDate, getT } from "../../i18n/index.js";
+import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
 import { escapeAttribute, escapeHtml } from "../utils/html";
+
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
 
 export interface EntryStatusBadge {
   label: string;
@@ -8,29 +20,21 @@ export interface EntryStatusBadge {
 }
 
 export function renderMetaChips(frontmatter: EntryFrontmatter | SearchEntry): string {
+  const locale = resolveActiveLocale();
+  const t = getT(locale);
   const tags = frontmatter.tags.map((tag) => `<span class="chip chip-tag">${escapeHtml(tag)}</span>`).join("");
   const badge = renderStatusBadge(frontmatter);
   return `
     <div class="meta-chips">
       ${tags}
       ${badge}
-      <span class="chip">Updated ${escapeHtml(formatDate(frontmatter.updated))}</span>
+      <span class="chip">${escapeHtml(t("codex.meta.updated", { date: formatDate(frontmatter.updated, locale) }))}</span>
     </div>
   `;
 }
 
 export function renderTagChips(tags: string[]): string {
   return tags.map((tag) => `<span class="chip chip-muted">${escapeHtml(tag)}</span>`).join("");
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function renderStatusBadge(frontmatter: EntryFrontmatter | SearchEntry): string {
@@ -40,6 +44,7 @@ function renderStatusBadge(frontmatter: EntryFrontmatter | SearchEntry): string 
 }
 
 function getEntryStatusBadge(frontmatter: EntryFrontmatter | SearchEntry, now: Date = new Date()): EntryStatusBadge | null {
+  const t = getT(resolveActiveLocale());
   const status = frontmatter.status;
   const stale = typeof frontmatter.revalidateAfter === "string"
     && !Number.isNaN(Date.parse(frontmatter.revalidateAfter))
@@ -48,14 +53,14 @@ function getEntryStatusBadge(frontmatter: EntryFrontmatter | SearchEntry, now: D
     return {
       label: status,
       tone: "deprecated",
-      title: stale ? `${status} · stale` : status,
+      title: stale ? t("codex.meta.statusStaleTitle", { status }) : status,
     };
   }
   if (stale) {
     return {
-      label: "stale",
+      label: t("codex.meta.stale"),
       tone: "stale",
-      title: frontmatter.revalidateAfter ?? "stale",
+      title: frontmatter.revalidateAfter ?? t("codex.meta.stale"),
     };
   }
   if (status === "current" || status === "draft") {

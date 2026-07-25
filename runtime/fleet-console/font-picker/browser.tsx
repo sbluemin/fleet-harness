@@ -19,6 +19,55 @@ export type FontPickerSelection =
   | { readonly source: "builtin"; readonly id: string }
   | { readonly source: "system"; readonly familyName: string };
 
+/** 소비자 카탈로그에서 주입하는 UI 라벨. 각 항목 optional — 기본값은 기존 영어와 바이트 동일. */
+export interface FontPickerLabels {
+  readonly browserAria?: string;
+  readonly searchLabel?: string;
+  readonly searchPlaceholder?: string;
+  readonly loading?: string;
+  readonly choicesAria?: string;
+  readonly builtInGroup?: string;
+  readonly installedGroup?: string;
+  readonly noMatch?: string;
+  readonly preview?: string;
+  readonly available?: string;
+  readonly unavailable?: string;
+  readonly fontSizeAria?: string;
+  readonly decreaseSizeAria?: string;
+  readonly sizeValueAria?: string;
+  readonly increaseSizeAria?: string;
+  readonly sizeSliderAria?: string;
+  readonly monospace?: string;
+  readonly systemFont?: string;
+  readonly savedSystemFont?: string;
+}
+
+type ResolvedFontPickerLabels = {
+  readonly [K in keyof Required<FontPickerLabels>]: string;
+};
+
+const DEFAULT_LABELS: ResolvedFontPickerLabels = {
+  browserAria: "Font browser",
+  searchLabel: "Search fonts",
+  searchPlaceholder: "Search installed fonts",
+  loading: "Loading installed fonts…",
+  choicesAria: "Font choices",
+  builtInGroup: "Built-in",
+  installedGroup: "Installed on this machine",
+  noMatch: "No fonts match this search.",
+  preview: "Preview",
+  available: "Available",
+  unavailable: "Unavailable",
+  fontSizeAria: "Font size",
+  decreaseSizeAria: "Decrease font size",
+  sizeValueAria: "Font size value",
+  increaseSizeAria: "Increase font size",
+  sizeSliderAria: "Font size slider",
+  monospace: "Monospace",
+  systemFont: "System font",
+  savedSystemFont: "Saved system font",
+};
+
 export interface FontPickerProps {
   readonly builtIns: readonly FontPickerBuiltIn[];
   readonly installedFonts: readonly FontPickerInstalledFont[];
@@ -31,6 +80,7 @@ export interface FontPickerProps {
   readonly loading?: boolean;
   readonly error?: string | null;
   readonly disabled?: boolean;
+  readonly labels?: FontPickerLabels;
   readonly onSelectionChange: (selection: FontPickerSelection) => void;
   readonly onSizeCommit: (size: number) => void | Promise<void>;
 }
@@ -51,13 +101,18 @@ interface IndexedFontPickerRow {
   readonly index: number;
 }
 
+function resolveLabels(labels?: FontPickerLabels): ResolvedFontPickerLabels {
+  return labels ? { ...DEFAULT_LABELS, ...labels } : DEFAULT_LABELS;
+}
+
 export function FontPicker(props: FontPickerProps): React.ReactElement {
   const { sizeRange } = props;
+  const labels = resolveLabels(props.labels);
   const [query, setQuery] = React.useState("");
   const [draftSize, setDraftSize] = React.useState(props.size);
   const commitQueue = React.useRef(Promise.resolve());
   const listboxId = React.useId();
-  const rows = React.useMemo(() => createRows(props), [props]);
+  const rows = React.useMemo(() => createRows(props, labels), [props, labels]);
   const filteredRows = React.useMemo(() => filterRows(rows, query), [rows, query]);
   const indexedRows = React.useMemo(() => filteredRows.map((row, index) => ({ row, index })), [filteredRows]);
   const [activeIndex, setActiveIndex] = React.useState(() => selectedRowIndex(rows, props.selected));
@@ -114,51 +169,51 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   };
 
   return (
-    <section className="fc-font-browser" aria-label="Font browser" data-disabled={props.disabled ? "true" : undefined}>
+    <section className="fc-font-browser" aria-label={labels.browserAria} data-disabled={props.disabled ? "true" : undefined}>
       <div className="fc-font-browser__panes">
       <div className="fc-font-browser__chooser">
-        <label className="fc-font-browser__search-label" htmlFor={`${listboxId}-search`}>Search fonts</label>
+        <label className="fc-font-browser__search-label" htmlFor={`${listboxId}-search`}>{labels.searchLabel}</label>
         <input
           id={`${listboxId}-search`}
           className="fc-font-browser__search"
           type="search"
           value={query}
           disabled={props.disabled}
-          placeholder="Search installed fonts"
+          placeholder={labels.searchPlaceholder}
           onChange={(event) => { setQuery(event.currentTarget.value); setActiveIndex(0); }}
         />
-        {props.loading ? <p className="fc-font-browser__state" role="status">Loading installed fonts…</p> : null}
+        {props.loading ? <p className="fc-font-browser__state" role="status">{labels.loading}</p> : null}
         {props.error ? <p className="fc-font-browser__state fc-font-browser__state--error" role="alert">{props.error}</p> : null}
         <div
           id={listboxId}
           className="fc-font-browser__listbox"
           role="listbox"
           tabIndex={props.disabled ? -1 : 0}
-          aria-label="Font choices"
+          aria-label={labels.choicesAria}
           aria-activedescendant={activeRow ? optionId(listboxId, activeIndex) : undefined}
           aria-busy={props.loading || undefined}
           onKeyDown={onListboxKeyDown}
         >
-          <FontGroup groupId={builtInsGroupId} label="Built-in" rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          <FontGroup groupId={builtInsGroupId} label={labels.builtInGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
-          <FontGroup groupId={installedGroupId} label="Installed on this machine" rows={indexedRows.filter(({ row }) => row.source === "system")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
-          {!props.loading && !indexedRows.length ? <p className="fc-font-browser__state">No fonts match this search.</p> : null}
+          <FontGroup groupId={installedGroupId} label={labels.installedGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "system")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          {!props.loading && !indexedRows.length ? <p className="fc-font-browser__state">{labels.noMatch}</p> : null}
         </div>
       </div>
       <aside className="fc-font-browser__preview" aria-live="polite">
         <div className="fc-font-browser__preview-head">
-          <span className="fc-font-browser__preview-label">Preview</span>
+          <span className="fc-font-browser__preview-label">{labels.preview}</span>
           <span className={`fc-font-browser__availability${selectedRow?.unavailable ? " fc-font-browser__availability--unavailable" : ""}`}>
-            {selectedRow?.unavailable ? "Unavailable" : "Available"}
+            {selectedRow?.unavailable ? labels.unavailable : labels.available}
           </span>
         </div>
         <p className="fc-font-browser__preview-copy" style={{ fontFamily: selectedRow?.previewFamily ?? props.fallbackStack, fontSize: `${draftSize}px` }}>
           {props.previewText}
         </p>
-        <div className="fc-font-browser__size-control" role="group" aria-label="Font size">
-          <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize <= sizeRange.min} onClick={() => commitSize(draftSize - sizeRange.step)} aria-label="Decrease font size">−</button>
-          <output className="fc-font-browser__size-value" aria-label="Font size value">{draftSize}px</output>
-          <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize >= sizeRange.max} onClick={() => commitSize(draftSize + sizeRange.step)} aria-label="Increase font size">+</button>
+        <div className="fc-font-browser__size-control" role="group" aria-label={labels.fontSizeAria}>
+          <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize <= sizeRange.min} onClick={() => commitSize(draftSize - sizeRange.step)} aria-label={labels.decreaseSizeAria}>−</button>
+          <output className="fc-font-browser__size-value" aria-label={labels.sizeValueAria}>{draftSize}px</output>
+          <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize >= sizeRange.max} onClick={() => commitSize(draftSize + sizeRange.step)} aria-label={labels.increaseSizeAria}>+</button>
         </div>
         <input
           className="fc-font-browser__range"
@@ -168,7 +223,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
           step={sizeRange.step}
           value={draftSize}
           disabled={props.disabled}
-          aria-label="Font size slider"
+          aria-label={labels.sizeSliderAria}
           onChange={(event) => setDraftSize(clampSize(Number(event.currentTarget.value), sizeRange))}
           onPointerUp={(event) => commitSize(Number(event.currentTarget.value))}
           onKeyUp={(event) => { if (["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp"].includes(event.key)) commitSize(Number(event.currentTarget.value)); }}
@@ -179,7 +234,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   );
 }
 
-function FontGroup({ groupId, label, rows, activeRow, selected, listboxId, disabled, onSelect }: { readonly groupId: string; readonly label: string; readonly rows: readonly IndexedFontPickerRow[]; readonly activeRow: FontPickerRow | null; readonly selected: FontPickerSelection; readonly listboxId: string; readonly disabled?: boolean; readonly onSelect: (index: number, selection: FontPickerSelection) => void }): React.ReactElement {
+function FontGroup({ groupId, label, unavailableLabel, rows, activeRow, selected, listboxId, disabled, onSelect }: { readonly groupId: string; readonly label: string; readonly unavailableLabel: string; readonly rows: readonly IndexedFontPickerRow[]; readonly activeRow: FontPickerRow | null; readonly selected: FontPickerSelection; readonly listboxId: string; readonly disabled?: boolean; readonly onSelect: (index: number, selection: FontPickerSelection) => void }): React.ReactElement {
   return (
     <div className="fc-font-browser__group" role="group" aria-labelledby={groupId}>
       <h3 id={groupId} className="fc-font-browser__group-label">{label}</h3>
@@ -197,14 +252,14 @@ function FontGroup({ groupId, label, rows, activeRow, selected, listboxId, disab
         >
           <span className="fc-font-browser__row-name" style={{ fontFamily: row.previewFamily }}>{row.label}</span>
           {row.description ? <span className="fc-font-browser__row-meta">{row.description}</span> : null}
-          {row.unavailable ? <span className="fc-font-browser__row-status">Unavailable</span> : null}
+          {row.unavailable ? <span className="fc-font-browser__row-status">{unavailableLabel}</span> : null}
         </button>
       ))}
     </div>
   );
 }
 
-function createRows(props: FontPickerProps): readonly FontPickerRow[] {
+function createRows(props: FontPickerProps, labels: ResolvedFontPickerLabels): readonly FontPickerRow[] {
   const builtInAliases = new Set<string>();
   const builtIns = props.builtIns.flatMap((font) => {
     const keys = [font.id, font.label, ...(font.aliases ?? [])].map(normalizeFontKey);
@@ -212,10 +267,10 @@ function createRows(props: FontPickerProps): readonly FontPickerRow[] {
     keys.forEach((key) => builtInAliases.add(key));
     return [{ id: `builtin-${font.id}`, label: font.label, family: font.family, previewFamily: font.family, source: "builtin" as const, selection: { source: "builtin" as const, id: font.id }, description: font.description, unavailable: false }];
   });
-  const installed = props.installedFonts.map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.monospace ? "Monospace" : "System font", unavailable: !fontResolves(font.family) }));
+  const installed = props.installedFonts.map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.monospace ? labels.monospace : labels.systemFont, unavailable: !fontResolves(font.family) }));
   const persistedSystemName = props.selected.source === "system" ? props.selected.familyName : null;
   if (persistedSystemName !== null && !installed.some((font) => font.family === persistedSystemName)) {
-    installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: "Saved system font", unavailable: true });
+    installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: true });
   }
   return [...builtIns, ...installed];
 }

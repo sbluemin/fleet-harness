@@ -1,6 +1,7 @@
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
+import { getT } from "../i18n/index.js";
 import { TerminalSurface } from "../shared/index.js";
 
 const SHELL_TICKET_PATH = "/plugins/terminal/shell/ticket";
@@ -9,7 +10,7 @@ const SHELL_WS_PATH = "/plugins/terminal/ws";
 export const shellOperationKind = defineOperationKind({
   pluginId: "terminal",
   type: "shell",
-  title: "Shell",
+  title: (locale) => getT(locale)("terminal.kind.shell"),
   subtitle: () => "shell",
   render: (context) => React.createElement(ShellOperationView, { context }),
 });
@@ -26,7 +27,7 @@ export const shellPlugin = definePlugin({
       theaterId,
       type: "shell",
       pluginId: "terminal",
-      title: "Shell",
+      title: getT("en")("terminal.kind.shell"),
       payload: { theaterId },
     });
     return { id: operation.id };
@@ -38,6 +39,7 @@ export const operationKinds = [shellOperationKind] as const;
 export const plugins = [shellPlugin] as const;
 
 function ShellOperationView({ context }: { readonly context: OperationRenderContext }) {
+  const t = getT(context.language ?? "en");
   const [relaunched, setRelaunched] = React.useState(false);
   const restoredDormant = context.operation.payload.restoredDormant === true && !relaunched;
   if (restoredDormant) {
@@ -51,8 +53,8 @@ function ShellOperationView({ context }: { readonly context: OperationRenderCont
           })
           .catch(() => {});
       }}>
-        <span className="canvas-operation-dormant-status">Dormant</span>
-        <span className="canvas-operation-dormant-action">Relaunch</span>
+        <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
+        <span className="canvas-operation-dormant-action">{t("terminal.shell.relaunch")}</span>
       </button>
     );
   }

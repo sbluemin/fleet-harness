@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
@@ -7,6 +8,7 @@ import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
 import { CompareView } from "./compare-view.js";
 import { fuzzyMatch } from "./fuzzy.js";
+import { getT, type RepositoryMessageKey } from "./i18n/index.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
@@ -14,6 +16,8 @@ import { HistoryPanel } from "./history-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
 import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
 import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./search-navigation.js";
+
+type T = Translate<RepositoryMessageKey>;
 
 type ViewMode = "list" | "tree";
 
@@ -138,6 +142,7 @@ export function buildRefListGroups(source: RefSource, refs: RepositoryRefs): Rep
   return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false })) }];
 }
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
+  const t = getT(ctx.language);
   const [repos, setRepos] = useState<readonly RepoCandidate[]>([]);
   const [reposError, setReposError] = useState(false);
   const [reposRetry, setReposRetry] = useState(0);
@@ -340,8 +345,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile.entry} mode={hunkMode} /></div> : null}
     {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
     <div className="repository-list-pane">
-      <div className="repository-toolbar"><div className="repository-filter"><input type="text" className="repository-filter-input" placeholder="Filter…" aria-label="Filter changed files" value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="repository-filter-clear" aria-label="Clear filter" onClick={() => setFilterText("")}>✕</button> : null}</div><div className="repository-view-toggle"><button type="button" className={`repository-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title="List view" aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`repository-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title="Tree view" aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
-      <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} />
+      <div className="repository-toolbar"><div className="repository-filter"><input type="text" className="repository-filter-input" placeholder={t("repository.common.filterPlaceholder")} aria-label={t("repository.common.filterChangedFiles")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="repository-filter-clear" aria-label={t("repository.common.clearFilter")} onClick={() => setFilterText("")}>✕</button> : null}</div><div className="repository-view-toggle"><button type="button" className={`repository-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title={t("repository.common.listView")} aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`repository-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title={t("repository.common.treeView")} aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
+      <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} t={t} />
     </div>
   </div>;
   const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} />;
@@ -353,10 +358,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   </>;
   return (
     <div className="repository-unified is-workspace">
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? "Repository"}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div>
+      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
-        <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label="Resize source tree" />
+        <WorkspaceTree t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
+        <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
         <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
     </div>
@@ -364,6 +369,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 }
 
 interface WorkspaceTreeProps {
+  readonly t: T;
   readonly repos: readonly RepoCandidate[];
   readonly reposError: boolean;
   readonly reposTruncated: boolean;
@@ -385,7 +391,7 @@ interface WorkspaceTreeProps {
   readonly onRef: (ref: string) => void;
 }
 
-export function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef }: WorkspaceTreeProps) {
+export function WorkspaceTree({ t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef }: WorkspaceTreeProps) {
   const [query, setQuery] = useState("");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(["tags", "stashes"]));
   const rootRepos = repos.filter((repo) => repo.kind === "root").sort((a, b) => a.name.localeCompare(b.name));
@@ -404,7 +410,7 @@ export function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, wo
     branches: branchCount,
     tags: refs.tags.length,
     stashes: refs.stashes.length,
-  });
+  }, t);
   const sectionHeader = (id: (typeof sections)[number]["id"]) => {
     const section = sections.find((item) => item.id === id)!;
     const collapsed = collapsedSections.has(id);
@@ -423,36 +429,36 @@ export function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, wo
     </button>;
   };
   const refRows = (refSource: RefSource) => buildRefListGroups(refSource, refs).map((group) => <div key={group.label ?? refSource} className="repository-ws-ref-group">
-    {group.label && <span className="repository-ws-ref-subhead">{group.label}</span>}
+    {group.label && <span className="repository-ws-ref-subhead">{t(group.label === "LOCAL" ? "repository.refs.local" : "repository.refs.remotes")}</span>}
     {group.rows.map((row) => <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`} disabled={row.ref === null} onClick={() => row.ref && onRef(row.ref)}>
       <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}{row.sub && <i>{row.sub}</i>}
     </button>)}
   </div>);
   return <aside className="repository-ws-tree">
-    <RepositoryDiscovery query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={matchedCount} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={reposTruncated} onEnter={() => {
+    <RepositoryDiscovery t={t} query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={matchedCount} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={reposTruncated} onEnter={() => {
       const first = rootMatches[0] ?? nestedMatches[0];
       if (first) onRepository(first);
     }} />
     <div className="repository-ws-tree-scroll">
       <section className={`repository-ws-section${collapsedSections.has("context") ? " is-collapsed" : ""}`}>{sectionHeader("context")}
-        {!collapsedSections.has("context") && (reposError ? <WorkspaceTreeError label="Unable to load repositories" onRetry={onRetryRepos} /> : <>
+        {!collapsedSections.has("context") && (reposError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadReposFailed")} onRetry={onRetryRepos} /> : <>
           {rootMatches.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />)}
           {query ? nestedMatches.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />) : <RepoTreeChildren node={nestedTree} depth={0} selectedRel={selectedRel} onRepository={onRepository} />}
-          {query && matchedCount === 0 && <div className="repository-empty-row">No matching repositories</div>}
+          {query && matchedCount === 0 && <div className="repository-empty-row">{t("repository.discovery.noMatching")}</div>}
         </>)}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("working") ? " is-collapsed" : ""}`}>{sectionHeader("working")}
         {!collapsedSections.has("working") && <>
-          <button type="button" className={`repository-ws-tree-row${source === "history" ? " is-active" : ""}`} onClick={() => onSource("history")}><SourceIcon source="history" /><span>History</span></button>
-          <button type="button" className={`repository-ws-tree-row${source === "changes" ? " is-active" : ""}`} onClick={() => onSource("changes")}><SourceIcon source="changes" /><span>Changes</span><i>{changesCount}</i></button>
-          <button type="button" className={`repository-ws-tree-row${source === "compare" ? " is-active" : ""}`} onClick={() => onSource("compare")}><SourceIcon source="compare" /><span>Compare</span></button>
+          <button type="button" className={`repository-ws-tree-row${source === "history" ? " is-active" : ""}`} onClick={() => onSource("history")}><SourceIcon source="history" /><span>{t("repository.source.history")}</span></button>
+          <button type="button" className={`repository-ws-tree-row${source === "changes" ? " is-active" : ""}`} onClick={() => onSource("changes")}><SourceIcon source="changes" /><span>{t("repository.source.changes")}</span><i>{changesCount}</i></button>
+          <button type="button" className={`repository-ws-tree-row${source === "compare" ? " is-active" : ""}`} onClick={() => onSource("compare")}><SourceIcon source="compare" /><span>{t("repository.source.compare")}</span></button>
         </>}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("worktrees") ? " is-collapsed" : ""}`}>{sectionHeader("worktrees")}
-        {!collapsedSections.has("worktrees") && (worktreesError ? <WorkspaceTreeError label="Unable to load worktrees" onRetry={onRetryWorktrees} /> : worktrees.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} onClick={() => onRepository(worktree)}><SourceIcon source="worktrees" /><span>{worktree.name}</span>{worktree.current && <i>HEAD</i>}</button>))}
+        {!collapsedSections.has("worktrees") && (worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktrees.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} onClick={() => onRepository(worktree)}><SourceIcon source="worktrees" /><span>{worktree.name}</span>{worktree.current && <i>HEAD</i>}</button>))}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("branches") ? " is-collapsed" : ""}`}>{sectionHeader("branches")}
-        {!collapsedSections.has("branches") && (refsError ? <WorkspaceTreeError label="Unable to load refs" onRetry={onRetryRefs} /> : refRows("branches"))}
+        {!collapsedSections.has("branches") && (refsError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadRefsFailed")} onRetry={onRetryRefs} /> : refRows("branches"))}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("tags") ? " is-collapsed" : ""}`}>{sectionHeader("tags")}{!collapsedSections.has("tags") && !refsError && refRows("tags")}</section>
       <section className={`repository-ws-section${collapsedSections.has("stashes") ? " is-collapsed" : ""}`}>{sectionHeader("stashes")}{!collapsedSections.has("stashes") && !refsError && refRows("stashes")}</section>
@@ -460,25 +466,25 @@ export function WorkspaceTree({ repos, reposError, reposTruncated, scanDepth, wo
   </aside>;
 }
 
-function WorkspaceTreeError({ label, onRetry }: { readonly label: string; readonly onRetry: () => void }) {
-  return <div className="repository-ws-tree-error"><span>{label}</span><button type="button" onClick={onRetry}>Retry</button></div>;
+function WorkspaceTreeError({ t, label, onRetry }: { readonly t: T; readonly label: string; readonly onRetry: () => void }) {
+  return <div className="repository-ws-tree-error"><span>{label}</span><button type="button" onClick={onRetry}>{t("repository.common.retry")}</button></div>;
 }
 
 
 function SourceIcon({ source }: { readonly source: SourceIconKind }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "compare" ? "M5.5 3v9M3 9.5l2.5 2.5L8 9.5M12.5 15V6M10 8.5L12.5 6L15 8.5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function RepositoryDiscovery({ query, onQuery, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onEnter }: { readonly query: string; readonly onQuery: (query: string) => void; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onEnter: () => void }) {
+function RepositoryDiscovery({ t, query, onQuery, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onEnter }: { readonly t: T; readonly query: string; readonly onQuery: (query: string) => void; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onEnter: () => void }) {
   return <div className="repository-discovery">
-    <input type="text" className="repository-filter-input" placeholder="Find repositories…" aria-label="Find repositories" value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => {
+    <input type="text" className="repository-filter-input" placeholder={t("repository.discovery.placeholder")} aria-label={t("repository.discovery.aria")} value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => {
       if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
       onEnter();
     }} />
-    {query ? <button type="button" className="repository-filter-clear" aria-label="Clear search" onClick={() => onQuery("")}>✕</button> : null}
-    <span className="repository-discovery-depth">Depth
-      <button type="button" className="repository-depth-step" aria-label="Scan shallower" disabled={scanDepth <= SCAN_DEPTH_MIN} onClick={() => onScanDepth(scanDepth - 1)}>−</button>
+    {query ? <button type="button" className="repository-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => onQuery("")}>✕</button> : null}
+    <span className="repository-discovery-depth">{t("repository.discovery.depth")}
+      <button type="button" className="repository-depth-step" aria-label={t("repository.discovery.scanShallower")} disabled={scanDepth <= SCAN_DEPTH_MIN} onClick={() => onScanDepth(scanDepth - 1)}>−</button>
       <output className="repository-depth-value">{scanDepth}</output>
-      <button type="button" className="repository-depth-step" aria-label="Scan deeper" disabled={scanDepth >= SCAN_DEPTH_MAX} onClick={() => onScanDepth(scanDepth + 1)}>+</button>
+      <button type="button" className="repository-depth-step" aria-label={t("repository.discovery.scanDeeper")} disabled={scanDepth >= SCAN_DEPTH_MAX} onClick={() => onScanDepth(scanDepth + 1)}>+</button>
     </span>
-    <span className="repository-scan-count">{query ? `${matchedCount} of ${totalCount}` : `${totalCount} found${truncated ? " · limit reached" : ""}`}</span>
+    <span className="repository-scan-count">{query ? t("repository.discovery.countMatched", { matched: matchedCount, total: totalCount }) : truncated ? t("repository.discovery.countFoundLimited", { count: totalCount }) : t("repository.discovery.countFound", { count: totalCount })}</span>
   </div>;
 }
 interface RepoTreeCommonProps {
@@ -529,7 +535,7 @@ function RepositoryIcon() {
 
 export const repositoryPanel: RailPanelDescriptor = {
   id: "repository",
-  title: "Repository",
+  title: (locale) => getT(locale)("repository.panel.title"),
   defaultWidth: 420,
   icon: () => <RepositoryIcon />,
   render: (ctx: RailPanelContext) => <RepositoryPanel ctx={ctx} />,

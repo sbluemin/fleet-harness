@@ -22,6 +22,10 @@ export interface RenderedMarkdown {
 export interface RenderMarkdownOptions {
   omitDuplicateTitle?: string;
   resolveWikiLink?: (id: string) => string | null;
+  /** 코드블록 Copy 버튼 라벨. 기본값 `"Copy"`. */
+  readonly copyLabel?: string;
+  /** 코드블록 Copy 버튼 aria-label. 기본값 `(language) => \`Copy ${language} code\``. */
+  readonly copyAriaLabel?: (language: string) => string;
 }
 
 interface FrontmatterEntry {
@@ -67,7 +71,10 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
   removeDuplicateTitleHeading(document, options.omitDuplicateTitle);
   decorateHeadings(document);
-  decorateCodeBlocks(document);
+  decorateCodeBlocks(document, {
+    copyLabel: options.copyLabel ?? "Copy",
+    copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
+  });
   decorateLinks(document);
   const html = DOMPurify.sanitize(document.body.innerHTML, sanitizeConfig);
   return {
@@ -157,7 +164,10 @@ function removeDuplicateTitleHeading(document: Document, title: string | undefin
   firstHeading.remove();
 }
 
-function decorateCodeBlocks(document: Document): void {
+function decorateCodeBlocks(
+  document: Document,
+  labels: { readonly copyLabel: string; readonly copyAriaLabel: (language: string) => string },
+): void {
   for (const code of document.querySelectorAll("pre > code")) {
     const language = languageFromClass(code.className);
     const rawCode = code.textContent ?? "";
@@ -179,11 +189,15 @@ function decorateCodeBlocks(document: Document): void {
     code.classList.add("hljs");
     pre.classList.add("code-block");
     pre.dataset.code = rawCode;
-    pre.insertBefore(buildCodeToolbar(document, language || "text"), pre.firstChild);
+    pre.insertBefore(buildCodeToolbar(document, language || "text", labels), pre.firstChild);
   }
 }
 
-function buildCodeToolbar(document: Document, label: string): HTMLElement {
+function buildCodeToolbar(
+  document: Document,
+  label: string,
+  labels: { readonly copyLabel: string; readonly copyAriaLabel: (language: string) => string },
+): HTMLElement {
   const toolbar = document.createElement("div");
   toolbar.className = "code-block-toolbar";
   const dots = document.createElement("span");
@@ -199,8 +213,8 @@ function buildCodeToolbar(document: Document, label: string): HTMLElement {
   button.className = "copy-code";
   button.type = "button";
   button.dataset.action = "copy-code";
-  button.setAttribute("aria-label", `Copy ${label} code`);
-  button.textContent = "Copy";
+  button.setAttribute("aria-label", labels.copyAriaLabel(label));
+  button.textContent = labels.copyLabel;
   toolbar.append(dots, lang, button);
   return toolbar;
 }

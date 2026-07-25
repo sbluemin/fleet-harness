@@ -37,6 +37,7 @@ import {
   setActiveTheater,
   setActiveTheme,
 } from "../store.js";
+import { useT } from "../i18n/index.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationSearchProps {
@@ -54,6 +55,7 @@ const UNASSIGNED_GROUP_KEY = "__unassigned__";
 const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
 export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion }: OperationSearchProps) {
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
@@ -68,7 +70,7 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
-  const commands = useMemo(() => buildPaletteCommands(state, railPanels), [state, railPanels]);
+  const commands = useMemo(() => buildPaletteCommands(state, railPanels, t), [state, railPanels, t]);
   const filteredCommands = useMemo(
     () => (commandMode ? filterPaletteCommands(commands, commandModeQuery(query)) : commands),
     [commandMode, commands, query],
@@ -112,7 +114,7 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [commandMode, query, railPanels, state.activeTheaterId, state.operationSearchOpen]);
+  }, [commandMode, query, railPanels, state.activeTheaterId, state.operationSearchOpen, t]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;
@@ -336,7 +338,7 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
         className="operation-search-card"
         role="dialog"
         aria-modal="true"
-        aria-label={commandMode ? "Console commands" : "Operation quick search"}
+        aria-label={commandMode ? t("chrome.operationSearch.commandsDialog") : t("chrome.operationSearch.quickSearchDialog")}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
@@ -348,7 +350,7 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search Operations — type > for commands"
+            placeholder={t("chrome.operationSearch.placeholder")}
             autoComplete="off"
             role="combobox"
             aria-expanded={true}
@@ -359,10 +361,10 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
           />
           <kbd>esc</kbd>
         </div>
-        <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? "Command results" : "Operation results"}>
+        <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
           {commandMode ? (filteredCommands.length > 0 ? (
             <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
-              <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">Commands</h2>
+              <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">{t("chrome.operationSearch.commands")}</h2>
               {filteredCommands.map((command, index) => {
                 const active = index === clampedSelectedIndex;
                 const resultKey = commandResultKey(command.commandId);
@@ -385,12 +387,12 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
                     <span className="operation-search-result-text">
                       <strong>{highlightText(command.label, tokens)}</strong>
                     </span>
-                    {command.current ? <span className="operation-search-theater">current</span> : null}
+                    {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
                   </button>
                 );
               })}
             </section>
-          ) : <p className="operation-search-empty">No matching commands.</p>) : (
+          ) : <p className="operation-search-empty">{t("chrome.operationSearch.noMatchingCommands")}</p>) : (
             groups.length > 0 || railSearchGroups.length > 0 ? <>
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId);
@@ -458,14 +460,14 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
                             <strong>{highlightText(result.title, tokens)}</strong>
                             {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
                           </span>
-                          <span className="operation-search-panel-open">open</span>
+                          <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
                         </button>
                       );
                     })}
                   </section>
                 );
               })}
-            </> : <p className="operation-search-empty">No matching Operations or panel content.</p>
+            </> : <p className="operation-search-empty">{t("chrome.operationSearch.noMatching")}</p>
           )}
         </div>
       </section>

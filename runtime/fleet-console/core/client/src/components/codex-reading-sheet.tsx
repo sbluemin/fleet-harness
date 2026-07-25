@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { mountReaderInto, saveReaderScroll } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { useT } from "../i18n/index.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 import { loadInitialData } from "../codex/state.js";
 
@@ -14,6 +15,7 @@ const FOCUSABLE =
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CodexReadingSheet() {
+  const t = useT();
   const {
     codexReader: reader,
     codexReaderExpanded: expanded,
@@ -135,15 +137,15 @@ export function CodexReadingSheet() {
         className="codex-reading-sheet"
         role="dialog"
         aria-modal="true"
-        aria-label="Codex reading"
+        aria-label={t("chrome.codexReading.dialogAria")}
       >
         <div className="codex-reading-sheet-head">
-          <span className="codex-reading-sheet-eyebrow">Codex · Reading</span>
+          <span className="codex-reading-sheet-eyebrow">{t("chrome.codexReading.eyebrow")}</span>
           <button
             data-sheet-initial-focus
             className="codex-reading-sheet-close"
             type="button"
-            aria-label="Close reading"
+            aria-label={t("chrome.codexReading.closeAria")}
             onClick={closeReading}
           >
             ✕
@@ -154,7 +156,7 @@ export function CodexReadingSheet() {
           <aside
             ref={tocRef}
             className="codex-reading-sheet-toc"
-            aria-label="On this page"
+            aria-label={t("chrome.codexReading.onThisPage")}
           />
         </div>
       </div>

@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
@@ -9,6 +11,7 @@ import { flattenGroupedOrder, hydrateOperations, requestOperationLaunchMenu, set
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
+import { useT } from "../i18n/index.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
@@ -544,7 +547,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         onGeometryCommit={options.onGeometryCommit}
         onRenderHiddenFocus={options.onRenderHiddenFocus}
       >
-        <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin operation failed to render.</div>}>
+        <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.operationFailed" />}>
           <PluginOperationRenderer
             active={options.active}
             keyboardFocusRequestId={options.keyboardFocusRequestId}
@@ -566,8 +569,8 @@ function renderPluginOperation(operation: OperationNode, options: {
         </PluginErrorBoundary>
       </OperationFrame>
       {options.companions.map((companion, index) => (
-        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!}>
-          <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin companion failed to render.</div>}>
+        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!} language={options.language}>
+          <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.companionFailed" />}>
             <PluginOperationRenderer
               active={options.active}
               capabilities={capabilities}
@@ -640,11 +643,19 @@ function PluginOperationRenderer({
   }) as ReactNode;
 }
 
-function CompanionFrame({ descriptor, geometry, children }: {
+function PluginRenderError({ messageKey }: { readonly messageKey: "canvas.plugin.operationFailed" | "canvas.plugin.companionFailed" }) {
+  const t = useT();
+  return <div className="fc-plugin-error">{t(messageKey)}</div>;
+}
+
+function CompanionFrame({ descriptor, geometry, language, children }: {
   readonly descriptor: CompanionPanelDescriptor;
   readonly geometry: OperationGeometry;
+  readonly language: ConsoleLocale;
   readonly children: ReactNode;
 }) {
+  const t = useT();
+  const title = resolveLocalizedText(descriptor.title, language);
   const frameStyle = {
     left: Math.round(geometry.x),
     top: Math.round(geometry.y),
@@ -653,11 +664,11 @@ function CompanionFrame({ descriptor, geometry, children }: {
     zIndex: geometry.zIndex,
   } satisfies CSSProperties;
   return (
-    <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={`Companion ${descriptor.title}`}>
+    <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={t("canvas.companion.aria", { title })}>
       {descriptor.hideCaption ? null : (
         <header className="canvas-companion-caption" data-canvas-blocker>
           <span className="canvas-companion-caption-dot" aria-hidden="true" />
-          <span className="canvas-companion-caption-title">{descriptor.title}</span>
+          <span className="canvas-companion-caption-title">{title}</span>
         </header>
       )}
       <div className="canvas-operation-terminal canvas-companion-body" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} data-canvas-blocker>

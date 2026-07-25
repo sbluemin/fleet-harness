@@ -1,7 +1,8 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { SHORTCUT_GROUPS } from "../shortcuts-catalog.js";
+import { useT } from "../i18n/index.js";
+import { buildShortcutGroups } from "../shortcuts-catalog.js";
 
 interface KeyboardShortcutsDialogProps {
   readonly onClose: () => void;
@@ -19,6 +20,8 @@ export function shouldHandleOperationsKeyboardShortcut(): boolean {
 }
 
 export function KeyboardShortcutsDialog({ onClose }: KeyboardShortcutsDialogProps) {
+  const t = useT();
+  const shortcutGroups = useMemo(() => buildShortcutGroups(t), [t]);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,8 +60,8 @@ export function KeyboardShortcutsDialog({ onClose }: KeyboardShortcutsDialogProp
     }
   };
 
-  return createPortal(<div className="keyboard-shortcuts-scrim" onMouseDown={onClose}><div ref={dialogRef} className="keyboard-shortcuts-dialog" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts" tabIndex={-1} onKeyDown={handleKeyDown} onMouseDown={(event) => event.stopPropagation()}>
-    <div className="keyboard-shortcuts-dialog-head"><strong>Keyboard Shortcuts</strong><button type="button" onClick={onClose} aria-label="Close keyboard shortcuts">✕</button></div>
-    {SHORTCUT_GROUPS.map((group) => <section key={group.title} className="keyboard-shortcuts-group"><h3>{group.title}</h3><dl>{group.entries.map((entry) => <div key={`${group.title}:${entry.description}`}><dt>{entry.combos.map((combo, index) => <span key={combo.join("+")}>{index > 0 ? " or " : null}{combo.map((key) => <kbd key={key}>{key === "Mod" ? "⌘/Ctrl" : key}</kbd>)}</span>)}</dt><dd>{entry.description}</dd></div>)}</dl></section>)}
+  return createPortal(<div className="keyboard-shortcuts-scrim" onMouseDown={onClose}><div ref={dialogRef} className="keyboard-shortcuts-dialog" role="dialog" aria-modal="true" aria-label={t("chrome.shortcuts.title")} tabIndex={-1} onKeyDown={handleKeyDown} onMouseDown={(event) => event.stopPropagation()}>
+    <div className="keyboard-shortcuts-dialog-head"><strong>{t("chrome.shortcuts.title")}</strong><button type="button" onClick={onClose} aria-label={t("chrome.shortcuts.closeAria")}>✕</button></div>
+    {shortcutGroups.map((group) => <section key={group.title} className="keyboard-shortcuts-group"><h3>{group.title}</h3><dl>{group.entries.map((entry) => <div key={`${group.title}:${entry.description}`}><dt>{entry.combos.map((combo, index) => <span key={combo.join("+")}>{index > 0 ? t("chrome.shortcuts.or") : null}{combo.map((key) => <kbd key={key}>{key === "Mod" ? t("chrome.shortcuts.modKey") : key}</kbd>)}</span>)}</dt><dd>{entry.description}</dd></div>)}</dl></section>)}
   </div></div>, document.body);
 }

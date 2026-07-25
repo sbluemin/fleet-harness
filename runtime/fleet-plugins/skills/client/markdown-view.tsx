@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import "@fleet-console/markdown/styles.css";
+
+import { getT, markdownCopyOptions } from "./i18n/index.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface MarkdownViewProps {
   readonly content: string;
+  readonly language: ConsoleLocale | undefined;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -29,13 +33,14 @@ function neutralizeUntrustedDom(root: ParentNode): void {
 
 // ─── MarkdownView ─────────────────────────────────────────────────────────────
 
-export function MarkdownView({ content }: MarkdownViewProps) {
+export function MarkdownView({ content, language }: MarkdownViewProps) {
+  const t = getT(language);
   const html = useMemo(() => {
-    const rendered = renderMarkdown(content).html;
+    const rendered = renderMarkdown(content, markdownCopyOptions(t)).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
     neutralizeUntrustedDom(doc.body);
     return doc.body.innerHTML;
-  }, [content]);
+  }, [content, t]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -60,9 +65,9 @@ export function MarkdownView({ content }: MarkdownViewProps) {
     if (!code) return;
     void navigator.clipboard?.writeText(code);
     const original = button.textContent;
-    button.textContent = "Copied";
+    button.textContent = t("skills.markdown.copied");
     window.setTimeout(() => { button.textContent = original; }, 1200);
-  }, []);
+  }, [t]);
 
   return (
     <div

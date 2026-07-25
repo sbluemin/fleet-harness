@@ -1,16 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
+import type { ConsoleLocale, LocalizedText, Translate } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
-import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
+import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { setActiveTheme, setActiveUiFont } from "../store.js";
-import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
+import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
 interface LanguageOption {
@@ -53,31 +56,41 @@ interface PluginSettingsNavGroup {
   readonly sections: readonly PluginSettingsNavItem[];
 }
 
+type T = Translate<CoreMessageKey>;
+
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
-const THEMES: readonly ThemeOption[] = [
-  { id: "instrument", label: "Instrument", swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
-  { id: "maritime", label: "Maritime", swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
-  { id: "carbon", label: "Carbon", swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
-];
+function buildThemes(t: T): readonly ThemeOption[] {
+  return [
+    { id: "instrument", label: t("settings.theme.instrument"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
+    { id: "maritime", label: t("settings.theme.maritime"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
+    { id: "carbon", label: t("settings.theme.carbon"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
+  ];
+}
 
-const PORT_MODES: readonly PortModeOption[] = [
-  { id: "dynamic", label: "Dynamic" },
-  { id: "static", label: "Static" },
-];
+function buildPortModes(t: T): readonly PortModeOption[] {
+  return [
+    { id: "dynamic", label: t("settings.port.dynamic") },
+    { id: "static", label: t("settings.port.static") },
+  ];
+}
 
-const LANGUAGES: readonly LanguageOption[] = [
-  { id: "auto", label: "Auto" },
-  { id: "en", label: "English" },
-  { id: "ko", label: "한국어" },
-];
+function buildLanguages(t: T): readonly LanguageOption[] {
+  return [
+    { id: "auto", label: t("settings.language.auto") },
+    { id: "en", label: t("settings.language.en") },
+    { id: "ko", label: t("settings.language.ko") },
+  ];
+}
+
+function buildCoreSettingsSections(t: T): readonly SettingsSectionNavItem[] {
+  return [
+    { id: "general", label: t("settings.core.general.label"), eyebrow: t("settings.core.general.eyebrow") },
+    { id: "backend-api", label: t("settings.core.backendApi.label"), eyebrow: t("settings.core.backendApi.eyebrow") },
+  ];
+}
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
-
-const CORE_SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
-  { id: "general", label: "General", eyebrow: "Theme · Type · Port" },
-  { id: "backend-api", label: "Backend API", eyebrow: "Loopback routes" },
-];
 
 export function GlobalSettings() {
   const settings = useGlobalSettingsStore();
@@ -87,7 +100,10 @@ export function GlobalSettings() {
   const location = useLocation();
   const navigate = useNavigate();
   const registry = usePluginRegistry();
-  const pluginSections = collectPluginSettingsSections(registry.plugins);
+  const locale = useConsoleLocale();
+  const t = useT();
+  const coreSections = buildCoreSettingsSections(t);
+  const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
   const pluginGroups = groupPluginSettingsSections(pluginSections);
   const selectSection = (sectionId: SettingsSectionId) => {
     setActiveSectionId(sectionId);
@@ -102,30 +118,30 @@ export function GlobalSettings() {
 
   useEffect(() => {
     const requested = new URLSearchParams(location.search).get("section");
-    const available = new Set<SettingsSectionId>([...CORE_SETTINGS_SECTIONS.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
+    const available = new Set<SettingsSectionId>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
     const next = requested && available.has(requested as SettingsSectionId) ? requested as SettingsSectionId : "general";
     setActiveSectionId(next);
     if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true });
-  }, [location.search, navigate, pluginSections]);
+  }, [location.search, navigate, coreSections, pluginSections]);
 
   return (
     <main className="global-settings-page">
       <section className="global-settings-hero" aria-labelledby="global-settings-title">
         <div>
-          <p className="bridge-kicker">Console</p>
-          <h2 id="global-settings-title">Settings</h2>
+          <p className="bridge-kicker">{t("settings.kicker")}</p>
+          <h2 id="global-settings-title">{t("settings.title")}</h2>
         </div>
         <div className="global-settings-status" role="status" aria-live="polite">
-          {saving ? "Saving…" : ""}
+          {saving ? t("settings.saving") : ""}
         </div>
       </section>
 
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
 
       <section className="global-settings-grid">
-        <div className="global-settings-list" aria-label="Settings sections">
-          <p className="global-settings-nav-group">Console</p>
-          {CORE_SETTINGS_SECTIONS.map((section) => (
+        <div className="global-settings-list" aria-label={t("settings.sectionsAria")}>
+          <p className="global-settings-nav-group">{t("settings.nav.console")}</p>
+          {coreSections.map((section) => (
             <button
               key={section.id}
               type="button"
@@ -139,7 +155,7 @@ export function GlobalSettings() {
           ))}
           {pluginSections.length > 0 ? (
             <>
-              <p className="global-settings-nav-group">Plugins</p>
+              <p className="global-settings-nav-group">{t("settings.nav.plugins")}</p>
               {pluginGroups.map((group) => (
                 <div key={group.pluginId} className="global-settings-plugin-group">
                   <p className="global-settings-plugin-heading">{group.pluginLabel}</p>
@@ -162,7 +178,7 @@ export function GlobalSettings() {
         </div>
 
         <div key={activeSectionId} className="global-settings-detail">
-          {renderSettingsSection(activeSectionId, state, saving, pluginSections)}
+          {renderSettingsSection(activeSectionId, state, saving, pluginSections, t)}
         </div>
       </section>
     </main>
@@ -174,14 +190,14 @@ function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNod
   return <>{render()}</>;
 }
 
-function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[]) {
+function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
     return pluginSection?.render ? (
-      <PluginErrorBoundary fallback={<div className="fc-plugin-error">Plugin settings failed to render.</div>}>
+      <PluginErrorBoundary fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
         <PluginSettingsSectionBody render={pluginSection.render} />
       </PluginErrorBoundary>
-    ) : <p className="global-settings-help">Plugin settings unavailable.</p>;
+    ) : <p className="global-settings-help">{t("settings.pluginUnavailable")}</p>;
   }
   switch (sectionId) {
     case "general":
@@ -197,13 +213,17 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
   }
 }
 
-function collectPluginSettingsSections(plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: string; readonly render?: () => ReactNode }[] }[]): readonly PluginSettingsNavItem[] {
+function collectPluginSettingsSections(
+  plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: LocalizedText; readonly render?: () => ReactNode }[] }[],
+  locale: ConsoleLocale,
+  t: T,
+): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
     (plugin.settingsSections ?? []).map((section) => ({
       id: `${plugin.id}:${section.id}` as const,
       pluginId: plugin.id,
-      pluginLabel: formatPluginLabel(plugin.id),
-      sectionTitle: section.title,
+      pluginLabel: formatPluginLabel(plugin.id, t),
+      sectionTitle: resolveLocalizedText(section.title, locale),
       render: section.render,
     })),
   );
@@ -222,8 +242,8 @@ function groupPluginSettingsSections(sections: readonly PluginSettingsNavItem[])
   return groups;
 }
 
-function formatPluginLabel(pluginId: string): string {
-  if (pluginId === "terminal") return "Terminal";
+function formatPluginLabel(pluginId: string, t: T): string {
+  if (pluginId === "terminal") return t("settings.plugin.terminal");
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
 }
 
@@ -234,6 +254,8 @@ function ThemeCard({
   readonly state: GlobalSettingsState | null;
   readonly saving: boolean;
 }) {
+  const t = useT();
+  const themes = buildThemes(t);
   const activeTheme = state?.theme ?? "instrument";
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
@@ -244,14 +266,14 @@ function ThemeCard({
     });
   };
   return (
-    <section className="global-settings-card" aria-label="Theme">
+    <section className="global-settings-card" aria-label={t("settings.theme.aria")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">Theme</p>
-          <p className="global-settings-help">Console color scheme.</p>
+          <p className="global-settings-resp-title">{t("settings.theme.title")}</p>
+          <p className="global-settings-help">{t("settings.theme.help")}</p>
         </div>
-        <div className="theme-picker" role="group" aria-label="Theme">
-          {THEMES.map((theme) => {
+        <div className="theme-picker" role="group" aria-label={t("settings.theme.aria")}>
+          {themes.map((theme) => {
             const isActive = theme.id === activeTheme;
             return (
               <button
@@ -272,7 +294,7 @@ function ThemeCard({
           })}
         </div>
       </div>
-      <p className="global-settings-foot">Theme applies immediately and is stored server-side.</p>
+      <p className="global-settings-foot">{t("settings.theme.foot")}</p>
     </section>
   );
 }
@@ -284,6 +306,7 @@ function TypographyCard({
   readonly state: GlobalSettingsState | null;
   readonly saving: boolean;
 }) {
+  const t = useT();
   const activeUiFont = state?.uiFont ?? DEFAULT_UI_FONT;
   const [installedFonts, setInstalledFonts] = useState<readonly FontPickerInstalledFont[]>([]);
   const [fontsLoading, setFontsLoading] = useState(true);
@@ -297,13 +320,16 @@ function TypographyCard({
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) {
         setInstalledFonts([]);
-        setFontsError(error instanceof Error ? error.message : "Installed fonts could not be loaded.");
+        // SystemFontsFetchError는 고정 영문 메시지를 담고 오므로 그대로 노출하면 로케일을 벗어난다.
+        // 예상된 탐색 실패는 카탈로그 문구로 바꾸고, 예상 밖 오류만 원문을 남긴다.
+        const expected = error instanceof SystemFontsFetchError;
+        setFontsError(!expected && error instanceof Error ? error.message : t("settings.typography.fontsLoadError"));
       }
     }).finally(() => {
       if (!controller.signal.aborted) setFontsLoading(false);
     });
     return () => controller.abort();
-  }, []);
+  }, [t]);
 
   const saveUiFont = (uiFont: UiFontSettings) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
@@ -322,11 +348,11 @@ function TypographyCard({
   };
 
   return (
-    <section className="global-settings-card" aria-label="Typography">
+    <section className="global-settings-card" aria-label={t("settings.typography.aria")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">Typography</p>
-          <p className="global-settings-help">Typeface for interface text and reading surfaces. Display, code, and terminal fonts stay unchanged.</p>
+          <p className="global-settings-resp-title">{t("settings.typography.title")}</p>
+          <p className="global-settings-help">{t("settings.typography.help")}</p>
         </div>
         <button
           type="button"
@@ -334,25 +360,52 @@ function TypographyCard({
           disabled={!state || saving || activeUiFont.source === "builtin" && activeUiFont.id === "manrope" && activeUiFont.size === UI_FONT_SIZE_RANGE.defaultValue}
           onClick={() => saveUiFont(DEFAULT_UI_FONT)}
         >
-          Reset to Fleet default
+          {t("settings.typography.reset")}
         </button>
       </div>
       <FontPicker
-        builtIns={UI_FONT_BUILT_INS.map(({ id, label, family, aliases, description }) => ({ id, label, family, aliases, description }))}
+        builtIns={UI_FONT_BUILT_INS.map(({ id, label, family, aliases }) => ({
+          id,
+          label,
+          family,
+          aliases,
+          description: t(UI_FONT_DESCRIPTION_KEYS[id]),
+        }))}
         installedFonts={installedFonts}
         selected={activeUiFont.source === "builtin" ? { source: "builtin", id: activeUiFont.id } : { source: "system", familyName: activeUiFont.familyName }}
         selectedSystemFont={activeUiFont.source === "system" ? activeUiFont.familyName : null}
         fallbackStack={uiFontFamily(DEFAULT_UI_FONT)}
-        previewText="Fleet typography keeps operations readable."
+        previewText={t("settings.typography.preview")}
         size={activeUiFont.size}
         sizeRange={UI_FONT_SIZE_RANGE}
         loading={fontsLoading}
         error={fontsError}
         disabled={!state || saving}
+        labels={{
+          browserAria: t("settings.typography.picker.browserAria"),
+          searchLabel: t("settings.typography.picker.searchLabel"),
+          searchPlaceholder: t("settings.typography.picker.searchPlaceholder"),
+          loading: t("settings.typography.picker.loading"),
+          choicesAria: t("settings.typography.picker.choicesAria"),
+          builtInGroup: t("settings.typography.picker.builtInGroup"),
+          installedGroup: t("settings.typography.picker.installedGroup"),
+          noMatch: t("settings.typography.picker.noMatch"),
+          preview: t("settings.typography.picker.preview"),
+          available: t("settings.typography.picker.available"),
+          unavailable: t("settings.typography.picker.unavailable"),
+          fontSizeAria: t("settings.typography.picker.fontSizeAria"),
+          decreaseSizeAria: t("settings.typography.picker.decreaseSizeAria"),
+          sizeValueAria: t("settings.typography.picker.sizeValueAria"),
+          increaseSizeAria: t("settings.typography.picker.increaseSizeAria"),
+          sizeSliderAria: t("settings.typography.picker.sizeSliderAria"),
+          monospace: t("settings.typography.picker.monospace"),
+          systemFont: t("settings.typography.picker.systemFont"),
+          savedSystemFont: t("settings.typography.picker.savedSystemFont"),
+        }}
         onSelectionChange={selectUiFont}
         onSizeCommit={(size) => saveUiFont({ ...activeUiFont, size })}
       />
-      <p className="global-settings-foot">Typography applies immediately and is stored server-side for every browser and restart.</p>
+      <p className="global-settings-foot">{t("settings.typography.foot")}</p>
     </section>
   );
 }
@@ -364,9 +417,10 @@ function GeneralSettingsCard({
   readonly state: GlobalSettingsState | null;
   readonly saving: boolean;
 }) {
+  const t = useT();
   const consoleState = useConsoleState();
   return (
-    <section className="global-settings-card" aria-label="General">
+    <section className="global-settings-card" aria-label={t("settings.general.aria")}>
       {state ? (
         <>
           <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
@@ -374,19 +428,20 @@ function GeneralSettingsCard({
           <LanguageSettings state={state} saving={saving} />
         </>
       ) : (
-        <p className="global-settings-help">Loading settings.</p>
+        <p className="global-settings-help">{t("settings.general.loading")}</p>
       )}
-      <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
+      <p className="global-settings-foot">{t("settings.general.foot")}</p>
     </section>
   );
 }
 
 function PanelMotionSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
+  const t = useT();
   return (
     <div className="global-settings-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">Panel Motion</p>
-        <p className="global-settings-help">Stop panel animations when panels open, move, minimize, and restore. When off, your operating system's Reduce Motion setting is followed.</p>
+        <p className="global-settings-resp-title">{t("settings.panelMotion.title")}</p>
+        <p className="global-settings-help">{t("settings.panelMotion.help")}</p>
       </div>
       <button
         type="button"
@@ -395,21 +450,23 @@ function PanelMotionSettings({ state, saving }: { readonly state: GlobalSettings
         disabled={saving}
         onClick={() => void setGlobalSettingsField("reducePanelMotion", !state.reducePanelMotion)}
       >
-        Reduce panel motion
+        {t("settings.panelMotion.toggle")}
       </button>
     </div>
   );
 }
 
 function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
+  const t = useT();
+  const languages = buildLanguages(t);
   return (
     <div className="global-settings-row is-stack language-settings-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">Display language</p>
-        <p className="global-settings-help">Choose the language used across Console surfaces. Auto follows this browser's language.</p>
+        <p className="global-settings-resp-title">{t("settings.language.title")}</p>
+        <p className="global-settings-help">{t("settings.language.help")}</p>
       </div>
-      <div className="segmented language-picker" role="group" aria-label="Display language">
-        {LANGUAGES.map((language) => {
+      <div className="segmented language-picker" role="group" aria-label={t("settings.language.aria")}>
+        {languages.map((language) => {
           const isActive = state.language === language.id;
           return (
             <button
@@ -425,7 +482,7 @@ function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsSta
           );
         })}
       </div>
-      <p className="console-port-note">Stored with Console settings and shared across every browser.</p>
+      <p className="console-port-note">{t("settings.language.note")}</p>
     </div>
   );
 }
@@ -439,6 +496,8 @@ function ConsolePortSettings({
   readonly saving: boolean;
   readonly consoleState: ReturnType<typeof useConsoleState>;
 }) {
+  const t = useT();
+  const portModes = buildPortModes(t);
   const [draftPort, setDraftPort] = useState(state.consoleStaticPort?.toString() ?? "");
   const effectivePort = consoleState.effectivePort;
   const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
@@ -459,14 +518,14 @@ function ConsolePortSettings({
   return (
     <div className="global-settings-row is-stack console-port-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">Console Port <span className="new-badge">New</span></p>
+        <p className="global-settings-resp-title">{t("settings.port.title")} <span className="new-badge">{t("settings.port.newBadge")}</span></p>
         <p className="global-settings-help">
-          Dynamic lets the OS pick a free loopback port each time the console starts. Static pins a port you choose so the console URL stays the same across restarts.
+          {t("settings.port.help")}
         </p>
       </div>
       <div className="console-port-control">
-        <div className="segmented" role="group" aria-label="Console port mode">
-          {PORT_MODES.map((mode) => {
+        <div className="segmented" role="group" aria-label={t("settings.port.modeAria")}>
+          {portModes.map((mode) => {
             const isActive = state.consolePortMode === mode.id;
             return (
               <button
@@ -485,7 +544,7 @@ function ConsolePortSettings({
 
         <div className={`console-port-reveal ${state.consolePortMode === "static" ? "is-open" : ""}`}>
           <div className="console-port-reveal-inner">
-            <label className="console-port-input-label" htmlFor="console-static-port-input">Static port</label>
+            <label className="console-port-input-label" htmlFor="console-static-port-input">{t("settings.port.staticPort")}</label>
             <input
               id="console-static-port-input"
               className={`console-port-input ${draftIsInvalid ? "is-invalid" : ""}`}
@@ -503,7 +562,7 @@ function ConsolePortSettings({
               }}
             />
             <span id="console-static-port-hint" className={`console-port-hint ${draftIsInvalid ? "is-invalid" : ""}`}>
-              1024–65535
+              {t("settings.port.hint")}
             </span>
           </div>
         </div>
@@ -511,25 +570,29 @@ function ConsolePortSettings({
         <div className={`console-port-effective ${fallbackActive ? "is-fallback" : ""}`} aria-live="polite">
           <span className="console-port-effective-dot" aria-hidden="true" />
           <div>
-            <p className="console-port-effective-label">Currently reachable on</p>
+            <p className="console-port-effective-label">{t("settings.port.currentlyReachable")}</p>
             <p className="console-port-effective-value">
-              127.0.0.1:<span>{effectivePort || "..."}</span>{fallbackActive ? " · Dynamic" : ""}
+              127.0.0.1:<span>{effectivePort || "..."}</span>{fallbackActive ? t("settings.port.dynamicSuffix") : ""}
             </p>
           </div>
         </div>
 
         {fallbackActive && runtimeRequestedPort ? (
           <div className="console-port-warning" role="status">
-            Port <strong>{runtimeRequestedPort}</strong> was unavailable — the console fell back to a <strong>Dynamic</strong> port and is running on <strong>127.0.0.1:{effectivePort || "..."}</strong>.{" "}
-            {nextRestartStatic ? (
-              <>Next restart will try <strong>{state.consoleStaticPort}</strong>.</>
-            ) : (
-              <>Next restart will use a dynamic port.</>
-            )}
+            {renderMessage(t("settings.port.fallback"), {
+              port: <strong>{runtimeRequestedPort}</strong>,
+              mode: <strong>{t("settings.port.dynamic")}</strong>,
+              host: <strong>{`127.0.0.1:${effectivePort || "..."}`}</strong>,
+            })}{" "}
+            {nextRestartStatic
+              ? renderMessage(t("settings.port.nextRestartStatic"), {
+                  port: <strong>{state.consoleStaticPort}</strong>,
+                })
+              : t("settings.port.nextRestartDynamic")}
           </div>
         ) : null}
 
-        <p className="console-port-note">Applies when the console restarts. Console-wide — shared across every browser.</p>
+        <p className="console-port-note">{t("settings.port.note")}</p>
       </div>
     </div>
   );

@@ -65,12 +65,13 @@ describe("Carrier Streams companion", () => {
       "session-analyst-chat",
       "session-analyst-artifacts",
     ]);
-    expect(agentOperationKind.companions?.[0]).toMatchObject({
+    const first = agentOperationKind.companions?.[0];
+    expect(first).toMatchObject({
       id: "carrier-streams",
-      title: "Carrier Streams",
       hideCaption: true,
       defaultHidden: true,
     });
+    expect(typeof first?.title === "function" ? first.title("en") : first?.title).toBe("Carrier Streams");
     await expect(Promise.resolve(agentOperationKind.canOpenCompanions?.({
       api: createApi(),
       operation: operation(),

@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { ReactNode } from "react";
 
+import type { LocalizedText } from "../i18n/types.js";
 import type { LaunchContext } from "../launch/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
@@ -94,7 +95,7 @@ export interface UseOperationsResult {
 export interface OperationKindDescriptor {
   readonly pluginId: string;
   readonly type: string;
-  readonly title: string;
+  readonly title: LocalizedText;
   readonly subtitle?: (operation: OperationNode) => string | undefined;
   readonly render?: (context: OperationRenderContext) => ReactNode;
   readonly companions?: readonly CompanionPanelDescriptor[];
@@ -108,7 +109,7 @@ export interface OperationCompanionAvailabilityContext {
 
 export interface CompanionPanelDescriptor {
   readonly id: string;
-  readonly title: string;
+  readonly title: LocalizedText;
   readonly hideCaption?: boolean;
   readonly defaultHidden?: boolean;
   readonly render: (context: OperationRenderContext) => unknown;

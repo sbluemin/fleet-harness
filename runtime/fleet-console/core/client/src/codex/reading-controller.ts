@@ -1,3 +1,10 @@
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import { renderMarkdown } from "@fleet-console/markdown/core";
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import { getGlobalSettingsStoreState } from "../global-settings-store.js";
+import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, type CoreMessageKey } from "../i18n/index.js";
+import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
   decideDrydock,
   fetchConflictDetail,
@@ -14,15 +21,32 @@ import type {
   DrydockListItem,
   DrydockMeta,
 } from "./api.js";
-import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
-import { renderMarkdown } from "@fleet-console/markdown/core";
 import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
-import { getState } from "./state.js";
-import { entryPath } from "./router.js";
-import { escapeAttribute, escapeHtml } from "./utils/html.js";
 import { mountCoworkInline } from "./cowork-controller.js";
 import type { CoworkController } from "./cowork-controller.js";
+import { entryPath } from "./router.js";
+import { getState } from "./state.js";
+import { escapeAttribute, escapeHtml } from "./utils/html.js";
+
+type T = Translate<CoreMessageKey>;
+
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
+
+function consoleT(): T {
+  return getT(resolveActiveLocale());
+}
+
+function consoleLocale() {
+  return resolveActiveLocale();
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +55,8 @@ export interface ReadingController {
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
   refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
+  /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
+  refreshLocale(): Promise<void>;
 }
 
 export interface MountReadingOptions {
@@ -50,7 +76,12 @@ export interface MountReadingOptions {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const OP_BADGE_GLYPHS: Record<string, string> = { create_wiki: "+", update_wiki: "↻" };
-const OP_LABELS: Record<string, string> = { create_wiki: "Create", update_wiki: "Update" };
+
+function opLabel(op: string, t: T): string {
+  if (op === "create_wiki") return t("codex.reading.opCreate");
+  if (op === "update_wiki") return t("codex.reading.opUpdate");
+  return t("codex.reading.opPatch");
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -64,6 +95,8 @@ export function mountReadingInto(
   let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
+  let currentEntryId = opts.kind === "entry" ? opts.initialEntryId : "";
+  let currentSubId = opts.subId;
 
   // 드라이독 결정 상태 (패치 상세 뷰에서 관리)
   type DecisionPhase = "idle" | "approving" | "rejecting" | "submitting";
@@ -72,7 +105,7 @@ export function mountReadingInto(
   let currentDetailMeta: DrydockMeta | null = null;
   let currentDetailPatchId: string | null = null;
 
-  installDiagramHydrator(readContainer);
+  installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
 
   function handleClick(event: MouseEvent): void {
     const target = event.target;
@@ -137,7 +170,7 @@ export function mountReadingInto(
         .querySelector<HTMLTextAreaElement>("#queue-reject-reason")
         ?.value.trim();
       if (!reason) {
-        decisionError = "Rejection reason is required.";
+        decisionError = consoleT()("codex.reading.rejectReasonRequired");
         redrawDecisionBar();
         return;
       }
@@ -196,9 +229,11 @@ export function mountReadingInto(
       if (destroyed) return;
 
       const { index } = getState();
+      const t = consoleT();
       const { html: markdownHtml, toc } = renderMarkdown(entry.body, {
         omitDuplicateTitle: entry.frontmatter.title,
         resolveWikiLink: (id) => entryPath(id),
+        ...markdownCopyOptions(t),
       });
 
       readContainer.innerHTML = `
@@ -256,9 +291,11 @@ export function mountReadingInto(
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
 
+        const t = consoleT();
         const { html: markdownHtml, toc } = renderMarkdown(detail.wikiEntry.body, {
           omitDuplicateTitle: detail.wikiEntry.title,
           resolveWikiLink: (id) => entryPath(id),
+          ...markdownCopyOptions(t),
         });
 
         readContainer.innerHTML = renderPatchDetail(detail, markdownHtml);
@@ -272,7 +309,7 @@ export function mountReadingInto(
         const list = await fetchDrydock(liveOpts.theaterId, "pending");
         if (destroyed) return;
         opts.tocContainer.innerHTML = "";
-        readContainer.innerHTML = renderDrydockList(list.items, "Review queue — Pending patches");
+        readContainer.innerHTML = renderDrydockList(list.items, consoleT()("codex.reading.reviewQueuePending"));
       }
     } catch (error) {
       if (!destroyed) showError(readContainer, opts.tocContainer, error);
@@ -309,8 +346,10 @@ export function mountReadingInto(
     try {
       const document = await fetchSchemaDocument(theaterId, templateId);
       if (destroyed || requestEpoch !== schemaRequestEpoch || theaterId !== liveOpts.theaterId) return;
-      const { html, toc } = renderMarkdown(document.content);
-      readContainer.innerHTML = `<article class="document"><header class="document-header"><nav class="breadcrumb"><ol><li><span>Codex</span></li><li><span>Schema</span></li><li><span aria-current="page">${escapeHtml(templateId ?? "Workspace schema")}</span></li></ol></nav><h1>${escapeHtml(templateId ?? "Workspace schema")}</h1><span class="queue-dl-mono">${escapeHtml(document.ref)}</span></header><div class="markdown-body" id="codex-reader-body">${html}</div></article>`;
+      const t = consoleT();
+      const { html, toc } = renderMarkdown(document.content, markdownCopyOptions(t));
+      const schemaLabel = templateId ?? t("codex.reading.workspaceSchema");
+      readContainer.innerHTML = `<article class="document"><header class="document-header"><nav class="breadcrumb"><ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.schema"))}</span></li><li><span aria-current="page">${escapeHtml(schemaLabel)}</span></li></ol></nav><h1>${escapeHtml(schemaLabel)}</h1><span class="queue-dl-mono">${escapeHtml(document.ref)}</span></header><div class="markdown-body" id="codex-reader-body">${html}</div></article>`;
       opts.tocContainer.innerHTML = renderTocSheet(toc);
     } catch (error) {
       if (!destroyed && requestEpoch === schemaRequestEpoch && theaterId === liveOpts.theaterId) {
@@ -338,9 +377,11 @@ export function mountReadingInto(
       coworkController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
+      currentEntryId = entryId;
       await renderEntryView(entryId);
     },
     async navigateSub(subId: string | undefined): Promise<void> {
+      currentSubId = subId;
       if (opts.kind === "drydock") {
         await renderDrydockView(subId);
       } else if (opts.kind === "conflicts") {
@@ -352,13 +393,33 @@ export function mountReadingInto(
     refreshCallbacks(next): void {
       liveOpts = { ...liveOpts, ...next };
     },
+    async refreshLocale(): Promise<void> {
+      if (destroyed) return;
+      const scrollParent = readContainer.parentElement;
+      const scrollTop = scrollParent?.scrollTop ?? 0;
+      installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
+      if (opts.kind === "entry" && currentEntryId) {
+        await renderEntryView(currentEntryId);
+      } else if (opts.kind === "drydock") {
+        await renderDrydockView(currentSubId);
+      } else if (opts.kind === "conflicts") {
+        await renderConflictsView(currentSubId);
+      } else if (opts.kind === "schema") {
+        await renderSchemaView(currentSubId);
+      }
+      if (scrollParent) {
+        requestAnimationFrame(() => {
+          scrollParent.scrollTop = scrollTop;
+        });
+      }
+    },
   };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function showLoading(readContainer: HTMLElement, tocContainer: HTMLElement): void {
-  readContainer.innerHTML = '<div class="codex-reader-loading" aria-live="polite" aria-busy="true">Loading…</div>';
+  readContainer.innerHTML = `<div class="codex-reader-loading" aria-live="polite" aria-busy="true">${escapeHtml(consoleT()("common.loading"))}</div>`;
   tocContainer.innerHTML = "";
 }
 
@@ -369,8 +430,9 @@ function showError(readContainer: HTMLElement, tocContainer: HTMLElement, error:
 }
 
 function renderSheetBreadcrumb(title: string): string {
+  const t = consoleT();
   return `
-    <nav class="breadcrumb" aria-label="Entry location">
+    <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
       <ol>
         <li><span>Codex</span></li>
         <li><span aria-current="page">${escapeHtml(title)}</span></li>
@@ -393,9 +455,10 @@ function renderRelatedList(currentId: string, currentTags: string[], entries: Re
     .slice(0, 5);
 
   if (related.length === 0) return "";
+  const t = consoleT();
   return `
     <section class="related-list">
-      <h2>Related entries</h2>
+      <h2>${escapeHtml(t("codex.reading.relatedEntries"))}</h2>
       <div class="related-items">
         ${related
           .map(
@@ -412,16 +475,17 @@ function renderRelatedList(currentId: string, currentTags: string[], entries: Re
 }
 
 function renderDrydockList(items: DrydockListItem[], title: string): string {
+  const t = consoleT();
   if (items.length === 0) {
-    return `<div class="codex-reader-empty"><p class="queue-empty">No pending patches.</p></div>`;
+    return `<div class="codex-reader-empty"><p class="queue-empty">${escapeHtml(t("codex.reading.noPendingPatches"))}</p></div>`;
   }
   return `
     <article class="document">
       <header class="document-header">
-        <nav class="breadcrumb" aria-label="Entry location">
+        <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol>
             <li><span>Codex</span></li>
-            <li><span aria-current="page">Review queue</span></li>
+            <li><span aria-current="page">${escapeHtml(t("codex.reading.reviewQueue"))}</span></li>
           </ol>
         </nav>
         <h1>${escapeHtml(title)}</h1>
@@ -434,14 +498,16 @@ function renderDrydockList(items: DrydockListItem[], title: string): string {
 }
 
 function renderQueueRow(item: DrydockListItem): string {
+  const t = consoleT();
   const op = item.op ?? "create_wiki";
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
-  const opLabel = OP_LABELS[op] ?? "Patch";
+  const label = opLabel(op, t);
   const target = item.target ?? item.id;
-  const time = formatRelativeTime(item.meta.createdAt);
+  const createdAtMs = new Date(item.meta.createdAt).getTime();
+  const time = Number.isNaN(createdAtMs) ? "" : formatRelativeTime(createdAtMs, consoleLocale());
   const metaParts = [time].filter(Boolean);
   return `
-    <button class="queue-row" type="button" data-patch-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(opLabel + ": " + target)}">
+    <button class="queue-row" type="button" data-patch-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(label + ": " + target)}">
       <span class="queue-row-badge" aria-hidden="true">
         <span class="op-badge">${glyph}</span>
       </span>
@@ -455,24 +521,25 @@ function renderQueueRow(item: DrydockListItem): string {
 }
 
 function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string): string {
+  const t = consoleT();
   const { patch, meta, wikiEntry, targetExists } = detail;
   const op = patch.frontmatter.op;
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
-  const opLabel = OP_LABELS[op] ?? "Patch";
-  const targetLabel = targetExists ? "기존 문서 대체" : "신규 문서 생성";
+  const label = opLabel(op, t);
+  const targetLabel = targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
   const isPending = meta.status === "pending";
 
   return `
     <article class="document">
       <header class="document-header">
-        <nav class="breadcrumb" aria-label="Entry location">
+        <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol>
             <li><span>Codex</span></li>
-            <li><span>Review queue</span></li>
-            <li><span aria-current="page">${escapeHtml(opLabel)}</span></li>
+            <li><span>${escapeHtml(t("codex.reading.reviewQueue"))}</span></li>
+            <li><span aria-current="page">${escapeHtml(label)}</span></li>
           </ol>
         </nav>
-        <button type="button" class="queue-back-btn" data-drydock-action="back">‹ Queue</button>
+        <button type="button" class="queue-back-btn" data-drydock-action="back">${escapeHtml(t("codex.reading.backQueue"))}</button>
         <h1><span class="op-badge">${glyph}</span> ${escapeHtml(wikiEntry.title)}</h1>
         <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${wikiEntry.version} · ${escapeHtml(targetLabel)}</p>
         ${renderPatchMetaChips(patch.frontmatter.proposer, wikiEntry.tags)}
@@ -501,15 +568,16 @@ function renderDecisionBarContent(
   phase: "idle" | "approving" | "rejecting" | "submitting",
   error: string | null,
 ): string {
+  const t = consoleT();
   if (phase === "submitting") {
-    return `<span class="queue-action-spinner" role="status" aria-label="Processing…"></span>`;
+    return `<span class="queue-action-spinner" role="status" aria-label="${escapeAttribute(t("codex.reading.processingAria"))}"></span>`;
   }
   if (phase === "approving") {
     return `
-      <p class="queue-decision-confirm">Apply this patch to the wiki?</p>
+      <p class="queue-decision-confirm">${escapeHtml(t("codex.reading.applyConfirm"))}</p>
       <div class="queue-action-buttons">
-        <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve-confirm">✓ Yes, Approve</button>
-        <button type="button" class="queue-action-btn queue-action-btn--cancel" data-drydock-action="cancel">Cancel</button>
+        <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve-confirm">${escapeHtml(t("codex.reading.yesApprove"))}</button>
+        <button type="button" class="queue-action-btn queue-action-btn--cancel" data-drydock-action="cancel">${escapeHtml(t("common.cancel"))}</button>
       </div>
       ${error ? `<p class="queue-action-error">${escapeHtml(error)}</p>` : ""}
     `;
@@ -517,10 +585,10 @@ function renderDecisionBarContent(
   if (phase === "rejecting") {
     return `
       <div class="queue-reject-form">
-        <textarea class="queue-reject-textarea" id="queue-reject-reason" placeholder="Rejection reason (required)…" rows="3"></textarea>
+        <textarea class="queue-reject-textarea" id="queue-reject-reason" placeholder="${escapeAttribute(t("codex.reading.rejectPlaceholder"))}" rows="3"></textarea>
         <div class="queue-action-buttons">
-          <button type="button" class="queue-action-btn queue-action-btn--reject-submit" data-drydock-action="reject-submit">Submit Rejection</button>
-          <button type="button" class="queue-action-btn queue-action-btn--cancel" data-drydock-action="cancel">Cancel</button>
+          <button type="button" class="queue-action-btn queue-action-btn--reject-submit" data-drydock-action="reject-submit">${escapeHtml(t("codex.reading.submitRejection"))}</button>
+          <button type="button" class="queue-action-btn queue-action-btn--cancel" data-drydock-action="cancel">${escapeHtml(t("common.cancel"))}</button>
         </div>
         ${error ? `<p class="queue-action-error">${escapeHtml(error)}</p>` : ""}
       </div>
@@ -529,46 +597,50 @@ function renderDecisionBarContent(
   // idle
   return `
     <div class="queue-action-buttons">
-      <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve">✓ Approve</button>
-      <button type="button" class="queue-action-btn queue-action-btn--reject" data-drydock-action="reject">✕ Reject</button>
+      <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve">${escapeHtml(t("codex.reading.approve"))}</button>
+      <button type="button" class="queue-action-btn queue-action-btn--reject" data-drydock-action="reject">${escapeHtml(t("codex.reading.reject"))}</button>
     </div>
   `;
 }
 
 function renderDecidedState(meta: DrydockMeta): string {
+  const t = consoleT();
   const isAccepted = meta.status === "accepted";
-  const label = isAccepted ? "✓ Approved" : "✕ Rejected";
+  const label = isAccepted ? t("codex.reading.approved") : t("codex.reading.rejected");
   const cls = isAccepted ? "queue-decision-decided--approve" : "queue-decision-decided--reject";
   const reason = meta.reason ? ` · ${escapeHtml(meta.reason)}` : "";
-  return `<p class="queue-decision-decided ${cls}">${label}${reason}</p>`;
+  return `<p class="queue-decision-decided ${cls}">${escapeHtml(label)}${reason}</p>`;
 }
 
 function renderConflictDetail(detail: ConflictDetailResponse): string {
+  const t = consoleT();
+  const status = (detail.meta?.status as string | undefined) ?? t("codex.reading.conflictOpen");
   return `
     <article class="document">
       <header class="document-header">
-        <nav class="breadcrumb" aria-label="Entry location">
-          <ol><li><span>Codex</span></li><li><span>Conflicts</span></li></ol>
+        <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
+          <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
         </nav>
         <h1>${escapeHtml(detail.id)}</h1>
-        <p class="eyebrow">Conflict · ${escapeHtml(detail.meta?.status as string ?? "open")}</p>
+        <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
       <div class="markdown-body">
-        ${detail.current ? `<h2>Current</h2><pre><code>${escapeHtml(detail.current)}</code></pre>` : ""}
-        ${detail.proposed ? `<h2>Proposed</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>` : ""}
+        ${detail.current ? `<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>` : ""}
+        ${detail.proposed ? `<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>` : ""}
       </div>
     </article>
   `;
 }
 
 function renderConflictList(conflicts: ConflictListItem[]): string {
+  const t = consoleT();
   if (conflicts.length === 0) {
-    return `<div class="codex-reader-empty"><p>No conflicts found.</p></div>`;
+    return `<div class="codex-reader-empty"><p>${escapeHtml(t("codex.reading.noConflicts"))}</p></div>`;
   }
   return `
     <article class="document">
       <header class="document-header">
-        <h1>Conflicts</h1>
+        <h1>${escapeHtml(t("codex.reading.conflicts"))}</h1>
       </header>
       <div class="markdown-body">
         <ul class="queue-list">
@@ -585,19 +657,4 @@ function renderConflictList(conflicts: ConflictListItem[]): string {
       </div>
     </article>
   `;
-}
-
-function formatRelativeTime(isoString: string): string {
-  try {
-    const diffMs = Date.now() - new Date(isoString).getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-    if (diffHours < 1) return "< 1h ago";
-    if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
-    const diffDays = diffHours / 24;
-    if (diffDays < 7) return `${Math.floor(diffDays)}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return `${Math.floor(diffDays / 30)}mo ago`;
-  } catch {
-    return "";
-  }
 }

@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { getT } from "../i18n/index.js";
 import { TerminalSurface } from "../shared/index.js";
 
 const GLOBAL_SHELL_OPERATION_PREFIX = "global-shell:theater:";
@@ -21,7 +22,7 @@ const PANEL_ROOT_STYLE: CSSProperties = {
 
 export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
-  title: "Shell",
+  title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
   preferredExtraWidth: GLOBAL_SHELL_EXTRA_WIDTH,
   render: (ctx: RailPanelContext) => (

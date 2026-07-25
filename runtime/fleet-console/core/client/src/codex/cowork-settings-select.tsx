@@ -1,5 +1,7 @@
 import { Select } from "@fleet-console/sdk/react/browser";
 
+import { useT } from "../i18n/index.js";
+
 export interface CoworkSettingsSelectProps {
   readonly clis: readonly string[];
   readonly models: readonly string[];
@@ -27,19 +29,20 @@ export function CoworkSettingsSelect({
   onModelChange,
   onEffortChange,
 }: CoworkSettingsSelectProps) {
+  const t = useT();
   return (
     <>
       <div className="cowork-selector">
-        <span>CLI</span>
-        <Select label="CLI" value={cli} options={toOptions(clis)} onChange={onCliChange} disabled={!clis.length} compact />
+        <span>{t("codex.cowork.cli")}</span>
+        <Select label={t("codex.cowork.cli")} value={cli} options={toOptions(clis)} onChange={onCliChange} disabled={!clis.length} compact />
       </div>
       <div className="cowork-selector">
-        <span>Model</span>
-        <Select label="Model" value={model} options={toOptions(models)} onChange={onModelChange} disabled={!models.length} compact />
+        <span>{t("codex.cowork.model")}</span>
+        <Select label={t("codex.cowork.model")} value={model} options={toOptions(models)} onChange={onModelChange} disabled={!models.length} compact />
       </div>
       <div className="cowork-selector">
-        <span>Effort</span>
-        <Select label="Effort" value={effort} options={toOptions(efforts)} onChange={onEffortChange} disabled={!efforts.length} compact />
+        <span>{t("codex.cowork.effort")}</span>
+        <Select label={t("codex.cowork.effort")} value={effort} options={toOptions(efforts)} onChange={onEffortChange} disabled={!efforts.length} compact />
       </div>
     </>
   );

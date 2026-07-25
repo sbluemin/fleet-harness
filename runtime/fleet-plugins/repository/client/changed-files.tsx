@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import type { DiffFileEntry } from "../server/types.js";
+import type { RepositoryMessageKey } from "./i18n/index.js";
 import { DiffTreeView } from "./repository-tree.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -18,25 +21,27 @@ interface ChangedFilesProps {
   readonly selectedPath: string | null;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly filterText: string;
+  readonly t: Translate<RepositoryMessageKey>;
 }
 
 interface ListFileRowProps {
   readonly entry: DiffFileEntry;
   readonly isSelected: boolean;
   readonly onSelect: (entry: DiffFileEntry) => void;
+  readonly t: Translate<RepositoryMessageKey>;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PREFS_CHANGES_COLLAPSED = "fleet-console.diff.changesCollapsed";
 
-const STATUS_LABEL: { [key: string]: string } = {
-  M: "modified",
-  A: "added",
-  D: "deleted",
-  R: "renamed",
-  T: "type changed",
-  U: "untracked",
+const STATUS_KEY: { [key: string]: RepositoryMessageKey } = {
+  M: "repository.status.modified",
+  A: "repository.status.added",
+  D: "repository.status.deleted",
+  R: "repository.status.renamed",
+  T: "repository.status.typeChanged",
+  U: "repository.status.untracked",
 };
 
 // ─── ChangedFiles (export) ────────────────────────────────────────────────────
@@ -55,7 +60,7 @@ function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText }: ChangedFilesProps) {
+export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t }: ChangedFilesProps) {
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
 
   const handleToggleChanges = useCallback(() => {
@@ -71,21 +76,21 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
   );
 
   if (state.kind === "loading") {
-    return <div className="repository-sections-loading">Loading…</div>;
+    return <div className="repository-sections-loading">{t("repository.common.loading")}</div>;
   }
 
   if (state.kind === "notice") {
     const title = state.reason === "no_git_repo"
-      ? "Not a Git repository"
-      : "Git isn't available";
+      ? t("repository.changes.notice.noGitRepoTitle")
+      : t("repository.changes.notice.gitUnavailableTitle");
     const body = state.reason === "no_git_repo"
-      ? "This folder isn't a Git repository, so there are no changes to show."
-      : "Git was not found on this system. Install Git and make sure it's on your PATH.";
+      ? t("repository.changes.notice.noGitRepoBody")
+      : t("repository.changes.notice.gitUnavailableBody");
     return (
       <div className="repository-sections-notice">
         <strong className="repository-notice-title">{title}</strong>
         <span className="repository-notice-body">{body}</span>
-        <button type="button" className="repository-refresh-btn" onClick={onRetry}>Retry</button>
+        <button type="button" className="repository-refresh-btn" onClick={onRetry}>{t("repository.common.retry")}</button>
       </div>
     );
   }
@@ -94,7 +99,7 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
     return (
       <div className="repository-sections-error">
         <span>{state.message}</span>
-        <button type="button" className="repository-refresh-btn" onClick={onRetry}>Retry</button>
+        <button type="button" className="repository-refresh-btn" onClick={onRetry}>{t("repository.common.retry")}</button>
       </div>
     );
   }
@@ -108,13 +113,13 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
           <svg className="repository-section-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="repository-section-name">Changes</span>
+          <span className="repository-section-name">{t("repository.changes.section")}</span>
           <span className="repository-count-badge">{countLabel}</span>
         </button>
         {!changesCollapsed && (
           <div className="repository-section-rows">
             {visibleFiles.length === 0 ? (
-              <div className="repository-empty-row">{filterText ? "No matching items" : "No changes"}</div>
+              <div className="repository-empty-row">{filterText ? t("repository.common.noMatchingItems") : t("repository.changes.empty")}</div>
             ) : viewMode === "tree" ? (
               <DiffTreeView
                 files={visibleFiles}
@@ -128,6 +133,7 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
                   entry={entry}
                   isSelected={entry.path === selectedPath}
                   onSelect={onSelect}
+                  t={t}
                 />
               ))
             )}
@@ -140,13 +146,14 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
-export function FileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
+export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
   const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   // 미추적 디렉터리는 trailing slash 경로로 오므로, 이름은 마지막 비어있지 않은 세그먼트로 취한다
   const trimmed = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;
   const lastSlash = trimmed.lastIndexOf("/");
   const dir = lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : "";
   const name = (lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed) + (entry.path.endsWith("/") ? "/" : "");
+  const statusKey = STATUS_KEY[entry.status];
 
   return (
     <button
@@ -157,7 +164,7 @@ export function FileRow({ entry, isSelected, onSelect }: ListFileRowProps) {
     >
       <span
         className={`repository-status-glyph repository-status-${entry.status.toLowerCase()}`}
-        aria-label={STATUS_LABEL[entry.status] ?? entry.status}
+        aria-label={statusKey ? t(statusKey) : entry.status}
       >
         {entry.status}
       </span>

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import type { SkillListItem } from "../server/types.js";
+import type { SkillsMessageKey } from "./i18n/index.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -10,6 +13,7 @@ interface SkillCardProps {
   readonly onUpdate?: (scope: string) => void;
   readonly onRemove?: (name: string, scope: string) => void;
   readonly isUpdating?: boolean;
+  readonly t: Translate<SkillsMessageKey>;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -18,7 +22,7 @@ const REMOVE_ARM_MS = 2600;
 
 // ─── SkillCard ────────────────────────────────────────────────────────────────
 
-export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating }: SkillCardProps) {
+export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating, t }: SkillCardProps) {
   const [removeArmed, setRemoveArmed] = useState(false);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -49,7 +53,7 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating }:
           type="button"
           className="skills-card-name-btn"
           onClick={() => onReadMore?.(skill)}
-          title="Read SKILL.md"
+          title={t("skills.action.readSkillMd")}
         >
           {skill.name}
         </button>
@@ -66,11 +70,11 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating }:
           <button
             type="button"
             className="skills-btn skills-btn--ghost"
-            title={`Updates all ${skill.scope} skills`}
+            title={t("skills.action.updateAllTitle", { scope: t(skill.scope === "project" ? "skills.scope.project" : "skills.scope.global") })}
             onClick={() => onUpdate(skill.scope)}
             disabled={isUpdating}
           >
-            {isUpdating ? "Updating…" : "Update all"}
+            {isUpdating ? t("skills.action.updating") : t("skills.action.updateAll")}
           </button>
         )}
         {onRemove && (
@@ -78,9 +82,13 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating }:
             type="button"
             className={`skills-btn skills-btn--remove${removeArmed ? " is-armed" : ""}`}
             onClick={handleRemoveClick}
-            aria-label={removeArmed ? `Confirm remove ${skill.name}` : `Remove ${skill.name}`}
+            aria-label={
+              removeArmed
+                ? t("skills.action.removeConfirmAria", { name: skill.name })
+                : t("skills.action.removeAria", { name: skill.name })
+            }
           >
-            {removeArmed ? "Remove?" : "✕"}
+            {removeArmed ? t("skills.action.removeConfirm") : "✕"}
           </button>
         )}
       </div>
