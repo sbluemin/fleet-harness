@@ -34,7 +34,7 @@ afterEach(() => {
 
 describe("Session Analyst readiness handle", () => {
   it("keeps ANALYZE disabled with preventive guidance before a transcript is ready", async () => {
-    const fetch = vi.fn().mockResolvedValue(readyResponse(false));
+    const fetch = analysisFetch(false);
     await renderLiveOperation(fetch);
 
     const handle = analystHandle();
@@ -42,14 +42,12 @@ describe("Session Analyst readiness handle", () => {
     expect(handle.getAttribute("aria-disabled")).toBe("true");
     expect(handle.title).toBe("Send a message in this session first");
     expect(handle.classList.contains("is-waiting")).toBe(true);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(readyCalls(fetch)).toHaveLength(1);
   });
 
   it("enables ANALYZE after the readiness poll turns true and stops polling", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(readyResponse(false))
-      .mockResolvedValue(readyResponse(true));
+    const fetch = analysisFetch(false, true);
     await renderLiveOperation(fetch);
     expect(analystHandle().disabled).toBe(true);
 
@@ -60,14 +58,14 @@ describe("Session Analyst readiness handle", () => {
     expect(handle.getAttribute("aria-disabled")).toBe("false");
     expect(handle.hasAttribute("title")).toBe(false);
     expect(handle.classList.contains("is-waiting")).toBe(false);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(readyCalls(fetch)).toHaveLength(2);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(readyCalls(fetch)).toHaveLength(2);
   });
 
   it("opens Session Analyst from a ready dormant operation without resuming it", async () => {
-    const fetch = vi.fn().mockResolvedValue(readyResponse(true));
+    const fetch = analysisFetch(true);
     const onRequestCompanions = vi.fn();
     await renderOperation(fetch, "dormant", onRequestCompanions);
 
@@ -82,8 +80,7 @@ describe("Session Analyst readiness handle", () => {
     act(() => handle.click());
     expect(onRequestCompanions).toHaveBeenCalledWith(true);
     expect(resumeClick).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch.mock.calls[0]?.[1]).toBe(`analysis/${OPERATION_ID}/ready`);
+    expect(readyCalls(fetch)).toHaveLength(1);
   });
 
   it("closes and reopens companions without stopping or replacing the Analyst session", async () => {
@@ -97,7 +94,7 @@ describe("Session Analyst readiness handle", () => {
     store.dispatch({ type: "event", event: { type: "chunk", text: "Retained answer" }, now: 2 });
     store.dispatch({ type: "event", event: { type: "complete" }, now: 3 });
     const onRequestCompanions = vi.fn();
-    await renderOperation(fetch, "live", onRequestCompanions, true);
+    await renderOperation(fetch, "live", onRequestCompanions, true, ["carrier-streams", "session-analyst-artifacts"]);
 
     expect(analystHandle().textContent).toContain("EXIT");
     act(() => analystHandle().click());
@@ -106,7 +103,7 @@ describe("Session Analyst readiness handle", () => {
     expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
 
     onRequestCompanions.mockClear();
-    await renderOperation(fetch, "live", onRequestCompanions, false);
+    await renderOperation(fetch, "live", onRequestCompanions, false, ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"]);
     await vi.waitFor(() => expect(analystHandle().disabled).toBe(false));
     expect(analystHandle().textContent).toContain("ANALYZE");
     act(() => analystHandle().click());
@@ -145,14 +142,13 @@ describe("Session Analyst readiness handle", () => {
     await expect(fetchAnalysisReady(api, OPERATION_ID)).resolves.toBe(false);
   });
 
-  it("exposes transcript readiness to host companion retargets", async () => {
-    const fetch = vi.fn().mockResolvedValue(readyResponse(false));
+  it("keeps the host companion gate open independently of transcript readiness", async () => {
+    const fetch = analysisFetch(false);
     const canOpenCompanions = agentOperationKind.canOpenCompanions;
-    if (!canOpenCompanions) throw new Error("Agent companion readiness gate must exist.");
+    if (!canOpenCompanions) throw new Error("Agent companion availability gate must exist.");
 
-    await expect(Promise.resolve(canOpenCompanions({ api: createApi(fetch), operation: operation() }))).resolves.toBe(false);
-    expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch.mock.calls[0]?.[1]).toBe(`analysis/${OPERATION_ID}/ready`);
+    await expect(Promise.resolve(canOpenCompanions({ api: createApi(fetch), operation: operation() }))).resolves.toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -160,7 +156,15 @@ async function renderLiveOperation(fetch: ReturnType<typeof vi.fn>): Promise<voi
   await renderOperation(fetch, "live");
 }
 
-async function renderOperation(fetch: ReturnType<typeof vi.fn>, status: "live" | "dormant", onRequestCompanions = vi.fn(), companionsOpen = false): Promise<void> {
+async function renderOperation(
+  fetch: ReturnType<typeof vi.fn>,
+  status: "live" | "dormant",
+  onRequestCompanions = vi.fn(),
+  companionsOpen = false,
+  hiddenCompanionPanelIds = companionsOpen
+    ? ["carrier-streams", "session-analyst-artifacts"]
+    : ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+): Promise<void> {
   if (!container) {
     container = document.createElement("div");
     document.body.append(container);
@@ -180,7 +184,7 @@ async function renderOperation(fetch: ReturnType<typeof vi.fn>, status: "live" |
       theaterId: "theater",
       resumeAvailable: true,
     });
-    root?.render(render(createContext(createApi(fetch), onRequestCompanions, companionsOpen)) as React.ReactNode);
+    root?.render(render(createContext(createApi(fetch), onRequestCompanions, companionsOpen, hiddenCompanionPanelIds)) as React.ReactNode);
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -190,7 +194,12 @@ function createApi(fetch: ReturnType<typeof vi.fn>): ClientApiCapability {
   return { fetch, subscribe: () => () => undefined, resync: vi.fn() } as ClientApiCapability;
 }
 
-function createContext(api: ClientApiCapability, onRequestCompanions = vi.fn(), companionsOpen = false): OperationRenderContext {
+function createContext(
+  api: ClientApiCapability,
+  onRequestCompanions = vi.fn(),
+  companionsOpen = false,
+  hiddenCompanionPanelIds: readonly string[] = [],
+): OperationRenderContext {
   return {
     operationId: OPERATION_ID,
     theaterId: "theater",
@@ -202,7 +211,9 @@ function createContext(api: ClientApiCapability, onRequestCompanions = vi.fn(), 
     zoom: 1,
     theme: "instrument",
     companionsOpen,
+    hiddenCompanionPanelIds,
     onRequestCompanions,
+    onSetCompanionPanelVisible: vi.fn(),
   } as unknown as OperationRenderContext;
 }
 
@@ -223,7 +234,23 @@ function readyResponse(ready: boolean): Response {
 }
 
 function analystHandle(): HTMLButtonElement {
-  const handle = container?.querySelector<HTMLButtonElement>(".session-analyst-handle");
+  const handle = container?.querySelector<HTMLButtonElement>(".session-analyst-handle:not(.session-analyst-handle--streams)");
   if (!handle) throw new Error("Session Analyst handle must render.");
   return handle;
+}
+
+function analysisFetch(...readiness: boolean[]): ReturnType<typeof vi.fn> {
+  let readinessIndex = 0;
+  return vi.fn(async (_pluginId: string, path: string) => {
+    if (path === "analysis/catalog") {
+      return new Response(CATALOG_BODY, { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const ready = readiness[Math.min(readinessIndex, readiness.length - 1)] ?? false;
+    readinessIndex += 1;
+    return readyResponse(ready);
+  });
+}
+
+function readyCalls(fetch: ReturnType<typeof vi.fn>): readonly unknown[][] {
+  return fetch.mock.calls.filter((call) => call[1] === `analysis/${OPERATION_ID}/ready`);
 }

@@ -1,4 +1,5 @@
 import type { JobView, ObservedEvent, RequestBlockView, RequestView, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
+import { resolveToolTone } from "./helpers.js";
 
 interface TrackMetaPayload {
   readonly trackId?: string;
@@ -197,17 +198,35 @@ function createEmptyTrack(trackId: string): TrackView {
 }
 
 function upsertTool(tools: readonly TrackToolCall[], payload: Record<string, unknown>): readonly TrackToolCall[] {
-  const id = readString(payload.toolId) ?? readString(payload.id);
+  const title = readString(payload.title);
+  const explicitId = readString(payload.toolCallId) ?? readString(payload.toolId) ?? readString(payload.id);
+  let id = explicitId;
+  let index = explicitId ? tools.findIndex((tool) => tool.id === explicitId) : -1;
+  if (!id && title) {
+    for (let toolIndex = tools.length - 1; toolIndex >= 0; toolIndex -= 1) {
+      if (tools[toolIndex]?.name !== title) continue;
+      if (resolveToolTone(tools[toolIndex]?.status) === "live") {
+        index = toolIndex;
+        id = tools[toolIndex]?.id;
+      }
+      break;
+    }
+    if (!id) {
+      const sameTitleCount = tools.filter((tool) => tool.name === title).length;
+      id = `${title}#${sameTitleCount}`;
+    }
+  }
   if (!id) return tools;
+  const existing = index >= 0 ? tools[index] : undefined;
   const next: TrackToolCall = {
+    ...existing,
     id,
-    name: readString(payload.name),
-    input: payload.input,
-    output: payload.output,
-    status: readString(payload.status),
+    name: title ?? readString(payload.name) ?? existing?.name,
+    input: payload.input ?? existing?.input,
+    output: payload.output ?? existing?.output,
+    status: readString(payload.status) ?? existing?.status,
   };
-  const index = tools.findIndex((tool) => tool.id === id);
-  return index >= 0 ? [...tools.slice(0, index), { ...tools[index], ...next }, ...tools.slice(index + 1)] : [...tools, next];
+  return index >= 0 ? [...tools.slice(0, index), next, ...tools.slice(index + 1)] : [...tools, next];
 }
 
 function adoptFinalBody(existing: string, sentLength: number, fallback: string | undefined, fallbackLength: number | undefined): { readonly text: string; readonly sentLength: number } {

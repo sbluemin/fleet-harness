@@ -79,6 +79,8 @@ const KOREAN_COPY = {
   "Unknown time": "시간 알 수 없음",
   "Exit Session Analyst": "Session Analyst 닫기",
   "Open Session Analyst": "Session Analyst 열기",
+  "Exit Carrier Streams": "Carrier Streams 닫기",
+  "Open Carrier Streams": "Carrier Streams 열기",
   "Send a message in this session first": "먼저 이 세션에서 메시지를 보내세요",
   "EXIT": "닫기",
   "ANALYZE": "분석",
