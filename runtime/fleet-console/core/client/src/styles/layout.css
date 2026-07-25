@@ -322,6 +322,48 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-formation-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
 
+.command-band-triage-toggle {
+  position: absolute;
+  left: calc(var(--command-band-left-width, 280px) + 116px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+}
+
+.command-band-triage-toggle svg {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.command-band-triage-toggle span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+}
+
+.command-band-triage-toggle:hover:not(:disabled),
+.command-band-triage-toggle:focus-visible {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-band-triage-toggle[aria-pressed="true"] {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass);
+}
+
+.command-band-triage-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
+
 .command-band-theater-cluster {
   display: flex;
   align-items: center;

@@ -29,6 +29,9 @@ interface SideBarChipProps {
   readonly statusAxis?: boolean;
   readonly idleUnseen?: boolean;
   readonly statusLanded?: boolean;
+  readonly triageOrder?: number;
+  readonly triageStage?: boolean;
+  readonly triageMode?: boolean;
   readonly reorderEnabled?: boolean;
   readonly dragging: boolean;
   readonly dragOffsetY: number;
@@ -60,6 +63,9 @@ export function OperationsSideBarChip({
   statusAxis = false,
   idleUnseen = false,
   statusLanded = false,
+  triageOrder,
+  triageStage = false,
+  triageMode = false,
   reorderEnabled = true,
   dragging,
   dragOffsetY,
@@ -94,6 +100,7 @@ export function OperationsSideBarChip({
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
+    triageStage ? "is-triage-stage" : "",
   ].filter(Boolean).join(" ");
   const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
   const chipStyle = {
@@ -146,11 +153,12 @@ export function OperationsSideBarChip({
       onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
       return true;
     }
+    if (triageMode) return false;
     onDisarmClose();
     onMinimize(operation.id);
     chip.focus();
     return true;
-  }), [onDisarmClose, onMinimize, onOpenAccent, operation.id, preview, rename]);
+  }), [onDisarmClose, onMinimize, onOpenAccent, operation.id, preview, rename, triageMode]);
 
   return (
     <li
@@ -217,6 +225,7 @@ export function OperationsSideBarChip({
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
       ) : null}
+      {triageOrder !== undefined ? <span className="side-bar-chip-triage-order">{triageOrder}</span> : null}
       {groupMark && statusAxis && !preview ? (
         <span
           className="side-bar-chip-group-pill"
@@ -249,7 +258,7 @@ export function OperationsSideBarChip({
           title={chipStatusLabel(status)}
         />
       ) : null}
-      {!preview && !minimized ? (
+      {!preview && !minimized && !triageMode ? (
         <button
           type="button"
           className="side-bar-chip-minimize"

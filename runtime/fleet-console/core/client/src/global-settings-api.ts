@@ -42,6 +42,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
     || typeof payload.reducePanelMotion !== "boolean"
+    || !isSeenFeatureTours(payload.seenFeatureTours)
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon")
     || !isConsoleLanguagePreference(payload.language)
   ) {
@@ -51,6 +52,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
     reducePanelMotion: payload.reducePanelMotion,
+    seenFeatureTours: payload.seenFeatureTours,
     theme: payload.theme,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,
@@ -63,4 +65,11 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 
 function isConsoleLanguagePreference(value: unknown): value is ConsoleLanguagePreference {
   return value === "auto" || value === "en" || value === "ko";
+}
+
+function isSeenFeatureTours(value: unknown): value is readonly string[] {
+  return Array.isArray(value)
+    && value.length <= 64
+    && value.every((item) => typeof item === "string" && item.length <= 64)
+    && new Set(value).size === value.length;
 }

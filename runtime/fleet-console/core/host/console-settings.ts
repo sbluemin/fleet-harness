@@ -19,6 +19,7 @@ export interface ConsoleGeneralSettings {
   readonly consoleStaticPort?: number;
   readonly language?: "auto" | "en" | "ko";
   readonly reducePanelMotion?: boolean;
+  readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
   readonly uiFont?: UiFontSettings;
 }
@@ -45,6 +46,8 @@ const SETTINGS_LOCK_OWNER_FILE_NAME = "owner.json";
 const SETTINGS_TEMP_PREFIX = ".settings.";
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
+const MAX_SEEN_FEATURE_TOURS = 64;
+const MAX_FEATURE_TOUR_KEY_LENGTH = 64;
 
 export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> {
   const paths = deps.paths ?? createConsoleDataPaths();
@@ -89,6 +92,17 @@ export function sanitizeUiFontSettings(value: unknown): UiFontSettings | undefin
   return undefined;
 }
 
+export function sanitizeSeenFeatureTours(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string" || item.length > MAX_FEATURE_TOUR_KEY_LENGTH) continue;
+    seen.add(item);
+    if (seen.size === MAX_SEEN_FEATURE_TOURS) break;
+  }
+  return [...seen];
+}
+
 export function isUiFontSettings(value: unknown): value is UiFontSettings {
   if (!isRecord(value) || !isValidUiFontSize(value.size)) return false;
   if (value.source === "builtin") return isConsoleUiFontId(value.id);
@@ -109,6 +123,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const reducePanelMotion = typeof value.reducePanelMotion === "boolean"
     ? value.reducePanelMotion
     : undefined;
+  const seenFeatureTours = sanitizeSeenFeatureTours(value.seenFeatureTours);
   const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
     ? value.theme
     : undefined;
@@ -118,6 +133,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(language !== undefined ? { language } : {}),
     ...(reducePanelMotion !== undefined ? { reducePanelMotion } : {}),
+    ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
   };

@@ -4,6 +4,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
+import { focusedTriageOperationId, pickTriageOperation, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
@@ -50,6 +51,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
+  const triageActive = useTriageActive(state.activeTheaterId);
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
@@ -352,6 +354,28 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label={t("chrome.commandBand.formationColumns")} title={t("chrome.commandBand.formationColumns")}><FormationColumnsIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label={t("chrome.commandBand.formationRows")} title={t("chrome.commandBand.formationRows")}><FormationRowsIcon /></button>
       </div> : null}
+      {operationsViewVisible ? <button
+        type="button"
+        className="command-band-triage-toggle"
+        disabled={state.activeTheaterId === null}
+        aria-pressed={triageActive}
+        aria-label={t("chrome.commandBand.triageToggle")}
+        title={t("chrome.commandBand.triageToggle")}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          if (state.activeTheaterId) {
+            const activating = !triageActive;
+            if (activating) {
+              const operationId = focusedTriageOperationId(document.activeElement);
+              if (operationId) pickTriageOperation(state.activeTheaterId, operationId);
+            }
+            setTriageActive(state.activeTheaterId, activating);
+          }
+        }}
+      >
+        <TriageIcon />
+        {triageActive ? <span>{t("chrome.commandBand.triage")}</span> : null}
+      </button> : null}
       {viewMode.effective !== "mobile" ? <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>
@@ -509,6 +533,10 @@ function FormationColumnsIcon() {
 
 function FormationRowsIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v3h-11zM2.5 6.5h11v3h-11zM2.5 10.5h11v3h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+function TriageIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10v3H3zM5 8h6v2H5zM7 12h2v2H7z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {

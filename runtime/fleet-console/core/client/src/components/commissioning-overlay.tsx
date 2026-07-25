@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { addTheater, issueTheaterFolderGrant } from "../api.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { beginAddTheater, closeOnboarding, completeAddTheater, failAddTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
@@ -22,6 +23,7 @@ const FOCUSABLE_SELECTOR = [
 
 export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
   const t = useT();
+  const globalSettings = useGlobalSettingsStore();
   const [browserOpen, setBrowserOpen] = useState(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const primaryActionRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
@@ -55,7 +57,7 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [browserOpen, state.onboardingOpen]);
 
-  if (!state.onboardingOpen) return null;
+  if (globalSettings.loadStatus !== "ready" || !state.onboardingOpen) return null;
 
   const handleChooseFolder = () => {
     setBrowserOpen(true);

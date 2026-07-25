@@ -39,7 +39,9 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
       title: t("shortcuts.group.map"),
       entries: [
         { combos: [["Alt", "←"], ["Alt", "→"]], description: t("shortcuts.map.focusPrevNext") },
+        { combos: [["Alt", "→"]], description: t("shortcuts.map.triageDefer") },
         { combos: [["Alt", "F"]], description: t("shortcuts.map.toggleFormation") },
+        { combos: [["Alt", "T"]], description: t("shortcuts.map.toggleTriage") },
         { combos: [["Alt", "S"]], description: t("shortcuts.map.sortByStatus") },
         { combos: [["Drag"]], description: t("shortcuts.map.pan") },
         { combos: [["Shift", "Drag"]], description: t("shortcuts.map.drawTerminal") },

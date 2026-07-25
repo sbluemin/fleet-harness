@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
-import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
+import { buildTriageSections, groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 import {
   clearIdleUnseen,
@@ -498,6 +498,19 @@ describe("groupOperationsByStatus", () => {
     const operations = [makeNode("a"), makeNode("b")];
     expect(hasAwaitingOperation(operations, { a: "running", b: "awaiting" })).toBe(true);
     expect(hasAwaitingOperation(operations, { a: "running" })).toBe(false);
+  });
+});
+
+describe("buildTriageSections", () => {
+  it("renders the queue in queue order and keeps every other Operation in the flat rest section", () => {
+    const sections = buildTriageSections(
+      [makeEntry("rest-first"), makeEntry("queue-second"), makeEntry("queue-first")],
+      ["queue-first", "queue-second"],
+    );
+
+    expect(sections.map((section) => section.label)).toEqual(["Queue", "Not waiting"]);
+    expect(sections[0]?.entries.map((entry) => entry.operation.id)).toEqual(["queue-first", "queue-second"]);
+    expect(sections[1]?.entries.map((entry) => entry.operation.id)).toEqual(["rest-first"]);
   });
 });
 

@@ -19,6 +19,7 @@ beforeEach(() => {
     consolePortMode: "dynamic",
     consoleStaticPort: null,
     reducePanelMotion: false,
+    seenFeatureTours: [],
     theme: "instrument",
     uiFont: DEFAULT_UI_FONT,
     language: "en",

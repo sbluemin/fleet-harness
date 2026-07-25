@@ -22,6 +22,9 @@ interface OperationFrameProps {
   readonly focusLayerTarget?: boolean;
   readonly topEdge?: boolean;
   readonly interactionDisabled?: boolean;
+  readonly triageStage?: boolean;
+  readonly triagePicked?: boolean;
+  readonly formationSlotIndex?: number;
   readonly accentKey?: string | null;
   readonly children: ReactNode;
   readonly onActivate: () => void;
@@ -54,7 +57,7 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -86,6 +89,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     active ? "is-active" : "",
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
+    triageStage ? "is-triage-stage" : "",
     topEdge ? "is-top-edge" : "",
     dragging ? "is-dragging" : "",
     frameStatusClass(status),
@@ -376,6 +380,12 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             {displayTitle}
           </button>
         )}
+        {triagePicked ? <span className="canvas-operation-triage-picked">{t("canvas.triage.picked")}</span> : null}
+        {formationSlotIndex !== undefined ? (
+          <span className="canvas-operation-formation-slot" aria-label={t("canvas.formation.slotAria", { index: formationSlotIndex })}>
+            {String(formationSlotIndex).padStart(2, "0")}
+          </span>
+        ) : null}
         {onSetAccent ? (
           <button
             type="button"
@@ -393,10 +403,10 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         )}
         <div className="canvas-operation-window-controls">
           <span className="canvas-operation-controls-divider" aria-hidden="true" />
-          <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
+          {!triageStage ? <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
             <MinimizeIcon />
-          </button>
-          {onMaximize ? (
+          </button> : null}
+          {!triageStage && onMaximize ? (
             <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized} title={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
               {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
             </button>

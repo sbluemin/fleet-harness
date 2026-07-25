@@ -67,6 +67,9 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--user-accent",
   // Canvas injects stagger timing through CSSStyleDeclaration.setProperty at runtime.
   "--panel-stagger-delay",
+  // Formation injects guide and landing sequence indices through TSX/runtime styles.
+  "--gi",
+  "--li",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
   // Sidebar TSX injects transient drag offsets for chips and group headers.
@@ -359,6 +362,25 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
+    for (const sharedModeClass of [
+      "canvas-mode-frame",
+      "canvas-mode-bracket",
+      "canvas-mode-curtain",
+      "canvas-mode-curtain-kicker",
+      "canvas-mode-curtain-ruler",
+    ]) {
+      expect(canvas).toContain(sharedModeClass);
+      expect(components).toContain(`.${sharedModeClass}`);
+    }
+    expect(canvas).not.toContain("canvas-mode-hud");
+    expect(components).not.toContain(".canvas-mode-hud");
+    expect(canvas).toContain("canvas-triage-rail-current");
+    expect(canvas).toContain("canvas-triage-rail-cleared");
+    expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
+    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
+    expect(components).toContain("background-size: 48px 48px !important;");
+    expect(components).toContain(".canvas-formation-guide {");
+    expect(components).toContain(".canvas-operation-formation-slot {");
     expect(contextMenu).toContain('<p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>');
     expect(contextMenu).not.toContain("CanvasContextMenuMode");
     expect(contextMenu).not.toContain("canvas-context-menu-tabs");
@@ -383,6 +405,13 @@ describe("Instrument core design contract", () => {
       const masked = maskCssCommentsAndStrings(css);
       for (const declaration of cssDeclarations(masked, "color")) {
         if (!RAW_TEXT_INK_TOKENS.test(declaration.value)) continue;
+        const blockStart = masked.lastIndexOf("{", declaration.index);
+        const selectorStart = masked.lastIndexOf("}", blockStart) + 1;
+        const selector = masked.slice(selectorStart, blockStart);
+        // Mode instrument chrome has host-approved literal brass/fog blends; adjacent CSS doctrine
+        // comments distinguish these decorative labels from semantic body-copy color.
+        if (selector.includes(".canvas-mode-curtain-kicker")
+          || selector.includes(".canvas-formation-guide-index")) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
       }
@@ -663,7 +692,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "grid"}');
     expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "columns"}');
     expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "rows"}');
-    expect((commandBand.match(/disabled=\{state\.activeTheaterId === null\}/g) ?? []).length).toBe(4);
+    expect((commandBand.match(/disabled=\{state\.activeTheaterId === null\}/g) ?? []).length).toBe(5);
+    expect(commandBand).toContain('className="command-band-triage-toggle"');
+    expect(commandBand).toContain("aria-pressed={triageActive}");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");

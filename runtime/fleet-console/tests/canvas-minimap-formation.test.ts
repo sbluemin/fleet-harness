@@ -176,6 +176,87 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(document.querySelector('[aria-label="Open Map"]')).not.toBeNull();
   });
 
+  it("renders shared mode chrome, numbered slots, an incomplete-row guide, and shows the curtain on every entry", () => {
+    vi.useFakeTimers();
+    try {
+      const theaterId = "formation-chrome";
+      const operations = [0, 1, 2].map((index) => ({
+        ...OPERATION,
+        id: `formation-${index + 1}`,
+        theaterId,
+        title: `Formation ${index + 1}`,
+        ts: { createdAt: index, updatedAt: index },
+      }));
+      loadForTheater(theaterId);
+      setState({
+        operations: Object.fromEntries(operations.map((operation, index) => [
+          operation.id,
+          { x: index * 40, y: index * 40, width: 320, height: 200, zIndex: index + 1 },
+        ])),
+      });
+      renderOperationsCanvas({
+        ...CANVAS_STATE,
+        activeTheaterId: theaterId,
+        operations,
+        operationStatus: {
+          "formation-1": "awaiting",
+          "formation-2": "running",
+          "formation-3": "idle",
+        },
+      });
+
+      act(() => toggleFormationView());
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-entering")).toBe(true);
+      expect(document.querySelector(".canvas-mode-frame")).not.toBeNull();
+      expect(document.querySelectorAll(".canvas-mode-bracket")).toHaveLength(4);
+      expect(document.querySelector(".canvas-mode-hud")).toBeNull();
+      expect([...document.querySelectorAll(".canvas-operation-formation-slot")].map((element) => element.textContent)).toEqual(["01", "02", "03"]);
+      expect(document.querySelector(".canvas-formation-guide-index")?.textContent).toBe("04");
+      expect(document.querySelector(".canvas-formation-curtain")).not.toBeNull();
+
+      act(() => vi.advanceTimersByTime(1_950));
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-entering")).toBe(false);
+      expect(document.querySelector(".canvas-formation-curtain")).toBeNull();
+
+      act(() => clearFormationView());
+      act(() => toggleFormationView());
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-entering")).toBe(true);
+      expect(document.querySelector(".canvas-formation-curtain")).not.toBeNull();
+      act(() => vi.advanceTimersByTime(1_950));
+      expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-entering")).toBe(false);
+      expect(document.querySelector(".canvas-formation-curtain")).toBeNull();
+    } finally {
+      act(() => clearFormationView());
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not render the empty canvas state beneath the Formation entry curtain", () => {
+    vi.useFakeTimers();
+    try {
+      const theaterId = "formation-empty-curtain";
+      loadForTheater(theaterId);
+      setState({ operations: {}, minimized: [] });
+      renderOperationsCanvas({
+        ...CANVAS_STATE,
+        activeTheaterId: theaterId,
+        operations: [],
+      });
+      expect(document.querySelector(".operations-canvas-empty")).not.toBeNull();
+
+      act(() => toggleFormationView());
+      expect(document.querySelector(".canvas-formation-curtain")).not.toBeNull();
+      expect(document.querySelector(".operations-canvas-empty")).toBeNull();
+
+      act(() => vi.advanceTimersByTime(1_950));
+      expect(document.querySelector(".canvas-formation-curtain")).toBeNull();
+      expect(document.querySelector(".operations-canvas-empty")).not.toBeNull();
+    } finally {
+      act(() => clearFormationView());
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps peer frames mounted with geometry but visually and interactively absent in the focus layer", () => {
     renderOperationsCanvas();
     const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
@@ -255,6 +336,7 @@ describe("CanvasMinimap collapse behavior", () => {
 
   it("renders Analyze over Formation and restores the preserved Formation layout on Exit", () => {
     renderOperationsCanvas();
+    const targetFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
     const targetBody = document.querySelector<HTMLElement>('[data-plugin-operation="operation"]');
     act(() => toggleFormationView());
     expect(document.querySelector(".operations-canvas")?.classList.contains("is-formation-view")).toBe(true);
@@ -263,6 +345,20 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(getCompanionOperationId()).toBe("operation");
     expect(getFormationView()).toBe(true);
     expect(document.querySelector(".operations-canvas")?.classList.contains("is-companion-layout")).toBe(true);
+    const formationCompanionFrames = [
+      targetFrame!,
+      ...document.querySelectorAll<HTMLElement>(".canvas-companion-frame"),
+    ].map(readInlineFrameRect);
+    expect(formationCompanionFrames).toHaveLength(3);
+    for (const frame of formationCompanionFrames) {
+      expect(frame.x).toBeGreaterThanOrEqual(18);
+      expect(frame.y).toBeGreaterThanOrEqual(18);
+      expect(frame.x + frame.width).toBeLessThanOrEqual(900 - 18);
+      expect(frame.y + frame.height).toBeLessThanOrEqual(600 - 18);
+    }
+    const framesByX = [...formationCompanionFrames].sort((left, right) => left.x - right.x);
+    expect(framesByX[0]!.x + framesByX[0]!.width).toBeLessThan(framesByX[1]!.x);
+    expect(framesByX[1]!.x + framesByX[1]!.width).toBeLessThan(framesByX[2]!.x);
 
     act(() => targetBody?.click());
     expect(getCompanionOperationId()).toBeNull();
@@ -437,6 +533,15 @@ function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
     onRename: () => {},
     onSetAccent: () => {},
   })));
+}
+
+function readInlineFrameRect(element: HTMLElement) {
+  return {
+    x: Number.parseFloat(element.style.left),
+    y: Number.parseFloat(element.style.top),
+    width: Number.parseFloat(element.style.width),
+    height: Number.parseFloat(element.style.height),
+  };
 }
 
 function restoreProperty(target: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined) {

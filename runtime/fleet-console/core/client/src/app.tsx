@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
+import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { takeKeyboardShortcutsReturnFocus } from "./keyboard-shortcuts-return-focus.js";
 import { OperationSearch } from "./components/operation-search.js";
@@ -228,6 +229,7 @@ export function App() {
       {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
+      <FeatureTourOverlay />
       <Toast
         open={state.connectionError !== null}
         tone="error"

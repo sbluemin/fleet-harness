@@ -10,6 +10,7 @@ import { claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOpe
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
+import { deferTriageOperation, dismissTriageOperation, focusedTriageOperationId, forgetTriageOperation, isTriageActive, pickTriageOperation, recordTriageActivity, resetTriageTheater, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -18,6 +19,7 @@ import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
+import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
@@ -60,7 +62,16 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
+    if (state.activeTheaterId && isTriageActive(state.activeTheaterId)) {
+      setTriageActive(state.activeTheaterId, true);
+    }
   }, [state.activeTheaterId]);
+
+  useEffect(() => {
+    for (const theater of state.theaters) {
+      recordTriageActivity(theater.id, state.operations, state.operationStatus);
+    }
+  }, [state.operationStatus, state.operations, state.theaters]);
 
   useEffect(() => {
     if (!state.activeTheaterId) { setCatalog([]); return; }
@@ -88,9 +99,41 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         toggleFormationView();
         return;
       }
-      if (event.shiftKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
-      // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
+      if (event.code === "KeyT" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const theaterId = stateRef.current.activeTheaterId;
+        if (theaterId) {
+          const activating = !isTriageActive(theaterId);
+          if (activating) {
+            const operationId = focusedTriageOperationId(document.activeElement);
+            if (operationId) pickTriageOperation(theaterId, operationId);
+          }
+          setTriageActive(theaterId, activating);
+        }
+        return;
+      }
+      if (event.shiftKey) return;
       const snapshot = stateRef.current;
+      const theaterId = snapshot.activeTheaterId;
+      const triageActive = theaterId !== null && isTriageActive(theaterId);
+      const arrowAction = resolveOperationsArrowShortcutAction(triageActive, event.key);
+      if (arrowAction === null) return;
+      if (triageActive) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (arrowAction === "triage-noop") return;
+        const stageId = document.querySelector<HTMLElement>(".canvas-operation.is-triage-stage[data-operation-id]")?.dataset.operationId;
+        if (!stageId) return;
+        const queue = resolveTriageQueue(
+          theaterId!,
+          snapshot.operations.filter((operation) => operation.theaterId === theaterId),
+          snapshot.operationStatus,
+        );
+        if (queue.some((entry) => entry.operation.id === stageId)) deferTriageOperation(theaterId!, stageId);
+        return;
+      }
+      // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
       const canvas = getCanvasSnapshot();
       const theaterOperations = snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId);
       // 사이드바 'Sort by status'(statusAxis)는 순환 순서에 관여하지 않는다. 캔버스 패널 배치는 그룹/order
@@ -106,7 +149,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       event.stopImmediatePropagation();
       if (order.length === 0) return;
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
-      const nextId = nextOperationId(order, currentId, event.key === "ArrowRight" ? 1 : -1);
+      const nextId = nextOperationId(order, currentId, arrowAction === "focus-next" ? 1 : -1);
       if (!nextId) return;
       void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId));
     };
@@ -137,6 +180,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const focusMapOperation = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
+    if (isTriageActive(operation.theaterId)) {
+      pickTriageOperation(operation.theaterId, operationId);
+      return;
+    }
     const snapshot = getCanvasSnapshot();
     const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
     if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
@@ -301,11 +348,16 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleClose = useCallback((operationId: string) => {
     if (closingOperationIds.has(operationId)) return;
     if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
+    const theaterId = stateRef.current.operations.find((op) => op.id === operationId)?.theaterId;
+    if (theaterId && isTriageActive(theaterId)) dismissTriageOperation(theaterId, operationId);
     closingOperationIds.add(operationId);
     const pluginId = stateRef.current.operations.find((op) => op.id === operationId)?.pluginId;
     const plugin = (pluginId ? registry.plugins.find((p) => p.id === pluginId) : null) ?? null;
     void closeOperationCompletely(operationId, plugin)
-      .then((deletion) => onDeferredDeletion(deletion))
+      .then((deletion) => {
+        forgetTriageOperation(operationId);
+        onDeferredDeletion(deletion);
+      })
       .finally(() => closingOperationIds.delete(operationId));
   }, [onDeferredDeletion, registry.plugins]);
 
@@ -352,6 +404,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     ]).then(() => {}).catch(() => {});
     try {
       const response = await forgetTheater(theaterId);
+      resetTriageTheater(theaterId);
       removeTheater(theaterId);
       await refreshCollections();
       onDeferredDeletion(response.deletion);
@@ -437,6 +490,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.
 async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void): Promise<void> {
   const requestEpoch = ++requestEpochRef.current;
+  const triageOperation = getState().operations.find((candidate) => candidate.id === operationId);
+  if (triageOperation && isTriageActive(triageOperation.theaterId)) {
+    pickTriageOperation(triageOperation.theaterId, operationId);
+    requestOperationKeyboardFocus(operationId);
+    return;
+  }
   const focusLayerRevision = getFocusLayerRevision();
   const currentCompanionOperationId = getCompanionOperationId();
   if (currentCompanionOperationId !== null) {
@@ -569,6 +628,10 @@ async function launchViaPlugin(
   // hydrate된 경우에만 승계하고, 아니면 focusOperation(op 부재 시 안전하게 no-op)으로 기존 최대화 패널을 그대로 둔다.
   const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
   // Analyze는 명시적인 사용자 focus만 따라간다. 새 Operation 생성은 열린 분석 대상을 승계하지 않는다.
+  if (isTriageActive(theaterId)) {
+    pickTriageOperation(theaterId, newOperationId);
+    return;
+  }
   if (getTheaterCompanionOperationId(theaterId) !== null) return;
   if (stillOnLaunchTheater && operationHydrated && getMaximizedOperationId() !== null) {
     setActiveOperation(newOperationId);
