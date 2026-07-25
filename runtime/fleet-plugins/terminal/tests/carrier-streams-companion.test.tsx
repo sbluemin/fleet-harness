@@ -9,12 +9,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../client/shared/index.js", () => ({
   TerminalSurface: () => createElement("div", { className: "terminal-surface-stub" }),
 }));
+vi.mock("../client/agent/api.js", async () => {
+  const actual = await vi.importActual<typeof import("../client/agent/api.js")>("../client/agent/api.js");
+  return { ...actual, terminateAgentSession: vi.fn(async () => undefined) };
+});
 
 import { disposeAnalysisStore, getAnalysisStore } from "../client/agent/analysis-store.js";
 import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
 import { applyEvent, createEmptyJob } from "../client/agent/reduce.js";
 import {
   CARRIER_STREAMS_COMPANION_ID,
+  agentPlugin,
   agentOperationKind,
 } from "../client/agent/index.js";
 import {
@@ -166,6 +171,31 @@ describe("Carrier Streams companion", () => {
     expect(answer?.compareDocumentPosition(tools as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("isolates a new untagged tool call when the latest same-title call is complete", async () => {
+    let job = createEmptyJob(TENANT_ID, "job-repeated-tools", 1_000);
+    job = applyEvent(job, observed(1, "job:registered", {
+      tracks: [{ trackId: "repeated-tool-track", displayName: "Sentinel" }],
+    }));
+    job = applyEvent(job, observed(2, "track:tool", {
+      trackId: "repeated-tool-track",
+      title: "Read",
+      status: "completed",
+    }));
+    job = applyEvent(job, observed(3, "track:tool", {
+      trackId: "repeated-tool-track",
+      title: "Read",
+      status: "running",
+    }));
+    installSession([job]);
+    await renderCompanion();
+
+    const chips = container?.querySelectorAll(".carrier-stream-column__tool");
+    expect(chips).toHaveLength(2);
+    expect(Array.from(chips ?? []).map((chip) => chip.textContent)).toEqual(["Read", "Read"]);
+    expect(Array.from(chips ?? []).map((chip) => chip.getAttribute("data-tone"))).toEqual(["done", "live"]);
+    expect(job.tracks["repeated-tool-track"]?.tools.map((tool) => tool.id)).toEqual(["Read#0", "Read#1"]);
+  });
+
   it("collapses completed tracks to a 44px strip, expands them in memory, and restores pinned following", async () => {
     installSession([makeJob("job-done", "active", [
       makeTrack("done-track", { displayName: "Kirov", text: "Final answer" }),
@@ -297,6 +327,44 @@ describe("Carrier Streams companion", () => {
     expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("carrier-streams", true);
   });
 
+  it("releases the operation auto-open key when the operation closes", async () => {
+    if (!agentPlugin.closeOperation) throw new Error("Agent plugin closeOperation must exist.");
+    await agentPlugin.closeOperation(OPERATION_ID);
+    installSession([]);
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+    const context = createContext({
+      companionsOpen: false,
+      hiddenCompanionPanelIds: ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    });
+    await renderOperation(context);
+    await act(async () => {
+      installSession([makeJob("job-before-close", "active", [makeTrack("before-close-track")])]);
+      await Promise.resolve();
+    });
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
+
+    await act(async () => {
+      await agentPlugin.closeOperation?.(OPERATION_ID);
+    });
+    act(() => root?.unmount());
+    root = null;
+    installSession([]);
+    onRequestCompanions.mockClear();
+    onSetCompanionPanelVisible.mockClear();
+    await renderOperation(context);
+    onRequestCompanions.mockClear();
+    onSetCompanionPanelVisible.mockClear();
+    await act(async () => {
+      installSession([makeJob("job-after-close", "active", [makeTrack("after-close-track")])]);
+      await Promise.resolve();
+    });
+    expect(onRequestCompanions).toHaveBeenCalledWith(true);
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
+  });
+
   it("opens the host before applying a panel override that host initialization would reset", async () => {
     installSession([]);
     await render(createElement(CompanionVisibilityHost));
@@ -386,6 +454,27 @@ describe("Carrier Streams companion", () => {
     });
     const alert = container?.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe("Carrier dispatch failed.");
+  });
+
+  it("falls back to an error job summary when finalization has no error fields", async () => {
+    let job = createEmptyJob(TENANT_ID, "job-summary-error", 1_000);
+    job = applyEvent(job, observed(1, "job:registered", {
+      tracks: [{ trackId: "summary-error-track", displayName: "Sentinel" }],
+    }));
+    job = applyEvent(job, observed(2, "track:begin", { trackId: "summary-error-track" }));
+    installSession([job]);
+    await renderCompanion();
+
+    job = applyEvent(job, observed(3, "job:finalized", {
+      status: "error",
+      summary: "Carrier exited before producing output.",
+    }));
+    await act(async () => {
+      installSession([job]);
+      await Promise.resolve();
+    });
+    const alert = container?.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Carrier exited before producing output.");
   });
 
   it("adds the same live badge to ANALYZE while the analysis engine is busy", async () => {

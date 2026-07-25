@@ -130,6 +130,7 @@ export const agentPlugin = definePlugin({
     } finally {
       disposeAnalysisStore(operationId);
       removeSession(operationId);
+      streamsAutoOpenedOperationIds.delete(operationId);
     }
   },
   resumeOperation: async (operationId) => {
@@ -499,7 +500,7 @@ function CarrierStreamColumn({
   const completed = phase.tone === "done";
   const reasoning = phase.tone === "live" && track.thought.length > 0
     && (track.text.length === 0 || latestTrackEventType(job, track.trackId) === "track:thought");
-  const error = track.error ?? (phase.tone === "error" ? job.error : undefined);
+  const error = track.error ?? job.error ?? (phase.tone === "error" ? job.summary : undefined);
 
   if (completed && !expanded) {
     return (

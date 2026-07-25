@@ -1,4 +1,5 @@
 import type { JobView, ObservedEvent, RequestBlockView, RequestView, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
+import { resolveToolTone } from "./helpers.js";
 
 interface TrackMetaPayload {
   readonly trackId?: string;
@@ -198,9 +199,24 @@ function createEmptyTrack(trackId: string): TrackView {
 
 function upsertTool(tools: readonly TrackToolCall[], payload: Record<string, unknown>): readonly TrackToolCall[] {
   const title = readString(payload.title);
-  const id = readString(payload.toolCallId) ?? readString(payload.toolId) ?? readString(payload.id) ?? title;
+  const explicitId = readString(payload.toolCallId) ?? readString(payload.toolId) ?? readString(payload.id);
+  let id = explicitId;
+  let index = explicitId ? tools.findIndex((tool) => tool.id === explicitId) : -1;
+  if (!id && title) {
+    for (let toolIndex = tools.length - 1; toolIndex >= 0; toolIndex -= 1) {
+      if (tools[toolIndex]?.name !== title) continue;
+      if (resolveToolTone(tools[toolIndex]?.status) === "live") {
+        index = toolIndex;
+        id = tools[toolIndex]?.id;
+      }
+      break;
+    }
+    if (!id) {
+      const sameTitleCount = tools.filter((tool) => tool.name === title).length;
+      id = `${title}#${sameTitleCount}`;
+    }
+  }
   if (!id) return tools;
-  const index = tools.findIndex((tool) => tool.id === id);
   const existing = index >= 0 ? tools[index] : undefined;
   const next: TrackToolCall = {
     ...existing,
