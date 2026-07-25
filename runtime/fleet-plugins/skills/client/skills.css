@@ -554,7 +554,13 @@
 .skills-root { position: relative; }
 
 .skills-toast {
-  background: color-mix(in srgb, var(--aurora) 15%, var(--surface-glass));
+  /* 팝업 판독성 계약: glass 믹스 + 불투명 --ink-deep 언더레이 */
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--aurora) 15%, var(--surface-glass)),
+      color-mix(in srgb, var(--aurora) 15%, var(--surface-glass))
+    ),
+    var(--ink-deep);
   border: 1px solid color-mix(in srgb, var(--aurora) 35%, transparent);
   border-radius: var(--radius-md);
   bottom: var(--space-3);

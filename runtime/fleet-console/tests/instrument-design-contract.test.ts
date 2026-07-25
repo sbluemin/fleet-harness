@@ -660,7 +660,9 @@ describe("Instrument core design contract", () => {
     }
     expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--ink-deep\);/);
     expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--ink-deep\);/);
+    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--ink-deep\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--ink-deep\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--ink-deep\);/);
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
