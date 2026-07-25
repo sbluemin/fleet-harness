@@ -519,9 +519,9 @@ describe("Instrument core design contract", () => {
     const errorBlock = components.match(/\.canvas-operation-dormant--error \{[^}]*\}/)?.[0] ?? "";
     expect(errorBlock).toContain("cursor: default;");
     const errorText = components.match(/\.canvas-operation-dormant-error \{[^}]*\}/)?.[0] ?? "";
-    expect(errorText).toContain("color: var(--ink-spectral);");
+    expect(errorText).toContain("color: var(--text-secondary);");
     const ghostAction = components.match(/\.canvas-operation-dormant-action--ghost \{[^}]*\}/)?.[0] ?? "";
-    expect(ghostAction).toContain("color: var(--ink-spectral);");
+    expect(ghostAction).toContain("color: var(--text-secondary);");
     const ghostHover = components.match(/\.canvas-operation-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
     expect(ghostHover).toContain("color: var(--brass-bright);");
     // (d) pending/disabled 중에는 hover 강조가 다시 점화하지 않는다.

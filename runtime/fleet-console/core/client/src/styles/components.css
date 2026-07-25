@@ -3987,7 +3987,7 @@
 .canvas-operation-dormant-error {
   max-width: 34ch;
   margin: 0;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
   text-align: center;
@@ -4001,7 +4001,7 @@
 .canvas-operation-dormant-action--ghost {
   border-color: var(--surface-rim-strong);
   background: var(--surface-glass);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   box-shadow: none;
 }
 
@@ -6564,7 +6564,7 @@
   padding: 2px 8px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.12em;
