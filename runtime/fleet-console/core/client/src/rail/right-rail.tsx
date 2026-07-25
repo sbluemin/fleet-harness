@@ -46,7 +46,7 @@ function readStoredPanelWidths(): Record<string, number> {
   return Object.create(null) as Record<string, number>;
 }
 
-function readStoredPanelWidthsWithLegacyMigration(activePanelId: string | null, maxWidth: number): Record<string, number> {
+function readStoredPanelWidthsWithLegacyMigration(activePanelId: string | null): Record<string, number> {
   const widths = readStoredPanelWidths();
   if (activePanelId === null) return widths;
 
@@ -55,7 +55,7 @@ function readStoredPanelWidthsWithLegacyMigration(activePanelId: string | null, 
     if (legacyRaw === null) return widths;
 
     const legacyWidth = Number(legacyRaw);
-    if (Number.isFinite(legacyWidth) && legacyWidth >= MIN_PANEL_WIDTH && legacyWidth <= maxWidth) {
+    if (Number.isFinite(legacyWidth) && legacyWidth >= MIN_PANEL_WIDTH) {
       widths[activePanelId] = Math.round(legacyWidth);
       localStorage.setItem(PREFS_PANEL_WIDTHS, JSON.stringify(widths));
     }
@@ -105,15 +105,17 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
   const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
-  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidth));
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth));
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
 
   const migrationPendingRef = useRef(activePanel === null);
+  const interpretedPanelIdRef = useRef(activePanel?.id ?? null);
   const [panelWidth, setPanelWidthState] = useState(() => {
-    const storedWidths = readStoredPanelWidthsWithLegacyMigration(activePanel?.id ?? null, maxPanelWidth);
+    const storedWidths = readStoredPanelWidthsWithLegacyMigration(activePanel?.id ?? null);
     return resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
   });
   const desiredWidthRef = useRef(panelWidth);
@@ -122,16 +124,36 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const [isSwitching, setIsSwitching] = useState(false);
 
   useLayoutEffect(() => {
+    const onResize = () => {
+      const next = window.innerWidth;
+      setViewportWidth((current) => current === next ? current : next);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useLayoutEffect(() => {
+    const nextPanelId = activePanel?.id ?? null;
+    if (interpretedPanelIdRef.current === nextPanelId) {
+      if (isDragging || activePanel === null || activeId === null) return;
+      const rememberedWidth = readStoredPanelWidths()[activeId];
+      if (rememberedWidth === undefined || rememberedWidth > maxPanelWidth || rememberedWidth === desiredWidthRef.current) return;
+      desiredWidthRef.current = rememberedWidth;
+      panelWidthRef.current = rememberedWidth;
+      setPanelWidthState(rememberedWidth);
+      return;
+    }
+    interpretedPanelIdRef.current = nextPanelId;
     const canMigrate = activePanel !== null;
     const storedWidths = migrationPendingRef.current && canMigrate
-      ? readStoredPanelWidthsWithLegacyMigration(activeId, maxPanelWidth)
+      ? readStoredPanelWidthsWithLegacyMigration(activeId)
       : readStoredPanelWidths();
     if (canMigrate) migrationPendingRef.current = false;
     const next = resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
     desiredWidthRef.current = next;
     panelWidthRef.current = next;
     setPanelWidthState(next);
-  }, [activeId, activePanel?.id, activePanel?.defaultWidth]);
+  }, [activeId, activePanel?.id, activePanel?.defaultWidth, isDragging, maxPanelWidth]);
 
   useLayoutEffect(() => {
     const desiredWidth = isDragging ? panelWidthRef.current : desiredWidthRef.current;

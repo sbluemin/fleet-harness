@@ -176,6 +176,22 @@ describe("Right Rail panel width", () => {
     expect(storedPanelWidths()).toEqual({ plans: 900 });
   });
 
+  it("updates ARIA capacity on viewport resize and restores the desired width without persisting the clamp", () => {
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 900 }));
+    renderRail();
+    expect(reportedPanelWidth()).toBe(900);
+
+    resizeViewport(1000);
+    expect(resizeHandle().getAttribute("aria-valuemax")).toBe("852");
+    expect(reportedPanelWidth()).toBe(852);
+    expect(storedPanelWidths()).toEqual({ plans: 900 });
+
+    resizeViewport(1200);
+    expect(resizeHandle().getAttribute("aria-valuemax")).toBe("1052");
+    expect(reportedPanelWidth()).toBe(900);
+    expect(storedPanelWidths()).toEqual({ plans: 900 });
+  });
+
   it("exposes separator values and persists keyboard resizing with the right-rail direction", () => {
     renderRail();
     const handle = resizeHandle();
@@ -218,6 +234,20 @@ describe("Right Rail panel width", () => {
 
     act(() => setActiveRailPanel("alerts"));
     expect(removeItem.mock.calls.filter(([key]) => key === "fleet-console.rail.panelWidth")).toHaveLength(1);
+  });
+
+  it("preserves an oversized legacy width in the panel map and restores it when the viewport can fit it", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 800 });
+    window.localStorage.setItem("fleet-console.rail.panelWidth", "900");
+    renderRail();
+
+    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(window.localStorage.getItem("fleet-console.rail.panelWidth")).toBeNull();
+    expect(reportedPanelWidth()).toBe(360);
+
+    resizeViewport(1200);
+    expect(reportedPanelWidth()).toBe(900);
+    expect(storedPanelWidths()).toEqual({ plans: 900 });
   });
 
   it("preserves legacy width for a missing descriptor and migrates after a valid panel becomes active", () => {
@@ -288,6 +318,13 @@ function resizeHandle(): HTMLDivElement {
 
 function reportedPanelWidth(): number {
   return Number(resizeHandle().getAttribute("aria-valuenow"));
+}
+
+function resizeViewport(width: number): void {
+  act(() => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    window.dispatchEvent(new Event("resize"));
+  });
 }
 
 function dispatchResizeKey(handle: HTMLElement, key: string, shiftKey = false): boolean {
