@@ -24,7 +24,7 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
-import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
+import { isTerminalCarrierJobStatus, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -202,6 +202,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       readProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir }) !== null
       || readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined
     ),
+    // tenantId(=cliRunId)로 세션-job이 연결된다. 활성 carrier job이 있으면 reminder용 PTY를 지킨다.
+    hasActiveCarrierJob: (sessionId) => {
+      const tenantId = observability.getTerminalSessionInfo(sessionId)?.tenantId;
+      if (!tenantId) return false;
+      return observability.listJobs(tenantId).some((job) => !isTerminalCarrierJobStatus(job.status));
+    },
     terminate: (sessionId) => terminalRuntime.terminate(sessionId),
     registerCleanup: (cleanup) => ctx.host.lifecycle.registerCleanup(cleanup),
   });

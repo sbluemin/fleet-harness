@@ -11,13 +11,14 @@ describe("idle agent dormant sweeper", () => {
       listTerminalSessions: () => [liveSession()],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60 * 60_000,
     });
     expect(terminate).not.toHaveBeenCalled();
   });
 
-  it("skips sessions that are working or turn-running", () => {
+  it("skips sessions that are working or turn-running without OSC opinion", () => {
     const terminate = vi.fn();
     sweepIdleAgentSessions({
       loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
@@ -27,10 +28,110 @@ describe("idle agent dormant sweeper", () => {
       ],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60 * 60_000,
     });
     expect(terminate).not.toHaveBeenCalled();
+  });
+
+  it("terminates not-working sessions even when turnState is still running", () => {
+    const terminate = vi.fn(() => true);
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [
+        liveSession({
+          sessionId: "stale-turn",
+          modelActivity: "not-working",
+          turnState: "running",
+        }),
+      ],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).toHaveBeenCalledWith("stale-turn");
+  });
+
+  it("skips when modelActivity is undefined and turnState is running", () => {
+    const terminate = vi.fn();
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [
+        liveSession({ sessionId: "fallback-running", turnState: "running" }),
+      ],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).not.toHaveBeenCalled();
+  });
+
+  it("terminates when modelActivity is undefined and turnState is not running", () => {
+    const terminate = vi.fn(() => true);
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [
+        liveSession({ sessionId: "no-osc-ended", turnState: "ended" }),
+        liveSession({ sessionId: "no-osc-none", turnState: "none" }),
+      ],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).toHaveBeenCalledWith("no-osc-ended");
+    expect(terminate).toHaveBeenCalledWith("no-osc-none");
+  });
+
+  it("skips sessions with an active carrier job", () => {
+    const terminate = vi.fn();
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [liveSession({ sessionId: "carrier-live" })],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: (sessionId) => sessionId === "carrier-live",
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).not.toHaveBeenCalled();
+  });
+
+  it("terminates idle sessions whose carrier jobs are all terminal", () => {
+    const terminate = vi.fn(() => true);
+    const activeBySession = new Map<string, boolean>([
+      ["carrier-done", false],
+    ]);
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [liveSession({ sessionId: "carrier-done" })],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: (sessionId) => activeBySession.get(sessionId) === true,
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).toHaveBeenCalledWith("carrier-done");
+  });
+
+  it("keeps terminating jobless idle sessions", () => {
+    const terminate = vi.fn(() => true);
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [liveSession({ sessionId: "no-jobs" })],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).toHaveBeenCalledWith("no-jobs");
   });
 
   it("skips sessions without a providerSession capture", () => {
@@ -40,6 +141,7 @@ describe("idle agent dormant sweeper", () => {
       listTerminalSessions: () => [liveSession()],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => false,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60 * 60_000,
     });
@@ -53,6 +155,7 @@ describe("idle agent dormant sweeper", () => {
       listTerminalSessions: () => [liveSession()],
       getSessionLastActivityAt: () => 30 * 60_000,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60 * 60_000,
     });
@@ -71,6 +174,7 @@ describe("idle agent dormant sweeper", () => {
       ],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60 * 60_000,
     });
@@ -87,6 +191,7 @@ describe("idle agent dormant sweeper", () => {
       ],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 30 * 60_000,
     });
@@ -102,6 +207,7 @@ describe("idle agent dormant sweeper", () => {
       listTerminalSessions: () => [liveSession({ sessionId: "default-idle" })],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 59 * 60_000,
     });
@@ -111,6 +217,7 @@ describe("idle agent dormant sweeper", () => {
       listTerminalSessions: () => [liveSession({ sessionId: "default-idle" })],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60 * 60_000,
     });
@@ -131,6 +238,7 @@ describe("idle agent dormant sweeper", () => {
       listTerminalSessions: () => [liveSession({ sessionId: "tick" })],
       getSessionLastActivityAt: () => 0,
       hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
       terminate,
       now: () => 60_000,
       intervalMs: 1_000,
