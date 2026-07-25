@@ -461,7 +461,13 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   padding: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
+  /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(components.css whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
 }
 

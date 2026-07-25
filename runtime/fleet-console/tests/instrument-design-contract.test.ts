@@ -622,10 +622,45 @@ describe("Instrument core design contract", () => {
     const railStore = source("rail/rail-store.ts");
     expect(rail).toContain(".right-rail.is-overlay");
     expect(rail).toContain(".right-rail.is-switching");
+    // Doctrine: the overlay slot ::before composites its glass layers over an opaque
+    // var(--ink-deep) final layer — maritime/carbon --surface-glass-strong is a 78~80%
+    // alpha token, so without the underlay the Solid(100) preset can never be opaque.
+    expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--ink-deep\);/);
     expect(rightRail).toContain("useRailPanelBehavior");
     expect(rightRail).toContain("right-rail-float-toggle");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
+  });
+
+  it("pins the popup opacity underlay contract", () => {
+    const components = source("styles/components.css");
+    const layout = source("styles/layout.css");
+    const skillsCss = externalSource(SKILLS_CSS_PATH);
+    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
+    // Doctrine: scrim-backed popup cards and floating menus composite their glass layers
+    // over an opaque var(--ink-deep) final layer — maritime/carbon glass tokens carry
+    // 60~80% alpha, so without the underlay popups bleed the canvas through and legibility
+    // collapses (canonical doctrine comment: .whatsnew-card in components.css). Non-popup
+    // glass surfaces keep the themes' translucent glass identity untouched.
+    const componentsPopupSelectors = [
+      ".whatsnew-card",
+      ".commissioning-card",
+      ".directory-browser-card",
+      ".codex-reading-sheet",
+      ".app-toast",
+      ".brand-foot-dropup-menu",
+      ".group-context-menu-card",
+      ".accent-popover-card",
+      ".theater-menu",
+      ".operation-search-card",
+    ];
+    for (const selector of componentsPopupSelectors) {
+      const scoped = selector.replace(/\./g, "\\.");
+      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--ink-deep\\);`));
+    }
+    expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--ink-deep\);/);
+    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--ink-deep\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--ink-deep\);/);
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {

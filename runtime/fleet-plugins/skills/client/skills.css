@@ -474,7 +474,11 @@
 }
 
 .skills-overlay-dialog {
-  background: var(--surface-glass);
+  /* 팝업 판독성 계약: maritime/carbon의 --surface-glass는 60~62% 알파라 glass 층만으로는
+     backdrop 뒤가 비친다. 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을 보장한다. */
+  background:
+    linear-gradient(var(--surface-glass), var(--surface-glass)),
+    var(--ink-deep);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   display: flex;
