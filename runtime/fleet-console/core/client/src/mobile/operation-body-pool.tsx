@@ -155,6 +155,12 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
     slot.appendChild(mountNode);
   }, [mountNode, slot]);
 
+  // mountNode는 명령형으로 만든 DOM이라 portal 내용이 unmount돼도 React가 회수하지 않는다.
+  // 정리는 이 전용 effect가 맡는다 — 위 슬롯 이동 effect의 cleanup에 넣으면 slot이 바뀔 때마다
+  // 노드가 DOM에서 분리됐다 다시 붙어, 셸 전환 도중 xterm이 떨어져 나가고 FitAddon이 잘못된
+  // 크기를 PTY로 보낸다. deps가 mountNode뿐이라 실제로는 언마운트 시점에만 돈다.
+  useLayoutEffect(() => () => { mountNode.remove(); }, [mountNode]);
+
   const current = config;
   const t = useT();
   const context = {
