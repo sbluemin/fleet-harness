@@ -70,6 +70,35 @@ describe("agent session initial prompt", () => {
       vi.useRealTimers();
     }
   });
+
+  it("does not inject a stale prompt after onExit and resume reuse the same session id", async () => {
+    const harness = createHarness({ initialPrompt: "Stale prompt" });
+    let exitPromise: Promise<void> | undefined;
+    harness.write.mockImplementationOnce((sessionId) => {
+      harness.markProviderSession(sessionId);
+      exitPromise = harness.emitExit(sessionId);
+      return false;
+    });
+    vi.useFakeTimers();
+    try {
+      await harness.postSessions();
+      await Promise.resolve();
+      const firstAttachContext = harness.attach.mock.calls[0]?.[0];
+      expect(firstAttachContext).toBeDefined();
+      const sessionId = firstAttachContext!.sessionId;
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Stale prompt"]);
+      await exitPromise;
+
+      await harness.resumeSession(sessionId!);
+      await vi.advanceTimersByTimeAsync(751);
+
+      expect(harness.attach).toHaveBeenCalledTimes(2);
+      expect(harness.attach.mock.calls[1]?.[0]?.sessionId).toBe(sessionId);
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Stale prompt"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("agent session client request", () => {
@@ -99,7 +128,8 @@ function createHarness(body: Record<string, unknown>) {
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   let route: RouteHandler | undefined;
   let lifecycleCleanup: (() => void | Promise<void>) | undefined;
-  const attach = vi.fn(async () => {});
+  let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
+  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
   const write = vi.fn<(sessionId: string, data: string) => boolean>(() => true);
   const terminate = vi.fn(() => true);
   const terminalRuntime: TerminalRuntime = {
@@ -112,7 +142,12 @@ function createHarness(body: Record<string, unknown>) {
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     resolveSessionIdentity: async () => null,
-    onExit: () => () => {},
+    onExit: (callback) => {
+      exitCallback = callback;
+      return () => {
+        if (exitCallback === callback) exitCallback = undefined;
+      };
+    },
     registerLaunchResolver: () => () => {},
     stop: async () => {},
   };
@@ -215,12 +250,33 @@ function createHarness(body: Record<string, unknown>) {
     responses,
     terminate,
     write,
+    emitExit: async (sessionId: string) => {
+      if (!exitCallback) throw new Error("Terminal exit callback was not registered");
+      await exitCallback(sessionId);
+    },
+    markProviderSession: (sessionId: string) => {
+      const operation = operations.find((candidate) => candidate.id === sessionId);
+      if (!operation) throw new Error(`Operation not found: ${sessionId}`);
+      operation.payload.providerSession = {
+        provider: "claude",
+        sessionId: "provider-session-1",
+        capturedAt: "2026-07-25T00:00:00.000Z",
+      };
+    },
     postSessions: async () => {
       if (!route) throw new Error("Agent route was not registered");
       await route({
         req: { method: "POST", url: "/plugins/terminal/agent/sessions" } as http.IncomingMessage,
         res: {} as http.ServerResponse,
         pathname: "/plugins/terminal/agent/sessions",
+      });
+    },
+    resumeSession: async (sessionId: string) => {
+      if (!route) throw new Error("Agent route was not registered");
+      await route({
+        req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/resume` } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        pathname: `/plugins/terminal/agent/sessions/${sessionId}/resume`,
       });
     },
   };

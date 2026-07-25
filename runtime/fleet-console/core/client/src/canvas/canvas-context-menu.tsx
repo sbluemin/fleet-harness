@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 interface CanvasContextMenuProps {
@@ -18,6 +18,7 @@ interface CanvasContextMenuProps {
 const MENU_WIDTH = 288;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MARGIN = 12;
+const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -75,7 +76,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           </span>
         </div>
         {promptTarget ? (
-          <div className="canvas-context-menu-prompt-step">
+          <div
+            className="canvas-context-menu-prompt-step"
+            onKeyDown={(event) => {
+              if (event.key === "Tab") trapFocus(event, event.currentTarget);
+            }}
+          >
             <label className="canvas-context-menu-prompt-label" htmlFor="canvas-context-menu-initial-prompt">First prompt (optional)</label>
             <textarea
               id="canvas-context-menu-initial-prompt"
@@ -133,6 +139,21 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       </div>
     </div>
   );
+}
+
+function trapFocus(event: ReactKeyboardEvent<HTMLElement>, container: HTMLElement | null): void {
+  if (!container) return;
+  const focusable = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!first || !last) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 // 좌하단 런처 FAB와 메뉴 헤더가 공유하는 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +

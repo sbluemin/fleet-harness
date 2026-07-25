@@ -96,6 +96,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const detector = createDefaultAgentCliDetector();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const initialPromptRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const initialPromptGenerations = new Map<string, number>();
+  let nextInitialPromptGeneration = 1;
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
@@ -298,6 +300,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return;
     }
     const sessionId = crypto.randomUUID();
+    const initialPromptGeneration = beginInitialPromptGeneration(sessionId);
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     ctx.host.operations.create({
       id: session.sessionId,
@@ -318,7 +321,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         theaterId,
         cliId,
       });
-      if (initialPrompt) injectInitialPrompt(sessionId, initialPrompt);
+      if (initialPrompt) injectInitialPrompt(sessionId, initialPrompt, initialPromptGeneration);
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -328,6 +331,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch {
+      invalidateInitialPromptGeneration(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
       ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
@@ -355,6 +359,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
         return true;
       }
+      beginInitialPromptGeneration(sessionId);
       await terminalRuntime.attach({
         cwd,
         sessionId,
@@ -372,6 +377,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(node.payload, cwd, resumed, providerSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
+      invalidateInitialPromptGeneration(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
       if (reverted) observability.notifySessionUpdated(reverted);
@@ -490,7 +496,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function handleExit(operationId: string): Promise<void> {
     reminderWriter.cancel(operationId);
-    clearInitialPromptRetry(operationId);
+    invalidateInitialPromptGeneration(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -509,7 +515,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   function removeSession(sessionId: string): void {
     reminderWriter.cancel(sessionId);
-    clearInitialPromptRetry(sessionId);
+    invalidateInitialPromptGeneration(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -519,7 +525,9 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function cleanup(): Promise<void> {
     reminderWriter.cancelAll();
-    for (const sessionId of [...initialPromptRetryTimers.keys()]) clearInitialPromptRetry(sessionId);
+    for (const sessionId of new Set([...initialPromptGenerations.keys(), ...initialPromptRetryTimers.keys()])) {
+      invalidateInitialPromptGeneration(sessionId);
+    }
     unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();
@@ -584,7 +592,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     );
   }
 
-  function injectInitialPrompt(sessionId: string, prompt: string, isRetry = false): void {
+  function injectInitialPrompt(sessionId: string, prompt: string, generation: number, isRetry = false): void {
+    if (!isCurrentInitialPromptGeneration(sessionId, generation)) return;
     const safePrompt = sanitizeCarrierResultReminder(prompt).trim();
     if (safePrompt.length === 0) return;
     const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
@@ -592,23 +601,46 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     reminderWriter.enqueue(
       sessionId,
       (data) => {
+        if (!isCurrentInitialPromptGeneration(sessionId, generation)) return false;
         const written = terminalRuntime.write(sessionId, data);
         if (written || handledWriteFailure) return written;
         handledWriteFailure = true;
+        if (!isCurrentInitialPromptGeneration(sessionId, generation)) return false;
         if (isRetry) {
           console.debug("[fleet-console] Initial prompt injection dropped because the PTY was unavailable", { sessionId });
           return false;
         }
         const timer = setTimeout(() => {
           if (initialPromptRetryTimers.get(sessionId) !== timer) return;
+          if (!isCurrentInitialPromptGeneration(sessionId, generation)) {
+            initialPromptRetryTimers.delete(sessionId);
+            return;
+          }
           initialPromptRetryTimers.delete(sessionId);
-          injectInitialPrompt(sessionId, safePrompt, true);
+          injectInitialPrompt(sessionId, safePrompt, generation, true);
         }, INITIAL_PROMPT_RETRY_DELAY_MS);
         initialPromptRetryTimers.set(sessionId, timer);
         return false;
       },
       formatCarrierResultReminderMessage(policy, safePrompt, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
     );
+  }
+
+  function beginInitialPromptGeneration(sessionId: string): number {
+    clearInitialPromptRetry(sessionId);
+    const generation = nextInitialPromptGeneration;
+    nextInitialPromptGeneration += 1;
+    initialPromptGenerations.set(sessionId, generation);
+    return generation;
+  }
+
+  function invalidateInitialPromptGeneration(sessionId: string): void {
+    clearInitialPromptRetry(sessionId);
+    initialPromptGenerations.delete(sessionId);
+  }
+
+  function isCurrentInitialPromptGeneration(sessionId: string, generation: number): boolean {
+    return initialPromptGenerations.get(sessionId) === generation;
   }
 
   function clearInitialPromptRetry(sessionId: string): void {

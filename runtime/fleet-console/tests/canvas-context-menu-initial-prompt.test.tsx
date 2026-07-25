@@ -77,6 +77,26 @@ describe("CanvasContextMenu initial prompt launch", () => {
     act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
     expect(onLaunchKind).toHaveBeenCalledWith("terminal", kind, "Run the focused tests");
   });
+
+  it("traps Tab focus within the prompt textarea and launch actions", () => {
+    renderMenu(agentCatalog(), vi.fn());
+    act(() => buttonNamed("Claude").click());
+    const promptStep = document.querySelector<HTMLElement>(".canvas-context-menu-prompt-step")!;
+    const textarea = promptStep.querySelector<HTMLTextAreaElement>("textarea")!;
+    const launch = buttonNamed("Launch");
+    const launchEmpty = buttonNamed("Launch empty");
+
+    expect([...promptStep.querySelectorAll<HTMLElement>("textarea, button")]).toEqual([textarea, launch, launchEmpty]);
+
+    // jsdom은 기본 Tab 순차 이동을 수행하지 않으므로 양 끝의 trapFocus 경계 순환을 직접 단언한다.
+    act(() => launchEmpty.focus());
+    expect(dispatchTab(launchEmpty)).toBe(false);
+    expect(document.activeElement).toBe(textarea);
+
+    act(() => textarea.focus());
+    expect(dispatchTab(textarea, true)).toBe(false);
+    expect(document.activeElement).toBe(launchEmpty);
+  });
 });
 
 function renderMenu(catalog: readonly OperationCatalogPlugin[], onLaunchKind: ReturnType<typeof vi.fn>, onClose = vi.fn()): void {
@@ -96,6 +116,10 @@ function setTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
   const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
   valueSetter?.call(textarea, value);
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function dispatchTab(element: HTMLElement, shiftKey = false): boolean {
+  return element.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true }));
 }
 
 function buttonNamed(name: string): HTMLButtonElement {
