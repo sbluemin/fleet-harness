@@ -347,7 +347,7 @@ async function setupExecutorMcp(
 }
 
 async function buildConnectOptions(cli: CliType, cwd: string, overrides: { model?: string; promptIdleTimeout?: number; effort?: string }, systemPrompt: string | null | undefined, authEnvResolver: AuthEnvResolver, mcpServers?: McpServerConfig[]): Promise<UnifiedClientOptions> {
-  const options: UnifiedClientOptions = { cwd, cli, autoApprove: true, clientInfo: CLIENT_INFO, timeout: 0, strictMcp: true };
+  const options: UnifiedClientOptions = { cwd, cli, autoApprove: true, clientInfo: CLIENT_INFO, timeout: 0, strictMcp: true, archiveSessionOnDisconnect: true };
   if (overrides.model) options.model = overrides.model;
   if (overrides.effort) options.effort = overrides.effort;
   if (overrides.promptIdleTimeout !== undefined) options.promptIdleTimeout = overrides.promptIdleTimeout;

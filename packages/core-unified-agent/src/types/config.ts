@@ -133,6 +133,10 @@ export interface UnifiedClientOptions extends ConnectionOptions {
    * 차단한다. ACP로 명시 등록한 MCP는 유지되며, OAuth 인증 경로에는 영향이 없다.
    * Claude 외 CLI(codex/opencode-go)는 본 옵션을 무시한다. 기본값 undefined. */
   strictMcp?: boolean;
+  /** Codex에서만 의미한다. true이면 disconnect 전에 thread/archive를 호출해
+   * 세션을 resume picker에서 숨긴다. 재개 시에는 thread/unarchive 후 resume한다.
+   * Codex 외 CLI는 본 옵션을 무시한다. 기본값 undefined. */
+  archiveSessionOnDisconnect?: boolean;
   /** 재개할 기존 세션 ID */
   sessionId?: string;
   /** 세션 초기 시스템 지침.

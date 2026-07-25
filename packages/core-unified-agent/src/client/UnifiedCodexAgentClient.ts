@@ -87,6 +87,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
   private firstPromptPending: string | null = null;
   private pendingOverrides: CodexPendingOverrides | null = null;
   private currentModelSelection: CodexModelSelection = {};
+  private archiveSessionOnDisconnect = false;
   private detector = new CliDetector();
 
   on<K extends keyof UnifiedClientEvents>(
@@ -190,6 +191,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.currentSystemPrompt = options.systemPrompt ?? null;
     this.firstPromptPending = options.sessionId ? null : this.currentSystemPrompt;
     this.currentModelSelection = modelSelection;
+    this.archiveSessionOnDisconnect = options.archiveSessionOnDisconnect === true;
     this.pendingOverrides = {
       turnConfig: options.effort ? { effort: options.effort } : {},
       threadConfig: {
@@ -209,6 +211,10 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     if (!this.connection) {
       this.clearSessionState();
       return;
+    }
+
+    if (this.archiveSessionOnDisconnect && this.sessionId) {
+      await this.connection.endSession().catch(() => {});
     }
 
     await this.connection.disconnect();
@@ -380,6 +386,7 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     this.firstPromptPending = null;
     this.pendingOverrides = null;
     this.currentModelSelection = {};
+    this.archiveSessionOnDisconnect = false;
   }
 
   private validateModelEffort(modelId: string | undefined, effort: string | undefined): void {
@@ -588,6 +595,9 @@ export class UnifiedCodexAgentClient extends EventEmitter implements IUnifiedAge
     }
 
     try {
+      if (this.archiveSessionOnDisconnect && this.sessionId) {
+        await this.connection.endSession().catch(() => {});
+      }
       await this.connection.disconnect();
     } catch {
     }

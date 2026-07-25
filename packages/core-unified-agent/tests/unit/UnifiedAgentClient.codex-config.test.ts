@@ -312,4 +312,68 @@ describe('UnifiedCodexAgentClient App Server config staging', () => {
       config: { notify: 'false' },
     });
   });
+
+  it('archiveSessionOnDisconnect: true이면 disconnect 전에 endSession(thread/archive)을 호출한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      archiveSessionOnDisconnect: true,
+    });
+
+    const callOrder: string[] = [];
+    mockEndSession.mockImplementation(async () => {
+      callOrder.push('endSession');
+    });
+    mockDisconnect.mockImplementation(async () => {
+      callOrder.push('disconnect');
+    });
+
+    await client.disconnect();
+
+    expect(mockEndSession).toHaveBeenCalledTimes(1);
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual(['endSession', 'disconnect']);
+  });
+
+  it('archiveSessionOnDisconnect 미지정 시 disconnect가 endSession을 호출하지 않는다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    await client.connect({ cwd: '/workspace', cli: 'codex' });
+
+    await client.disconnect();
+
+    expect(mockEndSession).not.toHaveBeenCalled();
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('archiveSessionOnDisconnect: true여도 endSession 실패 시 disconnect는 계속 진행한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      archiveSessionOnDisconnect: true,
+    });
+    mockEndSession.mockRejectedValue(new Error('archive failed'));
+
+    await expect(client.disconnect()).resolves.toBeUndefined();
+    expect(mockEndSession).toHaveBeenCalledTimes(1);
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('archiveSessionOnDisconnect: true여도 sessionId가 없으면 endSession을 호출하지 않는다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      archiveSessionOnDisconnect: true,
+    });
+    await client.endSession();
+    mockEndSession.mockClear();
+    mockDisconnect.mockClear();
+
+    await client.disconnect();
+
+    expect(mockEndSession).not.toHaveBeenCalled();
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+  });
 });
