@@ -87,6 +87,8 @@ describe("buildPaletteCommands", () => {
       "switch-theater:theater-alpha",
       "switch-theater:theater-beta",
       "new-operation",
+      "toggle-formation",
+      "toggle-status-axis",
       "open-rail-panel:alerts",
       "open-rail-panel:repository",
       "toggle-rail",
@@ -119,7 +121,46 @@ describe("buildPaletteCommands", () => {
     }), []);
     expect(commands.some((command) => command.commandId === "whats-new")).toBe(true);
   });
+
+  it("offers Resume only for dormant operations and Close/minimize for active-theater operations", () => {
+    const dormant = makeOperation("op-dormant", { providerSession: { provider: "claude", sessionId: "s1" } });
+    const live = makeOperation("op-live");
+    const otherTheater = makeOperation("op-other", { providerSession: { provider: "claude", sessionId: "s2" } }, "theater-beta");
+    const commands = buildPaletteCommands(makeState({
+      operations: [dormant, live, otherTheater],
+      operationStatus: { "op-live": "running" },
+    }), []);
+    const ids = commands.map((command) => command.commandId);
+    expect(ids).toContain("resume-operation:op-dormant");
+    expect(ids).not.toContain("resume-operation:op-live");
+    // per-Operation 액션은 활성 Theater로 한정한다.
+    expect(ids).not.toContain("resume-operation:op-other");
+    expect(ids).not.toContain("close-operation:op-other");
+    expect(ids).toContain("close-operation:op-dormant");
+    expect(ids).toContain("close-operation:op-live");
+    expect(ids).toContain("minimize-all-operations");
+    expect(commands.find((command) => command.commandId === "resume-operation:op-dormant")?.label)
+      .toBe("Resume operation: op-dormant");
+  });
+
+  it("omits Minimize all when the active Theater has no operations", () => {
+    const commands = buildPaletteCommands(makeState(), []);
+    expect(commands.some((command) => command.commandId === "minimize-all-operations")).toBe(false);
+  });
 });
+
+function makeOperation(id: string, payload: Record<string, unknown> = {}, theaterId = "theater-alpha"): ConsoleState["operations"][number] {
+  return {
+    id,
+    theaterId,
+    type: "agent",
+    pluginId: "terminal",
+    title: id,
+    payload,
+    geometry: null,
+    ts: { createdAt: 1, updatedAt: 1 },
+  };
+}
 
 describe("filterPaletteCommands", () => {
   it("matches case-insensitive AND tokens against the command label", () => {

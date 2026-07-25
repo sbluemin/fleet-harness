@@ -1,4 +1,5 @@
 import { searchTokens } from "./operation-search.js";
+import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, ThemeId } from "./types.js";
 
 export interface PaletteRailPanelInfo {
@@ -9,6 +10,11 @@ export interface PaletteRailPanelInfo {
 export type PaletteCommandAction =
   | { readonly kind: "switch-theater"; readonly theaterId: string }
   | { readonly kind: "new-operation" }
+  | { readonly kind: "resume-operation"; readonly operationId: string }
+  | { readonly kind: "close-operation"; readonly operationId: string }
+  | { readonly kind: "minimize-all-operations" }
+  | { readonly kind: "toggle-formation" }
+  | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string }
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
@@ -55,6 +61,45 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
       label: `New Operation in ${activeTheater.label}`,
       current: false,
       action: { kind: "new-operation" },
+    });
+    // per-Operation 액션은 활성 Theater로 한정한다 — 팔레트 잡음을 막고 세션 위생 작업의 80%를 커버한다.
+    // Resume은 dormant(복원 후 미기동) Operation에만 제안한다.
+    const theaterOperations = current.operations.filter((operation) => operation.theaterId === activeTheater.id);
+    for (const operation of theaterOperations) {
+      if (resolveOperationActivity(operation, current.operationStatus) === "dormant") {
+        commands.push({
+          commandId: `resume-operation:${operation.id}`,
+          label: `Resume operation: ${operation.title}`,
+          current: false,
+          action: { kind: "resume-operation", operationId: operation.id },
+        });
+      }
+      commands.push({
+        commandId: `close-operation:${operation.id}`,
+        label: `Close operation: ${operation.title}`,
+        current: false,
+        action: { kind: "close-operation", operationId: operation.id },
+      });
+    }
+    if (theaterOperations.length > 0) {
+      commands.push({
+        commandId: "minimize-all-operations",
+        label: "Minimize all Operations",
+        current: false,
+        action: { kind: "minimize-all-operations" },
+      });
+    }
+    commands.push({
+      commandId: "toggle-formation",
+      label: "Toggle Formation view",
+      current: false,
+      action: { kind: "toggle-formation" },
+    });
+    commands.push({
+      commandId: "toggle-status-axis",
+      label: "Toggle status axis",
+      current: false,
+      action: { kind: "toggle-status-axis" },
     });
   }
   for (const panel of railPanels) {

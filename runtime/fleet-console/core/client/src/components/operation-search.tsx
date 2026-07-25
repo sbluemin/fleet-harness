@@ -12,8 +12,11 @@ import {
   type PaletteRailPanelInfo,
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
+import { closeOperationCompletely } from "../operation-close.js";
+import { minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
-import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
+import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import {
   closeOperationSearch,
   focusOperation,
@@ -39,6 +42,7 @@ const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 export function OperationSearch({ state, railPanels }: OperationSearchProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const registry = usePluginRegistry();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -116,6 +120,44 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         requestOperationLaunchMenu();
+        break;
+      }
+      case "resume-operation": {
+        // plugin이 resumeOperation 훅을 제공하면 직접 재개하고, 미제공/실패 시 프레임 포커스로 폭백한다
+        // (프레임의 dormant 뷰가 Try again / Start fresh 회복 경로를 제공한다).
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        const operation = state.operations.find((op) => op.id === action.operationId);
+        const plugin = operation ? registry.plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
+        if (plugin?.resumeOperation) {
+          void Promise.resolve(plugin.resumeOperation(action.operationId)).catch(() => focusOperation(action.operationId));
+        } else {
+          focusOperation(action.operationId);
+        }
+        break;
+      }
+      case "close-operation": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        const operation = state.operations.find((op) => op.id === action.operationId);
+        const plugin = (operation ? registry.plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
+        void closeOperationCompletely(action.operationId, plugin);
+        break;
+      }
+      case "minimize-all-operations": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        minimizeOperations(state.operations.filter((op) => op.theaterId === state.activeTheaterId).map((op) => op.id));
+        break;
+      }
+      case "toggle-formation": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        toggleFormationView();
+        break;
+      }
+      case "toggle-status-axis": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        toggleSideBarStatusAxis();
         break;
       }
       case "open-rail-panel": {
@@ -286,6 +328,9 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
                       <strong>{highlightText(entry.operationName, tokens)}</strong>
                       <small>{operationMeta(entry)}</small>
                     </span>
+                    {entry.activity !== "idle" ? (
+                      <span className={`operation-search-status operation-search-status--${entry.activity}`}>{entry.activity}</span>
+                    ) : null}
                     <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
                   </button>
                 );

@@ -5,6 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, forgetTheater, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError } from "../api.js";
+import { closeOperationCompletely } from "../operation-close.js";
 import { claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
@@ -287,7 +288,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     closingOperationIds.add(operationId);
     const pluginId = stateRef.current.operations.find((op) => op.id === operationId)?.pluginId;
     const plugin = (pluginId ? registry.plugins.find((p) => p.id === pluginId) : null) ?? null;
-    void closeOperation(operationId, plugin).finally(() => closingOperationIds.delete(operationId));
+    void closeOperationCompletely(operationId, plugin).finally(() => closingOperationIds.delete(operationId));
   }, [registry.plugins]);
 
   const handleAddTheater = useCallback(async (path: string) => {
@@ -523,12 +524,4 @@ async function launchViaPlugin(
     // Theater가 다르거나 hydrate 누락이면 Theater-aware한 focusOperation으로 처리한다(launch Theater로 복귀·포커스, 부재 시 no-op).
     focusOperation(newOperationId);
   }
-}
-
-async function closeOperation(operationId: string, plugin: FleetClientPlugin | null): Promise<void> {
-  try {
-    if (plugin?.closeOperation) await plugin.closeOperation(operationId);
-  } catch { /* 플러그인 close 오류는 무시 */ }
-  await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" }).catch(() => {});
-  await fetchOperations(null).then(hydrateOperations).catch(() => {});
 }

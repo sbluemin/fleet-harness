@@ -2,6 +2,7 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { resolveOperationActivity } from "./operation-activity.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
@@ -439,18 +440,6 @@ export function focusCycleOperationIds(
 // awaiting → running → idle → dormant 랭크로 안정 정렬한다(랭크 내부는 operationOrder 순서 유지).
 // 그룹 접힘은 적용하지 않되, 상태 섹션 접힘 predicate로 사이드바에서 숨은 Operation을 제외한다.
 const STATUS_CYCLE_RANK: Readonly<Record<OperationActivity, number>> = { awaiting: 0, running: 1, idle: 2, dormant: 3 };
-
-// 활동 맵에 항목이 없는 Operation의 분류 폭백. 플러그인이 아직 status를 심지 않은 복원 Operation은
-// doctrine상 "dormant until explicitly relaunched"이므로 providerSession 보유 여부로 dormant를 판별한다.
-// 사이드바 STATUS 축과 Alt 순환이 같은 분류를 공유하도록 이 함수가 단일 기준이다.
-export function resolveOperationActivity(
-  operation: OperationNode,
-  operationStatus: Readonly<Record<string, OperationActivity>>,
-): OperationActivity {
-  const live = operationStatus[operation.id];
-  if (live) return live;
-  return operation.payload?.providerSession ? "dormant" : "idle";
-}
 
 export function statusCycleOperationIds(
   operations: readonly OperationNode[],

@@ -6558,6 +6558,33 @@
   white-space: nowrap;
 }
 
+/* 팔레트 Operation 행의 활동 뱃지. 상태 채널은 signal 토큰만 쓴다(디자인 불변식). */
+.operation-search-status {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.operation-search-status--awaiting {
+  border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim));
+  color: var(--coral);
+}
+
+.operation-search-status--running {
+  border-color: color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
+  color: var(--warn);
+}
+
+.operation-search-status--dormant {
+  color: var(--ink-muted);
+}
+
 .operation-search-result mark,
 .operation-search-section-heading mark,
 .operation-search-theater mark {

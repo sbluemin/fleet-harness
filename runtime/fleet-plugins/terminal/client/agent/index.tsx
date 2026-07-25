@@ -139,6 +139,19 @@ export const agentPlugin = definePlugin({
       removeSession(operationId);
     }
   },
+  resumeOperation: async (operationId) => {
+    // 팔레트 등 프레임 밖 resume 진입점. 실패 알림은 프레임 내 카드가 못 잡는 경로이므로 여기서도 emit한다.
+    try {
+      await resumeSession(operationId);
+    } catch (error) {
+      installedNotifications?.emit({
+        kind: agentResumeFailedNotification.id,
+        operationId,
+        message: "Resume failed — the saved session has expired.",
+      });
+      throw error;
+    }
+  },
   launch: async ({ theaterId, kind, initialPrompt }) => {
     const session = await createAgentSession(theaterId, kind.id, initialPrompt);
     applySessionUpdate(session);
@@ -156,13 +169,22 @@ export const agentPlugin = definePlugin({
 export const operationKinds = [agentOperationKind] as const;
 export const plugins = [agentPlugin] as const;
 
+// resumeOperation 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
+// (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
+let installedNotifications: PluginInstallContext["notifications"] | null = null;
+
 function installAgentPlugin(ctx: PluginInstallContext): () => void {
-  return startAgentConnection({
+  installedNotifications = ctx.notifications;
+  const disposeConnection = startAgentConnection({
     operations: ctx.operations,
     notifications: ctx.notifications,
     status: ctx.status,
     refreshOperations: ctx.api.resync,
   });
+  return () => {
+    installedNotifications = null;
+    disposeConnection();
+  };
 }
 
 // core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.
