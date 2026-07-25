@@ -1,5 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
+
+import { resolveOperationActivity } from "../operation-activity.js";
+import type { OperationNode } from "../types.js";
+
 interface SideBarState {
   readonly width: number;
   readonly collapsed: boolean;
@@ -31,6 +36,8 @@ let userExpandedStatusSections = new Set<string>();
 let statusTransitionCounter = 0;
 let statusTransitionTicks = new Map<string, number>();
 let idleUnseenIds = new Set<string>();
+let previousActivityById = new Map<string, SideBarStatus>();
+let baselinedLiveActivityIds = new Set<string>();
 
 export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
 
@@ -163,6 +170,57 @@ export function getIdleUnseenIds(): ReadonlySet<string> {
   return idleUnseenIds;
 }
 
+export function trackOperationActivityTransitions(input: {
+  readonly operations: readonly OperationNode[];
+  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly activeTheaterId: string | null;
+  readonly activeOperationId: string | null;
+}): readonly string[] {
+  const nextStatuses = new Map<string, SideBarStatus>(
+    input.operations.map((operation) => [
+      operation.id,
+      resolveOperationActivity(operation, input.operationStatus),
+    ]),
+  );
+  const firstLiveIds = input.operations
+    .filter((operation) => {
+      if (input.operationStatus[operation.id] === undefined || baselinedLiveActivityIds.has(operation.id)) {
+        return false;
+      }
+      baselinedLiveActivityIds.add(operation.id);
+      return true;
+    })
+    .map((operation) => operation.id);
+  const movedIds = input.operations
+    .filter((operation) => {
+      const previous = previousActivityById.get(operation.id);
+      return previous !== undefined
+        && previous !== nextStatuses.get(operation.id)
+        && !firstLiveIds.includes(operation.id);
+    })
+    .map((operation) => operation.id);
+
+  recordStatusTransitions(movedIds);
+  for (const operation of input.operations) {
+    if (!movedIds.includes(operation.id)) continue;
+    if (nextStatuses.get(operation.id) === "idle") {
+      if (!(operation.id === input.activeOperationId && operation.theaterId === input.activeTheaterId)) {
+        markIdleUnseen(operation.id);
+      }
+    } else {
+      clearIdleUnseen(operation.id);
+    }
+  }
+  if (input.activeOperationId !== null) {
+    const activeOp = input.operations.find((operation) => operation.id === input.activeOperationId);
+    if (activeOp !== undefined && activeOp.theaterId === input.activeTheaterId) {
+      clearIdleUnseen(input.activeOperationId);
+    }
+  }
+  previousActivityById = nextStatuses;
+  return movedIds;
+}
+
 export function resetSideBarStatusSectionCollapseForTests(): void {
   userCollapsedStatusSections = new Set();
   userExpandedStatusSections = new Set();
@@ -172,6 +230,8 @@ export function resetSideBarStatusRecencyForTests(): void {
   statusTransitionCounter = 0;
   statusTransitionTicks = new Map();
   idleUnseenIds = new Set();
+  previousActivityById = new Map();
+  baselinedLiveActivityIds = new Set();
 }
 
 function statusSectionKey(theaterId: string, status: SideBarStatus): string {

@@ -21,7 +21,7 @@ import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
-import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
+import { getSideBarState, setSideBarCollapsed, trackOperationActivityTransitions } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -68,6 +68,15 @@ export function App() {
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);
   }, [operationsViewVisible]);
+
+  useEffect(() => {
+    trackOperationActivityTransitions({
+      operations: state.operations,
+      operationStatus: state.operationStatus,
+      activeTheaterId: state.activeTheaterId,
+      activeOperationId: state.activeOperationId,
+    });
+  }, [state.operations, state.operationStatus, state.activeTheaterId, state.activeOperationId]);
 
   useEffect(() => {
     const abort = new AbortController();

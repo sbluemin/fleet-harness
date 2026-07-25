@@ -24,15 +24,13 @@ import {
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import {
-  clearIdleUnseen,
   getIdleUnseenIds,
   setSideBarCollapsed,
   setSideBarWidth,
   setTheaterCollapsed,
   getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
-  markIdleUnseen,
-  recordStatusTransitions,
+  trackOperationActivityTransitions,
   toggleSideBarStatusAxis,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
@@ -309,8 +307,6 @@ export function OperationsSideBar({
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
-  const previousOperationStatusRef = useRef<ReadonlyMap<string, SideBarStatus>>(new Map());
-  const baselinedLiveStatusIdsRef = useRef<Set<string>>(new Set());
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -430,37 +426,15 @@ export function OperationsSideBar({
     disarmClose();
   }, [armedCloseId, allEntries, disarmClose]);
 
+  // React passive effect는 자식부터 실행된다. 사이드바가 마운트된 전이는 여기서 기록+flash하고
+  // 뒤이은 App effect는 멱등 no-op이 되며, 사이드바가 언마운트된 라우트에서는 App effect가 기록한다.
   useEffect(() => {
-    const nextStatuses = new Map(
-      operations.map((operation) => [operation.id, resolveOperationActivity(operation, operationStatus)] as const),
-    );
-    const previousStatuses = previousOperationStatusRef.current;
-    previousOperationStatusRef.current = nextStatuses;
-    const firstLiveIds = operations
-      .filter((operation) => {
-        if (operationStatus[operation.id] === undefined || baselinedLiveStatusIdsRef.current.has(operation.id)) {
-          return false;
-        }
-        baselinedLiveStatusIdsRef.current.add(operation.id);
-        return true;
-      })
-      .map((operation) => operation.id);
-    const movedIds = operations
-      .filter((operation) => {
-        const previous = previousStatuses.get(operation.id);
-        return previous !== undefined
-          && previous !== nextStatuses.get(operation.id)
-          && !firstLiveIds.includes(operation.id);
-      })
-      .map((operation) => operation.id);
-    recordStatusTransitions(movedIds);
-    for (const id of movedIds) {
-      if (nextStatuses.get(id) === "idle") {
-        if (id !== activeOperationId) markIdleUnseen(id);
-      } else {
-        clearIdleUnseen(id);
-      }
-    }
+    const movedIds = trackOperationActivityTransitions({
+      operations,
+      operationStatus,
+      activeTheaterId,
+      activeOperationId,
+    });
     if (!statusAxis) {
       for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
       statusLandingTimeoutsRef.current.clear();
@@ -485,11 +459,7 @@ export function OperationsSideBar({
     statusLandingTimeoutsRef.current.add(timeoutId);
   // statusSignature is the stable primitive dependency for the operation/status map assembled above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusAxis, statusSignature]);
-
-  useEffect(() => {
-    if (activeOperationId !== null) clearIdleUnseen(activeOperationId);
-  }, [activeOperationId]);
+  }, [statusAxis, statusSignature, activeTheaterId, activeOperationId]);
 
   useEffect(() => () => {
     for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);

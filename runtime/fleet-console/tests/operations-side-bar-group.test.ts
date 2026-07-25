@@ -11,6 +11,7 @@ import {
   markIdleUnseen,
   recordStatusTransitions,
   resetSideBarStatusRecencyForTests,
+  trackOperationActivityTransitions,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
@@ -358,6 +359,73 @@ describe("groupOperationsByStatus", () => {
     expect(getIdleUnseenIds().size).toBe(0);
     recordStatusTransitions(["next-operation"]);
     expect(getStatusTransitionTick("next-operation")).toBe(1);
+  });
+
+  it("marks an idle transition when the preserved active Operation belongs to another Theater", () => {
+    const operation = { ...makeNode("operation"), theaterId: "theater-a" };
+    trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: { operation: "running" },
+      activeTheaterId: "theater-b",
+      activeOperationId: operation.id,
+    });
+
+    expect(trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: { operation: "idle" },
+      activeTheaterId: "theater-b",
+      activeOperationId: operation.id,
+    })).toEqual([operation.id]);
+    expect(getIdleUnseenIds().has(operation.id)).toBe(true);
+    const tick = getStatusTransitionTick(operation.id);
+
+    expect(trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: { operation: "idle" },
+      activeTheaterId: "theater-b",
+      activeOperationId: operation.id,
+    })).toEqual([]);
+    expect(getStatusTransitionTick(operation.id)).toBe(tick);
+    expect(getIdleUnseenIds().has(operation.id)).toBe(true);
+
+    expect(trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: { operation: "idle" },
+      activeTheaterId: operation.theaterId,
+      activeOperationId: operation.id,
+    })).toEqual([]);
+    expect(getIdleUnseenIds().has(operation.id)).toBe(false);
+  });
+
+  it("does not mark an idle transition for the focused Operation in the active Theater", () => {
+    const operation = { ...makeNode("focused"), theaterId: "theater-a" };
+    trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: { focused: "running" },
+      activeTheaterId: operation.theaterId,
+      activeOperationId: operation.id,
+    });
+
+    expect(trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: { focused: "idle" },
+      activeTheaterId: operation.theaterId,
+      activeOperationId: operation.id,
+    })).toEqual([operation.id]);
+    expect(getIdleUnseenIds().has(operation.id)).toBe(false);
+  });
+
+  it("clears unseen for the active Operation on every tracker call", () => {
+    const operation = makeNode("focused");
+    markIdleUnseen("focused");
+
+    expect(trackOperationActivityTransitions({
+      operations: [operation],
+      operationStatus: {},
+      activeTheaterId: operation.theaterId,
+      activeOperationId: "focused",
+    })).toEqual([]);
+    expect(getIdleUnseenIds().has("focused")).toBe(false);
   });
 
   it("detects the GROUP-axis live tick only for an explicit awaiting status", () => {

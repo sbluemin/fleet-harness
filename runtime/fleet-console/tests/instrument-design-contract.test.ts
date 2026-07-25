@@ -570,6 +570,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the non-durable STATUS regroup signal and identity channel grammar", () => {
+    const app = source("app.tsx");
     const operations = source("pages/operations.tsx");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const sideBarStore = source("sidebar/operations-side-bar-store.ts");
@@ -580,13 +581,18 @@ describe("Instrument core design contract", () => {
     expect(operations).toContain("toggleSideBarStatusAxis();");
     expect(sidebar).toContain('title="Sort by status (Alt+S)"');
     expect(sidebar).toContain("groupOperationsByStatus(allEntries, getStatusTransitionTick)");
-    expect(sidebar).toContain("recordStatusTransitions(movedIds);");
+    expect(sidebar).toContain("const movedIds = trackOperationActivityTransitions({");
+    expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
+    expect(app).toContain("trackOperationActivityTransitions({");
+    expect(app).toContain("}, [state.operations, state.operationStatus, state.activeTheaterId, state.activeOperationId]);");
     expect(sidebar).toContain("if (!statusAxis) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
     expect(chip).toContain('className="side-bar-chip-unseen"');
     expect(sideBarStore).toContain("let statusAxis = false;");
     expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
     expect(sideBarStore).toContain("let idleUnseenIds = new Set<string>();");
+    expect(sideBarStore).toContain("let previousActivityById = new Map<string, SideBarStatus>();");
+    expect(sideBarStore).toContain("let baselinedLiveActivityIds = new Set<string>();");
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
     expect(sideBarStore).not.toContain("fleet-console.operations.status");
 

@@ -15,6 +15,7 @@ import {
   setSideBarCollapsed,
   setSideBarStatusAxis,
   setTheaterCollapsed,
+  trackOperationActivityTransitions,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { setState as setConsoleState } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode, TheaterInfo } from "../core/client/src/types.js";
@@ -274,6 +275,38 @@ describe("OperationsSideBar STATUS axis", () => {
       (chip) => chip.dataset.sideBarChipId,
     );
     expect(runningIds).toEqual(["latest", "earlier", "untouched-first", "untouched-second"]);
+  });
+
+  it("renders an idle transition recorded while the SideBar was unmounted", () => {
+    const operations = [
+      makeOperation("untouched", null),
+      makeOperation("recorded", null),
+    ];
+    setOperationOrder(operations.map((operation) => operation.id));
+    trackOperationActivityTransitions({
+      operations,
+      operationStatus: { recorded: "running" },
+      activeTheaterId: THEATER.id,
+      activeOperationId: null,
+    });
+    expect(trackOperationActivityTransitions({
+      operations,
+      operationStatus: { recorded: "idle" },
+      activeTheaterId: THEATER.id,
+      activeOperationId: null,
+    })).toEqual(["recorded"]);
+
+    setConsoleState({ operationStatus: { recorded: "idle" } });
+    setSideBarStatusAxis(true);
+    renderSideBar(operations);
+
+    const idleChips = Array.from(
+      required<HTMLElement>(".side-bar-status-section--idle").querySelectorAll<HTMLElement>("[data-side-bar-chip-id]"),
+      (chip) => chip.dataset.sideBarChipId,
+    );
+    expect(idleChips).toEqual(["recorded", "untouched"]);
+    expect(required<HTMLElement>('[data-side-bar-chip-id="recorded"] .side-bar-chip-unseen')).not.toBeNull();
+    expect(required<HTMLElement>(".side-bar-status-section--idle .side-bar-status-header__unseen").textContent).toBe("1");
   });
 
   it("tracks idle unseen while STATUS is off, omits focused transitions, and clears on focus", () => {
