@@ -125,14 +125,15 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
         break;
       }
       case "resume-operation": {
-        // plugin이 resumeOperation 훅을 제공하면 직접 재개하고, 미제공/실패 시 프레임 포커스로 폭백한다
-        // (프레임의 dormant 뷰가 Try again / Start fresh 회복 경로를 제공한다).
+        // plugin이 resumeOperation 훅을 제공하면 직접 재개하고, 미제공 시에만 프레임 포커스로 폭백한다.
+        // 실패 시에는 포커스하지 않는다 — focusOperation은 알림을 제거하므로(store.ts) plugin이 emit한
+        // agent.resume-failed가 지워져 침묵 실패가 된다. 실패 피드백은 칩 뱃지 + Alerts 항목이 담당한다.
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         const operation = state.operations.find((op) => op.id === action.operationId);
         const plugin = operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
         if (plugin?.resumeOperation) {
-          void Promise.resolve(plugin.resumeOperation(action.operationId)).catch(() => focusOperation(action.operationId));
+          void Promise.resolve(plugin.resumeOperation(action.operationId)).catch(() => { /* 실패 알림은 plugin이 emit */ });
         } else {
           focusOperation(action.operationId);
         }

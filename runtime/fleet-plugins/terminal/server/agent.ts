@@ -389,6 +389,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         cliId,
         ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
+      if (fresh) {
+        // attach 성공 후 stale provider 상태를 지운다 — 이전 captures/<id>.json이나 observability
+        // 세션이 남으면, fresh CLI가 새 capture를 쓰기 전에 종료될 때 handleExit이 만료 세션으로
+        // dormant 복귀시키고 Session Analyst가 이전 transcript를 resolve할 수 있다(Codex P1).
+        unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
+        observability.clearTerminalSessionProviderSession(sessionId);
+      }
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;

@@ -285,6 +285,15 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  // fresh 시작 직후 이전 provider 세션을 지운다 — 남겨두면 fresh CLI가 새 capture를 쓰기 전에
+  // 종료될 때 handleExit이 만료된 세션으로 dormant 복귀하는 스테일 경로가 열린다.
+  function clearTerminalSessionProviderSession(sessionId: string): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    delete session.providerSession;
+    return toTerminalSessionInfo(session);
+  }
+
   function updateTerminalSessionStatus(sessionId: string, status: AgentSessionStatus): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
@@ -433,6 +442,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     subscribe,
     subscribeAll,
     updateTerminalSessionProviderSession,
+    clearTerminalSessionProviderSession,
     updateTerminalSessionStatus,
     setTerminalSessionTurnState,
     transitionTerminalSessionToDormant,
