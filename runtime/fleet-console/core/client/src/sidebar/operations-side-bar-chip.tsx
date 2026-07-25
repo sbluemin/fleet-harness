@@ -135,6 +135,8 @@ export function OperationsSideBarChip({
     }
     if (request.action === "assign-group" || request.action === "set-accent") {
       onDisarmClose();
+      // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
+      chip.scrollIntoView({ block: "nearest" });
       onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
       return true;
     }

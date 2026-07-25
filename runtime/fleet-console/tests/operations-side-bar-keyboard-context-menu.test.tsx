@@ -13,10 +13,15 @@ import type { OperationGroup, OperationNode, TheaterInfo } from "../core/client/
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
+let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
+const scrollIntoView = vi.fn();
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeEach(() => {
+  scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
   document.body.replaceChildren();
   window.localStorage.clear();
   setSideBarCollapsed(false);
@@ -29,6 +34,8 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root?.unmount());
+  if (scrollIntoViewDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   document.body.replaceChildren();
   root = null;
   container = null;
@@ -88,6 +95,24 @@ describe("sidebar context menu keyboard path", () => {
     dispatchKey(document.activeElement as HTMLElement, "Escape");
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(chip);
+  });
+
+  it("scrolls an offscreen chip into view before anchoring the palette menu", async () => {
+    renderSideBar();
+    const chip = required<HTMLElement>('[data-side-bar-chip-id="operation-a"]');
+    let rectReadBeforeScroll: number | null = null;
+    const originalRect = chip.getBoundingClientRect.bind(chip);
+    chip.getBoundingClientRect = () => {
+      rectReadBeforeScroll ??= scrollIntoView.mock.calls.length;
+      return originalRect();
+    };
+
+    act(() => requestSideBarOperationAction(OPERATION.id, "set-accent"));
+    await nextFrame();
+
+    // rect를 읽는 시점에 이미 스크롤이 끝나 있어야 메뉴가 화면 안에 앵커링된다.
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(rectReadBeforeScroll).toBeGreaterThan(0);
   });
 
   it("keeps the first menu item focused for a palette assign-group request", async () => {
