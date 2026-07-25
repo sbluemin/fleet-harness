@@ -714,6 +714,23 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
     expect(layout).toContain(".command-band-left {");
     expect(components).toContain(".operations-side-bar.is-closed");
+    // 상단 크롬 좌측 블록은 사이드바와 같은 폭·표면·우측 경계선으로 그 열의 상단 캡이 된다.
+    // 그래서 펼침 상태에서만 카드의 상단 테두리·안쪽 라운드를 해제한다 — 세 규칙이 함께 살아
+    // 있어야 한 열 한가운데의 이중 hairline과 우측 경계선 단절이 재발하지 않는다.
+    const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
+    expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
+    expect(commandBandLeftBlock).toContain("background: var(--surface-glass);");
+    // 캡이 실재하는 상태로 한정한다 — 풀스크린은 밴드가 fixed로 흐름에서 빠져 자동 은닉되므로
+    // 캡이 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
+    const expandedSideBarBlock =
+      components.match(/\.console-shell:has\(\.command-band:not\(\.is-fullscreen\)\) \.operations-side-bar\.is-expanded \{[^}]*\}/)?.[0] ?? "";
+    expect(expandedSideBarBlock).toContain("border-top: none;");
+    expect(expandedSideBarBlock).toContain("border-top-right-radius: 0;");
+    expect(components).not.toMatch(/^\.operations-side-bar\.is-expanded \{/m);
+    expect(layout).toContain(".command-band.is-fullscreen {");
+    // 접거나 풀스크린이면 상단 캡이 없으므로 부유 카드 문법이 그대로 남는다.
+    expect(components).toContain("border-radius: 0 var(--radius-xl) 0 0;");
+    expect(layout).toContain(".command-band-left.is-collapsed {");
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");

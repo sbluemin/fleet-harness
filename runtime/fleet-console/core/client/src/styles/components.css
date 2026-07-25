@@ -2287,6 +2287,17 @@
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
+/* 펼친 상태에서는 상단 크롬 좌측 블록(.command-band-left)이 같은 폭·표면·우측 경계선으로
+   이 열의 상단 캡이 된다 — 부유 카드의 상단 테두리와 안쪽 라운드를 거기서 다시 그리면
+   한 열 한가운데에 이중 hairline이 깔리고 우측 경계선이 코너만큼 끊긴다.
+   접으면 상단 캡이 밴드 표면으로 물러나므로(.command-band-left.is-collapsed) 카드 문법을 유지한다.
+   풀스크린은 밴드가 fixed로 흐름에서 빠져 자동 은닉되므로 캡이 아예 없다 — 그때는 사이드바가
+   뷰포트 최상단에 그대로 닿으니 카드 마감을 되살려야 한다. 그래서 캡이 실재하는 상태로 한정한다. */
+.console-shell:has(.command-band:not(.is-fullscreen)) .operations-side-bar.is-expanded {
+  border-top: none;
+  border-top-right-radius: 0;
+}
+
 .operations-side-bar[data-resizing="true"] {
   transition: none;
 }
