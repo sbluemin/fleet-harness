@@ -64,8 +64,8 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - Treat `<abs-worktree-path>` as the required cwd for all subsequent commands in the task.
    - Do not continue issuing repository commands from the parent checkout unless the user explicitly redirects.
 
-8. **Install dependencies inside the worktree**:
-   - From `<abs-worktree-path>`, run `pnpm install --frozen-lockfile` before reporting create-mode completion.
+8. **Complete mandatory project setup inside the worktree**:
+   - From `<abs-worktree-path>`, always run `pnpm install --frozen-lockfile` before reporting create-mode completion.
    - If installation fails, stop immediately and report the command failure. Do not report the worktree as ready and do not proceed to Carrier dispatch.
 
 9. **Report in Korean**:
@@ -129,7 +129,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 
 - Do not force the base to `main` or `master`; reject those bases by default.
 - Do not remove the main checkout under any circumstance.
-- Do not symlink, bind-mount, or otherwise reuse `node_modules` from another checkout. Install dependencies inside the active worktree with `pnpm install --frozen-lockfile`.
+- Never create or preserve a symlink inside the new worktree when its resolved target is any file or directory inside the main checkout. This prohibition applies to all main-checkout content, not only `node_modules`; pnpm-managed links that remain inside the new worktree or target a package store outside the main checkout are allowed. Install dependencies inside the active worktree with `pnpm install --frozen-lockfile`.
 - Do not create helper scripts; execute commands directly through the `Bash` tool.
 - Do not silently route free-form extra text outside the two lifecycle modes. Interpret it into `create` or `remove`, then allow changes only within that mode's workflow.
 - Do not overwrite an existing worktree path or branch. If the path or branch already exists, stop and report.
