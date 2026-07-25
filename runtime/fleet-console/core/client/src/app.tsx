@@ -214,7 +214,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/operations" replace />} />
         </Routes>
       </main>
-      <OperationSearch state={state} railPanels={paletteRailPanels} plugins={registry.plugins} />
+      <OperationSearch state={state} railPanels={paletteRailPanels} plugins={registry.plugins} onDeferredDeletion={enqueueDeletion} />
       {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
