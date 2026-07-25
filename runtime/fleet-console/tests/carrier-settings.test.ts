@@ -182,6 +182,27 @@ describe("carrier settings routes", () => {
     expect(invalid.status).toBe(400);
   });
 
+  it("reports Kirov as Task Force capable and accepts backend PUT through the settings route", async () => {
+    const fixture = await startFixture();
+    const initial = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
+    const kirov = initial.carriers.find((carrier) => carrier.carrierId === "kirov");
+    if (!kirov) throw new Error("Kirov was not registered");
+    expect(kirov.taskForceCapable).toBe(true);
+
+    const model = getProviderModels("claude").defaultModel;
+    const effort = getEffort("claude", model);
+    const updated = await mutate<{ readonly state: CarrierSettingsState }>(
+      fixture,
+      "/api/v1/plugins/terminal/carriers/kirov/taskforce/claude",
+      "PUT",
+      { model, ...(effort.supported ? { effort: effort.default } : {}) },
+    );
+
+    expect(updated.state.carriers.find((carrier) => carrier.carrierId === "kirov")?.taskforce.backends).toEqual([
+      { cliType: "claude", model, ...(effort.supported ? { effort: effort.default } : {}) },
+    ]);
+  });
+
   it("keeps stale incapable Task Force settings ineffective, rejects PUT without a write, and permits cleanup", async () => {
     const model = getProviderModels("claude").defaultModel;
     const effort = getEffort("claude", model);
@@ -190,19 +211,19 @@ describe("carrier settings routes", () => {
         fs.mkdirSync(carrierStoreDir, { recursive: true });
         fs.writeFileSync(path.join(carrierStoreDir, "carriers.json"), JSON.stringify({
           _meta: { generation: 7 },
-          carriers: { kirov: { taskforce: { claude: { model } } } },
+          carriers: { genesis: { taskforce: { claude: { model } } } },
         }));
       },
     });
     const initial = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
-    const kirov = initial.carriers.find((carrier) => carrier.carrierId === "kirov");
-    if (!kirov) throw new Error("Kirov was not registered");
-    expect(kirov.taskForceCapable).toBe(false);
-    expect(kirov.taskforce.backends).toEqual([]);
+    const genesis = initial.carriers.find((carrier) => carrier.carrierId === "genesis");
+    if (!genesis) throw new Error("Genesis was not registered");
+    expect(genesis.taskForceCapable).toBe(false);
+    expect(genesis.taskforce.backends).toEqual([]);
 
     const rejected = await rawMutate(
       fixture,
-      "/api/v1/plugins/terminal/carriers/kirov/taskforce/claude",
+      "/api/v1/plugins/terminal/carriers/genesis/taskforce/claude",
       "PUT",
       { model, ...(effort.supported ? { effort: effort.default } : {}) },
     );
@@ -213,18 +234,18 @@ describe("carrier settings routes", () => {
 
     const cleaned = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      "/api/v1/plugins/terminal/carriers/kirov/taskforce",
+      "/api/v1/plugins/terminal/carriers/genesis/taskforce",
       "DELETE",
       {},
     );
-    expect(cleaned.state.carriers.find((carrier) => carrier.carrierId === "kirov")?.taskforce.backends).toEqual([]);
+    expect(cleaned.state.carriers.find((carrier) => carrier.carrierId === "genesis")?.taskforce.backends).toEqual([]);
     expect(cleaned.state.generation).toBe(unchanged.generation + 1);
     const persisted = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "carriers.json"), "utf8")) as {
       readonly _meta?: { readonly generation?: number };
       readonly carriers?: Record<string, { readonly taskforce?: unknown }>;
     };
     expect(persisted._meta?.generation).toBe(cleaned.state.generation);
-    expect(persisted.carriers?.kirov?.taskforce).toBeUndefined();
+    expect(persisted.carriers?.genesis?.taskforce).toBeUndefined();
   });
 
   it("does not return 500 for malformed percent-encoded carrier ids", async () => {

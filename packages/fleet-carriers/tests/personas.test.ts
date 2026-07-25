@@ -92,12 +92,12 @@ describe("allowedExecutorTools", () => {
 });
 
 describe("Task Force capability defaults", () => {
-  it("only nimitz and vanguard source-own the capability marker", () => {
+  it("only nimitz, kirov, and vanguard source-own the capability marker", () => {
     const capable = DEFAULT_PERSONAS
       .filter((persona) => persona.defaults.taskForceCapable === true)
       .map((persona) => persona.defaults.id);
 
-    expect(capable).toEqual(["nimitz", "vanguard"]);
+    expect(capable).toEqual(["nimitz", "kirov", "vanguard"]);
   });
 });
 
