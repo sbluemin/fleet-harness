@@ -85,6 +85,11 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
   }
 }
 
+// 축마다 권위가 하나씩이다. modelActivity(=CLI가 OSC 타이틀로 방송하는 작업 여부)가 running/idle의 권위이고,
+// attentionPending(=입력 대기 hook)은 OSC가 유휴와 구분하지 못하는 대기 상태를 담당하므로 그보다 앞선다.
+// turnState는 경쟁 소스가 아니라 OSC 타이틀을 인식하지 못했을 때의 폴백이다 — 두 optional 필드가 모두 부재할 때만
+// 도달한다. 미인식 타이틀은 무의견으로 남아야 하며, 그래야 타이틀 어휘가 드리프트해도 거짓 idle 대신
+// hook 기반 동작으로 퇴보한다.
 export function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.status === "dormant") return "dormant";
   if (session.attentionPending === true) return "awaiting";
