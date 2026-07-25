@@ -595,6 +595,22 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
   });
 
+  it("keeps Theater repository badges on signal tokens and preserves label priority", () => {
+    const sidebar = source("sidebar/operations-side-bar.tsx");
+    const components = source("styles/components.css");
+    const badgeStart = components.indexOf(".side-bar-theater-badge {");
+    const badgeEnd = components.indexOf(".side-bar-theater-chevron {", badgeStart);
+    const badgeGrammar = components.slice(badgeStart, badgeEnd);
+
+    expect(sidebar).toContain('className={`side-bar-theater-badge side-bar-theater-badge--${badge.tone ?? "neutral"}`}');
+    expect(components).toContain(".side-bar-theater-name {\n  flex: 1 1 100%;\n  min-width: 64px;");
+    expect(components).toContain("max-width: min(42%, 180px);");
+    expect(badgeGrammar).toContain("var(--aurora)");
+    expect(badgeGrammar).toContain("var(--warn)");
+    expect(badgeGrammar).toContain("var(--positive)");
+    expect(badgeGrammar).not.toContain("var(--id-");
+  });
+
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
     const rightRail = source("rail/right-rail.tsx");

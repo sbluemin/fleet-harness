@@ -3,6 +3,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -1007,6 +1008,40 @@ describe("console static and terminal ticket boundary", () => {
     });
 
     expect(response.status).toBe(401);
+  });
+
+  it("serves repository row badges through the core batch route with Theater security gates", async () => {
+    const fixture = await startFixture({
+      release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT },
+    });
+    const repo = path.join(fixture.dir, "row-badge-repo");
+    fs.mkdirSync(repo);
+    execFileSync("git", ["init", "-b", "main"], { cwd: repo, stdio: "ignore" });
+    fs.writeFileSync(path.join(repo, "changed.txt"), "changed\n");
+    const theater = await createTheater(fixture, repo);
+
+    const response = await fetch(`${fixture.endpoint}api/v1/theaters/row-badges`);
+    const payload = await response.json() as {
+      readonly theaters?: readonly { readonly theaterId?: string; readonly badges?: readonly { readonly text?: string; readonly tone?: string }[] }[];
+    };
+    const serialized = JSON.stringify(payload);
+    const denied = await fetch(`${fixture.endpoint}api/v1/theaters/row-badges`, {
+      headers: { Origin: "http://evil.example" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(payload.theaters).toEqual([{
+      theaterId: theater.id,
+      badges: [
+        { id: "branch", text: "main", tone: "neutral" },
+        { id: "changed", text: "1 changed", tone: "warn" },
+      ],
+    }]);
+    expect(denied.status).toBe(401);
+    expect(serialized).not.toContain(repo);
+    expect(serialized).not.toContain("realpath");
+    expect(serialized).not.toContain("\"path\"");
+    expect(serialized).not.toMatch(/(?:^|")\/(?:Users|private|tmp)\//u);
   });
 
   it("rejects update apply without an exact console Origin", async () => {

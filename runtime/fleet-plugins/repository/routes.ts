@@ -8,11 +8,17 @@ import { handleRepositoryChanged, handleRepositoryFile } from "./server/diff.js"
 import { handleRepositoryLog } from "./server/log.js";
 import { handleRepositoryRefs } from "./server/refs.js";
 import { handleRepositoryRepos } from "./server/repos.js";
+import { createRepositoryRowBadgeProvider } from "./server/row-badges.js";
 import { handleRepositoryWorktrees } from "./server/worktrees.js";
 
 export default definePlugin({
   id: "repository",
   register(ctx) {
+    const unregisterRowBadges = ctx.host.theaters.registerRowBadgeProvider(
+      ctx.pluginId,
+      createRepositoryRowBadgeProvider(ctx.host.paths.resolveTheaterPath),
+    );
+    ctx.host.lifecycle.registerCleanup(unregisterRowBadges);
     registerRouter(ctx, "repos", async ({ req, res }) => {
       await handleRepositoryRepos(req, res, ctx);
       return true;

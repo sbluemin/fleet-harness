@@ -27,12 +27,16 @@ const DEFAULT_MAX_BUFFER = 8 * 1024 * 1024;
 
 export function runGit(
   args: readonly string[],
-  opts: { readonly cwd: string; readonly timeoutMs?: number; readonly maxBuffer?: number; readonly allowExitCodes?: readonly number[] },
+  opts: { readonly cwd: string; readonly timeoutMs?: number; readonly maxBuffer?: number; readonly allowExitCodes?: readonly number[]; readonly signal?: AbortSignal },
 ): Promise<GitRunResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
 
   return new Promise((resolve, reject) => {
+    if (opts.signal?.aborted) {
+      reject(new GitExecutorError("timeout"));
+      return;
+    }
     let child;
     try {
       // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
@@ -50,11 +54,20 @@ export function runGit(
     let truncated = false;
     let timedOut = false;
 
-    const timer = setTimeout(() => {
+    const abort = () => {
       timedOut = true;
       child.kill("SIGTERM");
       reject(new GitExecutorError("timeout"));
+    };
+    opts.signal?.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(() => {
+      abort();
     }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", abort);
+    };
 
     child.stdout.on("data", (chunk: Buffer) => {
       if (truncated) return;
@@ -74,14 +87,14 @@ export function runGit(
     });
 
     child.on("error", (error) => {
-      clearTimeout(timer);
+      cleanup();
       // ENOENT = git 바이너리가 PATH에 없음; 나머지는 일반 spawn 실패
       const code = (error as NodeJS.ErrnoException).code === "ENOENT" ? "git_unavailable" : "spawn_failed";
       reject(new GitExecutorError(code, error.message));
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
+      cleanup();
       if (timedOut) return;
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       if (code !== 0) {
