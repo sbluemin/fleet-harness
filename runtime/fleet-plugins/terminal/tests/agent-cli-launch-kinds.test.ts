@@ -14,9 +14,9 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude", type: "agent", title: "Claude", supportsInitialPrompt: true },
-      { id: "claude-kimi", type: "agent", title: "Kimi (Claude Code)", supportsInitialPrompt: true },
-      { id: "codex", type: "agent", title: "Codex", supportsInitialPrompt: true },
+      { id: "claude", type: "agent", title: "Claude" },
+      { id: "claude-kimi", type: "agent", title: "Kimi (Claude Code)" },
+      { id: "codex", type: "agent", title: "Codex" },
     ]);
   });
 
@@ -31,9 +31,9 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude", type: "agent", title: "Claude", supportsInitialPrompt: true, disabled: true, disabledReason: "Not installed" },
-      { id: "claude-kimi", type: "agent", title: "Kimi (Claude Code)", supportsInitialPrompt: true, disabled: true, disabledReason: "Sign in required" },
-      { id: "codex", type: "agent", title: "Codex", supportsInitialPrompt: true, disabled: true, disabledReason: "Sign in required" },
+      { id: "claude", type: "agent", title: "Claude", disabled: true, disabledReason: "Not installed" },
+      { id: "claude-kimi", type: "agent", title: "Kimi (Claude Code)", disabled: true, disabledReason: "Sign in required" },
+      { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Sign in required" },
     ]);
   });
 });

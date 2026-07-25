@@ -44,7 +44,6 @@ export interface OperationLaunchKind {
   readonly id: string;
   readonly type: string;
   readonly title: string;
-  readonly supportsInitialPrompt?: boolean;
   readonly disabled?: boolean;
   readonly disabledReason?: string;
 }

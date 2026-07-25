@@ -153,8 +153,8 @@ export const agentPlugin = definePlugin({
       throw error;
     }
   },
-  launch: async ({ theaterId, kind, initialPrompt }) => {
-    const session = await createAgentSession(theaterId, kind.id, initialPrompt);
+  launch: async ({ theaterId, kind }) => {
+    const session = await createAgentSession(theaterId, kind.id);
     applySessionUpdate(session);
     selectSession(session.sessionId);
     return { id: session.sessionId };

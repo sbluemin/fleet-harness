@@ -266,7 +266,7 @@ describe("operations platform", () => {
     const fixture = await startCatalogFixture();
 
     const response = await fetch(`${fixture.endpoint}api/v1/operations/catalog`);
-    const catalog = await response.json() as { readonly plugins: ReadonlyArray<{ readonly id: string; readonly title: string; readonly kinds: ReadonlyArray<{ readonly id: string; readonly type: string; readonly title: string; readonly supportsInitialPrompt?: boolean }> }> };
+    const catalog = await response.json() as { readonly plugins: ReadonlyArray<{ readonly id: string; readonly title: string; readonly kinds: ReadonlyArray<{ readonly id: string; readonly type: string; readonly title: string }> }> };
     const terminal = catalog.plugins.find((plugin) => plugin.id === "terminal");
 
     expect(response.status).toBe(200);
@@ -275,7 +275,7 @@ describe("operations platform", () => {
       title: "Terminal",
       kinds: [
         { id: "shell", type: "shell", title: "Shell" },
-        { id: "agent", type: "agent", title: "Agent CLI", supportsInitialPrompt: true },
+        { id: "agent", type: "agent", title: "Agent CLI" },
       ],
     });
     expect(catalog.plugins.filter((plugin) => plugin.id === "terminal")).toHaveLength(1);
@@ -356,7 +356,7 @@ async function startCatalogFixture(): Promise<{ readonly endpoint: string }> {
     "  ]);",
     "  ctx.host.operations.registerLaunchCatalog(ctx.pluginId, () => [",
     "    { id: 'shell', type: 'ignored-duplicate', title: 'Ignored Duplicate' },",
-    "    { id: 'agent', type: 'agent', title: 'Agent CLI', supportsInitialPrompt: true },",
+    "    { id: 'agent', type: 'agent', title: 'Agent CLI' },",
     "  ]);",
     "}",
   ].join("\n"));
