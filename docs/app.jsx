@@ -10,7 +10,7 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 // ───── UI strings ─────
 const UI = {
   navHierarchy: { ko: "지휘 체계", en: "Command Chain" },
-  navCaptains:  { ko: "5 함장", en: "5 Captains" },
+  navCaptains:  { ko: "4 함장", en: "4 Captains" },
   navProtocol:  { ko: "4 모드", en: "4 Modes" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
@@ -21,7 +21,7 @@ const UI = {
   heroDescAdmiral:{ ko: "대원수", en: "Admiral of the Navy" },
   heroDescMid:    { ko: "로서 임무를 부여하고, 호스트인 ", en: ", while the host — the " },
   heroDescHost:   { ko: "제독", en: "Admiral" },
-  heroDescMid2:   { ko: "이 5명의 ", en: " — delegates to five " },
+  heroDescMid2:   { ko: "이 4명의 ", en: " — delegates to four " },
   heroDescCap:    { ko: "함장", en: "Captains" },
   heroDescTail:   { ko: "에게 책임을 위임해 작전을 종결합니다.", en: " who close the operation." },
 
@@ -45,8 +45,8 @@ const UI = {
   backendsTitle: { ko: ["네 개의 CLI,", "한 명의 제독."], en: ["Four CLIs,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작전을 수행하지 않는다. 각 백엔드는 자신이 가장 잘하는 항해를 맡는다.", en: "No single model runs every mission. Each backend takes the voyage it sails best." },
 
-  captainsEy:    { ko: "Captains Roster · 05", en: "Captains Roster · 05" },
-  captainsTitle: { ko: ["다섯 명의 함장,", "겹치지 않는 다섯 개의 책임."], en: ["Five captains,", "five non-overlapping duties."] },
+  captainsEy:    { ko: "Captains Roster · 04", en: "Captains Roster · 04" },
+  captainsTitle: { ko: ["네 명의 함장,", "겹치지 않는 네 개의 책임."], en: ["Four captains,", "four non-overlapping duties."] },
   captainsLede:  { ko: "함장은 장식이 아닌 운영 계약이다. 좌측에서 함장을 선택하면 임무 강령과 책임 명세가 펼쳐진다.", en: "Captains aren't decoration — they're operational contracts. Pick one to see its mission and duties." },
   captainsAria:  { ko: "함장 명단", en: "Captains list" },
   captainCap:    { ko: "Captain", en: "Captain" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 4 CLI · 5 Captains · 4 Modes", en: "· 4 CLI · 5 Captains · 4 Modes" },
+  countMeta:   { ko: "· 4 CLI · 4 Captains · 4 Modes", en: "· 4 CLI · 4 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -98,7 +98,7 @@ const HIERARCHY = [
     rank: "Tier 03",
     role: { ko: "함장", en: "Captain" },
     en: "Captain · CLI AGENT",
-    desc: { ko: "5명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Five specialists, each running a single CLI backend within their domain to execute the operation." },
+    desc: { ko: "4명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Four specialists, each running a single CLI backend within their domain to execute the operation." },
   },
 ];
 
@@ -262,7 +262,7 @@ const DIFFS = [
     n: "02",
     name: "Naval Metaphor as Contract",
     kr: { ko: "운영 가능한 해군 메타포", en: "An Operational Naval Metaphor" },
-    body: { ko: "장식이 아니다. 5명 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the five captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
+    body: { ko: "장식이 아니다. 4명의 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the four captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
   },
   {
     n: "03",
@@ -315,7 +315,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "4 CLI 백엔드 동시 지휘", en: "Four CLI backends commanded together" },
-      { ko: "5 함장 명시적 책임 분리", en: "Five captains, distinct duties" },
+      { ko: "4 함장 명시적 책임 분리", en: "Four captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
     verdict: { ko: "처음부터 함대로 설계되었다.", en: "Designed as a fleet from day one." },
