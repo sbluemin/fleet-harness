@@ -5,6 +5,105 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-07-25
+
+### fleet-cli
+
+#### Changed
+- [fleet-cli] Let the Admiral host author and mutate Fleet Plans directly while keeping task completion marking exclusive to Ohio.
+- [fleet-cli] Unify local and remote codebase intelligence under Vanguard's read-only reconnaissance contract.
+- [fleet-cli] Show five default Carriers after retiring Kirov and moving optional Plan assurance to Nimitz.
+- [fleet-cli] Show four default Carriers after retiring Ohio and moving direct and Plan-driven implementation to Genesis.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add Solid/90/75/60 opacity presets to the Float over Map rail panel head so the floating panel background can let the Map show through while panel content stays opaque; the choice persists across sessions.
+- [fleet-console] Add Operation actions to the command palette: Resume (dormant only), Close, Minimize all, Toggle Formation view, and Toggle status axis, scoped to the active Theater, plus activity badges (awaiting / running / dormant) on search rows.
+- [fleet-console] Make the Activity Rail resize handle keyboard operable as a focusable separator, with Arrow keys resizing by 16px, Shift+Arrow by 64px, and Home/End jumping to the minimum and maximum width.
+- [fleet-console] Open the Operation chip and Theater row context menus with Shift+F10 or the ContextMenu key, focusing the first item and returning focus to the row on Escape, so group and accent assignment no longer require a right click.
+- [fleet-console] Add Rename, Assign group, Set accent and Minimize commands for the active Operation to the command palette, reaching chip menu actions that previously needed a right click.
+- [fleet-console] Hold a closed Operation or a forgotten Theater for eight seconds before deleting it for good, with an undo toast and a Mod+Z shortcut to take the action back. Restored Operations come back dormant and start only when relaunched.
+- [fleet-console] Search Repository commits, Files paths, Plans and Skills from the command palette, and open the owning panel at that result. The palette previously matched Operation titles only, and no panel could hand a commit or a path to another.
+- [fleet-console] Plugins can localize their panel, operation, settings, and notification titles, and rail panels now receive the resolved locale.
+
+#### Changed
+- [fleet-console] Pin all four Sort by Status sections with per-section collapse toggles (empty sections stay dimmed and collapsed), replace group color dots with group name pills in the status axis, and switch the Theater actions icon to an ellipsis.
+- [fleet-console] Turn the empty Operations map into an actionable surface with standing-by operation chips, a New Operation button, and shortcut hints.
+- [fleet-console] Unify the control grammar with three font weights, two icon button sizes, and a shared button variant set, and return control and CTA labels to sentence case while keeping uppercase for structural section labels.
+- [fleet-console] Express de-emphasis by stepping text down a tier instead of fading it with transparency, so a dimmed label keeps its guaranteed contrast.
+- [fleet-console] Remember Activity Rail width per panel instead of sharing one width across every panel, so widening Repository no longer leaves Alerts occupying the same space and shrinking the map.
+- [fleet-console] Open each Activity Rail panel at its own default width, using Repository and Codex at 420px and Plans, Files and Skills at 360px.
+- [fleet-console] Answer a delete request for an Operation that no longer exists with a success response instead of a not-found error, so repeating a close is harmless.
+- [fleet-console] Describe Vanguard as the unified local and remote reconnaissance specialist in the Carrier roster.
+- [fleet-console] Order each sidebar status section by the most recent transition, keeping untouched operations in their manual order.
+- [fleet-console] Mark operations that land in IDLE with a session-only unseen dot and section header count until you open them once.
+- [fleet-console] Shorten the first status section header from "AWAITING INPUT" to "AWAITING".
+- [fleet-console] Rename the Settings > General language card to "Display language" and describe it as the language used across Console surfaces, matching the setting that already drives What's New and plugin panel copy.
+- [fleet-console] Present a five-Carrier roster with Nimitz carrying optional Plan assurance and no Kirov entry.
+- [fleet-console] The Display language setting now drives the console itself: command band, sidebar, canvas, command palette, keyboard shortcuts, Settings, What's New chrome, and Codex all follow the selected language, and dates and relative times format per locale.
+- [fleet-console] Switching the language applies immediately without a reload, and the page language attribute follows the resolved locale.
+- [fleet-console] Present a four-Carrier roster with Genesis carrying direct and Plan-driven implementation and no Ohio entry.
+
+#### Fixed
+- [fleet-console] Raise dimmed interface text to the readable tier in all three themes, so panel titles, section labels, metadata, and control captions meet the WCAG AA contrast floor instead of fading into the surface.
+- [fleet-console] Distinguish the four Operation status beacons by shape as well as color, so the state stays readable without relying on color perception.
+- [fleet-console] Apply the intended font family and label sizes in the Codex reading sheet and navigator, which previously fell back to inherited values.
+- [fleet-console] Classify restored Operations as DORMANT instead of IDLE in the sidebar status axis and Alt cycling, matching the canvas frame, via a non-sensitive resumeAvailable marker stamped at DTO time.
+- [fleet-console] Open the canvas and sidebar right-click menu at the cursor, flipping it above the pointer when there is no room below and sizing its height ceiling from the viewport.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Collapse and expand Repository panel workspace tree sections, with Tags and Stashes folded by default and fold state kept in memory only.
+- [fleet-console] Answer every dormant Resume click: a pending "Resuming..." state, an in-frame failure card with Try again / Start fresh, and a Resume failed Alerts entry. Start fresh relaunches the Operation without the saved provider session.
+- [fleet-console] Idle agent terminals now move to DORMANT automatically after a configurable idle period (default 1 hour), reclaiming CLI process resources while keeping the conversation one Resume click away; working sessions and sessions without a saved provider session are never transitioned.
+- [fleet-console] Add an "Idle agent sessions" option to Settings > Terminal > General (Off / 30 minutes / 1 hour / 2 hours / 4 hours), persisted on the Console server.
+
+#### Changed
+- [fleet-console] Wrap Repository History commit subjects to two lines in narrow panels and show the full subject on hover.
+- [fleet-console] Expose host-owned Fleet Plan authoring in Console Agent sessions while keeping Carrier Plan mutation fail-closed.
+- [fleet-console] Remove Tempest from Terminal Carrier settings and job identity styling while preserving the neutral fallback for old identities.
+- [fleet-console] Replace the agent operation's bottom stream dock and its Details overlay with a Carrier Streams companion: a STREAMS handle stacked above ANALYZE opens a pane where carriers stream as vertically stacked rows, each rendering its request bubble, the streamed markdown message, a reasoning status line, and an analyst-style status card that shows only the latest confirmed tool activity; finished carriers collapse to one-line strips that persist for the session and expand on click.
+- [fleet-console] Open Carrier Streams and Session Analyst independently from their own edge handles, show a live aurora pulse badge on the STREAMS handle while carriers stream and on the ANALYZE handle while the analysis engine works (degrading to a static dot under reduced-motion settings), and localize the handle and panel copy for the Korean console language.
+- [fleet-console] Keep stale Kirov settings and stream ownership inert while omitting Kirov from registry-driven settings and identity styling.
+- [fleet-console] The built-in Terminal, Repository, Files, and Skills panels follow the Display language setting, covering panel titles, carrier and agent settings, file viewers, skill install and reading surfaces, repository sections, and markdown code-copy and diagram controls.
+- [fleet-console] Keep stale Ohio settings and stream ownership inert while omitting Ohio from registry-driven settings and identity styling.
+
+#### Fixed
+- [fleet-console] Raise dimmed text in the Repository, Skills, Files, and Session Analyst panels to the readable tier, and stop fading commit rows outside the checked-out branch below the contrast floor.
+- [fleet-console] Apply the intended font family to the Files panel tree labels, which previously fell back to an inherited value.
+- [fleet-console] Walk the Files tree with the Arrow, Home and End keys and keep a single tab stop for the whole tree, replacing a tab stop on every node.
+- [fleet-console] An agent panel returns to the running state once the agent resumes work after an input prompt, and drops to idle when a turn is interrupted, resolved from the agent CLI terminal title signal instead of hook events alone.
+
+#### Removed
+- [fleet-console] Remove the Codex ACP/App Server launch-mode selector; Console-launched Codex sessions now always use App Server.
+
+### fleet-core
+
+#### Added
+- [core-unified-agent] Add Fast Codex model assets for GPT-5.6 and GPT-5.5, mapped to the App Server `priority` service tier.
+- [fleet-admiral] A Codex session reports input waiting to the Console through a PermissionRequest hook.
+
+#### Changed
+- [fleet-carriers] Merge Tempest's GitHub-focused intelligence into Vanguard's read-only local and remote codebase contract, including public code search, read-only APIs, web research, and temporary clones.
+- [fleet-admiral] Route reconnaissance dispatches through Vanguard with generalized `objective`, `search_space`, `hints`, `constraints`, and `depth` request blocks.
+- [core-unified-agent] Keep codex sessions out of the codex CLI resume picker by archiving each thread on disconnect and unarchiving it when the session resumes.
+
+#### Fixed
+- [core-unified-agent] Stop codex session teardown from hanging when the app-server exits before answering the archive request.
+
+#### Removed
+- [core-unified-agent] Remove the `ait` CLI, Codex ACP bridge support, and the GPT-5.4 model family.
+
+#### Breaking Changes
+- [fleet-admiral] Keep Fleet Plan authoring and mutation host-owned, expose optional Plan assurance through Nimitz, and keep task completion marking exclusive to Ohio.
+- [fleet-carriers] Remove Kirov from the default Carrier contract and exports without an alias, and add optional exact-PlanRef assurance to Nimitz.
+- [fleet-admiral] Remove Kirov dispatch routing and expose optional `plan_ref` assurance through Nimitz while preserving host and Ohio ownership.
+- [fleet-carriers] Remove Ohio from the default Carrier contract and exports without an alias, and extend Genesis to execute optional same-Lane TaskRefs without mutating Plan state.
+- [fleet-admiral] Give the host sole ownership of Plan mutation and completion, exposing `plan_mark_tasks` to the host for use after artifact inspection and Lane QA.
+- [fleet-plans] Require the Carrier-neutral host-completion policy for new Plans while keeping the exact legacy Ohio policy lint-compatible only for existing Plans.
+
 ## [1.33.0] - 2026-07-23
 
 ### fleet-cli

@@ -5,6 +5,105 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-07-25
+
+### fleet-cli
+
+#### Changed
+- [fleet-cli] 제독 호스트가 Fleet Plan을 직접 작성·변경하도록 하고, 태스크 완료 표시는 Ohio 전용으로 유지합니다.
+- [fleet-cli] 로컬·원격 코드베이스 인텔리전스를 Vanguard의 읽기 전용 정찰 계약으로 통합합니다.
+- [fleet-cli] Kirov를 퇴역시키고 선택적 Plan 보증을 Nimitz로 통합한 기본 Carrier 5명을 표시합니다.
+- [fleet-cli] Ohio를 퇴역시키고 직접 구현과 Plan 기반 구현을 Genesis로 통합한 기본 Carrier 4명을 표시합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Float over Map 레일 패널 헤드에 Solid/90/75/60 불투명도 프리셋을 추가해, 패널 콘텐츠는 불투명하게 유지하면서 플로팅 패널 배경 아래의 Map이 비쳐 보이도록 하고 선택을 세션 간에 유지합니다.
+- [fleet-console] 커맨드 팔레트에 Operation 액션(Resume(dormant 전용), Close, Minimize all, Toggle Formation view, Toggle status axis, 활성 Theater 한정)과 검색 행의 상태 뱃지(awaiting / running / dormant)를 추가합니다.
+- [fleet-console] Activity Rail 리사이즈 핸들을 포커스 가능한 separator로 만들어 키보드로 조작할 수 있게 합니다. 화살표 키는 16px, Shift+화살표는 64px씩 조절하고 Home/End는 최소·최대 폭으로 이동합니다.
+- [fleet-console] Operation 칩과 Theater 행의 컨텍스트 메뉴를 Shift+F10 또는 ContextMenu 키로 엽니다. 첫 항목에 포커스가 가고 Escape로 닫으면 원래 행으로 돌아오므로, 그룹과 accent 지정에 더 이상 우클릭이 필요하지 않습니다.
+- [fleet-console] 활성 Operation을 대상으로 하는 Rename·Assign group·Set accent·Minimize 커맨드를 커맨드 팔레트에 추가해, 우클릭이 필요하던 칩 메뉴 동작에 닿을 수 있게 합니다.
+- [fleet-console] 닫은 Operation과 잊은 Theater를 8초 동안 보관한 뒤 영구 삭제하고, 그동안 undo 토스트와 Mod+Z 단축키로 되돌릴 수 있게 합니다. 복원된 Operation은 dormant 상태로 돌아오며 다시 실행할 때만 기동합니다.
+- [fleet-console] 커맨드 팔레트에서 Repository 커밋·Files 경로·Plans·Skills를 검색하고, 결과를 고르면 해당 패널이 그 위치에서 열립니다. 이전에는 Operation 제목만 검색되었고 커밋이나 경로를 다른 패널로 넘길 방법이 없었습니다.
+- [fleet-console] 플러그인이 패널·오퍼레이션·설정·알림 제목을 지역화할 수 있고, 레일 패널이 해석된 로케일을 전달받습니다.
+
+#### Changed
+- [fleet-console] Sort by Status의 4개 상태 섹션을 항상 표시하고 상태별 접기를 지원하며(빈 섹션은 흐리게 기본 접힘), 상태축의 그룹 색 dot를 그룹 이름 pill로 바꾸고 Theater actions 아이콘을 ellipsis로 교체합니다.
+- [fleet-console] 빈 Operations 맵을 대기 중 Operation 칩, New Operation 버튼, 단축키 힌트가 있는 행동 가능한 표면으로 바꿉니다.
+- [fleet-console] 컨트롤 문법을 글자 굵기 3단계, 아이콘 버튼 2규격, 공용 버튼 변형 체계로 통일하고, 컨트롤·CTA 라벨은 문장형으로 되돌리되 대문자는 구조 섹션 라벨에만 남깁니다.
+- [fleet-console] 강조를 낮출 때 투명도로 흐리는 대신 텍스트 단계를 낮추도록 바꿔, 흐리게 표시한 라벨도 보장된 대비를 유지합니다.
+- [fleet-console] Activity Rail 폭을 모든 패널이 공유하지 않고 패널별로 기억합니다. Repository를 넓혀도 Alerts가 같은 폭을 차지해 맵을 좁히는 일이 없어집니다.
+- [fleet-console] Activity Rail 패널을 각자의 기본 폭으로 엽니다. Repository·Codex는 420px, Plans·Files·Skills는 360px입니다.
+- [fleet-console] 이미 없는 Operation에 대한 삭제 요청에 not-found 오류 대신 성공 응답을 돌려주어, 닫기를 반복해도 문제가 없게 합니다.
+- [fleet-console] Carrier 로스터에서 Vanguard를 로컬·원격 통합 정찰 전문가로 안내합니다.
+- [fleet-console] 사이드바 상태 섹션을 가장 최근 전이 순으로 정렬하고, 전이되지 않은 Operation은 기존 순서를 유지합니다.
+- [fleet-console] IDLE로 전이된 Operation에 세션 한정 미확인 점과 섹션 헤더 카운트를 표시하고, 한 번 열면 해제합니다.
+- [fleet-console] 첫 상태 섹션 헤더를 "AWAITING INPUT"에서 "AWAITING"으로 줄였습니다.
+- [fleet-console] Settings > General의 언어 카드를 "Display language"로 바꾸고 콘솔 전반의 표시 언어라는 설명으로 정리해, What's New와 플러그인 패널 문구를 이미 함께 지배하던 설정의 실제 범위와 일치시킵니다.
+- [fleet-console] Nimitz가 선택적 Plan 보증을 담당하고 Kirov 항목이 없는 5명 Carrier 로스터를 제공합니다.
+- [fleet-console] 표시 언어 설정이 이제 콘솔 본체를 지배합니다. 커맨드 밴드·사이드바·캔버스·명령 팔레트·단축키·Settings·What's New 크롬·Codex가 선택한 언어를 따르며, 날짜와 상대 시간도 로케일에 맞춰 표시됩니다.
+- [fleet-console] 언어를 바꾸면 새로 고침 없이 즉시 적용되며, 페이지 언어 속성도 해석된 로케일을 따릅니다.
+- [fleet-console] Genesis가 직접 구현과 Plan 기반 구현을 담당하고 Ohio 항목이 없는 4명 Carrier 로스터를 제공합니다.
+
+#### Fixed
+- [fleet-console] 세 테마 모두에서 흐린 인터페이스 텍스트를 판독 가능한 단계로 올려, 패널 제목·섹션 라벨·메타데이터·컨트롤 문구가 배경에 묻히지 않고 WCAG AA 대비 기준을 충족합니다.
+- [fleet-console] Operation 상태 비콘 4종을 색과 함께 모양으로도 구분해, 색 인지에 의존하지 않고 상태를 읽을 수 있습니다.
+- [fleet-console] Codex 읽기 시트와 내비게이터에서 상속값으로 흘러가던 글꼴과 라벨 크기가 의도한 값으로 표시됩니다.
+- [fleet-console] 복원된 Operation이 사이드바 상태축과 Alt 순환에서 IDLE로 오분류되던 문제를 수정해 캔버스 프레임과 같이 DORMANT로 분류합니다. DTO 시점에 심는 비민감 resumeAvailable 마커를 사용합니다.
+- [fleet-console] 캔버스와 사이드바 우클릭 메뉴를 커서 위치에 열고, 아래쪽 공간이 없으면 커서 위로 펼치며 높이 상한을 뷰포트에서 산출합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Repository 패널 워크스페이스 트리 섹션을 접고 펼 수 있습니다. Tags와 Stashes는 기본 접힘이며 접기 상태는 메모리에만 유지됩니다.
+- [fleet-console] dormant Resume 클릭에 항상 응답합니다 — pending "Resuming..." 상태, 실패 시 프레임 내 카드(Try again / Start fresh), Resume failed Alerts 알림을 제공합니다. Start fresh는 저장된 provider 세션 없이 Operation을 새로 시작합니다.
+- [fleet-console] 유후 agent 터미널이 설정한 유후 시간(기본 1시간)을 넘기면 자동으로 DORMANT로 전이되어 CLI 프로세스 리소스를 회수하며, 대화는 Resume 한 번으로 복원됩니다. 작업 중이거나 저장된 provider 세션이 없는 세션은 전이되지 않습니다.
+- [fleet-console] Settings > Terminal > General에 "Idle agent sessions" 옵션(Off / 30분 / 1시간 / 2시간 / 4시간)을 추가하고, 값은 Console 서버에 영속화됩니다.
+
+#### Changed
+- [fleet-console] 좁은 패널에서 Repository History 커밋 제목을 2행으로 표시하고, hover 시 전체 제목을 보여줍니다.
+- [fleet-console] Console Agent 세션에서 호스트 소유 Fleet Plan 작성을 제공하고, Carrier의 Plan 변경은 실패 폐쇄 방식으로 차단합니다.
+- [fleet-console] Terminal Carrier 설정과 작업 정체성 스타일에서 Tempest를 제거하고 이전 정체성에는 중립 폴백을 유지합니다.
+- [fleet-console] 에이전트 오퍼레이션 하단 스트림 독과 Details 오버레이를 Carrier Streams 컴패니언으로 교체합니다. ANALYZE 위에 쌓인 STREAMS 핸들이 패널을 열고, 캐리어들이 세로로 적층된 행으로 스트리밍되며 각 행은 요청 버블, 스트리밍 마크다운 메시지, 추론 상태 라인, 마지막으로 확인된 도구 활동만 보여주는 Analyst식 상태 카드를 렌더합니다. 완료된 캐리어는 세션 동안 유지되는 한 줄 스트립으로 접히고 클릭 시 전개됩니다.
+- [fleet-console] Carrier Streams와 Session Analyst를 각자의 엣지 핸들에서 독립적으로 열고, 캐리어 스트리밍 중에는 STREAMS 핸들에, 분석 엔진 작동 중에는 ANALYZE 핸들에 aurora 펄스 배지를 표시하며(모션 감소 설정에서는 정적 도트로 강하), 한국어 콘솔 언어에서 핸들과 패널 문구를 현지화합니다.
+- [fleet-console] 이전 Kirov 설정과 스트림 소유권은 비활성 상태로 보존하면서 레지스트리 기반 설정과 정체성 스타일에서는 Kirov를 제외합니다.
+- [fleet-console] 내장 Terminal·Repository·파일·스킬 패널이 표시 언어 설정을 따릅니다. 패널 제목, Carrier·Agent 설정, 파일 뷰어, 스킬 설치·읽기 화면, 저장소 섹션, 마크다운 코드 복사·다이어그램 컨트롤이 포함됩니다.
+- [fleet-console] 이전 Ohio 설정과 스트림 소유권은 비활성 상태로 보존하면서 레지스트리 기반 설정과 정체성 스타일에서는 Ohio를 제외합니다.
+
+#### Fixed
+- [fleet-console] Repository·Skills·Files·Session Analyst 패널의 흐린 텍스트를 판독 가능한 단계로 올리고, 체크아웃된 브랜치 밖 커밋 행이 대비 기준 아래로 흐려지던 문제를 해소합니다.
+- [fleet-console] Files 패널 트리 라벨이 상속값으로 흘러가던 글꼴을 의도한 값으로 표시합니다.
+- [fleet-console] Files 트리를 화살표·Home·End 키로 이동할 수 있게 하고, 노드마다 멈추던 Tab을 트리 전체에서 한 번만 멈추도록 바꿉니다.
+- [fleet-console] 입력 프롬프트 이후 에이전트가 작업을 재개하면 패널이 다시 실행 중 상태로 돌아오고, 턴이 중단되면 유휴로 내려갑니다. hook 이벤트만이 아니라 에이전트 CLI 터미널 제목 신호로 판정합니다.
+
+#### Removed
+- [fleet-console] Codex ACP/App Server 실행 모드 선택기를 제거하고, Console에서 시작하는 Codex 세션은 항상 App Server를 사용합니다.
+
+### fleet-core
+
+#### Added
+- [core-unified-agent] GPT-5.6과 GPT-5.5용 Fast Codex 모델 자산을 추가하고 App Server `priority` 서비스 티어에 연결합니다.
+- [fleet-admiral] Codex 세션이 PermissionRequest hook으로 입력 대기를 Console에 보고합니다.
+
+#### Changed
+- [fleet-carriers] Tempest의 GitHub 중심 인텔리전스를 공개 코드 검색·읽기 전용 API·웹 조사·임시 clone을 포함하는 Vanguard의 읽기 전용 로컬·원격 코드베이스 계약에 통합합니다.
+- [fleet-admiral] 정찰 디스패치를 일반화된 `objective`, `search_space`, `hints`, `constraints`, `depth` 요청 블록과 함께 Vanguard로 라우팅합니다.
+- [core-unified-agent] codex 세션을 disconnect 시 아카이브하고 재개할 때 언아카이브해, codex CLI resume picker에 노출되지 않게 합니다.
+
+#### Fixed
+- [core-unified-agent] app-server가 아카이브 요청에 응답하기 전에 종료되어도 codex 세션 정리가 멈추지 않도록 고칩니다.
+
+#### Removed
+- [core-unified-agent] `ait` CLI와 Codex ACP 브리지 지원 및 GPT-5.4 모델 계열을 제거합니다.
+
+#### Breaking Changes
+- [fleet-admiral] Fleet Plan 작성·변경은 호스트 소유로 유지하고 선택적 Plan 보증은 Nimitz를 통해 제공하며, 태스크 완료 표시는 Ohio 전용으로 유지합니다.
+- [fleet-carriers] Kirov를 별칭 없이 기본 Carrier 계약과 export에서 제거하고 Nimitz에 정확한 PlanRef 기반 선택적 보증을 추가합니다.
+- [fleet-admiral] Kirov 디스패치 라우팅을 제거하고 호스트와 Ohio의 소유권을 유지하면서 Nimitz를 통해 선택적 `plan_ref` 보증을 제공합니다.
+- [fleet-carriers] Ohio를 별칭 없이 기본 Carrier 계약과 export에서 제거하고 Genesis가 Plan 상태를 변경하지 않은 채 선택적 동일 Lane TaskRef를 실행하도록 확장합니다.
+- [fleet-admiral] Plan 변경과 완료의 단독 소유권을 호스트에 부여하고 Artifact Inspection과 Lane QA 이후 사용할 `plan_mark_tasks`를 호스트에 제공합니다.
+- [fleet-plans] 새 Plan에는 Carrier 중립적인 호스트 완료 정책을 요구하고 정확한 이전 Ohio 정책은 기존 Plan에서만 lint 호환으로 유지합니다.
+
 ## [1.33.0] - 2026-07-23
 
 ### fleet-cli
