@@ -77,7 +77,7 @@ describe("Carrier Streams companion", () => {
     }))).resolves.toBe(true);
   });
 
-  it("stacks full-width carrier rows in request, activity, and markdown order without thought content", async () => {
+  it("stacks full-width carrier rows in request, markdown, reasoning, and latest-activity order without thought content", async () => {
     installSession([
       makeJob("job-live", "active", [
         makeTrack("kirov-track", {
@@ -117,19 +117,80 @@ describe("Carrier Streams companion", () => {
     const request = firstColumn?.querySelector(".carrier-stream-column__request");
     const activity = firstColumn?.querySelector(".carrier-stream-column__activity");
     const answer = firstColumn?.querySelector(".carrier-stream-column__answer");
-    expect(request?.compareDocumentPosition(activity as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(activity?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(answer?.nextElementSibling).toBeNull();
+    expect(request?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(answer?.compareDocumentPosition(activity as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity?.nextElementSibling).toBeNull();
     expect(answer?.querySelector("strong")?.textContent).toBe("Streaming");
+    expect(firstColumn?.querySelector(".carrier-stream-column__head time")).toBeNull();
     expect(activity?.querySelector(".carrier-stream-column__activity-scan")).not.toBeNull();
-    const toolRows = activity?.querySelectorAll(".carrier-stream-column__activity-row");
-    expect(toolRows).toHaveLength(2);
-    expect(Array.from(toolRows ?? []).map((row) => row.textContent)).toEqual(["Readsrc/main.ts", "Editsrc/main.ts"]);
-    expect(Array.from(toolRows ?? []).map((row) => row.getAttribute("data-tone"))).toEqual(["live", "done"]);
+    expect(activity?.querySelector(".carrier-stream-column__activity-orbit")).not.toBeNull();
+    expect(activity?.querySelector("strong")?.textContent).toBe("Using Edit");
+    expect(activity?.querySelector("small")?.textContent).toBe("Tool status: completed");
+    expect(activity?.textContent).toContain("Last confirmed activity only");
+    expect(activity?.querySelector("time")?.textContent).toMatch(/\d/);
+    expect(activity?.textContent).not.toContain("Read");
+    expect(firstColumn?.querySelector(".carrier-stream-column__reasoning")).toBeNull();
 
-    const reasoningActivity = columns?.[1]?.querySelector(".carrier-stream-column__activity");
-    expect(reasoningActivity?.querySelectorAll(".carrier-stream-column__activity-row")).toHaveLength(1);
-    expect(reasoningActivity?.textContent).toBe("Reasoning…");
+    const reasoningLine = columns?.[1]?.querySelector(".carrier-stream-column__reasoning");
+    expect(columns?.[1]?.querySelector(".carrier-stream-column__activity")).toBeNull();
+    expect(reasoningLine?.textContent).toBe("Reasoning…");
+  });
+
+  it("orders message above reasoning above the latest activity card", async () => {
+    const track = makeTrack("order-track", {
+      displayName: "Kirov",
+      text: "Public answer",
+      thought: "hidden reasoning",
+      tools: [{ id: "bash-1", name: "Bash", status: "running" }],
+    });
+    installSession([{
+      ...makeJob("job-order", "active", [track], "kirov"),
+      recentEvents: [{
+        id: 9,
+        tenantId: TENANT_ID,
+        jobId: "job-order",
+        type: "track:thought",
+        at: 1_009,
+        event: { trackId: "order-track" },
+      }],
+    }]);
+    await renderCompanion();
+
+    const column = container?.querySelector(".carrier-stream-column");
+    const answer = column?.querySelector(".carrier-stream-column__answer");
+    const reasoning = column?.querySelector(".carrier-stream-column__reasoning");
+    const activity = column?.querySelector(".carrier-stream-column__activity");
+    expect(answer?.compareDocumentPosition(reasoning as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reasoning?.compareDocumentPosition(activity as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity?.querySelector("strong")?.textContent).toBe("Using Bash");
+    expect(column?.querySelector(".carrier-stream-column__head time")).toBeNull();
+    expect(activity?.querySelector("time")?.textContent).toMatch(/\d/);
+    expect(container?.textContent).not.toContain("hidden reasoning");
+  });
+
+  it("localizes the activity pulse card for Korean", async () => {
+    installSession([makeJob("job-ko-pulse", "active", [
+      makeTrack("ko-pulse", {
+        requestPreview: "Map the console packages.",
+        tools: [
+          { id: "read-1", name: "Read", status: "completed" },
+          { id: "edit-1", name: "Edit", status: "running" },
+        ],
+      }),
+    ])]);
+    await renderCompanion(createContext({ language: "ko" }));
+
+    const request = container?.querySelector(".carrier-stream-column__request");
+    expect(request?.querySelector(".carrier-stream-column__request-kicker")?.textContent).toBe("출격 명령");
+    expect(request?.textContent).toContain("Map the console packages.");
+
+    const activity = container?.querySelector(".carrier-stream-column__activity");
+    expect(activity?.textContent).toContain("Edit 사용 중");
+    expect(activity?.textContent).toContain("도구 상태: running");
+    expect(activity?.textContent).toContain("마지막으로 확인된 활동만 표시");
+    expect(activity?.textContent).not.toContain("Read");
+    expect(activity?.textContent).not.toContain("Using ");
+    expect(activity?.textContent).not.toContain("Last confirmed activity only");
   });
 
   it("prefers the complete job request over the deprecated track preview", async () => {
@@ -159,7 +220,7 @@ describe("Carrier Streams companion", () => {
     expect(container?.querySelector(".carrier-stream-column__activity")).toBeNull();
   });
 
-  it("normalizes server track:tool payloads through the reducer into one updated activity row", async () => {
+  it("normalizes server track:tool payloads through the reducer into one latest activity card", async () => {
     let job = createEmptyJob(TENANT_ID, "job-tool", 1_000);
     job = applyEvent(job, observed(1, "job:registered", {
       tracks: [{ trackId: "tool-track", displayName: "Kirov" }],
@@ -187,16 +248,15 @@ describe("Carrier Streams companion", () => {
     installSession([job]);
     await renderCompanion();
 
-    const rows = container?.querySelectorAll(".carrier-stream-column__activity-row");
-    expect(rows).toHaveLength(1);
-    expect(rows?.[0]?.textContent).toContain("Edit");
-    expect(rows?.[0]?.getAttribute("data-tone")).toBe("done");
-    const answer = container?.querySelector(".carrier-stream-column__answer");
     const activity = container?.querySelector(".carrier-stream-column__activity");
-    expect(activity?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity?.querySelector("strong")?.textContent).toBe("Using Edit");
+    expect(activity?.querySelector("small")?.textContent).toBe("Tool status: completed");
+    expect(activity?.querySelector(".carrier-stream-column__activity-orbit")?.getAttribute("data-tone")).toBe("done");
+    const answer = container?.querySelector(".carrier-stream-column__answer");
+    expect(answer?.compareDocumentPosition(activity as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("isolates a new untagged tool call when the latest same-title call is complete", async () => {
+  it("shows only the latest tool on the activity card when multiple calls accumulate", async () => {
     let job = createEmptyJob(TENANT_ID, "job-repeated-tools", 1_000);
     job = applyEvent(job, observed(1, "job:registered", {
       tracks: [{ trackId: "repeated-tool-track", displayName: "Sentinel" }],
@@ -214,10 +274,10 @@ describe("Carrier Streams companion", () => {
     installSession([job]);
     await renderCompanion();
 
-    const rows = container?.querySelectorAll(".carrier-stream-column__activity-row");
-    expect(rows).toHaveLength(2);
-    expect(Array.from(rows ?? []).map((row) => row.textContent)).toEqual(["Read", "Read"]);
-    expect(Array.from(rows ?? []).map((row) => row.getAttribute("data-tone"))).toEqual(["done", "live"]);
+    const activity = container?.querySelector(".carrier-stream-column__activity");
+    expect(activity?.querySelector("strong")?.textContent).toBe("Using Read");
+    expect(activity?.querySelector("small")?.textContent).toBe("Tool status: running");
+    expect(activity?.querySelector(".carrier-stream-column__activity-orbit")?.getAttribute("data-tone")).toBe("live");
     expect(job.tracks["repeated-tool-track"]?.tools.map((tool) => tool.id)).toEqual(["Read#0", "Read#1"]);
   });
 
@@ -253,9 +313,10 @@ describe("Carrier Streams companion", () => {
     const activity = container?.querySelector(".carrier-stream-column__activity");
     expect(activity?.getAttribute("data-tone")).toBe("done");
     expect(activity?.querySelector(".carrier-stream-column__activity-scan")).toBeNull();
-    expect(activity?.querySelector('.carrier-stream-column__activity-row[data-tone="done"]')).not.toBeNull();
+    expect(activity?.querySelector(".carrier-stream-column__activity-orbit")?.getAttribute("data-tone")).toBe("done");
+    expect(activity?.querySelector("strong")?.textContent).toBe("Using Write");
     expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column__activity\[data-tone="done"\], \.carrier-stream-column__activity\[data-tone="error"\] \{ border-color: var\(--hairline\); background: var\(--ink-deep\); \}/);
-    expect(ANALYSIS_CSS).toContain('.carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-row[data-tone="live"] > i::after');
+    expect(ANALYSIS_CSS).toContain('.carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after');
 
     const body = container?.querySelector<HTMLDivElement>(".carrier-stream-column__body");
     if (!body) throw new Error("Expanded stream body must exist.");
@@ -478,9 +539,9 @@ describe("Carrier Streams companion", () => {
     const answer = container?.querySelector(".carrier-stream-column__answer");
     expect(activity?.getAttribute("data-tone")).toBe("error");
     expect(activity?.querySelector(".carrier-stream-column__activity-scan")).toBeNull();
-    expect(activity?.compareDocumentPosition(alert as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(alert?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(answer?.nextElementSibling).toBeNull();
+    expect(answer?.compareDocumentPosition(alert as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(alert?.compareDocumentPosition(activity as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity?.nextElementSibling).toBeNull();
   });
 
   it("falls back to an error job summary when finalization has no error fields", async () => {
