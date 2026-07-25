@@ -1,6 +1,7 @@
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
 export type TurnState = "none" | "running" | "ended";
+export type ModelActivity = "working" | "not-working";
 
 export type AttentionReason =
   | "idle_prompt"
@@ -37,6 +38,8 @@ export interface SessionInfo {
   readonly cliLabel?: string;
   readonly status: SessionStatus;
   readonly turnState: TurnState;
+  readonly modelActivity?: ModelActivity;
+  readonly attentionPending?: boolean;
   readonly createdAt: number;
   readonly theaterId?: string;
   readonly tenantId?: string;

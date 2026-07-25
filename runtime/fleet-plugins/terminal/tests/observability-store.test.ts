@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { sessionActivity } from "../client/agent/connection.js";
 import { reduceSnapshotJob } from "../client/agent/reduce.js";
 import { createConsoleObservabilityStore } from "../server/agent-api/observability-store.js";
 
@@ -311,6 +312,98 @@ describe("agent observability DTO boundary", () => {
 
     expect(a?.id).toBe(1);
     expect(b?.id).toBe(2);
+  });
+});
+
+describe("agent activity observability state", () => {
+  function createStore() {
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: "/workspace/project", cliId: "claude", createdAt: 1_000 });
+    return store;
+  }
+
+  it("projects only classified activity and pending attention into browser DTOs", () => {
+    const store = createStore();
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+
+    const notWorking = store.setTerminalSessionModelActivity("session-a", "not-working");
+    expect(notWorking).toMatchObject({ modelActivity: "not-working" });
+    if (notWorking) store.notifySessionUpdated(notWorking);
+    expect(store.setTerminalSessionModelActivity("session-a", "not-working")).toBeNull();
+
+    store.notifySessionAttention(notWorking!, "permission_prompt");
+    expect(store.getTerminalSessionInfo("session-a")).toMatchObject({
+      modelActivity: "not-working",
+      attentionPending: true,
+    });
+
+    const working = store.setTerminalSessionModelActivity("session-a", "working");
+    expect(working).toMatchObject({ modelActivity: "working" });
+    expect(working).not.toHaveProperty("attentionPending");
+    if (working) store.notifySessionUpdated(working);
+    expect(store.setTerminalSessionModelActivity("session-a", "working")).toBeNull();
+
+    expect(frames.map((frame) => (frame as { readonly type: string }).type)).toEqual([
+      "session:updated",
+      "session:attention",
+      "session:updated",
+    ]);
+    const serialized = JSON.stringify({ durable: store.listDurableOperations(), frames });
+    expect(serialized).not.toContain("raw title");
+    expect(JSON.stringify(store.listDurableOperations())).not.toContain("modelActivity");
+    expect(JSON.stringify(store.listDurableOperations())).not.toContain("attentionPending");
+  });
+
+  it("clears both transient axes on either turn phase and falls back to the hook turn state", () => {
+    const store = createStore();
+    const initial = store.getTerminalSessionInfo("session-a")!;
+    store.setTerminalSessionModelActivity("session-a", "not-working");
+    store.notifySessionAttention(initial, "permission_prompt");
+
+    const started = store.setTerminalSessionTurnState("session-a", "running")!;
+    expect(started).not.toHaveProperty("attentionPending");
+    expect(started).not.toHaveProperty("modelActivity");
+    expect(sessionActivity(started)).toBe("running");
+    store.setTerminalSessionModelActivity("session-a", "not-working");
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "elicitation_dialog");
+    const ended = store.setTerminalSessionTurnState("session-a", "ended")!;
+    expect(ended).not.toHaveProperty("attentionPending");
+    expect(ended).not.toHaveProperty("modelActivity");
+    expect(sessionActivity(ended)).toBe("idle");
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "idle_prompt");
+    expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("attentionPending");
+
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "permission_prompt");
+    const dormant = store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    });
+    expect(dormant).toMatchObject({ status: "dormant" });
+    expect(dormant).not.toHaveProperty("modelActivity");
+    expect(dormant).not.toHaveProperty("attentionPending");
+  });
+
+  it("emits exactly one update when repeated working clears late attention", () => {
+    const store = createStore();
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+    const firstWorking = store.setTerminalSessionModelActivity("session-a", "working")!;
+    store.notifySessionUpdated(firstWorking);
+    store.notifySessionAttention(firstWorking, "permission_prompt");
+
+    const cleared = store.setTerminalSessionModelActivity("session-a", "working");
+    expect(cleared).toMatchObject({ modelActivity: "working" });
+    expect(cleared).not.toHaveProperty("attentionPending");
+    if (cleared) store.notifySessionUpdated(cleared);
+    expect(store.setTerminalSessionModelActivity("session-a", "working")).toBeNull();
+
+    expect(frames.map((frame) => (frame as { readonly type: string }).type)).toEqual([
+      "session:updated",
+      "session:attention",
+      "session:updated",
+    ]);
   });
 });
 

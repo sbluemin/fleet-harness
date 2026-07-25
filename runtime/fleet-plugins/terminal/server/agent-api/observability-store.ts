@@ -6,6 +6,7 @@ import type {
   AgentAttentionReason,
   AgentDurableOperation,
   AgentLabelSource,
+  AgentModelActivity,
   AgentObservedEvent,
   AgentObservedJob,
   AgentObservedRequest,
@@ -63,6 +64,8 @@ interface PendingTerminalSessionState {
   readonly terminalSessionId: string;
   status: AgentSessionStatus;
   turnState?: AgentTurnState;
+  modelActivity?: AgentModelActivity;
+  attentionPending?: boolean;
   registrationId?: string;
   cliRunId?: string;
   providerSession?: AgentProviderSession;
@@ -298,6 +301,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     session.status = status;
+    if (status === "starting" || status === "dormant") {
+      delete session.modelActivity;
+      delete session.attentionPending;
+    }
     return toTerminalSessionInfo(session);
   }
 
@@ -305,6 +312,18 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     session.turnState = turnState;
+    delete session.modelActivity;
+    delete session.attentionPending;
+    return toTerminalSessionInfo(session);
+  }
+
+  function setTerminalSessionModelActivity(sessionId: string, modelActivity: AgentModelActivity): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const clearsAttention = modelActivity === "working" && session.attentionPending === true;
+    if (session.modelActivity === modelActivity && !clearsAttention) return null;
+    session.modelActivity = modelActivity;
+    if (clearsAttention) delete session.attentionPending;
     return toTerminalSessionInfo(session);
   }
 
@@ -318,6 +337,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     }
     session.status = "dormant";
     session.providerSession = providerSession;
+    delete session.modelActivity;
+    delete session.attentionPending;
     return toTerminalSessionInfo(session);
   }
 
@@ -393,8 +414,14 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function notifySessionAttention(session: AgentTerminalSessionInfo, reason?: AgentAttentionReason): void {
-    const event: AgentSessionAttentionEvent = { type: "session:attention", session, reason };
-    // 입력 대기 알림은 1회성 신호다. session:updated와 같은 aggregate 경로로 흘리되 세션 메타는 갱신하지 않는다.
+    const state = terminalSessionsById.get(session.sessionId);
+    if (state && reason !== "idle_prompt") state.attentionPending = true;
+    const event: AgentSessionAttentionEvent = {
+      type: "session:attention",
+      session: state ? toTerminalSessionInfo(state) : session,
+      reason,
+    };
+    // 입력 대기 알림은 1회성 신호다. session:updated와 같은 aggregate 경로로 흘린다.
     for (const listener of allListeners) listener(event);
   }
 
@@ -445,6 +472,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     clearTerminalSessionProviderSession,
     updateTerminalSessionStatus,
     setTerminalSessionTurnState,
+    setTerminalSessionModelActivity,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
@@ -521,6 +549,8 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     cliLabel: state.cliLabel,
     status: state.status,
     turnState: state.turnState ?? "none",
+    ...(state.modelActivity ? { modelActivity: state.modelActivity } : {}),
+    ...(state.attentionPending === true ? { attentionPending: true } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,

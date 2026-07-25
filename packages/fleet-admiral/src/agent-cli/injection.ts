@@ -32,7 +32,7 @@ export interface InjectAgentCliProfileOptions {
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
-  // 입력 대기(AskUserQuestion PreToolUse · 입력 대기 Notification) 신호 hook. Claude 전용 와이어링.
+  // 입력 대기 신호 hook. Claude plugin과 Codex PermissionRequest에 와이어링된다.
   readonly inputWaitingHookExec?: FleetHookExec;
   // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입하며 Codex 고정 프로필에만 와이어링된다.
   readonly autoNameHookExec?: FleetHookExec;
@@ -57,6 +57,7 @@ interface CodexProfileHookExecs {
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
   readonly autoNameHookExec?: FleetHookExec;
+  readonly inputWaitingHookExec?: FleetHookExec;
 }
 
 interface DedicatedMcpSession {
@@ -125,6 +126,7 @@ export async function injectAgentCliProfile(
           turnStartHookExec: options.turnStartHookExec,
           turnEndHookExec: options.turnEndHookExec,
           autoNameHookExec: options.autoNameHookExec,
+          inputWaitingHookExec: options.inputWaitingHookExec,
         })
       : undefined;
     const launchWarnings: string[] = [];
@@ -260,18 +262,24 @@ function writeCodexFleetProfile(
 }
 
 function codexHooksConfig(hookExecs: CodexProfileHookExecs): string[] {
-  // UserPromptSubmit = 세션 캡처 + 턴 시작 + 자동 작명, Stop = 턴 종료. codex hook 이벤트 키는 PascalCase.
+  // UserPromptSubmit = 세션 캡처 + 턴 시작 + 자동 작명, Stop = 턴 종료,
+  // PermissionRequest = 입력 대기. codex hook 이벤트 키는 PascalCase.
   const userPromptSubmitExecs = [hookExecs.captureSessionHookExec, hookExecs.turnStartHookExec, hookExecs.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   const stopExecs = [hookExecs.turnEndHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
-  if (userPromptSubmitExecs.length === 0 && stopExecs.length === 0) return [];
+  const permissionRequestExecs = [hookExecs.inputWaitingHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  if (userPromptSubmitExecs.length === 0 && stopExecs.length === 0 && permissionRequestExecs.length === 0) return [];
   const lines = ["[hooks]"];
   if (userPromptSubmitExecs.length > 0) {
     lines.push(`UserPromptSubmit = ${codexHookHandlersInline(userPromptSubmitExecs)}`);
   }
   if (stopExecs.length > 0) {
     lines.push(`Stop = ${codexHookHandlersInline(stopExecs)}`);
+  }
+  if (permissionRequestExecs.length > 0) {
+    lines.push(`PermissionRequest = ${codexHookHandlersInline(permissionRequestExecs)}`);
   }
   lines.push("");
   return lines;

@@ -254,7 +254,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
   });
 
-  it("keeps Codex capture, turn-start, auto-name, and turn-end hooks in order", async () => {
+  it("keeps existing Codex handlers in place and adds a synchronous PermissionRequest hook", async () => {
     const root = createTempRoot("fleet-admiral-codex-all-hooks-");
     const codexHome = path.join(root, "codex-home");
     const hookExecs = [
@@ -262,6 +262,7 @@ describe("agent CLI session resume and capture hooks", () => {
       hookExec("turn-start", []),
       hookExec("auto-name", []),
       hookExec("turn-end", []),
+      hookExec("attention", []),
     ];
     const profile = baseProfile("codex", {
       args: [],
@@ -274,11 +275,16 @@ describe("agent CLI session resume and capture hooks", () => {
       captureSessionHookExec: hookExecs[0],
       turnEndHookExec: hookExecs[3],
       turnStartHookExec: hookExecs[1],
+      inputWaitingHookExec: hookExecs[4],
     }));
 
     const toml = readFileSync(path.join(codexHome, "fleet.config.toml"), "utf8");
     expect(readTomlBasicStringValues(toml, "command")).toEqual(hookExecs.map((exec) =>
       buildHostShellCommand([exec.command, ...exec.args])));
+    expect(toml).toContain(`UserPromptSubmit = ${inlineCodexHooks(hookExecs.slice(0, 3))}`);
+    expect(toml).toContain(`Stop = ${inlineCodexHooks([hookExecs[3]!])}`);
+    expect(toml).toContain(`PermissionRequest = ${inlineCodexHooks([hookExecs[4]!])}`);
+    expect(toml).not.toContain("async =");
   });
 
   it.skipIf(process.platform !== "win32")("writes and executes a PowerShell-safe command_windows override for every Codex hook", async () => {
@@ -422,6 +428,7 @@ function baseInjectOptions(
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
     readonly enableMetaphor?: boolean;
+    readonly inputWaitingHookExec?: FleetHookExec;
     readonly resumeSessionId?: string;
     readonly serverBindings?: AgentServerBindings;
     readonly turnEndHookExec?: FleetHookExec;
@@ -436,6 +443,7 @@ function baseInjectOptions(
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
+    ...(overrides.inputWaitingHookExec ? { inputWaitingHookExec: overrides.inputWaitingHookExec } : {}),
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
     ...(overrides.serverBindings ? { serverBindings: overrides.serverBindings } : {}),
     ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),
@@ -479,6 +487,15 @@ function readTextFilesRecursively(directory: string): string[] {
 
 function hookExec(command: string, args: readonly string[]): FleetHookExec {
   return { args, command };
+}
+
+function inlineCodexHooks(execs: readonly FleetHookExec[]): string {
+  const handlers = execs.map((exec) => {
+    const command = escapeTomlBasicString(buildHostShellCommand([exec.command, ...exec.args]));
+    const commandWindows = escapeTomlBasicString(buildPowerShellCommand([exec.command, ...exec.args]));
+    return `{ type = "command", command = "${command}", command_windows = "${commandWindows}" }`;
+  }).join(", ");
+  return `[{ hooks = [${handlers}] }]`;
 }
 
 function indexOfSequence(values: readonly string[], sequence: readonly string[]): number {

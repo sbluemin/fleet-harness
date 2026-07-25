@@ -21,6 +21,7 @@ import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
+import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
@@ -102,6 +103,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const jobOriginById = new Map<string, string>();
+  const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
     dataDir: ctx.host.paths.fleetDataDir,
@@ -122,6 +124,26 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
     if (!sessionId) return;
     observability.appendTerminalRuntimeEvent(sessionId, withSignatureCli(event, runtime.carrierRuntime.registry));
+  });
+  const unsubscribeTitle = terminalRuntime.onTitle(AGENT_OPERATION_TYPE, (sessionId, title) => {
+    // spinner는 프레임마다 타이틀을 방출하므로 tracker가 이미 있으면 세션 조회(DTO 투영)를 건너뛴다.
+    let tracker = oscActivityTrackers.get(sessionId);
+    if (!tracker) {
+      const session = observability.getTerminalSessionInfo(sessionId);
+      if (!session) return;
+      const cliId = session.cliId;
+      if (cliId !== "claude" && cliId !== "claude-kimi" && cliId !== "codex") return;
+      tracker = createOscAgentActivityTracker({
+        cliId,
+        cwdBasename: session.cwdLabel,
+        onActivity: (modelActivity) => {
+          const updated = observability.setTerminalSessionModelActivity(sessionId, modelActivity);
+          if (updated) observability.notifySessionUpdated(updated);
+        },
+      });
+      oscActivityTrackers.set(sessionId, tracker);
+    }
+    tracker.observeTitle(title);
   });
   // carrier 리마인더와 rename 주입이 세션 단위로 함께 직렬화되도록 공유 writer를 사용한다.
   const reminderWriter = createDelayedPtyWriter();
@@ -361,6 +383,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
+    resetOscActivity(sessionId);
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
     const staleCapture = fresh ? readProviderSessionCaptureRaw(sessionId, { capturesDir: ctx.host.paths.capturesDir }) : null;
     try {
@@ -402,6 +425,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
+      resetOscActivity(sessionId);
       if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 capture 파일·payload providerSession·observability 세션을
         // 모두 복원한다 — payload만 복원하면 resume은 되지만 Analyst가 transcript를 잃는다(Codex P2).
@@ -433,6 +457,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
       return true;
     }
+    oscActivityTrackers.get(sessionId)?.reset();
     observability.notifySessionUpdated(updated);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
@@ -529,6 +554,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function handleExit(operationId: string): Promise<void> {
     reminderWriter.cancel(operationId);
+    resetOscActivity(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -547,6 +573,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   function removeSession(sessionId: string): void {
     reminderWriter.cancel(sessionId);
+    resetOscActivity(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -562,7 +589,16 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     unsubscribePurge();
     unsubscribeReminder();
     unsubscribeStream();
+    unsubscribeTitle();
+    for (const tracker of oscActivityTrackers.values()) tracker.reset();
+    oscActivityTrackers.clear();
     await runtime.cleanup();
+  }
+
+  function resetOscActivity(sessionId: string): void {
+    const tracker = oscActivityTrackers.get(sessionId);
+    tracker?.reset();
+    oscActivityTrackers.delete(sessionId);
   }
 
   function scheduleIdentityRefresh(sessionId: string): void {

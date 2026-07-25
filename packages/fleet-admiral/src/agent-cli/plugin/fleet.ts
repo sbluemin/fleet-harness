@@ -32,8 +32,8 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   // Stop: 턴 종료 신호.
   const stopExecs = [options.turnEndHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
-  // 입력 대기 신호: AskUserQuestion은 tool call이라 PreToolUse(matcher=AskUserQuestion)로 확실히 잡고,
-  // 그 외 입력 대기는 Notification의 입력 대기 타입만 |-구분 정확 매처로 거른다
+  // 입력 대기 신호: AskUserQuestion은 PreToolUse(matcher=AskUserQuestion)와
+  // permission_prompt Notification을 모두 발화한다. 그 외 입력 대기도 Notification의 입력 대기 타입만 |-구분 정확 매처로 거른다
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;

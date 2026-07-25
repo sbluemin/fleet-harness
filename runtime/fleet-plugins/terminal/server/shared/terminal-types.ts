@@ -67,6 +67,8 @@ export interface TerminalSocket {
 
 export type TerminalSocketData = Buffer | ArrayBuffer | Buffer[];
 
+export type TerminalTitleListener = (sessionId: string, title: string) => unknown;
+
 export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
   createSession(context: TerminalTicketContext): Promise<void>;

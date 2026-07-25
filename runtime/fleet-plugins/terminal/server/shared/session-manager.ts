@@ -3,8 +3,9 @@ import { closeSync, fstatSync, readdirSync } from "node:fs";
 import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
 import type { SessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 
+import { createOscTitleParser, type OscTitleParser } from "./osc-title-parser.js";
 import { startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
-import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext } from "./terminal-types.js";
+import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext, TerminalTitleListener } from "./terminal-types.js";
 
 export interface TerminalSessionManagerDeps {
   readonly launch: TerminalLaunchResolver;
@@ -12,6 +13,7 @@ export interface TerminalSessionManagerDeps {
   // DI 계약 유지용으로 받지만 더 이상 동시 세션 상한을 강제하지 않는다(상한 해제됨).
   readonly maxSessions?: number;
   readonly scrollbackLimit?: number;
+  readonly resolveTitleListener?: (context: TerminalTicketContext) => TerminalTitleListener | undefined;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
   readonly onSessionExit?: (sessionId: string) => unknown;
 }
@@ -26,6 +28,8 @@ interface TerminalSession {
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
   readonly sessionIdentityResolver?: SessionIdentityResolver;
+  readonly titleListener?: TerminalTitleListener;
+  readonly titleParser?: OscTitleParser;
   activeSocket: TerminalSocket | null;
   cols: number;
   rows: number;
@@ -181,6 +185,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       await runLaunchCleanup(launch.cleanup);
       throw error;
     }
+    const titleListener = deps.resolveTitleListener?.(context);
     const session: TerminalSession = {
       id: context.sessionId,
       pty,
@@ -191,6 +196,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       messagePolicy: launch.messagePolicy,
       renameCommand: launch.renameCommand,
       sessionIdentityResolver: launch.sessionIdentityResolver,
+      titleListener,
+      ...(titleListener ? { titleParser: createOscTitleParser() } : {}),
       activeSocket: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
@@ -219,10 +226,26 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   function handlePtyData(session: TerminalSession, data: string): void {
     const buffer = Buffer.from(data, "utf8");
     respondToTerminalQueries(session, buffer);
+    observeOscTitles(session, buffer);
     session.scrollback.push(buffer);
     while (session.scrollback.length > scrollbackLimit) session.scrollback.shift();
     if (session.activeSocket && session.activeSocket.readyState === WS_OPEN_STATE) {
       session.activeSocket.send(buffer, { binary: true });
+    }
+  }
+
+  function observeOscTitles(session: TerminalSession, buffer: Buffer): void {
+    if (!session.titleParser || !session.titleListener) return;
+    try {
+      for (const title of session.titleParser.push(buffer)) {
+        try {
+          session.titleListener(session.id, title);
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      session.titleParser.reset();
     }
   }
 
