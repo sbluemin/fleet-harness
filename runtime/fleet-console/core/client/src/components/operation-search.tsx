@@ -15,7 +15,7 @@ import {
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
-import { minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import {
@@ -150,11 +150,15 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
       case "minimize-all-operations": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        // Operations 미마운트 경로(/settings 등)에서는 canvas store가 아직 Theater를 로드하지 않아
+        // 액션이 no-op이 된다(Codex P2). 동일 Theater 재로드는 flush 후 저장값 재독이라 안전하다.
+        ensurePaletteCanvasTheater(state);
         minimizeOperations(state.operations.filter((op) => op.theaterId === state.activeTheaterId).map((op) => op.id));
         break;
       }
       case "toggle-formation": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        ensurePaletteCanvasTheater(state);
         toggleFormationView();
         break;
       }
@@ -350,6 +354,14 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
 function clampIndex(index: number, length: number): number {
   if (length <= 0) return 0;
   return Math.max(0, Math.min(index, length - 1));
+}
+
+// Operations 페이지 미마운트 상태에서 canvas 의존 커맨드가 no-op이 되지 않도록
+// 활성 Theater를 canvas store에 선로드한다(같은 Theater 재로드는 저장값 재독으로 무해).
+function ensurePaletteCanvasTheater(state: ConsoleState): void {
+  if (state.activeTheaterId && getLoadedTheaterId() !== state.activeTheaterId) {
+    loadForTheater(state.activeTheaterId);
+  }
 }
 
 function operationMeta(entry: { readonly pluginId: string; readonly status: string }): string {
