@@ -52,15 +52,16 @@ describe("plan-operations skill asset", () => {
     expect(content).toContain("It does not verify source, documentation, configuration, generated assets, tests, security, acceptance criteria, or user-visible behavior.");
   });
 
-  it("keeps Kirov optional and read-only, then hands host-authored TaskRefs to Ohio", () => {
+  it("keeps Nimitz Plan assurance optional and read-only, then hands host-authored TaskRefs to Ohio", () => {
     const content = skillContent();
 
-    expect(content).toContain("Kirov is never required for Plan authoring or Ohio dispatch.");
-    expect(content).toContain("1. `<plan_ref>` required");
-    expect(content).toContain("2. `<audit_focus>` optional");
-    expect(content).toContain("3. `<context>` optional");
-    expect(content).toContain("4. `<constraints>` optional");
-    expect(content).toContain("returns `PASS | REVISE | BLOCKED`");
+    expect(content).toContain("Nimitz Plan assurance is never required for Plan authoring or Ohio dispatch.");
+    expect(content).toContain("1. `<context>` required");
+    expect(content).toContain("2. `<problem>` required");
+    expect(content).toContain("3. `<plan_ref>` optional — sole audit trigger");
+    expect(content).toContain("4. `<audit_focus>` optional — applies only when `plan_ref` is supplied");
+    expect(content).toContain("`plan_ref` is the sole audit trigger");
+    expect(content).toContain("`PASS | REVISE | BLOCKED`");
     expect(content).toContain("A clean audit explicitly reports no findings.");
     expect(content).toContain("never calls `plan_write`");
     expect(content).toContain("The host dispatches one same-Lane TaskRef group per Ohio request.");

@@ -3,10 +3,6 @@ export {
   GENESIS_DEFAULTS,
 } from "./genesis.js";
 export {
-  CARRIER_METADATA as KIROV_METADATA,
-  KIROV_DEFAULTS,
-} from "./kirov.js";
-export {
   CARRIER_METADATA as NIMITZ_METADATA,
   NIMITZ_DEFAULTS,
 } from "./nimitz.js";

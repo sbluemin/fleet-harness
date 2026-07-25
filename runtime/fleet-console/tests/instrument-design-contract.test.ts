@@ -860,14 +860,16 @@ describe("Instrument core design contract", () => {
   it("maps only known Carrier Stream captain dots through captain identity tokens", () => {
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
-    const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"] as const;
+    const captainIds = ["nimitz", "genesis", "ohio", "sentinel", "vanguard"] as const;
 
     expect(terminalAnalysisCss).not.toMatch(/\.carrier-stream-column__captain-dot \{[^}]*background:/);
-    expect(terminalAnalysisCss.match(/\.carrier-stream-column__captain-dot\[data-captain="/g)).toHaveLength(6);
+    expect(terminalAnalysisCss.match(/\.carrier-stream-column__captain-dot\[data-captain="/g)).toHaveLength(5);
     for (const id of captainIds) {
       expect(terminalAnalysisCss).toContain(`.carrier-stream-column__captain-dot[data-captain="${id}"] { background: var(--captain-${id}); }`);
     }
     expect(terminalAgent).toContain("resolveCarrierCaptain(job.ownerCarrierId)");
+    expect(terminalAnalysisCss).not.toContain('data-captain="kirov"');
+    expect(terminalAnalysisCss).not.toContain("--captain-kirov");
     expect(terminalAnalysisCss).not.toContain('data-captain="chronicle"');
     expect(terminalAnalysisCss).not.toContain("--captain-chronicle");
     expect(terminalAnalysisCss).not.toContain('data-captain="tempest"');

@@ -126,7 +126,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(executorPort.getExecutorMcpTools("unknown", "nimitz")).toEqual([]);
 
     const ordinaryCarrierTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
-    const kirovTools = new Set(executorPort.getExecutorMcpTools("fleet", "kirov").map((tool) => tool.id));
     const ohioTools = new Set(executorPort.getExecutorMcpTools("fleet", "ohio").map((tool) => tool.id));
 
     // host-only Wiki 도구는 어떤 캐리어에도 노출되지 않는다.
@@ -148,17 +147,13 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(ordinaryCarrierTools.has("plan_write")).toBe(false);
     expect(ordinaryCarrierTools.has("plan_mark_tasks")).toBe(false);
     expect(ordinaryCarrierTools.has("plan_verify")).toBe(false);
-    expect(kirovTools.has("plan_read")).toBe(true);
-    expect(kirovTools.has("plan_write")).toBe(false);
-    expect(kirovTools.has("plan_mark_tasks")).toBe(false);
-    expect(kirovTools.has("plan_verify")).toBe(false);
     expect(ohioTools.has("plan_read")).toBe(true);
     expect(ohioTools.has("plan_mark_tasks")).toBe(true);
     expect(ohioTools.has("plan_write")).toBe(false);
     expect(ohioTools.has("plan_verify")).toBe(false);
 
-    // 6개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
-    const ALL_CARRIER_IDS = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"];
+    // 5개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
+    const ALL_CARRIER_IDS = ["nimitz", "genesis", "ohio", "sentinel", "vanguard"];
     const DENIED_HOST_ONLY_WIKI_TOOL_IDS = [...HOST_ONLY_WIKI_TOOL_IDS, "wiki_patch_queue", "wiki_schema_create"];
     for (const carrierId of ALL_CARRIER_IDS) {
       const tools = new Set(executorPort.getExecutorMcpTools("fleet", carrierId).map((tool) => tool.id));

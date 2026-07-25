@@ -46,16 +46,13 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <problem> required: The specific question, decision point, or challenge to analyze.
   - <constraints?> optional: Hard constraints, deadlines, compatibility requirements.
   - <artifacts?> optional: Relevant code snippets, file paths, error logs to examine.
-- **kirov** (Kirov · Plan Assurance & Audit) — wrap request content in these blocks (? = optional):
-  - <plan_ref> required: Required exact PlanRef for an already host-authored Fleet Plan. Kirov reads this Plan and audits it without mutation.
-  - <audit_focus?> optional: Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize.
-  - <context?> optional: Optional relevant implementation realities or host direction needed to interpret the existing Plan.
-  - <constraints?> optional: Optional fixed scope, compatibility, or policy constraints the audit must check without redefining.
+  - <plan_ref?> optional: Optional exact PlanRef for an already host-authored Fleet Plan. Its presence activates read-only Plan assurance; Nimitz never authors or mutates Plan state.
+  - <audit_focus?> optional: Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize; applies only when plan_ref is supplied.
 - **genesis** (Genesis · Chief Engineer) — wrap request content in these blocks (? = optional):
   - <objective> required: What needs to be built or achieved. Be specific about the desired end state.
   - <scope> required: Which modules, directories, or subsystems are in play.
   - <constraints?> optional: Hard technical constraints, compatibility requirements, or non-negotiables.
-  - <references?> optional: Prior Nimitz recommendations, host-authored Plans, Kirov audits, existing patterns to follow, or design decisions already made.
+  - <references?> optional: Prior Nimitz recommendations, host-authored Plans, Nimitz Plan-assurance findings, existing patterns to follow, or design decisions already made.
 - **ohio** (Ohio · Multi-Wave Execution) — wrap request content in these blocks (? = optional):
   - <task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.
   - <objective?> optional: Optional brief restatement of the overarching goal for context anchoring.

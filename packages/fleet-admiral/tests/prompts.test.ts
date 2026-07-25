@@ -195,7 +195,7 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("the host owns planning and Plan mutation except Ohio's completion marking");
     expect(prompt).toContain("load `plan-operations` before the first host `plan_write` call in a session");
     expect(prompt).toContain("skip reloading when already in context");
-    expect(prompt).toContain("Kirov may only audit an existing host-authored PlanRef");
+    expect(prompt).toContain("Nimitz may optionally audit an existing host-authored PlanRef when plan_ref is supplied");
     expect(prompt).toContain("Host plan_read once per operation for full context");
     expect(prompt).toContain("Ohio plan_read once per dispatch with one host-authored same-Lane TaskRef group");
     expect(prompt).toContain("plan_verify proves Plan state, not code correctness");

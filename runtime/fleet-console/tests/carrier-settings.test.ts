@@ -182,25 +182,55 @@ describe("carrier settings routes", () => {
     expect(invalid.status).toBe(400);
   });
 
-  it("reports Kirov as Task Force capable and accepts backend PUT through the settings route", async () => {
+  it("reports Nimitz as Task Force capable and accepts backend PUT through the settings route", async () => {
     const fixture = await startFixture();
     const initial = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
-    const kirov = initial.carriers.find((carrier) => carrier.carrierId === "kirov");
-    if (!kirov) throw new Error("Kirov was not registered");
-    expect(kirov.taskForceCapable).toBe(true);
+    const nimitz = initial.carriers.find((carrier) => carrier.carrierId === "nimitz");
+    if (!nimitz) throw new Error("Nimitz was not registered");
+    expect(nimitz.taskForceCapable).toBe(true);
 
     const model = getProviderModels("claude").defaultModel;
     const effort = getEffort("claude", model);
     const updated = await mutate<{ readonly state: CarrierSettingsState }>(
       fixture,
-      "/api/v1/plugins/terminal/carriers/kirov/taskforce/claude",
+      "/api/v1/plugins/terminal/carriers/nimitz/taskforce/claude",
       "PUT",
       { model, ...(effort.supported ? { effort: effort.default } : {}) },
     );
 
-    expect(updated.state.carriers.find((carrier) => carrier.carrierId === "kirov")?.taskforce.backends).toEqual([
+    expect(updated.state.carriers.find((carrier) => carrier.carrierId === "nimitz")?.taskforce.backends).toEqual([
       { cliType: "claude", model, ...(effort.supported ? { effort: effort.default } : {}) },
     ]);
+  });
+
+  it("leaves stale carriers.json Kirov overrides dormant and out of the registry-driven settings UI", async () => {
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        fs.mkdirSync(carrierStoreDir, { recursive: true });
+        fs.writeFileSync(path.join(carrierStoreDir, "carriers.json"), JSON.stringify({
+          _meta: { generation: 9 },
+          carriers: {
+            kirov: { displayName: "Stale Kirov", agentCliType: "claude" },
+            nimitz: { displayName: "Nimitz Override" },
+          },
+        }));
+      },
+    });
+    const state = await getJson<CarrierSettingsState>(`${fixture.endpoint}api/v1/plugins/terminal/carriers`);
+    const persisted = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "carriers.json"), "utf8")) as {
+      carriers?: Record<string, unknown>;
+    };
+
+    expect(state.carriers.map((carrier) => carrier.carrierId)).toEqual([
+      "nimitz",
+      "genesis",
+      "ohio",
+      "sentinel",
+      "vanguard",
+    ]);
+    expect(state.carriers.find((carrier) => carrier.carrierId === "kirov")).toBeUndefined();
+    expect(state.carriers.find((carrier) => carrier.carrierId === "nimitz")?.displayName).toBe("Nimitz Override");
+    expect(persisted.carriers?.kirov).toEqual({ displayName: "Stale Kirov", agentCliType: "claude" });
   });
 
   it("keeps stale incapable Task Force settings ineffective, rejects PUT without a write, and permits cleanup", async () => {

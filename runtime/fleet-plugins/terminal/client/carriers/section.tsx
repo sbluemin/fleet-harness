@@ -26,7 +26,6 @@ const DISPLAY_NAME_MAX_LENGTH = 50;
 const SAVE_FEEDBACK_DURATION_MS = 2400;
 const CAPTAIN_COLOR_TOKENS: Readonly<Record<string, string>> = {
   nimitz: "var(--captain-nimitz)",
-  kirov: "var(--captain-kirov)",
   genesis: "var(--captain-genesis)",
   ohio: "var(--captain-ohio)",
   sentinel: "var(--captain-sentinel)",

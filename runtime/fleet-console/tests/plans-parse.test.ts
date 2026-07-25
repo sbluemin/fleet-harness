@@ -54,7 +54,7 @@ describe("parsePlan", () => {
     });
   });
 
-  it("does not adopt Kirov template section headings as the document title", () => {
+  it("does not adopt Fleet Plan template section headings as the document title", () => {
     const result = parsePlan("# Objective\n\nShip the thing.\n\n## Wave 1 — Build\n- [ ] step");
     expect(result.title).toBeNull();
   });
