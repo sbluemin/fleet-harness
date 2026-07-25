@@ -22,6 +22,7 @@ import {
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
+import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
@@ -43,6 +44,8 @@ interface OperationSearchProps {
   readonly railPanels: readonly RailPanelDescriptor[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly FleetClientPlugin[];
+  // 팔레트 close도 캔버스·사이드바와 같은 유예 큐에 receipt를 넣어야 Undo가 경로에 상관없이 동작한다.
+  readonly onDeferredDeletion?: (deletion: DeferredDeletionReceipt | null) => void;
 }
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
@@ -50,7 +53,7 @@ const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
 const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
-export function OperationSearch({ state, railPanels, plugins }: OperationSearchProps) {
+export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion }: OperationSearchProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
@@ -202,7 +205,7 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
         if (getCompanionOperationId() === action.operationId) forceDropCompanionOperationId();
         const operation = state.operations.find((op) => op.id === action.operationId);
         const plugin = (operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
-        void closeOperationCompletely(action.operationId, plugin);
+        void closeOperationCompletely(action.operationId, plugin).then((deletion) => onDeferredDeletion?.(deletion));
         break;
       }
       case "minimize-all-operations": {

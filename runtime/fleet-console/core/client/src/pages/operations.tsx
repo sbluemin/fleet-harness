@@ -6,6 +6,7 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, forgetTheater, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError } from "../api.js";
 import { closeOperationCompletely } from "../operation-close.js";
+import type { DeferredDeletionReceipt } from "../api.js";
 import { claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
@@ -29,9 +30,10 @@ const closingOperationIds = new Set<string>();
 interface OperationsProps {
   readonly state: ConsoleState;
   readonly claimBootPanelMinimization: (theaterId: string) => readonly string[] | null;
+  readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void;
 }
 
-export function Operations({ state, claimBootPanelMinimization }: OperationsProps) {
+export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
@@ -288,8 +290,10 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     closingOperationIds.add(operationId);
     const pluginId = stateRef.current.operations.find((op) => op.id === operationId)?.pluginId;
     const plugin = (pluginId ? registry.plugins.find((p) => p.id === pluginId) : null) ?? null;
-    void closeOperationCompletely(operationId, plugin).finally(() => closingOperationIds.delete(operationId));
-  }, [registry.plugins]);
+    void closeOperationCompletely(operationId, plugin)
+      .then((deletion) => onDeferredDeletion(deletion))
+      .finally(() => closingOperationIds.delete(operationId));
+  }, [onDeferredDeletion, registry.plugins]);
 
   const handleAddTheater = useCallback(async (path: string) => {
     beginAddTheater();
@@ -314,18 +318,14 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
       fetchGroups(null).then(hydrateGroups),
     ]).then(() => {}).catch(() => {});
     try {
-      await forgetTheater(theaterId);
+      const response = await forgetTheater(theaterId);
       removeTheater(theaterId);
       await refreshCollections();
+      onDeferredDeletion(response.deletion);
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        removeTheater(theaterId);
-        await refreshCollections();
-        return;
-      }
       failAddTheater(error instanceof Error ? error.message : String(error));
     }
-  }, []);
+  }, [onDeferredDeletion]);
 
   return (
     <div className="console-body is-canvas">

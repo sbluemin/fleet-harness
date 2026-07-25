@@ -15,6 +15,8 @@ const apiMocks = vi.hoisted(() => ({
   fetchTheaters: vi.fn(),
   fetchOperations: vi.fn(),
   fetchGroups: vi.fn(),
+  deleteOperation: vi.fn(),
+  restoreDeletion: vi.fn(),
 }));
 const keyboardShortcutMocks = vi.hoisted(() => ({
   shouldHandleOperationsKeyboardShortcut: vi.fn(),
@@ -115,6 +117,11 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   apiMocks.fetchGroups.mockResolvedValue([]);
+  apiMocks.deleteOperation.mockImplementation(async (operationId: string) => ({
+    ok: true,
+    deletion: { deletionId: `delete-${operationId}`, kind: "operation", targetId: operationId, expiresAt: Date.now() + 8_000 },
+  }));
+  apiMocks.restoreDeletion.mockResolvedValue({ ok: true, kind: "operation", targetId: "restored" });
   keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(false);
   sideBarMocks.onFocus = null;
   sideBarMocks.onClose = null;

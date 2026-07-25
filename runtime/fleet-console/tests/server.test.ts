@@ -660,7 +660,7 @@ describe("console static and terminal ticket boundary", () => {
       body: JSON.stringify({ operationId: "missing-operation" }),
     });
     expect(await pluginDelete.json()).toEqual({ deleted: true });
-    expect(await pluginRepeat.json()).toEqual({ deleted: false });
+    expect(await pluginRepeat.json()).toEqual({ deleted: true });
     expect(await pluginMissing.json()).toEqual({ deleted: false });
 
     const coreDeleted = await createOperation(fixture, theater.id, { type: "agent", pluginId: "terminal" });
@@ -668,8 +668,12 @@ describe("console static and terminal ticket boundary", () => {
     const coreRepeat = await fetch(`${fixture.endpoint}api/v1/operations/${encodeURIComponent(coreDeleted.id)}`, { method: "DELETE" });
     const coreMissing = await fetch(`${fixture.endpoint}api/v1/operations/missing-operation`, { method: "DELETE" });
     expect(coreDelete.status).toBe(200);
-    expect(coreRepeat.status).toBe(404);
-    expect(coreMissing.status).toBe(404);
+    expect(coreRepeat.status).toBe(200);
+    expect(coreMissing.status).toBe(200);
+    const coreDeleteBody = await coreDelete.json() as { readonly deletion: unknown };
+    expect(await coreRepeat.json()).toEqual(coreDeleteBody);
+    expect(await coreMissing.json()).toEqual({ ok: true, deletion: null });
+    expect(JSON.stringify(coreDeleteBody)).not.toMatch(/cwd|realpath|providerSession|transcriptPath/u);
 
     const theaterDeletedA = await createOperation(fixture, theater.id, { type: "demo-a", pluginId: "demo" });
     const theaterDeletedB = await createOperation(fixture, theater.id, { type: "demo-b", pluginId: "demo" });
@@ -677,6 +681,9 @@ describe("console static and terminal ticket boundary", () => {
     const theaterRepeat = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
     expect(theaterDelete.status).toBe(200);
     expect(theaterRepeat.status).toBe(200);
+    const theaterDeleteBody = await theaterDelete.json() as { readonly deletion: unknown };
+    expect(await theaterRepeat.json()).toEqual(theaterDeleteBody);
+    expect(JSON.stringify(theaterDeleteBody)).not.toMatch(/cwd|realpath|providerSession|transcriptPath/u);
 
     const response = await fetch(`${fixture.endpoint}plugins/demo/deletion-events`);
     const body = await response.json() as { readonly events: ReadonlyArray<{ readonly payload: { readonly operationId: string; readonly pluginId: string; readonly type: string }; readonly operationPresent: boolean }> };
@@ -690,6 +697,106 @@ describe("console static and terminal ticket boundary", () => {
     for (const operationId of [pluginDeleted.id, coreDeleted.id, theaterDeletedA.id, theaterDeletedB.id]) {
       expect(body.events.filter((event) => event.payload.operationId === operationId)).toHaveLength(1);
     }
+  });
+
+  it("restores deferred Operation and Theater metadata without leaking sensitive server state", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-deletion-restore-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, dir);
+    const operationId = "recoverable-operation";
+    const created = await fetch(`${fixture.endpoint}api/v1/operations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: operationId,
+        theaterId: theater.id,
+        type: "agent",
+        pluginId: "terminal",
+        title: "Recoverable",
+        payload: {
+          cwd: dir,
+          providerSession: { provider: "codex", sessionId: "provider-secret", transcriptPath: "/secret/transcript.jsonl", capturedAt: "2026-07-25T00:00:00.000Z" },
+        },
+      }),
+    });
+    expect(created.status).toBe(201);
+
+    const deleted = await fetch(`${fixture.endpoint}api/v1/operations/${operationId}`, { method: "DELETE" });
+    const deletedBody = await deleted.json() as { readonly deletion: { readonly deletionId: string } };
+    const serializedReceipt = JSON.stringify(deletedBody);
+    expect(deleted.status).toBe(200);
+    expect(serializedReceipt).not.toMatch(/cwd|realpath|providerSession|provider-secret|transcriptPath|transcript\.jsonl/u);
+
+    const recreate = await fetch(`${fixture.endpoint}api/v1/operations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: operationId, theaterId: theater.id, type: "agent", pluginId: "terminal", title: "Conflict" }),
+    });
+    expect(recreate.status).toBe(409);
+    await expect(recreate.json()).resolves.toEqual({ error: "pending_deletion" });
+
+    const restoreUrl = `${fixture.endpoint}api/v1/deletions/${encodeURIComponent(deletedBody.deletion.deletionId)}/restore`;
+    const unauthorized = await fetch(restoreUrl, { method: "POST", headers: { Origin: "http://127.0.0.1:9" } });
+    expect(unauthorized.status).toBe(401);
+    const restored = await fetch(restoreUrl, { method: "POST" });
+    const restoredBody = await restored.json();
+    expect(restored.status).toBe(200);
+    expect(restoredBody).toEqual({ ok: true, kind: "operation", targetId: operationId });
+    expect(JSON.stringify(restoredBody)).not.toMatch(/cwd|realpath|providerSession|provider-secret|transcriptPath|transcript\.jsonl/u);
+    const restoredTerminalSessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string }> }>(`${fixture.endpoint}plugins/terminal/agent/sessions`);
+    expect(restoredTerminalSessions.sessions).toContainEqual(expect.objectContaining({ sessionId: operationId, status: "dormant" }));
+
+    const group = await fetch(`${fixture.endpoint}api/v1/operations/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: theater.id, name: "Restorable", color: "blue" }),
+    });
+    expect(group.status).toBe(201);
+    const groupBody = await group.json() as { readonly group: { readonly id: string } };
+    const grouped = await fetch(`${fixture.endpoint}api/v1/operations/${operationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId: groupBody.group.id }),
+    });
+    expect(grouped.status).toBe(200);
+    const restoredShell = await createShellOperation(fixture, theater.id);
+
+    const theaterDeleted = await fetch(`${fixture.endpoint}api/v1/theaters/${theater.id}`, { method: "DELETE" });
+    const theaterDeletedBody = await theaterDeleted.json() as { readonly deletion: { readonly deletionId: string } };
+    expect(JSON.stringify(theaterDeletedBody)).not.toMatch(/cwd|realpath|providerSession|provider-secret|transcriptPath|transcript\.jsonl/u);
+    const pendingGrant = await issueTheaterFolderGrant(fixture, dir);
+    const pendingTheaterRecreate = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folderGrantId: pendingGrant.folderGrantId }),
+    });
+    expect(pendingTheaterRecreate.status).toBe(409);
+    await expect(pendingTheaterRecreate.json()).resolves.toEqual({ error: "pending_deletion" });
+    const theaterRestored = await fetch(`${fixture.endpoint}api/v1/deletions/${encodeURIComponent(theaterDeletedBody.deletion.deletionId)}/restore`, { method: "POST" });
+    const theaterRestoredBody = await theaterRestored.json();
+    expect(theaterRestored.status).toBe(200);
+    expect(theaterRestoredBody).toEqual({ ok: true, kind: "theater", targetId: theater.id });
+    expect(JSON.stringify(theaterRestoredBody)).not.toMatch(/cwd|realpath|providerSession|provider-secret|transcriptPath|transcript\.jsonl/u);
+    const operationsAfterRestore = await getJson<{ readonly operations: ReadonlyArray<{ readonly id: string; readonly groupId?: string }> }>(`${fixture.endpoint}api/v1/operations`);
+    const groupsAfterRestore = await getJson<{ readonly groups: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}api/v1/operations/groups`);
+    expect(operationsAfterRestore.operations).toContainEqual(expect.objectContaining({ id: operationId, groupId: groupBody.group.id }));
+    expect(groupsAfterRestore.groups).toContainEqual(expect.objectContaining({ id: groupBody.group.id }));
+    const dormantShellTicket = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationId: restoredShell.id }),
+    });
+    expect(dormantShellTicket.status).toBe(409);
+    await expect(dormantShellTicket.json()).resolves.toEqual({ error: "operation_dormant" });
+    const relaunchedShell = await fetch(`${fixture.endpoint}plugins/terminal/shell/sessions/${encodeURIComponent(restoredShell.id)}/relaunch`, { method: "POST" });
+    expect(relaunchedShell.status).toBe(200);
+    const relaunchedShellTicket = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationId: restoredShell.id }),
+    });
+    expect(relaunchedShellTicket.status).toBe(200);
   });
 
   it("serves plugin runtime manifest and shims through core routes", async () => {
@@ -1257,7 +1364,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const stateFile = path.join(fixture.carrierStoreDir, "console", "state.json");
     const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(state.operations).toHaveLength(1);
     expect(state.operations[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
     expect(state.operations[0]?.payload?.providerSession).toBeUndefined();
@@ -2628,7 +2735,7 @@ describe("observer theater forget", () => {
 
     const forget = await fetch(`${fixture.endpoint}api/v1/theaters/deadbeefdead`, { method: "DELETE" });
     expect(forget.status).toBe(200);
-    expect(await forget.json()).toEqual({ ok: true });
+    expect(await forget.json()).toEqual({ ok: true, deletion: null });
   });
 });
 
@@ -2672,7 +2779,7 @@ describe("observer theater order", () => {
     expect(patched.status).toBe(200);
     expect(patchedBody).toMatchObject({ id: theater.id, order: 3 });
     expect(listed.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(state.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
 
     await fixture.server.stop();

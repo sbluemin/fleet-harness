@@ -119,14 +119,16 @@ describe("Console and injected Wiki tools share Theater-root storage", () => {
 
     const forgotten = await fetch(`${fixture.endpoint}api/v1/theaters/${theaterB.id}`, { method: "DELETE" });
     expect(forgotten.status).toBe(200);
+    const forgottenBody = await forgotten.json() as { readonly deletion: { readonly deletionId: string } };
     const mruAfterForget = await fetch(`${fixture.endpoint}console/codex/api/entry/theater-a-entry`);
     expect(mruAfterForget.status).toBe(200);
     expect(await mruAfterForget.text()).toContain("A body");
 
     await rm(path.join(workspaceB.path, "knowledge"), { recursive: true, force: true });
     expect(await readFile(path.join(workspaceB.path, "knowledge.migrated.json"), "utf8")).toContain('"outcome":"copied"');
-    const reRegisteredB = await registerTheater(fixture.endpoint, fixture.theaterB);
-    const empty = await fetch(`${fixture.endpoint}api/v1/theaters/${reRegisteredB.id}/codex-workspace`, {
+    const restoredB = await fetch(`${fixture.endpoint}api/v1/deletions/${encodeURIComponent(forgottenBody.deletion.deletionId)}/restore`, { method: "POST" });
+    expect(restoredB.status).toBe(200);
+    const empty = await fetch(`${fixture.endpoint}api/v1/theaters/${theaterB.id}/codex-workspace`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{}",

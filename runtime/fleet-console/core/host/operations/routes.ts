@@ -1,5 +1,6 @@
 import type http from "node:http";
 
+import type { DeferredDeletionReceipt } from "../deferred-deletion.js";
 import type { OperationCatalogPlugin } from "../plugin-host/types.js";
 import type { OperationCreateInput, OperationGroup, OperationGroupCreateInput, OperationGroupPatchInput, OperationNode, OperationStore } from "./types.js";
 import { createSanitizedOpDto } from "./sanitize.js";
@@ -10,7 +11,8 @@ export interface OperationsRouterDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, payload: unknown) => void;
   readonly persist: () => void;
-  readonly deleteOperation: (id: string) => boolean;
+  readonly deleteOperation: (id: string) => DeferredDeletionReceipt | null;
+  readonly isPendingDeletion?: (id: string) => boolean;
   readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
   readonly broadcastOperationChanged?: (node: OperationNode) => void;
   readonly subscribeOperationSse?: (res: http.ServerResponse) => void;
@@ -103,6 +105,10 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
     deps.writeJson(res, 400, { error: "invalid_operation_accent" });
     return;
   }
+  if (typeof body.id === "string" && deps.isPendingDeletion?.(body.id)) {
+    deps.writeJson(res, 409, { error: "pending_deletion" });
+    return;
+  }
   try {
     const node = deps.store.create({
       id: typeof body.id === "string" ? body.id : undefined,
@@ -136,8 +142,8 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     return;
   }
   if (req.method === "DELETE") {
-    const deleted = deps.deleteOperation(id);
-    deps.writeJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "operation_not_found" });
+    const deletion = deps.deleteOperation(id);
+    deps.writeJson(res, 200, { ok: true, deletion });
     return;
   }
   const body = await deps.readJsonBody<PatchOperationBody>(req);

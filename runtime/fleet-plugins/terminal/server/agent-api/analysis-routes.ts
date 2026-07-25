@@ -14,6 +14,7 @@ import { readProviderSessionCapture } from "./session-capture.js";
 
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
 const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon"]);
 const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\([\d.e%+\-/, ]{1,96}\)|Canvas|CanvasText)$/i;
@@ -84,11 +85,15 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
       for (const marker of inFlightStartDeletionMarkers) {
         if (marker.operationId === payload.operationId) marker.deleted = true;
       }
-      registry.clearArtifacts(payload.operationId);
       void registry.stop(payload.operationId);
     }
   });
-  ctx.host.lifecycle.registerCleanup(async () => { unsubscribeDelete(); await registry.dispose(); });
+  const unsubscribePurge = ctx.host.events.subscribe(OPERATION_PURGED_EVENT_CHANNEL, (payload) => {
+    if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) {
+      registry.clearArtifacts(payload.operationId);
+    }
+  });
+  ctx.host.lifecycle.registerCleanup(async () => { unsubscribeDelete(); unsubscribePurge(); await registry.dispose(); });
 }
 
 async function handleCatalog(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, catalog: () => Promise<AnalysisCatalog>): Promise<boolean> {

@@ -19,11 +19,28 @@ export interface DurableOperationGroup {
   readonly createdAt: number;
 }
 
+export interface DurableDeletionBase {
+  readonly deletionId: string;
+  readonly targetId: string;
+  readonly deletedAt: number;
+  readonly expiresAt: number;
+}
+
+export type DurableDeletionTombstone =
+  | (DurableDeletionBase & { readonly kind: "operation"; readonly operation: OperationNode })
+  | (DurableDeletionBase & {
+      readonly kind: "theater";
+      readonly theater: TheaterRegistration;
+      readonly operations: readonly OperationNode[];
+      readonly groups: readonly DurableOperationGroup[];
+    });
+
 export interface DurableConsoleState {
-  readonly version: 2;
+  readonly version: 3;
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
+  readonly deletionTombstones?: readonly DurableDeletionTombstone[];
 }
 
 export interface CreateConsoleDurableStateStoreDeps {
@@ -32,7 +49,7 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
@@ -68,28 +85,41 @@ export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState
     theaters: readTheaterRegistrations(upgraded.theaters),
     operations: readOperations(upgraded.operations),
     groups: readOperationGroups(upgraded.groups),
+    deletionTombstones: readDeletionTombstones(upgraded.deletionTombstones),
   };
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
-  return { version: STATE_VERSION, theaters: [], operations: [], groups: [] };
+  return { version: STATE_VERSION, theaters: [], operations: [], groups: [], deletionTombstones: [] };
 }
 
 // 릴리스된 stable durable state(v1, flat 세션 레코드)을 현재 스키마(OperationNode)로 1회 변환한다.
 // 변환 결과는 readOperations의 sanitizeOperationNode가 다시 검증하므로 여기서는 모양만 맞춘다.
-// v1만 변환하고, 그 외 STATE_VERSION이 아닌 값은 상위 sanitize에서 empty 폴백된다.
+// 각 버전 단계를 순서대로 거쳐 단계별 기본값을 보존하고, 최종 sanitizer가 다시 검증한다.
 function migrateToCurrentVersion(value: Record<string, unknown>): Record<string, unknown> {
-  if (value.version === 1) return migrateV1ToV2(value);
-  return value;
+  let current = value;
+  if (current.version === 1) current = migrateV1ToV2(current);
+  if (current.version === 2) current = migrateV2ToV3(current);
+  return current;
 }
 
 function migrateV1ToV2(v1: Record<string, unknown>): Record<string, unknown> {
   const operations = Array.isArray(v1.operations) ? v1.operations.map(migrateV1Operation) : [];
   return {
-    version: STATE_VERSION,
+    version: 2,
     theaters: v1.theaters ?? [],
     operations,
     groups: [],
+  };
+}
+
+function migrateV2ToV3(v2: Record<string, unknown>): Record<string, unknown> {
+  return {
+    version: STATE_VERSION,
+    theaters: v2.theaters ?? [],
+    operations: v2.operations ?? [],
+    groups: v2.groups ?? [],
+    deletionTombstones: [],
   };
 }
 
@@ -274,4 +304,44 @@ function sanitizeOperationGroup(value: unknown): DurableOperationGroup | null {
   if (rawName.length > MAX_GROUP_NAME_LENGTH) return null;
   if (!VALID_GROUP_COLOR_KEYS.has(color)) return null;
   return { id, theaterId, name: rawName, color, order, createdAt };
+}
+
+function readDeletionTombstones(value: unknown): readonly DurableDeletionTombstone[] {
+  if (!Array.isArray(value)) return [];
+  const tombstones: DurableDeletionTombstone[] = [];
+  for (const item of value) {
+    const tombstone = sanitizeDeletionTombstone(item);
+    if (tombstone) tombstones.push(tombstone);
+  }
+  return tombstones;
+}
+
+function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombstone | null {
+  if (!isRecord(value)) return null;
+  const deletionId = readNonEmptyString(value.deletionId);
+  const targetId = readNonEmptyString(value.targetId);
+  const deletedAt = readFiniteNumber(value.deletedAt);
+  const expiresAt = readFiniteNumber(value.expiresAt);
+  if (!deletionId || !targetId || deletedAt === null || expiresAt === null) return null;
+  if (value.kind === "operation") {
+    const operation = sanitizeOperationNode(value.operation);
+    if (!operation || operation.id !== targetId) return null;
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "operation", operation };
+  }
+  if (value.kind === "theater") {
+    const theater = sanitizeTheaterRegistration(value.theater);
+    if (!theater || theater.id !== targetId || !Array.isArray(value.operations) || !Array.isArray(value.groups)) return null;
+    const operations = value.operations
+      .map(sanitizeOperationNode)
+      .filter((operation): operation is OperationNode => operation !== null);
+    const groups = value.groups
+      .map(sanitizeOperationGroup)
+      .filter((group): group is DurableOperationGroup => group !== null);
+    if (operations.length !== value.operations.length
+      || groups.length !== value.groups.length
+      || operations.some((operation) => operation.theaterId !== targetId)
+      || groups.some((group) => group.theaterId !== targetId)) return null;
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, operations, groups };
+  }
+  return null;
 }

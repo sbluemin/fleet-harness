@@ -6,6 +6,8 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly setSideBarCollapsed: (collapsed: boolean) => void;
   readonly toggleOperationSearch: () => void;
   readonly toggleRailChrome: () => void;
+  readonly canUndoLastClose?: () => boolean;
+  readonly undoLastClose?: () => void;
 }
 
 // This listener is intentionally installed on window: it owns Console-wide
@@ -13,6 +15,14 @@ export interface ConsoleGlobalShortcutDependencies {
 export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcutDependencies, windowFor: Window = window): () => void {
   const handleKeyDown = (event: KeyboardEvent) => {
     if (isKeyboardShortcutsModalOpen() || isBlockingDialogOpen(windowFor.document)) return;
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z" && dependencies.canUndoLastClose?.()) {
+      const active = windowFor.document.activeElement;
+      if (active instanceof HTMLElement && (active.matches("input, textarea, [contenteditable='true']") || active.closest(".xterm"))) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dependencies.undoLastClose?.();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       event.stopImmediatePropagation();

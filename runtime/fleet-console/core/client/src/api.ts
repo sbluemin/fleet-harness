@@ -89,7 +89,25 @@ export interface OperationGroupPatchInput {
   readonly order?: number;
 }
 
-const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "ticket", "token", "transcriptPath"] as const;
+export interface DeferredDeletionReceipt {
+  readonly deletionId: string;
+  readonly kind: "operation" | "theater";
+  readonly targetId: string;
+  readonly expiresAt: number;
+}
+
+export interface DeferredDeletionResponse {
+  readonly ok: true;
+  readonly deletion: DeferredDeletionReceipt | null;
+}
+
+export interface DeferredRestoreResponse {
+  readonly ok: true;
+  readonly kind: "operation" | "theater";
+  readonly targetId: string;
+}
+
+const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "realpath", "ticket", "token", "transcriptPath"] as const;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -222,9 +240,26 @@ export async function fetchPlansSearch(theaterId: string, query: string, limit: 
   return await response.json() as PlansSearchResult;
 }
 
-export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<void> {
+export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {
   const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE", signal });
   await assertOk(response);
+  return assertDeferredDeletionResponse(await response.json(), response.status);
+}
+
+export async function deleteOperation(operationId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {
+  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE", signal });
+  await assertOk(response);
+  return assertDeferredDeletionResponse(await response.json(), response.status);
+}
+
+export async function restoreDeletion(deletionId: string, signal?: AbortSignal): Promise<DeferredRestoreResponse> {
+  const response = await fetch(`/api/v1/deletions/${encodeURIComponent(deletionId)}/restore`, { method: "POST", signal });
+  await assertOk(response);
+  const payload = await response.json() as Partial<DeferredRestoreResponse>;
+  if (!payload || payload.ok !== true || (payload.kind !== "operation" && payload.kind !== "theater") || typeof payload.targetId !== "string" || hasForbiddenBrowserPayloadKey(payload)) {
+    throw new ApiError(response.status, "Invalid deletion restore response");
+  }
+  return { ok: true, kind: payload.kind, targetId: payload.targetId };
 }
 
 export async function fetchOperations(theaterId?: string | null, signal?: AbortSignal): Promise<readonly OperationNode[]> {
@@ -581,6 +616,33 @@ function hasForbiddenBrowserPayloadKey(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const payload = value as Record<string, unknown>;
   return FORBIDDEN_BROWSER_PAYLOAD_KEYS.some((key) => key in payload);
+}
+
+function assertDeferredDeletionResponse(value: unknown, status: number): DeferredDeletionResponse {
+  const payload = value as { readonly ok?: unknown; readonly deletion?: unknown };
+  if (!payload || payload.ok !== true || hasForbiddenBrowserPayloadKey(payload)) {
+    throw new ApiError(status, "Invalid deferred deletion response");
+  }
+  if (payload.deletion === null) return { ok: true, deletion: null };
+  const deletion = payload.deletion as Partial<DeferredDeletionReceipt>;
+  if (!deletion
+    || typeof deletion.deletionId !== "string"
+    || (deletion.kind !== "operation" && deletion.kind !== "theater")
+    || typeof deletion.targetId !== "string"
+    || typeof deletion.expiresAt !== "number"
+    || !Number.isFinite(deletion.expiresAt)
+    || hasForbiddenBrowserPayloadKey(deletion)) {
+    throw new ApiError(status, "Invalid deferred deletion receipt");
+  }
+  return {
+    ok: true,
+    deletion: {
+      deletionId: deletion.deletionId,
+      kind: deletion.kind,
+      targetId: deletion.targetId,
+      expiresAt: deletion.expiresAt,
+    },
+  };
 }
 
 async function assertOk(response: Response): Promise<void> {

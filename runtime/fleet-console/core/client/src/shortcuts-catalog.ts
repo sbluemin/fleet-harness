@@ -21,6 +21,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Operations",
     entries: [
+      { combos: [["Mod", "Z"]], description: "Undo last close" },
       { combos: [["Esc"]], description: "Close the carrier job stream" },
       { combos: [["Shift", "Enter"]], description: "Insert a newline in the terminal instead of submitting" },
       { combos: [["Enter"], ["Esc"]], description: "Confirm or cancel a session rename" },
