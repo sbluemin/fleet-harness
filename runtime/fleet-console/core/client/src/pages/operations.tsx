@@ -14,7 +14,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
-import { getSideBarStatusAxis, getSideBarStatusSectionCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
+import { getSideBarStatusAxis, getSideBarStatusSectionCollapsed, getStatusTransitionTick, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder, statusCycleOperationIds } from "../store.js";
@@ -92,6 +92,7 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
             canvas.minimized,
             (status) => snapshot.activeTheaterId !== null
               && getSideBarStatusSectionCollapsed(snapshot.activeTheaterId, status, false),
+            getStatusTransitionTick,
           )
         : focusCycleOperationIds(
             theaterOperations,

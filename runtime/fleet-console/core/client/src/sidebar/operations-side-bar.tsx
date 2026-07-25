@@ -24,10 +24,15 @@ import {
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import {
+  clearIdleUnseen,
+  getIdleUnseenIds,
   setSideBarCollapsed,
   setSideBarWidth,
   setTheaterCollapsed,
+  getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
+  markIdleUnseen,
+  recordStatusTransitions,
   toggleSideBarStatusAxis,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
@@ -196,12 +201,12 @@ const STATUS_LANDING_DURATION_MS = 500;
 
 interface StatusSection {
   readonly status: SideBarStatus;
-  readonly label: "AWAITING INPUT" | "RUNNING" | "IDLE" | "DORMANT";
+  readonly label: "AWAITING" | "RUNNING" | "IDLE" | "DORMANT";
   readonly entries: readonly SideBarEntry[];
 }
 
 const STATUS_SECTION_ORDER: readonly Omit<StatusSection, "entries">[] = [
-  { status: "awaiting", label: "AWAITING INPUT" },
+  { status: "awaiting", label: "AWAITING" },
   { status: "running", label: "RUNNING" },
   { status: "idle", label: "IDLE" },
   { status: "dormant", label: "DORMANT" },
@@ -210,10 +215,12 @@ const STATUS_SECTION_ORDER: readonly Omit<StatusSection, "entries">[] = [
 function StatusSectionSlot({
   theaterId,
   section,
+  unseenCount = 0,
   children,
 }: {
   readonly theaterId: string;
   readonly section: StatusSection;
+  readonly unseenCount?: number;
   readonly children: ReactNode;
 }) {
   const empty = section.entries.length === 0;
@@ -239,6 +246,7 @@ function StatusSectionSlot({
         </button>
         <span className="side-bar-status-header__dot" aria-hidden="true" />
         <span className="side-bar-status-header__label">{section.label}</span>
+        {unseenCount > 0 ? <span className="side-bar-status-header__unseen">{unseenCount}</span> : null}
         <span className="side-bar-status-header__count">{section.entries.length}</span>
       </div>
       {!collapsed ? (
@@ -345,7 +353,9 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
-  const statusSections = groupOperationsByStatus(allEntries);
+  const statusSections = groupOperationsByStatus(allEntries, getStatusTransitionTick);
+  const idleUnseenIds = getIdleUnseenIds();
+  const isIdleUnseen = (id: string) => id !== activeOperationId && idleUnseenIds.has(id);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
   const entryIndexById = new Map(allEntries.map((entry, index) => [entry.operation.id, index] as const));
   const groupMarkByGroupId = new Map(activeGroups.map((group) => {
@@ -425,18 +435,26 @@ export function OperationsSideBar({
     );
     const previousStatuses = previousOperationStatusRef.current;
     previousOperationStatusRef.current = nextStatuses;
-    if (!statusAxis) {
-      for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
-      statusLandingTimeoutsRef.current.clear();
-      setStatusLandingIds((current) => current.size === 0 ? current : new Set());
-      return;
-    }
     const movedIds = operations
       .filter((operation) => {
         const previous = previousStatuses.get(operation.id);
         return previous !== undefined && previous !== nextStatuses.get(operation.id);
       })
       .map((operation) => operation.id);
+    recordStatusTransitions(movedIds);
+    for (const id of movedIds) {
+      if (nextStatuses.get(id) === "idle") {
+        if (id !== activeOperationId) markIdleUnseen(id);
+      } else {
+        clearIdleUnseen(id);
+      }
+    }
+    if (!statusAxis) {
+      for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
+      statusLandingTimeoutsRef.current.clear();
+      setStatusLandingIds((current) => current.size === 0 ? current : new Set());
+      return;
+    }
     if (movedIds.length === 0) return;
     // 이동 배치별 독립 타이머: 기존 flash를 취소하지 않고 병합했다가 이 배치의 ID만 만료시킨다.
     setStatusLandingIds((current) => {
@@ -456,6 +474,10 @@ export function OperationsSideBar({
   // statusSignature is the stable primitive dependency for the operation/status map assembled above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusAxis, statusSignature]);
+
+  useEffect(() => {
+    if (activeOperationId !== null) clearIdleUnseen(activeOperationId);
+  }, [activeOperationId]);
 
   useEffect(() => () => {
     for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
@@ -927,6 +949,9 @@ export function OperationsSideBar({
                     key={section.status}
                     theaterId={theater.id}
                     section={section}
+                    unseenCount={section.status === "idle"
+                      ? section.entries.filter((entry) => isIdleUnseen(entry.operation.id)).length
+                      : undefined}
                   >
                     {section.entries.map((entry) => {
                       const globalIndex = entryIndexById.get(entry.operation.id) ?? 0;
@@ -942,6 +967,7 @@ export function OperationsSideBar({
                           accentValue={accentValue}
                           groupMark={groupMark}
                           statusAxis
+                          idleUnseen={isIdleUnseen(entry.operation.id)}
                           statusLanded={statusLandingIds.has(entry.operation.id)}
                           reorderEnabled={false}
                           dragging={false}
@@ -1172,13 +1198,25 @@ export function groupOperations(
   return [...sections, ungrouped];
 }
 
-export function groupOperationsByStatus(entries: readonly SideBarEntry[]): StatusSection[] {
+export function groupOperationsByStatus(
+  entries: readonly SideBarEntry[],
+  getTick?: (id: string) => number | undefined,
+): StatusSection[] {
   return STATUS_SECTION_ORDER.map(({ status, label }) => ({
     status,
     label,
     // entry.status는 엔트리 생성 시점에 resolveOperationActivity로 이미 해소된다.
     // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
-    entries: entries.filter((entry) => (entry.status ?? "idle") === status),
+    entries: entries
+      .filter((entry) => (entry.status ?? "idle") === status)
+      .sort((left, right) => {
+        const leftTick = getTick?.(left.operation.id);
+        const rightTick = getTick?.(right.operation.id);
+        if (leftTick === undefined && rightTick === undefined) return 0;
+        if (leftTick === undefined) return 1;
+        if (rightTick === undefined) return -1;
+        return rightTick - leftTick;
+      }),
   }));
 }
 
@@ -1391,7 +1429,8 @@ function TheaterInactiveSection({
   onPointerDragStart,
 }: TheaterInactiveSectionProps) {
   const sections = groupOperations(entries, groups, []);
-  const statusSections = groupOperationsByStatus(entries);
+  const statusSections = groupOperationsByStatus(entries, getStatusTransitionTick);
+  const idleUnseenIds = getIdleUnseenIds();
   const hasCustomGroups = sections.some((section) => section.group !== null);
   return (
     <li
@@ -1427,6 +1466,9 @@ function TheaterInactiveSection({
               key={section.status}
               theaterId={theater.id}
               section={section}
+              unseenCount={section.status === "idle"
+                ? section.entries.filter((entry) => idleUnseenIds.has(entry.operation.id)).length
+                : undefined}
             >
               {section.entries.map((entry, index) => {
                 const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
@@ -1440,6 +1482,7 @@ function TheaterInactiveSection({
                     accentValue={accentValue}
                     groupMark={resolveEntryGroupMark(entry, groups)}
                     statusAxis
+                    idleUnseen={idleUnseenIds.has(entry.operation.id)}
                     statusLanded={statusLandingIds.has(entry.operation.id)}
                     reorderEnabled={false}
                     dragging={false}

@@ -2843,6 +2843,16 @@
   background: var(--ink-fog);
 }
 
+.side-bar-chip-unseen {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--positive);
+  box-shadow: 0 0 7px var(--positive-glow);
+}
+
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
    기존 operation spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
 .side-bar-chip-group-mark {
@@ -3121,6 +3131,29 @@
   color: color-mix(in oklch, var(--status-color) 65%, var(--text-primary));
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.side-bar-status-header__unseen {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 미확인 카운트는 전체 카운트와 함께 우측 끝에 묶는다 — 라벨 옆에 띄우면 두 숫자가 헤더 양端에 갈라진다. */
+  margin-left: auto;
+  color: var(--positive);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-bar-status-header__unseen + .side-bar-status-header__count {
+  margin-left: 6px;
+}
+
+.side-bar-status-header__unseen::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--positive);
+  box-shadow: 0 0 6px var(--positive-glow);
 }
 
 .side-bar-status-empty-hint {

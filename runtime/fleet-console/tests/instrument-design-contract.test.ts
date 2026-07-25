@@ -579,10 +579,14 @@ describe("Instrument core design contract", () => {
     expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
     expect(operations).toContain("toggleSideBarStatusAxis();");
     expect(sidebar).toContain('title="Sort by status (Alt+S)"');
-    expect(sidebar).toContain("groupOperationsByStatus(allEntries)");
-    expect(sidebar).toContain("if (statusAxis) return;");
+    expect(sidebar).toContain("groupOperationsByStatus(allEntries, getStatusTransitionTick)");
+    expect(sidebar).toContain("recordStatusTransitions(movedIds);");
+    expect(sidebar).toContain("if (!statusAxis) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
+    expect(chip).toContain('className="side-bar-chip-unseen"');
     expect(sideBarStore).toContain("let statusAxis = false;");
+    expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
+    expect(sideBarStore).toContain("let idleUnseenIds = new Set<string>();");
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
     expect(sideBarStore).not.toContain("fleet-console.operations.status");
 
@@ -593,6 +597,8 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("--status-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).toContain("background: var(--group-mark);");
+    expect(components).toMatch(/\.side-bar-chip-unseen \{[^}]*background:\s*var\(--positive\)/);
+    expect(components).toMatch(/\.side-bar-status-header__unseen::before \{[^}]*background:\s*var\(--positive\)/);
     expect(components).toContain(".side-bar-status-axis-live-tick,");
     expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
   });

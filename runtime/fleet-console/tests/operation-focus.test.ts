@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   getSideBarStatusSectionCollapsed,
+  getStatusTransitionTick,
+  recordStatusTransitions,
+  resetSideBarStatusRecencyForTests,
   resetSideBarStatusSectionCollapseForTests,
   toggleSideBarStatusSectionCollapsed,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
@@ -25,6 +28,9 @@ function makeOperation(id: string, groupId: string | null = null, createdAt = 1)
 function makeGroup(id: string, order: number): OperationGroup {
   return { id, name: id, color: "blue", order, theaterId: "theater", createdAt: order };
 }
+
+beforeEach(() => resetSideBarStatusRecencyForTests());
+afterEach(() => resetSideBarStatusRecencyForTests());
 
 describe("nextOperationId — Alt+←/→ focus cycle", () => {
   const order = ["a", "b", "c"];
@@ -142,6 +148,26 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
       () => false,
     );
     expect(order).toEqual(["plain"]);
+  });
+
+  it("uses descending transition ticks inside a status rank before untouched operationOrder entries", () => {
+    const operations = [
+      makeOperation("untouched-first"),
+      makeOperation("latest"),
+      makeOperation("earlier"),
+      makeOperation("untouched-second"),
+    ];
+    recordStatusTransitions(["earlier"]);
+    recordStatusTransitions(["latest"]);
+
+    expect(statusCycleOperationIds(
+      operations,
+      operations.map((operation) => operation.id),
+      Object.fromEntries(operations.map((operation) => [operation.id, "running"])),
+      [],
+      () => false,
+      getStatusTransitionTick,
+    )).toEqual(["latest", "earlier", "untouched-first", "untouched-second"]);
   });
 
   it("ranks a restored operation with resumeAvailable but no live status as dormant", () => {

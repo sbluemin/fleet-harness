@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
 import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
+import {
+  getIdleUnseenIds,
+  getStatusTransitionTick,
+  markIdleUnseen,
+  recordStatusTransitions,
+  resetSideBarStatusRecencyForTests,
+} from "../core/client/src/sidebar/operations-side-bar-store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 function makeNode(id: string, groupId?: string | null): OperationNode {
@@ -31,6 +38,9 @@ function makeEntry(id: string, groupId?: string | null, status?: OperationActivi
     icon: null,
   };
 }
+
+beforeEach(() => resetSideBarStatusRecencyForTests());
+afterEach(() => resetSideBarStatusRecencyForTests());
 
 function makeGroup(id: string, order: number): OperationGroup {
   return { id, name: id, color: "blue", order, theaterId: "t1", createdAt: order };
@@ -303,7 +313,7 @@ describe("groupOperationsByStatus", () => {
     const sections = groupOperationsByStatus(entries);
 
     expect(sections.map((section) => [section.status, section.label])).toEqual([
-      ["awaiting", "AWAITING INPUT"],
+      ["awaiting", "AWAITING"],
       ["running", "RUNNING"],
       ["idle", "IDLE"],
       ["dormant", "DORMANT"],
@@ -320,6 +330,34 @@ describe("groupOperationsByStatus", () => {
 
     expect(sections.find((section) => section.status === "running")?.entries.map((entry) => entry.operation.id))
       .toEqual(["running-second", "running-first"]);
+  });
+
+  it("orders transitioned entries by descending tick before untouched entries", () => {
+    recordStatusTransitions(["earlier"]);
+    recordStatusTransitions(["latest"]);
+    const sections = groupOperationsByStatus([
+      makeEntry("untouched-first", null, "running"),
+      makeEntry("latest", null, "running"),
+      makeEntry("earlier", null, "running"),
+      makeEntry("untouched-second", null, "running"),
+    ], getStatusTransitionTick);
+
+    expect(sections.find((section) => section.status === "running")?.entries.map((entry) => entry.operation.id))
+      .toEqual(["latest", "earlier", "untouched-first", "untouched-second"]);
+  });
+
+  it("resets transition ticks and idle unseen state together", () => {
+    recordStatusTransitions(["operation"]);
+    markIdleUnseen("operation");
+    expect(getStatusTransitionTick("operation")).toBe(1);
+    expect(getIdleUnseenIds().has("operation")).toBe(true);
+
+    resetSideBarStatusRecencyForTests();
+
+    expect(getStatusTransitionTick("operation")).toBeUndefined();
+    expect(getIdleUnseenIds().size).toBe(0);
+    recordStatusTransitions(["next-operation"]);
+    expect(getStatusTransitionTick("next-operation")).toBe(1);
   });
 
   it("detects the GROUP-axis live tick only for an explicit awaiting status", () => {

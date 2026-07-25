@@ -28,6 +28,9 @@ let statusAxis = false;
 // 접기/펼치기를 구분하려고 두 집합을 유지하며 localStorage에는 기록하지 않는다.
 let userCollapsedStatusSections = new Set<string>();
 let userExpandedStatusSections = new Set<string>();
+let statusTransitionCounter = 0;
+let statusTransitionTicks = new Map<string, number>();
+let idleUnseenIds = new Set<string>();
 
 export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
 
@@ -140,9 +143,35 @@ export function subscribeStatusSectionCollapse(listener: () => void): () => void
   return () => statusSectionCollapseListeners.delete(listener);
 }
 
+export function recordStatusTransitions(ids: readonly string[]): void {
+  for (const id of ids) statusTransitionTicks.set(id, ++statusTransitionCounter);
+}
+
+export function getStatusTransitionTick(id: string): number | undefined {
+  return statusTransitionTicks.get(id);
+}
+
+export function markIdleUnseen(id: string): void {
+  idleUnseenIds.add(id);
+}
+
+export function clearIdleUnseen(id: string): void {
+  idleUnseenIds.delete(id);
+}
+
+export function getIdleUnseenIds(): ReadonlySet<string> {
+  return idleUnseenIds;
+}
+
 export function resetSideBarStatusSectionCollapseForTests(): void {
   userCollapsedStatusSections = new Set();
   userExpandedStatusSections = new Set();
+}
+
+export function resetSideBarStatusRecencyForTests(): void {
+  statusTransitionCounter = 0;
+  statusTransitionTicks = new Map();
+  idleUnseenIds = new Set();
 }
 
 function statusSectionKey(theaterId: string, status: SideBarStatus): string {
