@@ -21,6 +21,7 @@ const sideBarListeners = new Set<() => void>();
 const collapsedTheaterListeners = new Set<() => void>();
 const statusAxisListeners = new Set<() => void>();
 const statusSectionCollapseListeners = new Set<() => void>();
+const idleUnseenListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
@@ -161,15 +162,30 @@ export function getStatusTransitionTick(id: string): number | undefined {
 }
 
 export function markIdleUnseen(id: string): void {
+  if (idleUnseenIds.has(id)) return;
+  idleUnseenIds = new Set(idleUnseenIds);
   idleUnseenIds.add(id);
+  for (const listener of idleUnseenListeners) listener();
 }
 
 export function clearIdleUnseen(id: string): void {
+  if (!idleUnseenIds.has(id)) return;
+  idleUnseenIds = new Set(idleUnseenIds);
   idleUnseenIds.delete(id);
+  for (const listener of idleUnseenListeners) listener();
 }
 
+// Operation-scope 상태가 역사적 이유로 사이드바 스토어에 산다. 세 번째 비-사이드바
+// 소비자가 생기면 중립 activity 모듈로 승격하라.
 export function getIdleUnseenIds(): ReadonlySet<string> {
   return idleUnseenIds;
+}
+
+export function subscribeIdleUnseen(listener: () => void): () => void {
+  idleUnseenListeners.add(listener);
+  return () => {
+    idleUnseenListeners.delete(listener);
+  };
 }
 
 export function trackOperationActivityTransitions(input: {

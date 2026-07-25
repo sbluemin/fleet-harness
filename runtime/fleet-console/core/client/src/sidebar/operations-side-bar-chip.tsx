@@ -88,6 +88,7 @@ export function OperationsSideBarChip({
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
+    idleUnseen ? "side-bar-chip--unseen" : "",
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
     statusLanded ? "side-bar-chip--status-landed" : "",
@@ -233,11 +234,10 @@ export function OperationsSideBarChip({
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         />
       ) : null}
-      {statusAxis && idleUnseen ? (
+      {idleUnseen ? (
         <span
           className="side-bar-chip-unseen"
-          role="img"
-          aria-label={t("sidebar.chip.unseenAria")}
+          aria-hidden="true"
           title={t("sidebar.chip.unseenTitle")}
         />
       ) : null}

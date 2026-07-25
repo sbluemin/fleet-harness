@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -12,6 +12,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
+import { getIdleUnseenIds, subscribeIdleUnseen } from "../sidebar/operations-side-bar-store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
@@ -89,6 +90,7 @@ export function OperationsCanvas({
   const companionPanelVisibilityOverrides = useCompanionPanelVisibilityOverrides(companionOperationId);
   const lastValidCompanionRef = useRef<{ readonly operation: OperationNode; readonly descriptor: OperationKindDescriptor } | null>(null);
   const minimized = useMinimized();
+  const idleUnseenIds = useSyncExternalStore(subscribeIdleUnseen, getIdleUnseenIds, getIdleUnseenIds);
   const activePluginOperationId = state.activeOperationId;
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
@@ -258,6 +260,7 @@ export function OperationsCanvas({
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
+            unseen: idleUnseenIds.has(operation.id),
             keyboardFocusRequestId: state.keyboardFocusRequest?.operationId === operation.id
               ? state.keyboardFocusRequest.requestId
               : 0,
@@ -480,6 +483,7 @@ function operationAccentFromNode(operation: OperationNode): string | null {
 
 function renderPluginOperation(operation: OperationNode, options: {
   readonly active: boolean;
+  readonly unseen: boolean;
   readonly keyboardFocusRequestId: number;
   readonly geometry: OperationGeometry;
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
@@ -527,6 +531,7 @@ function renderPluginOperation(operation: OperationNode, options: {
       <OperationFrame
         operation={operation}
         active={options.active}
+        unseen={options.unseen}
         geometry={geometry}
         zoom={options.viewportZoom}
         status={options.status}

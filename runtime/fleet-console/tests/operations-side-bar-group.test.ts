@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
 import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 import {
+  clearIdleUnseen,
   getIdleUnseenIds,
   getStatusTransitionTick,
   markIdleUnseen,
   recordStatusTransitions,
   resetSideBarStatusRecencyForTests,
+  subscribeIdleUnseen,
   subscribeOperationActivityTracking,
   trackOperationActivityTransitions,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
@@ -362,6 +364,39 @@ describe("groupOperationsByStatus", () => {
     expect(getIdleUnseenIds().size).toBe(0);
     recordStatusTransitions(["next-operation"]);
     expect(getStatusTransitionTick("next-operation")).toBe(1);
+  });
+
+  it("publishes one immutable idle-unseen snapshot per membership change", () => {
+    const id = "operation";
+    const listener = vi.fn();
+    const initialSnapshot = getIdleUnseenIds();
+    const unsubscribe = subscribeIdleUnseen(listener);
+
+    try {
+      markIdleUnseen(id);
+      const markedSnapshot = getIdleUnseenIds();
+      expect(markedSnapshot).not.toBe(initialSnapshot);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      markIdleUnseen(id);
+      expect(getIdleUnseenIds()).toBe(markedSnapshot);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      clearIdleUnseen("missing-operation");
+      expect(getIdleUnseenIds()).toBe(markedSnapshot);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      clearIdleUnseen(id);
+      const clearedSnapshot = getIdleUnseenIds();
+      expect(clearedSnapshot).not.toBe(markedSnapshot);
+      expect(listener).toHaveBeenCalledTimes(2);
+
+      unsubscribe();
+      markIdleUnseen(id);
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("marks an idle transition when the preserved active Operation belongs to another Theater", () => {

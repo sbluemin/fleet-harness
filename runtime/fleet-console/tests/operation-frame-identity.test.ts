@@ -159,6 +159,7 @@ function ActivationRaceFrame({ onActivate }: { readonly onActivate: () => void }
       ts: { createdAt: 1, updatedAt: 1 },
     },
     active,
+    unseen: false,
     geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
     zoom: 1,
     onActivate: () => {
@@ -195,6 +196,7 @@ function renderFrame(onRename: (title: string) => void, active: boolean, topEdge
       ts: { createdAt: 1, updatedAt: 1 },
     },
     active,
+    unseen: false,
     geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
     zoom: 1,
     onActivate: () => {},
