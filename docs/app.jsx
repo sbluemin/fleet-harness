@@ -144,25 +144,12 @@ const CAPTAINS = [
     role: { ko: "Chief Engineer", en: "Chief Engineer" },
     cli: "Claude Code",
     color: "#ff6b6b",
-    mission: { ko: "단일 결정타. 신규 모듈·통합·마이그레이션을 한 번의 항해로 종결한다.", en: "The decisive blow. Closes new modules, integrations, and migrations in a single voyage." },
+    mission: { ko: "직접 구현과 호스트가 작성한 TaskRef 기반 구현을 모두 맡는다. 구현과 Lane QA 증거를 반환하되 Plan 상태는 변경하지 않는 수석 엔지니어.", en: "Owns both direct implementation and execution of host-authored TaskRefs. The chief engineer returns implementation and Lane QA evidence without changing Plan state." },
     duties: [
-      { ko: "단일 함정 구현 — 새 기능, 모듈, 시스템 통합", en: "Single-vessel implementation — new features, modules, system integrations." },
-      { ko: "프레임워크 마이그레이션 · 대규모 리팩터", en: "Framework migrations and large-scale refactors." },
-      { ko: "빌드 게이트 통과를 책임지는 구현 표준", en: "Owns the implementation standard required to pass the build gate." },
-      { ko: "패치보다 시스템 — 일관성을 잃을 바엔 다시 짠다", en: "System over patch — would rather rewrite than lose consistency." },
-    ],
-  },
-  {
-    id: "Ohio",
-    role: { ko: "Multi-Wave Strike Execution", en: "Multi-Wave Strike Execution" },
-    cli: "Claude Code",
-    color: "#a78bfa",
-    mission: { ko: "호스트가 작성한 Plan TaskRef를 받아 파(Wave) 단위로 실행한다. 다단 작전의 실집행 잠수함.", en: "Receives host-authored Plan TaskRefs and executes them by wave. The submarine that actually executes multi-stage ops." },
-    duties: [
-      { ko: "동일 Lane TaskRef 수신 → 지정 태스크만 실행", en: "Receives same-Lane TaskRefs and executes only the assigned tasks." },
-      { ko: "각 wave 후 빌드·테스트·검증 게이트", en: "Build / test / verification gate after every wave." },
-      { ko: "롤백 가능 단위로 커밋·체크포인트 유지", en: "Keeps commits and checkpoints at rollback-safe granularity." },
-      { ko: "장기 다단 마이그레이션의 1차 실집행자", en: "Primary executor for long, multi-stage migrations." },
+      { ko: "직접 구현 — 새 기능, 모듈, 시스템 통합", en: "Direct implementation — new features, modules, system integrations." },
+      { ko: "Plan 기반 구현 — 호스트가 작성한 동일 Lane TaskRef만 실행", en: "Plan-driven implementation — executes only host-authored same-Lane TaskRefs." },
+      { ko: "각 wave 후 빌드·테스트·Lane QA 증거 반환", en: "Returns build, test, and Lane QA evidence after each wave." },
+      { ko: "Plan 변경·완료 표시 금지 — 검증 후 호스트가 수행", en: "Never mutates or completes Plan state — the host does so after inspection." },
     ],
   },
   {
@@ -370,16 +357,16 @@ function Nav() {
 
 // ───── Hero ─────
 function Hero() {
-  const nodeCount = 5;
+  const nodeCount = 4;
   const radius = 38;
   const nodes = Array.from({ length: nodeCount }, (_, i) => {
     const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
     return {
       x: 50 + Math.cos(angle) * radius,
       y: 50 + Math.sin(angle) * radius,
-      label: ["VG", "NM", "GN", "OH", "SN"][i],
-      full: ["Vanguard", "Nimitz", "Genesis", "Ohio", "Sentinel"][i],
-      color: ["#5fd673", "#d4af37", "#ff6b6b", "#a78bfa", "#fb7185"][i],
+      label: ["VG", "NM", "GN", "SN"][i],
+      full: ["Vanguard", "Nimitz", "Genesis", "Sentinel"][i],
+      color: ["#5fd673", "#d4af37", "#ff6b6b", "#fb7185"][i],
     };
   });
 
