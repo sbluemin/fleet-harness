@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ClientApiCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
@@ -19,7 +21,6 @@ import { pruneOrphanStreamingOperations } from "../client/agent/connection.js";
 import { applyEvent, createEmptyJob } from "../client/agent/reduce.js";
 import {
   CARRIER_STREAMS_COMPANION_ID,
-  agentPlugin,
   agentOperationKind,
 } from "../client/agent/index.js";
 import {
@@ -40,6 +41,7 @@ import type { JobView, ObservedEvent, TrackView } from "../client/agent/types.js
 
 const OPERATION_ID = "carrier-streams-operation";
 const TENANT_ID = "carrier-streams-tenant";
+const ANALYSIS_CSS = readFileSync(resolve(process.cwd(), "client/agent/analysis.css"), "utf8");
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
@@ -67,6 +69,7 @@ describe("Carrier Streams companion", () => {
       id: "carrier-streams",
       title: "Carrier Streams",
       hideCaption: true,
+      defaultHidden: true,
     });
     await expect(Promise.resolve(agentOperationKind.canOpenCompanions?.({
       api: createApi(),
@@ -74,7 +77,7 @@ describe("Carrier Streams companion", () => {
     }))).resolves.toBe(true);
   });
 
-  it("renders horizontal carrier columns in request and markdown order without thought content", async () => {
+  it("stacks full-width carrier rows in request, activity, and markdown order without thought content", async () => {
     installSession([
       makeJob("job-live", "active", [
         makeTrack("kirov-track", {
@@ -82,6 +85,10 @@ describe("Carrier Streams companion", () => {
           requestPreview: "Implement the approved companion.",
           text: "**Streaming** output",
           thought: "private chain of thought",
+          tools: [
+            { id: "read-1", name: "Read", input: { file_path: "src/main.ts" }, status: "running" },
+            { id: "edit-1", name: "Edit", input: { path: "src/main.ts" }, status: "completed" },
+          ],
         }),
         makeTrack("nimitz-track", {
           displayName: "Nimitz",
@@ -102,10 +109,27 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).not.toContain("private chain of thought");
     expect(container?.textContent).not.toContain("another private thought");
     expect(container?.querySelector('[data-captain="kirov"]')).not.toBeNull();
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-streams__board \{[^}]*flex-direction: column;[^}]*gap: 10px;[^}]*overflow-x: hidden;[^}]*overflow-y: auto;/);
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column \{[^}]*flex: none;[^}]*width: 100%;/);
+    expect(ANALYSIS_CSS).not.toContain("flex: 1 0 250px");
+    expect(ANALYSIS_CSS).not.toContain("max-width: 420px");
     const firstColumn = columns?.[0];
     const request = firstColumn?.querySelector(".carrier-stream-column__request");
+    const activity = firstColumn?.querySelector(".carrier-stream-column__activity");
     const answer = firstColumn?.querySelector(".carrier-stream-column__answer");
-    expect(request?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(request?.compareDocumentPosition(activity as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(answer?.nextElementSibling).toBeNull();
+    expect(answer?.querySelector("strong")?.textContent).toBe("Streaming");
+    expect(activity?.querySelector(".carrier-stream-column__activity-scan")).not.toBeNull();
+    const toolRows = activity?.querySelectorAll(".carrier-stream-column__activity-row");
+    expect(toolRows).toHaveLength(2);
+    expect(Array.from(toolRows ?? []).map((row) => row.textContent)).toEqual(["Readsrc/main.ts", "Editsrc/main.ts"]);
+    expect(Array.from(toolRows ?? []).map((row) => row.getAttribute("data-tone"))).toEqual(["live", "done"]);
+
+    const reasoningActivity = columns?.[1]?.querySelector(".carrier-stream-column__activity");
+    expect(reasoningActivity?.querySelectorAll(".carrier-stream-column__activity-row")).toHaveLength(1);
+    expect(reasoningActivity?.textContent).toBe("Reasoning…");
   });
 
   it("prefers the complete job request over the deprecated track preview", async () => {
@@ -132,9 +156,10 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).toContain("Implement the complete approved objective.");
     expect(container?.textContent).toContain("Preserve every specified constraint.");
     expect(container?.textContent).not.toContain("Deprecated first line only.");
+    expect(container?.querySelector(".carrier-stream-column__activity")).toBeNull();
   });
 
-  it("normalizes server track:tool payloads through the reducer into one updated DOM chip", async () => {
+  it("normalizes server track:tool payloads through the reducer into one updated activity row", async () => {
     let job = createEmptyJob(TENANT_ID, "job-tool", 1_000);
     job = applyEvent(job, observed(1, "job:registered", {
       tracks: [{ trackId: "tool-track", displayName: "Kirov" }],
@@ -162,13 +187,13 @@ describe("Carrier Streams companion", () => {
     installSession([job]);
     await renderCompanion();
 
-    const chips = container?.querySelectorAll(".carrier-stream-column__tool");
-    expect(chips).toHaveLength(1);
-    expect(chips?.[0]?.textContent).toContain("Edit");
-    expect(chips?.[0]?.getAttribute("data-tone")).toBe("done");
+    const rows = container?.querySelectorAll(".carrier-stream-column__activity-row");
+    expect(rows).toHaveLength(1);
+    expect(rows?.[0]?.textContent).toContain("Edit");
+    expect(rows?.[0]?.getAttribute("data-tone")).toBe("done");
     const answer = container?.querySelector(".carrier-stream-column__answer");
-    const tools = container?.querySelector(".carrier-stream-column__tools");
-    expect(answer?.compareDocumentPosition(tools as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const activity = container?.querySelector(".carrier-stream-column__activity");
+    expect(activity?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("isolates a new untagged tool call when the latest same-title call is complete", async () => {
@@ -189,33 +214,48 @@ describe("Carrier Streams companion", () => {
     installSession([job]);
     await renderCompanion();
 
-    const chips = container?.querySelectorAll(".carrier-stream-column__tool");
-    expect(chips).toHaveLength(2);
-    expect(Array.from(chips ?? []).map((chip) => chip.textContent)).toEqual(["Read", "Read"]);
-    expect(Array.from(chips ?? []).map((chip) => chip.getAttribute("data-tone"))).toEqual(["done", "live"]);
+    const rows = container?.querySelectorAll(".carrier-stream-column__activity-row");
+    expect(rows).toHaveLength(2);
+    expect(Array.from(rows ?? []).map((row) => row.textContent)).toEqual(["Read", "Read"]);
+    expect(Array.from(rows ?? []).map((row) => row.getAttribute("data-tone"))).toEqual(["done", "live"]);
     expect(job.tracks["repeated-tool-track"]?.tools.map((tool) => tool.id)).toEqual(["Read#0", "Read#1"]);
   });
 
-  it("collapses completed tracks to a 44px strip, expands them in memory, and restores pinned following", async () => {
+  it("collapses completed tracks to a one-line full-width strip, expands them in memory, and restores pinned following", async () => {
     installSession([makeJob("job-done", "active", [
       makeTrack("done-track", { displayName: "Kirov", text: "Final answer" }),
     ], "kirov")]);
     await renderCompanion();
     await act(async () => {
       installSession([makeJob("job-done", "done", [
-        makeTrack("done-track", { displayName: "Kirov", status: "done", text: "Final answer", finishedAt: 2_000 }),
+        makeTrack("done-track", {
+          displayName: "Kirov",
+          status: "done",
+          text: "Final answer",
+          tools: [{ id: "write-1", name: "Write", input: { file_path: "src/main.ts" }, status: "completed" }],
+          finishedAt: 2_000,
+        }),
       ], "kirov")]);
       await Promise.resolve();
     });
 
     const collapsed = container?.querySelector<HTMLButtonElement>(".carrier-stream-column--collapsed");
     expect(collapsed?.textContent).toContain("DONE");
-    expect(collapsed?.getAttribute("aria-label")).toBe("Expand completed stream for Kirov");
+    expect(collapsed?.getAttribute("aria-label")).toBe("Expand completed stream · Kirov");
+    expect(Array.from(collapsed?.children ?? []).map((child) => child.textContent)).toEqual(["", "Kirov", "DONE", "1s"]);
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column--collapsed \{[^}]*height: 36px;[^}]*width: 100%;[^}]*flex-direction: row;/);
+    expect(ANALYSIS_CSS).not.toMatch(/\.carrier-stream-column--collapsed \{[^}]*writing-mode:/);
 
     act(() => collapsed?.click());
     expect(container?.querySelector(".carrier-stream-column--collapsed")).toBeNull();
     expect(container?.querySelector(".carrier-stream-column__markdown")?.textContent).toContain("Final answer");
-    expect(container?.querySelector('[aria-label="Collapse completed stream for Kirov"]')).not.toBeNull();
+    expect(container?.querySelector('[aria-label="Collapse completed stream · Kirov"]')).not.toBeNull();
+    const activity = container?.querySelector(".carrier-stream-column__activity");
+    expect(activity?.getAttribute("data-tone")).toBe("done");
+    expect(activity?.querySelector(".carrier-stream-column__activity-scan")).toBeNull();
+    expect(activity?.querySelector('.carrier-stream-column__activity-row[data-tone="done"]')).not.toBeNull();
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-stream-column__activity\[data-tone="done"\], \.carrier-stream-column__activity\[data-tone="error"\] \{ border-color: var\(--hairline\); background: var\(--ink-deep\); \}/);
+    expect(ANALYSIS_CSS).toContain('.carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-row[data-tone="live"] > i::after');
 
     const body = container?.querySelector<HTMLDivElement>(".carrier-stream-column__body");
     if (!body) throw new Error("Expanded stream body must exist.");
@@ -230,6 +270,7 @@ describe("Carrier Streams companion", () => {
           status: "done",
           lastEventId: 2,
           text: "Final answer\nFollowed output",
+          tools: [{ id: "write-1", name: "Write", input: { file_path: "src/main.ts" }, status: "completed" }],
           finishedAt: 2_000,
         }),
       ], "kirov")]);
@@ -246,22 +287,7 @@ describe("Carrier Streams companion", () => {
     expect(container?.textContent).toContain("IDLE");
   });
 
-  it("does not treat an initially live snapshot as an auto-open transition", async () => {
-    installSession([makeJob("job-baseline", "active", [makeTrack("baseline-track")], "kirov")]);
-    const onRequestCompanions = vi.fn();
-    const onSetCompanionPanelVisible = vi.fn();
-    await renderOperation(createContext({
-      companionsOpen: false,
-      hiddenCompanionPanelIds: ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
-      onRequestCompanions,
-      onSetCompanionPanelVisible,
-    }));
-
-    expect(onRequestCompanions).not.toHaveBeenCalled();
-    expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("carrier-streams", true);
-  });
-
-  it("auto-opens streams once on the first 0-to-1 live transition and each handle toggles only its own panel", async () => {
+  it("never auto-opens streams on a live transition; the pulse badge is the only ambient signal", async () => {
     installSession([]);
     const onRequestCompanions = vi.fn();
     const onSetCompanionPanelVisible = vi.fn();
@@ -279,90 +305,73 @@ describe("Carrier Streams companion", () => {
       await Promise.resolve();
     });
 
-    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
-    expect(onRequestCompanions).toHaveBeenCalledWith(true);
-    const carrierVisibilityCall = onSetCompanionPanelVisible.mock.calls.findIndex(([id, visible]) => id === "carrier-streams" && visible === true);
-    expect(onRequestCompanions.mock.invocationCallOrder[0]).toBeLessThan(
-      onSetCompanionPanelVisible.mock.invocationCallOrder[carrierVisibilityCall] ?? Number.POSITIVE_INFINITY,
-    );
-    expect(container?.querySelector(".session-analyst-handle--streams.is-live")).not.toBeNull();
-
-    onRequestCompanions.mockClear();
-    onSetCompanionPanelVisible.mockClear();
-    await renderOperation(createContext({
-      api,
-      companionsOpen: true,
-      hiddenCompanionPanelIds: ["session-analyst-chat", "session-analyst-artifacts"],
-      onRequestCompanions,
-      onSetCompanionPanelVisible,
-    }));
-    expect(onRequestCompanions).not.toHaveBeenCalled();
-    const streamsHandle = container?.querySelector<HTMLButtonElement>(".session-analyst-handle--streams");
-    expect(streamsHandle?.textContent).toContain("EXIT");
-
-    act(() => streamsHandle?.click());
-    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", false);
-    expect(onRequestCompanions).toHaveBeenCalledWith(false);
-    expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("session-analyst-chat", expect.anything());
-
-    act(() => root?.unmount());
-    root = null;
-    installSession([]);
-    onRequestCompanions.mockClear();
-    onSetCompanionPanelVisible.mockClear();
-    await renderOperation(createContext({
-      api,
-      companionsOpen: false,
-      hiddenCompanionPanelIds: ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
-      onRequestCompanions,
-      onSetCompanionPanelVisible,
-    }));
-    onRequestCompanions.mockClear();
-    onSetCompanionPanelVisible.mockClear();
-    await act(async () => {
-      installSession([makeJob("job-live", "active", [makeTrack("live-track")], "kirov")]);
-      await Promise.resolve();
-    });
     expect(onRequestCompanions).not.toHaveBeenCalled();
     expect(onSetCompanionPanelVisible).not.toHaveBeenCalledWith("carrier-streams", true);
+    expect(container?.querySelector(".session-analyst-handle--streams.is-live")).not.toBeNull();
   });
 
-  it("releases the operation auto-open key when the operation closes", async () => {
-    if (!agentPlugin.closeOperation) throw new Error("Agent plugin closeOperation must exist.");
-    await agentPlugin.closeOperation(OPERATION_ID);
+  it("keeps ANALYZE and STREAMS panel visibility independent, including coexistence", async () => {
     installSession([]);
-    const onRequestCompanions = vi.fn();
-    const onSetCompanionPanelVisible = vi.fn();
-    const context = createContext({
+    await render(createElement(CompanionVisibilityHost));
+    await vi.waitFor(() => {
+      expect(container?.querySelector<HTMLButtonElement>('[aria-label="Open Session Analyst"]')?.disabled).toBe(false);
+    });
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Open Carrier Streams"]')?.click());
+    await vi.waitFor(() => {
+      expect(container?.querySelector('[aria-label="Exit Carrier Streams"]')).not.toBeNull();
+    });
+    expect(container?.querySelector('[aria-label="Open Session Analyst"]')).not.toBeNull();
+    expect(container?.querySelector('[aria-label="Exit Session Analyst"]')).toBeNull();
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Exit Carrier Streams"]')?.click());
+    await vi.waitFor(() => {
+      expect(container?.querySelector('[aria-label="Open Carrier Streams"]')).not.toBeNull();
+    });
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Open Session Analyst"]')?.click());
+    await vi.waitFor(() => {
+      expect(container?.querySelector('[aria-label="Exit Session Analyst"]')).not.toBeNull();
+    });
+    expect(container?.querySelector('[aria-label="Open Carrier Streams"]')).not.toBeNull();
+    expect(container?.querySelector('[aria-label="Exit Carrier Streams"]')).toBeNull();
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Open Carrier Streams"]')?.click());
+    await vi.waitFor(() => {
+      expect(container?.querySelector('[aria-label="Exit Carrier Streams"]')).not.toBeNull();
+    });
+    expect(container?.querySelector('[aria-label="Exit Session Analyst"]')).not.toBeNull();
+  });
+
+  it("localizes STREAMS handle and panel copy for Korean without changing English defaults", async () => {
+    installSession([]);
+    await renderOperation(createContext({
+      language: "ko",
       companionsOpen: false,
       hiddenCompanionPanelIds: ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
-      onRequestCompanions,
-      onSetCompanionPanelVisible,
-    });
-    await renderOperation(context);
-    await act(async () => {
-      installSession([makeJob("job-before-close", "active", [makeTrack("before-close-track")])]);
-      await Promise.resolve();
-    });
-    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
+    }));
+    expect(container?.querySelector(".session-analyst-handle--streams")?.textContent).toContain("스트림");
+    expect(container?.querySelector(".session-analyst-handle--streams")?.textContent).not.toContain("STREAMS");
+
+    await renderCompanion(createContext({ language: "ko" }));
+    expect(container?.textContent).toContain("대기");
+    expect(container?.textContent).toContain("스트리밍 중인 캐리어가 없습니다.");
+    expect(container?.textContent).toContain("이 오퍼레이션의 다음 디스패치가 시작되는 즉시 여기에 표시됩니다.");
+    expect(container?.textContent).not.toContain("IDLE");
+    expect(container?.textContent).not.toContain("No carriers streaming.");
 
     await act(async () => {
-      await agentPlugin.closeOperation?.(OPERATION_ID);
-    });
-    act(() => root?.unmount());
-    root = null;
-    installSession([]);
-    onRequestCompanions.mockClear();
-    onSetCompanionPanelVisible.mockClear();
-    await renderOperation(context);
-    onRequestCompanions.mockClear();
-    onSetCompanionPanelVisible.mockClear();
-    await act(async () => {
-      installSession([makeJob("job-after-close", "active", [makeTrack("after-close-track")])]);
+      installSession([makeJob("job-live-ko", "active", [makeTrack("live-ko")], "kirov")]);
       await Promise.resolve();
     });
-    expect(onRequestCompanions).toHaveBeenCalledWith(true);
-    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
+    await renderCompanion(createContext({ language: "ko" }));
+    expect(container?.textContent).toContain("1 진행 중");
+
+    installSession([]);
+    await renderCompanion(createContext({ language: "en" }));
+    expect(container?.textContent).toContain("IDLE");
+    expect(container?.textContent).toContain("No carriers streaming.");
+    expect(container?.textContent).toContain("The next dispatch from this operation appears here the moment it begins.");
   });
 
   it("opens the host before applying a panel override that host initialization would reset", async () => {
@@ -377,6 +386,7 @@ describe("Carrier Streams companion", () => {
     await vi.waitFor(() => {
       expect(container?.querySelector('[aria-label="Exit Session Analyst"]')).not.toBeNull();
     });
+    expect(container?.querySelector('[aria-label="Open Carrier Streams"]')).not.toBeNull();
   });
 
   it("falls back to toggling the whole companion area when per-panel visibility is unavailable", async () => {
@@ -441,10 +451,20 @@ describe("Carrier Streams companion", () => {
       tracks: [{ trackId: "error-track", displayName: "Sentinel" }],
     }));
     job = applyEvent(job, observed(2, "track:begin", { trackId: "error-track" }));
+    job = applyEvent(job, observed(3, "track:text", {
+      trackId: "error-track",
+      text: "Partial public output.",
+    }));
+    job = applyEvent(job, observed(4, "track:tool", {
+      trackId: "error-track",
+      title: "Read",
+      status: "running",
+      input: { file_path: "src/main.ts" },
+    }));
     installSession([job]);
     await renderCompanion();
 
-    job = applyEvent(job, observed(3, "job:finalized", {
+    job = applyEvent(job, observed(5, "job:finalized", {
       status: "error",
       error: "Carrier dispatch failed.",
     }));
@@ -454,6 +474,13 @@ describe("Carrier Streams companion", () => {
     });
     const alert = container?.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe("Carrier dispatch failed.");
+    const activity = container?.querySelector(".carrier-stream-column__activity");
+    const answer = container?.querySelector(".carrier-stream-column__answer");
+    expect(activity?.getAttribute("data-tone")).toBe("error");
+    expect(activity?.querySelector(".carrier-stream-column__activity-scan")).toBeNull();
+    expect(activity?.compareDocumentPosition(alert as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(alert?.compareDocumentPosition(answer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(answer?.nextElementSibling).toBeNull();
   });
 
   it("falls back to an error job summary when finalization has no error fields", async () => {
@@ -565,10 +592,10 @@ describe("orphan streaming Operation cleanup", () => {
   });
 });
 
-async function renderCompanion(): Promise<void> {
+async function renderCompanion(context: OperationRenderContext = createContext()): Promise<void> {
   const descriptor = agentOperationKind.companions?.[0];
   if (!descriptor) throw new Error("Carrier Streams companion must be registered first.");
-  await render(descriptor.render(createContext()) as React.ReactNode);
+  await render(descriptor.render(context) as React.ReactNode);
 }
 
 async function renderOperation(context: OperationRenderContext): Promise<void> {
@@ -689,7 +716,12 @@ function CompanionVisibilityHost() {
     hiddenCompanionPanelIds,
     onRequestCompanions: (open) => {
       if (open && !companionsOpen) {
-        setHiddenCompanionPanelIds(["session-analyst-chat", "session-analyst-artifacts"]);
+        // Host setCompanionOperationId clears visibility overrides; every defaultHidden panel stays hidden.
+        setHiddenCompanionPanelIds([
+          "carrier-streams",
+          "session-analyst-chat",
+          "session-analyst-artifacts",
+        ]);
       }
       setCompanionsOpen(open);
     },
