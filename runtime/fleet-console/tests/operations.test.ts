@@ -79,7 +79,7 @@ describe("operations platform", () => {
       type: "agent",
       pluginId: "terminal",
       title: "Agent",
-      payload: { providerSession: { sessionId: "provider-secret" } },
+      payload: { providerSession: { provider: "claude", sessionId: "provider-secret" } },
     });
     const plain = store.create({
       id: "op-plain",
@@ -110,6 +110,29 @@ describe("operations platform", () => {
     });
 
     expect(createSanitizedOpDto(spoofed).payload?.resumeAvailable).toBeUndefined();
+  });
+
+  it("does not derive resumeAvailable from a shapeless providerSession object", () => {
+    const store = createOperationStore({ now: () => 10 });
+    const shapeless = store.create({
+      id: "op-shapeless",
+      theaterId: "theater",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Agent",
+      payload: { providerSession: {} },
+    });
+    const valid = store.create({
+      id: "op-valid",
+      theaterId: "theater",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Agent",
+      payload: { providerSession: { provider: "claude", sessionId: "provider-secret" } },
+    });
+
+    expect(createSanitizedOpDto(shapeless).payload?.resumeAvailable).toBeUndefined();
+    expect(createSanitizedOpDto(valid).payload?.resumeAvailable).toBe(true);
   });
 
   it("rejects forbidden browser readback payload keys in the SDK validator", () => {
