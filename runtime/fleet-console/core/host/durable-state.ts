@@ -7,7 +7,7 @@ import {
 } from "@dotobokuri/core-infra";
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
-import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "./operations/types.js";
+import { MAX_GROUP_NAME_LENGTH, type OperationGeometry, type OperationNode } from "./operations/types.js";
 import type { TheaterRegistration } from "./theaters.js";
 
 export interface DurableOperationGroup {
@@ -26,6 +26,41 @@ export interface DurableDeletionBase {
   readonly expiresAt: number;
 }
 
+export interface WorkspacePresetViewport {
+  readonly x: number;
+  readonly y: number;
+  readonly zoom: number;
+}
+
+export interface WorkspacePresetLayout {
+  readonly viewport: WorkspacePresetViewport;
+  readonly operationGeometries: Readonly<Record<string, OperationGeometry>>;
+  readonly minimizedOperationIds: readonly string[];
+  readonly rail: {
+    readonly activePanelId: string | null;
+    readonly chromeExpanded: boolean;
+    readonly panelWidth: number | null;
+  };
+  readonly sidebar: {
+    readonly statusAxis: "group" | "status";
+  };
+}
+
+export interface DurableWorkspacePreset {
+  readonly id: string;
+  readonly theaterId: string;
+  readonly name: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly layout: WorkspacePresetLayout;
+}
+
+export interface WorkspacePresetApplyResult {
+  readonly preset: DurableWorkspacePreset;
+  readonly appliedOperationIds: readonly string[];
+  readonly missingOperationIds: readonly string[];
+}
+
 export type DurableDeletionTombstone =
   | (DurableDeletionBase & { readonly kind: "operation"; readonly operation: OperationNode })
   | (DurableDeletionBase & {
@@ -33,14 +68,16 @@ export type DurableDeletionTombstone =
       readonly theater: TheaterRegistration;
       readonly operations: readonly OperationNode[];
       readonly groups: readonly DurableOperationGroup[];
+      readonly workspacePresets: readonly DurableWorkspacePreset[];
     });
 
 export interface DurableConsoleState {
-  readonly version: 3;
+  readonly version: 4;
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
   readonly deletionTombstones?: readonly DurableDeletionTombstone[];
+  readonly workspacePresets?: readonly DurableWorkspacePreset[];
 }
 
 export interface CreateConsoleDurableStateStoreDeps {
@@ -49,7 +86,8 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
+export const MAX_WORKSPACE_PRESET_NAME_LENGTH = 64;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
@@ -86,11 +124,12 @@ export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState
     operations: readOperations(upgraded.operations),
     groups: readOperationGroups(upgraded.groups),
     deletionTombstones: readDeletionTombstones(upgraded.deletionTombstones),
+    workspacePresets: readWorkspacePresets(upgraded.workspacePresets),
   };
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
-  return { version: STATE_VERSION, theaters: [], operations: [], groups: [], deletionTombstones: [] };
+  return { version: STATE_VERSION, theaters: [], operations: [], groups: [], deletionTombstones: [], workspacePresets: [] };
 }
 
 // 릴리스된 stable durable state(v1, flat 세션 레코드)을 현재 스키마(OperationNode)로 1회 변환한다.
@@ -100,6 +139,7 @@ function migrateToCurrentVersion(value: Record<string, unknown>): Record<string,
   let current = value;
   if (current.version === 1) current = migrateV1ToV2(current);
   if (current.version === 2) current = migrateV2ToV3(current);
+  if (current.version === 3) current = migrateV3ToV4(current);
   return current;
 }
 
@@ -115,11 +155,27 @@ function migrateV1ToV2(v1: Record<string, unknown>): Record<string, unknown> {
 
 function migrateV2ToV3(v2: Record<string, unknown>): Record<string, unknown> {
   return {
-    version: STATE_VERSION,
+    version: 3,
     theaters: v2.theaters ?? [],
     operations: v2.operations ?? [],
     groups: v2.groups ?? [],
     deletionTombstones: [],
+  };
+}
+
+function migrateV3ToV4(v3: Record<string, unknown>): Record<string, unknown> {
+  const deletionTombstones = Array.isArray(v3.deletionTombstones)
+    ? v3.deletionTombstones.map((value) => isRecord(value) && value.kind === "theater"
+      ? { ...value, workspacePresets: [] }
+      : value)
+    : [];
+  return {
+    version: STATE_VERSION,
+    theaters: v3.theaters ?? [],
+    operations: v3.operations ?? [],
+    groups: v3.groups ?? [],
+    deletionTombstones,
+    workspacePresets: [],
   };
 }
 
@@ -330,18 +386,81 @@ function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombstone | n
   }
   if (value.kind === "theater") {
     const theater = sanitizeTheaterRegistration(value.theater);
-    if (!theater || theater.id !== targetId || !Array.isArray(value.operations) || !Array.isArray(value.groups)) return null;
+    if (!theater || theater.id !== targetId || !Array.isArray(value.operations) || !Array.isArray(value.groups) || !Array.isArray(value.workspacePresets)) return null;
     const operations = value.operations
       .map(sanitizeOperationNode)
       .filter((operation): operation is OperationNode => operation !== null);
     const groups = value.groups
       .map(sanitizeOperationGroup)
       .filter((group): group is DurableOperationGroup => group !== null);
+    const workspacePresets = value.workspacePresets
+      .map(sanitizeWorkspacePreset)
+      .filter((preset): preset is DurableWorkspacePreset => preset !== null);
     if (operations.length !== value.operations.length
       || groups.length !== value.groups.length
+      || workspacePresets.length !== value.workspacePresets.length
       || operations.some((operation) => operation.theaterId !== targetId)
-      || groups.some((group) => group.theaterId !== targetId)) return null;
-    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, operations, groups };
+      || groups.some((group) => group.theaterId !== targetId)
+      || workspacePresets.some((preset) => preset.theaterId !== targetId)) return null;
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, operations, groups, workspacePresets };
   }
   return null;
+}
+
+function readWorkspacePresets(value: unknown): readonly DurableWorkspacePreset[] {
+  if (!Array.isArray(value)) return [];
+  const presets: DurableWorkspacePreset[] = [];
+  for (const item of value) {
+    const preset = sanitizeWorkspacePreset(item);
+    if (preset) presets.push(preset);
+  }
+  return presets;
+}
+
+function sanitizeWorkspacePreset(value: unknown): DurableWorkspacePreset | null {
+  if (!isRecord(value)) return null;
+  const id = readNonEmptyString(value.id);
+  const theaterId = readNonEmptyString(value.theaterId);
+  const name = readNonEmptyString(value.name);
+  const createdAt = readFiniteNumber(value.createdAt);
+  const updatedAt = readFiniteNumber(value.updatedAt);
+  const layout = sanitizeWorkspacePresetLayout(value.layout);
+  if (!id || !theaterId || !name || name.trim().length === 0 || name.length > MAX_WORKSPACE_PRESET_NAME_LENGTH || createdAt === null || updatedAt === null || !layout) return null;
+  return { id, theaterId, name, createdAt, updatedAt, layout };
+}
+
+export function sanitizeWorkspacePresetLayout(value: unknown): WorkspacePresetLayout | null {
+  if (!isRecord(value) || !isRecord(value.viewport) || !isRecord(value.operationGeometries)
+    || !Array.isArray(value.minimizedOperationIds) || !isRecord(value.rail) || !isRecord(value.sidebar)) return null;
+  const x = readFiniteNumber(value.viewport.x);
+  const y = readFiniteNumber(value.viewport.y);
+  const zoom = readFiniteNumber(value.viewport.zoom);
+  if (x === null || y === null || zoom === null) return null;
+
+  const operationGeometryEntries: Array<[string, OperationGeometry]> = [];
+  for (const [operationId, rawGeometry] of Object.entries(value.operationGeometries)) {
+    const geometry = sanitizeOperationGeometry(rawGeometry);
+    if (!operationId || !geometry) return null;
+    operationGeometryEntries.push([operationId, geometry]);
+  }
+  if (!value.minimizedOperationIds.every((operationId) => typeof operationId === "string" && operationId.length > 0)) return null;
+
+  const activePanelId = value.rail.activePanelId;
+  const panelWidth = value.rail.panelWidth;
+  if ((activePanelId !== null && (typeof activePanelId !== "string" || activePanelId.length === 0))
+    || typeof value.rail.chromeExpanded !== "boolean"
+    || (panelWidth !== null && (typeof panelWidth !== "number" || !Number.isFinite(panelWidth)))
+    || (value.sidebar.statusAxis !== "group" && value.sidebar.statusAxis !== "status")) return null;
+
+  return {
+    viewport: { x, y, zoom },
+    operationGeometries: Object.fromEntries(operationGeometryEntries),
+    minimizedOperationIds: [...value.minimizedOperationIds],
+    rail: {
+      activePanelId,
+      chromeExpanded: value.rail.chromeExpanded,
+      panelWidth,
+    },
+    sidebar: { statusAxis: value.sidebar.statusAxis },
+  };
 }

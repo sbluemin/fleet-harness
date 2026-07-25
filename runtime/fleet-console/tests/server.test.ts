@@ -1364,7 +1364,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const stateFile = path.join(fixture.carrierStoreDir, "console", "state.json");
     const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.operations).toHaveLength(1);
     expect(state.operations[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
     expect(state.operations[0]?.payload?.providerSession).toBeUndefined();
@@ -2779,7 +2779,7 @@ describe("observer theater order", () => {
     expect(patched.status).toBe(200);
     expect(patchedBody).toMatchObject({ id: theater.id, order: 3 });
     expect(listed.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
 
     await fixture.server.stop();

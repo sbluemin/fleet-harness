@@ -674,6 +674,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-formation-group {");
     expect(components).not.toContain(".side-bar-theater-add-btn {");
     expect(layout).toContain(".command-band-formation-group {");
+    expect(layout).toContain("z-index: 48;");
     expect(layout).toContain("left: calc(var(--command-band-left-width, 280px) + var(--space-2));");
     expect(layout).not.toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
     expect(commandBand).toContain('"--command-band-left-width": `${sideBar.width}px`');

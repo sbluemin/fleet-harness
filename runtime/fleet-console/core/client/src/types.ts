@@ -95,6 +95,41 @@ export interface OperationGeometry {
   readonly zIndex: number;
 }
 
+export interface WorkspacePresetViewport {
+  readonly x: number;
+  readonly y: number;
+  readonly zoom: number;
+}
+
+export interface WorkspacePresetLayout {
+  readonly viewport: WorkspacePresetViewport;
+  readonly operationGeometries: Readonly<Record<string, OperationGeometry>>;
+  readonly minimizedOperationIds: readonly string[];
+  readonly rail: {
+    readonly activePanelId: string | null;
+    readonly chromeExpanded: boolean;
+    readonly panelWidth: number | null;
+  };
+  readonly sidebar: {
+    readonly statusAxis: "group" | "status";
+  };
+}
+
+export interface DurableWorkspacePreset {
+  readonly id: string;
+  readonly theaterId: string;
+  readonly name: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly layout: WorkspacePresetLayout;
+}
+
+export interface WorkspacePresetApplyResult {
+  readonly preset: DurableWorkspacePreset;
+  readonly appliedOperationIds: readonly string[];
+  readonly missingOperationIds: readonly string[];
+}
+
 export interface OperationGroup {
   readonly id: string;
   readonly name: string;
