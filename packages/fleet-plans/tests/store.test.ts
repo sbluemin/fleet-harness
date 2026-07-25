@@ -85,6 +85,22 @@ describe("Fleet Plan store", () => {
     expect(existsSync(dataDir)).toBe(false);
   });
 
+  it("rejects a new Plan with an indented exact legacy companion outside the manifest without creating storage", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const indentedLegacy = `  ${LEGACY_FULL_PLAN_POLICY}`;
+    const markdown = buildValidPlan().replace(
+      "# Documentation Updates\n\n- Update host and Carrier Plan workflow documentation.",
+      `# Documentation Updates\n\n${indentedLegacy}\n\n- Update host and Carrier Plan workflow documentation.`,
+    );
+
+    const created = writePlanMarkdown(dataDir, workspaceRoot, "indented-companion", markdown);
+
+    expect(created.written).toBe(false);
+    expect(created.lint.valid).toBe(false);
+    expect(created.lint.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["FULL_PLAN_POLICY"]);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
   it("allows replacing an existing exact-legacy Plan with legacy or canonical policy", () => {
     const { workspaceRoot, dataDir } = makePaths();
     const seeded = seedLegacyPlan(dataDir, workspaceRoot, "legacy-replace");

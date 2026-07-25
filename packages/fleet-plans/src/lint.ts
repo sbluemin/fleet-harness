@@ -35,8 +35,8 @@ const LANE_HEADING_PATTERN = /^### Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — (.+)$/;
 const TASK_PATTERN = /^\s+- \[([ xX])\] (W[1-9]\d*-[A-Z][A-Z0-9]*-T[1-9]\d*) — (.+)$/;
 const MANIFEST_LANE_PATTERN = /^- Lane (W[1-9]\d*-[A-Z][A-Z0-9]*) — /;
 const OWNERSHIP_LANE_PATTERN = /^- (W[1-9]\d*-[A-Z][A-Z0-9]*)(?=\s|$)/;
-/** Policy-like Dispatch Manifest line: list dash, optional Markdown whitespace, then Full/plan with flexible separators. */
-const FULL_PLAN_POLICY_LIKE_PATTERN = /^-\s*full[\s\t-]*plan\b/i;
+/** policy-like 목록 항목: 선행 Markdown 들여쓰기 + list dash + Full/plan(구분자 유연). */
+const FULL_PLAN_POLICY_LIKE_PATTERN = /^\s*-\s*full[\s\t-]*plan\b/i;
 const CANONICAL_FULL_PLAN_POLICY =
   "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
 const LEGACY_FULL_PLAN_POLICY =
@@ -379,7 +379,7 @@ function validateManifest(
       addDiagnostic(diagnostics, "MANIFEST_UNKNOWN_LANE", `Dispatch Manifest references unknown lane ${id}`);
     }
   }
-  // Manifest에 허용된 정책 1줄 + 문서 전체에서 policy-like 줄이 그 1줄뿐이어야 한다.
+  // 문서 전체 policy-like(들여쓰기 포함)가 1줄이고, Manifest의 그 줄이 들여쓰기 없는 허용 정책과 일치해야 한다.
   const documentPolicyLines = documentLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
   const manifestPolicyLines = manifestLines.filter((line) => FULL_PLAN_POLICY_LIKE_PATTERN.test(line));
   const policy = manifestPolicyLines[0];
