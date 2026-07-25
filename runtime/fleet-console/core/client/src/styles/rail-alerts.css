@@ -29,17 +29,17 @@
 .alerts-panel-tally-empty {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-rim);
+  color: var(--text-tertiary);
 }
 
 .alerts-panel-settings-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   transition: background var(--duration-fast) var(--ease-glide),
     color var(--duration-fast) var(--ease-glide);
 }
@@ -73,7 +73,7 @@
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   line-height: 14px;
   text-align: center;
   color: var(--ink-abyss);
@@ -112,7 +112,7 @@
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   line-height: 1;
 }
 
@@ -144,7 +144,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--ink-rim);
+  color: var(--text-tertiary);
   text-align: center;
 }
 
@@ -181,7 +181,7 @@
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--brass-bright);
@@ -200,8 +200,8 @@
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
-  color: var(--ink-spectral);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
   background: color-mix(in oklch, var(--ink-fog) 15%, transparent);
 }
 
@@ -257,8 +257,8 @@
 .notification-row-op {
   font-family: var(--font-body);
   font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-pearl);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -266,8 +266,8 @@
 
 .notification-row-state {
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.11em;
 }
@@ -285,11 +285,10 @@
   padding: 4px 11px;
   border-radius: var(--radius-xs);
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-fog);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
+  color: var(--text-tertiary);
   border: 1px solid var(--surface-rim);
   transition: color var(--duration-fast) var(--ease-glide),
     border-color var(--duration-fast) var(--ease-glide),
@@ -317,11 +316,11 @@
 .notification-cluster-settings-eyebrow {
   margin: var(--space-1) 0 2px;
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--ink-rim);
+  color: var(--text-tertiary);
 }
 
 .notification-cluster-setting {
@@ -331,7 +330,7 @@
   padding: var(--space-1);
   border-radius: var(--radius-xs);
   font-size: 13px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide);
 }

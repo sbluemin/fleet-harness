@@ -129,7 +129,7 @@ describe("Repository design grammar", () => {
     const chevrons = blocksOf(".repository-folder-chevron");
     expect(chevrons[0]).toContain("width: 11px");
     expect(chevrons[0]).toContain("height: 11px");
-    expect(chevrons[0]).toContain("color: var(--ink-fog)");
+    expect(chevrons[0]).toContain("color: var(--text-tertiary)");
     expect(chevrons[0]).toContain("transition: transform var(--duration-base) var(--ease-spring)");
     expect(chevrons.some((body) => body.includes("transition-duration: 0.01ms"))).toBe(true);
     expect(blockOf(".repository-ws-section.is-collapsed .repository-folder-chevron")).toContain("transform: rotate(-90deg)");

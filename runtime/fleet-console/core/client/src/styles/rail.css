@@ -104,7 +104,7 @@
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -113,7 +113,7 @@
 .right-rail-float-toggle {
   flex: none;
   padding: 4px 8px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--surface-rim-strong);
   background: transparent;
   color: var(--text-tertiary);
@@ -126,7 +126,7 @@
 }
 
 .right-rail-float-toggle:hover {
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   background: var(--ink-veil);
 }
 
@@ -148,7 +148,7 @@
   display: inline-flex;
   overflow: hidden;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
 }
 
 .right-rail-opacity-segment {
@@ -169,7 +169,7 @@
 
 .right-rail-opacity-segment:hover,
 .right-rail-opacity-segment:focus-visible {
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   background: var(--ink-veil);
   outline: none;
 }
@@ -190,21 +190,21 @@
   position: absolute;
   top: 9px;
   right: 10px;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   flex: none;
   display: inline-grid;
   place-items: center;
   border-radius: var(--radius-xs);
   background: none;
   border: none;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   cursor: pointer;
   transition: color 140ms, background 140ms;
 }
 
 .right-rail-close-btn:hover {
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   background: var(--surface-glass);
 }
 
@@ -237,14 +237,14 @@
 }
 
 .right-rail-ico {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: inline-grid;
   place-items: center;
   border-radius: var(--radius-xs);
   background: none;
   border: 1px solid transparent;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   cursor: pointer;
   position: relative;
   font-size: 14px;
@@ -256,7 +256,7 @@
 
 .right-rail-ico:hover,
 .right-rail-ico:focus-visible {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   background: var(--surface-glass);
   outline: none;
 }

@@ -3,9 +3,13 @@
 
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
+  /* 텍스트 3티어(--text-*)는 판독 계약을 지는 유일한 색 역할이다. 어느 테마에서든 본문 표면 위에서
+     WCAG 2.1 AA(본문 4.5:1, 큰 글자 3:1)를 넘어야 하며, 원료 잉크 티어(--ink-*)를 텍스트 색으로
+     직접 쓰면 그 계약이 통제되지 않는다. tertiary는 판독 하한 바로 위 티어다 — Instrument의
+     --ink-fog(L 52%)는 하한 아래여서 텍스트 역할로 쓸 수 없다. */
   --text-primary: oklch(94% 0.008 90);
   --text-secondary: oklch(70% 0.012 245);
-  --text-tertiary: oklch(52% 0.012 245);
+  --text-tertiary: oklch(64% 0.012 245);
 
   --ink-abyss: oklch(13% 0.014 245);
   --ink-deep: oklch(16.5% 0.016 245);
@@ -110,6 +114,13 @@
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-body-size: 14px;
 
+  /* 굵기는 3티어만 쓴다 — 가변 서체가 임의 축값을 허용한다고 해서 위계가 늘어나지는 않는다.
+     regular=본문, medium=강조·컨트롤 라벨, bold=제목·주요 액션. 세 티어 밖의 값은
+     같은 역할에 서로 다른 굵기를 흩뿌려 위계를 읽을 수 없게 만든다. */
+  --weight-regular: 400;
+  --weight-medium: 600;
+  --weight-bold: 700;
+
   --chrome-band-height: 44px;
 
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
@@ -133,6 +144,8 @@
 :root[data-theme="carbon"] {
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
+  /* 두 테마의 --ink-fog(maritime L 70% / carbon L 67%)는 판독 하한 위에 있어 tertiary로 쓸 수 있다.
+     이 매핑은 우연이 아니라 계약이다 — 잉크 스케일을 재조율할 때 이 하한을 함께 확인할 것. */
   --text-tertiary: var(--ink-fog);
 }
 
@@ -250,7 +263,7 @@
 
 *::selection {
   background: var(--brass-glow);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
 }
 
 html,
@@ -265,7 +278,7 @@ body {
 
 html {
   background: var(--ink-abyss);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   font-family: var(--font-body);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
@@ -275,10 +288,10 @@ html {
 body {
   overflow: hidden;
   background: var(--ink-abyss);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: var(--font-body-size);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   line-height: 1.55;
   letter-spacing: -0.005em;
 }

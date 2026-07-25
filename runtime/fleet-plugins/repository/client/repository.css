@@ -89,7 +89,7 @@
   background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 3px 8px;
@@ -108,7 +108,7 @@
   background: none;
   border: none;
   border-radius: var(--radius-xs);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
@@ -118,7 +118,7 @@
 
 .repository-filter-clear:hover,
 .history-filter-clear:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .repository-plugin-toolbar {
@@ -137,7 +137,7 @@
   font-size: 10.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .repository-view-toggle {
@@ -152,19 +152,19 @@
 
 .repository-toggle-btn {
   width: 24px;
-  height: 22px;
+  height: 24px;
   display: inline-grid;
   place-items: center;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   border-radius: 6px;
   transition: color 0.14s, background 0.14s;
 }
 
 .repository-toggle-btn:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .repository-toggle-btn.is-active {
@@ -180,7 +180,7 @@
 .repository-sections-loading {
   padding: 16px 12px;
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
 }
 
@@ -204,12 +204,12 @@
 }
 
 .repository-notice-title {
-  color: var(--ink-spectral);
-  font-weight: 600;
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
 }
 
 .repository-notice-body {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 /* ── 아코디언 섹션 ── */
@@ -238,7 +238,7 @@
   width: 12px;
   height: 12px;
   flex: none;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   transition: transform var(--duration-base) var(--ease-spring);
 }
 
@@ -256,17 +256,17 @@
   flex: 1;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .repository-count-badge {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
-  color: var(--ink-fog);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
   background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
   border-radius: 999px;
   padding: 1px 8px;
@@ -283,7 +283,7 @@
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 /* ── 파일 행 (리스트뷰 + 트리 리프 공유) ── */
@@ -315,7 +315,7 @@
 .repository-status-glyph {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   text-align: center;
 }
 
@@ -337,7 +337,7 @@
 .repository-file-fn {
   font-family: var(--font-body);
   font-size: 13px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -350,7 +350,7 @@
 .repository-file-dir {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -395,7 +395,7 @@
 .repository-folder-chevron {
   width: 11px;
   height: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   transition: transform var(--duration-base) var(--ease-spring);
 }
 
@@ -412,13 +412,13 @@
 .repository-folder-icon {
   width: 15px;
   height: 15px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .repository-folder-name {
   font-family: var(--font-body);
   font-size: 13px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -426,7 +426,7 @@
 
 .repository-folder-count {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--text-tertiary);
   padding-left: 8px;
 }
@@ -438,19 +438,19 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   padding: 3px 8px;
 }
 
 .repository-refresh-btn:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .repository-truncated-badge {
   flex-shrink: 0;
   padding: 4px 12px;
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
   border-bottom: 1px solid var(--surface-rim);
   font-family: var(--font-mono);
@@ -474,7 +474,7 @@
   flex: 1;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -486,7 +486,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 14px;
   line-height: 1;
   min-width: 32px;
@@ -498,7 +498,7 @@
 }
 
 .repository-hunk-close:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 /* ── Hunk 본문 ── */
@@ -512,7 +512,7 @@
   padding: 16px;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .repository-hunk-error {
@@ -543,17 +543,17 @@
 .repository-line-code {
   padding: 0 12px;
   white-space: pre;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   vertical-align: top;
   width: 100%;
 }
 
 .repository-line-header .repository-line-code {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .repository-line-meta {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -583,8 +583,8 @@
 .repository-token-string { color: var(--id-moss); }
 .repository-token-number { color: var(--id-amber); }
 .repository-token-type { color: var(--id-plum); }
-.repository-token-comment { color: var(--ink-fog); font-style: italic; }
-.repository-token-punctuation { color: var(--ink-fog); }
+.repository-token-comment { color: var(--text-tertiary); font-style: italic; }
+.repository-token-punctuation { color: var(--text-tertiary); }
 /* add/del 행은 단색으로 말하고 장식 구문색은 context 행에만 둔다. comment·punctuation은 ink-fog 무채색 계열이라 유지한다. */
 .repository-line-add .repository-token-keyword,
 .repository-line-add .repository-token-string,
@@ -601,7 +601,7 @@
 .repository-gutter {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   text-align: right;
   padding: 0 6px 0 4px;
   white-space: nowrap;
@@ -633,7 +633,7 @@
   padding: 2px 10px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 /* ── 다중 파일 패치 파일 경계 행 ── */
@@ -647,7 +647,7 @@
 .repository-line-file-label td {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   padding: 3px 10px;
 }
 
@@ -721,7 +721,7 @@
   padding: 1px 7px;
   border-radius: 999px;
   background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
   text-align: center;
@@ -759,12 +759,14 @@
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
-/* 현재 체크아웃 브랜치에서 도달 불가능한 커밋은 본문만 감광 — 그래프/배지는 유지 */
+/* 현재 체크아웃 브랜치에서 도달 불가능한 커밋은 본문만 강등 — 그래프/배지는 유지.
+   강등은 opacity가 아니라 텍스트 티어로 표현한다: 색 × 투명도 이중 감쇠는 판독 하한을 지키는
+   토큰을 무력화한다(off-head 제목 실측 2.36:1). 티어 강등이면 하한이 그대로 보장된다. */
 .history-commit-row.is-off-head .history-commit-subject,
 .history-commit-row.is-off-head .history-commit-author,
 .history-commit-row.is-off-head .history-commit-sha,
 .history-commit-row.is-off-head .history-commit-time {
-  opacity: 0.45;
+  color: var(--text-tertiary);
 }
 
 .history-graph-gutter {
@@ -789,7 +791,7 @@
   padding: 0 5px;
   border-radius: 999px;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: 0.04em;
   line-height: 1.55;
 }
@@ -805,23 +807,23 @@
 }
 
 .history-badge--tag {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   border: 1px solid color-mix(in oklch, var(--ink-fog) 45%, transparent);
 }
 
 .history-badge--branch {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   border: 1px solid color-mix(in oklch, var(--ink-fog) 45%, transparent);
   background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
 }
 
 .history-badge--remote {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   border: 1px dashed color-mix(in oklch, var(--ink-fog) 60%, transparent);
 }
 
 .history-badge--worktree {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   border: 1px dashed color-mix(in oklch, var(--ink-fog) 60%, transparent);
 }
 
@@ -831,7 +833,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: 12.5px;
 }
@@ -843,21 +845,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10.5px;
 }
 
 .history-commit-sha,
 .history-detail-sha {
-  color: color-mix(in oklch, var(--ink-spectral) 58%, transparent);
+  color: var(--text-tertiary);
 }
 
 .history-empty,
 .history-error,
 .history-truncated {
   padding: 14px 12px;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -870,7 +872,7 @@
 }
 
 .history-truncated {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   border-top: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
 }
@@ -906,12 +908,12 @@
   border: none;
   border-radius: var(--radius-sm);
   background: none;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   cursor: pointer;
 }
 
 .history-detail-close:hover {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 .history-detail-body {
@@ -943,30 +945,30 @@
 .history-commit-time { grid-column: 5; }
 .history-inspector { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .history-segmented { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--surface-rim); }
-.history-segmented button { flex: 1; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
-.history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--ink-spectral); }
-.history-segmented span { color: var(--ink-fog); font-size: 9px; }
-.history-segmented .history-inspector-close { flex: 0 0 auto; width: 28px; min-width: 28px; height: 28px; padding: 0; border-color: transparent; }
+.history-segmented button { flex: 1; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: .01em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
+.history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--text-secondary); }
+.history-segmented span { color: var(--text-tertiary); font-size: 10px; }
+.history-segmented .history-inspector-close { flex: 0 0 auto; width: 24px; min-width: 24px; height: 24px; padding: 0; border-color: transparent; }
 .history-details-tab { display: grid; min-height: 0; overflow: hidden; }
 .history-divider--horizontal { width: auto; height: 4px; cursor: row-resize; touch-action: none; }
 .history-inspector-head { min-height: 0; overflow: auto; padding: 14px 16px; border-bottom: 1px solid var(--surface-rim); }
-.history-inspector-subject { color: var(--ink-spectral); font-size: 13.5px; font-weight: 600; line-height: 1.35; }
-.history-inspector-message { margin: 6px 0 0; color: var(--ink-fog); font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; }
-.history-author { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--ink-spectral); font-size: 12px; }
+.history-inspector-subject { color: var(--text-secondary); font-size: 13.5px; font-weight: var(--weight-medium); line-height: 1.35; }
+.history-inspector-message { margin: 6px 0 0; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; }
+.history-author { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text-secondary); font-size: 12px; }
 .history-author > span:nth-child(2) { display: grid; gap: 1px; }
-.history-author b { font-weight: 500; }.history-author small, .history-author time { color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; }
+.history-author b { font-weight: var(--weight-medium); }.history-author small, .history-author time { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10.5px; }
 .history-author time { margin-left: auto; }
-.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
+.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--text-secondary); font-family: var(--font-mono); font-size: 10px; font-weight: var(--weight-bold); }
 .history-inspector-ids, .history-ref-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .history-sha-copy, .history-parent { border-radius: var(--radius-sm); background: none; cursor: pointer; font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; }
-.history-sha-copy { border: 1px solid var(--surface-rim); color: var(--ink-spectral); }.history-sha-copy span { color: var(--ink-fog); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive); }
-.history-parent { border: 1px solid var(--surface-rim); color: var(--ink-spectral); }
+.history-sha-copy { border: 1px solid var(--surface-rim); color: var(--text-secondary); }.history-sha-copy span { color: var(--text-tertiary); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive); }
+.history-parent { border: 1px solid var(--surface-rim); color: var(--text-secondary); }
 .history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
-.history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive); font-style: normal; }.history-files-title em { color: var(--coral); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
+.history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive); font-style: normal; }.history-files-title em { color: var(--coral); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 22px; height: 22px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--ink-fog); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
-.history-inspector-empty { padding: 16px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 12px; }.history-inspector-error { color: var(--coral); }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
+.history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px; }.history-inspector-error { color: var(--coral); }
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 시간 → sha → 뱃지 순으로 양보한다. */
 @container (max-width: 640px) {
   .history-commit-time { display: none; }
@@ -990,36 +992,36 @@
 .repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); }
 .repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
 .repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
-.repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12.5px; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 /* 브랜치는 정체의 일부라 이름 옆에 붙인다 — margin-left:auto로 밀면 넓은 레일에서 이름과의 연관이 끊긴다.
    brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
 .repository-identity span { min-width: 0; overflow: hidden; color: var(--brass); flex: 0 1 auto; font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
-.repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+.repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
 .repository-depth-step { border: 0; background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: 12px; padding: 0 3px; }
 .repository-depth-step:hover:not(:disabled) { color: var(--text-primary); }
 .repository-depth-step:disabled { opacity: .4; cursor: default; }
-.repository-depth-value { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: 0 6px; color: var(--ink-spectral); font-family: var(--font-mono); font-size: 11px; }
+.repository-depth-value { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: 0 6px; color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
 .repository-scan-count { margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
 .repository-ref-group { display: grid; gap: 2px; }
-.repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9.5px; font-weight: 400; letter-spacing: .18em; text-transform: uppercase; }
-.repository-ref-row { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; text-align: left; padding: 7px 10px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
+.repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; font-weight: var(--weight-regular); letter-spacing: .18em; text-transform: uppercase; }
+.repository-ref-row { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit; text-align: left; padding: 7px 10px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .repository-ref-row:hover { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
 .repository-ref-row:disabled { cursor: default; }
 .repository-ref-row.is-current { color: var(--text-primary); }
 .repository-ref-row.is-current:hover { color: var(--text-primary); }
 .repository-ref-row svg { width: 13px; height: 13px; flex: none; opacity: .85; }
-.repository-ref-name { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.repository-ref-name { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 /* 현재 체크아웃 마크 = 위치 채널 */
 .repository-ref-mark { flex: none; color: var(--brass); font-size: 11px; }
 /* 매칭 글자 = 포커스 채널(brass) */
-.repository-ref-hl { color: var(--brass); font-weight: 700; }
+.repository-ref-hl { color: var(--brass); font-weight: var(--weight-bold); }
 .repository-ref-sub { margin-left: auto; color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 10px; }
 .repository-ref-row.is-current .repository-ref-sub { color: var(--brass); }
-.repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; padding: 7px 10px; }
+.repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit; text-align: left; padding: 7px 10px; }
 .repository-wip-row { color: var(--brass); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
@@ -1084,7 +1086,7 @@
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: .14em;
   cursor: pointer;
   text-align: left;
@@ -1106,7 +1108,7 @@
 
 .repository-ws-section-head i {
   margin-left: auto;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-style: normal;
   letter-spacing: 0;
 }
@@ -1123,7 +1125,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font: inherit;
+  font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit;
   font-size: 12px;
   text-align: left;
   transition: color var(--duration-base) var(--ease-spring), background var(--duration-base) var(--ease-spring);
@@ -1169,7 +1171,7 @@
   color: var(--text-tertiary);
   flex: none;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1187,7 +1189,7 @@
   padding: 4px 10px 2px 20px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: .12em;
 }
 
@@ -1208,7 +1210,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font: inherit;
+  font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit;
 }
 
 .repository-ws-tree .repository-ref-row,

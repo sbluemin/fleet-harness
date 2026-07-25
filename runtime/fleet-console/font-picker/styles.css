@@ -1,5 +1,5 @@
 .fc-font-browser {
-  color: var(--ink-spectral);
+  color: var(--text-secondary);
 }
 
 /* auto-fit wraps the two panes to a single column when the picker's own width
@@ -26,8 +26,19 @@
 .fc-font-browser__preview-label,
 .fc-font-browser__row-meta,
 .fc-font-browser__row-status {
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   font-size: 0.78em;
+}
+
+/* 강조된 행은 배경이 밝아지므로 보조 텍스트도 한 티어 올린다 — tertiary를 그대로 두면
+   밝아진 표면 위에서 판독 하한 아래로 내려간다(instrument 4.46:1 / carbon 4.30:1). */
+.fc-font-browser__row:hover .fc-font-browser__row-meta,
+.fc-font-browser__row:hover .fc-font-browser__row-status,
+.fc-font-browser__row.is-active .fc-font-browser__row-meta,
+.fc-font-browser__row.is-active .fc-font-browser__row-status,
+.fc-font-browser__row[aria-selected="true"] .fc-font-browser__row-meta,
+.fc-font-browser__row[aria-selected="true"] .fc-font-browser__row-status {
+  color: var(--text-secondary);
 }
 
 .fc-font-browser__search {
@@ -37,7 +48,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs, 8px);
   background: color-mix(in oklab, var(--ink-abyss) 72%, transparent);
-  color: var(--ink-pearl);
+  color: var(--text-primary);
 }
 
 .fc-font-browser__search:focus-visible,
@@ -63,7 +74,7 @@
   border: 0;
   border-radius: var(--radius-xs, 8px);
   background: transparent;
-  color: var(--ink-pearl);
+  color: var(--text-primary);
   text-align: left;
 }
 
@@ -86,13 +97,13 @@
 .fc-font-browser__preview { display: grid; align-content: start; gap: var(--space-3, 12px); }
 .fc-font-browser__preview-head,
 .fc-font-browser__size-control { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 8px); }
-.fc-font-browser__availability { padding: 0.1em 0.55em; border: 1px solid var(--surface-rim-strong); border-radius: 999px; color: var(--ink-spectral); }
+.fc-font-browser__availability { padding: 0.1em 0.55em; border: 1px solid var(--surface-rim-strong); border-radius: 999px; color: var(--text-secondary); }
 .fc-font-browser__availability--unavailable { color: var(--warn); }
-.fc-font-browser__preview-copy { min-height: 5em; margin: 0; color: var(--ink-pearl); overflow-wrap: anywhere; }
-.fc-font-browser__stepper { min-width: 2.2em; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--ink-pearl); }
-.fc-font-browser__size-value { color: var(--ink-spectral); }
+.fc-font-browser__preview-copy { min-height: 5em; margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.fc-font-browser__stepper { min-width: 2.2em; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--text-primary); }
+.fc-font-browser__size-value { color: var(--text-secondary); }
 .fc-font-browser__range { width: 100%; accent-color: var(--brass); }
-.fc-font-browser__state { margin: var(--space-2, 8px) 0; color: var(--ink-fog); }
+.fc-font-browser__state { margin: var(--space-2, 8px) 0; color: var(--text-tertiary); }
 .fc-font-browser__state--error { color: var(--coral); }
 
 @media (prefers-reduced-motion: reduce) {
