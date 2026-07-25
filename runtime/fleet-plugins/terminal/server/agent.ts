@@ -379,6 +379,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         return true;
       }
       beginInitialPromptGeneration(sessionId);
+      if (fresh) {
+        // stale provider 상태는 spawn 전에 지운다 — attach 도중 새 CLI의 capture hook이 먼저
+        // 완료되면, attach 후 정리가 새 capture까지 지우는 레이스가 된다(Codex P1). attach 실패 시
+        // payload의 providerSession이 남아 일반 resume 재시도는 여전히 가능하다.
+        unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
+        observability.clearTerminalSessionProviderSession(sessionId);
+      }
       await terminalRuntime.attach({
         cwd,
         sessionId,
@@ -389,19 +396,15 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         cliId,
         ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
-      if (fresh) {
-        // attach 성공 후 stale provider 상태를 지운다 — 이전 captures/<id>.json이나 observability
-        // 세션이 남으면, fresh CLI가 새 capture를 쓰기 전에 종료될 때 handleExit이 만료 세션으로
-        // dormant 복귀시키고 Session Analyst가 이전 transcript를 resolve할 수 있다(Codex P1).
-        unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
-        observability.clearTerminalSessionProviderSession(sessionId);
-      }
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
-      // fresh 시작은 providerSession을 payload에서 떼어낸다 — 새 provider 세션은 capture hook이 다시 쓴다.
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(node.payload, cwd, resumed, fresh ? undefined : providerSession, observability.getDurableOperation(sessionId)?.providerTitle) });
+      // fresh는 기본적으로 providerSession을 떼어내지만, attach 중 자식이 capture한 새 세션은 보존한다 —
+      // patch 시점의 최신 payload를 읽어 덮어쓰기 레이스를 피한다(Codex P1).
+      const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
+      const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
       invalidateInitialPromptGeneration(sessionId);

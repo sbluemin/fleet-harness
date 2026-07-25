@@ -28,6 +28,14 @@ export const terminalPlugin = definePlugin({
       await agentPlugin.closeOperation?.(operationId);
     }
   },
+  // 팔레트 등 호스트 경유 resume 요청을 agent 구현으로 전달한다 — 래퍼가 삼키면
+  // 호스트는 hook 부재로 판단해 포커스 폭백만 수행한다(Codex P1).
+  resumeOperation: async (operationId) => {
+    const operation = await fetchOperation(operationId);
+    if (operation && AGENT_OPERATION_TYPES.has(operation.type)) {
+      await agentPlugin.resumeOperation?.(operationId);
+    }
+  },
   launch: async (ctx) => ctx.kind.type === "shell"
     ? shellPlugin.launch?.(ctx) ?? { id: "" }
     : agentPlugin.launch?.(ctx) ?? { id: "" },
