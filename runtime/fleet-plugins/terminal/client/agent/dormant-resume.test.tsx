@@ -93,11 +93,11 @@ describe("dormant resume feedback", () => {
     expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
   });
 
-  it("Try again replays a plain resume without a body", async () => {
+  it("Try again replays a plain resume without a body and dismisses the failure alert on success", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response("{}", { status: 503 }))
       .mockResolvedValueOnce(sessionResponse("live"));
-    await renderDormant(fetch);
+    const { notifications } = await renderDormant(fetch);
 
     act(() => dormantButton().click());
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
@@ -107,6 +107,7 @@ describe("dormant resume feedback", () => {
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect((fetch.mock.calls[1]?.[1] as RequestInit | undefined)?.body).toBeUndefined();
+    expect(notifications.dismiss).toHaveBeenCalledWith(OPERATION_ID);
   });
 });
 

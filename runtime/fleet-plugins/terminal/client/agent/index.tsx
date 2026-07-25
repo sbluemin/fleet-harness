@@ -143,6 +143,7 @@ export const agentPlugin = definePlugin({
     // 팔레트 등 프레임 밖 resume 진입점. 실패 알림은 프레임 내 카드가 못 잡는 경로이므로 여기서도 emit한다.
     try {
       await resumeSession(operationId);
+      installedNotifications?.dismiss(operationId);
     } catch (error) {
       installedNotifications?.emit({
         kind: agentResumeFailedNotification.id,
@@ -1043,6 +1044,8 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
     setResumeState("resuming");
     try {
       await resumeSession(session.sessionId, { fresh });
+      // 성공 시 이전 실패 알림을 거둔다 — 두지 않으면 live 세션에 "Resume failed" 뱃지가 남는다.
+      context.notifications.dismiss(session.sessionId);
     } catch {
       setResumeState("error");
       context.notifications.emit({
