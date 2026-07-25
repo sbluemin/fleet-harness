@@ -4,7 +4,11 @@ import { createMcpToolRegistry, type AgentToolSpec } from "@dotobokuri/core-agen
 
 import {
   GLOBAL_READONLY_WIKI_TOOL_IDS,
+  HOST_ONLY_PLAN_TOOL_IDS,
+  OHIO_ONLY_PLAN_TOOL_IDS,
   getExecutorMcpTools,
+  isHostOnlyPlanTool,
+  isOhioOnlyPlanTool,
   isHostOnlyWikiTool,
 } from "../src/tools.js";
 
@@ -50,7 +54,7 @@ function stubCarrierRuntime(carrierId: string, allowedExecutorTools: string[]) {
   } as unknown as Parameters<typeof getExecutorMcpTools>[1];
 }
 
-describe("Wiki executor ACL hard-enforcement", () => {
+describe("host-only executor ACL hard-enforcement", () => {
   it("classifies host-only vs global read-only Wiki tools", () => {
     for (const id of GLOBAL_READONLY_WIKI_TOOL_IDS) {
       expect(isHostOnlyWikiTool(id)).toBe(false);
@@ -62,6 +66,17 @@ describe("Wiki executor ACL hard-enforcement", () => {
     expect(isHostOnlyWikiTool("plan_read")).toBe(false);
     expect(isHostOnlyWikiTool("carrier_dispatch")).toBe(false);
     expect(isHostOnlyWikiTool("carrier_jobs")).toBe(false);
+  });
+
+  it("classifies exactly plan_write and plan_verify as host-only Plan tools", () => {
+    expect([...HOST_ONLY_PLAN_TOOL_IDS].sort()).toEqual(["plan_verify", "plan_write"]);
+    expect([...OHIO_ONLY_PLAN_TOOL_IDS]).toEqual(["plan_mark_tasks"]);
+    expect(isHostOnlyPlanTool("plan_write")).toBe(true);
+    expect(isHostOnlyPlanTool("plan_verify")).toBe(true);
+    expect(isHostOnlyPlanTool("plan_read")).toBe(false);
+    expect(isHostOnlyPlanTool("plan_mark_tasks")).toBe(false);
+    expect(isOhioOnlyPlanTool("plan_mark_tasks")).toBe(true);
+    expect(isOhioOnlyPlanTool("plan_read")).toBe(false);
   });
 
   it("never grants a host-only Wiki tool to a Carrier even when persona metadata lists it", () => {
@@ -94,5 +109,34 @@ describe("Wiki executor ACL hard-enforcement", () => {
     for (const id of toolIds.filter((toolId) => toolId.startsWith("wiki_"))) {
       expect(GLOBAL_READONLY_WIKI_TOOL_IDS.has(id)).toBe(true);
     }
+  });
+
+  it("never grants host-only Plan tools through custom persona metadata", () => {
+    const registry = createMcpToolRegistry();
+    for (const id of ["plan_read", "plan_write", "plan_mark_tasks", "plan_verify"]) {
+      registry.registerAgentTool(fakeSpec(id));
+    }
+    registry.registerExecutorTool(fakeSpec("plan_mark_tasks"), { allowedScopes: [] });
+
+    const carrierRuntime = stubCarrierRuntime("rogue", [
+      "plan_read",
+      "plan_write",
+      "plan_mark_tasks",
+      "plan_verify",
+    ]);
+    const toolIds = getExecutorMcpTools(registry, carrierRuntime, "rogue").map((spec) => spec.id);
+
+    expect(toolIds).toContain("plan_read");
+    expect(toolIds).not.toContain("plan_mark_tasks");
+    expect(toolIds).not.toContain("plan_write");
+    expect(toolIds).not.toContain("plan_verify");
+
+    const ohioToolIds = getExecutorMcpTools(
+      registry,
+      stubCarrierRuntime("ohio", ["plan_read", "plan_mark_tasks"]),
+      "ohio",
+    ).map((spec) => spec.id);
+    expect(ohioToolIds).toContain("plan_read");
+    expect(ohioToolIds).toContain("plan_mark_tasks");
   });
 });

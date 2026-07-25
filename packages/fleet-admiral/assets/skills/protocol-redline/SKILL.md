@@ -32,8 +32,8 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 
 1. Full reconnaissance: audit known facts, enumerate blocking and confirmatory gaps, read applicable AGENTS.md files, map affected code, tests, docs, and boundaries.
 2. Architecture and risk review: identify public-surface impact, dependency constraints, rollback risk, security risk, and user approval requirements.
-3. Structured planning boundary: `Apply the Context Confidence Standing Order — entry requires complete`. Do not plan with unresolved blocking or confirmatory gaps.
-4. Risk-controlled plan: define file ownership, small execution batches, verification commands, rollback-safe checkpoints, and any approval point.
+3. Host-authored structured planning boundary: `Apply the Context Confidence Standing Order — entry requires complete`. The host does not plan with unresolved blocking or confirmatory gaps.
+4. Host-authored risk-controlled plan: define file ownership, small execution batches, verification commands, rollback-safe checkpoints, and any approval point.
 5. Small-batch execution: edit narrowly, re-read before modifying shared files, and pause on unexpected diffs or scope expansion.
 6. Refactor gate: refactor only touched code when duplication, complexity, or convention drift appears, only with user approval or when pre-declared in the brief.
 7. Correctness and security review (may run as a single combined review dispatch): review changed behavior and risk controls; apply Deep Dive to speculative findings and repeat after fixes.

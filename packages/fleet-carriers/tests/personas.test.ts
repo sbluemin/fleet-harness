@@ -149,39 +149,30 @@ describe("persona defaults", () => {
   }
 });
 
-describe("Kirov and Ohio TaskRef execution contract", () => {
-  it("Kirov writes one lint-valid Fleet Plan and returns Lane-grouped TaskRefs", () => {
-    const template = (KIROV_METADATA.principles ?? []).find((principle) =>
-      principle.startsWith("The Plan submitted to plan_write MUST contain this exact default Markdown template"),
-    ) ?? "";
+describe("Kirov assurance and Ohio TaskRef execution contract", () => {
+  it("keeps Kirov optional, strictly read-only, and scoped to an existing host-authored PlanRef", () => {
+    const principles = KIROV_METADATA.principles ?? [];
 
-    expect(KIROV_METADATA.summary).toContain("lint-valid Fleet Plans");
-    expect(KIROV_METADATA.outputFormat).toContain("**Execution Topology**");
-    expect(KIROV_METADATA.outputFormat).toContain("**Dispatch Manifest**");
-    expect(KIROV_METADATA.outputFormat).toContain("**TaskRefs**");
-    expect(KIROV_METADATA.requestBlocks).toContainEqual({
-      tag: "plan_id",
-      hint: "Required stable lowercase Plan identity. Kirov passes this logical id to plan_write and returns the resulting PlanRef; never accept or invent a filesystem path.",
-      required: true,
-    });
-    expect(KIROV_METADATA.permissions).toContain(
-      "Every Kirov dispatch with the required plan_id is a Plan-tool mission. Its primary completion goal is submitting one complete Markdown Plan to plan_write, correcting every deterministic lint error, and verifying the returned PlanRef with plan_read; analysis or a report alone is never completion.",
-    );
-    expect(KIROV_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read", "plan_write"]);
-    expect(KIROV_METADATA.principles).toContain(
-      "Execution Topology is mandatory for every plan. It MUST declare Execution mode: Sequential | Parallel, shared mutable resources, ordered waves, and stable Wave/Lane IDs; a lane may be marked parallel only when its exact non-overlapping write set and read dependencies prove it is safe to run concurrently.",
-    );
-    expect(KIROV_METADATA.principles).toContain(
-      "Dispatch Manifest is mandatory for every plan. For each lane, declare: stable Wave/Lane ID; exact write set; read dependencies; dependency/start condition; eligible concurrent lanes; integration gate; handoff; and rollback unit. It MUST state that full-plan Ohio invocation is unavailable and that the host dispatches explicit same-Lane TaskRefs only. If disjoint lanes cannot be proven safe, mark the work sequential rather than calling it parallel.",
-    );
-    expect(template).toContain("# Execution Topology, - Execution mode: Sequential | Parallel, - Shared mutable resources:");
-    expect(template).toContain("# Waves, ## Wave N — <name>, ### Lane WN-X — <name>");
-    expect(template).toContain("- Exact write set:, - Read dependencies:, - Dependency/start condition:");
-    expect(template).toContain("- Eligible concurrent lanes: (use \"none\" for serialized work), - Integration gate:, - Handoff:, - Rollback unit:");
-    expect(template.indexOf("# Waves")).toBeLessThan(template.indexOf("# Dispatch Manifest"));
-    expect(template).toContain("# Dispatch Manifest, - Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only");
-    expect(template).toContain("- Lane WN-X — <name>: exact write set, read dependencies, dependency/start condition, eligible concurrent lanes, integration gate, handoff, and rollback unit summary for dispatch");
-    expect(template).toContain("nested '- [ ] WN-X-TN — <step>' tasks");
+    expect(KIROV_METADATA.title).toBe("Plan Assurance & Audit");
+    expect(KIROV_METADATA.summary).toContain("existing host-authored Fleet Plan");
+    expect(KIROV_METADATA.requestBlocks).toEqual([
+      expect.objectContaining({ tag: "plan_ref", required: true }),
+      expect.objectContaining({ tag: "audit_focus", required: false }),
+      expect.objectContaining({ tag: "context", required: false }),
+      expect.objectContaining({ tag: "constraints", required: false }),
+    ]);
+    expect(KIROV_METADATA.requestBlocks.map((block) => block.tag)).not.toEqual(expect.arrayContaining(["plan_id", "goal"]));
+    expect(KIROV_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
+    expect(KIROV_METADATA.permissions.join("\n")).toContain("must never call plan_write");
+    expect(KIROV_METADATA.permissions.join("\n")).toContain("MUST NOT write or edit source code, documentation, configuration");
+    expect(KIROV_METADATA.permissions.join("\n")).toContain("MUST NOT make product, architecture");
+    expect(KIROV_METADATA.outputFormat).toContain("PASS | REVISE | BLOCKED");
+    for (const field of ["**PlanRef**", "**Findings**", "**Dispatch readiness**", "**Host action**"]) {
+      expect(KIROV_METADATA.outputFormat).toContain(field);
+    }
+    expect(KIROV_METADATA.outputFormat).toContain("For PASS, explicitly report no findings.");
+    expect(principles.join("\n")).toContain("affected Plan section, Lane, or TaskRef");
+    expect(principles.join("\n")).toContain("optional assurance, not a planning prerequisite");
   });
 
   it("Ohio accepts exactly one Plan/Lane TaskRef group and marks it through the Plan tool", () => {
@@ -200,6 +191,8 @@ describe("Kirov and Ohio TaskRef execution contract", () => {
     expect(OHIO_METADATA.permissions).toContain(
       "MUST call plan_mark_tasks with exactly the assigned TaskRefs only after every assigned task and the Lane QA/integration gate pass. Never edit Plan Markdown or checkbox state through filesystem tools.",
     );
+    expect(OHIO_METADATA.permissions.join("\n")).toContain("return every requested Plan wording, topology, ownership, or task change and every unresolved decision to the host");
+    expect(OHIO_METADATA.outputFormat).toContain("**Host Plan action**");
     expect(OHIO_METADATA.outputFormat).toContain("**TaskRefs executed**");
     expect(OHIO_METADATA.outputFormat).toContain("**Lane**");
   });

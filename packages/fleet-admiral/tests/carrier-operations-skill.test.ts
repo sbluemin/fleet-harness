@@ -60,8 +60,11 @@ describe("carrier-operations skill asset", () => {
     expect(skillContent()).toContain(`All carriers accept an optional \`<prior_jobs>\` block: ${PRIOR_JOBS_REQUEST_HINT}`);
   });
 
-  it("exposes Kirov plan identity and Ohio TaskRef contracts", () => {
-    expect(skillContent()).toContain("<plan_id> required: Required stable lowercase Plan identity.");
+  it("exposes Kirov audit and Ohio host-authored TaskRef contracts", () => {
+    expect(skillContent()).toContain("Kirov · Plan Assurance & Audit");
+    expect(skillContent()).toContain("<plan_ref> required: Required exact PlanRef for an already host-authored Fleet Plan.");
+    expect(skillContent()).not.toContain("<plan_id>");
+    expect(skillContent()).not.toContain("<goal>");
     expect(skillContent()).toContain("<task_refs> required: Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set");
     expect(skillContent()).not.toContain("<execution_scope");
   });
