@@ -1,14 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
 
-import {
-  getSideBarStatusSectionCollapsed,
-  getStatusTransitionTick,
-  recordStatusTransitions,
-  resetSideBarStatusRecencyForTests,
-  resetSideBarStatusSectionCollapseForTests,
-  toggleSideBarStatusSectionCollapsed,
-} from "../core/client/src/sidebar/operations-side-bar-store.js";
-import { focusCycleOperationIds, getState, nextOperationId, requestOperationKeyboardFocus, setState, statusCycleOperationIds } from "../core/client/src/store.js";
+import { describe, expect, it } from "vitest";
+
+import { focusCycleOperationIds, getState, nextOperationId, requestOperationKeyboardFocus, setState } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 function makeOperation(id: string, groupId: string | null = null, createdAt = 1): OperationNode {
@@ -28,9 +22,6 @@ function makeOperation(id: string, groupId: string | null = null, createdAt = 1)
 function makeGroup(id: string, order: number): OperationGroup {
   return { id, name: id, color: "blue", order, theaterId: "theater", createdAt: order };
 }
-
-beforeEach(() => resetSideBarStatusRecencyForTests());
-afterEach(() => resetSideBarStatusRecencyForTests());
 
 describe("nextOperationId — Alt+←/→ focus cycle", () => {
   const order = ["a", "b", "c"];
@@ -98,6 +89,16 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(nextOperationId(order, null, -1)).toBeNull();
   });
 
+  // statusAxis 상태는 operations-side-bar-store 모듈에만 존재하므로, Operations 페이지가 그 모듈에서
+  // 무엇을 가져오는지가 "순환 순서는 상태 정렬 축과 무관하다"는 계약의 렉시컬 방어선이다.
+  // (행동 자체는 focusCycleOperationIds가 statusAxis를 인자로도 받지 않는다는 시그니처가 보장한다.)
+  it("Alt+←/→ 순환은 사이드바 'Sort by status' 축에 분기하지 않는다", () => {
+    const source = fs.readFileSync(new URL("../core/client/src/pages/operations.tsx", import.meta.url), "utf8");
+    expect(source).not.toContain("statusCycleOperationIds");
+    const sideBarStoreImport = /import \{([^}]*)\} from "\.\.\/sidebar\/operations-side-bar-store\.js";/.exec(source);
+    expect(sideBarStoreImport?.[1]?.split(",").map((symbol) => symbol.trim())).toEqual(["toggleSideBarStatusAxis"]);
+  });
+
 });
 
 describe("Operation keyboard focus requests", () => {
@@ -112,136 +113,5 @@ describe("Operation keyboard focus requests", () => {
 
     requestOperationKeyboardFocus("other-operation");
     expect(getState().keyboardFocusRequest).toEqual({ operationId: "other-operation", requestId: 3 });
-  });
-});
-
-describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
-  it("orders by awaiting → running → idle → dormant, keeping operationOrder inside each rank and ignoring group collapse", () => {
-    const operations = [
-      makeOperation("idle-late", null, 1),
-      makeOperation("running-1", "collapsed-group", 2),
-      makeOperation("awaiting-1", "collapsed-group", 3),
-      makeOperation("idle-early", null, 4),
-      makeOperation("dormant-1", null, 5),
-    ];
-    const order = statusCycleOperationIds(
-      operations,
-      ["idle-early", "idle-late", "running-1", "awaiting-1", "dormant-1"],
-      { "running-1": "running", "awaiting-1": "awaiting", "dormant-1": "dormant" },
-      [],
-      () => false,
-    );
-    // 사이드바 STATUS 섹션과 동일한 가시 순서: 접힌 그룹 소속이어도 제외되지 않는다.
-    expect(order).toEqual(["awaiting-1", "running-1", "idle-early", "idle-late", "dormant-1"]);
-  });
-
-  it("drops minimized operations and treats missing status as idle", () => {
-    const operations = [
-      makeOperation("plain", null, 1),
-      makeOperation("minimized-awaiting", null, 2),
-    ];
-    const order = statusCycleOperationIds(
-      operations,
-      ["plain", "minimized-awaiting"],
-      { "minimized-awaiting": "awaiting" },
-      ["minimized-awaiting"],
-      () => false,
-    );
-    expect(order).toEqual(["plain"]);
-  });
-
-  it("uses descending transition ticks inside a status rank before untouched operationOrder entries", () => {
-    const operations = [
-      makeOperation("untouched-first"),
-      makeOperation("latest"),
-      makeOperation("earlier"),
-      makeOperation("untouched-second"),
-    ];
-    recordStatusTransitions(["earlier"]);
-    recordStatusTransitions(["latest"]);
-
-    expect(statusCycleOperationIds(
-      operations,
-      operations.map((operation) => operation.id),
-      Object.fromEntries(operations.map((operation) => [operation.id, "running"])),
-      [],
-      () => false,
-      getStatusTransitionTick,
-    )).toEqual(["latest", "earlier", "untouched-first", "untouched-second"]);
-  });
-
-  it("ranks a restored operation with resumeAvailable but no live status as dormant", () => {
-    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
-    const operations = [makeOperation("plain", null, 2), restored];
-    const order = statusCycleOperationIds(
-      operations,
-      ["restored", "plain"],
-      {},
-      [],
-      () => false,
-    );
-    // idle(plain) → dormant(restored) 랭크 순서여야 사이드바 STATUS 섹션과 일치한다.
-    expect(order).toEqual(["plain", "restored"]);
-  });
-
-  it("lets a live status entry win over the resumeAvailable dormant fallback", () => {
-    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
-    const order = statusCycleOperationIds(
-      [restored, makeOperation("plain", null, 2)],
-      ["restored", "plain"],
-      { restored: "running" },
-      [],
-      () => false,
-    );
-    expect(order).toEqual(["restored", "plain"]);
-  });
-
-  it("keeps a resumed live-idle operation idle — an explicit idle entry beats the dormant fallback", () => {
-    // resume 성공 직후 plugin은 idle을 보고한다. idle이 항목 삭제로 표현되면 resumeAvailable
-    // 마커와 함께 dormant로 재분류된다(Codex P1) — 명시 idle 항목이 이를 막는다.
-    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
-    const order = statusCycleOperationIds(
-      [restored, makeOperation("plain", null, 2)],
-      ["restored", "plain"],
-      { restored: "idle" },
-      [],
-      () => false,
-    );
-    // 둘 다 idle 랭크여야 operationOrder가 유지된다(dormant로 밀리면 plain이 앞선다).
-    expect(order).toEqual(["restored", "plain"]);
-  });
-
-  it("excludes explicitly collapsed status sections, restores them when expanded, and leaves GROUP cycling unchanged", () => {
-    resetSideBarStatusSectionCollapseForTests();
-    const operations = [
-      makeOperation("awaiting"),
-      makeOperation("running"),
-      makeOperation("idle"),
-    ];
-    const operationOrder = operations.map((operation) => operation.id);
-    const operationStatus = { awaiting: "awaiting", running: "running" } as const;
-    const statusOrder = () => statusCycleOperationIds(
-      operations,
-      operationOrder,
-      operationStatus,
-      [],
-      (status) => getSideBarStatusSectionCollapsed("theater", status, false),
-    );
-
-    try {
-      expect(statusOrder()).toEqual(["awaiting", "running", "idle"]);
-
-      toggleSideBarStatusSectionCollapsed("theater", "running", false);
-
-      expect(statusOrder()).toEqual(["awaiting", "idle"]);
-      expect(focusCycleOperationIds(operations, [], operationOrder, [], []))
-        .toEqual(["awaiting", "running", "idle"]);
-
-      toggleSideBarStatusSectionCollapsed("theater", "running", false);
-
-      expect(statusOrder()).toEqual(["awaiting", "running", "idle"]);
-    } finally {
-      resetSideBarStatusSectionCollapseForTests();
-    }
   });
 });

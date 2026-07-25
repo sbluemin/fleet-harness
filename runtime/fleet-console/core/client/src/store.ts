@@ -2,7 +2,6 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
-import { resolveOperationActivity } from "./operation-activity.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
@@ -372,7 +371,7 @@ export function nextOperationId(order: readonly string[], currentId: string | nu
   return order[nextIndex] ?? null;
 }
 
-// SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Operation 정렬을 이 한 함수로 단일화한다.
+// GROUP 축 SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Operation 정렬을 이 한 함수로 단일화한다.
 // operationOrder(드래그 재정렬 SSoT)에 있는 항목은 그 순서를 따르고, 없는 항목은 createdAt 순으로 뒤에 붙인다.
 export function sortOperationsByOrder(
   operations: readonly OperationNode[],
@@ -391,7 +390,7 @@ export function sortOperationsByOrder(
 }
 
 // 그룹 적용 visible 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)로 flatten한 배열을 반환.
-// SideBar visible 순서와 Alt+←/→ cycling 순서의 공유 SSoT.
+// GROUP 축 SideBar visible 순서와 Alt+←/→ cycling 순서의 공유 SSoT.
 // collapsedGroups: 접힌 그룹 id 목록 — 해당 그룹의 멤버는 결과에서 제외한다.
 export function flattenGroupedOrder(
   operations: readonly OperationNode[],
@@ -421,7 +420,7 @@ export function flattenGroupedOrder(
   ];
 }
 
-// Alt+←/→는 SideBar 가시 순서를 따르되, 캔버스에서 최소화된 Operation은 순환 대상에서 제외한다.
+// Alt+←/→는 캔버스 배치 순서를 따르되, 캔버스에서 최소화된 Operation은 순환 대상에서 제외한다. 사이드바의 'Sort by status' 축은 이 순서에 관여하지 않는다.
 export function focusCycleOperationIds(
   operations: readonly OperationNode[],
   groups: readonly OperationGroup[],
@@ -432,37 +431,6 @@ export function focusCycleOperationIds(
   const minimizedIds = new Set(minimized);
   return flattenGroupedOrder(operations, groups, operationOrder, collapsedGroups)
     .filter((operation) => !minimizedIds.has(operation.id))
-    .map((operation) => operation.id);
-}
-
-// STATUS 축의 Alt+←/→ 순환 순서: 사이드바 STATUS 섹션의 가시 순서와 동일하게
-// awaiting → running → idle → dormant 랭크로 안정 정렬한다(랭크 내부는 operationOrder 순서 유지).
-// 그룹 접힘은 적용하지 않되, 상태 섹션 접힘 predicate로 사이드바에서 숨은 Operation을 제외한다.
-const STATUS_CYCLE_RANK: Readonly<Record<OperationActivity, number>> = { awaiting: 0, running: 1, idle: 2, dormant: 3 };
-
-export function statusCycleOperationIds(
-  operations: readonly OperationNode[],
-  operationOrder: readonly string[],
-  operationStatus: Readonly<Record<string, OperationActivity>>,
-  minimized: readonly string[],
-  isStatusSectionCollapsed: (status: OperationActivity) => boolean,
-  getTick?: (id: string) => number | undefined,
-): readonly string[] {
-  const minimizedIds = new Set(minimized);
-  const status = (operation: OperationNode): OperationActivity => resolveOperationActivity(operation, operationStatus);
-  const rank = (operation: OperationNode): number => STATUS_CYCLE_RANK[status(operation)];
-  return [...sortOperationsByOrder(operations, operationOrder)]
-    .sort((left, right) => {
-      const rankDifference = rank(left) - rank(right);
-      if (rankDifference !== 0) return rankDifference;
-      const leftTick = getTick?.(left.id);
-      const rightTick = getTick?.(right.id);
-      if (leftTick === undefined && rightTick === undefined) return 0;
-      if (leftTick === undefined) return 1;
-      if (rightTick === undefined) return -1;
-      return rightTick - leftTick;
-    })
-    .filter((operation) => !minimizedIds.has(operation.id) && !isStatusSectionCollapsed(status(operation)))
     .map((operation) => operation.id);
 }
 
