@@ -31,7 +31,7 @@ class MockChildProcess extends EventEmitter {
 class TestCodexAppServerConnection extends CodexAppServerConnection {
   constructor(
     private readonly mockChild: MockChildProcess,
-    options?: { mcpServerNames?: string[]; mcpStartupTimeout?: number },
+    options?: { mcpServerNames?: string[]; mcpStartupTimeout?: number; requestTimeout?: number },
   ) {
     super({
       command: 'codex',
@@ -39,6 +39,7 @@ class TestCodexAppServerConnection extends CodexAppServerConnection {
       cwd: process.cwd(),
       mcpServerNames: options?.mcpServerNames,
       mcpStartupTimeout: options?.mcpStartupTimeout,
+      requestTimeout: options?.requestTimeout,
     });
   }
 
@@ -485,6 +486,26 @@ describe('CodexAppServerConnection lifecycle', () => {
     });
   });
 
+  it('requestTimeout: 0이어도 endSession teardown 요청은 시간 상한 후 resolve된다', async () => {
+    connection = new TestCodexAppServerConnection(child, { requestTimeout: 0 });
+    await establishSession(connection, child);
+
+    vi.useFakeTimers();
+    try {
+      const endPromise = connection.endSession();
+      expect(lastOutgoingMessage(child)).toMatchObject({
+        method: 'thread/archive',
+        params: { threadId: 'thread-1' },
+      });
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(endPromise).resolves.toBeUndefined();
+      expect(connection.sessionId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('disconnect가 프로세스를 종료한다', async () => {
     await establishSession(connection, child);
 
@@ -573,6 +594,50 @@ describe('CodexAppServerConnection lifecycle', () => {
     } finally {
       fs.rmSync(codexHome, { recursive: true, force: true });
     }
+  });
+
+  it('loadSession이 archived 에러면 thread/unarchive 후 thread/resume을 재시도한다', async () => {
+    const threadId = '019f9884-64b3-78f2-8b54-e9901b6ce4d2';
+    const connectPromise = connection.connect({ skipThreadStart: true });
+    child.stdout.emit(
+      'data',
+      `${jsonRpcResult(1, {
+        userAgent: 'codex/test',
+        codexHome: '/tmp/codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      })}\n`,
+    );
+    await connectPromise;
+
+    const loadPromise = connection.loadSession(threadId);
+    await flushMicrotask();
+    child.stdout.emit(
+      'data',
+      `${jsonRpcError(2, `session ${threadId} is archived. Run \`codex unarchive ${threadId}\` to unarchive it first.`)}\n`,
+    );
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'thread/unarchive',
+      params: { threadId },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(3, { thread: { id: threadId } })}\n`);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'thread/resume',
+      params: { threadId },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(4, { thread: { id: threadId } })}\n`);
+
+    await loadPromise;
+
+    expect(readOutgoingMethods(child)).toEqual([
+      'initialize',
+      'thread/resume',
+      'thread/unarchive',
+      'thread/resume',
+    ]);
+    expect(connection.sessionId).toBe(threadId);
   });
 
   it('stderr를 log/logEntry로 전달한다', async () => {

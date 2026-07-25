@@ -82,6 +82,14 @@ export interface CodexThreadArchiveParams {
 
 export type CodexThreadArchiveResponse = Record<string, never>;
 
+export interface CodexThreadUnarchiveParams {
+  threadId: string;
+}
+
+export interface CodexThreadUnarchiveResponse {
+  thread: CodexThreadInfo;
+}
+
 export interface CodexTurnStartParams {
   threadId: string;
   input: CodexUserInput[];
@@ -353,6 +361,7 @@ export const CODEX_METHODS = {
   THREAD_RESUME: 'thread/resume',
   THREAD_READ: 'thread/read',
   THREAD_ARCHIVE: 'thread/archive',
+  THREAD_UNARCHIVE: 'thread/unarchive',
   TURN_START: 'turn/start',
   TURN_INTERRUPT: 'turn/interrupt',
   TURN_STEER: 'turn/steer',

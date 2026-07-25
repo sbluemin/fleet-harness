@@ -36,6 +36,8 @@ import type {
   CodexThreadReadResponse,
   CodexThreadResumeResponse,
   CodexThreadStartResponse,
+  CodexThreadUnarchiveParams,
+  CodexThreadUnarchiveResponse,
   CodexTurnCompletedNotification,
   CodexTurnInterruptResponse,
   CodexTurnStartResponse,
@@ -172,6 +174,7 @@ const CODEX_MCP_READY_STATUS = 'ready';
 const CODEX_MCP_FAILED_STATUSES = new Set(['failed', 'error']);
 const DEFAULT_MCP_STARTUP_TIMEOUT = 60_000;
 const STDERR_TAIL_LIMIT = 20;
+const SESSION_TEARDOWN_TIMEOUT_MS = 5_000;
 
 /**
  * Codex app-server v2와 직접 JSON-RPC로 통신하는 연결 클래스입니다.
@@ -312,11 +315,29 @@ export class CodexAppServerConnection extends BaseConnection {
     try {
       response = await this.sendThreadResumeRequest(threadId, options);
     } catch (error) {
-      const rolloutPath = this.findRolloutPathForThreadId(threadId);
-      if (!rolloutPath || !isMissingRolloutError(error, threadId)) {
-        throw error;
+      if (isArchivedThreadError(error, threadId)) {
+        try {
+          await this.sendRequest<CodexThreadUnarchiveResponse>(
+            CODEX_METHODS.THREAD_UNARCHIVE,
+            { threadId } satisfies CodexThreadUnarchiveParams,
+          );
+        } catch (unarchiveError) {
+          const message = unarchiveError instanceof Error
+            ? unarchiveError.message
+            : String(unarchiveError);
+          throw new Error(
+            `thread/unarchive에 실패했습니다(원인: archived 상태로 resume 거부됨): ${message}`,
+            { cause: unarchiveError },
+          );
+        }
+        response = await this.sendThreadResumeRequest(threadId, options);
+      } else {
+        const rolloutPath = this.findRolloutPathForThreadId(threadId);
+        if (!rolloutPath || !isMissingRolloutError(error, threadId)) {
+          throw error;
+        }
+        response = await this.sendThreadResumeRequest(threadId, options, rolloutPath);
       }
-      response = await this.sendThreadResumeRequest(threadId, options, rolloutPath);
     }
     this.threadId = response.thread.id;
     this.turnId = null;
@@ -435,6 +456,7 @@ export class CodexAppServerConnection extends BaseConnection {
       await this.sendRequest<CodexTurnInterruptResponse>(
         CODEX_METHODS.TURN_INTERRUPT,
         { threadId, turnId: activeTurnId },
+        SESSION_TEARDOWN_TIMEOUT_MS,
       ).catch(() => {});
     }
 
@@ -442,6 +464,7 @@ export class CodexAppServerConnection extends BaseConnection {
       await this.sendRequest<CodexThreadArchiveResponse>(
         CODEX_METHODS.THREAD_ARCHIVE,
         { threadId },
+        SESSION_TEARDOWN_TIMEOUT_MS,
       ).catch(() => {});
     }
 
@@ -1159,6 +1182,10 @@ export class CodexAppServerConnection extends BaseConnection {
 
 function isMissingRolloutError(error: unknown, threadId: string): boolean {
   return error instanceof Error && error.message.includes(`no rollout found for thread id ${threadId}`);
+}
+
+function isArchivedThreadError(error: unknown, threadId: string): boolean {
+  return error instanceof Error && error.message.includes(`session ${threadId} is archived`);
 }
 
 function findRolloutPath(root: string, threadId: string): string | null {
