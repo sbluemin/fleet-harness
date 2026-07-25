@@ -844,6 +844,13 @@ describe("Instrument core design contract", () => {
       for (const declaration of declarations) {
         expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id)[a-z-]*:$/);
       }
+      // Surface 불투명 계약: maritime/carbon의 surface-glass/-strong/pillar는 알파를 갖지 않는다.
+      // 반투명 surface 토큰은 scrim 동반 모달·팝업의 비침 회귀 뿌리였고(instrument는 불투명 별칭),
+      // 반투명 효과는 호출부의 color-mix(..., transparent)만 명시적으로 소유한다.
+      const surfaceDeclarations = block.match(/^\s{2}--surface-(?:glass|glass-strong|pillar):[^;]+;/gm) ?? [];
+      for (const declaration of surfaceDeclarations) {
+        expect(declaration).not.toContain("/");
+      }
     }
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });

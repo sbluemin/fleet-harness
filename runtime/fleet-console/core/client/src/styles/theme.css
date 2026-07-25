@@ -179,9 +179,12 @@
   --canvas-sea-mid: oklch(7% 0.015 246);
   --canvas-sea-far: oklch(6% 0.012 250);
 
-  --surface-glass: oklch(28% 0.04 248 / 60%);
-  --surface-glass-strong: oklch(32% 0.04 248 / 78%);
-  --surface-pillar: oklch(22% 0.05 248 / 86%);
+  /* surface 토큰은 불투명이 계약이다(instrument와 동일 규칙) — 반투명 glass 토큰은 scrim 동반
+     모달·팝업·플로팅 메뉴에서 뒤 콘텐츠를 비춰 판독성을 해치는 회귀의 뿌리였다.
+     반투명 효과는 호출부가 color-mix(..., transparent)로 명시적으로 소유한다. */
+  --surface-glass: oklch(28% 0.04 248);
+  --surface-glass-strong: oklch(32% 0.04 248);
+  --surface-pillar: oklch(22% 0.05 248);
   --surface-rim: oklch(64% 0.04 248 / 24%);
   --surface-rim-strong: oklch(72% 0.05 248 / 38%);
   --surface-band: var(--ink-deep);
@@ -232,9 +235,10 @@
   --canvas-sea-mid: oklch(8% 0.006 255);
   --canvas-sea-far: oklch(6% 0.005 258);
 
-  --surface-glass: oklch(25% 0.006 252 / 62%);
-  --surface-glass-strong: oklch(29% 0.007 252 / 80%);
-  --surface-pillar: oklch(20% 0.008 252 / 88%);
+  /* surface 불투명 계약 — 위 maritime 블록의 주석과 동일 규칙. */
+  --surface-glass: oklch(25% 0.006 252);
+  --surface-glass-strong: oklch(29% 0.007 252);
+  --surface-pillar: oklch(20% 0.008 252);
   --surface-rim: oklch(62% 0.006 252 / 22%);
   --surface-rim-strong: oklch(70% 0.007 252 / 36%);
   --surface-band: var(--ink-deep);
