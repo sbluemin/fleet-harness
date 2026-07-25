@@ -40,10 +40,18 @@ interface AgentRouteDeps {
   readonly authService: AuthService;
   readonly globalOptionsService: GlobalOptionsService;
 }
+interface InitialPromptReadyWatcher {
+  readonly generation: number;
+  readonly prompt: string;
+  quietTimer: ReturnType<typeof setTimeout> | undefined;
+  timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+}
 
 const AGENT_OPERATION_TYPE = "agent";
 const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
 const INITIAL_PROMPT_MAX_LENGTH = 4_000;
+const INITIAL_PROMPT_READY_QUIET_MS = 800;
+const INITIAL_PROMPT_READY_TIMEOUT_MS = 15_000;
 const INITIAL_PROMPT_RETRY_DELAY_MS = 500;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const TERMINAL_PLUGIN_ID = "terminal";
@@ -96,6 +104,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const detector = createDefaultAgentCliDetector();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const initialPromptRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const initialPromptReadyWatchers = new Map<string, InitialPromptReadyWatcher>();
   const initialPromptGenerations = new Map<string, number>();
   let nextInitialPromptGeneration = 1;
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
@@ -121,6 +130,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (!sessionId) return;
     observability.appendTerminalRuntimeEvent(sessionId, withSignatureCli(event, runtime.carrierRuntime.registry));
   });
+  const unsubscribePtyOutput = terminalRuntime.onOutput(handleInitialPromptOutput);
   // carrier 리마인더와 rename 주입이 세션 단위로 함께 직렬화되도록 공유 writer를 사용한다.
   const reminderWriter = createDelayedPtyWriter();
   const unsubscribeReminder = createCarrierResultReminderRouter({
@@ -311,6 +321,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       payload: toOperationPayload(undefined, cwd, session),
       createdAt: session.createdAt,
     });
+    if (initialPrompt) watchInitialPromptReadiness(sessionId, initialPrompt, initialPromptGeneration);
     try {
       await terminalRuntime.attach({
         cwd,
@@ -321,7 +332,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         theaterId,
         cliId,
       });
-      if (initialPrompt) injectInitialPrompt(sessionId, initialPrompt, initialPromptGeneration);
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -525,9 +535,10 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function cleanup(): Promise<void> {
     reminderWriter.cancelAll();
-    for (const sessionId of new Set([...initialPromptGenerations.keys(), ...initialPromptRetryTimers.keys()])) {
+    for (const sessionId of new Set([...initialPromptGenerations.keys(), ...initialPromptReadyWatchers.keys(), ...initialPromptRetryTimers.keys()])) {
       invalidateInitialPromptGeneration(sessionId);
     }
+    unsubscribePtyOutput();
     unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();
@@ -592,6 +603,49 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     );
   }
 
+  function watchInitialPromptReadiness(sessionId: string, prompt: string, generation: number): void {
+    clearInitialPromptReadyWatcher(sessionId);
+    if (!isCurrentInitialPromptGeneration(sessionId, generation)) return;
+    const watcher: InitialPromptReadyWatcher = {
+      generation,
+      prompt,
+      quietTimer: undefined,
+      timeoutTimer: undefined,
+    };
+    initialPromptReadyWatchers.set(sessionId, watcher);
+    watcher.timeoutTimer = setTimeout(() => {
+      completeInitialPromptReadiness(sessionId, watcher);
+    }, INITIAL_PROMPT_READY_TIMEOUT_MS);
+  }
+
+  function handleInitialPromptOutput(sessionId: string): void {
+    const watcher = initialPromptReadyWatchers.get(sessionId);
+    if (!watcher) return;
+    if (!isCurrentInitialPromptGeneration(sessionId, watcher.generation)) {
+      clearInitialPromptReadyWatcher(sessionId, watcher);
+      return;
+    }
+    if (watcher.quietTimer) clearTimeout(watcher.quietTimer);
+    watcher.quietTimer = setTimeout(() => {
+      completeInitialPromptReadiness(sessionId, watcher);
+    }, INITIAL_PROMPT_READY_QUIET_MS);
+  }
+
+  function completeInitialPromptReadiness(sessionId: string, watcher: InitialPromptReadyWatcher): void {
+    if (initialPromptReadyWatchers.get(sessionId) !== watcher) return;
+    clearInitialPromptReadyWatcher(sessionId, watcher);
+    if (!isCurrentInitialPromptGeneration(sessionId, watcher.generation)) return;
+    injectInitialPrompt(sessionId, watcher.prompt, watcher.generation);
+  }
+
+  function clearInitialPromptReadyWatcher(sessionId: string, expected?: InitialPromptReadyWatcher): void {
+    const watcher = initialPromptReadyWatchers.get(sessionId);
+    if (!watcher || (expected && watcher !== expected)) return;
+    if (watcher.quietTimer) clearTimeout(watcher.quietTimer);
+    if (watcher.timeoutTimer) clearTimeout(watcher.timeoutTimer);
+    initialPromptReadyWatchers.delete(sessionId);
+  }
+
   function injectInitialPrompt(sessionId: string, prompt: string, generation: number, isRetry = false): void {
     if (!isCurrentInitialPromptGeneration(sessionId, generation)) return;
     const safePrompt = sanitizeCarrierResultReminder(prompt).trim();
@@ -627,6 +681,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   function beginInitialPromptGeneration(sessionId: string): number {
+    clearInitialPromptReadyWatcher(sessionId);
     clearInitialPromptRetry(sessionId);
     const generation = nextInitialPromptGeneration;
     nextInitialPromptGeneration += 1;
@@ -635,6 +690,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   function invalidateInitialPromptGeneration(sessionId: string): void {
+    clearInitialPromptReadyWatcher(sessionId);
     clearInitialPromptRetry(sessionId);
     initialPromptGenerations.delete(sessionId);
   }

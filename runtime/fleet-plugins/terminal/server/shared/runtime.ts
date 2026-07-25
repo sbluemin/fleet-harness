@@ -18,6 +18,7 @@ export interface TerminalRuntime {
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
   resolveSessionIdentity(operationId: string, providerSessionId: string): Promise<string | null>;
+  onOutput(callback: (operationId: string) => void): () => void;
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
   registerLaunchResolver(operationType: string, resolver: TerminalLaunchResolver): () => void;
   stop(): Promise<void>;
@@ -29,6 +30,7 @@ const SHELL_OPERATION_TYPE = "shell";
 
 export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRuntime {
   const tickets = createPluginTerminalTicketRegistry();
+  const terminalOutputListeners = new Set<(operationId: string) => void>();
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
   const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
   const defaultTerminalLaunch = createShellTerminalLaunchResolver();
@@ -36,6 +38,9 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
   const sessions = createTerminalSessionManager({
     launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
     startShell: startTerminalShell,
+    onSessionOutput: (sessionId) => {
+      for (const listener of terminalOutputListeners) listener(sessionId);
+    },
     onSessionExit: async (sessionId) => {
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },
@@ -58,6 +63,10 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
     resolveSessionIdentity: (operationId, providerSessionId) => sessions.resolveSessionIdentity(operationId, providerSessionId),
+    onOutput: (callback) => {
+      terminalOutputListeners.add(callback);
+      return () => terminalOutputListeners.delete(callback);
+    },
     onExit: (callback) => {
       terminalExitListeners.add(callback);
       return () => terminalExitListeners.delete(callback);
@@ -71,6 +80,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     stop: async () => {
       upgrade.close();
       await sessions.stop();
+      terminalOutputListeners.clear();
       terminalExitListeners.clear();
       terminalLaunchResolvers.clear();
     },

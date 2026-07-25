@@ -24,17 +24,24 @@ afterEach(async () => {
 describe("agent session initial prompt", () => {
   it("injects the trimmed prompt through the delayed PTY writer without echoing it in session or Operation DTOs", async () => {
     const harness = createHarness({ initialPrompt: "  Inspect the failing test  " });
+    vi.useFakeTimers();
+    try {
+      await harness.postSessions();
+      const sessionId = harness.attach.mock.calls[0]?.[0]?.sessionId;
+      expect(sessionId).toBeTypeOf("string");
+      harness.emitOutput(sessionId!);
+      await vi.advanceTimersByTimeAsync(1_051);
 
-    await harness.postSessions();
-    await vi.waitFor(() => expect(harness.write).toHaveBeenCalledTimes(2));
-
-    expect(harness.attach).toHaveBeenCalledOnce();
-    expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Inspect the failing test", "\r"]);
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.responses.at(-1)?.body).not.toHaveProperty("initialPrompt");
-    expect(harness.operations[0]?.payload).not.toHaveProperty("initialPrompt");
-    expect(JSON.stringify(harness.responses)).not.toContain("Inspect the failing test");
-    expect(JSON.stringify(harness.operations)).not.toContain("Inspect the failing test");
+      expect(harness.attach).toHaveBeenCalledOnce();
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Inspect the failing test", "\r"]);
+      expect(harness.responses.at(-1)?.status).toBe(200);
+      expect(harness.responses.at(-1)?.body).not.toHaveProperty("initialPrompt");
+      expect(harness.operations[0]?.payload).not.toHaveProperty("initialPrompt");
+      expect(JSON.stringify(harness.responses)).not.toContain("Inspect the failing test");
+      expect(JSON.stringify(harness.operations)).not.toContain("Inspect the failing test");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects prompts longer than 4000 trimmed characters", async () => {
@@ -62,10 +69,72 @@ describe("agent session initial prompt", () => {
     vi.useFakeTimers();
     try {
       await harness.postSessions();
-      await vi.advanceTimersByTimeAsync(751);
+      const sessionId = harness.attach.mock.calls[0]?.[0]?.sessionId;
+      harness.emitOutput(sessionId!);
+      await vi.advanceTimersByTimeAsync(1_551);
 
       expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Retry me", "Retry me", "\r"]);
       expect(harness.terminate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the prompt gated while PTY output continues before the 800ms quiet window", async () => {
+    const harness = createHarness({ initialPrompt: "Wait for quiet" });
+    vi.useFakeTimers();
+    try {
+      await harness.postSessions();
+      const sessionId = harness.attach.mock.calls[0]?.[0]?.sessionId;
+      harness.emitOutput(sessionId!);
+
+      await vi.advanceTimersByTimeAsync(799);
+      expect(harness.write).not.toHaveBeenCalled();
+      harness.emitOutput(sessionId!);
+
+      await vi.advanceTimersByTimeAsync(799);
+      expect(harness.write).not.toHaveBeenCalled();
+      harness.emitOutput(sessionId!);
+
+      await vi.advanceTimersByTimeAsync(799);
+      expect(harness.write).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Wait for quiet"]);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Wait for quiet", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to prompt injection after the 15 second readiness timeout", async () => {
+    const harness = createHarness({ initialPrompt: "Timeout fallback" });
+    vi.useFakeTimers();
+    try {
+      await harness.postSessions();
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(harness.write).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Timeout fallback"]);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Timeout fallback", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the readiness watcher without injecting when the session exits before ready", async () => {
+    const harness = createHarness({ initialPrompt: "Do not inject" });
+    vi.useFakeTimers();
+    try {
+      await harness.postSessions();
+      const sessionId = harness.attach.mock.calls[0]?.[0]?.sessionId;
+      harness.emitOutput(sessionId!);
+      await harness.emitExit(sessionId!);
+
+      await vi.advanceTimersByTimeAsync(15_250);
+      expect(harness.write).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -82,15 +151,16 @@ describe("agent session initial prompt", () => {
     vi.useFakeTimers();
     try {
       await harness.postSessions();
-      await Promise.resolve();
       const firstAttachContext = harness.attach.mock.calls[0]?.[0];
       expect(firstAttachContext).toBeDefined();
       const sessionId = firstAttachContext!.sessionId;
+      harness.emitOutput(sessionId);
+      await vi.advanceTimersByTimeAsync(800);
       expect(harness.write.mock.calls.map(([_, data]) => data)).toEqual(["Stale prompt"]);
       await exitPromise;
 
       await harness.resumeSession(sessionId!);
-      await vi.advanceTimersByTimeAsync(751);
+      await vi.advanceTimersByTimeAsync(15_250);
 
       expect(harness.attach).toHaveBeenCalledTimes(2);
       expect(harness.attach.mock.calls[1]?.[0]?.sessionId).toBe(sessionId);
@@ -128,6 +198,7 @@ function createHarness(body: Record<string, unknown>) {
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   let route: RouteHandler | undefined;
   let lifecycleCleanup: (() => void | Promise<void>) | undefined;
+  let outputCallback: ((operationId: string) => void) | undefined;
   let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
   const write = vi.fn<(sessionId: string, data: string) => boolean>(() => true);
@@ -142,6 +213,12 @@ function createHarness(body: Record<string, unknown>) {
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     resolveSessionIdentity: async () => null,
+    onOutput: (callback) => {
+      outputCallback = callback;
+      return () => {
+        if (outputCallback === callback) outputCallback = undefined;
+      };
+    },
     onExit: (callback) => {
       exitCallback = callback;
       return () => {
@@ -250,6 +327,10 @@ function createHarness(body: Record<string, unknown>) {
     responses,
     terminate,
     write,
+    emitOutput: (sessionId: string) => {
+      if (!outputCallback) throw new Error("Terminal output callback was not registered");
+      outputCallback(sessionId);
+    },
     emitExit: async (sessionId: string) => {
       if (!exitCallback) throw new Error("Terminal exit callback was not registered");
       await exitCallback(sessionId);
