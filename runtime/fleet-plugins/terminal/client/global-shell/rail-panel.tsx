@@ -22,6 +22,7 @@ const PANEL_ROOT_STYLE: CSSProperties = {
 export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
   title: "Shell",
+  defaultWidth: 420,
   icon: TerminalGlyphIcon,
   preferredExtraWidth: GLOBAL_SHELL_EXTRA_WIDTH,
   render: (ctx: RailPanelContext) => (

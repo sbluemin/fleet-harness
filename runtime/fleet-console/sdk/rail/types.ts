@@ -27,5 +27,6 @@ export interface RailPanelDescriptor {
   readonly side?: "right";
   /** @deprecated Core ignores this field; every panel is Theater-root scoped. */
   readonly pathAware?: boolean;
+  readonly defaultWidth?: number;
   readonly preferredExtraWidth?: number;
 }
