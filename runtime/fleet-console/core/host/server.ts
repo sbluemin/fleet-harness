@@ -43,7 +43,6 @@ import { encodeSseData } from "./sse.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
 import { createFolderGrantStore } from "./theater-folder-grants.js";
-import { createTheaterRowBadgeRegistry, handleTheaterRowBadges } from "./theater-row-badges.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
@@ -220,13 +219,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
-    method: "GET",
-    path: "/api/v1/theaters/row-badges",
-    summary: "Theater 행의 플러그인 컨텍스트 배지를 조회합니다.",
-    category: "Observer",
-    gate: "origin-write",
-  },
-  {
     method: "POST",
     path: "/api/v1/plans/list",
     summary: "Theater의 실행 계획 목록을 조회합니다.",
@@ -314,7 +306,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
-  const theaterRowBadges = createTheaterRowBadgeRegistry();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const operationSseSubscribers = new Set<http.ServerResponse>();
@@ -402,9 +393,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           if (current.length === 0) pluginLaunchCatalogProviders.delete(pluginId);
         };
       },
-    },
-    theaters: {
-      registerRowBadgeProvider: (pluginId, provider) => theaterRowBadges.register(pluginId, provider),
     },
     events: {
       publish: publishPluginEvent,
@@ -672,15 +660,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
-      return;
-    }
-    if (pathname === "/api/v1/theaters/row-badges") {
-      runAsyncHandler(handleTheaterRowBadges(req, res, {
-        isAuthorized: isTerminalAuthorized,
-        listTheaterIds: () => theaters.list().map((theater) => theater.id),
-        resolve: (theaterIds) => theaterRowBadges.resolve(theaterIds),
-        writeJson,
-      }), res);
       return;
     }
     if (pathname === "/api/v1/theaters/folder-listings") {

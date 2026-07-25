@@ -189,32 +189,8 @@ export interface FleetPluginServerContext {
   registerWsHandler(path: string, handler: UpgradeHandler): void;
 }
 
-export type TheaterRowBadgeTone = "neutral" | "info" | "warn" | "positive";
-
-export interface TheaterRowBadge {
-  readonly id: string;
-  readonly text: string;
-  readonly ariaLabel?: string;
-  readonly tone?: TheaterRowBadgeTone;
-}
-
-export interface TheaterRowBadgeContribution {
-  readonly theaterId: string;
-  readonly badges: readonly TheaterRowBadge[];
-}
-
-export interface TheaterRowBadgeRequest {
-  readonly theaterIds: readonly string[];
-  readonly signal: AbortSignal;
-}
-
-export type TheaterRowBadgeProvider = (request: TheaterRowBadgeRequest) => Promise<readonly TheaterRowBadgeContribution[]>;
-
 export interface FleetPluginHostCapabilities {
   readonly operations: FleetPluginOperationsHost;
-  readonly theaters: {
-    registerRowBadgeProvider(pluginId: string, provider: TheaterRowBadgeProvider): () => void;
-  };
   readonly events: FleetPluginEventsHost;
   readonly paths: FleetPluginPathsHost;
   readonly storage: FleetPluginStorageHost;

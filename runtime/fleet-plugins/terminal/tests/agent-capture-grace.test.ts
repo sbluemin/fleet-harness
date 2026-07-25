@@ -203,9 +203,6 @@ function createHarness(body: Record<string, unknown>) {
         registerPayloadSanitizer: () => () => {},
         registerLaunchCatalog: () => () => {},
       },
-      theaters: {
-        registerRowBadgeProvider: () => () => {},
-      },
       events: {
         publish: () => {},
         subscribe: (channel: string, listener: (payload: unknown) => void) => {

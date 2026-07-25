@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { OperationActivity, TheaterRowBadge } from "@fleet-console/sdk/plugin";
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
@@ -41,7 +41,6 @@ import {
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
 import { resolveOperationLaunchKind } from "./resolve-launch-kind.js";
-import { useTheaterRowBadges } from "./theater-row-badges.js";
 
 interface OperationsSideBarProps {
   readonly theaters: readonly TheaterInfo[];
@@ -142,7 +141,6 @@ interface TheaterEntryBuildInput {
 
 interface TheaterSectionHeaderProps {
   readonly theater: TheaterInfo;
-  readonly badges: readonly TheaterRowBadge[];
   readonly active: boolean;
   readonly collapsed: boolean;
   readonly statusAxis: boolean;
@@ -162,7 +160,6 @@ interface TheaterSectionHeaderProps {
 
 interface TheaterInactiveSectionProps {
   readonly theater: TheaterInfo;
-  readonly badges: readonly TheaterRowBadge[];
   readonly entries: readonly SideBarEntry[];
   readonly groups: readonly OperationGroup[];
   readonly collapsedGroups: ReadonlySet<string>;
@@ -306,7 +303,6 @@ export function OperationsSideBar({
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
-  const badgesByTheater = useTheaterRowBadges(theaters.map((theater) => theater.id), collapsed);
   const statusAxis = useSideBarStatusAxis();
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
@@ -871,7 +867,6 @@ export function OperationsSideBar({
               <TheaterInactiveSection
                 key={theater.id}
                 theater={theater}
-                badges={badgesByTheater[theater.id] ?? []}
                 entries={theaterCollapsed ? [] : inactiveEntries}
                 groups={groups.filter((group) => group.theaterId === theater.id)}
                 collapsedGroups={new Set(theaterCanvas.collapsedGroups)}
@@ -914,7 +909,6 @@ export function OperationsSideBar({
             >
               <TheaterSectionHeader
                 theater={theater}
-                badges={badgesByTheater[theater.id] ?? []}
                 active
                 collapsed={theaterCollapsed}
                 statusAxis={statusAxis}
@@ -1264,7 +1258,6 @@ function buildTheaterEntries({
 
 function TheaterSectionHeader({
   theater,
-  badges,
   active,
   collapsed,
   statusAxis,
@@ -1354,20 +1347,6 @@ function TheaterSectionHeader({
     >
       <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
       <span className="side-bar-theater-name">{theater.label}</span>
-      {badges.length > 0 ? (
-        <span className="side-bar-theater-badges" aria-label={`${theater.label} repository status`}>
-          {badges.map((badge) => (
-            <span
-              key={badge.id}
-              className={`side-bar-theater-badge side-bar-theater-badge--${badge.tone ?? "neutral"}`}
-              aria-label={badge.ariaLabel}
-              title={badge.ariaLabel ?? badge.text}
-            >
-              {badge.text}
-            </span>
-          ))}
-        </span>
-      ) : null}
       <ChevronIcon collapsed={collapsed} />
       <span className="side-bar-theater-row-controls" role="group" aria-label={`${theater.label} controls`}>
         <button
@@ -1416,7 +1395,6 @@ function TheaterSectionHeader({
 
 function TheaterInactiveSection({
   theater,
-  badges,
   entries,
   groups,
   collapsedGroups,
@@ -1454,7 +1432,6 @@ function TheaterInactiveSection({
     >
       <TheaterSectionHeader
         theater={theater}
-        badges={badges}
         active={false}
         collapsed={collapsed}
         statusAxis={statusAxis}

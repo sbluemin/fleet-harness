@@ -611,28 +611,6 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
   });
 
-  it("keeps Theater repository badges on signal tokens and anchored to the label", () => {
-    const sidebar = source("sidebar/operations-side-bar.tsx");
-    const components = source("styles/components.css");
-    const badgeStart = components.indexOf(".side-bar-theater-badge {");
-    const badgeEnd = components.indexOf(".side-bar-theater-chevron {", badgeStart);
-    const badgeGrammar = components.slice(badgeStart, badgeEnd);
-    const chevronStart = components.indexOf(".side-bar-theater-chevron {");
-    const chevronGrammar = components.slice(chevronStart, components.indexOf("}", chevronStart));
-
-    expect(sidebar).toContain('className={`side-bar-theater-badge side-bar-theater-badge--${badge.tone ?? "neutral"}`}');
-    // 배지는 Theater 이름 바로 오른쪽에 붙는다. 이름이 남는 공간을 흡수하면 배지가 행 끝으로
-    // 밀려 이름과 분리되고, 좁은 행에서는 공간 다툼에 져 잘려 나간다.
-    expect(components).toContain(".side-bar-theater-name {\n  flex: 0 1 auto;\n  min-width: 0;");
-    // 남는 공간은 ⌄의 auto margin이 흡수해 ⌄와 행 컨트롤만 우측 끝에 고정된다.
-    expect(chevronGrammar).toContain("margin-left: auto;");
-    expect(components).toContain("max-width: min(42%, 180px);");
-    expect(badgeGrammar).toContain("var(--aurora)");
-    expect(badgeGrammar).toContain("var(--warn)");
-    expect(badgeGrammar).toContain("var(--positive)");
-    expect(badgeGrammar).not.toContain("var(--id-");
-  });
-
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
     const rightRail = source("rail/right-rail.tsx");
