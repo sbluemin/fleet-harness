@@ -15,20 +15,18 @@ import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
 import { analysisCopy } from "./analysis-i18n.js";
-import { disposeAnalysisStore, rearmAnalysisArtifacts } from "./analysis-store.js";
+import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
 import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, formatTokenEstimate, estimateJobTokens, getDockTailText, isDockTrackLive, isTrackError, mergeDockJobs, mergeJobIds, pruneRetainedJobs, resolveDockRowStatusLabel, resolveJobSignature, resolveCarrierCaptain, resolveToolTone, retainCompletedJobs, selectJobsByIds } from "./helpers.js";
-import type { RetainedJob } from "./helpers.js";
+import { deriveTrackPhase, describeToolTarget, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
 import { isTerminalJobStatus } from "./reduce.js";
-import { RequestDetails } from "./request-details.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
 import type { AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
@@ -53,16 +51,9 @@ interface RendererOption {
   readonly label: string;
 }
 
-interface DockRowProps {
-  readonly track: TrackView;
-  readonly job: JobView;
-}
-
 interface PinnedScrollLocal {
   readonly containerRef: React.RefObject<HTMLDivElement | null>;
   readonly contentRef: React.RefObject<HTMLDivElement | null>;
-  readonly pinned: boolean;
-  readonly jumpToLatest: () => void;
 }
 
 const RENDERERS: readonly RendererOption[] = [
@@ -72,14 +63,13 @@ const RENDERERS: readonly RendererOption[] = [
 
 const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
-const DOCK_EXPANDED_KEY = "fleet-plugin.terminal.stream-dock-expanded";
-// Signal Strip 개편 이전 접힘 키 — 신규 코드는 읽지 않으며 초기화 시 1회 제거만 한다.
-const LEGACY_DOCK_COLLAPSED_KEY = "fleet-plugin.terminal.stream-dock-collapsed";
 const PIN_SLACK_PX = 56;
-const DOCK_RETENTION_MS = 4_000;
 const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
 const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
 const ANALYSIS_READY_POLL_MS = 5_000;
+export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
+const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
+const AGENT_COMPANION_IDS = [CARRIER_STREAMS_COMPANION_ID, ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -87,9 +77,10 @@ export const agentOperationKind = defineOperationKind({
   title: "Agent",
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
-  canOpenCompanions: ({ api, operation }) => fetchAnalysisReady(api, operation.id),
+  canOpenCompanions: () => true,
   companions: [
-    { id: "session-analyst-chat", title: "Session Analyst", hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
+    { id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true, render: (context) => <CarrierStreamsPanel context={context} /> },
+    { id: ANALYST_CHAT_COMPANION_ID, title: "Session Analyst", hideCaption: true, defaultHidden: true, render: (context) => <AnalystChatPanel context={context} /> },
     { id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
 });
@@ -193,16 +184,13 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const pinnedRef = React.useRef(true);
-  const [pinned, setPinned] = React.useState(true);
 
   const updatePinned = React.useCallback((next: boolean) => {
     if (pinnedRef.current === next) return;
     pinnedRef.current = next;
-    setPinned(next);
   }, []);
 
-  // resetKey 의존 필수: 모달처럼 컨테이너가 훅 마운트 이후에 나타나는 소비자는
-  // 마운트 시점에 containerRef가 null이라, resetKey(오픈 상태 포함) 변화에 재부착해야 한다.
+  // resetKey가 바뀌면 컬럼별 새 스크롤 컨테이너에 listener를 재부착한다.
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -239,51 +227,7 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
     return () => observer.disconnect();
   }, [resetKey]);
 
-  const jumpToLatest = React.useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
-    container.focus({ preventScroll: true });
-    updatePinned(true);
-  }, [updatePinned]);
-
-  return { containerRef, contentRef, pinned, jumpToLatest };
-}
-
-function getTabbableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>("button, summary, [href], input, select, textarea, [tabindex]"))
-    .filter((element) => {
-      if (element.tabIndex < 0 || element.hidden || element.closest("[hidden]") || element.matches(":disabled")) return false;
-      const style = window.getComputedStyle(element);
-      return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
-    });
-}
-
-function useDockExpanded(): [boolean, (next: boolean) => void] {
-  // 기본값 접힘(false). 펼치면 "true" 저장, 접으면 키 제거.
-  const [expanded, setExpandedState] = React.useState(() => {
-    try {
-      localStorage.removeItem(LEGACY_DOCK_COLLAPSED_KEY);
-      return localStorage.getItem(DOCK_EXPANDED_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const setExpanded = React.useCallback((next: boolean) => {
-    try {
-      if (next) {
-        localStorage.setItem(DOCK_EXPANDED_KEY, "true");
-      } else {
-        localStorage.removeItem(DOCK_EXPANDED_KEY);
-      }
-    } catch {
-      // localStorage 비가용 환경 무시
-    }
-    setExpandedState(next);
-  }, []);
-
-  return [expanded, setExpanded];
+  return { containerRef, contentRef };
 }
 
 function useElapsed(startedAt: number | undefined, finishedAt: number | undefined): string {
@@ -300,11 +244,10 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
 }
 
 function useAnalysisReady(context: OperationRenderContext): boolean {
-  const companionsOpen = context.companionsOpen ?? false;
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
-    if (companionsOpen || ready) return;
+    if (ready) return;
     let disposed = false;
     let requestPending = false;
     const poll = async () => {
@@ -320,44 +263,86 @@ function useAnalysisReady(context: OperationRenderContext): boolean {
       disposed = true;
       window.clearInterval(interval);
     };
-  }, [companionsOpen, context.api, context.operationId, ready]);
+  }, [context.api, context.operationId, ready]);
 
-  return companionsOpen || ready;
+  return ready;
 }
 
-function SessionAnalystHandle({ context, ready }: { readonly context: OperationRenderContext; readonly ready: boolean }) {
-  const companionsOpen = context.companionsOpen ?? false;
+function isCompanionPanelVisible(context: OperationRenderContext, companionId: string): boolean {
+  return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
+}
+
+function toggleCompanionPanel(context: OperationRenderContext, companionId: string): void {
+  const currentlyVisible = isCompanionPanelVisible(context, companionId);
+  const nextVisible = !currentlyVisible;
+  context.onSetCompanionPanelVisible?.(companionId, nextVisible);
+  if (nextVisible) {
+    if (!context.companionsOpen) context.onRequestCompanions?.(true);
+    return;
+  }
+  const visibleCount = AGENT_COMPANION_IDS.filter((id) => isCompanionPanelVisible(context, id)).length;
+  if (visibleCount <= 1) context.onRequestCompanions?.(false);
+}
+
+function SessionAnalystHandle({
+  context,
+  ready,
+  working,
+}: {
+  readonly context: OperationRenderContext;
+  readonly ready: boolean;
+  readonly working: boolean;
+}) {
+  const open = isCompanionPanelVisible(context, ANALYST_CHAT_COMPANION_ID);
   const language = context.language ?? "en";
   return (
     <button
       type="button"
-      className={`session-analyst-handle${ready ? "" : " is-waiting"}`}
-      aria-label={analysisCopy(language, companionsOpen ? "Exit Session Analyst" : "Open Session Analyst")}
-      aria-pressed={companionsOpen}
+      className={`session-analyst-handle${ready ? "" : " is-waiting"}${working ? " is-live" : ""}`}
+      aria-label={analysisCopy(language, open ? "Exit Session Analyst" : "Open Session Analyst")}
+      aria-pressed={open}
       aria-disabled={!ready}
       disabled={!ready}
       title={ready ? undefined : analysisCopy(language, "Send a message in this session first")}
-      onClick={() => { if (ready) context.onRequestCompanions?.(!context.companionsOpen); }}
-    ><span className="session-analyst-handle__chev" aria-hidden="true">{companionsOpen ? "«" : "»"}</span><span className="session-analyst-handle__label">{analysisCopy(language, companionsOpen ? "EXIT" : "ANALYZE")}</span></button>
+      onClick={() => { if (ready) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID); }}
+    >
+      {working ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
+      <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
+      <span className="session-analyst-handle__label">{analysisCopy(language, open ? "EXIT" : "ANALYZE")}</span>
+    </button>
+  );
+}
+
+function CarrierStreamsHandle({ context, live }: { readonly context: OperationRenderContext; readonly live: boolean }) {
+  const open = isCompanionPanelVisible(context, CARRIER_STREAMS_COMPANION_ID);
+  const language = context.language ?? "en";
+  return (
+    <button
+      type="button"
+      className={`session-analyst-handle session-analyst-handle--streams${live ? " is-live" : ""}`}
+      aria-label={analysisCopy(language, open ? "Exit Carrier Streams" : "Open Carrier Streams")}
+      aria-pressed={open}
+      onClick={() => toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
+    >
+      {live ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
+      <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
+      <span className="session-analyst-handle__label">{open ? "EXIT" : "STREAMS"}</span>
+    </button>
   );
 }
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const [modalOpen, setModalOpen] = React.useState(false);
-  const [detailTab, setDetailTab] = React.useState<"request" | "activity">("request");
-  const [modalJobIds, setModalJobIds] = React.useState<readonly string[]>([]);
-  const [retainedJobs, setRetainedJobs] = React.useState<readonly RetainedJob[]>([]);
-  const detailTabsId = React.useId();
-  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
-  const overlayRef = React.useRef<HTMLDivElement>(null);
-  const detailBtnRef = React.useRef<HTMLButtonElement | null>(null);
-  const previousActiveJobIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  const analysisReady = useAnalysisReady(context);
+  const { state: analysisState } = useAnalysisStore(context);
+  const jobs = sessionJobs(session);
+  const liveTrackCount = countLiveTracks(jobs);
+  const previousLiveTrackCountRef = React.useRef(0);
+  const streamsAutoOpenedRef = React.useRef(false);
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
-  const analysisReady = useAnalysisReady(context);
 
   React.useEffect(() => {
     const companionsOpen = context.companionsOpen ?? false;
@@ -366,110 +351,32 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     if (wasOpen && !companionsOpen) rearmAnalysisArtifacts(context.operationId);
   }, [context.companionsOpen, context.operationId]);
 
-  const jobs = sessionJobs(session);
-  const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
-  const dockJobs = mergeDockJobs(activeJobs, jobs, retainedJobs);
-  const modalJobs = selectJobsByIds(jobs, modalJobIds);
-  // Activity 패널은 Request-first 모달을 연 뒤에야 ref를 가진다. 탭 전환도
-  // scroll listener/바닥 reset의 mount lifecycle로 취급한다.
-  const modalResetKey = `${modalOpen}:${detailTab}`;
-  const modalContentKey = modalJobs.map((job) => `${job.jobId}:${job.lastEventId}`).join(",");
-  const modalScroll = usePinnedScrollLocal(modalResetKey, modalContentKey);
-
-  React.useLayoutEffect(() => {
-    const previousActiveJobIds = previousActiveJobIdsRef.current;
-    const completedJobIds = jobs
-      .filter((job) => previousActiveJobIds.has(job.jobId) && isTerminalJobStatus(job.status))
-      .map((job) => job.jobId);
-    previousActiveJobIdsRef.current = new Set(activeJobs.map((job) => job.jobId));
-    if (completedJobIds.length === 0) return;
-    setRetainedJobs((current) => retainCompletedJobs(current, completedJobIds, Date.now() + DOCK_RETENTION_MS));
-  }, [activeJobs, jobs]);
+  React.useEffect(() => {
+    if (analysisReady || !context.onSetCompanionPanelVisible) return;
+    context.onSetCompanionPanelVisible(ANALYST_CHAT_COMPANION_ID, false);
+    context.onSetCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, false);
+  }, [analysisReady, context.onSetCompanionPanelVisible]);
 
   React.useEffect(() => {
-    if (retainedJobs.length === 0) return;
-    const nextExpiry = Math.min(...retainedJobs.map((job) => job.expiresAt));
-    const timeout = window.setTimeout(() => {
-      setRetainedJobs((current) => pruneRetainedJobs(current, jobs, Date.now()));
-    }, Math.max(0, nextExpiry - Date.now()));
-    return () => window.clearTimeout(timeout);
-  }, [jobs, retainedJobs]);
+    const previousCount = previousLiveTrackCountRef.current;
+    previousLiveTrackCountRef.current = liveTrackCount;
+    if (streamsAutoOpenedRef.current || previousCount !== 0 || liveTrackCount === 0) return;
+    streamsAutoOpenedRef.current = true;
+    context.onSetCompanionPanelVisible?.(CARRIER_STREAMS_COMPANION_ID, true);
+    context.onRequestCompanions?.(true);
+  }, [context.onRequestCompanions, context.onSetCompanionPanelVisible, liveTrackCount]);
 
-  React.useEffect(() => {
-    if (!modalOpen) return;
-    setModalJobIds((current) => mergeJobIds(current, activeJobs.map((job) => job.jobId)));
-  }, [activeJobs, modalOpen]);
-
-  const closeModal = React.useCallback(() => {
-    setModalOpen(false);
-    setModalJobIds([]);
-    detailBtnRef.current?.focus();
-  }, []);
-
-  const openModal = React.useCallback(() => {
-    setModalJobIds(dockJobs.map((job) => job.jobId));
-    setDetailTab("request");
-    setModalOpen(true);
-  }, [dockJobs]);
-
-  const selectDetailTab = React.useCallback((tab: "request" | "activity") => {
-    setDetailTab(tab);
-  }, []);
-
-  const handleDetailTabKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
-    const tabs = ["request", "activity"] as const;
-    const currentIndex = tabs.indexOf(detailTab);
-    let nextIndex: number | undefined;
-    if (event.key === "ArrowLeft") nextIndex = (currentIndex + tabs.length - 1) % tabs.length;
-    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
-    if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = tabs.length - 1;
-    if (nextIndex === undefined) return;
-    event.preventDefault();
-    const nextTab = tabs[nextIndex];
-    setDetailTab(nextTab);
-    document.getElementById(`${detailTabsId}-${nextTab}`)?.focus();
-  }, [detailTab, detailTabsId]);
-
-  // Details 클릭을 받는 canvas 핸들러가 모두 끝난 뒤 Close로 포커스를 회수한다.
-  React.useLayoutEffect(() => {
-    if (!modalOpen) return;
-    const frame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [modalOpen]);
-
-  // Escape 키로 모달 닫기 + focus trap — capture phase로 전역 단축키보다 먼저 처리한다.
-  React.useEffect(() => {
-    if (!modalOpen) return;
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        closeModal();
-        return;
-      }
-      if (event.key === "Tab") {
-        const overlay = overlayRef.current;
-        if (!overlay) return;
-        const focusable = getTabbableElements(overlay);
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", handleKey, true);
-    return () => document.removeEventListener("keydown", handleKey, true);
-  }, [modalOpen, closeModal]);
+  const handles = (
+    <div className="session-analyst-handle-stack">
+      <CarrierStreamsHandle context={context} live={liveTrackCount > 0} />
+      <SessionAnalystHandle context={context} ready={analysisReady} working={analysisState.busy} />
+    </div>
+  );
 
   if (session.status === "dormant") {
     return (
       <div className="agent-stream-host">
-        <SessionAnalystHandle context={context} ready={analysisReady} />
+        {handles}
         <DormantOperationView context={context} session={session} />
       </div>
     );
@@ -477,7 +384,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   return (
     <div className="agent-stream-host">
-      <SessionAnalystHandle context={context} ready={analysisReady} />
+      {handles}
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
@@ -488,181 +395,169 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
-      {dockJobs.length > 0 ? (
-        <StreamDock activeJobs={dockJobs} onOpenDetail={openModal} detailBtnRef={detailBtnRef} />
-      ) : null}
-      {modalOpen ? (
-        <div ref={overlayRef} className="job-overlay" role="dialog" aria-modal="true" aria-label="Carrier stream details">
-          <button type="button" className="job-overlay-scrim" aria-label="Close" tabIndex={-1} onClick={closeModal} />
-          <div className="job-overlay-card">
-            <button ref={closeButtonRef} type="button" className="job-overlay-close" aria-label="Close" onClick={closeModal}>×</button>
-            <div className="job-overlay-tabs" role="tablist" aria-label="Carrier stream details">
-              <button id={`${detailTabsId}-request`} type="button" role="tab" aria-selected={detailTab === "request"} aria-controls={`${detailTabsId}-request-panel`} tabIndex={detailTab === "request" ? 0 : -1} onClick={() => selectDetailTab("request")} onKeyDown={handleDetailTabKeyDown}>Request</button>
-              <button id={`${detailTabsId}-activity`} type="button" role="tab" aria-selected={detailTab === "activity"} aria-controls={`${detailTabsId}-activity-panel`} tabIndex={detailTab === "activity" ? 0 : -1} onClick={() => selectDetailTab("activity")} onKeyDown={handleDetailTabKeyDown}>Activity</button>
-            </div>
-            <div id={`${detailTabsId}-request-panel`} className="job-overlay-body job-overlay-panel" role="tabpanel" aria-labelledby={`${detailTabsId}-request`} hidden={detailTab !== "request"} tabIndex={detailTab === "request" ? 0 : -1}>
-              {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <RequestDetails key={job.jobId} job={job} />)}
-            </div>
-            <div id={`${detailTabsId}-activity-panel`} ref={detailTab === "activity" ? modalScroll.containerRef : undefined} className="job-overlay-body job-overlay-panel" role="tabpanel" aria-labelledby={`${detailTabsId}-activity`} hidden={detailTab !== "activity"} tabIndex={detailTab === "activity" ? 0 : -1}>
-              <div className="job-overlay-panel-content" ref={modalScroll.contentRef}>
-                {modalJobs.length === 0 ? <p className="job-overlay-empty">No active streams.</p> : modalJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)}
-              </div>
-            </div>
-            {detailTab === "activity" && !modalScroll.pinned ? (
-              <button type="button" className="follow-button" onClick={modalScroll.jumpToLatest}>
-                ↓ Follow
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
 
-function StreamDock({
-  activeJobs,
-  onOpenDetail,
-  detailBtnRef,
-}: {
-  readonly activeJobs: readonly JobView[];
-  readonly onOpenDetail: () => void;
-  readonly detailBtnRef?: React.RefObject<HTMLButtonElement | null>;
-}) {
-  const [expanded, setExpanded] = useDockExpanded();
-  const primaryJob = activeJobs[0];
-  const elapsed = useElapsed(primaryJob?.startedAt, primaryJob?.finishedAt);
-  const totalTokens = activeJobs.reduce((sum, job) => sum + estimateJobTokens(job), 0);
-  const tokenLabel = formatTokenEstimate(totalTokens);
-
-  const jobLabel = activeJobs.length === 1 && primaryJob ? primaryJob.label : undefined;
-
-  const carrierLabel = activeJobs.length > 1
-    ? `${activeJobs.length} carriers`
-    : (primaryJob?.ownerCarrierId ?? "Carrier");
-
-  const tail = getDockTailText(activeJobs);
-  const contentKey = activeJobs.map((j) => `${j.jobId}:${j.lastEventId}`).join(",");
-  const resetKey = `${expanded}:${activeJobs.map((j) => j.jobId).join(",")}`;
-  const { containerRef, pinned, jumpToLatest } = usePinnedScrollLocal(resetKey, contentKey);
-
-  // 스트립 라인 라이브 캐럿: 비종결 잡의 라이브 트랙이 하나라도 있으면 표시(잔존 종결 잡 제외)
-  const stripIsLive = activeJobs.some((job) =>
-    job.trackOrder.some((id) => {
-      const t = job.tracks[id];
-      return t ? isDockTrackLive(job.status, t.status) : false;
-    })
-  );
-  const hasActiveJob = activeJobs.some((job) => !isTerminalJobStatus(job.status));
-  const hasError = activeJobs.some((job) =>
-    job.status === "error" || job.trackOrder.some((trackId) => isTrackError(job.tracks[trackId]?.status ?? ""))
-  );
-  const dotClassName = hasActiveJob ? "job-dock-dot" : hasError ? "job-dock-dot job-dock-dot--error" : "job-dock-dot job-dock-dot--idle";
-  const stripTone = hasError ? "is-error" : hasActiveJob ? "is-live" : "is-complete";
-  const ownerCaptains = [...new Set(activeJobs.map((job) => resolveCarrierCaptain(job.ownerCarrierId)).filter((id): id is string => Boolean(id)))];
-  const visibleCaptains = ownerCaptains.slice(0, 4);
-  const hiddenCaptainCount = Math.max(0, ownerCaptains.length - visibleCaptains.length);
-  const deckTracks = activeJobs.flatMap((job) => job.trackOrder.flatMap((trackId) => {
+function CarrierStreamsPanel({ context }: { readonly context: OperationRenderContext }) {
+  const state = useAgentState();
+  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
+  const jobs = sessionJobs(session);
+  const [expandedCompletedTrackIds, setExpandedCompletedTrackIds] = React.useState<readonly string[]>([]);
+  // 스토어는 종결 잡을 세션 내내 보존한다 — 완료 트랙은 시한부 잔존이 아니라
+  // 접힌 스트립으로 세션 끝까지 남아 클릭 전개(보존 기록 열람)를 보장한다.
+  const tracks = jobs.flatMap((job) => job.trackOrder.flatMap((trackId) => {
     const track = job.tracks[trackId];
     return track ? [{ job, track }] : [];
   }));
-  const visibleDeckTracks = deckTracks.slice(0, 6);
-  const hiddenTrackCount = Math.max(0, deckTracks.length - visibleDeckTracks.length);
+  const liveTrackCount = countLiveTracks(jobs);
 
   return (
-    <div className="job-dock">
-      <div className={`job-dock-strip ${stripTone}`}>
-        <span className={dotClassName} aria-hidden="true" />
-        <span className="job-dock-carrier" title={jobLabel}>
-          {visibleCaptains.length > 0 ? (
-            <span className="job-dock-captain-stack" aria-hidden="true">
-              {visibleCaptains.map((captain) => <span key={captain} className="job-dock-captain-dot" data-captain={captain} />)}
-            </span>
-          ) : null}
-          <span className="job-dock-captain-tag">{carrierLabel}</span>
-          {hiddenCaptainCount > 0 ? <span className="job-dock-captain-tag">+{hiddenCaptainCount}</span> : null}
+    <section className="carrier-streams" aria-label="Carrier Streams">
+      <header className="session-analyst__panel-head carrier-streams__panel-head">
+        <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
+        <span className="session-analyst__panel-copy"><strong>Carrier Streams</strong><small>This operation · live carrier output</small></span>
+        <span className={`carrier-streams__state${liveTrackCount > 0 ? " is-live" : ""}`}>
+          <i aria-hidden="true" />{liveTrackCount > 0 ? `${liveTrackCount} LIVE` : "IDLE"}
         </span>
-        <span className="job-dock-seg" aria-hidden="true">
-          {visibleDeckTracks.map(({ job, track }) => (
-            <i key={`${job.jobId}:${track.trackId}`} data-tone={dockSegmentTone(track, job.status)} />
-          ))}
-          {hiddenTrackCount > 0 ? <span>+{hiddenTrackCount}</span> : null}
-        </span>
-        <span className="job-dock-strip-line" style={expanded ? { display: "none" } : undefined} aria-hidden="true">
-          {tail.thinking ? <span className="thinking-chip">thinking…</span> : tail.text}
-          {!expanded && stripIsLive && tail.text ? <span className="job-dock-caret" aria-hidden="true" /> : null}
-        </span>
-        <span className="job-dock-meta">
-          {elapsed ? <span>{elapsed}</span> : null}
-          {tokenLabel ? <span>{tokenLabel}</span> : null}
-        </span>
-        <button
-          type="button"
-          className="job-dock-grip"
-          aria-label={expanded ? "Collapse stream dock" : "Expand stream dock"}
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "▼" : "▲"}
-        </button>
-        <button
-          ref={detailBtnRef}
-          type="button"
-          className="job-dock-detail-btn"
-          onClick={onOpenDetail}
-        >
-          Details
-        </button>
-      </div>
-      <div className={`job-dock-body-wrap${expanded ? "" : " is-collapsed"}`}>
-        <div ref={containerRef} className="job-dock-body" tabIndex={-1}>
-          {activeJobs.map((job) => {
-            return job.trackOrder.map((trackId) => {
-              const track = job.tracks[trackId];
-              return track ? (
-                <DockRow
-                  key={`${job.jobId}:${trackId}`}
-                  track={track}
-                  job={job}
-                />
-              ) : null;
-            });
+      </header>
+      {tracks.length === 0 ? (
+        <div className="carrier-streams__empty">
+          <strong>No carriers streaming.</strong>
+          <span>The next dispatch from this operation appears here the moment it begins.</span>
+        </div>
+      ) : (
+        <div className="carrier-streams__board">
+          {tracks.map(({ job, track }) => {
+            const trackKey = `${job.jobId}:${track.trackId}`;
+            const phase = deriveTrackPhase(track, job.status);
+            const expanded = phase.tone !== "done" || expandedCompletedTrackIds.includes(trackKey);
+            return (
+              <CarrierStreamColumn
+                key={trackKey}
+                job={job}
+                track={track}
+                expanded={expanded}
+                onToggleCompleted={() => {
+                  setExpandedCompletedTrackIds((current) => expanded
+                    ? current.filter((id) => id !== trackKey)
+                    : mergeJobIds(current, [trackKey]));
+                }}
+              />
+            );
           })}
         </div>
-        {!pinned ? (
-          <button type="button" className="follow-button" onClick={jumpToLatest}>
-            ↓ Follow
-          </button>
-        ) : null}
-      </div>
-    </div>
+      )}
+    </section>
   );
 }
 
-function DockRow({ track, job }: DockRowProps) {
-  const isLive = isDockTrackLive(job.status, track.status);
-  const tailOutput = getLastLine(track.text);
-  const displayLine = tailOutput;
-  const showThinking = !displayLine && isLive && Boolean(track.thought);
-  const captain = resolveCarrierCaptain(job.ownerCarrierId);
+function CarrierStreamColumn({
+  job,
+  track,
+  expanded,
+  onToggleCompleted,
+}: {
+  readonly job: JobView;
+  readonly track: TrackView;
+  readonly expanded: boolean;
+  readonly onToggleCompleted: () => void;
+}) {
   const phase = deriveTrackPhase(track, job.status);
+  const captain = resolveCarrierCaptain(job.ownerCarrierId);
   const elapsed = useElapsed(track.startedAt ?? job.startedAt, track.finishedAt ?? job.finishedAt);
+  const request = trackRequestText(job, track);
+  const contentKey = `${track.lastEventId}:${track.text.length}:${track.tools.length}`;
+  const scroll = usePinnedScrollLocal(`${job.jobId}:${track.trackId}`, contentKey);
+  const completed = phase.tone === "done";
+  const reasoning = phase.tone === "live" && track.thought.length > 0
+    && (track.text.length === 0 || latestTrackEventType(job, track.trackId) === "track:thought");
+
+  if (completed && !expanded) {
+    return (
+      <button
+        type="button"
+        className="carrier-stream-column carrier-stream-column--collapsed"
+        data-captain={captain}
+        aria-label={`Expand completed stream for ${track.displayName}`}
+        onClick={onToggleCompleted}
+      >
+        {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
+        <strong>{track.displayName}</strong>
+        <span className="carrier-stream-column__phase" data-tone="done">DONE</span>
+        <time>{elapsed}</time>
+      </button>
+    );
+  }
 
   return (
-    <div className="job-dock-card" data-captain={captain} data-tone={phase.tone}>
-      <span className="job-dock-card-who">
-        {captain ? <span className="job-dock-captain-dot" data-captain={captain} aria-hidden="true" /> : null}
-        <span className="job-dock-captain-tag">{track.displayName}</span>
-      </span>
-      <span className="job-dock-card-copy">
-        <span className="job-dock-card-phase">{phase.label}</span>
-        {displayLine ? <span className="job-dock-card-line">{displayLine}</span> : null}
-        {showThinking ? <span className="thinking-chip">thinking…</span> : null}
-      </span>
-      <span className="job-dock-card-meta">{elapsed}</span>
-      <span className="job-dock-card-bar" aria-hidden="true"><i /></span>
-    </div>
+    <article className="carrier-stream-column" data-captain={captain} data-tone={phase.tone}>
+      {phase.tone === "live" ? <span className="carrier-stream-column__scan" aria-hidden="true" /> : null}
+      <header className="carrier-stream-column__head">
+        {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
+        <strong title={track.displayName}>{track.displayName}</strong>
+        <span className="carrier-stream-column__phase" data-tone={phase.tone}>{phase.tone.toUpperCase()}</span>
+        <time>{elapsed}</time>
+        {completed ? <button type="button" aria-label={`Collapse completed stream for ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
+      </header>
+      <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
+        <div ref={scroll.contentRef} className="carrier-stream-column__content">
+          {request ? <div className="carrier-stream-column__request">{request}</div> : null}
+          {track.text ? (
+            <div className="carrier-stream-column__answer">
+              <span aria-hidden="true">✳</span>
+              <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} />
+            </div>
+          ) : null}
+          {reasoning ? (
+            <div className="carrier-stream-column__reasoning" role="status"><i aria-hidden="true" />Reasoning…</div>
+          ) : null}
+          {track.error ? <div className="carrier-stream-column__error" role="alert">{track.error}</div> : null}
+          {track.tools.length > 0 ? (
+            <div className="carrier-stream-column__tools" role="list" aria-label={`Tools used by ${track.displayName}`}>
+              {track.tools.map((tool) => {
+                const target = describeToolTarget(tool.input);
+                const tone = resolveToolTone(tool.status);
+                return (
+                  <span key={tool.id} className="carrier-stream-column__tool" data-tone={tone} role="listitem">
+                    <i aria-hidden="true" />
+                    <strong>{tool.name ?? tool.id}</strong>
+                    {target ? <span>{target}</span> : null}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
+}
+
+function countLiveTracks(jobs: readonly JobView[]): number {
+  return jobs.reduce((count, job) => {
+    if (isTerminalJobStatus(job.status)) return count;
+    return count + job.trackOrder.reduce((trackCount, trackId) => {
+      const track = job.tracks[trackId];
+      return track && isTrackLive(track.status) ? trackCount + 1 : trackCount;
+    }, 0);
+  }, 0);
+}
+
+function trackRequestText(job: JobView, track: TrackView): string {
+  if (track.requestPreview?.trim()) return track.requestPreview.trim();
+  if (!job.request) return "";
+  const blocks = job.request.blocks.filter((block) => block.present && block.body.trim()).map((block) => block.body.trim());
+  if (job.request.additional.trim()) blocks.push(job.request.additional.trim());
+  return blocks.join("\n\n");
+}
+
+function latestTrackEventType(job: JobView, trackId: string): string | undefined {
+  for (let index = job.recentEvents.length - 1; index >= 0; index -= 1) {
+    const event = job.recentEvents[index];
+    if (event?.event.trackId === trackId) return event.type;
+  }
+  return undefined;
 }
 
 function GeneralSection() {
@@ -920,68 +815,6 @@ function AgentCliRow({ cli }: { readonly cli: AgentCliStatus }) {
   );
 }
 
-function JobDetailContent({ job }: { readonly job: JobView }) {
-  return (
-    <>
-      <div className="job-overlay-head">
-        <span className="job-overlay-kicker">{job.status}</span>
-        <strong>{job.label ?? job.jobId}</strong>
-      </div>
-      <div className="job-overlay-tracks">
-        {job.trackOrder.map((trackId) => {
-          const track = job.tracks[trackId];
-          return track ? <TrackCard key={track.trackId} track={track} jobStatus={job.status} /> : null;
-        })}
-      </div>
-    </>
-  );
-}
-
-function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly jobStatus: string }) {
-  const modifier = trackCardModifier(track.status, jobStatus);
-  const phase = deriveTrackPhase(track, jobStatus);
-  // 칩 텍스트도 modifier와 같은 해석에서 파생 — 종결 잡의 미종결 트랙이 coral 카드에
-  // raw "stream" 라벨을 다는 표기 분열을 막는다(라이브 트랙은 자기 상태 그대로).
-  const statusLabel = resolveDockRowStatusLabel(track.status, jobStatus);
-  return (
-    <article className={modifier ? `track-card ${modifier}` : "track-card"}>
-      <header className="track-card-head">
-        <span className="track-card-title">{track.displayName}</span>
-        <span className="track-card-status">{statusLabel}</span>
-      </header>
-      {track.thought ? (
-        <details className="track-card-thinking">
-          <summary>thinking · {track.thought.length} chars</summary>
-          <div className="track-card-thought" role="group" aria-label="Thinking">
-            <pre>{track.thought}</pre>
-          </div>
-        </details>
-      ) : null}
-      {track.text ? (
-        <StreamedMarkdown className="track-card-output markdown-body" text={track.text} streaming={phase.tone === "live"} />
-      ) : null}
-      {track.error ? (
-        <div className="track-card-error" role="group" aria-label="Error">{track.error}</div>
-      ) : null}
-      {track.tools.length > 0 ? (
-        <div className="track-card-tools" role="list" aria-label="Tools">
-          {track.tools.map((tool) => {
-            const target = describeToolTarget(tool.input);
-            const tone = `is-${resolveToolTone(tool.status)}`;
-            return (
-              <span key={tool.id} className={`track-card-tool-chip ${tone}`} role="listitem">
-                <i aria-hidden="true" />
-                <strong>{tool.name ?? tool.id}</strong>
-                {target ? <span>{target}</span> : null}
-              </span>
-            );
-          })}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
 async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean }): Promise<void> {
   applySessionUpdate(await resumeAgentSession(sessionId, options));
   selectSession(sessionId);
@@ -1062,20 +895,6 @@ function readPayloadString(payload: Record<string, unknown>, key: string): strin
 function readPayloadNumber(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function getLastLine(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  const lines = trimmed.split("\n");
-  return lines[lines.length - 1]?.trim() ?? "";
-}
-
-function dockSegmentTone(track: TrackView, jobStatus: string): "live" | "done" | "error" | undefined {
-  const status = resolveDockRowStatusLabel(track.status, jobStatus);
-  if (isTrackError(status) || status === "aborted") return "error";
-  if (status === "done") return "done";
-  return isDockTrackLive(jobStatus, track.status) ? "live" : undefined;
 }
 
 function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {
@@ -1177,20 +996,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function trackCardModifier(trackStatus: string, jobStatus: string): string {
-  // 라이브 판정은 isDockTrackLive 단일 소유 — 도크 행/스트립 캐럿과 판정이 갈라지지 않고,
-  // 종결 잡의 미종결(stale) 트랙이 라이브로 표시되지 않게 위임한다.
-  if (isDockTrackLive(jobStatus, trackStatus)) {
-    return "track-card--live";
-  }
-  // 스타일 키는 도크 행 라벨과 같은 해석에서 파생한다 — track:finalized를 못 받은 트랙도
-  // 종결 잡의 결과(error/done)로 표시가 폴백돼 라벨과 도색이 갈라지지 않는다.
-  const resolved = resolveDockRowStatusLabel(trackStatus, jobStatus);
-  if (isTrackError(resolved)) return "track-card--bad";
-  if (resolved === "done" || resolved === "aborted") return "track-card--idle";
-  return "";
-}
-
 function AgentGlyph() {
   // Agent CLI — 에이전트 플러그인이 자기 드롭다운 아이콘을 소유한다(호스트는 모른다).
   return (
@@ -1228,4 +1033,4 @@ function KimiGlyph() {
   );
 }
 
-export { formatElapsedDuration, formatTokenEstimate, estimateJobTokens, resolveJobSignature, resolveCarrierCaptain } from "./helpers.js";
+export { formatElapsedDuration, resolveCarrierCaptain } from "./helpers.js";

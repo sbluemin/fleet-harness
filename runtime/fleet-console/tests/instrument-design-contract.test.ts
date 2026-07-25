@@ -37,6 +37,7 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
+const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
@@ -847,37 +848,34 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const brandFoot = source("components/side-bar-brand-foot.tsx");
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
+    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     expect(components.match(/font-family:\s*var\(--font-display\)/g)).toHaveLength(1);
     expect(brandFoot).toContain('className="brand-foot-wordmark"');
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
-    expect(components).toContain(".job-dock-captain-dot {");
-    expect(components).toContain(".job-dock-captain-tag {");
-    expect(components).not.toMatch(/\.job-dock-(?:carrier|row-name)\[data-captain=/);
     expect(components).not.toContain("data-signature");
-    expect(terminalAgent).toContain('className="job-dock-captain-dot"');
-    expect(terminalAgent).toContain('className="job-dock-captain-tag"');
+    expect(terminalAnalysisCss).toContain(".carrier-stream-column__captain-dot {");
+    expect(terminalAgent).toContain('className="carrier-stream-column__captain-dot"');
     expect(terminalAgent).not.toContain("data-signature");
     expect(skillsCss).not.toMatch(/color-mix\([^)]*\b(?:black|white)\b/);
   });
 
-  it("uses neutral brass fallback for unknown job-dock captain identities", () => {
-    const components = source("styles/components.css");
+  it("maps only known Carrier Stream captain dots through captain identity tokens", () => {
+    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
+    const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
     const captainIds = ["nimitz", "kirov", "genesis", "ohio", "sentinel", "vanguard"] as const;
 
-    expect(components).toMatch(/\.job-dock-captain-dot \{[^}]*background:\s*var\(--brass\)/);
-    expect(components).toMatch(/\.job-dock-card \{[^}]*border-left:\s*3px solid var\(--brass\)/);
-    expect(components.match(/\.job-dock-captain-dot\[data-captain="/g)).toHaveLength(6);
-    expect(components.match(/\.job-dock-card\[data-captain="/g)).toHaveLength(6);
+    expect(terminalAnalysisCss).not.toMatch(/\.carrier-stream-column__captain-dot \{[^}]*background:/);
+    expect(terminalAnalysisCss.match(/\.carrier-stream-column__captain-dot\[data-captain="/g)).toHaveLength(6);
     for (const id of captainIds) {
-      expect(components).toContain(`.job-dock-captain-dot[data-captain="${id}"] { background: var(--captain-${id}); }`);
-      expect(components).toContain(`.job-dock-card[data-captain="${id}"] { border-left-color: var(--captain-${id}); }`);
+      expect(terminalAnalysisCss).toContain(`.carrier-stream-column__captain-dot[data-captain="${id}"] { background: var(--captain-${id}); }`);
     }
-    expect(components).not.toContain('data-captain="chronicle"');
-    expect(components).not.toContain("--captain-chronicle");
-    expect(components).not.toContain('data-captain="tempest"');
-    expect(components).not.toContain("--captain-tempest");
+    expect(terminalAgent).toContain("resolveCarrierCaptain(job.ownerCarrierId)");
+    expect(terminalAnalysisCss).not.toContain('data-captain="chronicle"');
+    expect(terminalAnalysisCss).not.toContain("--captain-chronicle");
+    expect(terminalAnalysisCss).not.toContain('data-captain="tempest"');
+    expect(terminalAnalysisCss).not.toContain("--captain-tempest");
   });
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
