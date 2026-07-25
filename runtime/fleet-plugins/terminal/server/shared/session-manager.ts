@@ -12,6 +12,7 @@ export interface TerminalSessionManagerDeps {
   // DI 계약 유지용으로 받지만 더 이상 동시 세션 상한을 강제하지 않는다(상한 해제됨).
   readonly maxSessions?: number;
   readonly scrollbackLimit?: number;
+  readonly onSessionOutput?: (sessionId: string) => unknown;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
   readonly onSessionExit?: (sessionId: string) => unknown;
 }
@@ -217,6 +218,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function handlePtyData(session: TerminalSession, data: string): void {
+    deps.onSessionOutput?.(session.id);
     const buffer = Buffer.from(data, "utf8");
     respondToTerminalQueries(session, buffer);
     session.scrollback.push(buffer);

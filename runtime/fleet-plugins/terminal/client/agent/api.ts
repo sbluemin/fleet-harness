@@ -5,7 +5,7 @@ export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
 }
 
-const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "ticket", "token", "transcriptPath", "prompt", "persona", "toolAllowlist"] as const;
+const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "initialPrompt", "providerSession", "ticket", "token", "transcriptPath", "prompt", "persona", "toolAllowlist"] as const;
 
 export class AgentApiError extends Error {
   readonly status: number;
@@ -65,11 +65,11 @@ export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<Ope
   return { operations: payload.operations.map((operation) => assertOperationNode(operation, response.status)) };
 }
 
-export async function createAgentSession(theaterId: string, cliId: string, signal?: AbortSignal): Promise<SessionInfo> {
+export async function createAgentSession(theaterId: string, cliId: string, initialPrompt?: string, signal?: AbortSignal): Promise<SessionInfo> {
   const response = await fetch("/plugins/terminal/agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, cliId }),
+    body: JSON.stringify({ theaterId, cliId, ...(initialPrompt === undefined ? {} : { initialPrompt }) }),
     signal,
   });
   await assertOk(response);

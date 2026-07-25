@@ -28,7 +28,7 @@ interface OperationsCanvasProps {
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, initialPrompt?: string) => void;
   readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -126,11 +126,11 @@ export function OperationsCanvas({
     onClick: clearTerminalFocus,
   });
 
-  const handleContextMenuLaunchKind = (pluginId: string, kind: OperationLaunchKind) => {
+  const handleContextMenuLaunchKind = (pluginId: string, kind: OperationLaunchKind, initialPrompt?: string) => {
     const point = contextMenu?.canvasPoint;
     setContextMenu(null);
     if (!point) return;
-    onLaunchKind(pluginId, kind, point);
+    onLaunchKind(pluginId, kind, point, initialPrompt);
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {

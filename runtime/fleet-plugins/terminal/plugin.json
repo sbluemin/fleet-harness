@@ -12,6 +12,7 @@
     "token",
     "ticket",
     "prompt",
+    "initialPrompt",
     "persona",
     "toolAllowlist"
   ]

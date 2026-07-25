@@ -132,8 +132,8 @@ export const agentPlugin = definePlugin({
       removeSession(operationId);
     }
   },
-  launch: async ({ theaterId, kind }) => {
-    const session = await createAgentSession(theaterId, kind.id);
+  launch: async ({ theaterId, kind, initialPrompt }) => {
+    const session = await createAgentSession(theaterId, kind.id, initialPrompt);
     applySessionUpdate(session);
     selectSession(session.sessionId);
     return { id: session.sessionId };

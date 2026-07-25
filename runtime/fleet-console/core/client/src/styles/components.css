@@ -1750,6 +1750,76 @@
   text-transform: uppercase;
 }
 
+.canvas-context-menu-prompt-step {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.canvas-context-menu-prompt-label {
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.canvas-context-menu-prompt-input {
+  width: 100%;
+  min-height: 116px;
+  resize: vertical;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: var(--surface-glass);
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.canvas-context-menu-prompt-input::placeholder {
+  color: var(--ink-fog);
+}
+
+.canvas-context-menu-prompt-input:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 16%, transparent);
+}
+
+.canvas-context-menu-prompt-hint {
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.canvas-context-menu-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.canvas-context-menu-prompt-button {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.canvas-context-menu-prompt-button:hover,
+.canvas-context-menu-prompt-button:focus-visible,
+.canvas-context-menu-prompt-button.is-primary {
+  border-color: color-mix(in oklch, var(--brass) 48%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--ink-pearl);
+}
+
 .canvas-context-menu-help {
   display: grid;
   gap: var(--space-2);

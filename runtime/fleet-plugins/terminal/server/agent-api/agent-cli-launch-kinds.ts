@@ -13,6 +13,7 @@ export function buildAgentCliLaunchKinds(
         id: cli.id,
         type: operationType,
         title: cli.label,
+        supportsInitialPrompt: true,
         ...(disabledReason ? { disabled: true, disabledReason } : {}),
       };
     });
