@@ -5,7 +5,7 @@ import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, Operati
 
 import { fetchOperations } from "../api.js";
 import { isBlockingDialogOpen } from "../blocking-dialog.js";
-import { flattenGroupedOrder, hydrateOperations, setActiveOperation } from "../store.js";
+import { flattenGroupedOrder, hydrateOperations, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -18,6 +18,7 @@ import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { OperationFrame } from "./operation-frame.js";
+import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { RubberBand } from "./rubber-band.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
@@ -59,7 +60,6 @@ interface PluginOperationRendererProps {
   readonly render: (context: OperationRenderContext) => unknown;
 }
 
-const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
 /* components.css의 .canvas-operation-titlebar top(-1 * --space-3)과 짝을 이루는 상수. */
@@ -173,7 +173,7 @@ export function OperationsCanvas({
   const pluginOperations = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
     ? [...theaterOperations, companionOperation]
     : theaterOperations;
-  const hasContent = pluginOperations.length > 0;
+  const hasContent = hasVisibleCanvasContent(pluginOperations, minimizedSet);
   useEffect(() => {
     if (companionOperationId === null || currentPanelCompanion !== null) return;
     // ops 푸시 직후 대상 Operation이 목록에서 일시적으로 빠지는 레이스가 있어, 방금 연 분석
@@ -321,10 +321,14 @@ export function OperationsCanvas({
         })}
       </div>
       {!hasContent ? (
-        <div className="operations-canvas-empty" data-canvas-blocker>
-          <span className="operations-canvas-empty-mark" aria-hidden="true" />
-          <p>{state.activeTheaterId ? EMPTY_GUIDE : "Add a Theater from the sidebar to start operations."}</p>
-        </div>
+        <OperationsCanvasEmptyState
+          activeTheaterId={state.activeTheaterId}
+          theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? state.activeTheaterId ?? ""}
+          operations={theaterOperations}
+          canLaunch={canLaunch}
+          onOpenOperation={onFocus}
+          onNewOperation={requestOperationLaunchMenu}
+        />
       ) : null}
       {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={canvas.viewport} /> : null}
       {contextMenu ? (

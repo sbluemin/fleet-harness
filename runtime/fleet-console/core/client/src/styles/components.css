@@ -3924,18 +3924,128 @@
   z-index: 5;
   display: grid;
   gap: var(--space-3);
-  max-width: 420px;
+  box-sizing: border-box;
+  width: min(460px, calc(100% - var(--space-10)));
   padding: var(--space-4);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--surface-glass) 82%, var(--ink-deep));
   color: var(--ink-spectral);
   box-shadow: var(--shadow-soft);
+  pointer-events: none;
 }
 
 .operations-canvas-empty p {
   margin: 0;
   line-height: 1.55;
+}
+
+.operations-canvas-empty-ghost {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.operations-canvas-empty-headline {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.operations-canvas-empty-standby {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.operations-canvas-empty-standby-chip,
+.operations-canvas-empty-new {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.operations-canvas-empty-standby-chip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 9px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 76%, transparent);
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+}
+
+.operations-canvas-empty-standby-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operations-canvas-empty-standby-open {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.operations-canvas-empty-new {
+  justify-self: start;
+  padding: 8px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--brass) 10%, var(--surface-glass));
+  color: var(--brass-bright);
+  font: 700 11px/1.2 var(--font-mono);
+}
+
+.operations-canvas-empty-standby-chip:hover,
+.operations-canvas-empty-new:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 13%, var(--surface-glass));
+  color: var(--brass-bright);
+}
+
+.operations-canvas-empty-standby-chip:focus-visible,
+.operations-canvas-empty-new:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 58%, transparent);
+  outline-offset: 2px;
+}
+
+.operations-canvas-empty-new:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.operations-canvas-empty-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.operations-canvas-empty-hints kbd {
+  padding: 2px 5px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  color: var(--text-secondary);
+  font: 700 9px/1.2 var(--font-mono);
+}
+
+.operations-canvas-empty-guide {
+  color: var(--text-tertiary);
+  font-size: 9px;
 }
 
 .operations-canvas-empty-mark {
