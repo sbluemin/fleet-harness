@@ -37,7 +37,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   ],
   whenNotToUse: [
     "any code modification or file editing (Nimitz is strictly read-only)",
-    "PRD/task decomposition, delivery planning, or markdown work-plan generation (→kirov)",
+    "PRD/task decomposition, delivery planning, or Fleet Plan authoring (host-owned)",
   ],
   requestBlocks: [
     { tag: "context", hint: "Background situation, current state, and relevant history.", required: true },
@@ -52,7 +52,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "CRITICAL: Strictly read-only. NEVER delegate code modification or file editing to this carrier.",
     "CRITICAL: NEVER dispatch Nimitz without prior reconnaissance — if recon is needed, dispatch vanguard/tempest FIRST. Hard prerequisite, not a suggestion.",
     "Full access to read the codebase and execute read-only commands for analysis.",
-    "MUST NOT decompose work into task waves, delivery schedules, or implementation checklists — handoff belongs to Kirov.",
+    "MUST NOT decompose work into task waves, delivery schedules, or implementation checklists — handoff belongs to the host.",
   ],
   outputFormat:
     `Verbosity constraints: bottom line max 3 sentences, action plan max 7 steps (2 sentences each), no preamble, no question restatement, no conversational filler. Prefer compact bullets.\n` +
@@ -61,7 +61,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `  **Bottom line** — 2-3 sentences capturing the recommendation.\n` +
     `  **Action plan** — Numbered implementation steps.\n` +
     `  **Effort estimate** — One of: Quick(<1h) / Short(1-4h) / Medium(1-2d) / Large(3d+).\n` +
-    `  **Planning constraints** — Fixed decisions, constraints, or guardrails Kirov/Ohio should treat as settled inputs.\n` +
+    `  **Planning constraints** — Fixed decisions, constraints, or guardrails the host and Ohio should treat as settled inputs.\n` +
     `[If applicable] include when relevant:\n` +
     `  **Why this approach** — Reasoning and key trade-offs (max 4 bullets).\n` +
     `  **Watch out for** — Risks, edge cases, mitigation strategies (max 3 bullets).\n` +
@@ -73,6 +73,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "Delivers exactly ONE best-path recommendation — not a menu of options.",
     "Always favors the simplest viable solution. Complexity only when simplicity provably fails constraints.",
     "Decide the technical path — do not orchestrate execution waves, task matrices, or delivery backlogs.",
-    "Return stable planning inputs that Kirov and Ohio can treat as fixed unless explicitly revisited.",
+    "Return stable planning inputs that the host can encode in its Plan and Ohio can treat as fixed unless explicitly revisited.",
   ],
 };

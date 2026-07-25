@@ -31,7 +31,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   whenToUse: [
     "codebase reconnaissance — exploration, multi-file scanning, symbol tracing",
     "web research and external knowledge gathering",
-    "preparation for heavier operations (Nimitz, Genesis, Kirov) requiring local intelligence first",
+    "preparation for host planning or heavier operations (Nimitz, Genesis, Kirov audit) requiring local intelligence first",
   ],
   whenNotToUse: [
     "ANY code modification or file editing (→genesis)",

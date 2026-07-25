@@ -44,6 +44,7 @@ const EXPECTED_CARRIER_TOOL_IDS = [
 ] as const;
 const EXPECTED_HOST_PLAN_TOOL_IDS = [
   "plan_read",
+  "plan_write",
   "plan_verify",
 ] as const;
 // Fleet Wiki mutation·stage·lint·schema 도구는 전부 host-only —
@@ -115,7 +116,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(fleetToolNames.size).toBe(
       EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length + EXPECTED_HOST_PLAN_TOOL_IDS.length,
     );
-    expect(fleetToolNames.has("plan_write")).toBe(false);
     expect(fleetToolNames.has("plan_mark_tasks")).toBe(false);
     expect(fleetToolNames.has("mcp__fleet__wiki_query")).toBe(false);
     expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
@@ -149,7 +149,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(ordinaryCarrierTools.has("plan_mark_tasks")).toBe(false);
     expect(ordinaryCarrierTools.has("plan_verify")).toBe(false);
     expect(kirovTools.has("plan_read")).toBe(true);
-    expect(kirovTools.has("plan_write")).toBe(true);
+    expect(kirovTools.has("plan_write")).toBe(false);
     expect(kirovTools.has("plan_mark_tasks")).toBe(false);
     expect(kirovTools.has("plan_verify")).toBe(false);
     expect(ohioTools.has("plan_read")).toBe(true);
@@ -167,6 +167,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
       for (const denied of DENIED_HOST_ONLY_WIKI_TOOL_IDS) {
         expect(tools.has(denied)).toBe(false);
       }
+      expect(tools.has("plan_write")).toBe(false);
+      expect(tools.has("plan_verify")).toBe(false);
     }
 
     const systemPrompt = createSystemPromptBuilder({

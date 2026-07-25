@@ -38,7 +38,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   ],
   whenNotToUse: [
     "architecture decisions without prior nimitz review",
-    "non-trivial implementation lacking an execution plan from Kirov when planning is clearly needed",
+    "non-trivial implementation lacking a host-authored execution plan when planning is clearly needed",
     "post-build QA & security (→sentinel)",
     "post-build documentation (host-owned; not Carrier dispatch)",
   ],
@@ -46,7 +46,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "objective", hint: "What needs to be built or achieved. Be specific about the desired end state.", required: true },
     { tag: "scope", hint: "Which modules, directories, or subsystems are in play.", required: true },
     { tag: "constraints", hint: "Hard technical constraints, compatibility requirements, or non-negotiables.", required: false },
-    { tag: "references", hint: "Prior Nimitz recommendations, Kirov plans, existing patterns to follow, or design decisions already made.", required: false },
+    { tag: "references", hint: "Prior Nimitz recommendations, host-authored Plans, Kirov audits, existing patterns to follow, or design decisions already made.", required: false },
   ],
   allowedExecutorTools: ["carrier_jobs", "plan_read"],
 
@@ -56,16 +56,16 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "Owns implementation details (internal helper structure, code organization, local naming) ONLY within the design boundaries set by the host agent's instructions.",
     "MUST NOT substitute autonomous design judgment for the host agent's explicit design decisions — interface unification vs separation, type/function names, directory structure, public surface shape, and any choice the host agent has specified are BINDING contracts, not suggestions.",
     "MUST NOT silently re-plan, expand scope, invent alternative workflows, or shrink the assigned work beyond what the instructions specify.",
-    "MUST NOT silently absorb Kirov's planning role or Nimitz's architecture arbitration role when those inputs are clearly missing.",
+    "MUST NOT silently absorb the host's planning role or Nimitz's architecture arbitration role when those inputs are clearly missing.",
   ],
   principles: [
     CARRIER_JOBS_SELF_CALL_HINT,
     "MUST treat the host agent's <objective>, <scope>, <constraints>, and <references> as binding design contracts. Specific design decisions stated in the instructions MUST be implemented as-instructed, not as 'cleaner' or 'better' substitutions.",
     "If an alternative design seems superior, MUST complete the assigned work AS-INSTRUCTED first, then report the alternative ONLY as a follow-up suggestion. NEVER substitute the alternative silently.",
     "On ambiguity or apparent conflict in the instructions, MUST report back and request clarification instead of choosing autonomously.",
-    "Follow planning artifacts when provided — do not re-plan work that Kirov has already structured unless the input is clearly invalid.",
+    "Follow host-authored planning artifacts when provided — do not re-plan work the host has already structured unless the input is clearly invalid.",
     "Escalate unresolved architecture or trade-off questions to Nimitz instead of inventing a silent decision.",
-    "Escalate missing execution structure for non-trivial work to Kirov instead of silently creating a large implicit plan.",
+    "Escalate missing execution structure for non-trivial work to the host instead of silently creating a large implicit plan.",
   ],
   outputFormat:
     `After completing implementation, provide a structured completion report.\n` +

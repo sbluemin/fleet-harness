@@ -151,15 +151,15 @@ const CAPTAINS = [
   },
   {
     id: "Kirov",
-    role: { ko: "Operational Planning Bridge", en: "Operational Planning Bridge" },
+    role: { ko: "Plan Assurance & Audit", en: "Plan Assurance & Audit" },
     cli: "Claude Code",
     color: "#e8a854",
-    mission: { ko: "전략을 검증 가능한 Fleet Plan으로 옮긴다. PlanRef와 TaskRef가 모든 다단 작전의 단일 진실원이다.", en: "Translates strategy into validated Fleet Plans. PlanRefs and TaskRefs are the single source of truth for every multi-stage op." },
+    mission: { ko: "호스트가 작성한 PlanRef를 읽기 전용으로 감사한다. Plan 변경과 결정은 호스트에 남긴다.", en: "Read-only assurance for a host-authored PlanRef. Plan changes and decisions stay with the host." },
     duties: [
-      { ko: "plan_write로 Fleet Plan 작성·갱신", en: "Authors and maintains Fleet Plans through plan_write." },
-      { ko: "Wave 분해 · 의존성 그래프 정의", en: "Wave decomposition and dependency graph definition." },
-      { ko: "Acceptance criteria · 검증 게이트 명시", en: "Specifies acceptance criteria and verification gates." },
-      { ko: "Lane별 TaskRef를 Ohio 실행 요청으로 전달", en: "Hands Lane-scoped TaskRefs to Ohio for execution." },
+      { ko: "호스트가 작성한 기존 PlanRef를 plan_read로 감사", en: "Audits an existing host-authored PlanRef through plan_read." },
+      { ko: "Plan 섹션·Lane·TaskRef별 발견사항 식별", en: "Identifies findings by Plan section, Lane, or TaskRef." },
+      { ko: "PASS · REVISE · BLOCKED 디스패치 준비도 판정", en: "Reports PASS, REVISE, or BLOCKED dispatch readiness." },
+      { ko: "호스트가 적용할 수정 제안 — Plan 상태는 변경하지 않음", en: "Proposes host-applied corrections without mutating Plan state." },
     ],
   },
   {
@@ -180,7 +180,7 @@ const CAPTAINS = [
     role: { ko: "Multi-Wave Strike Execution", en: "Multi-Wave Strike Execution" },
     cli: "Claude Code",
     color: "#a78bfa",
-    mission: { ko: "Kirov의 명령서를 받아 파(Wave) 단위로 발사한다. 다단 작전의 실집행 잠수함.", en: "Receives Kirov's orders and fires by wave. The submarine that actually executes multi-stage ops." },
+    mission: { ko: "호스트가 작성한 Plan TaskRef를 받아 파(Wave) 단위로 실행한다. 다단 작전의 실집행 잠수함.", en: "Receives host-authored Plan TaskRefs and executes them by wave. The submarine that actually executes multi-stage ops." },
     duties: [
       { ko: "동일 Lane TaskRef 수신 → 지정 태스크만 실행", en: "Receives same-Lane TaskRefs and executes only the assigned tasks." },
       { ko: "각 wave 후 빌드·테스트·검증 게이트", en: "Build / test / verification gate after every wave." },

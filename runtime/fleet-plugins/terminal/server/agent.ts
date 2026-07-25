@@ -69,8 +69,17 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
   return { payload: { ...operation.payload, launchKindId: cliId } };
 }
 
+export function buildAgentPlanToolRegistrations(dataDir: string) {
+  const planTools = getPlanToolSpecs({ dataDir });
+  return {
+    extraAgentTools: [planTools.read, planTools.write, planTools.verify],
+    extraExecutorTools: [
+      { spec: planTools.markTasks, options: { allowedScopes: [] } },
+    ],
+  } as const;
+}
+
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
-  const planTools = getPlanToolSpecs({ dataDir: ctx.host.paths.fleetDataDir });
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const runtime = createFleetAgentRuntimeLifecycle({
     authService: deps.authService,
@@ -81,11 +90,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     },
     workspaceChangeScanner: createWorkspaceChangeScanner(),
     wikiToolSpecs,
-    extraAgentTools: [planTools.read, planTools.verify],
-    extraExecutorTools: [
-      { spec: planTools.write, options: { allowedScopes: [] } },
-      { spec: planTools.markTasks, options: { allowedScopes: [] } },
-    ],
+    ...buildAgentPlanToolRegistrations(ctx.host.paths.fleetDataDir),
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,

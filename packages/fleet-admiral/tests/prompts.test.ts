@@ -192,8 +192,12 @@ describe("Admiral prompts", () => {
     }).build(false);
 
     expect(prompt).toContain("Live MCP tool descriptions and schemas are authoritative");
+    expect(prompt).toContain("the host owns planning and Plan mutation except Ohio's completion marking");
+    expect(prompt).toContain("load `plan-operations` before the first host `plan_write` call in a session");
+    expect(prompt).toContain("skip reloading when already in context");
+    expect(prompt).toContain("Kirov may only audit an existing host-authored PlanRef");
     expect(prompt).toContain("Host plan_read once per operation for full context");
-    expect(prompt).toContain("Ohio plan_read once per dispatch with one same-Lane TaskRef group");
+    expect(prompt).toContain("Ohio plan_read once per dispatch with one host-authored same-Lane TaskRef group");
     expect(prompt).toContain("plan_verify proves Plan state, not code correctness");
     expect(prompt).toContain(RETRIEVED_CONTENT_BOUNDARY);
     // 이관된 디스패치 조성 메카닉은 제목·고유 본문 구절 모두 상시 프롬프트에서 제외.

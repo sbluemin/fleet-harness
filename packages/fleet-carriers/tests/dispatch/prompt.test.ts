@@ -63,13 +63,13 @@ describe("validateRequiredRequestBlocks", () => {
     expect(parseCarrierRequest(META, request).blocks[0]).toMatchObject({ present: true, body: "Use <unknown> literally" });
   });
 
-  it("rejects a Kirov dispatch without its required plan_id", () => {
-    const result = validateRequiredRequestBlocks(KIROV_METADATA, "<goal>Plan the migration</goal>", "kirov");
+  it("rejects a Kirov audit without its required plan_ref", () => {
+    const result = validateRequiredRequestBlocks(KIROV_METADATA, "<audit_focus>Check ownership</audit_focus>", "kirov");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.missing).toEqual(["plan_id"]);
-    expect(result.error).toContain("<plan_id> required:");
+    expect(result.missing).toEqual(["plan_ref"]);
+    expect(result.error).toContain("<plan_ref> required:");
   });
 });
 

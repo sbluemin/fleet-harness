@@ -21,6 +21,12 @@ describe("Fleet Plan agent specs", () => {
     const specs = getPlanToolSpecs({ dataDir: "/tmp/fleet-plans-test" });
     expect([specs.read.id, specs.write.id, specs.markTasks.id, specs.verify.id])
       .toEqual(FLEET_PLAN_TOOL_IDS);
+    expect(specs.write.description).toContain("Host-only");
+    expect(specs.write.promptSnippet).toContain("Load plan-operations");
+    expect(specs.write.guardrails).toContain("Host-only mutation surface; never expose this tool to a Carrier executor.");
+    expect(specs.verify.description).toContain("Host-only");
+    expect(specs.markTasks.description).toContain("Ohio-only");
+    expect(specs.read.guardrails).toContain("Read-only: this tool never creates directories or mutates Plan state.");
   });
 
   it("returns a full Plan for plan_ref and a compact execution view for TaskRefs", async () => {
