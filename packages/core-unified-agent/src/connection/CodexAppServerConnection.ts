@@ -104,7 +104,7 @@ interface SyntheticPermissionOption {
 
 interface SendMessageOptions {
   model?: string;
-  serviceTier?: string;
+  serviceTier?: string | null;
   effort?: string;
 }
 
@@ -188,7 +188,7 @@ export class CodexAppServerConnection extends BaseConnection {
   private pendingMcpReadyWaiters = new Set<PendingMcpReadyWaiter>();
   private stdoutBuffer = '';
   private pendingModel: string | null = null;
-  private pendingServiceTier: string | null = null;
+  private pendingServiceTier: string | null | undefined = undefined;
   private pendingEffort: string | null = null;
   private codexHome: string | null = null;
   private isDisconnecting = false;
@@ -389,18 +389,21 @@ export class CodexAppServerConnection extends BaseConnection {
     });
 
     try {
+      const serviceTier = options?.serviceTier !== undefined
+        ? options.serviceTier
+        : this.pendingServiceTier;
       const response = await this.sendRequest<CodexTurnStartResponse>(
         CODEX_METHODS.TURN_START,
         {
           threadId: sessionId,
           input,
           model: options?.model ?? this.pendingModel ?? null,
-          serviceTier: options?.serviceTier ?? this.pendingServiceTier ?? null,
+          ...(serviceTier !== undefined ? { serviceTier } : {}),
           effort: options?.effort ?? this.pendingEffort ?? null,
         },
       );
       this.pendingModel = null;
-      this.pendingServiceTier = null;
+      this.pendingServiceTier = undefined;
       this.pendingEffort = null;
       this.turnId = response.turn.id;
 
@@ -479,7 +482,7 @@ export class CodexAppServerConnection extends BaseConnection {
     this.rejectPendingMcpReadyWaiters(new Error('Codex 연결이 종료되었습니다.'));
     this.stdoutBuffer = '';
     this.pendingModel = null;
-    this.pendingServiceTier = null;
+    this.pendingServiceTier = undefined;
     this.pendingEffort = null;
     this.codexHome = null;
     try {
