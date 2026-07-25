@@ -31,6 +31,7 @@ export interface CodexInitializeResult {
 
 export interface CodexThreadStartParams {
   model?: string | null;
+  serviceTier?: string | null;
   approvalPolicy?: string | null;
   sandbox?: string | null;
   config?: Record<string, CodexJsonValue> | null;
@@ -49,6 +50,7 @@ export interface CodexThreadResumeParams {
   threadId: string;
   path?: string | null;
   model?: string | null;
+  serviceTier?: string | null;
   cwd?: string | null;
   approvalPolicy?: string | null;
   sandbox?: string | null;
@@ -84,6 +86,7 @@ export interface CodexTurnStartParams {
   threadId: string;
   input: CodexUserInput[];
   model?: string | null;
+  serviceTier?: string | null;
   effort?: string | null;
 }
 

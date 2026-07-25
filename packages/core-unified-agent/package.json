@@ -2,16 +2,13 @@
   "name": "@dotobokuri/core-unified-agent",
   "version": "1.33.0",
   "private": true,
-  "description": "Codex CLI와 Claude Code를 통합하는 TypeScript 기반 SDK",
+  "description": "여러 Agent CLI 백엔드를 통합하는 TypeScript SDK",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
     "directory": "packages/core-unified-agent"
   },
   "type": "module",
-  "bin": {
-    "ait": "./dist/cli.js"
-  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -26,7 +23,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -56,7 +53,6 @@
     "@agentclientprotocol/sdk": "^1.2.1",
     "@anthropic-ai/claude-agent-sdk": "^0.3.212",
     "@dotobokuri/core-process": "workspace:*",
-    "picocolors": "^1.1.1",
     "zod": "^4.3.6"
   }
 }

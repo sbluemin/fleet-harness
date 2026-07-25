@@ -1,7 +1,6 @@
 /**
  * @dotobokuri/core-unified-agent
- * Codex CLI, Claude Code 통합 SDK
- * 공식 ACP SDK (@agentclientprotocol/sdk) 기반
+ * Codex App Server, Claude Code 등 Agent 백엔드 통합 SDK
  *
  * @example
  * ```typescript

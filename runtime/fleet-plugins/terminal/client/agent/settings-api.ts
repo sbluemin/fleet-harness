@@ -1,5 +1,3 @@
-export type CodexLaunchMode = "acp" | "app-server";
-
 export interface KimiModelSetting {
   readonly model: string;
   readonly effort?: string;
@@ -7,13 +5,11 @@ export interface KimiModelSetting {
 
 export interface SystemPromptSettingsState {
   readonly enableMetaphor: boolean;
-  readonly codexLaunchMode: CodexLaunchMode;
   readonly kimiModel: KimiModelSetting | null;
 }
 
 export type SystemPromptSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly codexLaunchMode: CodexLaunchMode }
   | { readonly kimiModel: KimiModelSetting };
 
 export class TerminalSettingsApiError extends Error {
@@ -60,13 +56,11 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || typeof payload.enableMetaphor !== "boolean"
-    || (payload.codexLaunchMode !== "acp" && payload.codexLaunchMode !== "app-server")
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
     enableMetaphor: payload.enableMetaphor,
-    codexLaunchMode: payload.codexLaunchMode,
     kimiModel: assertKimiModelSetting(payload.kimiModel),
   };
 }

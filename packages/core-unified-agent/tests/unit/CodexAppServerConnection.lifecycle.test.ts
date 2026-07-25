@@ -106,7 +106,8 @@ describe('CodexAppServerConnection lifecycle', () => {
 
     const connectPromise = connection.connect({
       developerInstructions: '테스트 지침',
-      model: 'gpt-5.4',
+      model: 'gpt-5.6-sol',
+      serviceTier: 'priority',
     });
 
     expect(readOutgoingMethods(child)).toEqual(['initialize']);
@@ -123,6 +124,13 @@ describe('CodexAppServerConnection lifecycle', () => {
 
     await flushMicrotask();
     expect(readOutgoingMethods(child)).toEqual(['initialize', 'thread/start']);
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'thread/start',
+      params: {
+        model: 'gpt-5.6-sol',
+        serviceTier: 'priority',
+      },
+    });
 
     child.stdout.emit(
       'data',
@@ -175,6 +183,148 @@ describe('CodexAppServerConnection lifecycle', () => {
 
     await sendPromise;
     expect(promptComplete).toHaveBeenCalledWith('thread-1');
+  });
+
+  it('thread Fast tier는 첫 번째와 이후 turn/start에서 생략해 유지한다', async () => {
+    const connectPromise = connection.connect({
+      model: 'gpt-5.6-sol',
+      serviceTier: 'priority',
+    });
+    child.stdout.emit(
+      'data',
+      `${jsonRpcResult(1, {
+        userAgent: 'codex/test',
+        codexHome: '/tmp/codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      })}\n`,
+    );
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'thread/start',
+      params: {
+        model: 'gpt-5.6-sol',
+        serviceTier: 'priority',
+      },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(2, { thread: { id: 'thread-1' } })}\n`);
+    await connectPromise;
+
+    const firstTurn = connection.sendMessage([{
+      type: 'text',
+      text: 'first',
+      text_elements: [],
+    }]);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'turn/start',
+      params: { model: null },
+    });
+    expect(lastOutgoingParams(child)).not.toHaveProperty('serviceTier');
+    child.stdout.emit('data', `${jsonRpcResult(3, { turn: { id: 'turn-first' } })}\n`);
+    child.stdout.emit('data', `${jsonRpcNotification('turn/completed', {
+      threadId: 'thread-1',
+      turn: { id: 'turn-first', status: 'completed', error: null },
+    })}\n`);
+    await firstTurn;
+
+    const laterTurn = connection.sendMessage([{
+      type: 'text',
+      text: 'later',
+      text_elements: [],
+    }]);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'turn/start',
+      params: { model: null },
+    });
+    expect(lastOutgoingParams(child)).not.toHaveProperty('serviceTier');
+    child.stdout.emit('data', `${jsonRpcResult(4, { turn: { id: 'turn-later' } })}\n`);
+    child.stdout.emit('data', `${jsonRpcNotification('turn/completed', {
+      threadId: 'thread-1',
+      turn: { id: 'turn-later', status: 'completed', error: null },
+    })}\n`);
+    await laterTurn;
+  });
+
+  it('dynamic Fast tier는 유지하고 일반 모델 전환은 null로 한 번만 해제한다', async () => {
+    await establishSession(connection, child);
+    connection.setPendingModel('gpt-5.6-terra');
+    connection.setPendingServiceTier('priority');
+
+    const fastTurn = connection.sendMessage([{
+      type: 'text',
+      text: 'fast',
+      text_elements: [],
+    }]);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'turn/start',
+      params: {
+        model: 'gpt-5.6-terra',
+        serviceTier: 'priority',
+      },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(3, { turn: { id: 'turn-fast' } })}\n`);
+    child.stdout.emit('data', `${jsonRpcNotification('turn/completed', {
+      threadId: 'thread-1',
+      turn: { id: 'turn-fast', status: 'completed', error: null },
+    })}\n`);
+    await fastTurn;
+
+    const inheritedFastTurn = connection.sendMessage([{
+      type: 'text',
+      text: 'still fast',
+      text_elements: [],
+    }]);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'turn/start',
+      params: { model: null },
+    });
+    expect(lastOutgoingParams(child)).not.toHaveProperty('serviceTier');
+    child.stdout.emit('data', `${jsonRpcResult(4, { turn: { id: 'turn-inherited-fast' } })}\n`);
+    child.stdout.emit('data', `${jsonRpcNotification('turn/completed', {
+      threadId: 'thread-1',
+      turn: { id: 'turn-inherited-fast', status: 'completed', error: null },
+    })}\n`);
+    await inheritedFastTurn;
+
+    connection.setPendingModel('gpt-5.5');
+    connection.setPendingServiceTier(null);
+    const standardTurn = connection.sendMessage([{
+      type: 'text',
+      text: 'standard',
+      text_elements: [],
+    }]);
+    await flushMicrotask();
+    expect(lastOutgoingMessage(child)).toMatchObject({
+      method: 'turn/start',
+      params: {
+        model: 'gpt-5.5',
+        serviceTier: null,
+      },
+    });
+    child.stdout.emit('data', `${jsonRpcResult(5, { turn: { id: 'turn-standard' } })}\n`);
+    child.stdout.emit('data', `${jsonRpcNotification('turn/completed', {
+      threadId: 'thread-1',
+      turn: { id: 'turn-standard', status: 'completed', error: null },
+    })}\n`);
+    await standardTurn;
+
+    const inheritedStandardTurn = connection.sendMessage([{
+      type: 'text',
+      text: 'still standard',
+      text_elements: [],
+    }]);
+    await flushMicrotask();
+    expect(lastOutgoingParams(child)).not.toHaveProperty('serviceTier');
+    child.stdout.emit('data', `${jsonRpcResult(6, { turn: { id: 'turn-inherited-standard' } })}\n`);
+    child.stdout.emit('data', `${jsonRpcNotification('turn/completed', {
+      threadId: 'thread-1',
+      turn: { id: 'turn-inherited-standard', status: 'completed', error: null },
+    })}\n`);
+    await inheritedStandardTurn;
   });
 
   it('sendMessage는 등록된 MCP 서버가 ready가 될 때까지 turn/start를 지연한다', async () => {
@@ -343,7 +493,7 @@ describe('CodexAppServerConnection lifecycle', () => {
 
     await disconnectPromise;
 
-    expect(child.kill).toHaveBeenCalled();
+    expect((child as MockChildProcess & { __intentionalKill?: boolean }).__intentionalKill).toBe(true);
   });
 
   it('loadSession이 archived rollout을 path fallback으로 재개한다', async () => {
@@ -370,7 +520,8 @@ describe('CodexAppServerConnection lifecycle', () => {
       const loadPromise = connection.loadSession(threadId, {
         cwd: '/resume-workspace',
         developerInstructions: '재개 개발자 지침',
-        model: 'gpt-5.4',
+        model: 'gpt-5.5',
+        serviceTier: 'priority',
         approvalPolicy: 'on-request',
         sandbox: 'read-only',
         config: {
@@ -394,7 +545,8 @@ describe('CodexAppServerConnection lifecycle', () => {
           cwd: '/resume-workspace',
           path: null,
           developerInstructions: '재개 개발자 지침',
-          model: 'gpt-5.4',
+          model: 'gpt-5.5',
+          serviceTier: 'priority',
           approvalPolicy: 'on-request',
           sandbox: 'read-only',
           config: {
@@ -408,7 +560,8 @@ describe('CodexAppServerConnection lifecycle', () => {
           cwd: '/resume-workspace',
           path: rolloutPath,
           developerInstructions: '재개 개발자 지침',
-          model: 'gpt-5.4',
+          model: 'gpt-5.5',
+          serviceTier: 'priority',
           approvalPolicy: 'on-request',
           sandbox: 'read-only',
           config: {
@@ -503,6 +656,10 @@ function lastOutgoingMessage(child: MockChildProcess): Record<string, unknown> {
   const lastCall = child.stdin.write.mock.calls.at(-1);
   expect(lastCall).toBeTruthy();
   return parseOutgoingChunk(lastCall?.[0] as string);
+}
+
+function lastOutgoingParams(child: MockChildProcess): Record<string, unknown> {
+  return lastOutgoingMessage(child).params as Record<string, unknown>;
 }
 
 function parseOutgoingChunk(chunk: string): Record<string, unknown> {

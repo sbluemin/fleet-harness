@@ -217,7 +217,7 @@ function readKimiProviderDefaultSelection(
   if (cliType !== "claude-kimi") return undefined;
   try {
     // 전역 설정은 fleet-cli/모든 Console 채널이 공유하는 기본 fleet 데이터 디렉터리 기준이다
-    // (enableMetaphor/codexLaunchMode/auth.json과 동일 축). 채널 스코프는 carriers.json만 해당한다.
+    // (enableMetaphor/auth.json과 동일 축). 채널 스코프는 carriers.json만 해당한다.
     const kimiModel = createGlobalOptionsStore().load().kimiModel;
     if (!kimiModel || !allowedModels.has(kimiModel.model)) return undefined;
     return {

@@ -53,10 +53,10 @@ describe('AcpConnection stderr diagnostics', () => {
     } as unknown as Partial<Agent>);
     conn.agentProxy = mockAgent;
 
-    conn.pushStderr('codex-acp: workspace must be a git repository\n');
+    conn.pushStderr('claude-agent-acp: workspace must be a git repository\n');
 
     await expect(conn.createSession('/workspace')).rejects.toThrow(
-      /new session failed[\s\S]+ACP session\/new stderr tail:[\s\S]+codex-acp: workspace must be a git repository/,
+      /new session failed[\s\S]+ACP session\/new stderr tail:[\s\S]+claude-agent-acp: workspace must be a git repository/,
     );
   });
 });

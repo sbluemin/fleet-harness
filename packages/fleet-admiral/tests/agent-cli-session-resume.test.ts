@@ -121,7 +121,7 @@ describe("agent CLI session resume and capture hooks", () => {
     const root = createTempRoot("fleet-admiral-codex-resume-");
     const codexHome = path.join(root, "codex-home");
     const profile = baseProfile("codex", {
-      args: ["/shim/codex", "--no-alt-screen", "--model", "gpt-5.4"],
+      args: ["/shim/codex", "--no-alt-screen", "--model", "gpt-5.5"],
       binPrefixArgs: ["/shim/codex"],
       cwd: root,
       env: { CODEX_HOME: codexHome, HOME: root },
@@ -142,7 +142,7 @@ describe("agent CLI session resume and capture hooks", () => {
     const toml = readFileSync(profilePath, "utf8");
 
     expect(profileName).toBe("fleet");
-    expect(injected.args.slice(0, 6)).toEqual(["/shim/codex", "resume", "codex-session-456", "--no-alt-screen", "--model", "gpt-5.4"]);
+    expect(injected.args.slice(0, 6)).toEqual(["/shim/codex", "resume", "codex-session-456", "--no-alt-screen", "--model", "gpt-5.5"]);
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--no-alt-screen"]));
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--profile"]));
     expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["-c"]));

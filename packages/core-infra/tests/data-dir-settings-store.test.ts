@@ -134,35 +134,20 @@ describe("data-dir settings store", () => {
     });
   });
 
-  it("preserves valid codex launch modes and strips invalid values", () => {
+  it("drops legacy codex launch modes", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
       codexLaunchMode: "acp",
     })).toEqual({
-      changed: false,
-      data: {
-        version: 1,
-        codexLaunchMode: "acp",
-      },
+      changed: true,
+      data: { version: 1 },
     });
     expect(sanitizeGlobalOptionsData({
       version: 1,
       codexLaunchMode: "app-server",
     })).toEqual({
-      changed: false,
-      data: {
-        version: 1,
-        codexLaunchMode: "app-server",
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      codexLaunchMode: "legacy",
-    })).toEqual({
       changed: true,
-      data: {
-        version: 1,
-      },
+      data: { version: 1 },
     });
   });
 

@@ -111,7 +111,7 @@ describe("Kimi 프로바이더 기본 모델 폴백", () => {
     const customDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-kimi-custom-"));
     try {
       initStore(customDir);
-      // 전역 설정은 enableMetaphor/codexLaunchMode와 같은 축으로 호스트·채널 공통(기본 디렉터리)이다.
+      // 전역 설정은 enableMetaphor와 같은 축으로 호스트·채널 공통(기본 디렉터리)이다.
       // 재배치된 디렉터리에 다른 값이 있어도 기본 디렉터리의 설정이 적용돼야 한다.
       writeSettingsJson({ version: 1, kimiModel: { model: "k3", effort: "low" } });
       fs.writeFileSync(

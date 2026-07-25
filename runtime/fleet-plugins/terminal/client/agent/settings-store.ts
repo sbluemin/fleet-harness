@@ -65,9 +65,7 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
   const optimistic = { ...current, [field]: value };
   const update = field === "enableMetaphor"
     ? { enableMetaphor: optimistic.enableMetaphor }
-    : field === "codexLaunchMode"
-      ? { codexLaunchMode: optimistic.codexLaunchMode }
-      : { kimiModel: optimistic.kimiModel! };
+    : { kimiModel: optimistic.kimiModel! };
   setSnapshot({ state: optimistic, savingField: field, error: null });
   try {
     const state = await saveSystemPromptSettings(update);

@@ -2,30 +2,10 @@
  * E2E 테스트 공용 헬퍼 함수
  */
 
-import { execSync, spawn, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import * as http from 'node:http';
-import { resolve } from 'path';
 import { UnifiedAgent, type IUnifiedAgentClient } from '../../src/index.js';
 import type { CliType } from '../../src/config/CliConfigs.js';
-
-/** CLI JSON 출력 결과 타입 */
-export interface CliJsonResult {
-  response: string;
-  cli: string;
-  sessionId: string;
-}
-
-/** 모델 실행 가능 여부 probe 결과 */
-export interface ModelAvailabilityProbe {
-  available: boolean;
-  reason?: string;
-}
-
-/** CLI 바이너리 경로 */
-export const CLI_PATH = resolve(import.meta.dirname, '../../dist/cli.js');
-
-/** Node.js 실행 경로 */
-export const NODE = process.execPath;
 
 /** 기본 프롬프트 (도구 사용 없이 즉시 답할 수 있는 산술 — 응답에 "2" 포함 검증용) */
 export const SIMPLE_PROMPT = '코드 실행이나 도구 사용 없이 바로 답해줘. 1+1의 결과를 숫자만 답해. 다른 설명은 하지 마.';
@@ -178,77 +158,6 @@ async function waitForChunkIdle(chunks: string[], thoughts: string[]): Promise<v
   }
 }
 
-/** CLI 바이너리(dist/cli.js)를 비동기로 실행하는 헬퍼 */
-export function runCli(
-  args: string[],
-  opts?: { input?: string; timeout?: number },
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const child = spawn(NODE, [CLI_PATH, ...args], {
-      env: { ...process.env, NO_COLOR: '1' },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
-    child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-    }, opts?.timeout ?? 180_000);
-
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-
-    if (opts?.input) {
-      child.stdin.write(opts.input);
-      child.stdin.end();
-    } else {
-      child.stdin.end();
-    }
-  });
-}
-
-/**
- * 특정 CLI/모델 조합이 현재 환경에서 실제로 실행 가능한지 동기 probe합니다.
- *
- * 알려진 환경 이슈(레이트 리밋, 구독/모델 미지원)인 경우만 unavailable로 처리하고,
- * 그 외 예기치 않은 실패는 테스트가 실제로 드러내도록 available=true로 둡니다.
- */
-export function probeCliModelAvailability(
-  cli: CliType,
-  model: string,
-): ModelAvailabilityProbe {
-  const result = spawnSync(
-    NODE,
-    [CLI_PATH, '--json', '-c', cli, '-m', model, SIMPLE_PROMPT],
-    {
-      env: { ...process.env, NO_COLOR: '1' },
-      encoding: 'utf-8',
-      timeout: 120_000,
-    },
-  );
-
-  if (result.status === 0) {
-    return { available: true };
-  }
-
-  const combined = [result.stdout, result.stderr, result.error?.message]
-    .filter(Boolean)
-    .join('\n');
-
-  if (isKnownModelUnavailable(combined)) {
-    return { available: false, reason: combined.trim() };
-  }
-
-  // 알려진 가용성 문제가 아니면 실제 테스트에서 드러나도록 실행 가능으로 간주합니다.
-  return { available: true };
-}
-
 // ─── 테스트용 MCP 서버 ────────────────────────────────────
 
 export interface TestMcpServer {
@@ -354,18 +263,4 @@ function handleMcpRequest(body: { jsonrpc: string; id?: number; method: string; 
         error: { code: -32601, message: `Method not found: ${method}` },
       };
   }
-}
-
-function isKnownModelUnavailable(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return [
-    'rate limit reached',
-    'rate limit',
-    'quota',
-    'not available',
-    'does not have access',
-    'subscription',
-    'invalid value for config option model',
-    'unsupported model',
-  ].some((token) => normalized.includes(token));
 }
