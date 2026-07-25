@@ -26,6 +26,7 @@ interface SideBarChipProps {
   readonly accentValue: string | null;
   readonly groupMark?: { readonly name: string; readonly color: string } | null;
   readonly statusAxis?: boolean;
+  readonly idleUnseen?: boolean;
   readonly statusLanded?: boolean;
   readonly reorderEnabled?: boolean;
   readonly dragging: boolean;
@@ -56,6 +57,7 @@ export function OperationsSideBarChip({
   accentValue,
   groupMark = null,
   statusAxis = false,
+  idleUnseen = false,
   statusLanded = false,
   reorderEnabled = true,
   dragging,
@@ -77,9 +79,10 @@ export function OperationsSideBarChip({
   const { operation, active, minimized, notificationCount, status } = entry;
   const title = displayTitle(operation);
   const groupContext = statusAxis && groupMark ? ` in group ${groupMark.name}` : "";
+  const unseenContext = idleUnseen ? " (unseen since idle)" : "";
   const chipAriaLabel = active
-    ? `${title}${groupContext} (focused)`
-    : `Focus operation ${title}${groupContext}`;
+    ? `${title}${groupContext} (focused)${unseenContext}`
+    : `Focus operation ${title}${groupContext}${unseenContext}`;
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
@@ -226,6 +229,14 @@ export function OperationsSideBarChip({
           title={groupMark.name}
           aria-label={`Group ${groupMark.name}`}
           style={{ "--group-mark": groupMark.color } as CSSProperties}
+        />
+      ) : null}
+      {statusAxis && idleUnseen ? (
+        <span
+          className="side-bar-chip-unseen"
+          role="img"
+          aria-label="Unseen since idle"
+          title="Finished — not opened yet"
         />
       ) : null}
       {!statusAxis ? (

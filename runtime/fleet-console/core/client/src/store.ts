@@ -446,12 +446,22 @@ export function statusCycleOperationIds(
   operationStatus: Readonly<Record<string, OperationActivity>>,
   minimized: readonly string[],
   isStatusSectionCollapsed: (status: OperationActivity) => boolean,
+  getTick?: (id: string) => number | undefined,
 ): readonly string[] {
   const minimizedIds = new Set(minimized);
   const status = (operation: OperationNode): OperationActivity => resolveOperationActivity(operation, operationStatus);
   const rank = (operation: OperationNode): number => STATUS_CYCLE_RANK[status(operation)];
   return [...sortOperationsByOrder(operations, operationOrder)]
-    .sort((left, right) => rank(left) - rank(right))
+    .sort((left, right) => {
+      const rankDifference = rank(left) - rank(right);
+      if (rankDifference !== 0) return rankDifference;
+      const leftTick = getTick?.(left.id);
+      const rightTick = getTick?.(right.id);
+      if (leftTick === undefined && rightTick === undefined) return 0;
+      if (leftTick === undefined) return 1;
+      if (rightTick === undefined) return -1;
+      return rightTick - leftTick;
+    })
     .filter((operation) => !minimizedIds.has(operation.id) && !isStatusSectionCollapsed(status(operation)))
     .map((operation) => operation.id);
 }
