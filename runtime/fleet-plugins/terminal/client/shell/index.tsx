@@ -38,6 +38,24 @@ export const operationKinds = [shellOperationKind] as const;
 export const plugins = [shellPlugin] as const;
 
 function ShellOperationView({ context }: { readonly context: OperationRenderContext }) {
+  const [relaunched, setRelaunched] = React.useState(false);
+  const restoredDormant = context.operation.payload.restoredDormant === true && !relaunched;
+  if (restoredDormant) {
+    return (
+      <button type="button" className="canvas-operation-dormant" onClick={() => {
+        void context.api.fetch("terminal", `shell/sessions/${encodeURIComponent(context.operationId)}/relaunch`, { method: "POST" })
+          .then((response) => {
+            if (!response.ok) throw new Error("shell_relaunch_failed");
+            setRelaunched(true);
+            context.api.resync();
+          })
+          .catch(() => {});
+      }}>
+        <span className="canvas-operation-dormant-status">Dormant</span>
+        <span className="canvas-operation-dormant-action">Relaunch</span>
+      </button>
+    );
+  }
   return (
     <TerminalSurface
       operationId={context.operationId}

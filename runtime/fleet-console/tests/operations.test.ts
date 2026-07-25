@@ -156,7 +156,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
-      deleteOperation: (id) => store.delete(id),
+      deleteOperation: (id) => store.delete(id) ? ({ deletionId: `delete-${id}`, kind: "operation", targetId: id, expiresAt: 8_000 }) : null,
       getPluginSensitiveFields: (pluginId) => (pluginId === "terminal" ? ["pluginSecret", "providerTitle"] : []),
     });
 
@@ -201,7 +201,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
-      deleteOperation: (id) => store.delete(id),
+      deleteOperation: (id) => store.delete(id) ? ({ deletionId: `delete-${id}`, kind: "operation", targetId: id, expiresAt: 8_000 }) : null,
     });
 
     requestBody = { accent: "blue" };
@@ -235,7 +235,7 @@ describe("operations platform", () => {
         Object.assign(res, { status, payload });
       },
       persist: () => {},
-      deleteOperation: (id) => store.delete(id),
+      deleteOperation: (id) => store.delete(id) ? ({ deletionId: `delete-${id}`, kind: "operation", targetId: id, expiresAt: 8_000 }) : null,
       resolveLaunchCatalog: async () => ({
         plugins: [
           {

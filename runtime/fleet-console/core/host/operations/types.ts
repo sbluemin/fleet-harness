@@ -65,3 +65,4 @@ export interface OperationStore {
 
 // 그룹 이름 최대 길이 — durable sanitize(영속 검증)와 store(생성/수정) 양쪽이 공유하는 단일 제한.
 export const MAX_GROUP_NAME_LENGTH = 64;
+export const DELETION_GRACE_MS = 8000;

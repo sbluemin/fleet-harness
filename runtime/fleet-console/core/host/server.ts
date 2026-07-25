@@ -15,7 +15,8 @@ import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-f
 import { createDesktopFullscreenRouter } from "./desktop-fullscreen-routes.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-theme.js";
 import { createDesktopThemeRouter } from "./desktop-theme-routes.js";
-import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
+import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
+import { createConsoleDurableStateStore, emptyDurableConsoleState, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createPluginSettingsRouter } from "./plugin-settings-routes.js";
 import { createSystemFontsRouter } from "./system-fonts-routes.js";
@@ -110,7 +111,6 @@ const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
-const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 export const PAIRING_IDENTITY = { product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 } as const;
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
@@ -167,6 +167,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "DELETE",
     path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/deletions/:deletionId/restore",
+    summary: "유예 중인 Operation 또는 Theater 삭제를 복구합니다.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -315,17 +322,30 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
   }
-  // 모든 호스트 삭제 진입점은 삭제 성공 뒤 영속화와 단일 수명주기 발행을 이 경계에서 완료한다.
-  function deleteOperation(operationId: string): boolean {
-    const operation = operations.get(operationId);
-    if (!operation || !operations.delete(operationId)) return false;
-    persistDurableState();
-    publishPluginEvent(OPERATION_DELETED_EVENT_CHANNEL, {
-      operationId: operation.id,
-      pluginId: operation.pluginId,
-      type: operation.type,
-    });
-    return true;
+  const deletionCoordinator = createDeferredDeletionCoordinator({
+    operations,
+    theaters,
+    save: saveDurableState,
+    publish: publishPluginEvent,
+    unregisterTheaterWorkspaces: (theaterId) => codex.unregisterTheaterWorkspaces(theaterId),
+    validateTheaterRestore: async (theater) => {
+      try {
+        const restoredRealpath = await fs.promises.realpath(theater.path);
+        const stat = await fs.promises.stat(restoredRealpath);
+        if (!stat.isDirectory() || restoredRealpath !== theater.realpath || workspaceHash(restoredRealpath) !== theater.id) {
+          throw new Error("restore_conflict");
+        }
+      } catch {
+        throw new DeferredDeletionError(409, "restore_parent_missing");
+      }
+    },
+    registerTheaterWorkspace: async (theater) => {
+      await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
+    },
+  });
+  // 플러그인 capability는 기존 boolean 표면을 유지하되 실제 삭제는 receipt coordinator가 소유한다.
+  function deleteOperationForPlugin(operationId: string): boolean {
+    return deletionCoordinator.deleteOperation(operationId) !== null;
   }
   let desktopFullscreen = false;
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
@@ -336,6 +356,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       list: () => operations.list(),
       get: (id) => operations.get(id),
       create: (input) => {
+        if (input.id && deletionCoordinator.hasPendingOperation(input.id)) throw new Error("pending_deletion");
         const operation = operations.create(input);
         persistDurableState();
         return operation;
@@ -351,7 +372,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }
         return operation;
       },
-      delete: deleteOperation,
+      delete: deleteOperationForPlugin,
       registerOperationType: (type) => {
         pluginOperationTypes.add(type);
         return () => {
@@ -572,7 +593,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     persist: persistDurableState,
-    deleteOperation,
+    deleteOperation: (operationId): DeferredDeletionReceipt | null => deletionCoordinator.deleteOperation(operationId),
+    isPendingDeletion: (operationId) => deletionCoordinator.hasPendingOperation(operationId),
     getPluginSensitiveFields: (pluginId) => [
       ...(pluginHost.sensitiveFieldsByPluginId.get(pluginId) ?? []),
       ...(pluginPayloadSanitizers.get(pluginId) ?? []),
@@ -671,6 +693,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/plans/list" || pathname === "/api/v1/plans/read" || pathname === "/api/v1/plans/events") {
       runAsyncBooleanHandler(plansRouter({ req, res, pathname }), res, () => false);
+      return;
+    }
+    const restoreMatch = pathname.match(/^\/api\/v1\/deletions\/([^/]+)\/restore$/);
+    if (restoreMatch) {
+      runAsyncHandler(handleDeferredDeletionRestore(req, res, decodeURIComponent(restoreMatch[1] ?? "")), res);
       return;
     }
     const theaterItemMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)$/);
@@ -827,6 +854,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
+    const canonicalCwd = canonicalizeTheaterPathSync(cwd);
+    if (deletionCoordinator.hasPendingTheater(workspaceHash(canonicalCwd))) {
+      writeJson(res, 409, { error: "pending_deletion" });
+      return;
+    }
     const theater = await theaters.register(cwd);
     await codex.registerWorkspace(theater.realpath, undefined, theater.id);
     persistDurableState();
@@ -857,16 +889,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 200, toTheaterInfo(theater, true));
       return;
     }
-    // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
-    // 이미 달성된 것이므로 404가 아닌 성공으로 처리하고, 남아 있을 수 있는 소속 Operation도 함께 정리한다.
-    theaters.remove(theaterId);
-    // Theater를 잊을 때 그 Theater가 소유한 root·nested Codex 워크스페이스를 모두 해제한다.
-    // 다른 Theater가 같은 workspace id를 소유하면 등록을 유지한다.
-    codex.unregisterTheaterWorkspaces(theaterId);
-    for (const operation of operations.listByTheater(theaterId)) deleteOperation(operation.id);
-    operations.deleteGroupsByTheater(theaterId);
-    persistDurableState();
-    writeJson(res, 200, { ok: true });
+    const deletion = deletionCoordinator.deleteTheater(theaterId);
+    writeJson(res, 200, { ok: true, deletion });
+  }
+
+  async function handleDeferredDeletionRestore(req: http.IncomingMessage, res: http.ServerResponse, deletionId: string): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    try {
+      writeJson(res, 200, await deletionCoordinator.restore(deletionId));
+    } catch (error) {
+      if (error instanceof DeferredDeletionError) {
+        writeJson(res, error.status, { error: error.message });
+        return;
+      }
+      throw error;
+    }
   }
 
   function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -1103,6 +1147,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operations.replace([]);
       operations.replaceGroups([]);
     }
+    deletionCoordinator.load(state.deletionTombstones ?? []);
+    try {
+      deletionCoordinator.sweepExpired();
+    } catch (error) {
+      console.warn(`[fleet-console] Expired deletion sweep deferred: ${error instanceof Error ? error.message : String(error)}`);
+    }
     // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
     await restoreCodexWorkspaces();
   }
@@ -1157,15 +1207,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function persistDurableState(): void {
     try {
-      durableStateStore.save({
-        version: 2,
-        theaters: theaters.list(),
-        operations: operations.list(),
-        groups: operations.listAllGroups(),
-      });
+      saveDurableState(deletionCoordinator.list());
     } catch (error) {
       console.warn(`[fleet-console] Durable state save failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  function saveDurableState(deletionTombstones: ReturnType<typeof deletionCoordinator.list>): void {
+    durableStateStore.save({
+      version: STATE_VERSION,
+      theaters: theaters.list(),
+      operations: operations.list(),
+      groups: operations.listAllGroups(),
+      deletionTombstones,
+    });
   }
 
   async function stopServer(): Promise<void> {
@@ -1177,6 +1232,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     lockHandle = null;
     activeLockFile = null;
     activeEndpoint = null;
+    deletionCoordinator.dispose();
     try {
       await Promise.all([
         closeHttpServer(current),

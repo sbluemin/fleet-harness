@@ -28,4 +28,35 @@ describe("Console global shortcuts", () => {
     expect(toggleOperationSearch).toHaveBeenCalledOnce();
     cleanup();
   });
+
+  it("runs Undo only while a grace window exists and ignores editable or xterm focus", () => {
+    const undoLastClose = vi.fn();
+    let active = false;
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleRailChrome: vi.fn(),
+      canUndoLastClose: () => active,
+      undoLastClose,
+    });
+    const dispatchUndo = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }));
+
+    dispatchUndo();
+    active = true;
+    dispatchUndo();
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
+    dispatchUndo();
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    xterm.tabIndex = 0;
+    document.body.append(xterm);
+    xterm.focus();
+    dispatchUndo();
+
+    expect(undoLastClose).toHaveBeenCalledOnce();
+    cleanup();
+  });
 });

@@ -17,29 +17,29 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 2, theaters: [], operations: [], groups: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 2, theaters: [], operations: [], groups: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 3, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 3, theaters: [], operations: [], groups: [], deletionTombstones: [] });
   });
 
   it("drops legacy pathContext values without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 2, theaters: [base] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 2, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 3, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 3, theaters: [base] });
   });
 
   it("round-trips optional Theater order without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
 
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 3 }], operations: [] })).toMatchObject({
-      version: 2,
+      version: 3,
       theaters: [{ ...base, order: 3 }],
     });
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: -1 }], operations: [] })).toMatchObject({
-      version: 2,
+      version: 3,
       theaters: [base],
     });
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 1.5 }], operations: [] })).toMatchObject({
-      version: 2,
+      version: 3,
       theaters: [base],
     });
   });
@@ -70,7 +70,7 @@ describe("durable console state", () => {
       ],
     });
 
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(3);
     expect(migrated.theaters).toHaveLength(1);
     expect(migrated.groups).toEqual([]);
     expect(migrated.operations).toEqual([
@@ -116,6 +116,34 @@ describe("durable console state", () => {
       { id: "agent-op", pluginId: "terminal", type: "agent" },
       { id: "shell-op", pluginId: "terminal", type: "shell" },
       { id: "demo-op", pluginId: "demo", type: "demo" },
+    ]);
+  });
+
+  it("migrates v2 to v3 and sanitizes tombstones item by item", () => {
+    const theater = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
+    const operation = makeOperationNode({ id: "op", pluginId: "terminal", type: "agent" });
+    const theaterOperation = { ...operation, theaterId: theater.id };
+    const sanitized = sanitizeDurableConsoleState({
+      version: 3,
+      theaters: [],
+      operations: [],
+      groups: [],
+      deletionTombstones: [
+        { deletionId: "d-op", targetId: "op", deletedAt: 1, expiresAt: 2, kind: "operation", operation },
+        { deletionId: "d-theater", targetId: "t", deletedAt: 3, expiresAt: 4, kind: "theater", theater, operations: [theaterOperation], groups: [] },
+        { deletionId: "bad-theater", targetId: "t", deletedAt: 3, expiresAt: 4, kind: "theater", theater, operations: [theaterOperation, { id: "" }], groups: [] },
+        { deletionId: "", targetId: "bad", deletedAt: 1, expiresAt: 2, kind: "operation", operation },
+        { deletionId: "bad-number", targetId: "bad", deletedAt: Number.NaN, expiresAt: 2, kind: "operation", operation },
+      ],
+    });
+
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [theater], operations: [operation], groups: [] })).toMatchObject({
+      version: 3,
+      deletionTombstones: [],
+    });
+    expect(sanitized.deletionTombstones).toEqual([
+      expect.objectContaining({ deletionId: "d-op", kind: "operation", targetId: "op" }),
+      expect.objectContaining({ deletionId: "d-theater", kind: "theater", targetId: "t", operations: [expect.objectContaining({ id: "op" })] }),
     ]);
   });
 

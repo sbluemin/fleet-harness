@@ -524,6 +524,9 @@ describe("Session Analyst server contract", () => {
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
+    expect(router.responses.at(-1)).toMatchObject({ status: 200 });
+    router.emitOperationPurged({ operationId: "op", pluginId: "terminal" });
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/deleted-artifact");
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
   });
 
@@ -832,7 +835,7 @@ describe("Session Analyst server contract", () => {
 
 function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
-  let operationDeletedHandler: ((payload: unknown) => void) | undefined;
+  const operationLifecycleHandlers = new Map<string, (payload: unknown) => void>();
   const responses: Array<{ status: number; body: unknown }> = [];
   const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
   const state = { allowHost: initialHostAllowance, operationPresent: true, operation };
@@ -847,7 +850,13 @@ function createRouterHarness(initialHostAllowance: boolean) {
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
       operations: { get: (id: string) => state.operationPresent && id === "op" ? state.operation : null },
       paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
-      events: { subscribe: (_channel: string, subscriber: (payload: unknown) => void) => { operationDeletedHandler = subscriber; return () => { operationDeletedHandler = undefined; }; } }, lifecycle: { registerCleanup: () => () => undefined },
+      events: {
+        subscribe: (channel: string, subscriber: (payload: unknown) => void) => {
+          operationLifecycleHandlers.set(channel, subscriber);
+          return () => { operationLifecycleHandlers.delete(channel); };
+        },
+      },
+      lifecycle: { registerCleanup: () => () => undefined },
     },
   };
   return {
@@ -858,7 +867,8 @@ function createRouterHarness(initialHostAllowance: boolean) {
       state.operation = { ...operation, theaterId: "replacement-theater", ts: { createdAt: 1, updatedAt: 1 } };
       state.operationPresent = true;
     },
-    emitOperationDeleted(payload: unknown) { operationDeletedHandler?.(payload); },
+    emitOperationDeleted(payload: unknown) { operationLifecycleHandlers.get("operation:deleted")?.(payload); },
+    emitOperationPurged(payload: unknown) { operationLifecycleHandlers.get("operation:purged")?.(payload); },
     async call(method: string, pathname: string, body?: unknown, headers: Record<string, string> = {}) {
       const writes: string[] = [];
       let ended = false;

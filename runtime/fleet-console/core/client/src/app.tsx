@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
+import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { takeKeyboardShortcutsReturnFocus } from "./keyboard-shortcuts-return-focus.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
+import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { installConsoleGlobalShortcuts } from "./global-shortcuts.js";
@@ -19,7 +20,7 @@ import { Operations } from "./pages/operations.js";
 import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed } from "./sidebar/operations-side-bar-store.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
@@ -27,6 +28,7 @@ import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
+const UNDO_WINDOW_MS = 8_000;
 
 export function App() {
   const state = useConsoleState();
@@ -35,6 +37,12 @@ export function App() {
   const location = useLocation();
   const registry = usePluginRegistry();
   const globalSettings = useGlobalSettingsStore();
+  const [pendingDeletions, setPendingDeletions] = useState<readonly DeferredDeletionReceipt[]>([]);
+  const [undoClock, setUndoClock] = useState(Date.now());
+  const pendingDeletionsRef = useRef(pendingDeletions);
+  const undoInFlightRef = useRef(false);
+  pendingDeletionsRef.current = pendingDeletions;
+  const activeDeletion = latestPendingDeletion(pendingDeletions, undoClock);
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
@@ -125,13 +133,74 @@ export function App() {
   }, [state.keyboardShortcutsOpen]);
 
   useEffect(() => {
+    if (pendingDeletions.length === 0) return;
+    const updateClock = () => {
+      const nextNow = Date.now();
+      setUndoClock(nextNow);
+      setPendingDeletions((current) => {
+        const next = current.filter((deletion) => deletion.expiresAt > nextNow);
+        pendingDeletionsRef.current = next;
+        return next;
+      });
+    };
+    updateClock();
+    const timer = window.setInterval(updateClock, 100);
+    return () => window.clearInterval(timer);
+  }, [pendingDeletions.length]);
+
+  const enqueueDeletion = useCallback((deletion: DeferredDeletionReceipt | null) => {
+    if (!deletion || deletion.expiresAt <= Date.now()) return;
+    setUndoClock(Date.now());
+    setPendingDeletions((current) => {
+      const next = appendPendingDeletion(current, deletion);
+      pendingDeletionsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const undoLastClose = useCallback(() => {
+    if (undoInFlightRef.current) return;
+    const currentNow = Date.now();
+    const deletion = latestPendingDeletion(pendingDeletionsRef.current, currentNow);
+    if (!deletion) return;
+    undoInFlightRef.current = true;
+    void restoreDeletion(deletion.deletionId)
+      .then(() => {
+        setPendingDeletions((current) => {
+          const next = current.filter((item) => item.deletionId !== deletion.deletionId);
+          pendingDeletionsRef.current = next;
+          return next;
+        });
+        return Promise.allSettled([
+          fetchTheaters(null).then(hydrateTheaters),
+          fetchOperations(null).then(hydrateOperations),
+          fetchGroups(null).then(hydrateGroups),
+        ]);
+      })
+      .catch(() => {
+        if (deletion.expiresAt <= Date.now()) {
+          setPendingDeletions((current) => {
+            const next = current.filter((item) => item.deletionId !== deletion.deletionId);
+            pendingDeletionsRef.current = next;
+            return next;
+          });
+        }
+      })
+      .finally(() => {
+        undoInFlightRef.current = false;
+      });
+  }, []);
+
+  useEffect(() => {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed,
       toggleOperationSearch,
       toggleRailChrome,
+      canUndoLastClose: () => pendingDeletionsRef.current.some((deletion) => deletion.expiresAt > Date.now()),
+      undoLastClose,
     });
-  }, []);
+  }, [undoLastClose]);
 
   return (
     <div className="console-shell">
@@ -139,7 +208,7 @@ export function App() {
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
-          <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} />} />
+          <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
           <Route path="/carrier-settings" element={<Navigate to="/settings?section=terminal%3Acarriers" replace />} />
           <Route path="/settings" element={<GlobalSettings />} />
           <Route path="*" element={<Navigate to="/operations" replace />} />
@@ -154,6 +223,15 @@ export function App() {
         tone="error"
         title="Console link interrupted"
         message={state.connectionError ?? undefined}
+      />
+      <Toast
+        open={activeDeletion !== null}
+        tone="undo"
+        title={activeDeletion?.kind === "theater" ? "Theater forgotten" : "Operation closed"}
+        message={activeDeletion ? `${deletionCountdownSeconds(activeDeletion, undoClock)}s remaining` : undefined}
+        actionLabel="Undo"
+        onAction={undoLastClose}
+        progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
       />
     </div>
   );
