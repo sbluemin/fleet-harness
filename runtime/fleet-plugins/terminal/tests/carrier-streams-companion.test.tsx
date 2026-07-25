@@ -406,6 +406,38 @@ describe("Carrier Streams companion", () => {
     expect(container?.querySelector('[aria-label="Exit Session Analyst"]')).not.toBeNull();
   });
 
+  it.each([
+    { streamsVisible: false, expectedCompanionsClosed: true },
+    { streamsVisible: true, expectedCompanionsClosed: false },
+  ])("closes the Analyst cluster on EXIT while preserving visible Carrier Streams ($streamsVisible)", async ({
+    streamsVisible,
+    expectedCompanionsClosed,
+  }) => {
+    installSession([]);
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+    await renderOperation(createContext({
+      api: createApi(true),
+      companionsOpen: true,
+      hiddenCompanionPanelIds: streamsVisible ? [] : ["carrier-streams"],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    }));
+    await vi.waitFor(() => {
+      expect(container?.querySelector<HTMLButtonElement>('[aria-label="Exit Session Analyst"]')?.disabled).toBe(false);
+    });
+
+    act(() => container?.querySelector<HTMLButtonElement>('[aria-label="Exit Session Analyst"]')?.click());
+
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("session-analyst-chat", false);
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("session-analyst-artifacts", false);
+    if (expectedCompanionsClosed) {
+      expect(onRequestCompanions).toHaveBeenCalledWith(false);
+    } else {
+      expect(onRequestCompanions).not.toHaveBeenCalled();
+    }
+  });
+
   it("localizes STREAMS handle and panel copy for Korean without changing English defaults", async () => {
     installSession([]);
     await renderOperation(createContext({
