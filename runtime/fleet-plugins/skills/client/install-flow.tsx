@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import type { AgentId, Scope } from "../server/types.js";
+import type { SkillsMessageKey } from "./i18n/index.js";
 import type { UseJobLogReturn } from "./use-job-log.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -12,6 +15,7 @@ interface InstallFlowProps {
   readonly onCancel: () => void;
   readonly onStarted: (scope: Scope) => void;
   readonly jobLog: UseJobLogReturn;
+  readonly t: Translate<SkillsMessageKey>;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -30,7 +34,7 @@ const PERMISSION_WARNING =
 
 // ─── InstallFlow ──────────────────────────────────────────────────────────────
 
-export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, jobLog }: InstallFlowProps) {
+export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, jobLog, t }: InstallFlowProps) {
   const [scope, setScope] = useState<Scope>(theaterId ? "project" : "global");
   const [allAgents, setAllAgents] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<Set<AgentId>>(new Set(AGENT_IDS));
@@ -83,7 +87,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
           disabled={!theaterId || isRunning || isDone}
           title={!theaterId ? "Select a Theater to install project skills" : undefined}
         >
-          Project
+          {t("skills.scope.project")}
         </button>
         <button
           type="button"
@@ -91,7 +95,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
           onClick={() => setScope("global")}
           disabled={isRunning || isDone}
         >
-          Global
+          {t("skills.scope.global")}
         </button>
       </div>
 
@@ -126,7 +130,7 @@ export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, job
             className="skills-btn skills-btn--ghost"
             onClick={onCancel}
           >
-            Cancel
+            {t("skills.action.cancel")}
           </button>
           <button
             type="button"

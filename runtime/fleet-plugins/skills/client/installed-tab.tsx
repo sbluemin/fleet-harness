@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
+
 import type { SkillListItem } from "../server/types.js";
+import type { SkillsMessageKey } from "./i18n/index.js";
 import { JobStatusDock } from "./job-status-dock.js";
 import { SkillCard } from "./skill-card.js";
 import {
@@ -20,6 +23,8 @@ interface InstalledTabProps {
   readonly theaterId: string | null;
   readonly onReadMore: (skill: SkillListItem) => void;
   readonly refreshKey?: number;
+  readonly t: Translate<SkillsMessageKey>;
+  readonly language?: ConsoleLocale;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -36,7 +41,7 @@ async function fetchInstalledList(theaterId: string | null): Promise<SkillListIt
 
 // ─── InstalledTab ─────────────────────────────────────────────────────────────
 
-export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTabProps) {
+export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }: InstalledTabProps) {
   const state = useSkillsStore();
   const { scope, filterText } = state;
   const contextKey = skillsContextKey(theaterId);
@@ -102,6 +107,11 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTab
   const isUpdating =
     updateLog.status === "running" && updateScopeRef.current === visibleScope;
 
+  // en 빈 상태는 소문자 scope 토큰을 유지하고, ko는 번역 라벨을 넣는다.
+  const scopeToken = (language ?? "en") === "en"
+    ? visibleScope
+    : t(visibleScope === "project" ? "skills.scope.project" : "skills.scope.global");
+
   return (
     <>
       <div className="skills-tab-body">
@@ -113,31 +123,33 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTab
             disabled={!theaterId}
             title={!theaterId ? "Select a Theater to view project skills" : undefined}
           >
-            Project
+            {t("skills.scope.project")}
           </button>
           <button
             type="button"
             className={`skills-scope-btn${visibleScope === "global" ? " is-active" : ""}`}
             onClick={() => setScope("global")}
           >
-            Global
+            {t("skills.scope.global")}
           </button>
         </div>
 
         <input
           type="search"
           className="skills-filter-input"
-          placeholder="Filter installed skills…"
+          placeholder={t("skills.filter.installedPlaceholder")}
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
           aria-label="Filter installed skills"
         />
 
-        {installedLoading && <div className="skills-empty-state">Loading…</div>}
+        {installedLoading && <div className="skills-empty-state">{t("skills.empty.loading")}</div>}
 
         {!installedLoading && filtered.length === 0 && (
           <div className="skills-empty-state">
-            {filterText ? "No skills match the filter." : `No ${visibleScope} skills installed.`}
+            {filterText
+              ? t("skills.empty.noMatch")
+              : t("skills.empty.noneInstalled", { scope: scopeToken })}
           </div>
         )}
 
@@ -150,6 +162,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTab
               onUpdate={handleUpdate}
               onRemove={handleRemove}
               isUpdating={isUpdating}
+              t={t}
             />
           ))}
         </div>
@@ -158,11 +171,12 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey }: InstalledTab
       <JobStatusDock
         status={updateLog.status}
         lines={updateLog.lines}
-        runningLabel="Updating skills…"
-        doneLabel="Updated"
-        errorLabel="Update failed"
+        runningLabel={t("skills.status.updatingSkills")}
+        doneLabel={t("skills.status.updated")}
+        errorLabel={t("skills.status.updateFailed")}
         onDismiss={updateLog.reset}
         onRetry={handleRetry}
+        t={t}
       />
     </>
   );

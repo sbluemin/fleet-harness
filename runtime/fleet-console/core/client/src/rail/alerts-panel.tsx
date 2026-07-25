@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "../styles/rail-alerts.css";
+import { getT, useT } from "../i18n/index.js";
 import { useActiveRailPanelId } from "./rail-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
@@ -17,20 +19,23 @@ import { focusOperation, setDnd, setGlobalMute, toggleTheaterMute } from "../sto
 import type { NotificationTheaterGroup } from "../notification-reduce.js";
 import type { NotificationKind, OperationNotification } from "../types.js";
 
-// kind별 사용자 표기 라벨
-const KIND_LABEL: Record<NotificationKind, string> = {
-  ended: "Ended",
-  "input-waiting": "Waiting for input",
-};
+function buildKindLabels(t: ReturnType<typeof getT>): Record<NotificationKind, string> {
+  return {
+    ended: t("rail.alerts.kindEnded"),
+    "input-waiting": t("rail.alerts.kindWaiting"),
+  };
+}
 
 export const alertsPanel: RailPanelDescriptor = {
   id: "alerts",
-  title: "Alerts",
+  title: (locale: ConsoleLocale) => getT(locale)("rail.alerts.title"),
   icon: () => <AlertsIcon />,
   render: () => <AlertsPanelBody />,
 };
 
 export function AlertsPanelBody() {
+  const t = useT();
+  const kindLabels = buildKindLabels(t);
   const state = useConsoleState();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -60,7 +65,7 @@ export function AlertsPanelBody() {
   );
 
   return (
-    <div className="alerts-panel-body" aria-live="polite" aria-label="Operation alerts">
+    <div className="alerts-panel-body" aria-live="polite" aria-label={t("rail.alerts.panelAria")}>
       <div className="alerts-panel-toolbar">
         <div className="alerts-panel-tallies" aria-hidden="true">
           {waitingCount > 0 ? (
@@ -76,8 +81,8 @@ export function AlertsPanelBody() {
           className={`alerts-panel-settings-btn${settingsOpen ? " is-active" : ""}`}
           onClick={() => setSettingsOpen((open) => !open)}
           aria-expanded={settingsOpen}
-          aria-label="Notification settings"
-          title="Notification settings"
+          aria-label={t("rail.alerts.settingsAria")}
+          title={t("rail.alerts.settingsAria")}
         >
           <SettingsIcon />
         </button>
@@ -86,7 +91,7 @@ export function AlertsPanelBody() {
       {settingsOpen ? <NotificationSettings groups={settingsGroups} /> : null}
 
       {muted ? (
-        <p className="notification-dock-empty">No active alerts</p>
+        <p className="notification-dock-empty">{t("rail.alerts.empty")}</p>
       ) : (
         <div className="notification-dock-deck">
           {groups.map((group) => (
@@ -108,16 +113,16 @@ export function AlertsPanelBody() {
                     <span className="notification-row-body">
                       <span className="notification-row-op">{notification.operationLabel}</span>
                       <span className="notification-row-state">
-                        {KIND_LABEL[notification.kind]}
+                        {kindLabels[notification.kind]}
                       </span>
                     </span>
                     <button
                       type="button"
                       className="notification-row-move"
                       onClick={() => handleMove(notification)}
-                      aria-label={`Open ${group.theaterLabel} ${notification.operationLabel}`}
+                      aria-label={t("rail.alerts.openAria", { theater: group.theaterLabel, operation: notification.operationLabel })}
                     >
-                      Open
+                      {t("rail.alerts.open")}
                     </button>
                   </li>
                 ))}
@@ -161,6 +166,7 @@ function NotificationSettings({
 }: {
   readonly groups: readonly NotificationTheaterGroup[];
 }) {
+  const t = useT();
   const state = useConsoleState();
   const muteableGroups = collectMuteableTheaterGroups(
     groups,
@@ -168,15 +174,15 @@ function NotificationSettings({
     state.theaters,
   );
   return (
-    <div className="notification-cluster-settings" role="dialog" aria-label="Notification settings">
-      <p className="notification-cluster-settings-eyebrow">Display</p>
+    <div className="notification-cluster-settings" role="dialog" aria-label={t("rail.alerts.settingsAria")}>
+      <p className="notification-cluster-settings-eyebrow">{t("rail.alerts.settingsDisplay")}</p>
       <label className="notification-cluster-setting">
         <input
           type="checkbox"
           checked={state.notificationPreferences.globalMute}
           onChange={(event) => setGlobalMute(event.currentTarget.checked)}
         />
-        <span>Mute all</span>
+        <span>{t("rail.alerts.muteAll")}</span>
       </label>
       <label className="notification-cluster-setting">
         <input
@@ -184,10 +190,10 @@ function NotificationSettings({
           checked={state.notificationPreferences.dnd}
           onChange={(event) => setDnd(event.currentTarget.checked)}
         />
-        <span>Do not disturb</span>
+        <span>{t("rail.alerts.dnd")}</span>
       </label>
       {muteableGroups.length > 0 ? (
-        <p className="notification-cluster-settings-eyebrow">By Theater</p>
+        <p className="notification-cluster-settings-eyebrow">{t("rail.alerts.byTheater")}</p>
       ) : null}
       {muteableGroups.map((group) => (
         <label className="notification-cluster-setting" key={group.theaterId}>

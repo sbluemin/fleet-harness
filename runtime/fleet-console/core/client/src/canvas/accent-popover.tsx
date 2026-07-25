@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import { OPERATION_ACCENTS, normalizeAccentKey } from "./operation-accent.js";
+import { useT } from "../i18n/index.js";
+import { buildOperationAccents, normalizeAccentKey } from "./operation-accent.js";
 
 interface AccentPopoverProps {
   // 트리거(인디케이터) 인디케이터의 뷰포트 기준 rect. 열린 시점에 캡처해 넘긴다.
@@ -26,6 +27,8 @@ export function AccentToneList({
   readonly includeNone: boolean;
   readonly onSelect: (accentKey: string | null) => void;
 }) {
+  const t = useT();
+  const accents = buildOperationAccents(t);
   const activeKey = normalizeAccentKey(accentKey);
   return (
     <>
@@ -36,15 +39,15 @@ export function AccentToneList({
           role="menuitem"
           // 키보드 진입점이 accent 섹션을 찾는 근거 — 접근 이름 문구가 바뀌어도 깨지지 않아야 한다.
           data-accent-option="none"
-          aria-label="No accent"
+          aria-label={t("canvas.accent.noneAria")}
           aria-pressed={activeKey === null}
           onClick={() => onSelect(null)}
         >
           <span className="accent-tone-flag accent-tone-flag--none" aria-hidden="true" />
-          <span className="accent-tone-name">None</span>
+          <span className="accent-tone-name">{t("canvas.accent.none")}</span>
         </button>
       ) : null}
-      {OPERATION_ACCENTS.map((accent) => (
+      {accents.map((accent) => (
         <button
           key={accent.key}
           type="button"
@@ -64,6 +67,7 @@ export function AccentToneList({
 }
 
 export function AccentPopover({ anchor, accentKey, onSelect, onClose }: AccentPopoverProps) {
+  const t = useT();
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
 
   // 트리거 아래로 띄우되, 화면 하단을 넘으면 위로 뒤집는다(상단 패널=아래, 하단 dock=위로 자연 분기).
@@ -102,7 +106,7 @@ export function AccentPopover({ anchor, accentKey, onSelect, onClose }: AccentPo
   return createPortal(
     <div className="accent-popover-overlay" role="presentation" onPointerDown={onClose}>
       {style ? (
-        <div className="accent-popover-card" role="menu" aria-label="Accent" style={style} onPointerDown={(event) => event.stopPropagation()}>
+        <div className="accent-popover-card" role="menu" aria-label={t("canvas.accent.menuAria")} style={style} onPointerDown={(event) => event.stopPropagation()}>
           <AccentToneList accentKey={accentKey} includeNone onSelect={choose} />
         </div>
       ) : null}

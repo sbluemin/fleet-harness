@@ -1,3 +1,5 @@
+import { useT } from "../i18n/index.js";
+
 export type ToastTone = "info" | "warn" | "error" | "undo";
 
 interface ToastProps {
@@ -13,6 +15,7 @@ interface ToastProps {
 
 // 우하단 고정 토스트. 연결 이상 등 어떤 알림에도 재사용할 수 있도록 tone/title/message/onDismiss만 받는다.
 export function Toast({ open, title, message, tone = "info", onDismiss, actionLabel, onAction, progress }: ToastProps) {
+  const t = useT();
   if (!open) return null;
   return (
     <div className="app-toast-host">
@@ -31,7 +34,7 @@ export function Toast({ open, title, message, tone = "info", onDismiss, actionLa
           <button type="button" className="app-toast-action" onClick={onAction}>{actionLabel}</button>
         ) : null}
         {onDismiss ? (
-          <button type="button" className="app-toast-close" onClick={onDismiss} aria-label="Dismiss notification">
+          <button type="button" className="app-toast-close" onClick={onDismiss} aria-label={t("chrome.toast.dismissNotification")}>
             ×
           </button>
         ) : null}

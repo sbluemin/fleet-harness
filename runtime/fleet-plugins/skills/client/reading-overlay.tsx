@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import type { SkillListItem } from "../server/types.js";
+import type { SkillsMessageKey } from "./i18n/index.js";
 import { MarkdownView } from "./markdown-view.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -12,6 +15,7 @@ interface ReadingOverlayProps {
   readonly theaterId: string | null;
   readonly onClose: () => void;
   readonly onInstall: () => void;
+  readonly t: Translate<SkillsMessageKey>;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -51,6 +55,7 @@ export function ReadingOverlay({
   theaterId,
   onClose,
   onInstall,
+  t,
 }: ReadingOverlayProps) {
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -188,7 +193,7 @@ export function ReadingOverlay({
               className="skills-btn skills-btn--primary"
               onClick={() => { onClose(); onInstall(); }}
             >
-              Install
+              {t("skills.action.install")}
             </button>
           )}
         </div>

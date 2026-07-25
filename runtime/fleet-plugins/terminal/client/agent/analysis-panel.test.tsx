@@ -12,20 +12,22 @@ describe("Session Analyst contract", () => {
   it("keeps the approved visible-copy and motion contracts in separate companion panels", () => {
     const chat = readFileSync(new URL("./analysis-chat-panel.tsx", import.meta.url), "utf8");
     const artifacts = readFileSync(new URL("./analysis-artifacts-panel.tsx", import.meta.url), "utf8");
+    const messages = readFileSync(new URL("../i18n/messages.ts", import.meta.url), "utf8");
     const css = readFileSync(new URL("./analysis.css", import.meta.url), "utf8");
-    expect(chat).toContain("Walk me through how this session unfolded");
-    expect(chat).toContain("Read-only intelligence for this operation");
-    expect(chat).toContain("Review, explain, and summarize this session — without affecting the host agent.");
+    expect(chat).toContain("terminal.analyst.suggestion.walkthrough");
+    expect(messages).toContain('"Walk me through how this session unfolded"');
+    expect(messages).toContain('"Read-only intelligence for this operation"');
+    expect(messages).toContain('"Review, explain, and summarize this session — without affecting the host agent."');
     expect(chat).not.toContain("host agent&apos;s transcript");
-    expect(chat).toContain("Starting analyst");
-    expect(chat).toContain("Reasoning over session");
-    expect(chat).toContain("Writing answer");
-    expect(chat.match(/analysisCopy\(language, "Stop"\)/g)).toHaveLength(1);
+    expect(chat).toContain("terminal.analyst.activity.starting");
+    expect(chat).toContain("terminal.analyst.activity.reasoning");
+    expect(chat).toContain("terminal.analyst.activity.writing");
+    expect(chat.match(/t\("terminal\.analyst\.stop"\)/g)).toHaveLength(1);
     expect(chat).toContain('className="session-analyst__send session-analyst__stop"');
     expect(chat).not.toContain("state.thinking");
     expect(artifacts).not.toContain("SANDBOXED HTML");
     expect(artifacts).not.toContain("Sandboxed");
-    expect(artifacts).toContain("Artifacts the analyst publishes will appear here.");
+    expect(messages).toContain('"Artifacts the analyst publishes will appear here."');
     expect(artifacts).toContain('sandbox="allow-scripts"');
     expect(artifacts).not.toContain("allow-same-origin");
     expect(artifacts).not.toContain("srcDoc=");
@@ -53,9 +55,9 @@ describe("Session Analyst contract", () => {
   it("registers Carrier Streams first and keeps both Analyst panels hidden by default", () => {
     const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
     const chat = readFileSync(new URL("./analysis-chat-panel.tsx", import.meta.url), "utf8");
-    expect(source).toContain('{ id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true, defaultHidden: true');
-    expect(source).toContain('{ id: ANALYST_CHAT_COMPANION_ID, title: "Session Analyst", hideCaption: true, defaultHidden: true');
-    expect(source).toContain('{ id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true');
+    expect(source).toContain('id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true');
+    expect(source).toContain('id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true');
+    expect(source).toContain('id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true');
     expect(chat).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
     expect(source.match(/hideCaption: true/g)).toHaveLength(3);
     expect(source.match(/defaultHidden: true/g)).toHaveLength(3);

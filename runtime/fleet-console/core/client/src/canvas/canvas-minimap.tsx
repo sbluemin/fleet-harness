@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
+import { useT } from "../i18n/index.js";
 import { useFormationView, type CanvasViewport, type OperationGeometry } from "./canvas-store.js";
 import type { CanvasPoint } from "./coordinates.js";
 
@@ -35,6 +36,7 @@ const WORLD_MARGIN = 220;
 const RADAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.radarCollapsed";
 
 export function CanvasMinimap({ operations, pluginOperations, accents, viewport, canvasSize, onJump }: CanvasMinimapProps) {
+  const t = useT();
   const innerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const collapsedBeforeFormationRef = useRef<boolean | null>(null);
@@ -81,8 +83,8 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
         className="canvas-minimap-fab"
         data-canvas-blocker
         onClick={toggle}
-        aria-label="Open Map"
-        title="Open Map"
+        aria-label={t("canvas.minimap.open")}
+        title={t("canvas.minimap.open")}
       >
         <MapGlyph />
       </button>
@@ -150,13 +152,13 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
 
   return (
     <div className="canvas-minimap" data-canvas-blocker style={{ width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }}>
-      <span className="canvas-minimap-label" aria-hidden="true">Map</span>
+      <span className="canvas-minimap-label" aria-hidden="true">{t("canvas.minimap.label")}</span>
       <button
         type="button"
         className="canvas-minimap-toggle"
         onClick={toggle}
-        aria-label="Collapse Map"
-        title="Collapse Map"
+        aria-label={t("canvas.minimap.collapse")}
+        title={t("canvas.minimap.collapse")}
       >
         <CollapseIcon />
       </button>
@@ -169,7 +171,7 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         role="presentation"
-        aria-label="Canvas minimap — drag to navigate"
+        aria-label={t("canvas.minimap.navigateAria")}
       >
         {rects.map((r) => (
           <div

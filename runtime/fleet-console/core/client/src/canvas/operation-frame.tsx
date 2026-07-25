@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { useT } from "../i18n/index.js";
 import { operationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { AccentPopover } from "./accent-popover.js";
@@ -53,6 +54,7 @@ const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
 export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+  const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -319,7 +321,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
       data-canvas-operation
       data-operation-id={operation.id}
       data-focus-layer-target={focusLayerTarget ? "true" : undefined}
-      aria-label={`Operation ${displayTitle}`}
+      aria-label={t("canvas.frame.operationAria", { title: displayTitle })}
       aria-hidden={renderHidden || undefined}
       tabIndex={focusLayerTarget ? -1 : undefined}
       inert={minimized || renderHidden ? true : undefined}
@@ -352,7 +354,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
             ref={rename.inputRef}
             className="canvas-operation-identity-input"
             value={rename.draftTitle}
-            aria-label={`Rename operation ${displayTitle}`}
+            aria-label={t("canvas.frame.renameAria", { title: displayTitle })}
             onChange={(event) => rename.setDraftTitle(event.target.value)}
             onKeyDown={handleRenameKeyDown}
             onBlur={rename.handleBlur}
@@ -366,8 +368,8 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
             onPointerDown={stopIdentityPointer}
             onDoubleClick={beginRename}
             onKeyDown={beginRenameFromKeyboard}
-            aria-label={`Rename operation ${displayTitle}`}
-            title={`${displayTitle} — Double-click, Enter, or F2 to rename`}
+            aria-label={t("canvas.frame.renameAria", { title: displayTitle })}
+            title={t("canvas.frame.renameTitle", { title: displayTitle })}
           >
             {displayTitle}
           </button>
@@ -378,9 +380,9 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
             className="canvas-operation-beacon-button"
             onPointerDown={stopButtonPointer}
             onClick={(event) => openAccentPopover(event.currentTarget.getBoundingClientRect())}
-            aria-label={`Set accent for operation ${displayTitle}`}
+            aria-label={t("canvas.frame.setAccentAria", { title: displayTitle })}
             aria-haspopup="menu"
-            title="Set accent"
+            title={t("canvas.frame.setAccentTitle")}
           >
             <span className={beaconStatusClass(status)} aria-hidden="true" />
           </button>
@@ -389,16 +391,16 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
         )}
         <div className="canvas-operation-window-controls">
           <span className="canvas-operation-controls-divider" aria-hidden="true" />
-          <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={`Minimize operation ${displayTitle}`} title="Minimize operation">
+          <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
             <MinimizeIcon />
           </button>
           {onMaximize ? (
-            <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? `Restore operation ${displayTitle}` : `Maximize operation ${displayTitle}`} aria-pressed={maximized} title={maximized ? "Restore operation" : "Maximize operation"}>
+            <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized} title={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
               {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
             </button>
           ) : null}
-          <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? `Confirm close operation ${displayTitle}` : `Close operation ${displayTitle}`} title={isCloseArmed ? "Confirm close" : "Close operation"}>
-            {isCloseArmed ? "Close?" : <CloseIcon />}
+          <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title: displayTitle }) : t("canvas.frame.closeAria", { title: displayTitle })} title={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}>
+            {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
           </button>
         </div>
       </div>

@@ -1,6 +1,9 @@
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { getGlobalSettingsStoreState } from "./global-settings-store.js";
+import { getT } from "./i18n/index.js";
 import type { OperationNode } from "./types.js";
+import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
 export type OperationActivityVisual = "running" | "awaiting" | "dormant" | "idle";
 
@@ -24,10 +27,20 @@ export function operationActivityVisual(status: OperationActivity | undefined): 
   return "idle";
 }
 
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
+
 export function operationActivityLabel(status: OperationActivity | undefined): string {
+  const t = getT(resolveActiveLocale());
   const visual = operationActivityVisual(status);
-  if (visual === "running") return "Running";
-  if (visual === "awaiting") return "Awaiting input";
-  if (visual === "dormant") return "Dormant";
-  return "Idle";
+  if (visual === "running") return t("activity.running");
+  if (visual === "awaiting") return t("activity.awaiting");
+  if (visual === "dormant") return t("activity.dormant");
+  return t("activity.idle");
 }

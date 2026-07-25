@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { Select } from "@fleet-console/sdk/react/browser";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { useT } from "../i18n/index.js";
 import { requestReleaseNotes } from "../release-notes-fetch.js";
 import { closeWhatsNew, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
@@ -29,6 +30,7 @@ const FOCUSABLE_SELECTOR = [
 const RELEASE_NOTE_PAGE_SIZE = 10;
 
 export function WhatsNewModal({ state }: WhatsNewModalProps) {
+  const t = useT();
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const outsideFocusHistoryRef = useRef<HTMLElement[]>([]);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -36,7 +38,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const tabRefs = useRef(new Map<WhatsNewTabId, HTMLButtonElement>());
   const [activeTab, setActiveTab] = useState<WhatsNewTabId>("overview");
   const globalSettings = useGlobalSettingsStore();
-  // 모달 크롬은 영어 원형을 유지한다 — locale은 릴리스 노트 "본문" 언어(fetch·폴백 배지·선택기 상태)에만 관여한다.
+  // locale은 릴리스 노트 본문 언어(fetch·폴백 배지·선택기 상태)에 관여한다. 모달 크롬은 useT()로 로케일화한다.
   const locale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const selectedKey = state.selectedReleaseNoteKey ?? releaseNoteKey(state.releaseNotes[0]?.version ?? "", 0);
   const selectedIndex = state.releaseNotes.findIndex((note, index) => releaseNoteKey(note.version, index) === selectedKey);
@@ -131,48 +133,51 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
 
   return (
     <div className="whatsnew-overlay" role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
-      <button type="button" className="whatsnew-scrim" onClick={closeWhatsNew} aria-label="Close What's new" />
+      <button type="button" className="whatsnew-scrim" onClick={closeWhatsNew} aria-label={t("chrome.whatsnew.closeAria")} />
       <section className="whatsnew-card" ref={cardRef}>
         <header className="whatsnew-header">
           <div className="whatsnew-heading-row">
-            <h2 id="whatsnew-title">What's new</h2>
+            <h2 id="whatsnew-title">{t("chrome.whatsnew.title")}</h2>
             <span className="whatsnew-version-badge">v{selected.version}</span>
           </div>
           <div className="whatsnew-meta-row">
-            {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>Released {selected.date}</time> : <span className="whatsnew-date">Unreleased</span>}
-            {state.releaseNotesStale ? <span className="whatsnew-stale">Stale</span> : null}
+            {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>{t("chrome.whatsnew.released", { date: selected.date })}</time> : <span className="whatsnew-date">{t("chrome.whatsnew.unreleased")}</span>}
+            {state.releaseNotesStale ? <span className="whatsnew-stale">{t("chrome.whatsnew.stale")}</span> : null}
           </div>
         </header>
-        <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label="Close What's new">
+        <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label={t("chrome.whatsnew.closeAria")}>
           x
         </button>
         <div className="whatsnew-body">
           <div className="whatsnew-version-selector">
             <Select
-              label="Release version"
+              label={t("chrome.whatsnew.releaseVersion")}
               className="whatsnew-version-select"
               value={selectedValue}
               onChange={selectReleaseNote}
               options={pageNotes.map((note, localIndex) => {
                 const index = pageStart + localIndex;
+                const versionLabel = note.version === "Unreleased"
+                  ? t("chrome.whatsnew.versionUnreleased")
+                  : t("chrome.whatsnew.versionTagged", { version: note.version });
                 return {
                   value: releaseNoteKey(note.version, index),
-                  label: `${note.version === "Unreleased" ? "Unreleased" : `v${note.version}`}${note.date ? ` · ${note.date}` : ""}`,
+                  label: `${versionLabel}${note.date ? ` · ${note.date}` : ""}`,
                 };
               })}
             />
             {pageCount > 1 ? (
               <div className="whatsnew-pagination">
-                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label="Newer versions">
+                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label={t("chrome.whatsnew.newerVersions")}>
                   ‹
                 </button>
                 <span className="whatsnew-page-status">{currentPage + 1} / {pageCount}</span>
-                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(1)} disabled={currentPage >= pageCount - 1} aria-label="Older versions">
+                <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(1)} disabled={currentPage >= pageCount - 1} aria-label={t("chrome.whatsnew.olderVersions")}>
                   ›
                 </button>
               </div>
             ) : null}
-            <div className="whatsnew-language-picker" role="group" aria-label="Display language">
+            <div className="whatsnew-language-picker" role="group" aria-label={t("chrome.whatsnew.displayLanguage")}>
               {(["en", "ko"] as const).map((nextLocale) => (
                 <button
                   key={nextLocale}
@@ -182,15 +187,15 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
                   disabled={globalSettings.savingField === "language"}
                   onClick={() => void selectLanguage(nextLocale)}
                 >
-                  {nextLocale === "en" ? "EN" : "한국어"}
+                  {nextLocale === "en" ? t("chrome.whatsnew.langEn") : t("chrome.whatsnew.langKo")}
                 </button>
               ))}
             </div>
             <button type="button" className="whatsnew-refresh" onClick={handleRefresh} disabled={state.releaseNotesLoading}>
-              {state.releaseNotesLoading ? "Refreshing" : "Refresh"}
+              {state.releaseNotesLoading ? t("chrome.whatsnew.refreshing") : t("common.refresh")}
             </button>
           </div>
-          <div className="whatsnew-tabs" role="tablist" aria-label="Release update categories">
+          <div className="whatsnew-tabs" role="tablist" aria-label={t("chrome.whatsnew.releaseCategories")}>
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -212,14 +217,14 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
               </button>
             ))}
           </div>
-          {state.releaseNotesError ? <p className="whatsnew-error">Release notes could not be refreshed.</p> : null}
+          {state.releaseNotesError ? <p className="whatsnew-error">{t("chrome.whatsnew.refreshError")}</p> : null}
           <div id="whatsnew-tab-panel" role="tabpanel" aria-labelledby={`whatsnew-tab-${activeTab}`}>
             {activeTab === "overview" ? (
-              <div className="whatsnew-overview" aria-label="Release update overview">
+              <div className="whatsnew-overview" aria-label={t("chrome.whatsnew.overviewAria")}>
                 {deriveWhatsNewOverview(selected).map((item) => (
                   <button key={item.id} type="button" className="whatsnew-overview-card" onClick={() => selectTabAndFocus(item.id)}>
                     <span className="whatsnew-overview-label">{item.label}</span>
-                    <span className="whatsnew-overview-count">{item.count} {item.count === 1 ? "update" : "updates"}</span>
+                    <span className="whatsnew-overview-count">{t(item.count === 1 ? "chrome.whatsnew.updateCount_one" : "chrome.whatsnew.updateCount_other", { count: item.count })}</span>
                     <span className="whatsnew-overview-summary">{item.summary}</span>
                   </button>
                 ))}
@@ -231,7 +236,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
         </div>
         <footer className="whatsnew-footer">
           <button type="button" className="whatsnew-done" onClick={closeWhatsNew}>
-            Close
+            {t("common.close")}
           </button>
         </footer>
       </section>

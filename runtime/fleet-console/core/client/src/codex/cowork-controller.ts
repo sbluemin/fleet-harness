@@ -1,6 +1,10 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+
+import { getGlobalSettingsStoreState } from "../global-settings-store.js";
+import { getT } from "../i18n/index.js";
+import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
   applyCowork, cancelCowork, closeCowork, CoworkRequestError, createCoworkSession,
   fetchCoworkOptions, peekCoworkEntrySession, promptCowork, subscribeCoworkEvents,
@@ -12,6 +16,19 @@ import type { DraftLine } from "./cowork-diff.js";
 import { CoworkSettingsSelect } from "./cowork-settings-select.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils/html.js";
+
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
+
+function consoleT() {
+  return getT(resolveActiveLocale());
+}
 
 export interface CoworkController { destroy(): void; }
 
@@ -131,7 +148,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       void updateOptions()
         .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
         .then(renderDock)
-        .catch((cause) => { error = cause instanceof Error ? cause.message : "Cowork request failed."; renderDock(); });
+        .catch((cause) => { error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed"); renderDock(); });
     } else {
       void mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings))
         .then(renderDock)
@@ -143,19 +160,21 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const renderBody = () => {
     if (disposed) return;
+    const t = consoleT();
     const engaged = !!session && session.state !== "closed";
     const key = !engaged ? "published" : diffVisible ? `diff:${session!.draft}` : `draft:${session!.draft}`;
     if (key === lastBodyKey) return;
     lastBodyKey = key;
     if (!engaged) { options.body.innerHTML = publishedHtml; return; }
     options.body.innerHTML = diffVisible
-      ? `<div class="cowork-rendered-diff" aria-label="Draft changes">${renderRenderedDiff(stripFrontmatter(session!.baseDraft), stripFrontmatter(session!.draft))}</div>`
+      ? `<div class="cowork-rendered-diff" aria-label="${escapeAttribute(t("codex.cowork.draftChangesAria"))}">${renderRenderedDiff(stripFrontmatter(session!.baseDraft), stripFrontmatter(session!.draft))}</div>`
       : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id) }).html;
   };
 
   const renderAnchor = () => {
     if (disposed) return;
     if (!selection) { anchor.innerHTML = ""; return; }
+    const t = consoleT();
     // 중앙 정렬(translateX(-50%)) 기준이므로 요소 절반 폭만큼 안쪽으로 클램프해야
     // 문서 좌우 경계에서 잘리지 않는다. 컴포저 폭은 CSS min(340px, 86%)와 동기.
     const hostWidth = options.article.getBoundingClientRect().width || 0;
@@ -163,20 +182,21 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const left = Math.min(Math.max(selection.left, half), Math.max(hostWidth - half, half));
     const at = `style="top:${selection.top}px;left:${left}px"`;
     anchor.innerHTML = composerOpen
-      ? `<div class="cowork-composer" ${at} role="dialog" aria-label="Add a comment">
+      ? `<div class="cowork-composer" ${at} role="dialog" aria-label="${escapeAttribute(t("codex.cowork.addCommentAria"))}">
           <blockquote>${escapeHtml(clip(selection.quote, 140))}</blockquote>
-          <textarea class="cowork-composer-input" rows="2" placeholder="What should change here?" aria-label="Comment"></textarea>
+          <textarea class="cowork-composer-input" rows="2" placeholder="${escapeAttribute(t("codex.cowork.commentPlaceholder"))}" aria-label="${escapeAttribute(t("codex.cowork.commentAria"))}"></textarea>
           <div class="cowork-composer-actions">
-            <button type="button" class="cowork-ghost" data-cowork-action="cancel-comment">Cancel</button>
-            <button type="button" class="cowork-solid" data-cowork-action="add-comment">Add</button>
+            <button type="button" class="cowork-ghost" data-cowork-action="cancel-comment">${escapeHtml(t("common.cancel"))}</button>
+            <button type="button" class="cowork-solid" data-cowork-action="add-comment">${escapeHtml(t("codex.cowork.add"))}</button>
           </div>
         </div>`
-      : `<button type="button" class="cowork-pill" data-cowork-action="comment" ${at}><span aria-hidden="true">✦</span>Comment</button>`;
+      : `<button type="button" class="cowork-pill" data-cowork-action="comment" ${at}><span aria-hidden="true">✦</span>${escapeHtml(t("codex.cowork.comment"))}</button>`;
     if (composerOpen) anchor.querySelector<HTMLTextAreaElement>(".cowork-composer-input")?.focus();
   };
 
   const renderDock = () => {
     if (disposed) return;
+    const t = consoleT();
     // 도크(채팅박스)는 세션 유무와 무관하게 엔트리를 열면 항상 떠 있다.
     // 세션은 첫 전송/코멘트 시점에 지연 생성된다.
     const engaged = !!session && session.state !== "closed" && session.state !== "applied";
@@ -193,32 +213,34 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       ${dirty && !running ? renderReview(changed) : ""}
       <div class="cowork-bar${running ? " is-running" : ""}" data-cowork-form>
         ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
-        <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="Annotations" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
-        <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${annotations.length ? "Add an instruction (optional)…" : "Ask AI to revise this entry…"}" aria-label="Instruction" ${running ? "disabled" : ""}>
-        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="Agent settings" ${running ? "disabled" : ""}>${escapeHtml(settings.cli || "agent")}</button>
+        <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
+        <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
+        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.cli || "agent")}</button>
         ${running
-          ? '<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="Stop"><span aria-hidden="true"></span></button>'
-          : '<button type="button" class="cowork-send" data-cowork-action="send" aria-label="Send to AI">↑</button>'}
+          ? `<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="${escapeAttribute(t("codex.cowork.stopAria"))}"><span aria-hidden="true"></span></button>`
+          : `<button type="button" class="cowork-send" data-cowork-action="send" aria-label="${escapeAttribute(t("codex.cowork.sendToAi"))}">↑</button>`}
       </div>
       ${error ? `<p class="cowork-error" role="alert">${escapeHtml(error)}</p>` : ""}`);
     mountSettingsSelectIfNeeded();
   };
 
   const renderRevisionStream = (running: boolean): string => {
+    const t = consoleT();
     const visible = running || revisionOutcome !== "idle";
     if (!visible) return "";
     const state = running ? "running" : revisionOutcome;
-    const stateLabel = running ? "Editing entry" : revisionOutcome === "complete" ? "Revision complete" : "Revision stopped";
+    const stateLabel = running ? t("codex.cowork.editingEntry") : revisionOutcome === "complete" ? t("codex.cowork.revisionComplete") : t("codex.cowork.revisionStopped");
+    const streamToggleLabel = revisionCollapsed ? t("codex.cowork.expandStream") : t("codex.cowork.collapseStream");
     const hasContent = !!(revisionInstruction || reply || running);
-    return `<section class="cowork-revision-stream is-${state}${revisionCollapsed ? " is-collapsed" : ""}" aria-label="Cowork revision stream">
+    return `<section class="cowork-revision-stream is-${state}${revisionCollapsed ? " is-collapsed" : ""}" aria-label="${escapeAttribute(t("codex.cowork.revisionStreamAria"))}">
       ${running ? '<span class="cowork-revision-scan" aria-hidden="true"></span>' : ""}
-      <header class="cowork-revision-head"><span class="cowork-revision-mark" aria-hidden="true">✳</span><span class="cowork-revision-copy"><strong>Cowork</strong><small>${stateLabel}</small></span>${hasContent ? `<button type="button" class="cowork-revision-toggle" data-cowork-action="toggle-revision" aria-expanded="${!revisionCollapsed}" aria-label="${revisionCollapsed ? "Expand" : "Collapse"} Cowork stream"><span aria-hidden="true"></span></button>` : ""}</header>
+      <header class="cowork-revision-head"><span class="cowork-revision-mark" aria-hidden="true">✳</span><span class="cowork-revision-copy"><strong>Cowork</strong><small>${escapeHtml(stateLabel)}</small></span>${hasContent ? `<button type="button" class="cowork-revision-toggle" data-cowork-action="toggle-revision" aria-expanded="${!revisionCollapsed}" aria-label="${escapeAttribute(streamToggleLabel)}"><span aria-hidden="true"></span></button>` : ""}</header>
       ${hasContent ? `<div class="cowork-revision-content" aria-hidden="${revisionCollapsed}"><div class="cowork-revision-content-inner">
         ${revisionInstruction || reply ? `<div class="cowork-revision-body">
           ${revisionInstruction ? `<p class="cowork-revision-instruction">${escapeHtml(revisionInstruction)}</p>` : ""}
           ${reply ? `<div class="cowork-revision-output-scroll"><div class="cowork-revision-output markdown-body">${renderedReplyHtml}</div></div>` : ""}
         </div>` : ""}
-        ${running ? '<footer class="cowork-revision-status" role="status" aria-live="polite"><i aria-hidden="true"></i><span><strong>Writing revision</strong></span></footer>' : ""}
+        ${running ? `<footer class="cowork-revision-status" role="status" aria-live="polite"><i aria-hidden="true"></i><span><strong>${escapeHtml(t("codex.cowork.writingRevision"))}</strong></span></footer>` : ""}
       </div></div>` : ""}
     </section>`;
   };
@@ -280,28 +302,38 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     }
   };
 
-  const renderPanel = () => `
-    <div class="cowork-popover cowork-panel" role="region" aria-label="Annotations">
-      ${annotations.length === 0 ? '<p class="cowork-empty">Select text in the document to add a comment.</p>' : annotations.map(card => `
+  const renderPanel = () => {
+    const t = consoleT();
+    return `
+    <div class="cowork-popover cowork-panel" role="region" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}">
+      ${annotations.length === 0 ? `<p class="cowork-empty">${escapeHtml(t("codex.cowork.emptyAnnotations"))}</p>` : annotations.map(card => `
         <article class="cowork-card is-${card.status}">
           <blockquote>${escapeHtml(clip(card.quote, 160))}</blockquote>
-          <textarea data-cowork-comment="${escapeAttribute(card.id)}" aria-label="Comment" placeholder="Add a comment" ${card.status === "sent" ? "disabled" : ""}>${escapeHtml(card.comment)}</textarea>
-          <footer><span class="cowork-card-status">${card.status === "sent" ? "Sent" : card.status === "done" ? "Done" : "Ready"}</span><button type="button" class="cowork-x" data-cowork-action="delete-annotation" data-annotation-id="${escapeAttribute(card.id)}" aria-label="Delete annotation">×</button></footer>
+          <textarea data-cowork-comment="${escapeAttribute(card.id)}" aria-label="${escapeAttribute(t("codex.cowork.commentAria"))}" placeholder="${escapeAttribute(t("codex.cowork.addCommentPlaceholder"))}" ${card.status === "sent" ? "disabled" : ""}>${escapeHtml(card.comment)}</textarea>
+          <footer><span class="cowork-card-status">${escapeHtml(card.status === "sent" ? t("codex.cowork.statusSent") : card.status === "done" ? t("codex.cowork.statusDone") : t("codex.cowork.statusReady"))}</span><button type="button" class="cowork-x" data-cowork-action="delete-annotation" data-annotation-id="${escapeAttribute(card.id)}" aria-label="${escapeAttribute(t("codex.cowork.deleteAnnotation"))}">×</button></footer>
         </article>`).join("")}
     </div>`;
+  };
 
-  const renderConfig = () => `
-    <div class="cowork-popover cowork-config" role="region" aria-label="Agent settings">
+  const renderConfig = () => {
+    const t = consoleT();
+    return `
+    <div class="cowork-popover cowork-config" role="region" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}">
       <div data-cowork-settings-host></div>
     </div>`;
+  };
 
   const renderReview = (changed: number) => {
+    const t = consoleT();
     if (confirmAction) {
-      const question = confirmAction === "apply" ? "Apply these changes to the entry?" : "Discard this draft?";
+      const question = confirmAction === "apply" ? t("codex.cowork.applyConfirm") : t("codex.cowork.discardConfirm");
       const proceed = confirmAction === "apply" ? "apply-confirm" : "discard-confirm";
-      return `<div class="cowork-review is-confirm"><span>${question}</span><button type="button" class="cowork-solid${confirmAction === "discard" ? " cowork-solid--danger" : ""}" data-cowork-action="${proceed}">${confirmAction === "apply" ? "Apply" : "Discard"}</button><button type="button" class="cowork-ghost" data-cowork-action="confirm-back">Back</button></div>`;
+      return `<div class="cowork-review is-confirm"><span>${escapeHtml(question)}</span><button type="button" class="cowork-solid${confirmAction === "discard" ? " cowork-solid--danger" : ""}" data-cowork-action="${proceed}">${escapeHtml(confirmAction === "apply" ? t("codex.cowork.apply") : t("codex.cowork.discard"))}</button><button type="button" class="cowork-ghost" data-cowork-action="confirm-back">${escapeHtml(t("codex.cowork.back"))}</button></div>`;
     }
-    return `<div class="cowork-review"><span class="cowork-review-count"><i aria-hidden="true"></i>${changed > 0 ? `${changed} changed line${changed === 1 ? "" : "s"}` : "Removed content"}</span><button type="button" class="cowork-ghost" data-cowork-action="toggle-diff">${diffVisible ? "View draft" : "View diff"}</button><button type="button" class="cowork-solid" data-cowork-action="apply-arm">Apply</button><button type="button" class="cowork-ghost" data-cowork-action="discard-arm">Discard</button></div>`;
+    const changedLabel = changed > 0
+      ? t(changed === 1 ? "codex.cowork.changedLines_one" : "codex.cowork.changedLines_other", { count: changed })
+      : t("codex.cowork.removedContent");
+    return `<div class="cowork-review"><span class="cowork-review-count"><i aria-hidden="true"></i>${escapeHtml(changedLabel)}</span><button type="button" class="cowork-ghost" data-cowork-action="toggle-diff">${escapeHtml(diffVisible ? t("codex.cowork.viewDraft") : t("codex.cowork.viewDiff"))}</button><button type="button" class="cowork-solid" data-cowork-action="apply-arm">${escapeHtml(t("codex.cowork.apply"))}</button><button type="button" class="cowork-ghost" data-cowork-action="discard-arm">${escapeHtml(t("codex.cowork.discard"))}</button></div>`;
   };
 
   // 어노테이션 인용문을 렌더된 본문에 하이라이트(mark)로 표시한다. 인용문이 여러 텍스트
@@ -350,7 +382,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   const showTip = (mark: HTMLElement) => {
     const card = annotations.find(a => a.id === mark.dataset.annotationId);
     if (!card) { tip.hidden = true; return; }
-    tip.textContent = card.comment.trim() || "No comment yet";
+    tip.textContent = card.comment.trim() || consoleT()("codex.cowork.noCommentYet");
     tip.hidden = false;
     const rect = mark.getBoundingClientRect();
     const host = options.article.getBoundingClientRect();
@@ -540,7 +572,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       error = "";
       await closeCowork(options.theaterId, closing);
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : "Cowork request failed.";
+      error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed");
       renderDock();
       return;
     }
@@ -571,9 +603,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       session = await run();
       redraw();
     } catch (cause) {
+      const t = consoleT();
       error = cause instanceof CoworkRequestError && ["cowork_apply_stale", "cowork_apply_stale_revision", "cowork_apply_busy"].includes(cause.code)
-        ? "This entry changed or is busy. Your draft is safe; reopen the entry before applying."
-        : cause instanceof Error ? cause.message : "Cowork request failed.";
+        ? t("codex.cowork.applyStale")
+        : cause instanceof Error ? cause.message : t("codex.cowork.requestFailed");
       redraw();
       throw cause;
     }
@@ -659,7 +692,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       const stream = target.closest<HTMLElement>(".cowork-revision-stream");
       stream?.classList.toggle("is-collapsed", revisionCollapsed);
       target.setAttribute("aria-expanded", String(!revisionCollapsed));
-      target.setAttribute("aria-label", `${revisionCollapsed ? "Expand" : "Collapse"} Cowork stream`);
+      target.setAttribute("aria-label", revisionCollapsed ? consoleT()("codex.cowork.expandStream") : consoleT()("codex.cowork.collapseStream"));
       stream?.querySelector<HTMLElement>(".cowork-revision-content")?.setAttribute("aria-hidden", String(revisionCollapsed));
     }
     if (action === "send") void send();
@@ -763,7 +796,7 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
   const original = button.textContent;
   void write.then(() => {
     if (!button.isConnected) return;
-    button.textContent = "Copied";
+    button.textContent = consoleT()("codex.cowork.copied");
     window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1_200);
   }).catch(() => undefined);
 }
@@ -775,7 +808,7 @@ function renderRenderedDiff(base: string, draft: string): string {
     return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
   }).join("");
 }
-function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, quote: card.quote, comment: card.comment.trim() || "Please revise this passage." }; }
+function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, quote: card.quote, comment: card.comment.trim() || consoleT()("codex.cowork.defaultComment") }; }
 function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard { return { id: dto.id, quote: dto.quote, comment: dto.comment, status: "pending" }; }
 function stripFrontmatter(markdown: string): string { return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ""); }
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }

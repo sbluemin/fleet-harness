@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { resolveUpdateApplyCopy, SideBarBrandFoot } from "../core/client/src/components/side-bar-brand-foot.js";
+import { getT } from "../core/client/src/i18n/index.js";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -45,7 +46,7 @@ function menuItems(): HTMLElement[] {
 
 describe("SideBarBrandFoot System Menu", () => {
   it("gives managed installation updates an actionable Desktop relaunch instruction instead of retry", () => {
-    expect(resolveUpdateApplyCopy("blocked", "managed_runtime_update_requires_relaunch", "1.2.3")).toEqual({
+    expect(resolveUpdateApplyCopy("blocked", "managed_runtime_update_requires_relaunch", "1.2.3", getT("en"))).toEqual({
       label: "Update and Restart",
       title: "This managed Console installation updates through Fleet Console Desktop. Use Desktop Update and Restart.",
       tone: "blocked",

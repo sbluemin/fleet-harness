@@ -16,6 +16,7 @@ import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side
 import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
+import { useT } from "../i18n/index.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
@@ -30,6 +31,7 @@ interface CommandBandProps {
 }
 
 export function CommandBand({ operationsViewVisible }: CommandBandProps) {
+  const t = useT();
   const state = useConsoleState();
   const registry = usePluginRegistry();
   const sideBar = useSideBarState();
@@ -81,7 +83,9 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
   // darwin Desktop은 traffic-light 인셋(88px)이 첫 트랙을 잠식해 전체 라벨이 사이드바 경계를 넘는다.
   // Desktop 앱 안에서는 Desktop임이 자명하므로 칩은 "Local"로 축약하고, Desktop 구분은 팝오버의
   // Desktop data 행이 유지한다(대원수 재가).
-  const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin" ? "Local" : "Local · Desktop";
+  const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin"
+    ? t("chrome.commandBand.local")
+    : t("chrome.commandBand.localDesktop");
   const canAutoHide = useCallback(() => {
     const activeElement = document.activeElement;
     const focusWithin = activeElement instanceof Node && (commandBandRef.current?.contains(activeElement) || edgeRevealRef.current?.contains(activeElement));
@@ -122,13 +126,13 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
       .then(setEnvironment)
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setEnvironmentError(error instanceof Error ? error.message : "Unable to load environment details.");
+        setEnvironmentError(error instanceof Error ? error.message : t("chrome.commandBand.unableToLoadEnvironment"));
       })
       .finally(() => {
         if (!controller.signal.aborted) setEnvironmentLoading(false);
       });
     return () => controller.abort();
-  }, [environmentOpen]);
+  }, [environmentOpen, t]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -299,7 +303,7 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         ref={edgeRevealRef}
         type="button"
         className={`command-band-edge-reveal${fullscreen.isFullscreen ? " is-fullscreen" : ""}`}
-        aria-label="Show command band"
+        aria-label={t("chrome.commandBand.showCommandBand")}
         onPointerEnter={handleEdgePointerEnter}
         onPointerLeave={handleEdgePointerLeave}
         onFocus={fullscreen.reveal}
@@ -322,34 +326,34 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         {state.channel === "local" ? <div className="command-band-environment">
           <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
           <span className="command-band-local-dot" aria-hidden="true" />
-          <span className="command-band-local-chip-label">{desktopShell ? desktopChipLabel : "Local"}</span>
+          <span className="command-band-local-chip-label">{desktopShell ? desktopChipLabel : t("chrome.commandBand.local")}</span>
           </button>
           {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}
-        {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`} title={`${sideBar.collapsed ? "Expand sidebar" : "Collapse sidebar"} (${sideBarShortcut})`}>
+        {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={t(sideBar.collapsed ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut })} title={t(sideBar.collapsed ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut })}>
           <PanelToggleIcon side="left" />
         </button> : null}
-        <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label="Search sessions" title="Search sessions (⌘K)">
+        <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
           <SearchIcon />
         </button>
       </div>
-      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label="Formation view">
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label="Reset canvas view" title="Reset canvas view"><ResetViewIcon /></button>
+      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label={t("chrome.commandBand.formationView")}>
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
         <span className="command-band-formation-divider" aria-hidden="true" />
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label="Formation view — Grid layout" title="Formation view — Grid layout"><FormationGridIcon /></button>
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label="Formation view — Columns layout" title="Formation view — Columns layout"><FormationColumnsIcon /></button>
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label="Formation view — Rows layout" title="Formation view — Rows layout"><FormationRowsIcon /></button>
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label={t("chrome.commandBand.formationGrid")} title={t("chrome.commandBand.formationGrid")}><FormationGridIcon /></button>
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label={t("chrome.commandBand.formationColumns")} title={t("chrome.commandBand.formationColumns")}><FormationColumnsIcon /></button>
+        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label={t("chrome.commandBand.formationRows")} title={t("chrome.commandBand.formationRows")}><FormationRowsIcon /></button>
       </div> : null}
       <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
-          <div className="command-band-theater-cluster" aria-label={`Active Theater: ${activeTheater.label}`}>
+          <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>
             <button
               ref={theaterTriggerRef}
               type="button"
               className={`command-band-theater-segment command-band-segment-trigger${switcherMenu === "theater" ? " is-open" : ""}`}
               aria-haspopup="menu"
               aria-expanded={switcherMenu === "theater"}
-              title="Switch Theater"
+              title={t("chrome.commandBand.switchTheater")}
               onClick={() => toggleSwitcherMenu("theater")}
             >
               <span className="command-band-theater-mark">{theaterInitials(activeTheater.label)}</span>
@@ -358,13 +362,13 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
             </button>
             <span className="command-band-theater-separator" aria-hidden="true">›</span>
             {activeOperation ? <>
-              {rename.renaming ? <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={`${activeOperation.title} 이름 변경`} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} /> : <button
+              {rename.renaming ? <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={t("chrome.commandBand.renameOperationAria", { title: activeOperation.title })} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} /> : <button
                 ref={operationTriggerRef}
                 type="button"
                 className={`command-band-operation-name command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
                 aria-haspopup="menu"
                 aria-expanded={switcherMenu === "operation"}
-                title="Switch operation — double-click to rename"
+                title={t("chrome.commandBand.switchOperationRename")}
                 onClick={() => toggleSwitcherMenu("operation")}
                 onDoubleClick={beginRename}
               >
@@ -378,10 +382,10 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
               className={`command-band-operation-placeholder command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
               aria-haspopup="menu"
               aria-expanded={switcherMenu === "operation"}
-              title="Select operation"
+              title={t("chrome.commandBand.selectOperation")}
               onClick={() => toggleSwitcherMenu("operation")}
             >
-              <span className="command-band-segment-label">Select operation…</span>
+              <span className="command-band-segment-label">{t("chrome.commandBand.selectOperationEllipsis")}</span>
               <CommandBandTriggerCaret />
             </button>}
           </div>
@@ -408,10 +412,10 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         </div> : null}
       </div>
       <div className="command-band-right">
-        {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-pin" onClick={fullscreen.togglePin} aria-label="Pin command band" aria-pressed={fullscreen.isPinned} title={fullscreen.isPinned ? "Unpin command band" : "Pin command band"}>
+        {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-pin" onClick={fullscreen.togglePin} aria-label={t("chrome.commandBand.pinCommandBand")} aria-pressed={fullscreen.isPinned} title={fullscreen.isPinned ? t("chrome.commandBand.unpinCommandBand") : t("chrome.commandBand.pinCommandBand")}>
           <PinIcon />
         </button> : null}
-        {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={`${railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} (${railShortcut})`} title={`${railChromeExpanded ? "Collapse Activity Rail" : "Expand Activity Rail"} (${railShortcut})`}>
+        {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })} title={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })}>
           <PanelToggleIcon side="right" />
         </button> : null}
       </div>
@@ -431,22 +435,31 @@ interface EnvironmentPopoverProps {
 }
 
 function EnvironmentPopover({ environment, error, loading, copiedValue, copyFailedValue, desktopShell, onCopy }: EnvironmentPopoverProps) {
-  if (loading) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">Loading environment details…</div>;
-  if (error) return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">{error}</div>;
+  const t = useT();
+  if (loading) return <div className="command-band-environment-popover" role="dialog" aria-label={t("chrome.commandBand.environment")}>{t("chrome.commandBand.loadingEnvironment")}</div>;
+  if (error) return <div className="command-band-environment-popover" role="dialog" aria-label={t("chrome.commandBand.environment")}>{error}</div>;
   if (!environment) return null;
-  const rows: readonly [string, string][] = [
-    ["Channel", environment.channel],
-    ["Version", environment.version],
-    ["Reachable on", `127.0.0.1:${environment.effectivePort}`],
-    ["Data root", environment.dataDir],
-    ["Runtime lock", environment.lockFile],
-    ...(desktopShell ? [["Desktop data", `${environment.dataDir}/desktop`] as [string, string]] : []),
-  ];
-  return <div className="command-band-environment-popover" role="dialog" aria-label="Environment">
-    <div className="command-band-environment-title">Environment</div>
-    {rows.map(([label, value]) => <div key={label} className="command-band-environment-row"><span>{label}</span><code>{value}</code><button type="button" onClick={() => onCopy(value)}>{copiedValue === value ? "Copied" : copyFailedValue === value ? "Copy failed" : "Copy"}</button></div>)}
-    <div className="command-band-environment-footer">Development and published channels keep separate data roots.</div>
+  const rows = buildEnvironmentRows(t, environment, desktopShell);
+  return <div className="command-band-environment-popover" role="dialog" aria-label={t("chrome.commandBand.environment")}>
+    <div className="command-band-environment-title">{t("chrome.commandBand.environment")}</div>
+    {rows.map(([label, value]) => <div key={label} className="command-band-environment-row"><span>{label}</span><code>{value}</code><button type="button" onClick={() => onCopy(value)}>{copiedValue === value ? t("chrome.commandBand.env.copied") : copyFailedValue === value ? t("chrome.commandBand.env.copyFailed") : t("chrome.commandBand.env.copy")}</button></div>)}
+    <div className="command-band-environment-footer">{t("chrome.commandBand.env.footer")}</div>
   </div>;
+}
+
+function buildEnvironmentRows(
+  t: ReturnType<typeof useT>,
+  environment: ConsoleEnvironmentDiagnostics,
+  desktopShell: boolean,
+): readonly [string, string][] {
+  return [
+    [t("chrome.commandBand.env.channel"), environment.channel],
+    [t("chrome.commandBand.env.version"), environment.version],
+    [t("chrome.commandBand.env.reachableOn"), `127.0.0.1:${environment.effectivePort}`],
+    [t("chrome.commandBand.env.dataRoot"), environment.dataDir],
+    [t("chrome.commandBand.env.runtimeLock"), environment.lockFile],
+    ...(desktopShell ? [[t("chrome.commandBand.env.desktopData"), `${environment.dataDir}/desktop`] as [string, string]] : []),
+  ];
 }
 
 function resolveModLabel(): string {

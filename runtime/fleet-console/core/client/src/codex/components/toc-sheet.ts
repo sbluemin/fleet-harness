@@ -1,5 +1,18 @@
 import type { TocItem } from "@fleet-console/markdown/core";
+
+import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
+import { getT } from "../../i18n/index.js";
+import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
 import { escapeAttribute, escapeHtml } from "../utils/html.js";
+
+function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,7 +25,10 @@ const ACTIVE_CLASS = "active";
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function renderTocSheet(items: TocItem[]): string {
-  if (items.length === 0) return '<p class="toc-empty">No sections</p>';
+  if (items.length === 0) {
+    const t = getT(resolveActiveLocale());
+    return `<p class="toc-empty">${escapeHtml(t("codex.toc.noSections"))}</p>`;
+  }
   return items
     .map(
       (item) =>

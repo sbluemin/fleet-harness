@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
+import { useT } from "../i18n/index.js";
+
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
   readonly anchor: { readonly x: number; readonly y: number };
@@ -21,6 +23,7 @@ const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
@@ -71,14 +74,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize)}
       data-canvas-blocker
     >
-      <div className="operation-launch-menu theater-menu canvas-context-menu" role="dialog" aria-label="Canvas controls" tabIndex={-1} ref={menuRef}>
+      <div className="operation-launch-menu theater-menu canvas-context-menu" role="dialog" aria-label={t("canvas.menu.aria")} tabIndex={-1} ref={menuRef}>
         <div className="canvas-context-menu-head">
           <span className="canvas-context-menu-reticle" aria-hidden="true"><CommandReticleIcon /></span>
           <span className="canvas-context-menu-head-text">
-            <strong>Canvas controls</strong>
+            <strong>{t("canvas.menu.title")}</strong>
           </span>
         </div>
-        <p className="canvas-context-menu-section">Launch</p>
+        <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>
         {catalog.length > 0 ? catalog.map((plugin, index) => (
           <div key={plugin.id}>
             {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
@@ -102,7 +105,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               );
             })}
           </div>
-        )) : <p className="theater-menu-empty">No operations available.</p>}
+        )) : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
       </div>
     </div>
   );

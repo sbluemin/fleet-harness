@@ -1,5 +1,6 @@
 import { useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
+import { useT } from "../i18n/index.js";
 import type { OperationGroup } from "../types.js";
 import { resolveAccentColor } from "../canvas/operation-accent.js";
 
@@ -26,6 +27,7 @@ export function OperationsSideBarGroupHeader({
   onContextMenu,
   onPointerDragStart,
 }: GroupHeaderProps) {
+  const t = useT();
   const suppressClickRef = useRef(false);
   const grpColor = resolveAccentColor(group.color);
   const headerClassName = [
@@ -73,14 +75,14 @@ export function OperationsSideBarGroupHeader({
         className="side-bar-group-header__toggle"
         onClick={() => onToggle(group.id)}
         aria-expanded={!collapsed}
-        aria-label={collapsed ? `Expand group ${group.name}` : `Collapse group ${group.name}`}
-        title={collapsed ? "Expand" : "Collapse"}
+        aria-label={collapsed ? t("sidebar.group.expand", { name: group.name }) : t("sidebar.group.collapse", { name: group.name })}
+        title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
       >
         <CollapseArrow collapsed={collapsed} />
       </button>
       <span className="side-bar-group-header__dot" aria-hidden="true" />
       <span className="side-bar-group-header__name">{group.name}</span>
-      <span className="side-bar-group-header__count" aria-label={`${count} operations`}>{count}</span>
+      <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
     </div>
   );
 }

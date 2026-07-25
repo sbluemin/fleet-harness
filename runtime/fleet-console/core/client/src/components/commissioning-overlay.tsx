@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { addTheater, issueTheaterFolderGrant } from "../api.js";
+import { useT } from "../i18n/index.js";
 import { beginAddTheater, closeOnboarding, completeAddTheater, failAddTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
@@ -20,6 +21,7 @@ const FOCUSABLE_SELECTOR = [
 ].join(",");
 
 export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
+  const t = useT();
   const [browserOpen, setBrowserOpen] = useState(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const primaryActionRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
@@ -77,20 +79,20 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
 
   return (
     <div className="commissioning-overlay" role="dialog" aria-modal="true" aria-labelledby="commissioning-title">
-      <button type="button" className="commissioning-scrim" onClick={closeOnboarding} aria-label="Close setup guide" />
+      <button type="button" className="commissioning-scrim" onClick={closeOnboarding} aria-label={t("chrome.commissioning.closeAria")} />
       <section className="commissioning-card" ref={cardRef}>
         <header className="commissioning-header">
-          <span className="commissioning-eyebrow">COMMISSIONING · FLEET CONSOLE</span>
-          <h2 id="commissioning-title">Set up Fleet Console</h2>
-          <p>Add a project folder, start an Operation, and monitor Carriers.</p>
+          <span className="commissioning-eyebrow">{t("chrome.commissioning.eyebrow")}</span>
+          <h2 id="commissioning-title">{t("chrome.commissioning.title")}</h2>
+          <p>{t("chrome.commissioning.lead")}</p>
         </header>
 
         <ol className="commissioning-steps">
           <li className={`commissioning-step commissioning-step--primary ${theaterRegistered ? "is-complete" : "is-current"}`}>
             <span className="commissioning-step-node" aria-hidden="true">{theaterRegistered ? "✓" : "01"}</span>
             <div className="commissioning-step-body">
-              <h3>Register a Theater</h3>
-              <p>A Theater is a project folder. Choose the folder you want to work from.</p>
+              <h3>{t("chrome.commissioning.step1Title")}</h3>
+              <p>{t("chrome.commissioning.step1Body")}</p>
               {theaterRegistered ? (
                 <Link
                   ref={(node) => {
@@ -100,7 +102,7 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
                   to="/operations"
                   onClick={closeOnboarding}
                 >
-                  Go to Operations →
+                  {t("chrome.commissioning.goToOperationsArrow")}
                 </Link>
               ) : (
                 <button
@@ -112,7 +114,7 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
                   disabled={state.addingTheater}
                   onClick={handleChooseFolder}
                 >
-                  {state.addingTheater ? "Adding Theater…" : "Choose a folder…"}
+                  {state.addingTheater ? t("chrome.commissioning.addingTheater") : t("chrome.commissioning.chooseFolder")}
                 </button>
               )}
               {state.theaterError ? <p className="commissioning-error" role="alert">{state.theaterError}</p> : null}
@@ -122,10 +124,10 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
           <li className="commissioning-step">
             <span className="commissioning-step-node" aria-hidden="true">02</span>
             <div className="commissioning-step-body">
-              <h3>Open an Operation</h3>
-              <p>An Operation is a live terminal session running an Agent CLI. Start one from the Operations tab to begin a working session.</p>
+              <h3>{t("chrome.commissioning.step2Title")}</h3>
+              <p>{t("chrome.commissioning.step2Body")}</p>
               <Link className="commissioning-secondary-link" to="/operations" onClick={closeOnboarding}>
-                Go to Operations
+                {t("chrome.commissioning.goToOperations")}
               </Link>
             </div>
           </li>
@@ -133,15 +135,15 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
           <li className="commissioning-step">
             <span className="commissioning-step-node" aria-hidden="true">03</span>
             <div className="commissioning-step-body">
-              <h3>Monitor Carriers</h3>
-              <p>Carriers are specialist agents. Their activity streams here while they run.</p>
+              <h3>{t("chrome.commissioning.step3Title")}</h3>
+              <p>{t("chrome.commissioning.step3Body")}</p>
             </div>
           </li>
         </ol>
 
         <footer className="commissioning-footer">
-          <p>Theaters with a Fleet Wiki knowledge root also unlock Codex — your decision log and reference library.</p>
-          <button type="button" className="commissioning-skip" onClick={closeOnboarding}>Skip for now</button>
+          <p>{t("chrome.commissioning.footer")}</p>
+          <button type="button" className="commissioning-skip" onClick={closeOnboarding}>{t("chrome.commissioning.skip")}</button>
         </footer>
       </section>
       <DirectoryBrowserModal open={browserOpen} onCancel={handleBrowserCancel} onConfirm={handleBrowserConfirm} />

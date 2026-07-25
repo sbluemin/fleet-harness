@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
+import { getT } from "./i18n/index.js";
 import { highlightEscapedDiffCode, parseHunk } from "./hunk-parse.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ function escapeHtml(s: string): string {
 // ─── HunkView ────────────────────────────────────────────────────────────────
 
 export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkViewProps) {
+  const t = getT(ctx.language);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
@@ -99,7 +101,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
   }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, commit, compare, repoRel]);
 
   if (state.kind === "loading") {
-    return <div className="repository-hunk-loading">Loading…</div>;
+    return <div className="repository-hunk-loading">{t("repository.common.loading")}</div>;
   }
 
   if (state.kind === "error") {
@@ -112,7 +114,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
 
   return (
     <div className="repository-hunk-wrap">
-      {result.truncated && <div className="repository-truncated-badge">Diff truncated</div>}
+      {result.truncated && <div className="repository-truncated-badge">{t("repository.hunk.diffTruncated")}</div>}
       <div className="repository-hunk-scroll">
         <table className="repository-hunk-table" cellSpacing={0} cellPadding={0}>
           <tbody>

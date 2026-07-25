@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { getT, useT } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
   mountNavigatorInto,
@@ -26,7 +28,7 @@ interface CodexWorkspaceState {
 
 export const codexPanel: RailPanelDescriptor = {
   id: "codex",
-  title: "Codex",
+  title: (locale: ConsoleLocale) => getT(locale)("rail.codex.title"),
   defaultWidth: 420,
   icon: () => <CodexIcon />,
   render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} />,
@@ -35,6 +37,7 @@ export const codexPanel: RailPanelDescriptor = {
 // ─── Components ───────────────────────────────────────────────────────────────
 
 function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
+  const t = useT();
   const state = useConsoleState();
   const navRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
@@ -145,16 +148,16 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
           <button
             className="codex-doc-expand"
             type="button"
-            aria-label="Expand reading sheet"
+            aria-label={t("rail.codex.expandAria")}
             data-codex-expand="true"
             onClick={expandCodexReader}
           >
-            ⤢ Expand
+            {t("rail.codex.expand")}
           </button>
           <button
             className="codex-reading-sheet-close"
             type="button"
-            aria-label="Close document pane"
+            aria-label={t("rail.codex.closePaneAria")}
             onClick={closeCodexReader}
           >
             ✕
@@ -175,20 +178,21 @@ function CodexEmpty({
   readonly activeTheater: { readonly label: string } | null;
   readonly hasTheaters: boolean;
 }) {
+  const t = useT();
   if (!hasTheaters) {
     return (
       <section className="codex-empty-state">
-        <p className="codex-empty-eyebrow">Codex</p>
-        <h1>Add a Theater</h1>
-        <p>Use the top bar Theater control to choose a project root before opening Codex.</p>
+        <p className="codex-empty-eyebrow">{t("rail.codex.emptyEyebrow")}</p>
+        <h1>{t("rail.codex.addTheater")}</h1>
+        <p>{t("rail.codex.addTheaterHint")}</p>
       </section>
     );
   }
   return (
     <section className="codex-empty-state">
-      <p className="codex-empty-eyebrow">Codex unavailable</p>
-      <h1>{activeTheater?.label || "This Theater"}</h1>
-      <p>Fleet Wiki data could not be loaded for this Theater.</p>
+      <p className="codex-empty-eyebrow">{t("rail.codex.unavailable")}</p>
+      <h1>{activeTheater?.label || t("rail.codex.thisTheater")}</h1>
+      <p>{t("rail.codex.wikiUnavailable")}</p>
     </section>
   );
 }

@@ -33,6 +33,7 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, useState: hookHarness.useState };
 });
 
+import { getT } from "../client/i18n/index.js";
 import { WorkspaceTree } from "../client/rail-panel.js";
 
 type ElementProps = Record<string, unknown> & { readonly children?: ReactNode };
@@ -67,6 +68,7 @@ function textOf(node: ReactNode): string {
 function renderWorkspaceTree(): ReactElement<ElementProps> {
   hookHarness.beginRender();
   return WorkspaceTree({
+    t: getT("en"),
     repos: [{ relPath: ".", name: "fleet-harness", branch: "canary", kind: "root" }],
     reposError: false,
     reposTruncated: false,

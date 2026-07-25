@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointe
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { useT } from "../i18n/index.js";
 import { operationActivityLabel, operationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
@@ -74,15 +75,16 @@ export function OperationsSideBarChip({
   onOpenAccent,
   onRename,
 }: SideBarChipProps) {
+  const t = useT();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
   const { operation, active, minimized, notificationCount, status } = entry;
   const title = displayTitle(operation);
-  const groupContext = statusAxis && groupMark ? ` in group ${groupMark.name}` : "";
-  const unseenContext = idleUnseen ? " (unseen since idle)" : "";
+  const groupContext = statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "";
+  const unseenContext = idleUnseen ? t("sidebar.chip.unseenContext") : "";
   const chipAriaLabel = active
-    ? `${title}${groupContext} (focused)${unseenContext}`
-    : `Focus operation ${title}${groupContext}${unseenContext}`;
+    ? t("sidebar.chip.focusedAria", { title, groupContext, unseenContext })
+    : t("sidebar.chip.focusAria", { title, groupContext, unseenContext });
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
@@ -160,7 +162,7 @@ export function OperationsSideBarChip({
       aria-haspopup={preview ? undefined : "menu"}
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
-      title={preview ? "Click to open in its Theater" : active ? "Focused · double-click to rename · right-click to set accent" : "Click to focus · double-click to rename · right-click to set accent"}
+      title={preview ? t("sidebar.chip.previewTitle") : active ? t("sidebar.chip.activeTitle") : t("sidebar.chip.idleTitle")}
       style={chipStyle}
       onClick={focus}
       onContextMenu={preview ? undefined : openAccent}
@@ -201,7 +203,7 @@ export function OperationsSideBarChip({
           className="side-bar-chip-rename-input"
           ref={rename.inputRef}
           value={rename.draftTitle}
-          aria-label={`Rename operation ${title}`}
+          aria-label={t("sidebar.chip.renameAria", { title })}
           onChange={(e) => rename.setDraftTitle(e.target.value)}
           onKeyDown={rename.handleKeyDown}
           onBlur={rename.handleBlur}
@@ -227,7 +229,7 @@ export function OperationsSideBarChip({
         <span
           className="side-bar-chip-group-mark"
           title={groupMark.name}
-          aria-label={`Group ${groupMark.name}`}
+          aria-label={t("sidebar.chip.groupAria", { name: groupMark.name })}
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         />
       ) : null}
@@ -235,8 +237,8 @@ export function OperationsSideBarChip({
         <span
           className="side-bar-chip-unseen"
           role="img"
-          aria-label="Unseen since idle"
-          title="Finished — not opened yet"
+          aria-label={t("sidebar.chip.unseenAria")}
+          title={t("sidebar.chip.unseenTitle")}
         />
       ) : null}
       {!statusAxis ? (
@@ -259,8 +261,8 @@ export function OperationsSideBarChip({
             onDisarmClose();
             onMinimize(operation.id);
           }}
-          aria-label={`Minimize operation ${title}`}
-          title="Minimize operation"
+          aria-label={t("sidebar.chip.minimizeAria", { title })}
+          title={t("sidebar.chip.minimizeTitle")}
         >
           <SideBarMinimizeIcon />
         </button>
@@ -271,10 +273,10 @@ export function OperationsSideBarChip({
           className={closeClassName}
           onPointerDown={stopClosePointer}
           onClick={close}
-          aria-label={isCloseArmed ? `Confirm close operation ${title}` : `Close operation ${title}`}
-          title={isCloseArmed ? "Confirm close" : "Close operation"}
+          aria-label={isCloseArmed ? t("sidebar.chip.confirmCloseAria", { title }) : t("sidebar.chip.closeAria", { title })}
+          title={isCloseArmed ? t("sidebar.chip.confirmCloseTitle") : t("sidebar.chip.closeTitle")}
         >
-          {isCloseArmed ? "Close?" : <SideBarCloseIcon />}
+          {isCloseArmed ? t("sidebar.chip.closeArmed") : <SideBarCloseIcon />}
         </button>
       )}
     </li>

@@ -9,6 +9,9 @@ import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { getState, subscribe } from "../store.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
@@ -24,13 +27,15 @@ const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
 const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
-const FALLBACK_THEATER_LABEL = "Theater";
-const OVERLAY_ALPHA_PRESETS: readonly { readonly label: string; readonly value: RailOverlayAlpha }[] = [
-  { label: "Solid", value: 100 },
-  { label: "90", value: 90 },
-  { label: "75", value: 75 },
-  { label: "60", value: 60 },
-];
+
+function buildOverlayAlphaPresets(t: Translate<CoreMessageKey>): readonly { readonly label: string; readonly value: RailOverlayAlpha }[] {
+  return [
+    { label: t("rail.chrome.opacitySolid"), value: 100 },
+    { label: "90", value: 90 },
+    { label: "75", value: 75 },
+    { label: "60", value: 60 },
+  ];
+}
 
 function readStoredPanelWidths(): Record<string, number> {
   try {
@@ -91,10 +96,12 @@ function saveStoredPanelWidth(activePanelId: string | null, width: number): void
 }
 
 export function RightRail({ theaterId, api }: RightRailProps) {
+  const t = useT();
+  const theaterFallback = t("rail.theater.fallback");
   const theaterLabel = useSyncExternalStore(
     subscribe,
-    () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? FALLBACK_THEATER_LABEL,
-    () => FALLBACK_THEATER_LABEL,
+    () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? theaterFallback,
+    () => theaterFallback,
   );
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
@@ -263,7 +270,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
       className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}${isSwitching ? " is-switching" : ""}${panelBehavior === "overlay" ? " is-overlay" : ""}`}
       data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
       role="complementary"
-      aria-label="Activity Rail"
+      aria-label={t("rail.chrome.aria")}
       inert={!railChromeExpanded}
       style={{ "--right-rail-panel-width": `${hasPanel ? panelWidth + extraWidth : 0}px` } as CSSProperties}
     >
@@ -281,7 +288,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
             role="separator"
             aria-orientation="vertical"
             tabIndex={0}
-            aria-label={`Resize ${activePanelTitle} panel`}
+            aria-label={t("rail.chrome.resizePanel", { title: activePanelTitle })}
             aria-controls={`rail-panel-${activePanel.id}`}
             aria-valuenow={Math.round(panelWidth)}
             aria-valuemin={MIN_PANEL_WIDTH}
@@ -292,8 +299,8 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           <RailPanelContent activePanel={activePanel} activePanelTitle={activePanelTitle} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} />
         )}
       </div>
-      <nav className="right-rail-icons" aria-label="Activity tools">
-        <div className="right-rail-tabs" role="tablist" aria-label="Activity panels">
+      <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
+        <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
           {builtInPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} language={language} isActive={activeId === panel.id} />
           ))}
@@ -322,6 +329,8 @@ interface RailPanelContentProps {
 // 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
 // (activePanel·ctx·activeId·panelBehavior·overlayAlpha) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
 const RailPanelContent = memo(function RailPanelContent({ activePanel, activePanelTitle, activeId, ctx, panelBehavior, overlayAlpha }: RailPanelContentProps) {
+  const t = useT();
+  const overlayPresets = buildOverlayAlphaPresets(t);
   return (
     <>
       <div className="right-rail-panel-head">
@@ -330,14 +339,14 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
           className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
           type="button"
           aria-pressed={panelBehavior === "overlay"}
-          aria-label="Float panel over the Map"
+          aria-label={t("rail.chrome.floatToggle")}
           onClick={toggleRailPanelBehavior}
         >
-          Float over Map
+          {t("rail.chrome.floatLabel")}
         </button>
         {panelBehavior === "overlay" ? (
-          <div className="right-rail-opacity-segments" role="group" aria-label="Panel opacity">
-            {OVERLAY_ALPHA_PRESETS.map((preset) => {
+          <div className="right-rail-opacity-segments" role="group" aria-label={t("rail.chrome.opacityAria")}>
+            {overlayPresets.map((preset) => {
               const isActive = preset.value === overlayAlpha;
               return (
                 <button
@@ -356,7 +365,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
         <button
           className="right-rail-close-btn"
           type="button"
-          aria-label={`Close ${activePanelTitle}`}
+          aria-label={t("rail.chrome.closePanel", { title: activePanelTitle })}
           onClick={closeRailPanel}
         >
           ✕

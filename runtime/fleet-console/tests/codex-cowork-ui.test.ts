@@ -459,7 +459,7 @@ describe("Cowork inline copilot", () => {
     vi.stubGlobal("fetch", fetchMock);
     let resolveCopy!: () => void;
     const writeText = vi.fn(() => new Promise<void>((resolve) => { resolveCopy = resolve; }));
-    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    vi.stubGlobal("navigator", { language: "en-US", clipboard: { writeText } });
     const { article, body } = host();
 
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
@@ -576,7 +576,7 @@ describe("Cowork inline copilot", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const writeText = vi.fn(async () => undefined);
-    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    vi.stubGlobal("navigator", { language: "en-US", clipboard: { writeText } });
     const onApplied = vi.fn();
     const { article, body } = host();
     const reader = document.createElement("div");

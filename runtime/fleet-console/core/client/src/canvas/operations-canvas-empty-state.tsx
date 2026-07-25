@@ -1,4 +1,5 @@
 import type { OperationNode } from "../types.js";
+import { useT } from "../i18n/index.js";
 
 interface OperationsCanvasEmptyStateProps {
   readonly activeTheaterId: string | null;
@@ -8,8 +9,6 @@ interface OperationsCanvasEmptyStateProps {
   readonly onOpenOperation: (operationId: string) => void;
   readonly onNewOperation: () => void;
 }
-
-const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
 
 export function hasVisibleCanvasContent(operations: readonly OperationNode[], minimizedOperationIds: ReadonlySet<string>): boolean {
   return operations.some((operation) => !minimizedOperationIds.has(operation.id));
@@ -23,11 +22,13 @@ export function OperationsCanvasEmptyState({
   onOpenOperation,
   onNewOperation,
 }: OperationsCanvasEmptyStateProps) {
+  const t = useT();
+
   if (!activeTheaterId) {
     return (
       <div className="operations-canvas-empty" data-canvas-blocker>
         <span className="operations-canvas-empty-mark" aria-hidden="true" />
-        <p>Add a Theater from the sidebar to start operations.</p>
+        <p>{t("canvas.empty.noTheater")}</p>
       </div>
     );
   }
@@ -42,7 +43,7 @@ export function OperationsCanvasEmptyState({
       {operationCount > 0 ? (
         <>
           <p className="operations-canvas-empty-ghost">
-            {operationCount} {operationCount === 1 ? "operation" : "operations"} standing by
+            {t(operationCount === 1 ? "canvas.empty.standingBy_one" : "canvas.empty.standingBy_other", { count: operationCount })}
           </p>
           <div className="operations-canvas-empty-standby">
             {standbyOperations.map((operation) => (
@@ -50,31 +51,31 @@ export function OperationsCanvasEmptyState({
                 key={operation.id}
                 type="button"
                 className="operations-canvas-empty-standby-chip"
-                aria-label={`Open operation ${operation.title}`}
+                aria-label={t("canvas.empty.openOperation", { title: operation.title })}
                 onClick={() => onOpenOperation(operation.id)}
               >
                 <span className="operations-canvas-empty-standby-title">{operation.title}</span>
-                <span className="operations-canvas-empty-standby-open" aria-hidden="true">OPEN</span>
+                <span className="operations-canvas-empty-standby-open" aria-hidden="true">{t("canvas.empty.open")}</span>
               </button>
             ))}
           </div>
         </>
       ) : (
-        <p className="operations-canvas-empty-headline">Launch your first operation</p>
+        <p className="operations-canvas-empty-headline">{t("canvas.empty.headline")}</p>
       )}
       <button
         type="button"
         className="operations-canvas-empty-new"
-        aria-label={`New Operation in ${theaterLabel}`}
+        aria-label={t("canvas.empty.newOperationAria", { theater: theaterLabel })}
         disabled={!canLaunch}
         onClick={onNewOperation}
       >
-        + New Operation
+        {t("canvas.empty.newOperation")}
       </button>
       <p className="operations-canvas-empty-hints">
-        <kbd>⌘K</kbd> Search <span aria-hidden="true">·</span> <kbd>Alt+F</kbd> Formation <span aria-hidden="true">·</span> <kbd>Alt+S</kbd> Status board
+        <kbd>⌘K</kbd> {t("canvas.empty.hintSearch")} <span aria-hidden="true">·</span> <kbd>Alt+F</kbd> {t("canvas.empty.hintFormation")} <span aria-hidden="true">·</span> <kbd>Alt+S</kbd> {t("canvas.empty.hintStatusBoard")}
       </p>
-      <p className="operations-canvas-empty-guide">{EMPTY_GUIDE}</p>
+      <p className="operations-canvas-empty-guide">{t("canvas.empty.guide")}</p>
     </div>
   );
 }

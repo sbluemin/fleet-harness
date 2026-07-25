@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
 import type { Scope, SkillListItem, SkillSearchItem } from "../server/types.js";
+import type { SkillsMessageKey } from "./i18n/index.js";
 import { InstallFlow } from "./install-flow.js";
 import { JobStatusDock } from "./job-status-dock.js";
 import {
@@ -17,6 +20,7 @@ interface FindTabProps {
   readonly theaterId: string | null;
   readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
   readonly onInstallSuccess: (skillName: string, scope: Scope) => void;
+  readonly t: Translate<SkillsMessageKey>;
 }
 
 interface FindResultCardProps {
@@ -27,6 +31,7 @@ interface FindResultCardProps {
   readonly onReadMore: (skill: SkillListItem, registryId: string) => void;
   readonly onInstallStarted: (skillName: string, scope: Scope) => void;
   readonly jobLog: UseJobLogReturn;
+  readonly t: Translate<SkillsMessageKey>;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -65,6 +70,7 @@ function FindResultCard({
   onReadMore,
   onInstallStarted,
   jobLog,
+  t,
 }: FindResultCardProps) {
   const previewSkill: SkillListItem = {
     name: result.name,
@@ -81,7 +87,7 @@ function FindResultCard({
           type="button"
           className="skills-card-name-btn"
           onClick={() => onReadMore(previewSkill, result.id)}
-          title="Read SKILL.md preview"
+          title={t("skills.action.readSkillMdPreview")}
         >
           {result.name}
         </button>
@@ -96,7 +102,7 @@ function FindResultCard({
           className="skills-btn skills-btn--primary"
           onClick={onInstallClick}
         >
-          {isFormOpen ? "Cancel" : "Install"}
+          {isFormOpen ? t("skills.action.cancel") : t("skills.action.install")}
         </button>
       </div>
       {isFormOpen && (
@@ -107,6 +113,7 @@ function FindResultCard({
           onCancel={onInstallClick}
           onStarted={(installedScope) => onInstallStarted(result.name, installedScope)}
           jobLog={jobLog}
+          t={t}
         />
       )}
     </div>
@@ -115,7 +122,7 @@ function FindResultCard({
 
 // ─── FindTab ─────────────────────────────────────────────────────────────────
 
-export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProps) {
+export function FindTab({ theaterId, onReadMore, onInstallSuccess, t }: FindTabProps) {
   const { searchQuery, searchResults, searchLoading, installFormOpenId } = useSkillsStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const installJobLog = useJobLog();
@@ -142,7 +149,9 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
     setInstallTarget(null);
   }, [installJobLog.status, installTarget, onInstallSuccess]);
 
-  const installRunningLabel = installTarget ? `Installing ${installTarget.name}…` : "Installing…";
+  const installRunningLabel = installTarget
+    ? t("skills.status.installingNamed", { name: installTarget.name })
+    : t("skills.status.installing");
 
   return (
     <>
@@ -150,20 +159,20 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
         <input
           type="search"
           className="skills-filter-input"
-          placeholder="Search skills.sh registry…"
+          placeholder={t("skills.filter.searchPlaceholder")}
           value={searchQuery}
           onChange={(e) => handleQueryChange(e.target.value)}
           aria-label="Search skills registry"
         />
 
-        {searchLoading && <div className="skills-empty-state">Searching…</div>}
+        {searchLoading && <div className="skills-empty-state">{t("skills.empty.searching")}</div>}
 
         {!searchLoading && searchQuery.length >= MIN_QUERY_LEN && searchResults.length === 0 && (
-          <div className="skills-empty-state">No results for "{searchQuery}".</div>
+          <div className="skills-empty-state">{t("skills.empty.noResults", { query: searchQuery })}</div>
         )}
 
         {!searchLoading && searchQuery.length > 0 && searchQuery.length < MIN_QUERY_LEN && (
-          <div className="skills-empty-state">Type at least 2 characters to search.</div>
+          <div className="skills-empty-state">{t("skills.empty.minQuery")}</div>
         )}
 
         <div className="skills-card-list">
@@ -179,6 +188,7 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
               onReadMore={onReadMore}
               onInstallStarted={(name, scope) => setInstallTarget({ name, scope })}
               jobLog={installJobLog}
+              t={t}
             />
           ))}
         </div>
@@ -188,9 +198,10 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess }: FindTabProp
         status={installJobLog.status}
         lines={installJobLog.lines}
         runningLabel={installRunningLabel}
-        doneLabel="Installed"
-        errorLabel="Install failed"
+        doneLabel={t("skills.status.installed")}
+        errorLabel={t("skills.status.installFailed")}
         onDismiss={installJobLog.reset}
+        t={t}
       />
     </>
   );

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import type { SkillsMessageKey } from "./i18n/index.js";
 import type { JobLogStatus } from "./use-job-log.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -12,6 +15,7 @@ export interface JobStatusDockProps {
   readonly errorLabel: string;
   readonly onDismiss: () => void;
   readonly onRetry?: (() => void) | undefined;
+  readonly t: Translate<SkillsMessageKey>;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -28,6 +32,7 @@ export function JobStatusDock({
   errorLabel,
   onDismiss,
   onRetry,
+  t,
 }: JobStatusDockProps) {
   const [isOpen, setIsOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -125,14 +130,16 @@ export function JobStatusDock({
         <span className={labelClass} aria-live="polite">{label}</span>
         {status === "running" && lines.length > 0 && (
           <span className="skills-dock-count">
-            {lines.length} {lines.length === 1 ? "line" : "lines"}
+            {t(lines.length === 1 ? "skills.status.lines_one" : "skills.status.lines_other", {
+              count: lines.length,
+            })}
           </span>
         )}
         {status === "done" && (
           <button
             type="button"
             className="skills-dock-dismiss"
-            aria-label="Dismiss"
+            aria-label={t("skills.action.dismiss")}
             onClick={(e) => { e.stopPropagation(); dismiss(); }}
           >
             ✕
@@ -147,13 +154,13 @@ export function JobStatusDock({
                 className="skills-dock-retry"
                 onClick={(e) => { e.stopPropagation(); onRetry(); }}
               >
-                Retry
+                {t("skills.action.retry")}
               </button>
             )}
             <button
               type="button"
               className="skills-dock-dismiss"
-              aria-label="Dismiss"
+              aria-label={t("skills.action.dismiss")}
               onClick={(e) => { e.stopPropagation(); dismiss(); }}
             >
               ✕

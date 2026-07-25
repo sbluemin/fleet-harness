@@ -6,18 +6,18 @@ const NOW = Date.UTC(2026, 6, 10, 0, 0, 0);
 
 describe("formatRelativeTime", () => {
   it("formats recent, minute, hour, and day-relative timestamps", () => {
-    expect(formatRelativeTime("2026-07-09T23:59:31.000Z", NOW)).toBe("just now");
-    expect(formatRelativeTime("2026-07-09T23:55:00.000Z", NOW)).toBe("5m ago");
-    expect(formatRelativeTime("2026-07-09T21:00:00.000Z", NOW)).toBe("3h ago");
-    expect(formatRelativeTime("2026-07-07T00:00:00.000Z", NOW)).toBe("3d ago");
+    expect(formatRelativeTime("2026-07-09T23:59:31.000Z", "en", NOW)).toBe("29 seconds ago");
+    expect(formatRelativeTime("2026-07-09T23:55:00.000Z", "en", NOW)).toBe("5 minutes ago");
+    expect(formatRelativeTime("2026-07-09T21:00:00.000Z", "en", NOW)).toBe("3 hours ago");
+    expect(formatRelativeTime("2026-07-07T00:00:00.000Z", "en", NOW)).toBe("3 days ago");
   });
 
-  it("does not show future timestamps as negative elapsed time", () => {
-    expect(formatRelativeTime("2026-07-10T00:05:00.000Z", NOW)).toBe("just now");
+  it("formats future timestamps with Intl relative units", () => {
+    expect(formatRelativeTime("2026-07-10T00:05:00.000Z", "en", NOW)).toBe("in 5 minutes");
   });
 
   it("returns a neutral label for an invalid timestamp", () => {
-    expect(formatRelativeTime("not-a-date", NOW)).toBe("Unknown");
+    expect(formatRelativeTime("not-a-date", "en", NOW)).toBe("Unknown");
   });
 });
 

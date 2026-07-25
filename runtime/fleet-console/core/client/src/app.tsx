@@ -23,6 +23,7 @@ import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
+import { useConsoleLocale, useT } from "./i18n/index.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -43,11 +44,13 @@ export function App() {
   const undoInFlightRef = useRef(false);
   pendingDeletionsRef.current = pendingDeletions;
   const activeDeletion = latestPendingDeletion(pendingDeletions, undoClock);
+  const t = useT();
+  const consoleLocale = useConsoleLocale();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
 
   useEffect(() => {
-    document.documentElement.lang = releaseNotesLocale;
-  }, [releaseNotesLocale]);
+    document.documentElement.lang = consoleLocale;
+  }, [consoleLocale]);
 
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
@@ -228,15 +231,15 @@ export function App() {
       <Toast
         open={state.connectionError !== null}
         tone="error"
-        title="Console link interrupted"
+        title={t("chrome.toast.consoleLinkInterrupted")}
         message={state.connectionError ?? undefined}
       />
       <Toast
         open={activeDeletion !== null}
         tone="undo"
-        title={activeDeletion?.kind === "theater" ? "Theater forgotten" : "Operation closed"}
-        message={activeDeletion ? `${deletionCountdownSeconds(activeDeletion, undoClock)}s remaining` : undefined}
-        actionLabel="Undo"
+        title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : t("chrome.toast.operationClosed")}
+        message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
+        actionLabel={t("chrome.toast.undo")}
         onAction={undoLastClose}
         progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
       />

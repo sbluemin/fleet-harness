@@ -1,12 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import {
   buildPaletteCommands,
   commandModeQuery,
   filterPaletteCommands,
   isCommandModeInput,
 } from "../core/client/src/palette-commands.js";
+import { DEFAULT_UI_FONT } from "../core/client/src/ui-font.js";
 import type { ConsoleState, TheaterInfo } from "../core/client/src/types.js";
+
+beforeEach(() => {
+  // 팔레트 라벨 단언은 en 카탈로그를 기준으로 한다 — 호스트 로케일과 무관하게 고정한다.
+  hydrateGlobalSettings({
+    consolePortMode: "dynamic",
+    consoleStaticPort: null,
+    reducePanelMotion: false,
+    theme: "instrument",
+    uiFont: DEFAULT_UI_FONT,
+    language: "en",
+  });
+});
 
 const THEATER_ALPHA: TheaterInfo = { id: "theater-alpha", label: "Alpha Harbor", createdAt: "2026-07-20T00:00:00.000Z", lastOpenedAt: "2026-07-20T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
 const THEATER_BETA: TheaterInfo = { id: "theater-beta", label: "Beta Dock", createdAt: "2026-07-20T00:00:00.000Z", lastOpenedAt: "2026-07-20T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
