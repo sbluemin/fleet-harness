@@ -88,8 +88,14 @@ export function readProviderSessionCaptureRaw(fleetSessionId: string, deps: { re
 export function writeProviderSessionCaptureRaw(fleetSessionId: string, content: string, deps: { readonly capturesDir?: string } = {}): boolean {
   if (!isSafeCaptureId(fleetSessionId)) return false;
   const capturesDir = deps.capturesDir ?? defaultCapturePaths().capturesDir;
+  // 정상 capture 경로와 같은 보안 기록 패턴: 0o600 + temp→rename 원자 교체(Codex P2).
+  // 롤백 파일도 provider 세션 신원과 transcript 경로를 담으므로 umask 기본 권한(0644)을 허용하지 않는다.
+  const finalPath = path.join(capturesDir, `${fleetSessionId}.json`);
+  const tempPath = path.join(capturesDir, `${CAPTURE_TEMP_PREFIX}${fleetSessionId}.${process.pid}.${Date.now()}.tmp`);
   try {
-    fs.writeFileSync(path.join(capturesDir, `${fleetSessionId}.json`), content);
+    fs.mkdirSync(capturesDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(tempPath, content, { mode: 0o600 });
+    fs.renameSync(tempPath, finalPath);
     return true;
   } catch {
     return false;
