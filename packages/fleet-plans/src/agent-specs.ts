@@ -57,12 +57,12 @@ function buildPlanReadSpec(deps: PlanToolSpecDeps): AgentToolSpec {
     description: "Read and deterministically lint one workspace-scoped Fleet Plan. TaskRef selection returns a compact same-Lane execution view.",
     promptSnippet: "Use plan_ref for the full Plan or task_refs for a compact execution view; both are allowed only when they identify the same Plan.",
     whenToUse: [
-      "A structured Fleet Plan or assigned Ohio tasks must be inspected",
+      "A structured Fleet Plan or assigned same-Lane TaskRefs must be inspected",
       "Plan validity, task identity, topology, or completion state is needed",
     ],
     whenNotToUse: [
       "Creating or replacing a Plan — the host uses plan_write",
-      "Marking completed Ohio tasks — use plan_mark_tasks after the lane QA gate",
+      "Marking completed tasks — the host uses plan_mark_tasks after artifact inspection and Lane QA",
     ],
     usageGuidelines: [
       "Provide at least one of plan_ref or task_refs. When both are present, they must identify the same Plan.",
@@ -133,7 +133,7 @@ function buildPlanWriteSpec(deps: PlanToolSpecDeps): AgentToolSpec {
     promptSnippet: "Load plan-operations, submit the complete required Markdown template, correct every deterministic lint error, then read it back with plan_read.",
     whenToUse: ["The host has completed planning and must create or replace the named Plan"],
     whenNotToUse: [
-      "Updating task completion checkboxes — Ohio uses plan_mark_tasks",
+      "Updating task completion checkboxes — the host uses plan_mark_tasks",
       "Writing source code, configuration, documentation, or any file outside Fleet Plan storage",
     ],
     usageGuidelines: [
@@ -175,19 +175,20 @@ function buildPlanMarkTasksSpec(deps: PlanToolSpecDeps): AgentToolSpec {
     id: "plan_mark_tasks",
     tag: "plan_mark_tasks",
     title: "Plan Mark Tasks",
-    description: "Ohio-only idempotent completion marker that flips assigned same-Lane TaskRefs from unchecked to checked after QA passes.",
-    promptSnippet: "After the assigned Lane QA gate passes, mark exactly the completed TaskRefs; never edit Plan Markdown directly.",
-    whenToUse: ["Ohio completed every supplied TaskRef and its Lane QA/integration gate passed"],
+    description: "Host-only idempotent completion marker that flips assigned same-Lane TaskRefs from unchecked to checked after the host inspects artifacts and confirms Lane QA.",
+    promptSnippet: "After independent artifact inspection and the assigned Lane QA gate pass, mark exactly the completed TaskRefs; never edit Plan Markdown directly.",
+    whenToUse: ["The host confirmed every supplied TaskRef and its Lane QA/integration gate after inspecting artifacts"],
     whenNotToUse: [
       "Any assigned task or QA gate is incomplete",
       "Task wording, topology, ownership, or Plan structure needs to change — return the requested change to the host",
+      "A Carrier is attempting completion marking — Carriers never receive this tool",
     ],
     usageGuidelines: [
-      "Submit only the TaskRefs assigned in this Ohio request.",
+      "Submit only the TaskRefs originally dispatched for the inspected Lane.",
       "All TaskRefs must belong to one Plan and one Lane.",
       "The operation is idempotent and never changes task text.",
     ],
-    guardrails: ["Ohio-only mutation surface; it can only flip known checkbox state to completed."],
+    guardrails: ["Host-only mutation surface; never expose this tool to a Carrier executor. It can only flip known checkbox state to completed."],
     parameters: Type.Object({ task_refs: TASK_REFS_SCHEMA }, { additionalProperties: false }),
     async execute(args) {
       return captureToolError("plan_mark_tasks", () => {

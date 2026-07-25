@@ -39,7 +39,7 @@ describe("Task Force capability policy", () => {
     registerDefaultCarriers(registry);
     registerCarrier(registry, config("custom", false));
 
-    const capable = ["nimitz", "genesis", "ohio", "sentinel", "vanguard", "custom"]
+    const capable = ["nimitz", "genesis", "sentinel", "vanguard", "custom"]
       .filter((id) => isTaskForceCapable(registry, id));
 
     expect(capable).toEqual(["nimitz", "vanguard"]);

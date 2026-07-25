@@ -7,8 +7,6 @@ import {
   GENESIS_METADATA,
   NIMITZ_DEFAULTS,
   NIMITZ_METADATA,
-  OHIO_DEFAULTS,
-  OHIO_METADATA,
   SENTINEL_DEFAULTS,
   SENTINEL_METADATA,
   VANGUARD_DEFAULTS,
@@ -28,7 +26,6 @@ interface PersonaCase {
 const EXPECTED_IDS = [
   "nimitz",
   "genesis",
-  "ohio",
   "sentinel",
   "vanguard",
 ] as const;
@@ -36,15 +33,13 @@ const EXPECTED_IDS = [
 const EXPECTED_DEFAULTS = {
   genesis: { slot: 2, defaultModel: "sonnet", defaultEffort: "medium" },
   nimitz: { slot: 1, defaultModel: "opus[1m]", defaultEffort: "max" },
-  sentinel: { slot: 4, defaultModel: "sonnet", defaultEffort: "max" },
-  vanguard: { slot: 5, defaultModel: "haiku", defaultEffort: "low" },
-  ohio: { slot: 3, defaultModel: "sonnet", defaultEffort: "low" },
+  sentinel: { slot: 3, defaultModel: "sonnet", defaultEffort: "max" },
+  vanguard: { slot: 4, defaultModel: "haiku", defaultEffort: "low" },
 } as const;
 
 const ALL_PERSONAS: readonly PersonaCase[] = [
   { name: "genesis", meta: GENESIS_METADATA },
   { name: "nimitz", meta: NIMITZ_METADATA },
-  { name: "ohio", meta: OHIO_METADATA },
   { name: "sentinel", meta: SENTINEL_METADATA },
   { name: "vanguard", meta: VANGUARD_METADATA },
 ];
@@ -52,7 +47,6 @@ const ALL_PERSONAS: readonly PersonaCase[] = [
 const DEFAULT_PERSONAS = [
   { defaults: NIMITZ_DEFAULTS, meta: NIMITZ_METADATA },
   { defaults: GENESIS_DEFAULTS, meta: GENESIS_METADATA },
-  { defaults: OHIO_DEFAULTS, meta: OHIO_METADATA },
   { defaults: SENTINEL_DEFAULTS, meta: SENTINEL_METADATA },
   { defaults: VANGUARD_DEFAULTS, meta: VANGUARD_METADATA },
 ] as const;
@@ -109,7 +103,7 @@ describe("allowedBuiltinExternalMcpServers", () => {
 });
 
 describe("persona defaults", () => {
-  it("각 persona 파일이 예상 5개 carrier 기본값을 소유", () => {
+  it("각 persona 파일이 예상 4개 carrier 기본값을 소유", () => {
     expect(DEFAULT_PERSONAS.map((persona) => persona.defaults.id)).toEqual(EXPECTED_IDS);
   });
 
@@ -142,7 +136,7 @@ describe("Vanguard local and remote reconnaissance contract", () => {
     expect(VANGUARD_DEFAULTS).toEqual({
       id: "vanguard",
       displayName: "Vanguard",
-      slot: 5,
+      slot: 4,
       taskForceCapable: true,
       agent: {
         dispatch: {
@@ -201,7 +195,7 @@ describe("Vanguard local and remote reconnaissance contract", () => {
   });
 });
 
-describe("Nimitz Plan assurance and Ohio TaskRef execution contract", () => {
+describe("Nimitz Plan assurance and Genesis Plan-driven TaskRef contract", () => {
   it("keeps Nimitz optional Plan assurance strictly read-only and plan_ref-triggered", () => {
     const principles = NIMITZ_METADATA.principles ?? [];
 
@@ -227,7 +221,7 @@ describe("Nimitz Plan assurance and Ohio TaskRef execution contract", () => {
     expect(NIMITZ_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
     expect(NIMITZ_METADATA.permissions.join("\n")).toContain("plan_ref is the sole Plan-assurance trigger");
     expect(NIMITZ_METADATA.permissions.join("\n")).toContain("MUST NEVER call plan_write");
-    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("never becomes an Ohio prerequisite");
+    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("never becomes a Genesis prerequisite");
     expect(NIMITZ_METADATA.outputFormat).toContain("PASS | REVISE | BLOCKED");
     for (const field of ["**PlanRef**", "**Findings**", "**Dispatch readiness**", "**Host action**"]) {
       expect(NIMITZ_METADATA.outputFormat).toContain(field);
@@ -242,26 +236,43 @@ describe("Nimitz Plan assurance and Ohio TaskRef execution contract", () => {
     expect(principles.join("\n")).toContain("never replaces host Plan authorship");
   });
 
-  it("Ohio accepts exactly one Plan/Lane TaskRef group and marks it through the Plan tool", () => {
-    expect(OHIO_METADATA.requestBlocks).toContainEqual({
-      tag: "task_refs",
-      hint: "Required newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. Ohio calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks.",
+  it("Genesis keeps required objective/scope, optional task_refs, and never receives plan_mark_tasks", () => {
+    expect(GENESIS_DEFAULTS.agent.dispatch).toEqual({
+      defaultCliType: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "medium",
+    });
+    expect(GENESIS_METADATA.requestBlocks).toContainEqual({
+      tag: "objective",
+      hint: "What needs to be built or achieved. Be specific about the desired end state.",
       required: true,
     });
-    expect(OHIO_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read", "plan_mark_tasks"]);
-    expect(OHIO_METADATA.permissions).toContain(
-      "MUST call plan_read exactly once at the start of each dispatch with the complete assigned TaskRef set. Re-read only after a Plan tool reports a Plan-state conflict or the host explicitly redirects; invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers.",
+    expect(GENESIS_METADATA.requestBlocks).toContainEqual({
+      tag: "scope",
+      hint: "Which modules, directories, or subsystems are in play.",
+      required: true,
+    });
+    expect(GENESIS_METADATA.requestBlocks).toContainEqual({
+      tag: "task_refs",
+      hint: "Optional newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. When present, Genesis calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks; the host owns completion marking after artifact inspection.",
+      required: false,
+    });
+    expect(GENESIS_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
+    expect(GENESIS_METADATA.allowedExecutorTools).not.toContain("plan_mark_tasks");
+    expect(GENESIS_METADATA.permissions).toContain(
+      "When <task_refs> are present: MUST call plan_read exactly once at the start of each dispatch with the complete assigned TaskRef set. Re-read only after a Plan tool reports a Plan-state conflict or the host explicitly redirects; invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers.",
     );
-    expect(OHIO_METADATA.principles).toContain(
-      "Treat compact plan_context as the forest: its Objective, topology, current progress, global QA gates, acceptance criteria, documentation updates, and final review loop govern the mission. Treat lane_context and selected_tasks as the only executable scope and write authority.",
+    expect(GENESIS_METADATA.principles).toContain(
+      "When <task_refs> are present: Treat compact plan_context as the forest: its Objective, topology, current progress, global QA gates, acceptance criteria, documentation updates, and final review loop govern the mission. Treat lane_context and selected_tasks as the only executable scope and write authority.",
     );
-    expect(OHIO_METADATA.permissions).toContain(
-      "MUST call plan_mark_tasks with exactly the assigned TaskRefs only after every assigned task and the Lane QA/integration gate pass. Never edit Plan Markdown or checkbox state through filesystem tools.",
+    expect(GENESIS_METADATA.permissions).toContain(
+      "When <task_refs> are present: MUST run the Lane QA/integration gate and report exact TaskRefs, Lane, and QA evidence. MUST NOT call plan_mark_tasks or edit Plan Markdown or checkbox state through filesystem tools — completion marking is exclusively host-owned after artifact inspection.",
     );
-    expect(OHIO_METADATA.permissions.join("\n")).toContain("return every requested Plan wording, topology, ownership, or task change and every unresolved decision to the host");
-    expect(OHIO_METADATA.outputFormat).toContain("**Host Plan action**");
-    expect(OHIO_METADATA.outputFormat).toContain("**TaskRefs executed**");
-    expect(OHIO_METADATA.outputFormat).toContain("**Lane**");
+    expect(GENESIS_METADATA.permissions.join("\n")).toContain("return every requested Plan wording, topology, ownership, or task change and every unresolved decision to the host");
+    expect(GENESIS_METADATA.outputFormat).toContain("**Host Plan action**");
+    expect(GENESIS_METADATA.outputFormat).toContain("**TaskRefs executed**");
+    expect(GENESIS_METADATA.outputFormat).toContain("**Lane**");
+    expect(GENESIS_METADATA.outputFormat).toContain("**QA results**");
   });
 });
 

@@ -76,10 +76,7 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
 export function buildAgentPlanToolRegistrations(dataDir: string) {
   const planTools = getPlanToolSpecs({ dataDir });
   return {
-    extraAgentTools: [planTools.read, planTools.write, planTools.verify],
-    extraExecutorTools: [
-      { spec: planTools.markTasks, options: { allowedScopes: [] } },
-    ],
+    extraAgentTools: [planTools.read, planTools.write, planTools.verify, planTools.markTasks],
   } as const;
 }
 

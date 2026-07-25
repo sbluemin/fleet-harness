@@ -71,7 +71,7 @@ Fleet Wiki keeps architecture decisions, product history, guides, and review que
 
 <img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier Settings" width="100%" />
 
-Choose each Carrier's CLI backend, model, and reasoning effort from the visual roster at Settings > Plugins > Terminal > Carriers. Task Force-capable specialists also expose a multi-backend composition panel. Five built-in specialists cover strategic judgment and optional Plan assurance, implementation, multi-wave execution, QA, and unified local-or-remote codebase intelligence. The Admiral authors and mutates Fleet Plans directly; Nimitz may optionally audit an exact host-authored PlanRef without changing it, and Ohio executes host-authored Plan TaskRefs. The Admiral also handles documentation and Fleet Wiki updates directly — they are not delegated to Carriers.
+Choose each Carrier's CLI backend, model, and reasoning effort from the visual roster at Settings > Plugins > Terminal > Carriers. Task Force-capable specialists also expose a multi-backend composition panel. Four built-in specialists cover strategic judgment and optional Plan assurance, direct and Plan-driven implementation, QA and security, and unified local-or-remote codebase intelligence. The Admiral authors and mutates all Fleet Plan state, including marking TaskRefs complete only after artifact inspection and Lane QA. Nimitz may optionally audit an exact host-authored PlanRef without changing it, while Genesis executes host-authored same-Lane TaskRefs when supplied. The Admiral also handles documentation and Fleet Wiki updates directly — they are not delegated to Carriers.
 
 > Fleet Console is a research preview.
 

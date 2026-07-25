@@ -12,7 +12,7 @@ import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
   id: "vanguard",
   displayName: "Vanguard",
-  slot: 5,
+  slot: 4,
   taskForceCapable: true,
   agent: {
     dispatch: {

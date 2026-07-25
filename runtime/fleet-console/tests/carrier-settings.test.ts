@@ -203,7 +203,7 @@ describe("carrier settings routes", () => {
     ]);
   });
 
-  it("leaves stale carriers.json Kirov overrides dormant and out of the registry-driven settings UI", async () => {
+  it("leaves stale carriers.json Kirov and Ohio overrides dormant and out of the registry-driven settings UI", async () => {
     const fixture = await startFixture({
       beforeCreateServer: ({ carrierStoreDir }) => {
         fs.mkdirSync(carrierStoreDir, { recursive: true });
@@ -211,6 +211,7 @@ describe("carrier settings routes", () => {
           _meta: { generation: 9 },
           carriers: {
             kirov: { displayName: "Stale Kirov", agentCliType: "claude" },
+            ohio: { displayName: "Stale Ohio", agentCliType: "codex" },
             nimitz: { displayName: "Nimitz Override" },
           },
         }));
@@ -224,13 +225,14 @@ describe("carrier settings routes", () => {
     expect(state.carriers.map((carrier) => carrier.carrierId)).toEqual([
       "nimitz",
       "genesis",
-      "ohio",
       "sentinel",
       "vanguard",
     ]);
     expect(state.carriers.find((carrier) => carrier.carrierId === "kirov")).toBeUndefined();
+    expect(state.carriers.find((carrier) => carrier.carrierId === "ohio")).toBeUndefined();
     expect(state.carriers.find((carrier) => carrier.carrierId === "nimitz")?.displayName).toBe("Nimitz Override");
     expect(persisted.carriers?.kirov).toEqual({ displayName: "Stale Kirov", agentCliType: "claude" });
+    expect(persisted.carriers?.ohio).toEqual({ displayName: "Stale Ohio", agentCliType: "codex" });
   });
 
   it("keeps stale incapable Task Force settings ineffective, rejects PUT without a write, and permits cleanup", async () => {

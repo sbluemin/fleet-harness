@@ -13,7 +13,7 @@ import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 export const SENTINEL_DEFAULTS: CarrierPersonaDefaults = {
   id: "sentinel",
   displayName: "Sentinel",
-  slot: 4,
+  slot: 3,
   agent: {
     dispatch: {
       defaultCliType: "claude",

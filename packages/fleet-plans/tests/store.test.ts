@@ -58,6 +58,87 @@ describe("Fleet Plan store", () => {
     expect(existsSync(dataDir)).toBe(false);
   });
 
+  it("rejects creating a new Plan with the retired exact Ohio full-plan policy without creating storage", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const legacyPlan = buildLegacyPlan();
+
+    const created = writePlanMarkdown(dataDir, workspaceRoot, "legacy-create", legacyPlan);
+
+    expect(created.written).toBe(false);
+    expect(created.lint.valid).toBe(false);
+    expect(created.lint.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it("rejects a new Plan with canonical manifest policy plus an exact legacy companion outside the manifest without creating storage", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const markdown = buildValidPlan().replace(
+      "# Documentation Updates\n\n- Update host and Carrier Plan workflow documentation.",
+      `# Documentation Updates\n\n${LEGACY_FULL_PLAN_POLICY}\n\n- Update host and Carrier Plan workflow documentation.`,
+    );
+
+    const created = writePlanMarkdown(dataDir, workspaceRoot, "companion-policy", markdown);
+
+    expect(created.written).toBe(false);
+    expect(created.lint.valid).toBe(false);
+    expect(created.lint.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["FULL_PLAN_POLICY"]);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it("rejects a new Plan with an indented exact legacy companion outside the manifest without creating storage", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const indentedLegacy = `  ${LEGACY_FULL_PLAN_POLICY}`;
+    const markdown = buildValidPlan().replace(
+      "# Documentation Updates\n\n- Update host and Carrier Plan workflow documentation.",
+      `# Documentation Updates\n\n${indentedLegacy}\n\n- Update host and Carrier Plan workflow documentation.`,
+    );
+
+    const created = writePlanMarkdown(dataDir, workspaceRoot, "indented-companion", markdown);
+
+    expect(created.written).toBe(false);
+    expect(created.lint.valid).toBe(false);
+    expect(created.lint.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["FULL_PLAN_POLICY"]);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it("allows replacing an existing exact-legacy Plan with legacy or canonical policy", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const seeded = seedLegacyPlan(dataDir, workspaceRoot, "legacy-replace");
+
+    const legacyReplace = writePlanMarkdown(dataDir, workspaceRoot, "legacy-replace", buildLegacyPlan());
+    expect(legacyReplace.written).toBe(true);
+    expect(readPlanMarkdown(dataDir, seeded.planRef).markdown).toBe(buildLegacyPlan());
+
+    const canonicalReplace = writePlanMarkdown(dataDir, workspaceRoot, "legacy-replace", buildValidPlan());
+    expect(canonicalReplace.written).toBe(true);
+    expect(readPlanMarkdown(dataDir, seeded.planRef).markdown).toBe(buildValidPlan());
+  });
+
+  it("rejects replacing a canonical Plan with the retired exact Ohio full-plan policy", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const first = writePlanMarkdown(dataDir, workspaceRoot, "canonical-plan", buildValidPlan());
+
+    const replaced = writePlanMarkdown(dataDir, workspaceRoot, "canonical-plan", buildLegacyPlan());
+
+    expect(replaced.written).toBe(false);
+    expect(replaced.lint.diagnostics).toContainEqual(expect.objectContaining({ code: "FULL_PLAN_POLICY" }));
+    expect(readPlanMarkdown(dataDir, first.planRef).markdown).toBe(buildValidPlan());
+  });
+
+  it("reads and completes tasks on an existing exact-legacy Plan", () => {
+    const { workspaceRoot, dataDir } = makePaths();
+    const seeded = seedLegacyPlan(dataDir, workspaceRoot, "legacy-compat");
+
+    const read = readPlanMarkdown(dataDir, seeded.planRef);
+    expect(read.lint.valid).toBe(true);
+    expect(read.markdown).toBe(buildLegacyPlan());
+
+    const refs = ["W1-A-T1", "W1-A-T2", "W1-A-T3"].map((id) => `${seeded.planRef}#${id}`);
+    const marked = markPlanTasksComplete(dataDir, refs);
+    expect(marked.completed).toEqual(refs);
+    expect(readPlanMarkdown(dataDir, seeded.planRef).lint.valid).toBe(true);
+  });
+
   it("reads externally corrupted Markdown with blocking lint diagnostics", () => {
     const { workspaceRoot, dataDir } = makePaths();
     const written = writePlanMarkdown(dataDir, workspaceRoot, "corrupt-plan", buildValidPlan());
@@ -118,6 +199,28 @@ describe("Fleet Plan store", () => {
     expect(() => writePlanMarkdown(dataDir, workspaceRoot, "another-plan", buildValidPlan())).toThrow(/Unsafe Fleet directory/);
   });
 });
+
+const CANONICAL_FULL_PLAN_POLICY =
+  "- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only";
+const LEGACY_FULL_PLAN_POLICY =
+  "- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only";
+
+function buildLegacyPlan(): string {
+  return buildValidPlan().replace(CANONICAL_FULL_PLAN_POLICY, LEGACY_FULL_PLAN_POLICY);
+}
+
+function seedLegacyPlan(
+  dataDir: string,
+  workspaceRoot: string,
+  planId: string,
+): { planRef: string } {
+  const written = writePlanMarkdown(dataDir, workspaceRoot, planId, buildValidPlan());
+  expect(written.written).toBe(true);
+  const workspaceName = written.planRef.slice(0, written.planRef.lastIndexOf(":"));
+  const planPath = path.join(dataDir, "workspaces", workspaceName, "plans", `${planId}.md`);
+  writeFileSync(planPath, buildLegacyPlan());
+  return { planRef: written.planRef };
+}
 
 function makePaths(): { dataDir: string; root: string; workspaceRoot: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "fleet-plans-"));

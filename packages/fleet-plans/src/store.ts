@@ -10,12 +10,18 @@ import {
 } from "@dotobokuri/core-infra/fs-store";
 import {
   ensureWorkspaceDirectory,
+  findWorkspaceDirectory,
   resolveWorkspaceDirectory,
   resolveWorkspaceDirectoryByName,
   type WorkspaceDirectory,
 } from "@dotobokuri/core-infra/workspace-dir";
 
-import { lintPlanMarkdown, normalizePlanMarkdown } from "./lint.js";
+import {
+  lintPlanMarkdown,
+  lintPlanMarkdownForWrite,
+  normalizePlanMarkdown,
+  planMarkdownUsesExactLegacyFullPlanPolicy,
+} from "./lint.js";
 import {
   assertPlanId,
   formatPlanRef,
@@ -66,19 +72,38 @@ export function writePlanMarkdown(
     return { lint, planRef, written: false };
   }
 
+  // 신규 Plan의 레거시 Ohio 정책은 저장소 생성 전에 거부한다(fail-closed).
+  // create/replace 허용 결정은 아래 Plan 잠금 안에서만 한다.
+  if (
+    planMarkdownUsesExactLegacyFullPlanPolicy(normalized)
+    && !planFileExists(dataDir, workspaceRoot, planId)
+  ) {
+    return {
+      lint: lintPlanMarkdownForWrite(normalized, false),
+      planRef,
+      written: false,
+    };
+  }
+
   const workspace = ensureWorkspaceDirectory(dataDir, workspaceRoot);
   const location = ensurePlanLocation(workspace, planId);
-  withDirectoryLock({ lockDir: location.lockDir }, () => {
+  return withDirectoryLock({ lockDir: location.lockDir }, () => {
     assertSafePlanFile(location.filePath);
+    const existingStat = safeLstat(location.filePath);
+    const exists = Boolean(existingStat?.isFile() && !existingStat.isSymbolicLink());
+    const allowLegacyFullPlanPolicy = exists && existingPlanUsesExactLegacyFullPlanPolicy(location.filePath);
+    const writeLint = lintPlanMarkdownForWrite(normalized, allowLegacyFullPlanPolicy);
+    if (!writeLint.valid) {
+      return { lint: writeLint, planRef, written: false };
+    }
     writeAtomicSync(location.filePath, normalized);
+    return {
+      document: attachTaskRefs({ lint: writeLint, markdown: normalized, planRef }),
+      lint: writeLint,
+      planRef,
+      written: true,
+    };
   });
-
-  return {
-    document: attachTaskRefs({ lint, markdown: normalized, planRef }),
-    lint,
-    planRef,
-    written: true,
-  };
 }
 
 export function readPlanMarkdown(dataDir: string, planRef: string): PlanDocument {
@@ -199,6 +224,25 @@ function ensurePlanLocation(workspace: WorkspaceDirectory, planId: string): Plan
   assertWithinRoot(workspace.path, plansDir);
   ensureSafeDirectory(plansDir);
   return buildPlanLocation(workspace, planId);
+}
+
+function planFileExists(dataDir: string, workspaceRoot: string, planId: string): boolean {
+  const workspace = findWorkspaceDirectory(dataDir, workspaceRoot);
+  if (!workspace) return false;
+  const filePath = path.join(workspace.path, PLANS_DIRECTORY_NAME, `${planId}.md`);
+  assertWithinRoot(workspace.path, filePath);
+  const stat = safeLstat(filePath);
+  return Boolean(stat?.isFile() && !stat.isSymbolicLink());
+}
+
+function existingPlanUsesExactLegacyFullPlanPolicy(filePath: string): boolean {
+  const stat = safeLstat(filePath);
+  if (!stat?.isFile() || stat.isSymbolicLink() || stat.size > MAX_PLAN_BYTES) {
+    return false;
+  }
+  return planMarkdownUsesExactLegacyFullPlanPolicy(
+    normalizePlanMarkdown(fs.readFileSync(filePath, "utf8")),
+  );
 }
 
 function resolvePlanLocation(dataDir: string, planRef: string): PlanLocation {

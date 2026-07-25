@@ -57,7 +57,7 @@ Build deterministic Fleet Plan storage and tools.
 
 # Dispatch Manifest
 
-- Full-plan Ohio invocation: unavailable; dispatch explicit same-Lane TaskRefs only
+- Full-plan execution: unavailable; dispatch explicit same-Lane TaskRefs only
 - Lane W1-A — exact write set, dependencies, gate, handoff, and rollback from W1-A
 - Lane W1-B — exact write set, dependencies, gate, handoff, and rollback from W1-B
 
@@ -75,7 +75,7 @@ Build deterministic Fleet Plan storage and tools.
 
 # Final Review Loop
 
-- Host inspects artifacts, runs Plan verification, and routes findings back to Ohio.
+- Host inspects artifacts, runs Plan verification, and routes findings back to Genesis.
 `;
 }
 

@@ -37,7 +37,6 @@
 .carrier-stream-column__captain-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
 .carrier-stream-column__captain-dot[data-captain="nimitz"] { background: var(--captain-nimitz); }
 .carrier-stream-column__captain-dot[data-captain="genesis"] { background: var(--captain-genesis); }
-.carrier-stream-column__captain-dot[data-captain="ohio"] { background: var(--captain-ohio); }
 .carrier-stream-column__captain-dot[data-captain="sentinel"] { background: var(--captain-sentinel); }
 .carrier-stream-column__captain-dot[data-captain="vanguard"] { background: var(--captain-vanguard); }
 .carrier-stream-column__phase { color: var(--aurora); font-weight: var(--weight-bold); font-size: 9px; line-height: 1; font-family: var(--font-mono); letter-spacing: .08em; }
@@ -51,7 +50,6 @@
 .carrier-stream-column__request { border-left: 3px solid var(--brass); border-radius: 4px 10px 10px 4px; background: color-mix(in oklch, var(--brass) 5%, var(--ink-deep)); color: var(--text-secondary); padding: 9px 12px; font-size: 11px; line-height: 1.55; }
 .carrier-stream-column__request[data-captain="nimitz"] { border-left-color: var(--captain-nimitz); background: color-mix(in oklch, var(--captain-nimitz) 5%, var(--ink-deep)); }
 .carrier-stream-column__request[data-captain="genesis"] { border-left-color: var(--captain-genesis); background: color-mix(in oklch, var(--captain-genesis) 5%, var(--ink-deep)); }
-.carrier-stream-column__request[data-captain="ohio"] { border-left-color: var(--captain-ohio); background: color-mix(in oklch, var(--captain-ohio) 5%, var(--ink-deep)); }
 .carrier-stream-column__request[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); background: color-mix(in oklch, var(--captain-sentinel) 5%, var(--ink-deep)); }
 .carrier-stream-column__request[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); background: color-mix(in oklch, var(--captain-vanguard) 5%, var(--ink-deep)); }
 .carrier-stream-column__request-kicker { display: block; margin-bottom: 4px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9px; font-weight: var(--weight-bold); letter-spacing: .14em; text-transform: uppercase; }

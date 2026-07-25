@@ -13,7 +13,7 @@ vi.mock("../src/mission-control/carrier-roster/panel.js", () => ({
 
     handleInput(data: string): void {
       if (data === "\r") {
-        this.options.openTaskForcePanel({ carrierDisplayName: "Ohio", carrierId: "ohio" });
+        this.options.openTaskForcePanel({ carrierDisplayName: "Vanguard", carrierId: "vanguard" });
         return;
       }
       if (data === "\x1b") {
